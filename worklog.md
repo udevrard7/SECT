@@ -11476,63 +11476,69 @@ Stage Summary :
   problèmes RLS.
 
 ---
-Task ID: SECT-MESSAGERIE-BADGE-UNREAD-FIX
-Agent: Z.ai Code (tuteur/assistant)
-Task: Bug messagerie — badge "non lus" reste affiché après clic sur conversation
+Task ID: SECT-EXPLORE-EPREUVE-001
+Agent: Explore (subagent)
+Task: Cartographie du workflow épreuve → passation → correction
 
-Symptômes rapportés :
-- Le numéro de notification de messages non lus reste même quand l'utilisateur
-  clique sur le message.
-- La sidebar (bulle messagerie flottante) affiche comme s'il y a des messages
-  non lus.
-
-Investigation (frontend + backend) :
-- useMarkAsRead (hook) : optimistic update + refetch — correct.
-- ConversationList + MessagerieBubble : badges basés sur unreadCount du cache
-  TanStack — corrects.
-- Backend MarkAsRead + ListByUser — corrects en apparence.
-
-2 bugs racines identifiés :
-
-BUG 1 (frontend, chat-window.tsx) — ordre des effets React :
-L'effet mark-as-read utilisait un booléen global hasMarkedReadRef reset par
-un effet séparé dépendant de [conversationId]. Au changement de conversation,
-l'effet mark-as-read s'exécutait AVANT l'effet de reset (ordre de déclaration
-React) → voyait le ref à true (conv précédente) → ne marquait jamais la
-nouvelle conversation → le badge restait.
-Fix (commit f3ff597) : tracker par (conversationId, lastMessageId) au lieu
-d'un booléen global. Bonus : re-marque comme lu si un nouveau message arrive
-pendant que la conv est ouverte.
-
-BUG 2 (backend, repository/messagerie.go) — non-participants :
-Un enseignant/responsable voit les salons CLASSE/PROMO de son établissement
-(policy Conversation_select autorise is_enseignant()/is_responsable() pour
-modération) SANS en être participant (pas de row ConversationParticipant).
-- ListByUser : LEFT JOIN → lastReadAt=NULL → COALESCE(NULL, epoch) → TOUS les
-  messages comptés comme non lus (ex: prof01 voyait Classe L2 = 22 non lus
-  alors qu'il n'est pas participant).
-- MarkAsRead : UPDATE 0 rows → NotFoundError 404 → frontend rollback
-  l'optimistic update → badge revenait.
-Fix (commit e612128) :
-- ListByUser : CASE WHEN p.userId IS NULL THEN 0 ELSE <count> END.
-- MarkAsRead : si 0 rows (non-participant), retourner nil (no-op silencieux).
-
-Validation production (Agent Browser, prof01@uniabidjan.com) :
-- AVANT : DIRECT(2) + CLASSE(22) + PROMO(2) = 26 non lus affichés.
-- POST fix frontend : clic sur DM (participant, 2 non lus) → POST /lu 200 →
-  badge DM disparaît ✅. CLASSE + PROMO toujours à 22/2 (bug backend).
-- POST fix backend (déploiement Render) : CLASSE 22→0, PROMO 2→0 ✅.
-- Navigation entre 4 conversations (Classe L2 → Promo → Assistant IA → DM) :
-  0 erreur console ✅.
-- Badge total bulle flottante : disparu (total=0) ✅.
-- Toutes les conversations affichent "à jour" ✅.
+Work Log:
+- Lecture du worklog (11477 lignes) : toutes les tâches EPREUVES-FIX-1, CORRECTION-FIX-1, CORRECTION-SELECT-1, EPREUVES-SESSIONS-1, EPREUVES-PDF-1, DUPLICATE-UE-1/2, DUP-SRCDocs-1, KEEPALIVE-1, SCORES-NORM-1/2, RESULTATS-FIX-2 déjà documentées. Le module épreuve a déjà été largement testé et corrigé en production.
+- Lecture intégrale des 6 fichiers backend du module :
+  * domain/epreuve.go (387 lignes) — entités Epreuve/Question/EpreuveQuestion + 6 enums (StatutEpreuve, TypeQuestion, Difficulte, ModeGeneration, SessionExamen) + DTOs CreateEpreuveInput/UpdateEpreuveInput/EpreuveListParams + interfaces EpreuveRepository/QuestionRepository.
+  * domain/session.go (434 lignes) — SessionPassation/Reponse/Resultat + StatutSession (7 valeurs) + DTOs StartSessionInput/SubmitSessionInput/SaveReponseInput/ResultatListParams + interfaces SessionRepository/ResultatRepository + SubmitResult + DetectGradingScenario/GradeQCU/GradeQCM + DetailParQuestion/QuestionForGrading.
+  * repository/epreuve.go (1075 lignes) — EpreuveRepository impl (FindByID avec LEFT JOIN User/Filiere/UE + hydratation Sessions + Questions depuis contenu JSON, List avec filters + pagination + hydratation sessions pour enseignant/étudiant/responsable, Create avec décomposition IA_ASSISTEE seulement, Update avec state machine publier/lancer/terminer/cloturer, SoftDelete refuse EN_COURS, ListQuestions + ListQuestionsForGrading).
+  * repository/question.go (368 lignes) — QuestionRepository impl (CRUD + BatchHardDelete + sanitizeRawMessage).
+  * repository/certificat.go (lignes 245-555) — CorrectionRepository impl (ListSessions enrichi avec Reponses+Epreuve.questions+champs calculés needsCorrectionCount/allCorrected/autoGradedScore, UpdateReponse, RetournerSession/Batch).
+  * usecase/epreuve.go (313 lignes) — EpreuveUseCase + QuestionUseCase (List/GetByID/Create/Update/SoftDelete + validations : titre, duree>0, dates, uniteEnseignementId requis, ENSEIGNANT forcé à claims.UserID).
+  * usecase/session.go (725 lignes) — SessionUseCase (List/GetByID/StartSession/SaveReponse/AddAlerte/Submit) + ResultatUseCase (List/GetOverview/GetEtudiantOverview/computeStats/buildEnonceMap). Submit() est le cœur : détecte scenario A/B, auto-grade QCU/QCM, persiste scores via UpdateReponseScore, construit detailParQuestion JSON, upsert Resultat, transitionne statut → CORRIGEE (A) ou SOUMISE (B).
+  * transport/http/epreuve_handlers.go (446 lignes) — listEpreuves (multi-statut + filières dérivées + pagination), getEpreuve, createEpreuve, getEpreuveStatus, updateEpreuve (state machine), deleteEpreuve, listEpreuveQuestions, listQuestions, getQuestion, createQuestion, updateQuestion, deleteQuestion, batchDeleteQuestions.
+  * transport/http/epreuve_enhanced_handlers.go (201 lignes) — listOrphanEpreuves, listSessionSpeciale, createSessionSpeciale.
+  * transport/http/session_handlers.go (351 lignes) — listSessions, getSession, startSession, saveReponse (cache RAM), submitSession (flush cache + Submit), listResultats, resultatsOverview, resultatsEtudiantOverview, GetDirtySessions/FlushSessionToNeon (worker).
+  * transport/http/session_enhanced_handlers.go (644 lignes) — updateSessionBulk (PUT/PATCH /api/sessions/{id} : bulk reponses OU log alerte), captureSession, epreuveAutoClose (grace period detection), security-settings.
+  * transport/http/correction_enhanced_handlers.go (310 lignes) — saveGradeOrFinalize (dispatch finalizeAll vs questionId+score), finalizeSession (recompute SUM(reponse.score) + transition CORRIGEE + upsert Resultat), batchAiGrade (queue worker).
+  * transport/http/certificat_handlers.go (lignes 210-450) — listCorrectionSessions (GET /api/correction), updateReponse (PATCH /api/correction/reponses/{id}), retournerSession (POST /{sessionId}/retourner), retournerBatch (POST /retourner-batch), aiGradeSession (POST /{sessionId}/ai-grade async).
+  * transport/http/router.go (lignes 334-483) — routes /api/epreuves, /api/questions, /api/sessions, /api/resultats, /api/correction avec RequireRole ENSEIGNANT/ADMIN/RESPONSABLE sur les mutations.
+  * transport/http/ai_handlers.go (epreuvesGenerate ligne 100) — POST /api/epreuves/generate : récupère documents, construit prompt, appelle AIService. Mode preview (synchrone) ou async (preview=false crée Epreuve EN_COURS + queue GeneratorQueue).
+- Lecture intégrale des fichiers frontend du module :
+  * lib/routes.ts (615 lignes) — PageId/PageRoute mapping + NAV_CATEGORIES par rôle. /epreuves (ENSEIGNANT), /questions-ia (ENSEIGNANT, "Génération IA"), /correction (ENSEIGNANT), /mes-epreuves + /passation + /mes-resultats (ETUDIANT).
+  * components/layout/page-content.tsx — PAGE_COMPONENTS registry : epreuves→EpreuvesPage, questions-ia→GenerationIAPage, mes-epreuves→MesEpreuvesPage, passation→PassationPage, correction→CorrectionPage, mes-resultats→MesResultatsPage.
+  * components/epreuves/epreuves-page.tsx (3514 lignes) — EpreuvesPage avec 2 onglets (Modeles/Sessions). SessionsTab.handlePlanifierSubmit (L1497) : POST /api/epreuves avec body {...fields, contenu copié du modele, generationMode: modele.generationMode || 'MANUELLE'}. handleStatusAction (L1580) : PATCH /api/epreuves/{id} {action}. Boutons par statut : BROUILLON→Publier, PLANIFIEE→Lancer, EN_COURS→Terminer, TERMINEE→Clôturer, CLOTUREE→Résultats+Session spéciale.
+  * components/epreuves/generation-ia-page.tsx (2520 lignes) — Wizard 4 étapes : select-docs→configure→preview→save. handleGenerate (L650) POST /api/epreuves/generate. handleSave (L896) POST /api/epreuves avec generationMode:'IA_ASSISTEE' + contenu:generatedContenu.
+  * components/passation/mes-epreuves-page.tsx (906 lignes) — Liste épreuves étudiant avec onglets À venir/Mes Copies. getExamAvailability (L158) détermine disponible/pas_encore/en_cours/terminee. handleCommencer (L349) → router.push('/passation?epreuveId=X').
+  * components/passation/passation-page.tsx (2547 lignes) — PassationPage. epreuveQuery (L289) fetch /api/epreuves/X + /api/sessions?etudiantId+epreuveId + /api/epreuves/X/questions. startExam (L501) POST /api/sessions. saveAnswers (L562) PUT /api/sessions/{id} {reponses}. submitExam (L593) submitOffline POST /api/sessions/{id}/submit. Timer 1s, auto-save 30s, anti-fraude (fullscreen, tab switch, capture), propositionMappings pour shuffling. Render par type : QCU RadioGroup, QCM Checkbox, QRC Textarea, TRS Textarea, REFLEXION Textarea "feuille de rédaction" avec paper-lines CSS, CODE CodingQuestionStudent (Monaco + Pyodide pour Python).
+  * components/correction/correction-page.tsx (177 lignes) — Orchestrateur. useCorrectionState hook. CorrectionToolbar (select épreuve + toggle par-copie/par-question + batch). Sidebar (StudentSidebar ou QuestionSidebar). Main: ParCopieView ou ParQuestionView.
+  * hooks/use-correction-state.ts (608 lignes) — Toute la logique. questions = selectedSession.epreuve.questions (peut être undefined). handleAiGrade (POST /ai-grade async), handleApplyAi (PATCH /ai-grade avec score=noteIA), handleSave (PATCH /ai-grade avec score+commentaire), handleFinalize (PATCH /ai-grade {finalizeAll:true}), handleBatchAiGrade (POST /ai-grade-batch), handleBatchReturn (POST /retourner-batch {epreuveId}).
+  * hooks/use-correction.ts (233 lignes) — TanStack Query hooks : useEpreuvesForCorrection (filtre EN_COURS/TERMINEE/CLOTUREE), useCorrectionSessions (polling 3s si noteIA===null en cours), useAiGrade, useSaveGrade, useFinalizeSession, useBatchAiGrade, useBatchReturn.
+  * components/correction/grading-form.tsx (231 lignes) — Formulaire partagé par-copie/par-question avec critères (rubric), note input, commentaire, bouton IA (Suggérer une note), bouton Sauvegarder (Ctrl+S).
+  * components/correction/par-copie-view.tsx (484 lignes) — Vue 1 étudiant, navigation questions. GradingForm seulement pour non-auto non-CODE. Finalize bar quand allCorrected && statut !== RETOURNEE.
+  * components/correction/par-question-view.tsx (494 lignes) — Vue 1 question, toutes les copies en colonnes. Batch IA per question.
+  * components/correction/ai-suggestion-panel.tsx (151 lignes) — Panneau suggestion IA avec score + justification + Appliquer/Ignorer.
+  * components/coding/code-editor.tsx (789 lignes) — CodeEditor (Monaco) + CodingQuestionStudent (Monaco + tests publics + Pyodide pour Python + iframe sandbox pour JS). Languages : python, javascript, java, etc.
+  * lib/grading.ts (365 lignes) — Helpers : shuffleArrayWithMapping, convertShuffledLetterToOriginal, gradeQCU, gradeQCM, gradeCODE (semi-auto), detectGradingScenario, buildPropositionMappingsForSession. MANUAL_CORRECTION_TYPES=['QRC','TRS','REFLEXION'], AUTO_GRADABLE_TYPES=['QCU','QCM'], SEMI_AUTO_GRADABLE_TYPES=['CODE'].
+  * lib/correction-utils.ts — generateRubricCriteria par type (QRC/REFLEXION/TRS/CODE). isAutoGradedType (QCU/QCM), isSemiAutoGradedType (CODE).
+  * lib/matricule-generator.ts — Format configurable par établissement : {FIL}/{NIV}/{YY}/{NNN}. Défaut ETU-XXXXXX. validateMatricule contre regexMatricule.
+  * components/auth/login-form.tsx — Mode personnel (email) ou étudiant (matricule ou email). Schéma zod : personnelSchema (email), etudiantSchema (min 3 chars).
+  * app/api/go-auth/login/route.ts — Shim vers backend Go /api/auth/login. Cookies httpOnly access_token (15min) + refresh_token (7j).
+- Lecture migrations DB pertinentes :
+  * 000002_create_tables.up.sql — Schéma Epreuve/Question/EpreuveQuestion/SessionPassation/Reponse/Resultat. Reponse."noteIA"/"justificationIA" pour correction IA. Epreuve."contenu" JSONB. Epreuve."noteTotal" default 20. Epreuve."delaiGrace" default 3.
+  * 000003_create_indexes.up.sql — UNIQUE Reponse(sessionId, questionId), UNIQUE EpreuveQuestion(epreuveId, questionId), UNIQUE Resultat(sessionId), UNIQUE User(matricule).
+  * 000022_auth_security_definer_functions.up.sql — find_user_for_auth(p_identifier) : email si '@' sinon matricule (exact match, case-sensitive).
+- Lecture backend/usecase/auth.go Login() — flux complet (lookup user → check lockedUntil → bcrypt → check actif → refresh token → access token).
 
 Stage Summary:
-- **2 bugs racines corrigés** : ordre des effets React (frontend) + calcul
-  unreadCount pour les non-participants (backend).
-- **Fix frontend** (commit f3ff597) : validé sur DM participant (POST /lu 200).
-- **Fix backend** (commit e612128) : validé sur CLASSE/PROMO non-participants
-  (unreadCount 22→0, 2→0 ; plus de 404 sur /lu).
-- **0 régression** : navigation multi-conversations sans erreur, build OK,
-  health Render OK.
-- **Aucune donnée perdue** : 2 corrections de logique SQL/Go uniquement.
+- **Workflow complet épreuve→passation→confirmation cartographié** sur 6 fichiers backend (domain/repository/usecase/transport) + 12 fichiers frontend (pages/hooks/lib/types). Toutes les routes, handlers, fonctions de grading, transitions de state machine, et flux de données sont identifiés avec numéros de ligne.
+- **5 types de question supportés** : QCU, QCM, QRC, REFLEXION, CODE, TRS. Auto-gradés au submit : QCU et QCM seulement (usecase/session.go:313-321). CODE est marqué auto-gradable dans DetectGradingScenario (domain/session.go:362) MAIS le switch de Submit ne le grade pas → pending correction (incohérence à surveiller). QRC/REFLEXION/TRS → manuel. IA optionnelle pour QRC/CODE/REFLEXION via POST /api/correction/{sessionId}/ai-grade-batch (worker async).
+- **Workflow création épreuve** : 2 paths possibles. Path A (AI) : /questions-ia wizard → POST /api/epreuves/generate (preview) → POST /api/epreuves {generationMode:'IA_ASSISTEE', contenu} → backend décompose contenu.questions[] en Question+EpreuveQuestion rows. Path B (Planifier) : /epreuves SessionsTab → "Planifier" → POST /api/epreuves {contenu copié du modele, generationMode: modele.generationMode || 'MANUELLE'} → décompose SEULEMENT si IA_ASSISTEE. **CRITICAL** : si le modele source est MANUELLE, aucune Question/EpreuveQuestion n'est créée → ListQuestions retourne [] → passation cassée.
+- **State machine épreuve** : BROUILLON (création) → Publier → PLANIFIEE → Lancer (ou auto-lancer au StartSession étudiant) → EN_COURS → Terminer → TERMINEE → Clôturer → CLOTUREE. Transitions strictes (WHERE statut = expectedStatut). UI /epreuves affiche les boutons contextuels par statut.
+- **State machine session** : NON_COMMENCEE → StartSession → EN_COURS → Submit → SOUMISE (scenario B) ou CORRIGEE (scenario A) → (enseignant finalize) → CORRIGEE → Retourner → RETOURNEE. États spéciaux : ABSENT, NON_SOUMIS.
+- **Auto-grading au submit** : DetectGradingScenario(questions) → A si 0% manuel, B sinon. Submit() boucle sur EpreuveQuestion : si rep.Score != nil (déjà gradé) → utilise. Sinon QCU→GradeQCU, QCM→GradeQCM (persiste via UpdateReponseScore). Default (QRC/CODE/REFLEXION/TRS) → pending. rawScore = sum(auto) - penalite. Scenario A → statut CORRIGEE + score final. Scenario B → statut SOUMISE + score partiel. Upsert Resultat avec detailParQuestion JSON.
+- **Correction enseignant** : /correction → sélection épreuve → GET /api/correction?enseignantId+epreuveId. 2 modes : par-copie (1 étudiant, nav questions) ou par-question (1 question, toutes copies). Pour chaque réponse non-auto : GradingForm (critères rubrique + note + commentaire) → PATCH /api/correction/{sessionId}/ai-grade {questionId, score, commentaire}. IA optionnelle : POST /ai-grade-batch (queue worker async, polling 3s sur noteIA). Quand allCorrected → "Finaliser et rendre" → PATCH /ai-grade {finalizeAll:true} → SUM(reponse.score), statut CORRIGEE, upsert Resultat. Batch return : POST /retourner-batch {epreuveId} → toutes CORRIGEE → RETOURNEE.
+- **Résultats étudiant** : /mes-resultats (GET /api/resultats?etudiantId + /etudiant-overview) + /mes-epreuves onglet "Mes Copies" avec dialog détail (parse detailParQuestion). Scenario A : score immédiat après submit. Scenario B : score partiel + "Correction manuelle en attente" jusqu'à finalisation enseignant. Après RETOURNEE : score final visible.
+- **Matricule étudiant** : stocké exact (case-sensitive) dans User.matricule. Format configurable par établissement (regexMatricule), pattern par défaut {FIL}/{NIV}/{YY}/{NNN} (ex INF/LJ/25/008 vu en prod). Login accepte email (si '@') ou matricule (exact match).
+- **Short duration** : backend valide duree > 0 seulement (pas de minimum). Frontend défaut 60 min. Pas de minimum explicite — un test avec duree=5 ou 10 est valide côté backend.
+- **5 bugs potentiels identifiés** (à vérifier en test E2E) :
+  1. CODE auto-grading divergence : DetectGradingScenario considère CODE comme auto-gradable mais Submit() ne le grade pas → pending. Une épreuve 100% CODE serait scenario A mais statut SOUMISE (incohérent).
+  2. MANUELLE création ne décompose pas contenu → ListQuestions vide → passation cassée. Le test doit passer par /questions-ia (IA_ASSISTEE) pour créer l'épreuve avec 5 types.
+  3. REFLEXION absent du manual question editor (banque-questions-page.tsx) — seulement créable via IA.
+  4. Dépendance ZAI_API_KEY : /questions-ia wizard appelle /api/epreuves/generate qui requires AIService configuré. Sans clés IA, la création d'épreuve avec 5 types est bloquée.
+  5. Submit grace period : delaiGrace default 3 min. Pour un test avec duree courte (ex 5 min), l'étudiant doit submit dans les 5+3=8 min sinon "délai de grâce expiré" (sauf autoSubmit=true).
+- **Fichiers à éditer si bugs** : 14 fichiers backend (domain×2, repository×3, usecase×2, transport/http×6, router×1) + 12 fichiers frontend (components/epreuves×2, components/passation×3, components/correction×6, hooks×2, lib×3, types×1). Liste détaillée avec numéros de ligne fournie dans le rapport final.
