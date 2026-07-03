@@ -11686,3 +11686,74 @@ Stage Summary :
   334ea39 (Correction RLS).
 - **Lesson learned** : toujours tester avec un rôle SANS BYPASSRLS (comme en
   production) pour reproduire les bugs RLS. neondb_owner masque les problèmes.
+
+---
+Task ID: SECT-AUDIT-RLS-REPOS-001
+Agent: Z.ai Code (tuteur/assistant) + subagent general-purpose
+Task: Audit systématique des repositories backend — pattern BeginTx sans claims RLS
+
+Contexte :
+Le fix MESSAGERIE-BADGE-NON-PARTICIPANT (MarkAsRead sans claims) a révélé un
+pattern risqué : de nombreux repositories utilisent r.pool.BeginTx(ctx, ...) 
+directement SANS appeler db.SetClaimsTx, ce qui pose des claims NULL → les
+policies RLS (127 au total) qui dépendent de current_user_id()/is_admin()/etc.
+voient NULL → 0 rows visibles/modifiables.
+
+Méthode :
+- Subagent general-purpose a lu les 15 fichiers de backend/internal/repository/
+  et analysé chaque occurrence de BeginTx (47 au total).
+- Vérification DB : sect_app a rolbypassrls=false, 14 tables ont
+  relrowsecurity=true ET relforcerowsecurity=true, 127 policies dépendent des
+  claims. Sans SetClaimsTx → current_user_id()=NULL → policies bloquent.
+- Confirmation production : endpoint PUBLIC /api/certificats/verify/SECT-WNV8-RXJL
+  retourne 404 pour un code QUI EXISTE en DB (14 certificats) → bug certificat.go
+  FindByCode confirmé en conditions réelles.
+
+Résultats de l'audit :
+- 47 occurrences BeginTx analysées.
+- 13 CORRECT (BeginTx + SetClaimsTx immédiatement après).
+- 7 INTENTIONAL_BYPASS (system-worker via set_config, documentés — etablissement_access.go).
+- 27 BUGS potentiels (BeginTx sans claims sur tables RLS-protégées).
+- 18 requêtes directes pool (16 CORRECT via SECURITY DEFINER, 2 LOW_RISK).
+
+Bugs CRITICAL (19) — impact production confirmé ou très probable :
+- user.go:502 CountDependencies — perte de données (comment prétend RLS off, ne l'est pas)
+- user.go:63 FindByEmail — auth cassée (ou code mort)
+- session.go:494 ListByEtudiant — résultats étudiant vides
+- session.go:854 GetEtudiantOverview — dashboard étudiant vide
+- session.go:135 FindByEtudiantAndEpreuve — reprise de session cassée
+- etablissement.go:175/232/328/357/387/445/497 + 427 — Create/Update/UpdateLogo/
+  ClearLogo/SetCurrentAnnee/UpdateWatermark/Delete/GetCurrentAnnee cassés
+- certificat.go:84/166/216 — FindByCode (confirmé prod 404)/Create/Revoke cassés
+- document.go:153/191/214 — Create/SoftDelete/UpdateAnalysis cassés
+
+Bugs HIGH (9) — autres tables RLS :
+- question.go:193/239/317/336 — Create/Update/SoftDelete/BatchHardDelete
+- academique.go:287/356/481/830/955 — UE Create/Update/HardDelete, Annee Create/HardDelete
+  (dont 3 CONTRADICTIONS : commentaires disent db.WithTx mais code utilise BeginTx)
+
+Bugs MEDIUM (8) — bypass intentionnels à standardiser :
+- etablissement_access.go:210/260/301/364/414/466 — utilisent set_config brut au lieu
+  de db.SetClaimsTx (incohérent avec RLS-POOLER-FIX documenté dans db.go)
+- auth.go:158 CreateAuditLog — policy permissive, OK mais defense-in-depth conseillée
+- messagerie.go:1171 GetMessageConversationID — comment prétend bypass mais ne l'est pas
+
+Plan de correction recommandé (par ordre de risque) :
+1. Introduire db.SystemClaims() helper dans db.go (standardiser le bypass worker).
+2. Fix user.go:502 CountDependencies (DATA LOSS) — ajouter SetClaimsTx system-worker.
+3. Fix les 3 CONTRADICTIONS (etablissement.go:387, academique.go:481, academique.go:955) —
+   le commentaire dit déjà db.WithTx, juste aligner le code.
+4. Fix session.go:494 + 854 (appliquer le même fix que ListByEpreuve ligne 723).
+5. Fix certificat.go:84 FindByCode (endpoint public cassé — utiliser SystemClaims ou
+   SECURITY DEFINER function comme find_invitation_by_token).
+6. Fix tous les autres BUGS : remplacer BeginTx+Rollback+Commit par db.WithTx.
+7. Migrer etablissement_access.go de set_config brut vers db.SetClaimsTx(SystemClaims()).
+8. Investiguer user.go:63 FindByEmail (code mort ?).
+
+Stage Summary:
+- **27 bugs RLS potentiels** identifiés dans 8 fichiers repository (sur 47 occurrences BeginTx).
+- **1 bug confirmé en production** : /api/certificats/verify retourne 404 pour des codes existants.
+- **Méthode validée** : l'audit statique + vérification DB (sect_app NOBYPASSRLS, 14 tables
+  FORCE RLS, 127 policies claims-dépendantes) + test API production.
+- **Aucun fichier modifié** (audit read-only). Plan de correction prêt à exécuter sur
+  décision utilisateur.
