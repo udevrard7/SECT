@@ -1,4 +1,5 @@
--- Migration 000040 : fix Conversation_insert pour autoriser les étudiants à
+-- Migration 000048 : fix Conversation_insert pour autoriser les étudiants à
+-- (renumérotée depuis 000040 le 2025-01 — voir MIGRATIONS_RECONCILIATION.md)
 -- créer les salons CLASSE/PROMO de leur filière (via EnsureAutoConversations).
 --
 -- BUG (MESSAGERIE-AUTO-SALONS-ETUDIANT) : la policy Conversation_insert
