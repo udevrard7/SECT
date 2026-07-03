@@ -10621,3 +10621,51 @@ Stage Summary:
 - **Sécurité** : double vérification de propriété (usecase + policy RLS DocumentAudio_delete migration 000039). L'admin garde tout droit.
 - **Cleanup R2** : l'objet R2 est supprimé en best-effort avant la ligne DB (objet orphelin acceptable si échec R2).
 - **Déploiement** : push GitHub (a5b402f) → Render (backend) + Vercel (frontend) déployés. Migration Neon appliquée (version 39).
+
+---
+Task ID: SECT-MESSAGERIE-GROUP-IA
+Agent: Z.ai Code (tuteur/assistant)
+Task: Réponse IA salon collectif (@assistant) - corriger le timeout Render free tier
+
+Analyse initiale :
+- generateAIResponseInGroup s'exécutait en synchrone dans la requête HTTP SendMessage.
+- Sur Render free tier (timeout 30s), un appel IA >30s coupait la requête HTTP.
+- Le message user était persisté, mais la réponse IA pouvait ne jamais arriver.
+
+Tentative 1 - Worker async (commit b07563a, rollbacké) :
+- Créé worker/messagerie_worker.go : GroupAIJob + GroupAIQueue (channel Go buffer 50)
+  + GroupAIProcessor interface + worker goroutine avec recover + timeout 3 min.
+- usecase : enqueueGroupAIJob (push non-bloquant) + ProcessGroupAIJob.
+- main.go : groupAIWorker.Start(context.Background()).
+- Test production (Agent Browser, étudiant 2, salon Classe L2, 5 @assistant) :
+  POST /api/messages → 200 en ~300ms (async OK), MAIS 0 réponse IA persistée
+  en DB après 60s, même avec keep-alive pings sur /health.
+- Cause : Render free tier cold start/spin-down tue le worker goroutine avant
+  traitement du job (channel in-memory perdu au redémarrage). Le worker async
+  avec queue non-persistante n'est pas fiable sur Render free.
+
+Tentative 2 - Synchrone 25s + erreur gracieuse (commit f521a1a, DÉPLOYÉ EN ATTENTE) :
+- generateAIResponseInGroupWithTimeout : context.WithTimeout(25s) sur l'appel IA.
+  Si l'IA répond à temps → persister + broadcaster. Si timeout/erreur → persister
+  un message IA d'erreur gracieux ("Désolé, je n'ai pas pu répondre à temps...").
+- Le message user est toujours persisté + broadcasté AVANT l'appel IA.
+- Suppression du worker async (messagerie_worker.go supprimé, ProcessGroupAIJob
+  et enqueueGroupAIJob retirés, groupAIWorker retiré du main.go).
+- Validation : go vet ./... + go build ./... + CGO_ENABLED=0 build (comme Dockerfile) = 0 erreur.
+- Déploiement Render : push à 03:47 UTC, service HTTP 200 mais POST @assistant
+  encore à ~290ms à 03:57 → Render n'a PAS encore déployé le commit f521a1a
+  (l'ancien code worker async est encore actif). Render free peut mettre 5-15 min
+  ou le webhook GitHub peut être en retard. Le build passe en local (testé avec
+  la commande exacte du Dockerfile).
+
+Stage Summary:
+- **Code correct sur GitHub** (commit f521a1a) : approche synchrone 25s + erreur
+  gracieuse, fiable sur Render free (pas de cold start problem, timeout < 30s).
+- **Worker async rollbacké** : l'approche channel in-memory ne fonctionne pas sur
+  Render free tier (cold start tue le worker). La queue devrait être persistée
+  en DB pour être fiable (overkill pour ce use case best-effort).
+- **Déploiement Render en attente** : le service répond sur l'ancien code. Render
+  déploiera eventuallement. Une fois déployé, le POST @assistant prendra 5-25s
+  (synchrone) et l'utilisateur aura toujours une réponse (succès ou erreur gracieuse).
+- **À vérifier après déploiement** : POST @assistant doit prendre >5s (synchrone),
+  et un message IA doit apparaître en DB (succès OU erreur gracieux).
