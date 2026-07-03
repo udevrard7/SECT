@@ -11224,3 +11224,30 @@ Stage Summary :
   admin_has_etablissement_access(claims.EtablissementID). Exit via bouton header
   (POST /api/auth/exit-assistance-mode) → nouveau JWT sans etablissementId.
 - **Validation end-to-end Agent Browser** à suivre après déploiement (~2-4 min).
+
+---
+Task ID: SECT-SESSION-SETUP-001
+Agent: Z.ai Code (tuteur/assistant)
+Task: Mise en place de la session de tutorat — clonage du dépôt, configuration git, vérification Neon, audit de l'état des migrations
+
+Work Log:
+- Clonage du dépôt GitHub udevrard7/SECT → /home/z/sect-project (branche main, HEAD dcc59c3).
+- Configuration identité git locale : user.name=udevrard7, user.email=ulrichdouh@gmail.com (conforme à la demande utilisateur). Remote origin conserve le token pour push (à révoquer après session).
+- Vérification connexion Neon (pooler ep-muddy-river-asz862wj, DB=neondb, user=neondb_owner, PostgreSQL 18.4) → OK. 61 tables publiques, 139 policies RLS, 17 utilisateurs.
+- Lecture du worklog récent : derniers travaux sur RLS EtablissementAccess (bypass system-worker puis migration 000040 restaurée en RLS natif roles={public}).
+- Audit complet de l'état des migrations :
+  * schema_migrations (DB) enregistre 38 versions appliquées : 1→37 + 39.
+  * Version 38 (fix_messagerie_rls_recursion) ABSENTE de schema_migrations.
+  * Versions 40→46 NON appliquées selon schema_migrations.
+  * DOUBLONS de numéros dans backend/db/db/migrations/ : 2 fichiers pour 000039 et 2 fichiers pour 000040 → golang-migrate ne peut pas gérer cela.
+  * Les policies EtablissementAccess ont bien roles={public} en DB (effet de 000040_etablissement_access_roles_public) MAIS non enregistré dans schema_migrations → migration appliquée manuellement (hors migrateur).
+  * Makefile backend pointe MIGRATIONS_DIR=db/migrations alors que les fichiers sont en db/db/migrations → `make migrate-up` échouerait (chemin inexistant).
+- Aucune modification de code effectuée (session d'audit uniquement).
+
+Stage Summary:
+- **Environnement prêt** : dépôt cloné, git configuré, connexion Neon validée.
+- **3 anomalies à arbitrer par l'utilisateur** (voir compte-rendu) :
+  1. Dérive migrations DB (38 manquant, 40-46 non enregistrés).
+  2. Doublons numéros 39 et 40 dans le repo (casse golang-migrate).
+  3. Makefile MIGRATIONS_DIR incorrect (db/migrations vs db/db/migrations).
+- **Prochaine étape** : attendre décision utilisateur sur (a) traitement des anomalies migrations et (b) tâche de développement à réaliser.
