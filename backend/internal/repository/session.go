@@ -130,25 +130,34 @@ func (r *SessionRepository) List(ctx context.Context, params domain.SessionListP
         return result, nil
 }
 
-// FindByEtudiantAndEpreuve cherche une session existante (bypass RLS pour vérif).
+// FindByEtudiantAndEpreuve cherche une session existante (self-access via RLS).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : l'ancien code ouvrait une tx SANS SetClaimsTx
+// → claims NULL → policy SessionPassation_select (is_etudiant() AND etudiantId
+// = me) voyait NULL → 0 row → la "reprise de session" ne marchait jamais
+// (l'étudiant voyait toujours "pas de session existante" même si une session
+// EN_COURS existait pour lui). Fix : db.WithTx avec claims du context.
 func (r *SessionRepository) FindByEtudiantAndEpreuve(ctx context.Context, etudiantID, epreuveID string) (*domain.SessionPassation, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("FindByEtudiantAndEpreuve: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "SessionPassation" WHERE "etudiantId" = $1 AND "epreuveId" = $2 ORDER BY "createdAt" DESC LIMIT 1`, columnsSession), etudiantID, epreuveID)
-        sess, err := scanSession(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, nil // pas de session existante
+        var sess *domain.SessionPassation
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "SessionPassation" WHERE "etudiantId" = $1 AND "epreuveId" = $2 ORDER BY "createdAt" DESC LIMIT 1`, columnsSession), etudiantID, epreuveID)
+                s, err := scanSession(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return nil // pas de session existante
+                        }
+                        return fmt.Errorf("query session: %w", err)
                 }
-                return nil, fmt.Errorf("query session: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                sess = s
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return sess, nil
 }
@@ -487,222 +496,227 @@ func (r *ResultatRepository) Upsert(ctx context.Context, res *domain.Resultat) (
 }
 
 // ListByEtudiant liste les sessions d'un étudiant avec résultats + épreuve +
-// réponses (bypass RLS pour self-access). RESULTATS-FIX-1 : enrichi avec
+// réponses (self-access via RLS). RESULTATS-FIX-1 : enrichi avec
 // Epreuve (titre, enseignant, questions), Resultat et Reponses via batch
 // queries (évite N+1, compatible pgx Simple Protocol / Neon PgBouncer).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : l'ancien commentaire disait "bypass RLS pour
+// self-access" mais le code ouvrait une tx SANS SetClaimsTx → claims NULL →
+// la policy SessionPassation_select (is_etudiant() AND etudiantId = me) voyait
+// NULL → 0 session → la page de résultats étudiant était toujours vide.
+// Même bug classe que RESULTATS-RLS-1 (déjà corrigé sur ListByEpreuve).
+// Fix : db.WithTx avec claims du context (l'étudiant voit ses propres sessions).
 func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID string) ([]*domain.SessionPassation, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("ListByEtudiant: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        // Query 1 : sessions de l'étudiant (SOUMISE/CORRIGEE/RETOURNEE).
-        rows, err := tx.Query(ctx, `
-                SELECT s."id", s."etudiantId", s."epreuveId", s."statut", s."dateDebut", s."dateFin",
-                       s."score", s."logEvents", s."alertes", s."createdAt", s."updatedAt",
-                       s."propositionMappings", s."penalite"
-                FROM "SessionPassation" s
-                WHERE s."etudiantId" = $1 AND s."statut" IN ('SOUMISE','CORRIGEE','RETOURNEE')
-                ORDER BY s."createdAt" DESC
-        `, etudiantID)
-        if err != nil {
-                return nil, fmt.Errorf("query sessions by etudiant: %w", err)
-        }
         var result []*domain.SessionPassation
-        for rows.Next() {
-                s, err := scanSession(rows)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Query 1 : sessions de l'étudiant (SOUMISE/CORRIGEE/RETOURNEE).
+                rows, err := tx.Query(ctx, `
+                        SELECT s."id", s."etudiantId", s."epreuveId", s."statut", s."dateDebut", s."dateFin",
+                               s."score", s."logEvents", s."alertes", s."createdAt", s."updatedAt",
+                               s."propositionMappings", s."penalite"
+                        FROM "SessionPassation" s
+                        WHERE s."etudiantId" = $1 AND s."statut" IN ('SOUMISE','CORRIGEE','RETOURNEE')
+                        ORDER BY s."createdAt" DESC
+                `, etudiantID)
                 if err != nil {
-                        rows.Close()
-                        return nil, fmt.Errorf("scan session: %w", err)
+                        return fmt.Errorf("query sessions by etudiant: %w", err)
                 }
-                result = append(result, s)
-        }
-        rows.Close()
-        if result == nil {
-                result = []*domain.SessionPassation{}
-        }
-        if len(result) == 0 {
-                if err := tx.Commit(ctx); err != nil {
-                        return nil, fmt.Errorf("commit: %w", err)
+                for rows.Next() {
+                        s, err := scanSession(rows)
+                        if err != nil {
+                                rows.Close()
+                                return fmt.Errorf("scan session: %w", err)
+                        }
+                        result = append(result, s)
                 }
-                return result, nil
-        }
+                rows.Close()
+                if result == nil {
+                        result = []*domain.SessionPassation{}
+                }
+                if len(result) == 0 {
+                        return nil
+                }
 
-        // Collecter les IDs distincts pour les batch queries.
-        epreuveSet := make(map[string]struct{})
-        sessionIDs := make([]string, 0, len(result))
-        for _, s := range result {
-                epreuveSet[s.EpreuveID] = struct{}{}
-                sessionIDs = append(sessionIDs, s.ID)
-        }
-        distinctEpreuveIDs := make([]string, 0, len(epreuveSet))
-        for id := range epreuveSet {
-                distinctEpreuveIDs = append(distinctEpreuveIDs, id)
-        }
+                // Collecter les IDs distincts pour les batch queries.
+                epreuveSet := make(map[string]struct{})
+                sessionIDs := make([]string, 0, len(result))
+                for _, s := range result {
+                        epreuveSet[s.EpreuveID] = struct{}{}
+                        sessionIDs = append(sessionIDs, s.ID)
+                }
+                distinctEpreuveIDs := make([]string, 0, len(epreuveSet))
+                for id := range epreuveSet {
+                        distinctEpreuveIDs = append(distinctEpreuveIDs, id)
+                }
 
-        // Query 2 : épreuves + enseignant (LEFT JOIN User).
-        epreuveMap := make(map[string]*domain.SessionEpreuveRef)
-        if len(distinctEpreuveIDs) > 0 {
-                ph := buildPlaceholders(1, len(distinctEpreuveIDs))
-                args := make([]any, 0, len(distinctEpreuveIDs))
-                for _, id := range distinctEpreuveIDs {
-                        args = append(args, id)
-                }
-                q := fmt.Sprintf(`
-                        SELECT e."id", e."titre", e."description", e."duree", e."noteTotal", e."dateFin",
-                               e."enseignantId", u."name"
-                        FROM "Epreuve" e
-                        LEFT JOIN "User" u ON u."id" = e."enseignantId"
-                        WHERE e."id" IN (%s)
-                `, ph)
-                rows2, err := tx.Query(ctx, q, args...)
-                if err != nil {
-                        return nil, fmt.Errorf("query epreuves: %w", err)
-                }
-                for rows2.Next() {
-                        e := &domain.SessionEpreuveRef{Questions: []domain.EpreuveQuestionInfo{}}
-                        var ensID, ensName *string
-                        if err := rows2.Scan(&e.ID, &e.Titre, &e.Desc, &e.Duree, &e.NoteTotal,
-                                &e.DateFin, &ensID, &ensName); err != nil {
-                                rows2.Close()
-                                return nil, fmt.Errorf("scan epreuve: %w", err)
+                // Query 2 : épreuves + enseignant (LEFT JOIN User).
+                epreuveMap := make(map[string]*domain.SessionEpreuveRef)
+                if len(distinctEpreuveIDs) > 0 {
+                        ph := buildPlaceholders(1, len(distinctEpreuveIDs))
+                        args := make([]any, 0, len(distinctEpreuveIDs))
+                        for _, id := range distinctEpreuveIDs {
+                                args = append(args, id)
                         }
-                        if ensID != nil {
-                                e.Enseignant.ID = *ensID
+                        q := fmt.Sprintf(`
+                                SELECT e."id", e."titre", e."description", e."duree", e."noteTotal", e."dateFin",
+                                       e."enseignantId", u."name"
+                                FROM "Epreuve" e
+                                LEFT JOIN "User" u ON u."id" = e."enseignantId"
+                                WHERE e."id" IN (%s)
+                        `, ph)
+                        rows2, err := tx.Query(ctx, q, args...)
+                        if err != nil {
+                                return fmt.Errorf("query epreuves: %w", err)
                         }
-                        if ensName != nil {
-                                e.Enseignant.Name = *ensName
+                        for rows2.Next() {
+                                e := &domain.SessionEpreuveRef{Questions: []domain.EpreuveQuestionInfo{}}
+                                var ensID, ensName *string
+                                if err := rows2.Scan(&e.ID, &e.Titre, &e.Desc, &e.Duree, &e.NoteTotal,
+                                        &e.DateFin, &ensID, &ensName); err != nil {
+                                        rows2.Close()
+                                        return fmt.Errorf("scan epreuve: %w", err)
+                                }
+                                if ensID != nil {
+                                        e.Enseignant.ID = *ensID
+                                }
+                                if ensName != nil {
+                                        e.Enseignant.Name = *ensName
+                                }
+                                epreuveMap[e.ID] = e
                         }
-                        epreuveMap[e.ID] = e
+                        rows2.Close()
                 }
-                rows2.Close()
-        }
 
-        // Query 3 : questions par épreuve (EpreuveQuestion LEFT JOIN Question).
-        if len(distinctEpreuveIDs) > 0 {
-                ph := buildPlaceholders(1, len(distinctEpreuveIDs))
-                args := make([]any, 0, len(distinctEpreuveIDs))
-                for _, id := range distinctEpreuveIDs {
-                        args = append(args, id)
+                // Query 3 : questions par épreuve (EpreuveQuestion LEFT JOIN Question).
+                if len(distinctEpreuveIDs) > 0 {
+                        ph := buildPlaceholders(1, len(distinctEpreuveIDs))
+                        args := make([]any, 0, len(distinctEpreuveIDs))
+                        for _, id := range distinctEpreuveIDs {
+                                args = append(args, id)
+                        }
+                        q := fmt.Sprintf(`
+                                SELECT eq."id", eq."epreuveId", eq."questionId", eq."bareme", eq."ordre",
+                                       q."id", q."type"::text, q."enonce", q."difficulte"::text
+                                FROM "EpreuveQuestion" eq
+                                LEFT JOIN "Question" q ON q."id" = eq."questionId"
+                                WHERE eq."epreuveId" IN (%s)
+                                ORDER BY eq."epreuveId", eq."ordre"
+                        `, ph)
+                        rows3, err := tx.Query(ctx, q, args...)
+                        if err != nil {
+                                return fmt.Errorf("query epreuve questions: %w", err)
+                        }
+                        for rows3.Next() {
+                                var eqi domain.EpreuveQuestionInfo
+                                var epreuveID string
+                                var qID, qType, qEnonce, qDiff *string
+                                if err := rows3.Scan(&eqi.ID, &epreuveID, &eqi.QuestionID, &eqi.Bareme, &eqi.Ordre,
+                                        &qID, &qType, &qEnonce, &qDiff); err != nil {
+                                        rows3.Close()
+                                        return fmt.Errorf("scan epreuve question: %w", err)
+                                }
+                                if qID != nil {
+                                        eqi.Question.ID = *qID
+                                }
+                                if qType != nil {
+                                        eqi.Question.Type = *qType
+                                }
+                                if qEnonce != nil {
+                                        eqi.Question.Enonce = *qEnonce
+                                }
+                                if qDiff != nil {
+                                        eqi.Question.Difficulte = *qDiff
+                                }
+                                if e, ok := epreuveMap[epreuveID]; ok {
+                                        e.Questions = append(e.Questions, eqi)
+                                }
+                        }
+                        rows3.Close()
                 }
-                q := fmt.Sprintf(`
-                        SELECT eq."id", eq."epreuveId", eq."questionId", eq."bareme", eq."ordre",
-                               q."id", q."type"::text, q."enonce", q."difficulte"::text
-                        FROM "EpreuveQuestion" eq
-                        LEFT JOIN "Question" q ON q."id" = eq."questionId"
-                        WHERE eq."epreuveId" IN (%s)
-                        ORDER BY eq."epreuveId", eq."ordre"
-                `, ph)
-                rows3, err := tx.Query(ctx, q, args...)
-                if err != nil {
-                        return nil, fmt.Errorf("query epreuve questions: %w", err)
-                }
-                for rows3.Next() {
-                        var eqi domain.EpreuveQuestionInfo
-                        var epreuveID string
-                        var qID, qType, qEnonce, qDiff *string
-                        if err := rows3.Scan(&eqi.ID, &epreuveID, &eqi.QuestionID, &eqi.Bareme, &eqi.Ordre,
-                                &qID, &qType, &qEnonce, &qDiff); err != nil {
-                                rows3.Close()
-                                return nil, fmt.Errorf("scan epreuve question: %w", err)
-                        }
-                        if qID != nil {
-                                eqi.Question.ID = *qID
-                        }
-                        if qType != nil {
-                                eqi.Question.Type = *qType
-                        }
-                        if qEnonce != nil {
-                                eqi.Question.Enonce = *qEnonce
-                        }
-                        if qDiff != nil {
-                                eqi.Question.Difficulte = *qDiff
-                        }
-                        if e, ok := epreuveMap[epreuveID]; ok {
-                                e.Questions = append(e.Questions, eqi)
-                        }
-                }
-                rows3.Close()
-        }
 
-        // Query 4 : résultats par session.
-        resultatMap := make(map[string]*domain.Resultat)
-        if len(sessionIDs) > 0 {
-                ph := buildPlaceholders(1, len(sessionIDs))
-                args := make([]any, 0, len(sessionIDs))
-                for _, id := range sessionIDs {
-                        args = append(args, id)
-                }
-                q := fmt.Sprintf(`
-                        SELECT "id", "sessionId", "scoreFinal", "detailParQuestion",
-                               "dateCorrection", "dateRetour", "commentaires", "exporte", "totalPossible"
-                        FROM "Resultat" WHERE "sessionId" IN (%s)
-                `, ph)
-                rows4, err := tx.Query(ctx, q, args...)
-                if err != nil {
-                        return nil, fmt.Errorf("query resultats: %w", err)
-                }
-                for rows4.Next() {
-                        res := &domain.Resultat{}
-                        if err := rows4.Scan(&res.ID, &res.SessionID, &res.ScoreFinal, &res.DetailParQuestion,
-                                &res.DateCorrection, &res.DateRetour, &res.Commentaires, &res.Exporte,
-                                &res.TotalPossible); err != nil {
-                                rows4.Close()
-                                return nil, fmt.Errorf("scan resultat: %w", err)
+                // Query 4 : résultats par session.
+                resultatMap := make(map[string]*domain.Resultat)
+                if len(sessionIDs) > 0 {
+                        ph := buildPlaceholders(1, len(sessionIDs))
+                        args := make([]any, 0, len(sessionIDs))
+                        for _, id := range sessionIDs {
+                                args = append(args, id)
                         }
-                        res.DetailParQuestion = sanitizeRawMessage(res.DetailParQuestion)
-                        resultatMap[res.SessionID] = res
-                }
-                rows4.Close()
-        }
-
-        // Query 5 : réponses par session.
-        reponsesMap := make(map[string][]domain.Reponse)
-        if len(sessionIDs) > 0 {
-                ph := buildPlaceholders(1, len(sessionIDs))
-                args := make([]any, 0, len(sessionIDs))
-                for _, id := range sessionIDs {
-                        args = append(args, id)
-                }
-                q := fmt.Sprintf(`
-                        SELECT "id", "sessionId", "questionId", "contenu", "score",
-                               "commentaire", "noteIA", "justificationIA"
-                        FROM "Reponse" WHERE "sessionId" IN (%s)
-                `, ph)
-                rows5, err := tx.Query(ctx, q, args...)
-                if err != nil {
-                        return nil, fmt.Errorf("query reponses: %w", err)
-                }
-                for rows5.Next() {
-                        var rep domain.Reponse
-                        if err := rows5.Scan(&rep.ID, &rep.SessionID, &rep.QuestionID, &rep.Contenu,
-                                &rep.Score, &rep.Commentaire, &rep.NoteIA, &rep.JustificationIA); err != nil {
-                                rows5.Close()
-                                return nil, fmt.Errorf("scan reponse: %w", err)
+                        q := fmt.Sprintf(`
+                                SELECT "id", "sessionId", "scoreFinal", "detailParQuestion",
+                                       "dateCorrection", "dateRetour", "commentaires", "exporte", "totalPossible"
+                                FROM "Resultat" WHERE "sessionId" IN (%s)
+                        `, ph)
+                        rows4, err := tx.Query(ctx, q, args...)
+                        if err != nil {
+                                return fmt.Errorf("query resultats: %w", err)
                         }
-                        reponsesMap[rep.SessionID] = append(reponsesMap[rep.SessionID], rep)
+                        for rows4.Next() {
+                                res := &domain.Resultat{}
+                                if err := rows4.Scan(&res.ID, &res.SessionID, &res.ScoreFinal, &res.DetailParQuestion,
+                                        &res.DateCorrection, &res.DateRetour, &res.Commentaires, &res.Exporte,
+                                        &res.TotalPossible); err != nil {
+                                        rows4.Close()
+                                        return fmt.Errorf("scan resultat: %w", err)
+                                }
+                                res.DetailParQuestion = sanitizeRawMessage(res.DetailParQuestion)
+                                resultatMap[res.SessionID] = res
+                        }
+                        rows4.Close()
                 }
-                rows5.Close()
-        }
 
-        // Attacher les relations à chaque session.
-        for _, s := range result {
-                if e, ok := epreuveMap[s.EpreuveID]; ok {
-                        s.Epreuve = e
+                // Query 5 : réponses par session.
+                reponsesMap := make(map[string][]domain.Reponse)
+                if len(sessionIDs) > 0 {
+                        ph := buildPlaceholders(1, len(sessionIDs))
+                        args := make([]any, 0, len(sessionIDs))
+                        for _, id := range sessionIDs {
+                                args = append(args, id)
+                        }
+                        q := fmt.Sprintf(`
+                                SELECT "id", "sessionId", "questionId", "contenu", "score",
+                                       "commentaire", "noteIA", "justificationIA"
+                                FROM "Reponse" WHERE "sessionId" IN (%s)
+                        `, ph)
+                        rows5, err := tx.Query(ctx, q, args...)
+                        if err != nil {
+                                return fmt.Errorf("query reponses: %w", err)
+                        }
+                        for rows5.Next() {
+                                var rep domain.Reponse
+                                if err := rows5.Scan(&rep.ID, &rep.SessionID, &rep.QuestionID, &rep.Contenu,
+                                        &rep.Score, &rep.Commentaire, &rep.NoteIA, &rep.JustificationIA); err != nil {
+                                        rows5.Close()
+                                        return fmt.Errorf("scan reponse: %w", err)
+                                }
+                                reponsesMap[rep.SessionID] = append(reponsesMap[rep.SessionID], rep)
+                        }
+                        rows5.Close()
                 }
-                if res, ok := resultatMap[s.ID]; ok {
-                        s.Resultat = res
-                }
-                if reps, ok := reponsesMap[s.ID]; ok {
-                        s.Reponses = reps
-                } else {
-                        s.Reponses = []domain.Reponse{}
-                }
-        }
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                // Attacher les relations à chaque session.
+                for _, s := range result {
+                        if e, ok := epreuveMap[s.EpreuveID]; ok {
+                                s.Epreuve = e
+                        }
+                        if res, ok := resultatMap[s.ID]; ok {
+                                s.Resultat = res
+                        }
+                        if reps, ok := reponsesMap[s.ID]; ok {
+                                s.Reponses = reps
+                        } else {
+                                s.Reponses = []domain.Reponse{}
+                        }
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return result, nil
 }
@@ -843,7 +857,17 @@ func (r *ResultatRepository) GetOverview(ctx context.Context, enseignantID strin
 // moinsBonneNote, tauxReussite, tendance, evolution mensuelle,
 // performanceParType (depuis detailParQuestion JSON), distribution (4 bins)
 // et recentResults (5 dernières sessions). Un seul JOIN query + agrégation Go.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : l'ancien code ouvrait une tx SANS SetClaimsTx
+// → claims NULL → policy SessionPassation_select (is_etudiant() AND etudiantId
+// = me) voyait NULL → 0 row → le dashboard étudiant était toujours vide.
+// Fix : db.WithTx avec claims du context.
 func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID string) (*domain.EtudiantOverviewResult, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("GetEtudiantOverview: claims manquants dans le context")
+        }
+
         out := &domain.EtudiantOverviewResult{
                 Evolution:          []domain.OverviewEvolution{},
                 PerformanceParType: []domain.PerformanceParType{},
@@ -851,31 +875,26 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
                 RecentResults:      []domain.RecentResult{},
         }
 
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        // Single JOIN query : sessions + resultat + epreuve + enseignant.
-        // Un seul placeholder $1 → compatible pgx Simple Protocol.
-        rows, err := tx.Query(ctx, `
-                SELECT s."id", s."epreuveId", s."statut"::text, s."score", s."dateDebut", s."dateFin",
-                       s."createdAt",
-                       r."scoreFinal", r."totalPossible", r."dateCorrection", r."dateRetour",
-                       r."commentaires", r."detailParQuestion",
-                       e."titre", e."noteTotal", e."enseignantId",
-                       u."name"
-                FROM "SessionPassation" s
-                LEFT JOIN "Resultat" r ON r."sessionId" = s."id"
-                LEFT JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                LEFT JOIN "User" u ON u."id" = e."enseignantId"
-                WHERE s."etudiantId" = $1 AND s."statut" IN ('SOUMISE','CORRIGEE','RETOURNEE')
-                ORDER BY s."createdAt" DESC
-        `, etudiantID)
-        if err != nil {
-                return nil, fmt.Errorf("query etudiant sessions: %w", err)
-        }
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Single JOIN query : sessions + resultat + epreuve + enseignant.
+                // Un seul placeholder $1 → compatible pgx Simple Protocol.
+                rows, err := tx.Query(ctx, `
+                        SELECT s."id", s."epreuveId", s."statut"::text, s."score", s."dateDebut", s."dateFin",
+                               s."createdAt",
+                               r."scoreFinal", r."totalPossible", r."dateCorrection", r."dateRetour",
+                               r."commentaires", r."detailParQuestion",
+                               e."titre", e."noteTotal", e."enseignantId",
+                               u."name"
+                        FROM "SessionPassation" s
+                        LEFT JOIN "Resultat" r ON r."sessionId" = s."id"
+                        LEFT JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        LEFT JOIN "User" u ON u."id" = e."enseignantId"
+                        WHERE s."etudiantId" = $1 AND s."statut" IN ('SOUMISE','CORRIGEE','RETOURNEE')
+                        ORDER BY s."createdAt" DESC
+                `, etudiantID)
+                if err != nil {
+                        return fmt.Errorf("query etudiant sessions: %w", err)
+                }
 
         type sessionRow struct {
                 SessionID      string
@@ -907,17 +926,14 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
                         &sr.EpreuveTitre, &sr.EpreuveNoteTot, &sr.EnseignantID,
                         &sr.EnseignantName); err != nil {
                         rows.Close()
-                        return nil, fmt.Errorf("scan etudiant session: %w", err)
+                        return fmt.Errorf("scan etudiant session: %w", err)
                 }
                 sessions = append(sessions, sr)
         }
         rows.Close()
 
         if len(sessions) == 0 {
-                if err := tx.Commit(ctx); err != nil {
-                        return nil, fmt.Errorf("commit: %w", err)
-                }
-                return out, nil
+                return nil
         }
 
         // scoreOn20 : (resultat.scoreFinal / resultat.totalPossible) * 20, fallback
@@ -1135,8 +1151,10 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
                 })
         }
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return out, nil
 }

@@ -477,25 +477,27 @@ func (r *UERepository) SoftDelete(ctx context.Context, id string) (*domain.Unite
 //     (l'entité conserve une référence NULL)
 // RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
 // Retourne NotFoundError si l'UE n'existe pas.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : le code utilisait r.pool.BeginTx SANS
+// SetClaimsTx → claims NULL → policy UniteEnseignement_modify_responsable
+// (is_responsable() AND filiere_in_my_etab(filiereId)) voyait NULL →
+// 0 rows → NotFoundError. Alignement du code sur le commentaire (db.WithTx).
 func (r *UERepository) HardDelete(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `DELETE FROM "UniteEnseignement" WHERE "id" = $1`, id)
-        if err != nil {
-                return fmt.Errorf("hard delete ue: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("HardDelete UE: claims manquants dans le context")
         }
 
-        if err := tx.Commit(ctx); err != nil {
-                return err
-        }
-        return nil
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `DELETE FROM "UniteEnseignement" WHERE "id" = $1`, id)
+                if err != nil {
+                        return fmt.Errorf("hard delete ue: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
+                }
+                return nil
+        })
 }
 
 // GetUEDependencies retourne les comptes d'entités liées à une UE.
@@ -951,23 +953,25 @@ func (r *AnneeAcademiqueRepository) SoftDelete(ctx context.Context, id string) (
 // perdront leur référence — pas de cascade bloquante.
 // RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
 // Retourne NotFoundError si l'année n'existe pas.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : le code utilisait r.pool.BeginTx SANS
+// SetClaimsTx → claims NULL → policy AnneeAcademique_modify_responsable
+// (is_responsable() AND etablissementId = current_etablissement_id()) voyait NULL
+// → 0 rows → NotFoundError. Alignement du code sur le commentaire (db.WithTx).
 func (r *AnneeAcademiqueRepository) HardDelete(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `DELETE FROM "AnneeAcademique" WHERE "id" = $1`, id)
-        if err != nil {
-                return fmt.Errorf("hard delete annee: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "AnneeAcademique", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("HardDelete Annee: claims manquants dans le context")
         }
 
-        if err := tx.Commit(ctx); err != nil {
-                return err
-        }
-        return nil
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `DELETE FROM "AnneeAcademique" WHERE "id" = $1`, id)
+                if err != nil {
+                        return fmt.Errorf("hard delete annee: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "AnneeAcademique", ID: id}
+                }
+                return nil
+        })
 }
