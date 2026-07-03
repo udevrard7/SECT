@@ -129,7 +129,12 @@ export function useCorrectionState(user: CurrentUser | null) {
   // ─── Rubric criteria for current question ───
   const currentRubricCriteria = useMemo(() => {
     if (!currentQuestion) return []
-    return generateRubricCriteria(currentQuestion.question.type, currentQuestion.bareme)
+    // E2E-CORRECTION-FIX : currentQuestion.type (pas currentQuestion.question.type)
+    // car l'API /api/correction retourne type/enonce directement sur l'objet question.
+    const qType = (currentQuestion as { type?: string; question?: { type?: string } }).type
+      || (currentQuestion as { question?: { type?: string } }).question?.type
+      || 'QRC'
+    return generateRubricCriteria(qType, currentQuestion.bareme)
   }, [currentQuestion])
 
   // ─── Computed score from selected criteria ───
@@ -148,7 +153,11 @@ export function useCorrectionState(user: CurrentUser | null) {
       setNoteFinale(currentReponse.score !== null ? String(currentReponse.score) : '')
       setCommentaire(currentReponse.commentaire ?? '')
       if (currentReponse.score !== null && currentQuestion) {
-        const criteria = generateRubricCriteria(currentQuestion.question.type, currentQuestion.bareme)
+        // E2E-CORRECTION-FIX : currentQuestion.type (pas currentQuestion.question.type)
+        const qType = (currentQuestion as { type?: string; question?: { type?: string } }).type
+          || (currentQuestion as { question?: { type?: string } }).question?.type
+          || 'QRC'
+        const criteria = generateRubricCriteria(qType, currentQuestion.bareme)
         const newSelected = new Set<string>()
         let remaining = currentReponse.score
         const sortedByPoints = [...criteria].sort((a, b) => b.points - a.points)

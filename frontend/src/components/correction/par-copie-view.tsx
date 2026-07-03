@@ -183,7 +183,21 @@ export function ParCopieView({
     )
   }
 
-  const q = currentQuestion?.question
+  // E2E-CORRECTION-FIX : l'API /api/correction retourne type/enonce directement
+  // sur currentQuestion (pas imbriqué dans .question). On fallback sur .question
+  // pour compat avec d'éventuels autres shape.
+  const q = (currentQuestion?.question ?? currentQuestion) as {
+    type: string
+    enonce: string
+    reponseCorrecte?: string | string[]
+    propositions?: string[] | null
+    difficulte?: string
+    langage?: string
+    codeInitial?: string
+    fonctionSignature?: string
+    testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+    testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+  }
   if (!q || !currentQuestion) return null
 
   const answerContent = parseAnswerContent(currentReponse?.contenu)
