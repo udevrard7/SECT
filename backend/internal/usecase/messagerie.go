@@ -26,6 +26,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/ai"
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
+        "github.com/udevrard7/sect/backend/internal/worker"
 )
 
 // ============================================================
@@ -328,11 +329,13 @@ func (uc *MessagerieUseCase) SendMessage(ctx context.Context, claims db.SessionC
         // Broadcaster le message user aux participants.
         uc.broadcastToParticipants(ctx, conversationID, userMsg)
 
-        // Cas 2 : si @assistant mentionné dans un salon collectif, appeler l'IA en
-        // plus et persister sa réponse. Non-bloquant : si l'IA échoue, le message
-        // user reste valide (déjà persisté + broadcasté).
+        // Cas 2 : si @assistant mentionné dans un salon collectif, pousser un job
+        // IA asynchrone (MESSAGERIE-GROUP-ASYNC). Le worker traitera l'appel IA
+        // en arrière-plan et broadcastera la réponse via SSE quand elle sera
+        // prête. Non-bloquant : si la queue est pleine (rare), on log warn et on
+        // abandonne (le message user reste valide).
         if domain.HasAssistantMention(input.Contenu) {
-                uc.generateAIResponseInGroup(ctx, claims, conversationID, userMsg)
+                uc.enqueueGroupAIJob(claims, conversationID, userMsg)
         }
 
         return userMsg, nil
@@ -371,10 +374,101 @@ func (uc *MessagerieUseCase) sendIAMessage(ctx context.Context, claims db.Sessio
         return aiMsg, nil
 }
 
-// generateAIResponseInGroup appelle l'IA suite à une mention @assistant dans
-// un salon collectif, et persiste la réponse (ReplyToID = userMsg.ID).
-// Non-bloquant : si l'IA échoue, on log warn et on return (le message user
-// reste valide).
+// enqueueGroupAIJob pousse un job dans worker.GroupAIQueue pour traitement
+// asynchrone. Non-bloquant : si la queue est pleine, on log warn (le message
+// user reste valide, l'utilisateur peut re-mentionner @assistant).
+//
+// MESSAGERIE-GROUP-ASYNC : avant, generateAIResponseInGroup appelait l'IA en
+// synchrone dans la requête HTTP → timeout Render free tier 30s si l'IA
+// tardait. Désormais le worker traite le job hors-requête.
+func (uc *MessagerieUseCase) enqueueGroupAIJob(claims db.SessionClaims, conversationID string, userMsg *domain.Message) {
+        job := worker.GroupAIJob{
+                ConversationID: conversationID,
+                UserMsgID:      userMsg.ID,
+                UserContent:    userMsg.Contenu,
+                UserID:         claims.UserID,
+                Role:           claims.Role,
+                EtablissementID: claims.EtablissementID,
+                FiliereID:      claims.FiliereID,
+        }
+        select {
+        case worker.GroupAIQueue <- job:
+                // Job poussé, le worker le traitera.
+        default:
+                slog.Warn("GroupAIQueue full, dropping @assistant job",
+                        "conversationId", conversationID,
+                        "userMsgId", userMsg.ID,
+                )
+        }
+}
+
+// ProcessGroupAIJob traite un job IA de salon collectif. Appelé par le worker
+// GroupAIWorker en arrière-plan (contexte background, pas de timeout HTTP).
+//
+// Étapes :
+//  1. Reconstruire les claims depuis le snapshot du job.
+//  2. Appeler l'IA (ChatCompletion avec failover).
+//  3. Persister la réponse IA (ReplyToID = userMsg.ID, IsIA=true).
+//  4. Broadcaster la réponse aux participants via SSE.
+//
+// Implémente worker.GroupAIProcessor (duck-typing).
+func (uc *MessagerieUseCase) ProcessGroupAIJob(ctx context.Context, job worker.GroupAIJob) error {
+        if uc.aiService == nil {
+                return fmt.Errorf("service IA non configuré")
+        }
+
+        // Reconstruire les claims depuis le snapshot (le contexte HTTP d'origine
+        // est annulé, mais on a conservé les infos nécessaires au system prompt
+        // et à la persistance RLS).
+        claims := db.SessionClaims{
+                UserID:         job.UserID,
+                Role:           job.Role,
+                EtablissementID: job.EtablissementID,
+                FiliereID:      job.FiliereID,
+        }
+
+        // 1. Construire le contexte LLM (system prompt + contenu user).
+        aiMessages := []ai.ChatMessage{
+                {Role: "system", Content: iaGroupAssistantSystemPrompt(claims)},
+                {Role: "user", Content: job.UserContent},
+        }
+
+        // 2. Appeler l'IA (le worker a un timeout de 3 min, l'AIService aussi).
+        result, err := uc.aiService.ChatCompletion(ctx, aiMessages)
+        if err != nil {
+                return fmt.Errorf("IA ChatCompletion: %w", err)
+        }
+
+        // 3. Persister la réponse IA. Le repo CreateMessage utilise db.WithTx
+        // qui pose les claims RLS depuis le contexte — mais le worker n'a pas de
+        // claims HTTP. On pose donc les claims system-worker via un contexte
+        // enrichi (le repo accepte un contexte avec claims, sinon fallback).
+        // La policy Message_insert accepte is_system() OR isIA=true, donc le
+        // worker system peut insérer.
+        //
+        // On injecte les claims dans le contexte pour que db.ClaimsFromContext
+        // les retrouve (le repo les utilise pour db.WithTx).
+        persistCtx := db.WithClaimsContext(ctx, claims)
+        aiMsg, err := uc.messagerieRepo.CreateMessage(persistCtx, &domain.Message{
+                ConversationID: job.ConversationID,
+                UserID:         nil,
+                IsIA:           true,
+                Contenu:        result.Content,
+                ReplyToID:      &job.UserMsgID,
+        })
+        if err != nil {
+                return fmt.Errorf("persist IA response: %w", err)
+        }
+
+        // 4. Broadcaster la réponse IA aux participants via SSE.
+        uc.broadcastToParticipants(ctx, job.ConversationID, aiMsg)
+        return nil
+}
+
+// generateAIResponseInGroup est conservé pour référence mais n'est plus appelé
+// depuis SendMessage (remplacé par enqueueGroupAIJob + ProcessGroupAIJob).
+// MESSAGERIE-GROUP-ASYNC : laissé en synchrone de secours au cas où le worker
+// serait désactivé, mais non utilisé par défaut.
 func (uc *MessagerieUseCase) generateAIResponseInGroup(ctx context.Context, claims db.SessionClaims, conversationID string, userMsg *domain.Message) {
         if uc.aiService == nil {
                 return

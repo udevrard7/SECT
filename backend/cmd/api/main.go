@@ -168,6 +168,14 @@ func main() {
         audioWorker.RecoverInterruptedAudioJobs(context.Background())
         audioWorker.Start(context.Background())
 
+        // MESSAGERIE-GROUP-ASYNC : worker pour les réponses IA en salon collectif.
+        // SendMessage pousse un job dans GroupAIQueue (non-bloquant), ce worker le
+        // consomme en arrière-plan (timeout 3 min, pas de limite HTTP 30s Render).
+        // Avant, generateAIResponseInGroup était synchrone → timeout Render free
+        // tier si l'IA mettait >30s, la réponse IA était perdue.
+        groupAIWorker := worker.NewGroupAIWorker(messagerieUC, logger)
+        groupAIWorker.Start(context.Background())
+
         server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker)
 
         // CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
