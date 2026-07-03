@@ -97,10 +97,12 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
                                c."createdBy", c."createdAt", c."updatedAt", c."deletedAt",
                                lm."id", lm."conversationId", lm."userId", COALESCE(lm."isIA", false), lm."contenu",
                                lm."contenuHtml", lm."replyToId", lm."editedAt", lm."deletedAt", lm."createdAt",
-                               (SELECT count(*) FROM "Message" m
-                                WHERE m."conversationId" = c."id"
-                                  AND m."deletedAt" IS NULL
-                                  AND m."createdAt" > COALESCE(p."lastReadAt", '1970-01-01'::timestamptz)) AS unread_count,
+                               (CASE WHEN p."userId" IS NULL THEN 0
+                                 ELSE (SELECT count(*) FROM "Message" m
+                                       WHERE m."conversationId" = c."id"
+                                         AND m."deletedAt" IS NULL
+                                         AND m."createdAt" > COALESCE(p."lastReadAt", '1970-01-01'::timestamptz))
+                                END) AS unread_count,
                                (SELECT count(*) FROM "ConversationParticipant" p2
                                 WHERE p2."conversationId" = c."id" AND p2."leftAt" IS NULL) AS participants_count
                         FROM "Conversation" c
@@ -599,6 +601,16 @@ func (r *MessagerieRepository) LeaveConversation(ctx context.Context, conversati
 
 // MarkAsRead met à jour lastReadAt pour un participant.
 // RLS : la policy Participant_update exige userId = current_user_id().
+//
+// BUGFIX (MESSAGERIE-BADGE-NON-PARTICIPANT) : un enseignant/responsable qui
+// voit un salon CLASSE/PROMO de son établissement (policy Conversation_select
+// autorise is_enseignant()/is_responsable()) sans en être participant (pas de
+// row ConversationParticipant) déclenchait un NotFoundError 404 → le frontend
+// rollback l'optimistic update → le badge restait affiché.
+// Fix : si 0 rows affectés (non-participant), on ne lève plus d'erreur — c'est
+// un no-op silencieux. Le badge est déjà géré côté ListByUser (unreadCount=0
+// pour les non-participants), donc le frontend ne devrait même pas appeler
+// /lu dans ce cas, mais par robustesse on évite le 404.
 func (r *MessagerieRepository) MarkAsRead(ctx context.Context, conversationID, userID string, lastReadAt time.Time) error {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok || claims.UserID == "" {
@@ -614,8 +626,10 @@ func (r *MessagerieRepository) MarkAsRead(ctx context.Context, conversationID, u
                 if err != nil {
                         return fmt.Errorf("update lastReadAt: %w", err)
                 }
+                // Non-participant (enseignant/responsable qui consulte un salon
+                // CLASSE/PROMO pour modération) → no-op, pas d'erreur.
                 if ct.RowsAffected() == 0 {
-                        return &domain.NotFoundError{Entity: "ConversationParticipant", ID: conversationID + ":" + userID}
+                        return nil
                 }
                 return nil
         })
