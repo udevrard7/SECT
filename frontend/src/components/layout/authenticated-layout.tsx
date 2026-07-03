@@ -129,8 +129,10 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
           été retiré au profit de l'IA intégrée dans la messagerie via les
           conversations IA privées et la mention @assistant dans les salons).
           Ouvre un panneau style Messenger avec liste des conversations +
-          zone de chat. Backend : /api/messagerie/* (SSE pour le temps réel). */}
-      <MessagerieBubble />
+          zone de chat. Backend : /api/messagerie/* (SSE pour le temps réel).
+          MESSAGERIE-ADMIN-BLOCK : le propriétaire PaaS (ADMIN) n'a pas accès
+          à la messagerie (réservée aux contextes académiques). */}
+      {user.role !== 'ADMIN' && <MessagerieBubble />}
     </SidebarProvider>
   )
 }

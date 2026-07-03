@@ -333,6 +333,11 @@ type MessagerieRepository interface {
         // CanStudentDMEnseignant vérifie si l'enseignant a au moins une épreuve
         // à laquelle l'étudiant est inscrit (anti-spam).
         CanStudentDMEnseignant(ctx context.Context, etudiantID, enseignantID string) (bool, error)
+
+        // IsUserStudentInSameEtablissement vérifie si targetUserID est un étudiant
+        // du même établissement que l'appelant. Utilisé pour autoriser les DM
+        // étudiant ↔ étudiant au sein d'un même établissement.
+        IsUserStudentInSameEtablissement(ctx context.Context, targetUserID, etablissementID string) (bool, error)
 }
 
 // MarshalJSON pour ConversationType : sérialiser en string (pas en nombre).
