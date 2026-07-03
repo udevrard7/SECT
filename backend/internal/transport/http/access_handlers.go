@@ -6,6 +6,8 @@ import (
         "net/http"
 
         "github.com/go-chi/chi/v5"
+        "github.com/jackc/pgx/v5"
+        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
 )
@@ -53,6 +55,15 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
 
         // DEBUG-ACCESS-2 : si query param ?debug=1, retourner les claims + count via repo.
         if r.URL.Query().Get("debug") == "1" {
+                // Tester current_etablissement_id() et is_responsable() DANS une tx avec claims.
+                var dbEtabID, dbIsResp string
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        row := tx.QueryRow(r.Context(), `SELECT current_etablissement_id()::text, is_responsable()::text`)
+                        if err := row.Scan(&dbEtabID, &dbIsResp); err != nil {
+                                return err
+                        }
+                        return nil
+                })
                 // Appeler le repo List directement pour voir ce qu'il retourne.
                 dbgParams := domain.AccessListParams{
                         Statut:          params.Statut,
@@ -66,6 +77,10 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                                 "role":            claims.Role,
                                 "etablissementID": claims.EtablissementID,
                                 "etabLen":         len(claims.EtablissementID),
+                        },
+                        "dbCheck": map[string]any{
+                                "current_etablissement_id": dbEtabID,
+                                "is_responsable":           dbIsResp,
                         },
                         "params":  dbgParams,
                         "count":   len(dbgRecords),
