@@ -13,6 +13,9 @@
 --    - OU épreuves PLANIFIEE/EN_COURS de sa filière (+ niveau si non NULL)
 
 -- 1. Fonction current_user_niveau()
+-- Note : niveau est une colonne enum "NiveauEtude". On cast en text AVANT
+-- NULLIF pour éviter l'erreur "invalid input value for enum NiveauEtude: ''"
+-- (NULLIF compare l'enum avec '' ce qui échoue).
 CREATE OR REPLACE FUNCTION public.current_user_niveau()
 RETURNS text
 LANGUAGE plpgsql
@@ -20,8 +23,11 @@ SECURITY DEFINER
 SET search_path TO 'public'
 SET row_security TO 'off'
 AS $function$
+DECLARE
+  v_niveau text;
 BEGIN
-  RETURN NULLIF((SELECT niveau FROM "User" WHERE "id" = current_user_id()), '')::text;
+  SELECT niveau::text INTO v_niveau FROM "User" WHERE "id" = current_user_id();
+  RETURN NULLIF(v_niveau, '');
 END;
 $function$;
 
