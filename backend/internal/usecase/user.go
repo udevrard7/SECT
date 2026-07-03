@@ -58,9 +58,17 @@ type ListParams struct {
 }
 
 // List liste les utilisateurs avec tenant scoping automatique.
-// - ADMIN : voit uniquement les RESPONSABLE (peut filtrer par etablissementId)
+// - ADMIN (mode normal) : voit uniquement les RESPONSABLE (peut filtrer par etablissementId)
+// - ADMIN (mode assistance) : se comporte comme un RESPONSABLE de l'établissement
+//   autorisé (claims.EtablissementID non vide) — voit les users de cet établissement
+//   selon params.Role (ETUDIANT, ENSEIGNANT, etc.).
 // - RESPONSABLE : voit les users de son établissement
 // - ENSEIGNANT : voit les users de son établissement (étudiants de ses filières en pratique)
+//
+// ACCESS-ASSISTANCE-FIX : avant, un ADMIN en mode assistance voyait tous les
+// requêtes écrasées en Role=RESPONSABLE → /etudiants et /enseignants retournaient
+// 0 résultat. Désormais on détecte le mode assistance (claims.Role==ADMIN &&
+// claims.EtablissementID != "") et on adopte le scoping RESPONSABLE.
 func (uc *UserUseCase) List(ctx context.Context, claims db.SessionClaims, params ListParams) (*domain.UserListResult, error) {
         repoParams := domain.UserListParams{
                 Search:    params.Search,
@@ -73,10 +81,22 @@ func (uc *UserUseCase) List(ctx context.Context, claims db.SessionClaims, params
         // Tenant scoping selon le rôle
         switch domain.Role(claims.Role) {
         case domain.RoleAdmin:
-                // ADMIN ne voit que les RESPONSABLE
-                repoParams.Role = string(domain.RoleResponsable)
-                if params.EtablissementID != "" {
-                        repoParams.EtablissementID = params.EtablissementID
+                // ACCESS-ASSISTANCE-FIX : si l'ADMIN est en mode assistance (JWT contient
+                // un etablissementId), on adopte le scoping RESPONSABLE : on scope sur
+                // claims.EtablissementID et on laisse params.Role passer (ETUDIANT,
+                // ENSEIGNANT, etc.). Sinon, comportement normal (ADMIN global ne voit
+                // que les RESPONSABLE).
+                if claims.EtablissementID != "" {
+                        repoParams.EtablissementID = claims.EtablissementID
+                        if params.Role != "" {
+                                repoParams.Role = params.Role
+                        }
+                } else {
+                        // ADMIN global : voit uniquement les RESPONSABLE
+                        repoParams.Role = string(domain.RoleResponsable)
+                        if params.EtablissementID != "" {
+                                repoParams.EtablissementID = params.EtablissementID
+                        }
                 }
         case domain.RoleResponsable:
                 // RESPONSABLE scoped à son établissement

@@ -10974,3 +10974,180 @@ Stage Summary:
   avec durée → DB statut=APPROUVE + dates.
 - **Sécurité** : double filtrage (RLS natif + clause WHERE forcée par usecase).
 - **Migration 000040** appliquée sur Neon (roles={public}).
+
+---
+Task ID: SECT-SETUP-001
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reprise de session — clonage du dépôt, configuration de l'environnement de travail, vérification des connexions (GitHub/Neon)
+
+Contexte :
+Nouvelle session de tutorat. L'utilisateur a fourni les accès GitHub (udevrard7/SECT),
+Neon (pooler + direct), Vercel et Render. Objectif : cloner le projet, vérifier l'état
+de l'infrastructure, et préparer le poste pour continuer le développement en respectant
+strictement l'architecture en place (frontend Next.js 16 → Vercel, backend Go 1.24 →
+Render, DB PostgreSQL 18 → Neon avec RLS, fichiers → Cloudflare R2).
+
+Work Log :
+- Clonage du dépôt https://github.com/udevrard7/SECT.git vers /home/z/sect (branche main).
+- Configuration de l'identité Git locale : user.name=udevrard7, user.email=ulrichdouh@gmail.com
+  (conforme à l'auteur demandé pour tous les futurs commits/pushs).
+- Inspection de l'architecture :
+  * frontend/ : Next.js 16 + React 19 + Tailwind 4 + shadcn/ui, Zustand, TanStack Query,
+    12 domaines métier (app, components, hooks, lib, stores, types, proxy.ts).
+    vercel.json : rewrites /api/* → https://sect-s1pb.onrender.com (backend Render).
+  * backend/ : Go 1.24 clean architecture (cmd/api, internal/{config,db,domain,usecase,
+    repository,transport/http,middleware,jwt,storage,ai,cache,monitoring,worker}).
+    37 handlers HTTP, 12 domaines, 14 repositories, 12 usecases. Dockerfile multi-stage.
+  * render.yaml : service web docker, region frankfurt, autoDeploy=true.
+  * db/db/migrations/ : 46 migrations golang-migrate (000001 → 000046), up + down.
+- Vérification de la connexion Neon (pooler) via script node+pg temporaire (/tmp/neon-test) :
+  * PostgreSQL 18.4 ✅
+  * Base : neondb ✅
+  * 61 tables en schéma public (README disait 50 → évolution)
+  * 139 RLS policies (README disait 98 → évolution)
+  * Connexion pooler OK avec sslmode=require
+- Vérification de la table schema_migrations : version=16, dirty=false. Les migrations
+  17→46 ont été appliquées manuellement lors des sessions précédentes (documenté dans le
+  worklog). Le schéma réel est bien à jour. À noter pour les futures migrations : appliquer
+  manuellement via SQL sur Neon + mettre à jour schema_migrations.
+- Toolchain disponible dans le sandbox : bun 1.3.14 ✅, node v24.16.0 ✅, Go ❌ (non installé
+  — le backend sera buildé par Render via Dockerfile lors du déploiement GitHub).
+- Aucun .env.example n'existe dans le dépôt. Les .env* sont correctement gitignorés.
+  Les secrets (Neon, R2, JWT) sont injectés via les variables d'environnement Vercel/Render.
+
+Stage Summary :
+- **Environnement opérationnel** : dépôt cloné à /home/z/sect, git identity configurée,
+  connexion Neon validée.
+- **Workflow établi** : édition code locale → commit (auteur udevrard7/ulrichdouh@gmail.com)
+  → push GitHub main → déploiement auto Vercel (frontend) + Render (backend). Migrations DB
+  appliquées manuellement sur Neon puis documentées dans worklog.md.
+- **Conventions respectées** : worklog.md du projet (Task IDs SECT-*, format Task/Work Log/
+  Stage Summary), clean architecture Go, RLS natif Neon, AUCUN nouveau projet créé.
+- **Point d'attention sécurité** : l'utilisateur a partagé des tokens en clair. Recommandation
+  de rotation post-session formulée.
+- **Prêt à recevoir** les prochaines tâches de développement (features, fixes, migrations).
+
+---
+Task ID: SECT-GO-INSTALL-002
+Agent: Z.ai Code (tuteur/assistant)
+Task: Installation de Go 1.24 en local pour compiler/tester le backend avant chaque push (éviter les erreurs de déploiement Render)
+
+Contexte :
+Le sandbox n'avait pas Go installé. L'utilisateur demande l'installation locale de Go pour
+permettre la compilation et les tests du backend avant push GitHub → Render. Objectif :
+détecter les erreurs de build/vet localement plutôt qu'en production.
+
+Work Log :
+- Vérification go.mod : `go 1.24` requis. Architecture sandbox : linux/amd64, 7.8G dispo.
+- Téléchargement Go 1.24.0 officiel : go1.24.0.linux-amd64.tar.gz (75M).
+  SHA256 : dea9ca38a0b852a74e81c26134671af7c0fbe65d81b0dc1c5bfe22cf7d4c8858
+- Extraction vers ~/go-install/go (l'installation vers /usr/local a échoué pour des raisons
+  de permissions ; install user-local fonctionnelle et équivalente).
+- Configuration .bashrc :
+  * export GOROOT=$HOME/go-install/go
+  * export GOPATH=$HOME/go
+  * export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+- Vérification : `go version` → go1.24.0 linux/amd64 ✅
+- cd backend && go mod download : toutes les dépendances téléchargées (aws-sdk-go-v2,
+  chi/v5, pgx/v5, etc.). `go mod verify` → "all modules verified" ✅
+- `go build ./...` : ✅ COMPILATION RÉUSSIE — backend compile sans erreur.
+- `go vet ./...` : ✅ OK — aucun problème statique détecté.
+- Installation golang-migrate CLI : `go install -tags 'postgres' github.com/golang-migrate/
+  migrate/v4/cmd/migrate@latest` → binaire dans $GOPATH/bin/migrate (v4.19.1) ✅
+- Tentative `migrate -path db/db/migrations -database "$NEON_URL" version` :
+  ❌ ERREUR "duplicate migration file: 000039_fix_participant_insert_direct.down.sql"
+  → Cause : pré-existante dans le dépôt. Les numéros 000039 et 000040 sont chacun utilisés
+  par DEUX migrations différentes (cf. ls db/db/migrations/000039* et 000040*).
+  → 000039 : document_audio_delete_student + fix_participant_insert_direct
+  → 000040 : etablissement_access_roles_public + fix_conversation_insert_etudiant
+  → Cela empêche golang-migrate CLI de fonctionner. Les sessions précédentes appliquaient
+    les migrations en SQL manuel direct sur Neon + update schema_migrations. Cette approche
+    est conservée telle quelle (ne pas modifier sans autorisation — impacterait schema_migrations).
+- État schema_migrations sur Neon : version=16, dirty=false (valeur historique ; le schéma
+  réel est à jour : 61 tables, 139 policies RLS, contenu des migrations 000001→000046 appliqué).
+
+Stage Summary :
+- **Go 1.24.0 opérationnel** en local (~/go-install/go) + configuré dans .bashrc. À noter :
+  chaque commande Bash du tutorat doit réexporter PATH (ou sourcer .bashrc) car les shells
+  tool sont éphémères. Convention adoptée : `export PATH=$HOME/go-install/go/bin:$HOME/go/bin:$PATH`
+  en préambule de chaque commande Go.
+- **Backend compile proprement** : `go build ./...` + `go vet ./...` passent sans erreur.
+  Prêt à détecter les erreurs de compilation AVANT push GitHub → Render.
+- **golang-migrate installé** mais inutilisable tel quel à cause des doublons 000039/000040
+  (problème pré-existant). Workflow migrations conservé : SQL manuel sur Neon + maj
+  schema_migrations + doc worklog.
+- **Workflow de validation backend avant push** (nouveau standard) :
+  1. Édition code Go
+  2. `cd backend && go build ./... && go vet ./...` (doivent passer)
+  3. Commit + push GitHub main
+  4. Render déploie (build Docker multi-stage) → vérifier logs Render si erreur
+- **Doublons migrations 000039/000040** : laissés en l'état (architecture en place respectée).
+  Si l'utilisateur souhaite nettoyer le numérotage à l'avenir, il faudra : renuméroter les
+  fichiers + appliquer un `migrate force <version>` sur Neon + tester la cohérence. Tâche
+  optionnelle non entreprise sans accord explicite.
+
+---
+Task ID: SECT-EXPLORE-ACCESS-001
+Agent: Explore (subagent)
+Task: Cartographie du module acces-etablissements / mode assistant
+
+Work Log:
+- Lecture du worklog (11087 lignes) : toutes les tâches SECT-ACCESS-* (E2E-TEST, OPTION-B, RLS-FINAL, MIGRATION-040, ASSISTANCE-MODE-FRONTEND) déjà documentées. Le module est théoriquement "fully fixed" depuis la migration 000040, mais le user reporte toujours "impossible de naviguer entre les pages et voir les vraies données de l'établissement qui a autorisé l'accès".
+- Lecture intégrale des 6 fichiers backend du module :
+  * domain/etablissement_access.go — entité EtablissementAccess + enums (AccessEnAttente, AccessApprouve, AccessRefuse, AccessExpire) + DTOs (CreateAccessInput, UpdateAccessInput avec DureeAccesJours, AccessAuditEntry) + interface repository.
+  * repository/etablissement_access.go — 7 méthodes (FindByID, List, Create, Update, Delete, CheckAccess, ListAuthorizedEtablissements). Patterns RLS mixtes : List utilise db.WithTx + claims user natif (depuis mig 000040), Create/Update/Delete/CheckAccess/ListAuthorizedEtablissements utilisent r.pool.BeginTx + set_config('app.claims.user_id','system-worker',true) pour bypass RLS via is_system().
+  * usecase/etablissement_access.go — règles métier (anti-IDOR AE4, anti-auto-approbation B-2, verrou optimiste B-8, dureeAccesJours B-10, hard-delete Option B avec audit trail pour révocations).
+  * transport/http/access_handlers.go — 6 handlers (list, create, update, delete, check, authorizedEtablissements).
+  * transport/http/router.go lignes 234-243 : routes /api/etablissement-access (RequireAuth + RequireRole ADMIN/RESPONSABLE).
+  * transport/http/assistance_handlers.go — 2 handlers (enterAssistanceMode, exitAssistanceMode) qui émettent de nouveaux JWT avec etablissementId set/unset. Routes /api/auth/assistance-mode et /api/auth/exit-assistance-mode (RequireAuth + RequireRole ADMIN).
+- Lecture intégrale des fichiers frontend du module :
+  * stores/auth-store.ts — user.etablissementId stocké, mais syncFromSession l'écrase avec session.user.etablissementId (qui vient de /api/me = DB User, pas JWT).
+  * app/api/go-auth/assistance-mode/route.ts — shim Next.js qui forward vers Go backend, set cookies httpOnly.
+  * app/api/go-auth/exit-assistance-mode/route.ts — shim symétrique.
+  * app/api/go-auth/session/route.ts — shim qui lit access_token cookie, appelle /api/me, retourne user.
+  * components/admin/acces-etablissements-page.tsx — page /acces-etablissements (3 onglets : Mes autorisations, Demander un accès, Établissements autorisés). Bouton "Mode assistance" (LifeBuoy amber) sur les records APPROUVE → handleAssistanceMode → POST /api/go-auth/assistance-mode → useAuthStore.setState({user: ...}) → router.push('/dashboard').
+  * components/layout/header.tsx — badge "Mode assistance" + bouton "Quitter" si user.role==='ADMIN' && user.etablissementId.
+  * components/layout/sidebar.tsx — getEffectiveRole(user.role, user.etablissementId) → NAV_CATEGORIES[effectiveRole] (RESPONSABLE si assistance).
+  * components/layout/sidebar-user-card.tsx — libellé ROLE_LABELS[effectiveRole] + mini-badge "Assistance".
+  * components/layout/command-palette.tsx — effectiveRole pour les catégories.
+  * components/layout/authenticated-layout.tsx — garde de rôle PAGE_ALLOWED_ROLES[pageId].includes(user.role) utilise user.role (ADMIN) pas effectiveRole.
+  * components/layout/page-content.tsx — DASHBOARD_COMPONENTS[user.role] utilise user.role (ADMIN) → render AdminDashboard, pas ResponsableDashboard.
+  * lib/routes.ts — getEffectiveRole (ADMIN+etablissementId → RESPONSABLE), getPageContext, NAV_CATEGORIES.
+  * components/responsable/responsable-parametres-page.tsx — onglet 'acces-admin' pour RESPONSABLE approuve/refuse.
+  * hooks/use-session-keepalive.ts — silentSessionCheck n'écrase PAS l'auth store (only calls refreshSession si !data.user && !transient).
+- Inspection des usecases backend pour le pattern "case domain.RoleAdmin:" :
+  * usecase/user.go lignes 73-80 (List) : case RoleAdmin hardcode repoParams.Role = "RESPONSABLE" → **BUG CRITIQUE** : un ADMIN en mode assistance ne peut JAMAIS lister ETUDIANT/ENSEIGNANT (le role envoyé par le frontend est écrasé).
+  * usecase/user.go lignes 425-435 (checkOwnership) : case RoleAdmin utilise accessUC.ValidateAccessForEtablissement — OK pour assistance mode.
+  * usecase/etablissement.go : tous les case RoleAdmin appellent ValidateAccessForEtablissement (correct pour assistance).
+  * usecase/epreuve.go : case RoleAdmin "pas de scope par défaut (RLS filtre via EtablissementAccess)" — OK.
+- Inspection du handler /api/me (handlers.go ligne 23) : appelle userUC.GetProfile → userRepo.FindByID → DB User. La DB User de l'ADMIN a etablissementId=NULL (l'assistance mode ne change QUE le JWT, pas la DB). Donc /api/me retourne etablissementId=null même en mode assistance.
+- Inspection du shim /api/go-auth/session : forward /api/me → session.user.etablissementId=null si ADMIN (même en assistance). Le frontend syncFromSession écrase user.etablissementId=null → **BUG CRITIQUE** : après reload page (F5), le frontend perd l'état assistance mode (sidebar redevient ADMIN, PageContent render AdminDashboard), alors que le backend (JWT cookie) est toujours en assistance mode → DESYNC frontend/backend.
+- Inspection des migrations RLS :
+  * 000006 : helpers current_user_id(), is_admin(), is_responsable(), admin_has_etablissement_access() (vérifie statut=APPROUVE + dates).
+  * 000013 : fix admin_has_etablissement_access (ajoute statut=APPROUVE + dateDebut/dateFin checks).
+  * 000020 : helpers → VOLATILE + SECURITY DEFINER + SET search_path (fix récursion RLS après bascule sect_app NOBYPASSRLS).
+  * 000023 : fonctions helper *_in_my_etab, *_owned_by_me, *_etab_id.
+  * 000024 : policies rewrite — User_select inclut (is_admin() AND etablissementId IS NOT NULL AND admin_has_etablissement_access(etablissementId)) OR (is_admin() AND etablissementId IS NULL AND role=ADMIN). EtablissementAccess non listé dans 000024 (policies créées ailleurs).
+  * 000026 : index partiel sur EtablissementAccess (statut IN EN_ATTENTE/APPROUVE) — permet re-demande après REFUSE/EXPIRE.
+  * 000027 : EtablissementAccess_select accepte is_system() (TO neondb_owner).
+  * 000028 : Etablissement_select — is_admin() voit TOUS les étab + is_system() (TO public).
+  * 000029 : EtablissementAccess_modify_admin accepte is_system() (TO public).
+  * 000040 : EtablissementAccess_select + modify_responsable → TO PUBLIC (au lieu de neondb_owner) pour compat pgx+PgBouncer.
+  * **CRITIQUE** : la fonction is_system() est RÉFÉRENCÉE dans 14+ migrations (27, 28, 29, 37, 38, 39, 40, 42, 43, 44, 45, 46) mais JAMAIS DÉFINIE via CREATE OR REPLACE FUNCTION dans les migrations. Elle a probablement été créée manuellement sur Neon. Si elle n'existe pas, les policies qui l'utilisent échouent silencieusement ( retourne NULL = false) → RLS bloque. À vérifier en prod.
+- Inspection du vercel.json : rewrites /api/:path* → Render backend. Les routes Next.js /api/go-auth/* et /api/certificats/*/pdf et /api/etudiants/*/releve-notes sont servies par Next.js (filesystem first), le reste va au backend Go.
+
+Stage Summary:
+- **Module acces-etablissements entièrement cartographié** (6 fichiers backend, 9 fichiers frontend, 12 migrations RLS). Le workflow CRUD (create/list/cancel/approve/refuse/revoke) est SOLIDE et validé en production (test E2E SECT-ACCESS-E2E-TEST).
+- **Mode assistance — workflow intended** : ADMIN demande accès → RESPONSABLE approuve (avec durée 7/30/90/365j ou illimité) → ADMIN clique "Mode assistance" → backend émet nouveau JWT avec etablissementId set + frontend met à jour auth store → sidebar/header s'adaptent (effectiveRole=RESPONSABLE) → ADMIN navigue dans les pages RESPONSABLE avec RLS filtrant par l'étab autorisé.
+- **3 BUGS CRITIQUES identifiés** qui expliquent le report utilisateur "impossible de naviguer et voir les vraies données" :
+  1. **UserUseCase.List (usecase/user.go:75-80) écrase le role filter pour ADMIN** : `case RoleAdmin: repoParams.Role = "RESPONSABLE"` hardcoded → un ADMIN en mode assistance qui va sur /etudiants reçoit 0 résultats (le frontend envoie role=ETUDIANT mais le backend l'écrase en RESPONSABLE). Même problème sur /enseignants.
+  2. **/api/me retourne le DB User (etablissementId=null pour ADMIN) au lieu du JWT claim** : après reload page (F5), refreshSession() → syncFromSession() écrase user.etablissementId=null → le frontend perd l'état assistance (sidebar redevient ADMIN, PageContent render AdminDashboard) alors que le backend est toujours en assistance (JWT cookie). DESYNC frontend/backend.
+  3. **PageContent (page-content.tsx:147) et authenticated-layout (ligne 110) utilisent user.role au lieu de effectiveRole** : en mode assistance, le dashboard render AdminDashboard (au lieu de ResponsableDashboard) et la garde de rôle PAGE_ALLOWED_ROLES utilise user.role=ADMIN (laisse passer vers /acces-etablissements, /monitoring qui ne sont pas censés être accessibles en assistance).
+- **Bug mineur** : PAGE_ALLOWED_ROLES['acces-etablissements']=['ADMIN'] → un ADMIN en assistance mode peut encore accéder à /acces-etablissements (devrait être bloqué en assistance).
+- **Piste additionnelle** : la fonction SQL is_system() n'est JAMAIS définie dans les migrations — elle a probablement été créée manuellement sur Neon. Si jamais elle est perdue (reset DB, nouvelle env), toutes les policies qui l'utilisent (14+ migrations) échoueront silencieusement. À ajouter dans une migration pour la traçabilité.
+- **Fichiers à éditer pour fix** :
+  * backend/internal/usecase/user.go (lignes 73-80) — ajouter détection assistance mode (claims.Role==ADMIN && claims.EtablissementID!="") → traiter comme RESPONSABLE (use claims.EtablissementID, allow params.Role).
+  * backend/internal/transport/http/handlers.go (ligne 23, /api/me) — overlay claims.EtablissementID sur le user retourné si ADMIN en assistance mode.
+  * frontend/src/components/layout/page-content.tsx (ligne 147) — utiliser effectiveRole (getEffectiveRole) pour DASHBOARD_COMPONENTS.
+  * frontend/src/components/layout/authenticated-layout.tsx (ligne 110) — utiliser effectiveRole pour PAGE_ALLOWED_ROLES check.
+  * frontend/src/lib/routes.ts — ajouter 'acces-etablissements' à la liste des pages bloquées en assistance mode (ou utiliser effectiveRole dans authenticated-layout).
