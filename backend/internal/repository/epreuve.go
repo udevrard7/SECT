@@ -565,11 +565,24 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 
 // Create crée une épreuve (bypass RLS). Statut forcé à BROUILLON.
 func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreuveInput) (*domain.Epreuve, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // EPREUVE-RLS-FIX : poser les claims RLS (app.claims.*) pour activer la policy
+        // Epreuve_modify_enseignant (is_enseignant() AND enseignantId = current_user_id()).
+        // Sans cela, en production (Render, rôle sans BYPASSRLS), l'INSERT échoue avec
+        // "new row violates row-level security policy" → HTTP 500 "erreur interne".
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return nil, fmt.Errorf("set claims: %w", err)
+        }
 
         // Parser les dates
         dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
@@ -748,11 +761,21 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
 
 // Update met à jour une épreuve (partial update ou action state machine).
 func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.UpdateEpreuveInput) (*domain.Epreuve, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // EPREUVE-RLS-FIX : poser les claims RLS pour activer Epreuve_modify_enseignant.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return nil, fmt.Errorf("set claims: %w", err)
+        }
 
         // Gérer les actions (state machine) — P1-E6 : validation de transition
         if input.Action != nil {
@@ -929,11 +952,22 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
 
 // SoftDelete désactive une épreuve (deletedAt = now). Refuse si EN_COURS.
 func (r *EpreuveRepository) SoftDelete(ctx context.Context, id string) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // EPREUVE-RLS-FIX : poser les claims RLS pour activer Epreuve_modify_enseignant
+        // (le SELECT et le UPDATE suivant doivent passer la policy).
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         // Vérifier statut (pas EN_COURS)
         var statut string
