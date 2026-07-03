@@ -3,7 +3,6 @@ package http
 import (
         "context"
         "encoding/json"
-        "fmt"
         "net/http"
         "strconv"
 
@@ -194,8 +193,6 @@ func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
 
         result, err := s.sessionUC.Submit(r.Context(), claims, id, input)
         if err != nil {
-                // E2E-DEBUG : log temporaire pour diagnostiquer l'erreur interne submit
-                fmt.Printf("DEBUG submitSession error: %v\n", err)
                 middleware.MapDomainError(w, err)
                 return
         }
