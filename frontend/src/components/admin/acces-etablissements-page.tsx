@@ -25,6 +25,7 @@ import {
   AlertCircle,
   FileText,
   LifeBuoy,
+  Check,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -226,6 +227,23 @@ export function AccesEtablissementsPage() {
     refetchOnWindowFocus: false,
   })
 
+  // ACCES-ETABLISSEMENTS-FIX : demandes à approuver (RESPONSABLE uniquement).
+  // Fetch sans adminId → le backend filtre par etablissementId du responsable.
+  const isResponsable = user?.role === 'RESPONSABLE'
+  const pendingQuery = useQuery<{ accessRecords: AccessRecord[] }>({
+    queryKey: ['etablissement-access-pending', user?.id],
+    queryFn: async () => {
+      const res = await fetch('/api/etablissement-access?statut=EN_ATTENTE')
+      if (!res.ok) throw new Error('Failed to fetch pending requests')
+      return res.json()
+    },
+    enabled: isResponsable,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const pendingRecords = pendingQuery.data?.accessRecords ?? []
+
   const accessRecords = accessQuery.data?.accessRecords ?? []
   const authorizedEtablissements = authorizedQuery.data?.etablissements ?? []
   const etablissements = useMemo(
@@ -265,7 +283,38 @@ export function AccesEtablissementsPage() {
       queryClient.invalidateQueries({ queryKey: ['etablissement-access', user?.id] }),
       queryClient.invalidateQueries({ queryKey: ['authorized-etablissements', user?.id] }),
       queryClient.invalidateQueries({ queryKey: ['etablissements'] }),
+      queryClient.invalidateQueries({ queryKey: ['etablissement-access-pending', user?.id] }),
     ])
+  }
+
+  // ACCES-ETABLISSEMENTS-FIX : approbation/refus d'une demande (RESPONSABLE).
+  // PATCH /api/etablissement-access/{id} avec statut APPROUVE ou REFUSE.
+  const [processingId, setProcessingId] = useState<string | null>(null)
+  const handleApproveRequest = async (record: AccessRecord, statut: 'APPROUVE' | 'REFUSE') => {
+    setProcessingId(record.id)
+    try {
+      const res = await fetch(`/api/etablissement-access/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors du traitement')
+      }
+      toast.success(statut === 'APPROUVE' ? 'Demande approuvée' : 'Demande refusée', {
+        description: statut === 'APPROUVE'
+          ? "L'admin a maintenant accès à votre établissement."
+          : 'La demande a été refusée.',
+      })
+      await refreshData()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+      })
+    } finally {
+      setProcessingId(null)
+    }
   }
 
   // ─── Dialog state ───
@@ -439,6 +488,13 @@ export function AccesEtablissementsPage() {
 
     setIsSubmitting(true)
     try {
+      // ACCES-ETABLISSEMENTS-FIX : convertir les dates "YYYY-MM-DD" (input type=date)
+      // en RFC3339 "YYYY-MM-DDT00:00:00Z" car le backend Go décode *time.Time qui
+      // attend le format RFC3339. Sans conversion, json.Decoder échoue → 400 "JSON invalide".
+      const toRFC3339 = (d: string): string | null => {
+        if (!d) return null
+        return `${d}T00:00:00Z`
+      }
       const res = await fetch('/api/etablissement-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -446,8 +502,8 @@ export function AccesEtablissementsPage() {
           adminId: user.id,
           etablissementId: formEtablissementId,
           motif: formMotif,
-          dateDebut: formDateDebut || null,
-          dateFin: formDateFin || null,
+          dateDebut: toRFC3339(formDateDebut),
+          dateFin: toRFC3339(formDateFin),
           commentaire: formCommentaire || null,
         }),
       })
@@ -593,6 +649,17 @@ export function AccesEtablissementsPage() {
             <ShieldCheck className="h-3.5 w-3.5" />
             Établissements autorisés
           </TabsTrigger>
+          {isResponsable && (
+            <TabsTrigger value="demandes-a-approuver" className="gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Demandes à approuver
+              {pendingRecords.length > 0 && (
+                <Badge className="ml-1 h-4 px-1.5 text-[10px] bg-warning/15 text-warning">
+                  {pendingRecords.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ─── Tab 1: Mes autorisations ─── */}
@@ -1057,6 +1124,93 @@ export function AccesEtablissementsPage() {
             </div>
           )}
         </TabsContent>
+
+        {/* ─── Tab 4: Demandes à approuver (RESPONSABLE uniquement) ─── */}
+        {isResponsable && (
+          <TabsContent value="demandes-a-approuver">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                  <Clock className="h-5 w-5 text-warning" />
+                  Demandes d'accès en attente
+                </CardTitle>
+                <CardDescription>
+                  Demandes d'accès admin sur votre établissement à approuver ou refuser.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingRecords.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
+                      <CheckCircle2 className="h-7 w-7 text-success-text" />
+                    </div>
+                    <p className="mt-3 text-sm font-medium">Aucune demande en attente</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Les nouvelles demandes d'accès admin apparaîtront ici.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingRecords.map((record) => {
+                      const etab = etablissements.find((e) => e.id === record.etablissementId)
+                      return (
+                        <div
+                          key={record.id}
+                          className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-border/60 p-4"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-sm">
+                                {etab?.nom ?? 'Établissement'}
+                              </p>
+                              <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px]">
+                                {record.motif}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Demande de {record.admin?.name ?? 'un administrateur'}
+                              {record.commentaire && (
+                                <span className="block mt-1 italic">« {record.commentaire} »</span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              Soumise le {new Date(record.createdAt).toLocaleDateString('fr-FR')}
+                            </p>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <Button
+                              size="sm"
+                              className="bg-success hover:bg-success/90 gap-1.5"
+                              disabled={processingId === record.id}
+                              onClick={() => handleApproveRequest(record, 'APPROUVE')}
+                            >
+                              {processingId === record.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                              Approuver
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                              disabled={processingId === record.id}
+                              onClick={() => handleApproveRequest(record, 'REFUSE')}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Refuser
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* ─── Cancel Confirmation Dialog ─── */}
