@@ -494,16 +494,30 @@ func isUniqueViolation(err error) bool {
 // CountDependencies compte les sessions, réponses, soumissions (dép étudiant)
 // + épreuves, devoirs, affectations, enseignantFilieres (dép enseignant) d'un
 // user avant suppression (ETUDIANTS-FIX-E4 + ENSEIGNANTS-FIX-EN3).
-// Best-effort : désactive RLS pour compter même si le user n'est pas dans le
-// même établissement que le caller (le checkOwnership a déjà validé l'accès
-// côté usecase). Les tables enseignant peuvent ne pas exister ou avoir un
-// schéma différent — best-effort (0 si erreur).
+// Best-effort : utilise des claims system-worker pour compter même si le user
+// n'est pas dans le même établissement que le caller (le checkOwnership a déjà
+// validé l'accès côté usecase). Les tables enseignant peuvent ne pas exister
+// ou avoir un schéma différent — best-effort (0 si erreur).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : l'ancien commentaire prétendait "désactive RLS"
+// mais le code ouvrait une tx SANS SetClaimsTx → claims NULL → policies
+// RLS (SessionPassation_select, Epreuve_select, etc.) bloquaient tous les
+// counts à 0 → le usecase pensait "aucune dépendance" → suppression du user
+// avec sessions/épreuves actives (PERTE DE DONNÉES).
+// Fix : poser des claims system-worker via db.SetClaimsTx (is_system()=true
+// débloque les policies *_all_system qui couvrent SessionPassation, Epreuve,
+// Question, Document).
 func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (sessions, reponses, soumissions, epreuves, devoirs, affectations, enseignantFilieres int, err error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // AUDIT-RLS-REPOS-001 : poser les claims system-worker pour bypass RLS.
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
+                return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("set system claims: %w", err)
+        }
 
         // Sessions (SessionPassation où etudiantId = userID) — dép étudiant
         if err := tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "etudiantId" = $1`, userID).Scan(&sessions); err != nil {
