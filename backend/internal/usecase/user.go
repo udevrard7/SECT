@@ -96,6 +96,19 @@ func (uc *UserUseCase) List(ctx context.Context, claims db.SessionClaims, params
                 if params.Role != "" {
                         repoParams.Role = params.Role
                 }
+        case domain.RoleEtudiant:
+                // MESSAGERIE-DM-ETUDIANT : l'étudiant peut lister les utilisateurs de
+                // son établissement pour rechercher des correspondants DM. La policy
+                // RLS User_select (migration 000041) filtre automatiquement : l'étudiant
+                // ne voit que les étudiants de son étab + ses enseignants. On force
+                // l'EtablissementID à celui des claims (anti-IDOR).
+                if claims.EtablissementID == "" {
+                        return &domain.UserListResult{Users: []*domain.User{}, Total: 0, Page: params.Page, Limit: params.Limit}, nil
+                }
+                repoParams.EtablissementID = claims.EtablissementID
+                if params.Role != "" {
+                        repoParams.Role = params.Role
+                }
         default:
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé à lister les utilisateurs"}
         }
