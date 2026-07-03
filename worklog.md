@@ -11393,3 +11393,84 @@ Stage Summary:
 - **`make migrate-up`** est désormais fonctionnel (chemin correct + plus de doublons) et
   serait un no-op (tout est appliqué).
 - **Prochaine migration** à créer devra porter le numéro 000049.
+
+---
+Task ID: SECT-ADMIN-INCONNU-FIX-005
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix bug "? Admin inconnu —" dans /parametres onglet Accès ADMIN (côté responsable)
+
+Contexte :
+Bug mineur détecté lors de la validation E2E précédente (SECT-ACCESS-ASSISTANCE-
+VERIFY-004). Dans /parametres → onglet "Accès ADMIN" côté responsable, la demande
+d'accès affichait "? Admin inconnu —" au lieu du nom de l'admin. Le frontend lit
+`record.admin?.name ?? 'Admin inconnu'` — le champ `admin` était absent de la
+réponse API.
+
+Diagnostic approfondi :
+1. Frontend (responsable-parametres-page.tsx l.2140) : `record.admin?.name ?? 'Admin inconnu'`
+   → si `admin` est absent/nil, affiche "Admin inconnu". C'est un symptôme, pas la cause.
+2. Backend handler (listAccess) : `json.Encode({"accessRecords": records})` → sérialise
+   directement `[]*domain.EtablissementAccess`. Le champ `Admin *UserRef json:"admin,omitempty"`
+   est omis si nil. Donc le repo List ne peuplait pas `a.Admin`.
+3. Backend repo List : la requête avait `LEFT JOIN "User" u ON u."id" = ea."adminId"` +
+   scan `&adminID, &adminName, &adminEmail` + condition `if adminID != nil && ...`.
+   En théorie, cela devrait peupler Admin.
+4. Test node-postgres (neondb_owner, pooler) : la requête avec JOIN retourne bien l'admin.
+   → Le bug ne se reproduit pas avec neondb_owner.
+5. Vérification RLS : neondb_owner a `rolbypassrls = true` (BYPASSRLS) → RLS désactivé.
+   Toutes les tables (User, Etablissement, EtablissementAccess) ont `relrowsecurity=true`
+   et `relforcerowsecurity=true` (FORCE RLS), mais BYPASSRLS override FORCE.
+6. Test Go local (pgxpool + QueryExecModeDescribeExec + SET LOCAL claims) : la requête
+   retourne aussi l'admin. → Le code Go est correct.
+7. API Render (production) : `admin` absent de la réponse. `etablissement` présent.
+   → La différence : Render utilise un rôle de connexion SANS BYPASSRLS (bonne pratique
+   Neon) → RLS actif sur "User" → policy User_select filtre l'admin.
+
+Cause racine confirmée :
+- En production (Render), le rôle de connexion n'a PAS BYPASSRLS.
+- RLS est actif sur "User" (relrowsecurity=true, relforcerowsecurity=true).
+- La policy User_select filtre l'admin pour un RESPONSABLE :
+  `is_responsable() AND ("etablissementId" = current_etablissement_id())`
+  L'admin a `etablissementId = NULL` → `NULL = etab_id` → false → admin filtré.
+- Le LEFT JOIN "User" dans la requête List renvoie NULL pour les colonnes admin.
+- `a.Admin` reste nil → `json:"admin,omitempty"` omet le champ → frontend "Admin inconnu".
+- Note : `etablissement` est présent car la policy Etablissement_select permet au
+  responsable de voir son propre établissement.
+
+Fix (backend/internal/repository/etablissement_access.go) :
+- List : suppression du LEFT JOIN "User" de la requête principale (RLS natif conservé
+  pour EtablissementAccess + Etablissement). La sécurité d'accès aux demandes reste
+  assurée par RLS natif (defense in depth) + clause WHERE manuelle (usecase).
+- Nouvelle fonction fetchAdminRefs : récupère les UserRef (id, name, email) via une
+  transaction séparée avec claims system-worker (app.claims.role='ADMIN'). Cette
+  approche active la clause `is_admin() AND "etablissementId" IS NULL AND role='ADMIN'`
+  de User_select → l'admin devient visible. Pattern identique à CheckAccess/Create/
+  Update/Delete qui utilisent déjà le bypass system-worker.
+- Sécurité : les données admin (name, email) ne sont pas sensibles — elles servent
+  uniquement à l'affichage. L'accès aux demandes lui-même reste filtré par RLS natif.
+
+Work Log :
+- Diagnostic complet : frontend → handler → repo → RLS → BYPASSRLS → rôle Render.
+- Tests node-postgres + Go local pour isoler la cause (neondb_owner masquait le bug
+  car BYPASSRLS=true).
+- Implémentation du fix : split List en 2 queries + fetchAdminRefs (system-worker bypass).
+- Compilation : go build ./... ✅ + go vet ./... ✅.
+- Commit 0639e0c (auteur udevrard7 <ulrichdouh@gmail.com>) + push origin main ✅.
+- Déploiement Render : live (commit 0639e0c) ✅.
+- Test API (curl) : `admin.name: "Administrateur SECT"`, `admin.email: "ulrichdouh@gmail.com"` ✅.
+- Test Agent Browser (responsable registrar@uniabidjan.com) :
+  /parametres → onglet "Accès ADMIN" → cellule affiche "A Administrateur SECT
+  ulrichdouh@gmail.com" au lieu de "? Admin inconnu —" ✅.
+
+Stage Summary :
+- **Bug résolu** : le nom et l'email de l'admin s'affichent correctement dans /parametres
+  onglet "Accès ADMIN" côté responsable.
+- **Approche** : split de la requête List (RLS natif pour EtablissementAccess +
+  Etablissement, system-worker bypass pour User). Defense in depth conservée pour
+  l'accès aux demandes ; les données admin (name, email) sont récupérées via bypass
+  car non sensibles.
+- **Pattern réutilisable** : fetchAdminRefs peut être étendu à d'autres repos si le
+  même problème (RLS filtre un user hors établissement) apparaît ailleurs.
+- **Lesson learned** : toujours tester avec un rôle SANS BYPASSRLS (comme en production)
+  pour reproduire les bugs RLS. Le rôle neondb_owner (BYPASSRLS=true) masque les
+  problèmes RLS.
