@@ -604,3 +604,50 @@ func (uc *ExamPrepUseCase) GetAudioURL(ctx context.Context, r2Key string) (strin
         }
         return uc.storage.PresignURL(ctx, r2Key, 900) // 15 minutes
 }
+
+// DeleteAudio supprime un podcast (ligne DocumentAudio + objet R2 associé).
+//
+// AUDIO-DELETE-STUDENT : permet à l'étudiant de supprimer SON podcast. La
+// vérification de propriété est double :
+//  1. Côté usecase : on lit l'audio (GetDocumentAudio) et on refuse si
+//     audio.UserID != claims.UserID (sauf ADMIN qui peut tout supprimer).
+//  2. Côté DB : la policy RLS DocumentAudio_delete (migration 000039) impose
+//     "userId" = current_user_id() OU is_admin() — double sécurité.
+//
+// L'objet R2 (si r2Key non-nil) est supprimé en best-effort AVANT la ligne DB :
+// si la suppression R2 échoue, on log un warning mais on supprime quand même
+// la ligne DB (l'utilisateur a demandé la suppression ; un objet orphelin R2
+// est moins grave qu'une ligne DB fantôme que l'utilisateur ne peut plus voir).
+//
+// Rôles : ETUDIANT, ENSEIGNANT, ADMIN.
+func (uc *ExamPrepUseCase) DeleteAudio(ctx context.Context, claims db.SessionClaims, audioID string) error {
+        if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) && claims.Role != string(domain.RoleAdmin) {
+                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if audioID == "" {
+                return &domain.ValidationError{Field: "audioId", Message: "requis"}
+        }
+
+        // 1. Lire l'audio pour récupérer le r2Key + vérifier la propriété.
+        audio, err := uc.repo.GetDocumentAudio(ctx, audioID)
+        if err != nil {
+                return err
+        }
+        // Ownership check (defense in depth — RLS enforce aussi côté DB).
+        if claims.Role != string(domain.RoleAdmin) && audio.UserID != claims.UserID {
+                return &domain.UnauthorizedError{Message: "vous ne pouvez supprimer que vos propres podcasts"}
+        }
+
+        // 2. Supprimer l'objet R2 (best-effort) si présent.
+        if audio.R2Key != nil && *audio.R2Key != "" && uc.storage != nil {
+                if delErr := uc.storage.Delete(ctx, *audio.R2Key); delErr != nil {
+                        // Log best-effort : on continue malgré l'échec R2 (objet orphelin
+                        // acceptable vs ligne DB fantôme). Le worker de cleanup pourrait
+                        // ramasser les orphelins plus tard si besoin.
+                        fmt.Printf("warn: failed to delete R2 object %q: %v (proceeding with DB delete)\n", *audio.R2Key, delErr)
+                }
+        }
+
+        // 3. Supprimer la ligne DB (RLS policy DocumentAudio_delete).
+        return uc.repo.DeleteDocumentAudio(ctx, audioID)
+}

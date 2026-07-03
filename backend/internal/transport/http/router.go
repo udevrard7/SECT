@@ -518,6 +518,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/documents/{id}/audio", s.generateAudio)
                         r.Get("/documents/{id}/audio", s.listDocumentAudio)
                         r.Get("/audio/{id}", s.getAudio)
+                        // AUDIO-DELETE-STUDENT : supprime un podcast (ligne DB + objet R2).
+                        r.Delete("/audio/{id}", s.deleteAudio)
                         // Help threads
                         r.Get("/help", s.listHelpThreads)
                         r.Post("/help", s.createHelpThread)

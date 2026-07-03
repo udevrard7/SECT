@@ -1755,3 +1755,31 @@ func (r *ExamPrepRepository) GetDocumentAudio(ctx context.Context, audioID strin
         }
         return a, nil
 }
+
+// DeleteDocumentAudio supprime une ligne DocumentAudio par son ID.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. La policy
+// DocumentAudio_delete (migration 000039) n'autorise la suppression QUE si
+// "userId" = current_user_id() OU is_admin(). Si l'audio n'existe pas ou
+// n'appartient pas à l'utilisateur, RowsAffected=0 → NotFoundError.
+//
+// AUDIO-DELETE-STUDENT : permet à l'étudiant de supprimer son propre podcast
+// (EN_COURS, ERREUR ou PRET). L'objet R2 associé est supprimé côté usecase
+// (best-effort) AVANT la suppression DB pour pouvoir lire le r2Key.
+func (r *ExamPrepRepository) DeleteDocumentAudio(ctx context.Context, audioID string) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `DELETE FROM "DocumentAudio" WHERE "id" = $1`, audioID)
+                if err != nil {
+                        return fmt.Errorf("delete document audio: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "DocumentAudio", ID: audioID}
+                }
+                return nil
+        })
+}
