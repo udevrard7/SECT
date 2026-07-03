@@ -357,27 +357,38 @@ type QuestionForGrading struct {
 }
 
 // DetectGradingScenario détermine si l'épreuve est 100% auto-gradable ou mixte.
+//
+// E2E-EVAL-CODE-FIX : CODE est "semi-auto" — auto-gradé au submit (basé sur
+// testResultsPublics) MAIS l'enseignant doit vérifier le code manuellement.
+// Donc une épreuve avec au moins une question CODE reste scénario B (mixed)
+// même si toutes les autres questions sont QCU/QCM. Avant, CODE était compté
+// comme auto-gradable → une épreuve 100% CODE aurait été scénario A (CORRIGEE
+// au submit) sans validation enseignant — incohérent avec le fait que
+// l'enseignant doit reviewer le code.
 func DetectGradingScenario(questions []QuestionForGrading) GradingScenario {
-        autoGradableTypes := map[TypeQuestion]bool{
-                TypeQCU: true, TypeQCM: true, TypeCode: true,
+        pureAutoTypes := map[TypeQuestion]bool{
+                TypeQCU: true, TypeQCM: true,
         }
-        auto := 0
-        manual := 0
+        auto := 0      // QCU + QCM (pure auto)
+        semiAuto := 0  // CODE (auto + manual review)
+        manual := 0    // QRC + REFLEXION + TRS (pure manual)
         for _, q := range questions {
-                if autoGradableTypes[q.Type] {
+                if pureAutoTypes[q.Type] {
                         auto++
+                } else if q.Type == TypeCode {
+                        semiAuto++
                 } else {
                         manual++
                 }
         }
         scenario := "A"
-        if manual > 0 {
+        if manual > 0 || semiAuto > 0 {
                 scenario = "B"
         }
         return GradingScenario{
                 Type:                  scenario,
-                AutoGradableCount:     auto,
-                ManualCorrectionCount: manual,
+                AutoGradableCount:     auto + semiAuto,
+                ManualCorrectionCount: manual + semiAuto,
         }
 }
 
@@ -444,6 +455,64 @@ func GradeQCM(studentAnswers, correctAnswers string, bareme float64) float64 {
         if score < 0 {
                 score = 0
         }
+        // Arrondir à 2 décimales
+        return float64(int(score*100)) / 100
+}
+
+// GradeCODE corrige une question CODE (semi-auto).
+//
+// studentAnswer = JSON sérialisé de CodingAnswer {code, language, testResultsPublics}
+// reponseCorrecte = JSON sérialisé de CodingQuestionContent {testsPublics, testsPrives, bareme...}
+// bareme = points de la question
+//
+// E2E-EVAL-CODE-FIX : le frontend stocke dans Reponse.contenu un JSON
+// CodingAnswer contenant testResultsPublics (résultats des tests publics
+// exécutés par l'étudiant dans le navigateur via Pyodide/iframe). Le backend
+// parse ce JSON, compte les tests passés, et calcule un score proportionnel :
+// (passedTests / totalTests) * bareme.
+//
+// Note : seuls les tests PUBLICS sont exécutés côté navigateur (les tests
+// privés ne le sont pas au submit pour éviter que l'étudiant les voie). Le
+// score est donc "semi-auto" — l'enseignant peut l'override après vérification
+// manuelle du code. Le scénario reste B (mixed) quand CODE est présent.
+//
+// Si le JSON est invalide ou qu'aucun test n'a été exécuté, retourne 0 (sera
+// pending correction manuelle).
+func GradeCODE(studentAnswer, reponseCorrecte string, bareme float64) float64 {
+        if studentAnswer == "" {
+                return 0
+        }
+
+        // Parser le CodingAnswer envoyé par le frontend
+        var codingAnswer struct {
+                Code              string `json:"code"`
+                Language          string `json:"language"`
+                TestResultsPublics []struct {
+                        Nom     string `json:"nom"`
+                        Passed  bool   `json:"passed"`
+                        Output  string `json:"output"`
+                        Expected string `json:"expected"`
+                } `json:"testResultsPublics"`
+        }
+        if err := json.Unmarshal([]byte(studentAnswer), &codingAnswer); err != nil {
+                return 0
+        }
+
+        // Si pas de résultats de tests, on ne peut pas auto-grader → 0
+        if len(codingAnswer.TestResultsPublics) == 0 {
+                return 0
+        }
+
+        // Compter les tests passés
+        passed := 0
+        for _, tr := range codingAnswer.TestResultsPublics {
+                if tr.Passed {
+                        passed++
+                }
+        }
+
+        // Score proportionnel : (passed / total) * bareme
+        score := float64(passed) / float64(len(codingAnswer.TestResultsPublics)) * bareme
         // Arrondir à 2 décimales
         return float64(int(score*100)) / 100
 }
