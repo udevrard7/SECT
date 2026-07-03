@@ -5,6 +5,7 @@ package db
 import (
         "context"
         "fmt"
+        "strings"
 
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
@@ -31,7 +32,16 @@ func ClaimsFromContext(ctx context.Context) (SessionClaims, bool) {
 
 // New crée un pool de connexions vers Neon Postgres.
 // Le pool est thread-safe et gère automatiquement le cycle de vie des connexions.
+//
+// RLS-POOLER-FIX : si l'URL contient "-pooler" (PgBouncer mode transaction),
+// on la convertit en connexion DIRECTE car les set_config('app.claims.*', true)
+// (is_local=true) ne sont PAS préservés entre les queries d'une transaction en
+// mode transaction pooling. RLS devient inopérant → les policies qui dépendent
+// de current_etablissement_id() / is_responsable() etc. filtrent toutes les rows.
 func New(databaseURL string) (*pgxpool.Pool, error) {
+        // RLS-POOLER-FIX : convertir l'URL pooler en URL directe.
+        databaseURL = convertPoolerToDirect(databaseURL)
+
         config, err := pgxpool.ParseConfig(databaseURL)
         if err != nil {
                 return nil, fmt.Errorf("parse database URL: %w", err)
@@ -133,4 +143,27 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, claims SessionClaims, fn fu
         }
 
         return tx.Commit(ctx)
+}
+
+// convertPoolerToDirect convertit une URL de connexion Neon pooler (PgBouncer)
+// en URL directe. RLS-POOLER-FIX.
+//
+// Neon expose deux endpoints :
+//   - Pooler : ep-XXX-pooler.region.aws.neon.tech (PgBouncer mode transaction)
+//   - Direct : ep-XXX.region.aws.neon.tech (connexion directe au compute)
+//
+// En mode transaction pooling, les set_config('app.claims.*', true) (is_local)
+// ne sont PAS préservés entre les queries d'une même transaction pgx → RLS
+// devient inopérant. La connexion directe garantit que les claims posés via
+// SetClaimsTx sont visibles par toutes les queries de la transaction.
+//
+// Si l'URL ne contient pas "-pooler", elle est retournée inchangée.
+func convertPoolerToDirect(databaseURL string) string {
+        // Remplacer "-pooler" par "" dans le hostname. Ex :
+        //   ep-muddy-river-asz862wj-pooler.c-4.eu-central-1.aws.neon.tech
+        // → ep-muddy-river-asz862wj.c-4.eu-central-1.aws.neon.tech
+        if strings.Contains(databaseURL, "-pooler.") {
+                return strings.Replace(databaseURL, "-pooler.", ".", 1)
+        }
+        return databaseURL
 }
