@@ -11890,3 +11890,37 @@ Stage Summary :
   (best-effort). Le Resultat est créé au finalizeSession (correction enseignant).
   L'enseignant voit les scores via /api/correction qui lit Reponse.score.
   Investigation RLS approfondie à prévoir dans une future session.
+
+---
+Task ID: SECT-AUDIT-RLS-VAGUE-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vague 2/4 — 3 contradictions + 3 bugs session (dashboard étudiant)
+
+Work Log :
+- etablissement.go SetCurrentAnnee : BeginTx sans claims → db.WithTx avec claims.
+  Le responsable peut maintenant définir l'année académique courante.
+- academique.go UERepository.HardDelete : BeginTx sans claims → db.WithTx.
+  Suppression UE possible.
+- academique.go AnneeAcademiqueRepository.HardDelete : BeginTx sans claims → db.WithTx.
+  Suppression année académique possible.
+- session.go ResultatRepository.ListByEtudiant : BeginTx sans claims → db.WithTx.
+  La page de résultats de l'étudiant n'est plus vide.
+- session.go ResultatRepository.GetEtudiantOverview : BeginTx sans claims → db.WithTx.
+  Le dashboard étudiant affiche de vraies stats.
+- session.go SessionRepository.FindByEtudiantAndEpreuve : BeginTx sans claims → db.WithTx.
+  La reprise de session marche.
+- Commit 24b6343 poussé (rebase propre). Render build réussi.
+
+Validation production (Agent Browser, étudiant INF/LJ/25/008) :
+- /api/resultats?etudiantId=me → 4 sessions (avant: 0) ✅
+- /api/resultats/etudiant-overview → totalEpreuves=4, totalCorrigees=4,
+  moyenneGenerale=15.99, tauxReussite=100%, recentResults=4 (avant: tout à 0) ✅
+- 0 erreur console.
+
+Stage Summary:
+- **6 bugs corrigés** : 3 contradictions (code ≠ commentaire) + 3 bugs session.
+- **Dashboard étudiant fonctionnel** : stats réelles affichées (15.99/20 de moyenne).
+- **Page résultats étudiant fonctionnelle** : 4 sessions visibles.
+- **Reprise de session réparée** : l'étudiant peut reprendre une session EN_COURS.
+- Vague 3 à suivre : Certificat Create/Revoke + Etablissement (7 méthodes) +
+  Document (3 méthodes) + User FindByEmail.
