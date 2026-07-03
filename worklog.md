@@ -11757,3 +11757,38 @@ Stage Summary:
   FORCE RLS, 127 policies claims-dépendantes) + test API production.
 - **Aucun fichier modifié** (audit read-only). Plan de correction prêt à exécuter sur
   décision utilisateur.
+
+---
+Task ID: SECT-AUDIT-RLS-VAGUE-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vague 1/4 — helper SystemClaims + 2 bugs CRITICAL (CountDependencies + Certificat FindByCode)
+
+Work Log :
+- db.go : nouvel helper SystemClaims() retourne SessionClaims{UserID:"system-worker",
+  Role:"ADMIN"}. Standardise le pattern de bypass worker (is_system()=true).
+- user.go CountDependencies : ajout db.SetClaimsTx(ctx, tx, db.SystemClaims()) après
+  BeginTx. Les policies *_all_system (SessionPassation, Epreuve, Question, Document)
+  laissent passer is_system() → les counts retournent les vraies valeurs au lieu de 0.
+  Fix DATA LOSS : un user avec sessions/épreuves actives n'est plus supprimé silencieusement.
+- certificat.go FindByCode : remplacé BeginTx+Rollback+Commit par db.WithTx(ctx, pool,
+  db.SystemClaims(), ...). Endpoint public /api/certificats/verify/{code} fonctionnel.
+- Migration 000050_certificat_select_is_system (up + down) : ajoute OR is_system() à la
+  policy Certificat_select (cohérent avec Document/Epreuve/Question/SessionPassation
+  *_all_system). Appliquée sur Neon (version 50 enregistrée).
+- Commit 0392aaa poussé (rebase propre, pas de conflit). Render build réussi.
+
+Validation production :
+- AVANT : GET /api/certificats/verify/SECT-WNV8-RXJL → 404 "Certificat introuvable"
+- APRÈS : GET /api/certificats/verify/SECT-WNV8-RXJL → 200 avec certificat complet
+  (ASSANI Emile Junior, INF/LJ/25/008, L2, Programmation Système, mention Très Bien,
+  18.17/20, statut EMIS, valide=true). ✅
+- schema_migrations : 50 versions (1→50), dirty=false.
+
+Stage Summary:
+- **2 bugs CRITICAL corrigés** : CountDependencies (DATA LOSS) + Certificat FindByCode
+  (endpoint public cassé).
+- **1 helper SystemClaims()** introduit pour standardiser les bypass worker.
+- **1 migration** appliquée (000050, policy Certificat_select + is_system()).
+- **Validation production confirmée** : certificat verify retourne 200 avec données.
+- Vague 2 à suivre : 3 contradictions (etablissement.go:387, academique.go:481/955)
+  + session.go ListByEtudiant/GetEtudiantOverview/FindByEtudiantAndEpreuve.
