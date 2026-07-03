@@ -453,6 +453,19 @@ export function AccesEtablissementsPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        // ACCES-ETABLISSEMENTS-FIX : si 409 (demande déjà existante), afficher un
+        // message spécifique avec CTA vers l'onglet Mes autorisations pour annuler.
+        if (res.status === 409) {
+          toast.error('Demande déjà existante', {
+            description: 'Vous avez déjà une demande en attente ou approuvée pour cet établissement. Annulez-la d\'abord dans l\'onglet « Mes autorisations ».',
+            action: {
+              label: 'Voir mes demandes',
+              onClick: () => setActiveTab('mes-autorisations'),
+            },
+          })
+          setIsSubmitting(false)
+          return
+        }
         throw new Error(err.error || 'Erreur lors de la création')
       }
       toast.success('Demande envoyée', {
@@ -762,13 +775,26 @@ export function AccesEtablissementsPage() {
             <CardContent>
               {availableEtablissements.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                    <Building2 className="h-8 w-8 text-success-text" />
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-warning/10">
+                    <Building2 className="h-8 w-8 text-warning" />
                   </div>
                   <h3 className="mt-4 font-semibold font-display tracking-tight">Aucun établissement disponible</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-                    Vous avez déjà demandé ou obtenu l&apos;accès à tous les établissements actifs.
+                    {enAttenteCount > 0
+                      ? `Vous avez ${enAttenteCount} demande(s) d'accès en attente. Annulez une demande pour pouvoir en faire une nouvelle.`
+                      : 'Vous avez déjà demandé ou obtenu l\'accès à tous les établissements actifs.'}
                   </p>
+                  {enAttenteCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 gap-2"
+                      onClick={() => setActiveTab('mes-autorisations')}
+                    >
+                      <Clock className="h-4 w-4" />
+                      Voir mes demandes en attente
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-5">
