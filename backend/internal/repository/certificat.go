@@ -79,25 +79,36 @@ func (r *CertificatRepository) FindByID(ctx context.Context, id string) (*domain
         return c, nil
 }
 
-// FindByCode récupère un certificat par code de vérification (bypass RLS — public verify).
+// FindByCode récupère un certificat par code de vérification (endpoint public
+// de vérification — pas de JWT, pas de claims utilisateur).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : l'ancien code ouvrait une tx SANS SetClaimsTx
+// → claims NULL → la policy Certificat_select (qui dépend de current_user_id()/
+// is_etudiant()/is_enseignant()/is_responsable()/is_admin()) voyait NULL →
+// 0 rows → l'endpoint public /api/certificats/verify/{code} retournait 404
+// pour des codes existants (confirmé en production : 14 certificats en DB,
+// tous introuvables via l'API).
+//
+// Fix : utiliser db.WithTx avec db.SystemClaims() (is_system()=true). La
+// migration 000050_certificat_select_is_system ajoute `OR is_system()` à la
+// policy Certificat_select (cohérent avec Document/Epreuve/Question/
+// SessionPassation qui ont tous une policy *_all_system).
 func (r *CertificatRepository) FindByCode(ctx context.Context, code string) (*domain.Certificat, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Certificat" WHERE "codeVerification" = $1`, columnsCertificat), code)
-        c, err := scanCertificat(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "Certificat", ID: code}
+        var c *domain.Certificat
+        err := db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Certificat" WHERE "codeVerification" = $1`, columnsCertificat), code)
+                var err error
+                c, err = scanCertificat(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "Certificat", ID: code}
+                        }
+                        return fmt.Errorf("query certificat by code: %w", err)
                 }
-                return nil, fmt.Errorf("query certificat by code: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return c, nil
 }
