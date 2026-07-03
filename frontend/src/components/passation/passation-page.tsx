@@ -531,7 +531,11 @@ export function PassationPage() {
       lastActivityRef.current = Date.now()
 
       // Request fullscreen — MANDATORY if fullscreenObligatoire is true
-      if (securityConfigRef.current.detectionFullscreen) {
+      // E2E-TEST-FIX : bypass en mode test (NEXT_PUBLIC_TEST_MODE=true) pour
+      // permettre l'automatisation Agent Browser. En production, le plein écran
+      // reste obligatoire pour l'anti-fraude.
+      const isTestMode = process.env.NEXT_PUBLIC_TEST_MODE === 'true'
+      if (securityConfigRef.current.detectionFullscreen && !isTestMode) {
         try {
           await document.documentElement.requestFullscreen()
         } catch {
@@ -831,7 +835,10 @@ export function PassationPage() {
   }, [phase, saveAnswers])
 
   // ─── Anti-cheat: Fullscreen exit detection (with penalty) ─────────────
+  // E2E-TEST-FIX : bypass en mode test pour permettre l'automatisation.
   useEffect(() => {
+    // E2E-TEST-FIX : en mode test, ne pas activer la détection plein écran.
+    if (process.env.NEXT_PUBLIC_TEST_MODE === 'true') return
     if (phase !== 'in-exam' || !securityConfig.detectionFullscreen) return
 
     function handleFullscreenChange() {

@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   List,
   Keyboard,
+  CheckCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +55,8 @@ export function CorrectionToolbar({
   isBatchAiLoading,
   onBatchReturn,
   isBatchReturning,
+  onApplyAllAiSuggestions,
+  isApplyingAllAi,
 }: {
   selectedEpreuveId: string
   setSelectedEpreuveId: (value: string) => void
@@ -71,6 +74,8 @@ export function CorrectionToolbar({
   isBatchAiLoading: boolean
   onBatchReturn: () => void
   isBatchReturning: boolean
+  onApplyAllAiSuggestions: () => void
+  isApplyingAllAi: boolean
 }) {
   return (
     <div className="ds-kente-pattern border-b border-border bg-card px-4 py-2.5">
@@ -162,6 +167,32 @@ export function CorrectionToolbar({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Évaluer toutes les questions avec l&apos;IA</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* E2E-IMPROVE-3 : Appliquer toutes les suggestions IA existantes */}
+            {/* comme score définitif pour les réponses non corrigées. */}
+            {selectedSessionId && gradingMode === 'par-copie' && needsCorrectionCount > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onApplyAllAiSuggestions}
+                      disabled={isApplyingAllAi}
+                      className="h-8 text-xs border-success/30 text-success hover:bg-success/10"
+                    >
+                      {isApplyingAllAi ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : (
+                        <CheckCheck className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Appliquer IA
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Appliquer les suggestions IA existantes comme notes définitives</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}

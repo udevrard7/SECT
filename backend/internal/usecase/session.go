@@ -319,6 +319,17 @@ func (uc *SessionUseCase) Submit(ctx context.Context, claims db.SessionClaims, s
                                 score = domain.GradeQCM(studentAnswer, qfg.ReponseCorrecte, eq.Bareme)
                                 detail.IsAutoGraded = true
                                 autoGradedCount++
+                        case domain.TypeCode:
+                                // E2E-EVAL-CODE-FIX : auto-grading semi-auto basé sur les
+                                // testResultsPublics envoyés par le frontend (Pyodide/iframe).
+                                // Le score est proportionnel : (passed / total) * bareme.
+                                // L'enseignant peut override ce score en correction manuelle.
+                                score = domain.GradeCODE(studentAnswer, qfg.ReponseCorrecte, eq.Bareme)
+                                detail.IsAutoGraded = true
+                                autoGradedCount++
+                                // Note : même si auto-graded, le scénario reste B si CODE est
+                                // présent car l'enseignant doit vérifier le code manuellement.
+                                // Le score est persisté mais la session reste SOUMISE.
                         default:
                                 // QRC, CODE, REFLEXION, TRS → pending (manuel ou IA)
                                 detail.IsAutoGraded = false

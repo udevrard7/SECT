@@ -369,6 +369,63 @@ export function useCorrectionState(user: CurrentUser | null) {
     }
   }
 
+  // ─── Apply all AI suggestions (E2E-IMPROVE-3) ───
+  // Applique les noteIA existantes comme score définitif pour toutes les
+  // réponses non encore corrigées (score=null) de la session sélectionnée.
+  // L'enseignant garde le contrôle : il peut override individuellement après.
+  // Comportement attendu : l'IA suggère, l'humain décide — mais ce bouton
+  // évite de devoir cliquer "Appliquer" sur chaque question quand l'enseignant
+  // est satisfait des suggestions globales.
+  const [isApplyingAllAi, setIsApplyingAllAi] = useState(false)
+  const handleApplyAllAiSuggestions = async () => {
+    if (!selectedSessionId || !selectedSession) return
+    // Collecter les réponses non corrigées avec noteIA
+    const toApply = selectedSession.reponses.filter(
+      (r) => r.score === null && r.noteIA !== null && r.noteIA !== undefined
+    )
+    if (toApply.length === 0) {
+      toast.info('Aucune suggestion à appliquer', {
+        description: 'Toutes les réponses sont déjà corrigées ou sans suggestion IA.',
+      })
+      return
+    }
+    setIsApplyingAllAi(true)
+    let applied = 0
+    let failed = 0
+    try {
+      for (const r of toApply) {
+        try {
+          await saveGradeMutation.mutateAsync({
+            sessionId: selectedSessionId,
+            questionId: r.questionId,
+            score: r.noteIA!,
+            commentaire: r.justificationIA
+              ? `Note IA appliquée : ${r.justificationIA}`
+              : 'Note IA appliquée (validation enseignant)',
+          })
+          applied++
+        } catch {
+          failed++
+        }
+      }
+      if (applied > 0) {
+        toast.success('Suggestions IA appliquées', {
+          description: `${applied} réponse(s) corrigée(s) avec les notes IA${failed > 0 ? `, ${failed} échec(s)` : ''}. Vous pouvez ajuster individuellement.`,
+        })
+      } else {
+        toast.error('Échec', {
+          description: 'Impossible d\'appliquer les suggestions IA.',
+        })
+      }
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Erreur lors de l\'application.',
+      })
+    } finally {
+      setIsApplyingAllAi(false)
+    }
+  }
+
   // ─── Batch return handler ───
   const handleBatchReturn = async () => {
     if (!selectedEpreuveId) return
@@ -599,6 +656,8 @@ export function useCorrectionState(user: CurrentUser | null) {
     handleSave,
     handleFinalize,
     handleBatchAiGrade,
+    handleApplyAllAiSuggestions,
+    isApplyingAllAi,
     handleBatchReturn,
     goToQuestion,
     handleHorizontalToggleCriterion,

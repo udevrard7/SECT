@@ -147,6 +147,8 @@ export function CorrectionPage() {
         isBatchAiLoading={s.isBatchAiLoading}
         onBatchReturn={s.handleBatchReturn}
         isBatchReturning={s.isBatchReturning}
+        onApplyAllAiSuggestions={s.handleApplyAllAiSuggestions}
+        isApplyingAllAi={s.isApplyingAllAi}
       />
 
       {/* Body: Sidebar + Main */}
