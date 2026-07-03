@@ -149,60 +149,73 @@ func (r *DocumentRepository) ListByOwner(ctx context.Context, ownerID string) ([
 }
 
 // Create crée un document (bypass RLS — owner = user courant).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx via
+// r.pool.BeginTx SANS SetClaimsTx → claims NULL → policy Document_insert
+// (ownerId = current_user_id()) voyait NULL → l'INSERT était rejeté (0 ligne
+// ou erreur RLS). Fix : db.WithTx avec claims du context.
 func (r *DocumentRepository) Create(ctx context.Context, input domain.CreateDocumentInput) (*domain.Document, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("Create: claims manquants dans le context")
+        }
+
+        var doc *domain.Document
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                id := uuid.NewString()
+                statut := input.StatutAnalyse
+                if statut == "" {
+                        statut = domain.StatutAnalyseEnAttente
+                }
+
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "Document" ("id", "ownerId", "nomFichier", "cheminStockage", "tailleFichier",
+                                "typeMime", "statutAnalyse", "themesDetectes", "conceptsCles", "volumeEstime",
+                                "contenuTexte", "dateUpload", "createdAt", "updatedAt", "deletedAt",
+                                "erreurAnalyse", "resumeAnalyse", "uniteEnseignementId")
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, $8,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, $9, NULL, $10)
+                        RETURNING `+columnsDocument,
+                        id, input.OwnerID, input.NomFichier, input.CheminStockage,
+                        nullableIntPtr(input.TailleFichier), nullableStrPtr(input.TypeMime),
+                        statut, nullableStrPtr(input.ContenuTexte),
+                        nullableStrPtr(input.ErreurAnalyse), nullableStrPtr(input.UniteEnseignementID))
+
+                created, err := scanDocument(row)
+                if err != nil {
+                        return fmt.Errorf("create document: %w", err)
+                }
+                doc = created
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        id := uuid.NewString()
-        statut := input.StatutAnalyse
-        if statut == "" {
-                statut = domain.StatutAnalyseEnAttente
-        }
-
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "Document" ("id", "ownerId", "nomFichier", "cheminStockage", "tailleFichier",
-                        "typeMime", "statutAnalyse", "themesDetectes", "conceptsCles", "volumeEstime",
-                        "contenuTexte", "dateUpload", "createdAt", "updatedAt", "deletedAt",
-                        "erreurAnalyse", "resumeAnalyse", "uniteEnseignementId")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, $8,
-                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, $9, NULL, $10)
-                RETURNING `+columnsDocument,
-                id, input.OwnerID, input.NomFichier, input.CheminStockage,
-                nullableIntPtr(input.TailleFichier), nullableStrPtr(input.TypeMime),
-                statut, nullableStrPtr(input.ContenuTexte),
-                nullableStrPtr(input.ErreurAnalyse), nullableStrPtr(input.UniteEnseignementID))
-
-        doc, err := scanDocument(row)
-        if err != nil {
-                return nil, fmt.Errorf("create document: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return doc, nil
 }
 
 // SoftDelete désactive un document (deletedAt = now).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Document_modify_owner (ownerId =
+// current_user_id()) voyait NULL → 0 ligne affectée → NotFoundError même
+// pour le owner légitime. Fix : db.WithTx avec claims du context.
 func (r *DocumentRepository) SoftDelete(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `UPDATE "Document" SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NULL`, id)
-        if err != nil {
-                return fmt.Errorf("soft delete document: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "Document", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return fmt.Errorf("SoftDelete: claims manquants dans le context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `UPDATE "Document" SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NULL`, id)
+                if err != nil {
+                        return fmt.Errorf("soft delete document: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "Document", ID: id}
+                }
+                return nil
+        })
 }
 
 // Suppress unused import warning
@@ -210,33 +223,37 @@ var _ = strings.TrimSpace
 
 // UpdateAnalysis met à jour les champs d'analyse d'un document (P1-D1).
 // Utilisé par le doc_analyzer_worker après traitement IA.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Document_modify_owner (ownerId =
+// current_user_id()) voyait NULL → 0 ligne affectée (silencieux car pas de
+// NotFoundError check sur RowsAffected). Le worker ne voyait pas l'erreur
+// mais l'UPDATE n'était pas appliqué en production (RLS actif).
+// Fix : db.WithTx avec db.SystemClaims() — le worker n'a pas de JWT user, on
+// utilise les claims system-worker qui débloquent la policy Document_all_system
+// (is_system() = true).
 func (r *DocumentRepository) UpdateAnalysis(ctx context.Context, id string, params domain.UpdateAnalysisInput) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "Document"
-                SET "statutAnalyse" = $1,
-                    "themesDetectes" = $2,
-                    "conceptsCles" = $3,
-                    "volumeEstime" = $4,
-                    "resumeAnalyse" = $5,
-                    "erreurAnalyse" = $6,
-                    "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $7
-        `, params.StatutAnalyse,
-                nullableStrPtr(params.ThemesDetectes),
-                nullableStrPtr(params.ConceptsCles),
-                nullableStrPtr(params.VolumeEstime),
-                nullableStrPtr(params.ResumeAnalyse),
-                nullableStrPtr(params.ErreurAnalyse),
-                id)
-        if err != nil {
-                return fmt.Errorf("update document analysis: %w", err)
-        }
-
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+                _, err := tx.Exec(ctx, `
+                        UPDATE "Document"
+                        SET "statutAnalyse" = $1,
+                            "themesDetectes" = $2,
+                            "conceptsCles" = $3,
+                            "volumeEstime" = $4,
+                            "resumeAnalyse" = $5,
+                            "erreurAnalyse" = $6,
+                            "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $7
+                `, params.StatutAnalyse,
+                        nullableStrPtr(params.ThemesDetectes),
+                        nullableStrPtr(params.ConceptsCles),
+                        nullableStrPtr(params.VolumeEstime),
+                        nullableStrPtr(params.ResumeAnalyse),
+                        nullableStrPtr(params.ErreurAnalyse),
+                        id)
+                if err != nil {
+                        return fmt.Errorf("update document analysis: %w", err)
+                }
+                return nil
+        })
 }
