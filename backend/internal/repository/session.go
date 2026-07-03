@@ -155,11 +155,21 @@ func (r *SessionRepository) FindByEtudiantAndEpreuve(ctx context.Context, etudia
 
 // Create crée une nouvelle session (bypass RLS — étudiant crée sa propre session).
 func (r *SessionRepository) Create(ctx context.Context, etudiantID, epreuveID string, propositionMappings json.RawMessage) (*domain.SessionPassation, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // SESSION-RLS-FIX : poser les claims RLS pour activer SessionPassation_modify_etudiant.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return nil, fmt.Errorf("set claims: %w", err)
+        }
 
         id := uuid.NewString()
         now := time.Now()
@@ -191,11 +201,21 @@ func (r *SessionRepository) Create(ctx context.Context, etudiantID, epreuveID st
 
 // UpdateStatut met à jour le statut d'une session (bypass RLS).
 func (r *SessionRepository) UpdateStatut(ctx context.Context, id string, statut domain.StatutSession, score *float64, dateFin *time.Time) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // SESSION-RLS-FIX : poser les claims RLS.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         _, err = tx.Exec(ctx, `
                 UPDATE "SessionPassation" SET "statut" = $2, "score" = $3, "dateFin" = $4,
@@ -210,11 +230,21 @@ func (r *SessionRepository) UpdateStatut(ctx context.Context, id string, statut 
 
 // SaveReponse upsert une réponse (bypass RLS — étudiant sauvegarde ses réponses).
 func (r *SessionRepository) SaveReponse(ctx context.Context, sessionID, questionID, contenu string) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // SESSION-RLS-FIX : poser les claims RLS pour activer Reponse_modify_etudiant.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         var contenuVal any
         if contenu != "" {
@@ -270,11 +300,22 @@ func (r *SessionRepository) GetReponses(ctx context.Context, sessionID string) (
 
 // UpdateReponseScore met à jour le score d'une réponse (bypass RLS).
 func (r *SessionRepository) UpdateReponseScore(ctx context.Context, reponseID string, score float64) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // SESSION-RLS-FIX : poser les claims RLS. UpdateReponseScore est appelé
+        // par l'auto-grading (Submit) — l'étudiant a posé ses claims.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         _, err = tx.Exec(ctx, `UPDATE "Reponse" SET "score" = $2 WHERE "id" = $1`, reponseID, score)
         if err != nil {
@@ -286,11 +327,21 @@ func (r *SessionRepository) UpdateReponseScore(ctx context.Context, reponseID st
 
 // AddAlerte ajoute une alerte à la session (bypass RLS).
 func (r *SessionRepository) AddAlerte(ctx context.Context, sessionID string, penalite float64, alerte domain.AlerteInput) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // SESSION-RLS-FIX : poser les claims RLS.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         // Récupérer logEvents actuel + alertes + penalite
         var logEvents []byte
