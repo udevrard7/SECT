@@ -569,22 +569,31 @@ func (uc *MessagerieUseCase) DeleteMessage(ctx context.Context, claims db.Sessio
                 return &domain.ValidationError{Field: "messageId", Message: "messageId requis"}
         }
 
-        // Récupérer le message avant suppression pour connaître conversationID.
-        msg, err := uc.messagerieRepo.GetMessageByID(ctx, messageID)
-        if err != nil {
-                return err
-        }
+        // BUGFIX (MESSAGERIE-MODERATION-GETMESSAGEBYID) : GetMessageByID utilise
+        // RLS Message_select → Conversation_select. Depuis la migration 000044, le
+        // responsable ne voit plus les salons CLASSE/PROMO → GetMessageByID échoue
+        // pour les messages de ces salons → le soft-delete n'était jamais exécuté.
+        //
+        // Fix : on fait d'abord le soft-delete (SoftDeleteMessage fait un UPDATE
+        // direct, la policy Message_update autorise le responsable pour tout son
+        // étab). Si le soft-delete réussit, on récupère le conversationID via une
+        // lecture bypass RLS (GetMessageConversationID) pour le broadcast.
+        // Si le soft-delete échoue (NotFound), on essaie quand même de récupérer
+        // le message pour retourner une erreur appropriée.
 
+        // 1. Soft-delete d'abord (UPDATE, policy Message_update — pas Message_select).
         if err := uc.messagerieRepo.SoftDeleteMessage(ctx, messageID, claims.UserID); err != nil {
+                // Si NotFound, c'est que le message n'existe pas ou est déjà supprimé.
                 return err
         }
 
-        // Broadcaster l'event "message_deleted".
-        if uc.hub != nil {
-                ids := uc.participantIDs(ctx, msg.ConversationID)
+        // 2. Récupérer le conversationID pour le broadcast (best-effort, bypass RLS).
+        conversationID, _ := uc.messagerieRepo.GetMessageConversationID(ctx, messageID)
+        if conversationID != "" && uc.hub != nil {
+                ids := uc.participantIDs(ctx, conversationID)
                 uc.hub.BroadcastEvent(ids, "message_deleted", map[string]string{
                         "messageId":      messageID,
-                        "conversationId": msg.ConversationID,
+                        "conversationId": conversationID,
                 })
         }
         return nil

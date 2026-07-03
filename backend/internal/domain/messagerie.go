@@ -342,6 +342,12 @@ type MessagerieRepository interface {
         // GetByID retourne un message par son ID.
         GetMessageByID(ctx context.Context, id string) (*Message, error)
 
+        // GetMessageConversationID retourne uniquement le conversationId d'un message
+        // (bypass RLS — lecture légère pour le broadcast après soft-delete modérateur).
+        // Utilisé par DeleteMessage quand le modérateur n'a pas accès à la conversation
+        // (ex: responsable modérant un salon CLASSE/PROMO qu'il ne voit pas).
+        GetMessageConversationID(ctx context.Context, messageID string) (string, error)
+
         // ─── Pièces jointes ───
         CreateAttachment(ctx context.Context, att *MessageAttachment) (*MessageAttachment, error)
         ListAttachmentsByMessage(ctx context.Context, messageID string) ([]*MessageAttachment, error)

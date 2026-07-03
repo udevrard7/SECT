@@ -1124,6 +1124,28 @@ func (r *MessagerieRepository) GetMessageByID(ctx context.Context, id string) (*
         return msg, nil
 }
 
+// GetMessageConversationID retourne uniquement le conversationId d'un message.
+// Bypass RLS (pas de db.WithTx, pas de claims posés) — utilisé par DeleteMessage
+// pour le broadcast après soft-delete modérateur, quand le modérateur n'a pas
+// accès à la conversation (ex: responsable modérant un salon CLASSE/PROMO).
+//
+// Sécurité : cette méthode ne retourne que le conversationId (pas le contenu),
+// et est appelée uniquement après un soft-delete réussi (le modérateur a déjà
+// été autorisé par la policy Message_update).
+func (r *MessagerieRepository) GetMessageConversationID(ctx context.Context, messageID string) (string, error) {
+        var conversationID string
+        err := r.pool.QueryRow(ctx, `
+                SELECT "conversationId" FROM "Message" WHERE "id" = $1
+        `, messageID).Scan(&conversationID)
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return "", &domain.NotFoundError{Entity: "Message", ID: messageID}
+                }
+                return "", fmt.Errorf("get message conversation id: %w", err)
+        }
+        return conversationID, nil
+}
+
 // ============================================================
 // PIÈCES JOINTES
 // ============================================================
