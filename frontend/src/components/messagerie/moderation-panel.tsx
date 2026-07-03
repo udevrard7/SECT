@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   useListSignalements,
   useResolveSignalement,
@@ -96,6 +97,7 @@ const FILTER_TABS: { key: FilterStatut; label: string }[] = [
 ]
 
 export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<FilterStatut>('OUVERT')
 
   const statutParam = filter === 'ALL' ? null : filter
@@ -139,6 +141,9 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
         toast.success('Message masqué', {
           description: 'Le message a été soft-deleté. Les utilisateurs verront "Message supprimé".',
         })
+        // Invalider les messages de toutes les conversations (le message est
+        // soft-deleté globalement, pas seulement pour l'utilisateur courant).
+        queryClient.invalidateQueries({ queryKey: ['messagerie'] })
       } catch (err) {
         toast.error('Erreur', {
           description: err instanceof Error ? err.message : 'Impossible de masquer le message.',

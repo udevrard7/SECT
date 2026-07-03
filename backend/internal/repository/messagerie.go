@@ -1016,6 +1016,26 @@ func (r *MessagerieRepository) SoftDeleteMessage(ctx context.Context, messageID,
                         return fmt.Errorf("soft delete message: %w", err)
                 }
                 if ct.RowsAffected() == 0 {
+                        // BUGFIX (MESSAGERIE-MODERATION-IDEMPOTENT) : 0 ligne affectée peut
+                        // signifier (a) le message n'existe pas, ou (b) il est déjà soft-deleté.
+                        // Avant ce fix, on retournait NotFoundError dans les 2 cas → le
+                        // panneau de modération affichait "Message introuvable" quand on
+                        // cliquait "Masquer" sur un message déjà supprimé.
+                        //
+                        // Fix : vérifier si le message existe et est déjà supprimé. Si oui,
+                        // retourner nil (idempotent — le message est déjà dans l'état voulu).
+                        // Si le message n'existe vraiment pas, retourner NotFoundError.
+                        var alreadyDeleted bool
+                        err := tx.QueryRow(ctx, `
+                                SELECT EXISTS(SELECT 1 FROM "Message" WHERE "id" = $1 AND "deletedAt" IS NOT NULL)
+                        `, messageID).Scan(&alreadyDeleted)
+                        if err != nil {
+                                return fmt.Errorf("check already deleted: %w", err)
+                        }
+                        if alreadyDeleted {
+                                // Idempotent : le message est déjà soft-deleté, pas d'erreur.
+                                return nil
+                        }
                         return &domain.NotFoundError{Entity: "Message", ID: messageID}
                 }
                 return nil
