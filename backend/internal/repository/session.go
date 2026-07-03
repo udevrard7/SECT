@@ -426,11 +426,21 @@ func (r *ResultatRepository) FindBySessionID(ctx context.Context, sessionID stri
 
 // Upsert crée ou met à jour un résultat (bypass RLS).
 func (r *ResultatRepository) Upsert(ctx context.Context, res *domain.Resultat) (*domain.Resultat, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // SESSION-RLS-FIX : poser les claims RLS pour activer Resultat_modify_etudiant.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return nil, fmt.Errorf("set claims: %w", err)
+        }
 
         var detail any
         if len(res.DetailParQuestion) > 0 && string(res.DetailParQuestion) != "null" {
