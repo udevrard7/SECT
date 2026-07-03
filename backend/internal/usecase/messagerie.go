@@ -645,6 +645,40 @@ func (uc *MessagerieUseCase) ListParticipantsWithUsers(ctx context.Context, clai
 }
 
 // ============================================================
+// GESTION CONVERSATION (supprimer / vider / batch)
+// ============================================================
+
+// LeaveConversation fait quitter une conversation à l'utilisateur. La
+// conversation n'est plus visible dans sa liste. Pour un DM, équivaut à
+// "supprimer la conversation pour moi". Les messages ne sont pas supprimés
+// (l'autre participant les voit toujours).
+func (uc *MessagerieUseCase) LeaveConversation(ctx context.Context, claims db.SessionClaims, conversationID string) error {
+        if conversationID == "" {
+                return &domain.ValidationError{Field: "conversationId", Message: "conversationId requis"}
+        }
+        return uc.messagerieRepo.LeaveConversation(ctx, conversationID, claims.UserID)
+}
+
+// HideMessages masque une liste de messages pour l'utilisateur courant (per-user).
+// N'impacte pas les autres. Utilisé pour la sélection multiple + suppression "pour moi".
+func (uc *MessagerieUseCase) HideMessages(ctx context.Context, claims db.SessionClaims, messageIDs []string) error {
+        if len(messageIDs) == 0 {
+                return &domain.ValidationError{Field: "messageIds", Message: "messageIds requis (au moins 1)"}
+        }
+        return uc.messagerieRepo.HideMessagesForUser(ctx, messageIDs, claims.UserID)
+}
+
+// ClearConversation masque TOUS les messages d'une conversation pour l'utilisateur
+// courant (per-user). Équivaut à "vider la conversation pour moi". Retourne le
+// nombre de messages masqués.
+func (uc *MessagerieUseCase) ClearConversation(ctx context.Context, claims db.SessionClaims, conversationID string) (int, error) {
+        if conversationID == "" {
+                return 0, &domain.ValidationError{Field: "conversationId", Message: "conversationId requis"}
+        }
+        return uc.messagerieRepo.ClearConversationForUser(ctx, conversationID, claims.UserID)
+}
+
+// ============================================================
 // SIGNALEMENTS
 // ============================================================
 

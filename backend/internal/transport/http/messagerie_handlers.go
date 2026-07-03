@@ -307,6 +307,84 @@ func (s *Server) presence(w http.ResponseWriter, r *http.Request) {
 }
 
 // ============================================================
+// GESTION CONVERSATION (supprimer / vider / batch)
+// ============================================================
+
+// leaveConversation — DELETE /api/messagerie/conversations/{id}
+// Fait quitter la conversation à l'utilisateur (soft-delete participant).
+// Pour un DM, équivaut à "supprimer la conversation pour moi".
+func (s *Server) leaveConversation(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        conversationID := chi.URLParam(r, "id")
+        if err := s.messagerieUC.LeaveConversation(r.Context(), claims, conversationID); err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode(map[string]string{"message": "conversation quittée"})
+}
+
+// clearConversation — POST /api/messagerie/conversations/{id}/clear
+// Masque TOUS les messages de la conversation pour l'utilisateur (per-user).
+// Équivaut à "vider la conversation pour moi".
+func (s *Server) clearConversation(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        conversationID := chi.URLParam(r, "id")
+        count, err := s.messagerieUC.ClearConversation(r.Context(), claims, conversationID)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "message":       "conversation vidée pour vous",
+                "hiddenCount":   count,
+                "conversationId": conversationID,
+        })
+}
+
+// hideMessages — POST /api/messagerie/messages/hide
+// Masque une liste de messages pour l'utilisateur (per-user, sélection multiple).
+// Body: { "messageIds": ["id1", "id2", ...] }
+func (s *Server) hideMessages(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        var input struct {
+                MessageIDs []string `json:"messageIds"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+        if len(input.MessageIDs) == 0 {
+                writeJSONError(w, http.StatusBadRequest, "messageIds requis (au moins 1)")
+                return
+        }
+        if err := s.messagerieUC.HideMessages(r.Context(), claims, input.MessageIDs); err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "message":   "messages masqués pour vous",
+                "count":     len(input.MessageIDs),
+                "messageIds": input.MessageIDs,
+        })
+}
+
+// ============================================================
 // SIGNALEMENTS
 // ============================================================
 
