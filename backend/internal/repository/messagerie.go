@@ -1356,6 +1356,11 @@ func (r *MessagerieRepository) ListSignalements(ctx context.Context, etablisseme
                         where += fmt.Sprintf(` AND s."statut" = $%d`, len(args)+1)
                         args = append(args, string(*statut))
                 }
+                // MESSAGERIE-MODERATION-AUTO : exclure les signalements OUVERT/EN_COURS
+                // dont le message a déjà été soft-deleté (modéré). Ces signalements sont
+                // obsolètes — le message est déjà masqué. Les RESOLU/REJETE restent pour
+                // l'historique.
+                where += ` AND NOT (s."statut" IN ('OUVERT', 'EN_COURS') AND m."deletedAt" IS NOT NULL)`
                 query := fmt.Sprintf(`
                         SELECT s."id", s."messageId", s."userId", s."raison"::text, s."commentaire",
                                s."statut"::text, s."resolvedAt", s."resolvedBy", s."createdAt"

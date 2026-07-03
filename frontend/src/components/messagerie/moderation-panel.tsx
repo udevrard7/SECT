@@ -124,7 +124,7 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
   )
 
   const handleDeleteMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, signalementId?: string) => {
       if (!confirm('Masquer ce message pour tous les utilisateurs ? (soft-delete)')) {
         return
       }
@@ -138,11 +138,24 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
           const err = await res.json().catch(() => ({}))
           throw new Error(err?.error || `Erreur ${res.status}`)
         }
+        // MESSAGERIE-MODERATION-AUTO : résoudre automatiquement le signalement
+        // associé (statut RESOLU) pour le retirer de la liste "Ouverts".
+        if (signalementId) {
+          try {
+            await resolveSignalement.mutateAsync({
+              signalementId,
+              statut: 'RESOLU',
+            })
+          } catch {
+            // Best-effort : si la résolution échoue, le message est quand même
+            // soft-deleté. Le signalement sera filtré côté backend (ListSignalements
+            // exclut les OUVERT/EN_COURS dont le message est deletedAt IS NOT NULL).
+          }
+        }
         toast.success('Message masqué', {
-          description: 'Le message a été soft-deleté. Les utilisateurs verront "Message supprimé".',
+          description: 'Le message a été soft-deleté et le signalement résolu.',
         })
-        // Invalider les messages de toutes les conversations (le message est
-        // soft-deleté globalement, pas seulement pour l'utilisateur courant).
+        // Invalider toutes les queries messagerie (messages + signalements).
         queryClient.invalidateQueries({ queryKey: ['messagerie'] })
       } catch (err) {
         toast.error('Erreur', {
@@ -152,7 +165,7 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
         setDeletingId(null)
       }
     },
-    []
+    [queryClient, resolveSignalement]
   )
 
   return (
@@ -287,7 +300,7 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleDeleteMessage(s.messageId)}
+                        onClick={() => handleDeleteMessage(s.messageId, s.id)}
                         disabled={deletingId === s.messageId}
                         className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/10"
                       >
