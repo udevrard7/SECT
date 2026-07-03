@@ -257,11 +257,24 @@ func NewCorrectionRepository(pool *pgxpool.Pool) *CorrectionRepository {
 // P1-CORRECTION : enrichi avec Reponses, Resultat, Epreuve.questions, et champs calculés
 // (alertes, needsCorrectionCount, allCorrected, autoGradedScore, autoGradedTotal).
 func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.CorrectionListParams) ([]*domain.CorrectionSession, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // CORRECTION-RLS-FIX : poser les claims RLS pour activer SessionPassation_select,
+        // Epreuve_select, User_select (l'enseignant voit ses épreuves + les étudiants
+        // qui y ont participé). Sans cela, en production (Render sans BYPASSRLS), la
+        // query retourne 0 session → /api/correction vide → enseignant ne peut corriger.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return nil, fmt.Errorf("set claims: %w", err)
+        }
 
         var where []string
         var args []any
@@ -440,11 +453,21 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
 
 // UpdateReponse met à jour le score et commentaire d'une réponse (bypass RLS).
 func (r *CorrectionRepository) UpdateReponse(ctx context.Context, reponseID string, input domain.UpdateReponseInput) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // CORRECTION-RLS-FIX : poser les claims RLS pour activer Reponse_modify_enseignant.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         var setClauses []string
         var args []any
@@ -485,11 +508,21 @@ func (r *CorrectionRepository) UpdateReponse(ctx context.Context, reponseID stri
 
 // RetournerSession marque une session comme RETOURNEE (bypass RLS).
 func (r *CorrectionRepository) RetournerSession(ctx context.Context, sessionID string) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // CORRECTION-RLS-FIX : poser les claims RLS.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
 
         tag, err := tx.Exec(ctx, `
                 UPDATE "SessionPassation" SET "statut" = 'RETOURNEE', "updatedAt" = CURRENT_TIMESTAMP
@@ -518,11 +551,21 @@ func (r *CorrectionRepository) RetournerBatch(ctx context.Context, sessionIDs []
                 return 0, nil
         }
 
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return 0, fmt.Errorf("no RLS claims in context")
+        }
+
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return 0, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // CORRECTION-RLS-FIX : poser les claims RLS.
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return 0, fmt.Errorf("set claims: %w", err)
+        }
 
         placeholders := make([]string, len(sessionIDs))
         args := make([]any, len(sessionIDs))
