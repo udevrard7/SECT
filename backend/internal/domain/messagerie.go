@@ -225,8 +225,13 @@ type MarkAsReadInput struct {
 // HasAssistantMention détecte si un message mentionne @assistant.
 // Utilisé par le usecase pour déclencher l'IA dans un salon collectif.
 func HasAssistantMention(contenu string) bool {
-        // Recherche case-insensitive de "@assistant" (mot entier)
-        // Simple implémentation ; le frontend fera la coloration syntaxique.
+        // Recherche case-insensitive de "@assistant" (mot entier).
+        // BUGFIX (MESSAGERIE-GROUP-IA) : avant, le code utilisait i+11 au lieu de
+        // i+10 (len("@assistant") == 10), donc la comparaison contenait 1 caractère
+        // de trop et ne matchait JAMAIS → l'IA en salon collectif n'était jamais
+        // déclenchée. Corrigé : on utilise la constante len("@assistant") = 10.
+        const mention = "@assistant"
+        const mlen = len(mention) // 10
         contenuLower := ""
         for _, r := range contenu {
                 if r >= 'A' && r <= 'Z' {
@@ -235,13 +240,13 @@ func HasAssistantMention(contenu string) bool {
                         contenuLower += string(r)
                 }
         }
-        for i := 0; i+11 <= len(contenuLower); i++ {
-                if contenuLower[i:i+11] == "@assistant" {
-                        // Vérifier que ce n'est pas un préfixe (ex: @assistante)
-                        if i+11 == len(contenuLower) {
+        for i := 0; i+mlen <= len(contenuLower); i++ {
+                if contenuLower[i:i+mlen] == mention {
+                        // Vérifier que ce n'est pas un préfixe (ex: @assistante).
+                        if i+mlen == len(contenuLower) {
                                 return true
                         }
-                        next := contenuLower[i+11]
+                        next := contenuLower[i+mlen]
                         if next == ' ' || next == '\t' || next == '\n' || next == ',' ||
                                 next == '.' || next == '!' || next == '?' || next == ':' || next == ';' {
                                 return true
