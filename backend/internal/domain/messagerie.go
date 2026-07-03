@@ -294,6 +294,11 @@ type MessagerieRepository interface {
         // (lazy registration pour les salons auto). Retourne le participant.
         EnsureParticipant(ctx context.Context, conversationID, userID string) (*ConversationParticipant, error)
 
+        // LeaveConversation fait quitter une conversation à l'utilisateur (soft-delete
+        // du participant via leftAt). La conversation n'est plus visible dans sa liste.
+        // Pour un DM, équivaut à "supprimer la conversation pour moi".
+        LeaveConversation(ctx context.Context, conversationID, userID string) error
+
         // MarkAsRead met à jour lastReadAt pour un participant.
         MarkAsRead(ctx context.Context, conversationID, userID string, lastReadAt time.Time) error
 
@@ -321,6 +326,18 @@ type MessagerieRepository interface {
 
         // SoftDelete masque un message (auteur ou modérateur).
         SoftDeleteMessage(ctx context.Context, messageID, userID string) error
+
+        // HideMessagesForUser masque une liste de messages pour un utilisateur
+        // (per-user, n'impacte pas les autres). Utilisé pour :
+        //   - Sélection multiple + suppression ("pour moi")
+        //   - Vider une conversation ("pour moi")
+        // Idempotent (ON CONFLICT DO NOTHING).
+        HideMessagesForUser(ctx context.Context, messageIDs []string, userID string) error
+
+        // ClearConversationForUser masque TOUS les messages d'une conversation pour
+        // un utilisateur (per-user). Équivaut à "vider la conversation pour moi".
+        // Retourne le nombre de messages masqués.
+        ClearConversationForUser(ctx context.Context, conversationID, userID string) (int, error)
 
         // GetByID retourne un message par son ID.
         GetMessageByID(ctx context.Context, id string) (*Message, error)

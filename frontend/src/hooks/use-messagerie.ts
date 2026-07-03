@@ -370,6 +370,77 @@ export function useDeleteMessage(conversationId: string) {
   })
 }
 
+// ─── 8a. useLeaveConversation (supprimer conversation pour moi) ───
+
+/**
+ * Quitte/supprime une conversation pour l'utilisateur courant
+ * (DELETE /api/messagerie/conversations/{id}). La conversation disparaît de
+ * la liste. Pour un DM, équivaut à "supprimer". Pour un salon collectif,
+ * équivaut à "quitter le salon" (re-créable via EnsureAutoConversations).
+ * Invalide la liste des conversations.
+ */
+export function useLeaveConversation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) =>
+      fetchJSON<void>(`/api/messagerie/conversations/${conversationId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.conversations(),
+      })
+    },
+  })
+}
+
+// ─── 8b. useClearConversation (vider conversation pour moi) ───
+
+/**
+ * Masque TOUS les messages d'une conversation pour l'utilisateur courant
+ * (POST /api/messagerie/conversations/{id}/clear). Per-user : les autres
+ * participants voient toujours les messages. Invalide les messages.
+ */
+export function useClearConversation(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      fetchJSON<{ hiddenCount: number }>(
+        `/api/messagerie/conversations/${conversationId}/clear`,
+        { method: 'POST' }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+    },
+  })
+}
+
+// ─── 8c. useHideMessages (sélection multiple + masquer pour moi) ───
+
+/**
+ * Masque une liste de messages pour l'utilisateur courant
+ * (POST /api/messagerie/messages/hide). Per-user : les autres voient toujours
+ * les messages. Invalide les messages de la conversation concernée.
+ */
+export function useHideMessages(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (messageIds: string[]) =>
+      fetchJSON<{ count: number }>(`/api/messagerie/messages/hide`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+    },
+  })
+}
+
 // ─── 9. useSignalMessage ───
 
 /**

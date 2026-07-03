@@ -418,10 +418,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/conversations/{id}/lu", s.markAsRead)
                         r.Patch("/conversations/{id}/mute", s.setMuted)
                         r.Get("/conversations/{id}/participants", s.listParticipants)
-                        // Messages (edit / delete / signaler)
+                        // Gestion conversation : quitter / vider
+                        r.Delete("/conversations/{id}", s.leaveConversation)
+                        r.Post("/conversations/{id}/clear", s.clearConversation)
+                        // Messages (edit / delete / signaler / hide batch)
                         r.Patch("/messages/{id}", s.editMessage)
                         r.Delete("/messages/{id}", s.deleteMessage)
                         r.Post("/messages/{id}/signaler", s.signalMessage)
+                        r.Post("/messages/hide", s.hideMessages)
                         // SSE stream temps réel
                         r.Get("/stream", s.messagerieStream)
                         // Presence : liste des userIDs en ligne (polling 10-15s côté frontend)

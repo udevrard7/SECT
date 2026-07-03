@@ -567,6 +567,36 @@ func (r *MessagerieRepository) EnsureParticipant(ctx context.Context, conversati
         return part, nil
 }
 
+// LeaveConversation fait quitter une conversation à l'utilisateur (soft-delete
+// du participant via leftAt). La conversation n'est plus visible dans sa liste.
+// Pour un DM, équivaut à "supprimer la conversation pour moi".
+// Idempotent : si déjà quittée, ne fait rien.
+func (r *MessagerieRepository) LeaveConversation(ctx context.Context, conversationID, userID string) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return fmt.Errorf("LeaveConversation: claims manquants dans le context")
+        }
+        if claims.UserID != userID {
+                return fmt.Errorf("LeaveConversation: userID != claims.UserID (anti-spoofing)")
+        }
+
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                ct, err := tx.Exec(ctx, `
+                        UPDATE "ConversationParticipant"
+                        SET "leftAt" = CURRENT_TIMESTAMP
+                        WHERE "conversationId" = $1 AND "userId" = $2 AND "leftAt" IS NULL
+                `, conversationID, userID)
+                if err != nil {
+                        return fmt.Errorf("leave conversation: %w", err)
+                }
+                if ct.RowsAffected() == 0 {
+                        // Déjà quittée ou jamais inscrite → idempotent (pas d'erreur).
+                        return nil
+                }
+                return nil
+        })
+}
+
 // MarkAsRead met à jour lastReadAt pour un participant.
 // RLS : la policy Participant_update exige userId = current_user_id().
 func (r *MessagerieRepository) MarkAsRead(ctx context.Context, conversationID, userID string, lastReadAt time.Time) error {
@@ -764,7 +794,12 @@ func (r *MessagerieRepository) ListMessages(ctx context.Context, conversationID 
         result := &domain.MessageListResult{Messages: []domain.Message{}}
         err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
                 args := []any{conversationID}
-                where := `WHERE m."conversationId" = $1 AND m."deletedAt" IS NULL`
+                // Exclure les messages masqués par l'utilisateur (MessageHiddenByUser).
+                // current_setting('app.claims.user_id') est posé par SetClaimsTx.
+                where := `WHERE m."conversationId" = $1 AND m."deletedAt" IS NULL
+                          AND NOT EXISTS (SELECT 1 FROM "MessageHiddenByUser" h
+                                          WHERE h."messageId" = m."id"
+                                            AND h."userId" = current_setting('app.claims.user_id', true))`
                 if cursorTime != nil && cursorID != nil {
                         // Page suivante : messages strictement plus anciens que le cursor
                         // (ou créés au même instant mais avec un id inférieur pour
@@ -985,6 +1020,83 @@ func (r *MessagerieRepository) SoftDeleteMessage(ctx context.Context, messageID,
                 }
                 return nil
         })
+}
+
+// HideMessagesForUser masque une liste de messages pour un utilisateur (per-user).
+// N'impacte pas les autres utilisateurs. Idempotent (ON CONFLICT DO NOTHING).
+// Utilisé pour la sélection multiple + suppression "pour moi".
+func (r *MessagerieRepository) HideMessagesForUser(ctx context.Context, messageIDs []string, userID string) error {
+        if len(messageIDs) == 0 {
+                return nil
+        }
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return fmt.Errorf("HideMessagesForUser: claims manquants dans le context")
+        }
+        if claims.UserID != userID {
+                return fmt.Errorf("HideMessagesForUser: userID != claims.UserID (anti-spoofing)")
+        }
+
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Construction dynamique des placeholders ($1, $2, ... pour les messageIDs).
+                // Le userID est en dernier paramètre.
+                placeholders := make([]string, len(messageIDs))
+                args := make([]any, 0, len(messageIDs)+1)
+                for i, id := range messageIDs {
+                        placeholders[i] = fmt.Sprintf("$%d", i+1)
+                        args = append(args, id)
+                }
+                args = append(args, userID)
+
+                query := fmt.Sprintf(`
+                        INSERT INTO "MessageHiddenByUser" ("messageId", "userId", "hiddenAt")
+                        SELECT msg, $%d, CURRENT_TIMESTAMP
+                        FROM UNNEST(ARRAY[%s]::text[]) AS msg
+                        ON CONFLICT ("messageId", "userId") DO NOTHING
+                `, len(messageIDs)+1, strings.Join(placeholders, ", "))
+
+                if _, err := tx.Exec(ctx, query, args...); err != nil {
+                        return fmt.Errorf("hide messages for user: %w", err)
+                }
+                return nil
+        })
+}
+
+// ClearConversationForUser masque TOUS les messages d'une conversation pour
+// un utilisateur (per-user). Équivaut à "vider la conversation pour moi".
+// Retourne le nombre de messages masqués.
+func (r *MessagerieRepository) ClearConversationForUser(ctx context.Context, conversationID, userID string) (int, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return 0, fmt.Errorf("ClearConversationForUser: claims manquants dans le context")
+        }
+        if claims.UserID != userID {
+                return 0, fmt.Errorf("ClearConversationForUser: userID != claims.UserID (anti-spoofing)")
+        }
+
+        var count int
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Insérer dans MessageHiddenByUser tous les messages de la conversation
+                // qui ne sont pas déjà masqués par cet utilisateur (ON CONFLICT DO NOTHING).
+                ct, err := tx.Exec(ctx, `
+                        INSERT INTO "MessageHiddenByUser" ("messageId", "userId", "hiddenAt")
+                        SELECT m."id", $2, CURRENT_TIMESTAMP
+                        FROM "Message" m
+                        WHERE m."conversationId" = $1
+                          AND m."deletedAt" IS NULL
+                          AND NOT EXISTS (
+                                SELECT 1 FROM "MessageHiddenByUser" h
+                                WHERE h."messageId" = m."id" AND h."userId" = $2
+                          )
+                        ON CONFLICT ("messageId", "userId") DO NOTHING
+                `, conversationID, userID)
+                if err != nil {
+                        return fmt.Errorf("clear conversation for user: %w", err)
+                }
+                count = int(ct.RowsAffected())
+                return nil
+        })
+        return count, err
 }
 
 // GetMessageByID retourne un message par son ID. RLS filtre automatiquement
@@ -1338,29 +1450,29 @@ func (r *MessagerieRepository) CanStudentDMEnseignant(ctx context.Context, etudi
 // DM étudiant ↔ étudiant au sein d'un même établissement (même filière ou non,
 // même niveau ou non — tout étudiant du même étab).
 func (r *MessagerieRepository) IsUserStudentInSameEtablissement(ctx context.Context, targetUserID, etablissementID string) (bool, error) {
-	claims, ok := db.ClaimsFromContext(ctx)
-	if !ok || claims.UserID == "" {
-		return false, fmt.Errorf("IsUserStudentInSameEtablissement: claims manquants dans le context")
-	}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return false, fmt.Errorf("IsUserStudentInSameEtablissement: claims manquants dans le context")
+        }
 
-	var isStudent bool
-	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `
-			SELECT EXISTS(
-				SELECT 1 FROM "User" u
-				WHERE u."id" = $1
-				  AND u."role" = 'ETUDIANT'
-				  AND u."etablissementId" = $2
-				  AND u."actif" = true
-			)
-		`, targetUserID, etablissementID).Scan(&isStudent)
-		if err != nil {
-			return fmt.Errorf("query IsUserStudentInSameEtablissement: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	return isStudent, nil
+        var isStudent bool
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                err := tx.QueryRow(ctx, `
+                        SELECT EXISTS(
+                                SELECT 1 FROM "User" u
+                                WHERE u."id" = $1
+                                  AND u."role" = 'ETUDIANT'
+                                  AND u."etablissementId" = $2
+                                  AND u."actif" = true
+                        )
+                `, targetUserID, etablissementID).Scan(&isStudent)
+                if err != nil {
+                        return fmt.Errorf("query IsUserStudentInSameEtablissement: %w", err)
+                }
+                return nil
+        })
+        if err != nil {
+                return false, err
+        }
+        return isStudent, nil
 }

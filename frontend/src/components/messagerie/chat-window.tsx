@@ -44,7 +44,12 @@ import {
   AlertCircle,
   Loader2,
   ChevronUp,
+  CheckSquare,
+  Trash2,
+  X,
+  Eraser,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -59,6 +64,8 @@ import {
   useEditMessage,
   useDeleteMessage,
   useSignalMessage,
+  useHideMessages,
+  useClearConversation,
 } from '@/hooks/use-messagerie'
 import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
@@ -112,6 +119,8 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   const user = useAuthStore((s) => s.user)
   const currentUserId = user?.id ?? ''
   const [showParticipants, setShowParticipants] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set())
 
   const { data: conversations } = useConversations()
   const conversation = conversations?.find((c) => c.id === conversationId)
@@ -137,6 +146,8 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   const editMessage = useEditMessage(conversationId)
   const deleteMessage = useDeleteMessage(conversationId)
   const signalMessage = useSignalMessage()
+  const hideMessages = useHideMessages(conversationId)
+  const clearConversation = useClearConversation(conversationId)
 
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
@@ -281,6 +292,63 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
     setMuted.mutate({ conversationId, muted: !isMuted })
   }, [setMuted, conversationId, isMuted])
 
+  // ── Sélection multiple + suppression "pour moi" ──
+  const toggleSelectMode = useCallback(() => {
+    setSelectMode((v) => !v)
+    setSelectedMsgIds(new Set())
+  }, [])
+
+  const toggleSelectMessage = useCallback((msgId: string) => {
+    setSelectedMsgIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(msgId)) {
+        next.delete(msgId)
+      } else {
+        next.add(msgId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedMsgIds.size === 0) return
+    if (!confirm(`Masquer ${selectedMsgIds.size} message(s) pour vous ? Les autres participants les verront toujours.`)) {
+      return
+    }
+    hideMessages.mutate(Array.from(selectedMsgIds), {
+      onSuccess: () => {
+        toast.success('Messages masqués', {
+          description: `${selectedMsgIds.size} message(s) masqué(s) pour vous.`,
+        })
+        setSelectedMsgIds(new Set())
+        setSelectMode(false)
+      },
+      onError: (err) => {
+        toast.error('Erreur', {
+          description: err instanceof Error ? err.message : 'Impossible de masquer les messages.',
+        })
+      },
+    })
+  }, [selectedMsgIds, hideMessages])
+
+  const handleClearConversation = useCallback(() => {
+    if (!confirm('Vider toute la conversation pour vous ? Les autres participants verront toujours les messages.')) {
+      return
+    }
+    clearConversation.mutate(undefined, {
+      onSuccess: (data) => {
+        toast.success('Conversation vidée', {
+          description: `${data.hiddenCount} message(s) masqué(s) pour vous.`,
+        })
+      },
+      onError: (err) => {
+        toast.error('Erreur', {
+          description: err instanceof Error ? err.message : 'Impossible de vider la conversation.',
+        })
+      },
+    })
+  }, [clearConversation])
+
   // ── États de chargement / erreur ──
   if (isLoading) {
     return <ChatWindowSkeleton />
@@ -373,7 +441,63 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
             )}
           </Button>
         )}
+        {/* Bouton sélection multiple (masquer plusieurs messages pour moi) */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleSelectMode}
+          className={cn('h-8 w-8 shrink-0', selectMode && 'bg-accent')}
+          aria-label="Sélectionner des messages"
+          aria-pressed={selectMode}
+          title="Sélectionner des messages à masquer"
+        >
+          <CheckSquare className="h-4 w-4" />
+        </Button>
+        {/* Bouton vider conversation (tout masquer pour moi) */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleClearConversation}
+          disabled={clearConversation.isPending || messages.length === 0}
+          className="h-8 w-8 shrink-0"
+          aria-label="Vider la conversation pour moi"
+          title="Vider la conversation pour moi"
+        >
+          <Eraser className="h-4 w-4" />
+        </Button>
       </div>
+
+      {/* ── Barre d'action sélection multiple (visible si selectMode) ── */}
+      {selectMode && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-primary/20 bg-primary/5 px-3 py-1.5">
+          <span className="text-xs font-medium text-foreground">
+            {selectedMsgIds.size > 0
+              ? `${selectedMsgIds.size} message(s) sélectionné(s)`
+              : 'Sélectionnez les messages à masquer'}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleDeleteSelected}
+              disabled={selectedMsgIds.size === 0 || hideMessages.isPending}
+              className="h-7 text-xs"
+            >
+              <Trash2 className="h-3 w-3" />
+              Masquer ({selectedMsgIds.size})
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={toggleSelectMode}
+              className="h-7 text-xs"
+            >
+              <X className="h-3 w-3" />
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Zone messages : scrollable + infinite scroll ── */}
       <div
@@ -433,17 +557,40 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
           ) : (
             <AnimatePresence initial={false}>
               {messages.map((msg, i) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  currentUserId={currentUserId}
-                  currentUserRole={user?.role}
-                  onReply={handleReply}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onSignal={handleSignal}
-                  index={i}
-                />
+                <div key={msg.id} className="flex items-start gap-2">
+                  {selectMode && !msg.deletedAt && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectMessage(msg.id)}
+                      className={cn(
+                        'mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors',
+                        selectedMsgIds.has(msg.id)
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-background hover:border-primary/50'
+                      )}
+                      aria-label={selectedMsgIds.has(msg.id) ? 'Désélectionner' : 'Sélectionner ce message'}
+                      aria-pressed={selectedMsgIds.has(msg.id)}
+                    >
+                      {selectedMsgIds.has(msg.id) && (
+                        <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <MessageBubble
+                      message={msg}
+                      currentUserId={currentUserId}
+                      currentUserRole={user?.role}
+                      onReply={selectMode ? undefined : handleReply}
+                      onEdit={selectMode ? undefined : handleEdit}
+                      onDelete={selectMode ? undefined : handleDelete}
+                      onSignal={selectMode ? undefined : handleSignal}
+                      index={i}
+                    />
+                  </div>
+                </div>
               ))}
             </AnimatePresence>
           )}

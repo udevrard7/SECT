@@ -24,15 +24,30 @@ import {
   Shield,
   UserCircle,
   MessageCircle,
+  MoreVertical,
+  Trash2,
+  LogOut,
 } from 'lucide-react'
 import { format, isToday, isYesterday } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ds'
-import { useConversations, useGetOrCreateIAPrivate } from '@/hooks/use-messagerie'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  useConversations,
+  useGetOrCreateIAPrivate,
+  useLeaveConversation,
+} from '@/hooks/use-messagerie'
 import { ConversationListSkeleton } from './messagerie-skeletons'
 import type { ConversationType, ConversationWithMeta } from '@/types/messagerie'
+import { toast } from 'sonner'
 
 export interface ConversationListProps {
   /** ID de la conversation actuellement sélectionnée (highlight) */
@@ -108,22 +123,54 @@ function ConversationItem({
   const Icon = meta.icon
   const lastMsg = conversation.lastMessage
   const unread = conversation.unreadCount > 0
+  const [menuOpen, setMenuOpen] = useState(false)
+  const leaveMutation = useLeaveConversation()
+
+  const handleLeave = () => {
+    if (!confirm(
+      conversation.type === 'DIRECT'
+        ? 'Supprimer cette conversation pour vous ? L\u2019autre participant la conservera.'
+        : 'Quitter ce salon ? Vous pourrez le rejoindre à nouveau via la liste.'
+    )) {
+      setMenuOpen(false)
+      return
+    }
+    leaveMutation.mutate(conversation.id, {
+      onSuccess: () => {
+        toast.success(
+          conversation.type === 'DIRECT' ? 'Conversation supprimée' : 'Salon quitté',
+          { description: 'La conversation a été retirée de votre liste.' }
+        )
+      },
+      onError: (err) => {
+        toast.error('Erreur', {
+          description: err instanceof Error ? err.message : 'Impossible de supprimer la conversation.',
+        })
+      },
+    })
+    setMenuOpen(false)
+  }
 
   return (
-    <motion.button
-      type="button"
-      onClick={() => onSelect(conversation.id)}
-      whileHover={{ x: 2 }}
-      whileTap={{ scale: 0.98 }}
-      aria-current={isSelected ? 'true' : undefined}
-      aria-label={`${meta.label} ${conversation.titre ?? ''}, ${unread ? `${conversation.unreadCount} non lus` : 'à jour'}`}
+    <div
       className={cn(
-        'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
+        'group relative flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         isSelected
           ? 'bg-primary/10 ring-1 ring-inset ring-primary/20'
-          : 'hover:bg-muted/50'
+          : 'hover:bg-accent/50'
       )}
+      onClick={() => onSelect(conversation.id)}
+      role="button"
+      tabIndex={0}
+      aria-current={isSelected ? 'true' : undefined}
+      aria-label={`${meta.label} ${conversation.titre ?? ''}, ${unread ? `${conversation.unreadCount} non lus` : 'à jour'}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(conversation.id)
+        }
+      }}
     >
       {/* Icône / avatar */}
       <div
@@ -182,7 +229,41 @@ function ConversationItem({
           )}
         </div>
       </div>
-    </motion.button>
+
+      {/* Menu contextuel (supprimer / quitter) */}
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 top-1 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+            aria-label="Actions sur la conversation"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreVertical className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={handleLeave}
+            disabled={leaveMutation.isPending}
+          >
+            {conversation.type === 'DIRECT' ? (
+              <>
+                <Trash2 className="h-3.5 w-3.5" />
+                Supprimer pour moi
+              </>
+            ) : (
+              <>
+                <LogOut className="h-3.5 w-3.5" />
+                Quitter le salon
+              </>
+            )}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
 
