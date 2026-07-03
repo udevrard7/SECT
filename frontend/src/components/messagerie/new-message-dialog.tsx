@@ -96,7 +96,7 @@ export function NewMessageDialog({
   // Recherche d'utilisateurs via TanStack Query (évite les setState
   // synchrones dans useEffect → pas de cascading renders).
   const { data: results, isFetching } = useQuery<SearchUser[]>({
-    queryKey: ['new-message-search', debouncedSearch, user?.etablissementId],
+    queryKey: ['new-message-search', debouncedSearch, user?.etablissementId, user?.role],
     queryFn: async () => {
       if (!debouncedSearch || !user?.etablissementId) return []
       const params = new URLSearchParams({
@@ -110,9 +110,13 @@ export function NewMessageDialog({
       })
       if (!res.ok) throw new Error('Erreur recherche')
       const data = await res.json()
-      // Filtrer : exclure soi-même et les comptes inactifs.
+      // Filtrer : exclure soi-même, les comptes inactifs, et (pour les étudiants)
+      // les RESPONSABLE — l'étudiant ne peut pas DM un responsable (règle CreateDirect).
       return (data.users ?? []).filter(
-        (u: SearchUser) => u.id !== user.id && u.actif !== false
+        (u: SearchUser) =>
+          u.id !== user.id &&
+          u.actif !== false &&
+          !(user.role === 'ETUDIANT' && u.role === 'RESPONSABLE')
       )
     },
     enabled: open && !!debouncedSearch && !!user?.etablissementId,
