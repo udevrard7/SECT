@@ -10522,3 +10522,31 @@ Stage Summary:
 - **0 régression** : les workers chat ne risquent plus de récupérer un provider tts, le failover ne bascule qu'entre providers chat.
 - **Déploiement** : push GitHub effectué (eb57358) → Render (backend) + Vercel (frontend) déploient automatiquement.
 - **DB inchangée** : aucun risque pour les 60 tables / 136 policies RLS existantes.
+
+---
+Task ID: SECT-DASHBOARD-NEW-STUDENT
+Agent: Z.ai Code (tuteur/assistant)
+Task: Bug — le tableau de bord d'un nouvel étudiant ne charge pas (mais OK pour les anciens)
+
+Diagnostic (Agent Browser + DB Neon + VLM) :
+- Test étudiant 1 (INF/LJ/25/008, ASSANI Emile Junior, ancien) : dashboard complet (KPIs, 9 badges, 4 résultats, graphiques). 0 erreur.
+- Test étudiant 2 (INF/LJ/26/001, Genie Tech, nouveau) : dashboard quasi vide — seulement "Bienvenue sur SECT !" + "Voir mes épreuves" (EmptyDashboard).
+- API /api/stats/etudiant retourne 200 avec données vides valides pour étudiant 2 (0 épreuves, 0 résultats) — pas d'erreur réseau.
+- DB : les 2 étudiants sont dans la MÊME filière (INFORMATIQUE) + MÊME niveau (L2). Les 4 épreuves de la filière sont toutes CLOTUREE (juin 2026). Étudiant 1 = 4 sessions/4 résultats ; étudiant 2 = 0/0.
+- Cause racine : le composant EtudiantDashboard affichait EmptyDashboard (page quasi vide) quand hasNoActivity était vrai. Le contraste avec le dashboard riche des anciens étudiants faisait percevoir la page comme "ne charge pas".
+
+Work Log :
+- Fix frontend (etudiant-dashboard.tsx, +35/-3 lignes) :
+  1. Retrait du early-return `if (hasNoActivity) return <EmptyDashboard />`.
+  2. Le dashboard complet rend désormais pour TOUS les étudiants : KPIs à 0, BadgesCarousel avec badges verrouillés (motivants), graphiques avec "Pas encore de données", timeline "Aucune épreuve planifiée", results "Aucun résultat".
+  3. Ajout d'une bannière d'onboarding (hasNoActivity) en haut avec CTA "Voir mes épreuves" — guide le nouvel étudiant sans remplacer tout le dashboard.
+  4. Le `!data → EmptyDashboard` reste un filet de sécurité (cas où l'API ne retournerait rien).
+- Validation Agent Browser (étudiant 2, session fresh post-déploiement) : dashboard complet rendu — bannière onboarding + 4 KPIs + Mon Objectif + carousel 11 badges + timeline + résultats + 2 graphiques. 0 erreur console, 0 page error.
+- Validation VLM (capture étudiant 2) : 9 sections rendues correctement, aucun spinner bloqué, aucune zone cassée.
+- Commit + push (e233b46) → déploiement Vercel automatique.
+
+Stage Summary:
+- **Bug résolu** : le tableau de bord des nouveaux étudiants affiche désormais le dashboard complet structuré (comme les anciens) au lieu d'une page quasi vide.
+- **UX améliorée** : bannière d'onboarding + badges verrouillés visibles (motivation) + sections vides clairement labellisées.
+- **0 régression** : les anciens étudiants (hasNoActivity=false) ne voient aucun changement, la bannière ne s'affiche pas pour eux.
+- **Déploiement** : push GitHub (e233b46) → Vercel a déployé → validé en production avec Agent Browser + VLM.
