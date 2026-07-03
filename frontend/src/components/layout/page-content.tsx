@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
+import { getEffectiveRole } from '@/lib/routes'
 import { QueryErrorBoundary } from '@/components/layout/query-error-boundary'
 
 // ─── Dashboard imports ───
@@ -142,9 +143,15 @@ export function PageContent({ pageId }: { pageId: PageId }) {
 
   if (!user) return null
 
-  // Dashboard: render role-specific component
+  // Dashboard: render role-specific component.
+  // ACCESS-ASSISTANCE-FIX : utiliser getEffectiveRole pour qu'un ADMIN en mode
+  // assistance (user.etablissementId non null) voie le ResponsableDashboard au
+  // lieu du AdminDashboard. Avant, user.role=ADMIN était utilisé tel quel →
+  // l'ADMIN en mode assistance voyait le dashboard global (stats plateforme)
+  // au lieu du dashboard de l'établissement autorisé.
   if (pageId === 'dashboard') {
-    const DashboardComponent = DASHBOARD_COMPONENTS[user.role]
+    const effectiveRole = getEffectiveRole(user.role, user.etablissementId)
+    const DashboardComponent = DASHBOARD_COMPONENTS[effectiveRole]
     return (
       <QueryErrorBoundary>
         <DashboardComponent />

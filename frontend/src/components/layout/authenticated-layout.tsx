@@ -11,7 +11,7 @@ import { ForceChangePasswordPage } from '@/components/auth/force-change-password
 import { MessagerieBubble } from '@/components/messagerie'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
-import { getPageIdFromSlug, PAGE_ALLOWED_ROLES } from '@/lib/routes'
+import { getPageIdFromSlug, PAGE_ALLOWED_ROLES, getEffectiveRole } from '@/lib/routes'
 import { useSessionKeepAlive } from '@/hooks/use-session-keepalive'
 import { Loader2 } from 'lucide-react'
 
@@ -106,8 +106,17 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   // de l'utilisateur n'est pas autorisé à voir cette page. Avant : un
   // ENSEIGNANT/ETUDIANT qui tapait /rapports voyait la page se charger puis
   // afficher "Aucune donnée disponible" (API 403 interprétée comme état vide).
+  //
+  // ACCESS-ASSISTANCE-FIX : utiliser getEffectiveRole pour qu'un ADMIN en mode
+  // assistance (user.etablissementId non null) soit traité comme RESPONSABLE.
+  // Avant, user.role=ADMIN donnait accès à /acces-etablissements, /monitoring,
+  // /logs, /configuration, /notifications même en mode assistance — ce qui est
+  // incohérent (l'ADMIN est censé assister un établissement, pas gérer la
+  // plateforme). Désormais, ces pages ADMIN-only sont bloquées en mode
+  // assistance (l'ADMIN est redirigé vers /dashboard).
+  const effectiveRole = getEffectiveRole(user.role, user.etablissementId)
   const allowedRoles = PAGE_ALLOWED_ROLES[pageId]
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
     router.push('/dashboard')
     return null
   }

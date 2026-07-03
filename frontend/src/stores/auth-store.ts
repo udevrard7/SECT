@@ -116,12 +116,27 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   syncFromSession: (session: any) => {
     if (session?.user) {
+      // ACCESS-ASSISTANCE-FIX (défensif) : si la session retournée pour un ADMIN
+      // a etablissementId=null MAIS le store courant a un user.etablissementId
+      // non null (mode assistance actif), on conserve l'état assistance.
+      // Ce cas ne devrait plus se produire depuis le fix backend (/api/me overlay
+      // claims.EtablissementID), mais on garde cette garde pour robustesse :
+      // un cold-start Render ou une réponse /api/me partielle ne doit pas
+      // faire perdre le mode assistance côté frontend (désync frontend/backend).
+      const currentUser = get().user
+      const sessionEtabId = session.user.etablissementId ?? null
+      const preservedEtabId =
+        currentUser?.role === 'ADMIN' &&
+        currentUser.etablissementId &&
+        !sessionEtabId
+          ? currentUser.etablissementId
+          : sessionEtabId
       const user: AuthUser = {
         id: session.user.id,
         email: session.user.email ?? '',
         name: session.user.name ?? '',
         role: session.user.role as UserRole,
-        etablissementId: session.user.etablissementId ?? null,
+        etablissementId: preservedEtabId,
         filiereId: session.user.filiereId ?? null,
         etablissement: session.user.etablissement ?? null,
         filiere: session.user.filiere ?? null,
