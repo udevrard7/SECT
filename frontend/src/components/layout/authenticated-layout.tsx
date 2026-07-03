@@ -8,11 +8,10 @@ import { AppHeader } from '@/components/layout/header'
 import { SwitchAccountDialog } from '@/components/layout/switch-account-dialog'
 import { PageContent } from '@/components/layout/page-content'
 import { ForceChangePasswordPage } from '@/components/auth/force-change-password-page'
-import { AIAssistant } from '@/components/ds'
 import { MessagerieBubble } from '@/components/messagerie'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
-import { getPageIdFromSlug, PAGE_LABELS, PAGE_ALLOWED_ROLES } from '@/lib/routes'
+import { getPageIdFromSlug, PAGE_ALLOWED_ROLES } from '@/lib/routes'
 import { useSessionKeepAlive } from '@/hooks/use-session-keepalive'
 import { Loader2 } from 'lucide-react'
 
@@ -113,12 +112,6 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
     return null
   }
 
-  // Contexte pour l'assistant IA (page courante + rôle)
-  const aiContext = {
-    page: PAGE_LABELS[pageId] ?? pageId,
-    role: user.role,
-  }
-
   return (
     <SidebarProvider defaultOpen={sidebarMode === 'expanded'}>
       <AppSidebar />
@@ -128,36 +121,13 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
           <PageContent pageId={pageId} />
         </main>
       </SidebarInset>
-      {/* Assistant IA pédagogique global — bouton flottant cyan (bg-tech)
-          visible sur toutes les pages authentifiées. Utilise le système de
-          failover IA (Mistral → Groq → OpenRouter) via /api/ai-assistant. */}
-      <AIAssistant
-        title="Assistant pédagogique"
-        suggestions={[
-          'Explique-moi un concept du cours',
-          'Comment préparer mon examen ?',
-          'Analyse mes derniers résultats',
-        ]}
-        onSend={async (message) => {
-          const res = await fetch('/api/ai-assistant', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, context: aiContext }),
-          })
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err?.error ?? `Erreur ${res.status}`)
-          }
-          const data = await res.json()
-          return data.response as string
-        }}
-      />
       {/* Dialog « Changer de compte » — singleton contrôlé par store, ouvert
           depuis le header (bouton Switch) ou la carte utilisateur de la sidebar. */}
       <SwitchAccountDialog />
       {/* Bulle flottante Messagerie (chat temps réel + IA hybride).
-          Positionnée à droite, à gauche de l'AIAssistant (bottom-6 right-20)
-          pour éviter le chevauchement avec ce dernier (bottom-4 right-4).
+          Unique bulle flottante de l'application (l'Assistant IA flottant a
+          été retiré au profit de l'IA intégrée dans la messagerie via les
+          conversations IA privées et la mention @assistant dans les salons).
           Ouvre un panneau style Messenger avec liste des conversations +
           zone de chat. Backend : /api/messagerie/* (SSE pour le temps réel). */}
       <MessagerieBubble />
