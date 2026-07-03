@@ -11336,3 +11336,60 @@ Stage Summary :
   dans la liste). À corriger dans une future session.
 - **0 erreur console** durant toute la validation.
 - **Identité commits** : tous poussés avec auteur udevrard7 <ulrichdouh@gmail.com>.
+
+---
+Task ID: SECT-MIGRATIONS-RECONCILIATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Résolution des 3 anomalies de migrations (doublons 39/40, dérive schema_migrations, Makefile)
+
+Décision utilisateur : approuver le plan, pousser sur GitHub, réconcilier Neon sans perte de données.
+
+Work Log:
+- **Phase 1 (dépôt)** — commit 8f52352 poussé sur origin/main (après rebase sur 39e2c42/73eb70c
+  d'une autre session qui avait fixé des bugs "mode assistant" — aucun conflit fonctionnel, seul
+  worklog.md a nécessité une résolution de merge) :
+  * Renumérotation via `git mv` (historique préservé) :
+    - 000039_fix_participant_insert_direct → 000047
+    - 000040_fix_conversation_insert_etudiant → 000048
+    - 000039_document_audio_delete_student et 000040_etablissement_access_roles_public conservés.
+  * Makefile : MIGRATIONS_DIR=db/db/migrations (était db/migrations — chemin inexistant).
+  * MIGRATIONS_RECONCILIATION.md créé (backend/db/) documentant toute l'opération.
+  * Commentaires d'en-tête des .up.sql renommés mis à jour (000047/000048).
+  * Push → déclenchement auto Vercel (frontend) + Render (backend). Aucun impact runtime
+    (le backend ne lance pas les migrations au démarrage).
+
+- **Phase 2 (Neon — réconciliation schema_migrations)** :
+  * Découverte : l'audit initial avait un faux négatif sur la migration 46 (PostgreSQL avait
+    normalisé `INTERVAL '7 days'` en `'7 days'::interval` → la clause 46 était BIEN présente
+    en DB, mais non enregistrée dans schema_migrations).
+  * Insertion transactionnelle (BEGIN/COMMIT) de 9 versions comme déjà appliquées
+    (effets vérifiés par audit policy par policy) : 38, 40, 41, 42, 43, 44, 45, 47, 48.
+  * Aucune modification du schéma — uniquement des métadonnées dans schema_migrations.
+
+- **Phase 3 (Neon — enregistrement version 46)** :
+  * PRE-vérification : policy Signalement_delete contient bien la clause 46
+    (is_responsable + statut IN RESOLU/REJETE + COALESCE(resolvedAt,createdAt) < now - 7 days).
+  * Insertion version 46 dans schema_migrations (dirty=false).
+  * POST-vérification : policy inchangée, données intactes.
+
+- **Vérification données (avant/après identiques)** :
+  * users=17, convs=13, msgs=48, signalements=5, hidden=5, access=1 → IDENTIQUES.
+  * schema_migrations : 48 versions (1→48), AUCUNE manquante, dirty=false partout.
+
+- **Validation production (Agent Browser sur sect-app.vercel.app)** :
+  * Backend Render /health → 200 `{"service":"sect-api","status":"ok","version":"0.2.0"}`.
+  * Frontend Vercel → 200, landing page rendue (titre, hero, features, démo).
+  * Navigation /login → page de connexion rendue (formulaire email/password, boutons
+    Personnel/Étudiant) — comm frontend↔backend fonctionnelle.
+  * 0 erreur console.
+
+Stage Summary:
+- **3 anomalies résolues** : doublons 39/40 renumérotés en 47/48, Makefile réparé,
+  schema_migrations réconcilié (48 versions complètes).
+- **Migration 46** : SQL déjà appliqué en DB (découvert via audit approfondi), seulement
+  enregistrée dans schema_migrations — aucun risque pris inutilement.
+- **Zéro perte de données** : tous les compteurs de lignes identiques avant/après.
+- **Application fonctionnelle** en production (Vercel + Render + Neon alignés).
+- **`make migrate-up`** est désormais fonctionnel (chemin correct + plus de doublons) et
+  serait un no-op (tout est appliqué).
+- **Prochaine migration** à créer devra porter le numéro 000049.
