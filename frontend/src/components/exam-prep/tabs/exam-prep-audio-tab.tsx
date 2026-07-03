@@ -28,12 +28,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Headphones, Loader2, CheckCircle2, AlertCircle, ChevronDown,
-  Play, Podcast, FileText, Clock, RefreshCw,
+  Play, Podcast, FileText, Clock, RefreshCw, Trash2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { PulseSkeleton } from '@/components/ds'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 
 interface Props {
@@ -126,6 +137,31 @@ export function ExamPrepAudioTab({ documentId }: Props) {
 
   const handleGenerate = () => {
     generateMutation.mutate()
+  }
+
+  // ─── Mutation : supprimer un podcast ───
+  // AUDIO-DELETE-STUDENT : DELETE /api/exam-prep/audio/{id}. L'utilisateur ne
+  // peut supprimer que ses propres podcasts (vérif usecase + policy RLS).
+  const deleteMutation = useMutation({
+    mutationFn: async (audioId: string) => {
+      const res = await fetch(`/api/exam-prep/audio/${audioId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Échec de la suppression')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success('Podcast supprimé')
+      queryClient.invalidateQueries({ queryKey: ['exam-prep-audio', documentId] })
+    },
+    onError: (err: Error) => {
+      toast.error(err.message)
+    },
+  })
+
+  const handleDelete = (audioId: string) => {
+    deleteMutation.mutate(audioId)
   }
 
   // ─── Loading ───
@@ -264,7 +300,11 @@ export function ExamPrepAudioTab({ documentId }: Props) {
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ delay: i * 0.03, duration: 0.2 }}
             >
-              <AudioCard audio={a} />
+              <AudioCard
+                audio={a}
+                onDelete={handleDelete}
+                isDeleting={deleteMutation.isPending && deleteMutation.variables === a.id}
+              />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -275,8 +315,59 @@ export function ExamPrepAudioTab({ documentId }: Props) {
 
 // ─── Sous-composant : carte audio individuelle ───
 
-function AudioCard({ audio }: { audio: DocumentAudio }) {
+function AudioCard({
+  audio,
+  onDelete,
+  isDeleting = false,
+}: {
+  audio: DocumentAudio
+  onDelete: (audioId: string) => void
+  isDeleting?: boolean
+}) {
   const [scriptOpen, setScriptOpen] = useState(false)
+
+  // Bouton supprimer réutilisable (AlertDialog de confirmation). Affiché sur
+  // tous les statuts (EN_COURS pour annuler une génération bloquée, ERREUR pour
+  // nettoyer, PRET pour retirer un podcast terminé).
+  const deleteButton = (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+          disabled={isDeleting}
+          aria-label="Supprimer le podcast"
+          title="Supprimer le podcast"
+        >
+          {isDeleting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Supprimer ce podcast ?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Cette action est définitive. Le podcast et son script seront
+            définitivement supprimés. Cette action ne peut pas être annulée.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => onDelete(audio.id)}
+            disabled={isDeleting}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {isDeleting ? 'Suppression…' : 'Supprimer'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
 
   // Statut EN_COURS : spinner + message.
   if (audio.status === 'EN_COURS') {
@@ -297,6 +388,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
             <Clock className="h-3 w-3 mr-1" />
             {formatDate(audio.createdAt)}
           </Badge>
+          {deleteButton}
         </CardContent>
       </Card>
     )
@@ -323,6 +415,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
             <Clock className="h-3 w-3 mr-1" />
             {formatDate(audio.createdAt)}
           </Badge>
+          {deleteButton}
         </CardContent>
       </Card>
     )
@@ -335,7 +428,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
   return (
     <Card className="border-l-4 border-l-success/60 overflow-hidden">
       <CardContent className="p-4 space-y-3">
-        {/* Ligne 1 : icône + titre + date */}
+        {/* Ligne 1 : icône + titre + date + bouton supprimer */}
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10">
             {hasAudio ? (
@@ -364,6 +457,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
               {formatDate(audio.createdAt)}
             </p>
           </div>
+          {deleteButton}
         </div>
 
         {/* Lecteur audio HTML5 (si MP3 disponible) */}

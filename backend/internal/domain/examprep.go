@@ -408,4 +408,9 @@ type ExamPrepRepository interface {
         ListDocumentAudio(ctx context.Context, documentID string) ([]*DocumentAudio, error)
         // GetDocumentAudio récupère un audio par son ID. RLS off.
         GetDocumentAudio(ctx context.Context, audioID string) (*DocumentAudio, error)
+        // DeleteDocumentAudio supprime une ligne DocumentAudio par son ID.
+        // RLS actif (claims posés via db.WithTx) : la policy DocumentAudio_delete
+        // n'autorise la suppression que si userId = current_user_id() OU is_admin().
+        // AUDIO-DELETE-STUDENT : permet à l'étudiant de supprimer son propre podcast.
+        DeleteDocumentAudio(ctx context.Context, audioID string) error
 }
