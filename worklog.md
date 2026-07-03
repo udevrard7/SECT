@@ -11151,3 +11151,76 @@ Stage Summary:
   * frontend/src/components/layout/page-content.tsx (ligne 147) — utiliser effectiveRole (getEffectiveRole) pour DASHBOARD_COMPONENTS.
   * frontend/src/components/layout/authenticated-layout.tsx (ligne 110) — utiliser effectiveRole pour PAGE_ALLOWED_ROLES check.
   * frontend/src/lib/routes.ts — ajouter 'acces-etablissements' à la liste des pages bloquées en assistance mode (ou utiliser effectiveRole dans authenticated-layout).
+
+---
+Task ID: SECT-ACCESS-ASSISTANCE-FIX-003
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix bugs du mode assistant ADMIN sur /acces-etablissements (navigation + données réelles)
+
+Contexte :
+L'utilisateur rapporte que le mode assistant ADMIN ne fonctionne pas : impossible
+de naviguer entre les pages et de voir les données réelles de l'établissement qui
+a autorisé l'accès. Reproduction + diagnostic + fix + validation end-to-end.
+
+Reproduction (Agent Browser, admin ulrichdouh@gmail.com) :
+- La table EtablissementAccess était VIDE → insertion directe en DB d'un enregistrement
+  APPROUVE (admin=ulrichdouh, etab=The University of Abidjan, dateFin=+30j) pour
+  reproduire le scénario.
+- Activation mode assistance : POST /api/go-auth/assistance-mode → 200, toast "Mode
+  assistance activé", redirection /dashboard, bouton "Quitter le mode assistance" visible ✅.
+- Bug #3 reproduit : /dashboard rend AdminDashboard (ACTIVITÉ COMMERCIALE, ÉTABLISSEMENTS,
+  SUCCÈS & BADGES) au lieu de ResponsableDashboard. Sidebar correcte (Filières, Étudiants,
+  Enseignants, Évaluations) → incohérence sidebar vs contenu.
+- /etudiants affiche "Mme Keita Safiya" (1 étudiant) ✅ — endpoint /api/etudiants utilise
+  une requête SQL directe avec RLS, pas UserUseCase.List.
+- Bug #2 reproduit : après reload (F5) de /etudiants, le bouton "Quitter le mode assistance"
+  disparaît, la sidebar revient aux catégories ADMIN (GESTION CLIENTS, ABONNEMENTS,
+  AUTORISATIONS) → frontend/backend desync (le JWT backend est toujours en mode assistance
+  mais le frontend a perdu l'état).
+
+Diagnostic (3 bugs) :
+1. Bug #2 (CRITIQUE) — /api/me retourne le User DB (etablissementId=null pour ADMIN).
+   Au reload, syncFromSession écrase user.etablissementId=null → perte mode assistance.
+2. Bug #3 (HAUT) — PageContent et AuthenticatedLayout utilisent user.role (ADMIN) au
+   lieu de getEffectiveRole(user.role, user.etablissementId) → AdminDashboard rendu +
+   pages ADMIN-only accessibles en mode assistance.
+3. Bug #1 (CRITIQUE latent) — UserUseCase.List forçait Role=RESPONSABLE pour tout ADMIN.
+   En mode assistance, /api/users?role=ETUDIANT retournait 0 (écrasé en RESPONSABLE).
+
+Work Log (fixes) :
+- Backend handlers.go /me : overlay claims.EtablissementID quand claims.Role==ADMIN &&
+  claims.EtablissementID != "" → /api/me retourne le bon etablissementId en mode
+  assistance. Import domain ajouté.
+- Backend usecase/user.go List : détection mode assistance (claims.Role==ADMIN &&
+  claims.EtablissementID != "") → adopte scoping RESPONSABLE (scope sur
+  claims.EtablissementID + params.Role passe). Sinon comportement normal (ADMIN global
+  voit uniquement RESPONSABLE).
+- Frontend page-content.tsx : DASHBOARD_COMPONENTS[getEffectiveRole(user.role,
+  user.etablissementId)] → ResponsableDashboard rendu en mode assistance.
+- Frontend authenticated-layout.tsx : PAGE_ALLOWED_ROLES utilise effectiveRole → pages
+  ADMIN-only (/acces-etablissements, /monitoring, /logs, /configuration, /notifications)
+  bloquées en mode assistance (redirect /dashboard).
+- Frontend auth-store.ts syncFromSession (défensif) : si session.user.etablissementId
+  est null mais le store courant est en mode assistance (ADMIN + etablissementId non
+  null), on préserve l'état assistance. Robustesse contre cold-start Render / réponse
+  /api/me partielle.
+- Audit autres usecases : etablissement_access, invitation, epreuve, session utilisent
+  ValidateAccessForEtablissement (OK en mode assistance). messagerie bloque ADMIN
+  (intentionnel). epreuve.go:44 ADMIN sans scope (RLS filtre via
+  admin_has_etablissement_access) — OK.
+- Compilation : go build ./... ✅ + go vet ./... ✅ (Go 1.24.0 local).
+- TypeScript : tsc --noEmit sur les 3 fichiers modifiés ✅ (erreurs pré-existantes
+  dans abonnements/epreuves/mes-epreuves/profil/programme non touchées).
+- Commit 39e2c42 (auteur udevrard7 <ulrichdouh@gmail.com>) + push origin main ✅.
+- Déploiement Render (backend) + Vercel (frontend) déclenchés automatiquement.
+
+Stage Summary :
+- **3 bugs corrigés** : #2 (/api/me overlay), #3 (effectiveRole routing + garde),
+  #1 (UserUseCase.List assistance detection) + fix défensif auth-store.
+- **Workflow mode assistant** (confirmé) : ADMIN demande accès → RESPONSABLE approuve
+  (durée 7/30/90/365j) → ADMIN active assistance (POST /api/auth/assistance-mode) →
+  nouveau JWT avec etablissementId → frontend store update → getEffectiveRole=RESPONSABLE
+  → sidebar/dashboard/pages RESPONSABLE → RLS Neon filtre via
+  admin_has_etablissement_access(claims.EtablissementID). Exit via bouton header
+  (POST /api/auth/exit-assistance-mode) → nouveau JWT sans etablissementId.
+- **Validation end-to-end Agent Browser** à suivre après déploiement (~2-4 min).
