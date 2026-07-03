@@ -226,13 +226,23 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
         return result, nil
 }
 
-// Create crée un nouvel utilisateur (bypass RLS — appelé par ADMIN/RESPONSABLE).
+// Create crée un nouvel utilisateur.
+//
+// BUGFIX (ETUDIANTS-CREATE-RLS) : avant cette correction, la transaction
+// était ouverte via pool.BeginTx directement SANS poser les claims RLS
+// (app.claims.*). La policy User_insert évalue is_responsable() qui lit
+// app.claims.role → sans claims, la policy rejetait l'INSERT avec une
+// erreur PostgreSQL générique → MapDomainError tombait dans le cas
+// 'default' → HTTP 500 'erreur interne'.
+//
+// Fix : utilisation de db.WithTx qui pose automatiquement les claims RLS
+// via SetClaimsTx (pattern identique à FiliereRepository.Create et
+// UserRepository.List).
 func (r *UserRepository) Create(ctx context.Context, input domain.CreateUserInput, passwordHash string) (*domain.User, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         userID := uuid.NewString()
 
@@ -254,170 +264,183 @@ func (r *UserRepository) Create(ctx context.Context, input domain.CreateUserInpu
                 mustChangePwd = *input.MustChangePwd
         }
 
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                                    "image", "actif", "mustChangePwd", "matricule", "niveau",
-                                    "loginAttempts", "lockedUntil", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9, $10, $11, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
-                          "image", "actif", "mustChangePwd", "matricule", "niveau",
-                          "derniereConnexion", "createdAt", "updatedAt"
-        `, userID, input.Email, input.Name, passwordHash, input.Role,
-                nullableStrPtr(input.EtablissementID), nullableStrPtr(input.FiliereID),
-                actif, mustChangePwd, nullableStrPtr(input.Matricule), niveau)
+        var user *domain.User
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId", "filiereId",
+                                            "image", "actif", "mustChangePwd", "matricule", "niveau",
+                                            "loginAttempts", "lockedUntil", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9, $10, $11, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
+                                  "image", "actif", "mustChangePwd", "matricule", "niveau",
+                                  "derniereConnexion", "createdAt", "updatedAt"
+                `, userID, input.Email, input.Name, passwordHash, input.Role,
+                        nullableStrPtr(input.EtablissementID), nullableStrPtr(input.FiliereID),
+                        actif, mustChangePwd, nullableStrPtr(input.Matricule), niveau)
 
-        user, err := scanUser(row)
-        if err != nil {
-                if isUniqueViolation(err) {
-                        return nil, &domain.ConflictError{Message: "email ou matricule déjà utilisé"}
+                created, err := scanUser(row)
+                if err != nil {
+                        if isUniqueViolation(err) {
+                                return &domain.ConflictError{Message: "email ou matricule déjà utilisé"}
+                        }
+                        return fmt.Errorf("create user: %w", err)
                 }
-                return nil, fmt.Errorf("create user: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                user = created
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return user, nil
 }
 
 // Update met à jour un utilisateur (partial update). passwordHash non-nil si password changé.
+//
+// BUGFIX (ETUDIANTS-CREATE-RLS) : même fix que Create — utilisation de db.WithTx
+// pour poser les claims RLS (User_update exige is_responsable()/is_admin()).
 func (r *UserRepository) Update(ctx context.Context, id string, input domain.UpdateUserInput, passwordHash *string) (*domain.User, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        var setClauses []string
-        var args []any
-        argIdx := 1
-
-        addSet := func(col string, val any) {
-                setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
-                args = append(args, val)
-                argIdx++
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
 
-        if input.Name != nil {
-                addSet("name", *input.Name)
-        }
-        if input.Email != nil {
-                addSet("email", *input.Email)
-        }
-        if input.Role != nil {
-                addSet("role", *input.Role)
-        }
-        if input.EtablissementID != nil {
-                addSet("etablissementId", nullableStrPtr(input.EtablissementID))
-        }
-        if input.FiliereID != nil {
-                addSet("filiereId", nullableStrPtr(input.FiliereID))
-        }
-        if input.Actif != nil {
-                addSet("actif", *input.Actif)
-        }
-        if input.Matricule != nil {
-                addSet("matricule", nullableStrPtr(input.Matricule))
-        }
-        if input.Niveau != nil {
-                addSet("niveau", nullableStrPtr(input.Niveau))
-        }
-        if passwordHash != nil {
-                addSet("password", *passwordHash)
-                addSet("mustChangePwd", false)
-        }
+        var user *domain.User
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var setClauses []string
+                var args []any
+                argIdx := 1
 
-        if len(setClauses) == 0 {
-                // Rien à updater — retourner l'utilisateur courant
-                row := tx.QueryRow(ctx, `
-                        SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
-                               "image", "actif", "mustChangePwd", "matricule", "niveau",
-                               "derniereConnexion", "createdAt", "updatedAt"
-                        FROM "User" WHERE "id" = $1
-                `, id)
-                user, err := scanUser(row)
+                addSet := func(col string, val any) {
+                        setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
+                        args = append(args, val)
+                        argIdx++
+                }
+
+                if input.Name != nil {
+                        addSet("name", *input.Name)
+                }
+                if input.Email != nil {
+                        addSet("email", *input.Email)
+                }
+                if input.Role != nil {
+                        addSet("role", *input.Role)
+                }
+                if input.EtablissementID != nil {
+                        addSet("etablissementId", nullableStrPtr(input.EtablissementID))
+                }
+                if input.FiliereID != nil {
+                        addSet("filiereId", nullableStrPtr(input.FiliereID))
+                }
+                if input.Actif != nil {
+                        addSet("actif", *input.Actif)
+                }
+                if input.Matricule != nil {
+                        addSet("matricule", nullableStrPtr(input.Matricule))
+                }
+                if input.Niveau != nil {
+                        addSet("niveau", nullableStrPtr(input.Niveau))
+                }
+                if passwordHash != nil {
+                        addSet("password", *passwordHash)
+                        addSet("mustChangePwd", false)
+                }
+
+                if len(setClauses) == 0 {
+                        // Rien à updater — retourner l'utilisateur courant
+                        row := tx.QueryRow(ctx, `
+                                SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
+                                       "image", "actif", "mustChangePwd", "matricule", "niveau",
+                                       "derniereConnexion", "createdAt", "updatedAt"
+                                FROM "User" WHERE "id" = $1
+                        `, id)
+                        currentUser, err := scanUser(row)
+                        if err != nil {
+                                if err == pgx.ErrNoRows {
+                                        return &domain.NotFoundError{Entity: "User", ID: id}
+                                }
+                                return err
+                        }
+                        user = currentUser
+                        return nil
+                }
+
+                setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
+
+                args = append(args, id)
+                updateSQL := fmt.Sprintf(`
+                        UPDATE "User" SET %s WHERE "id" = $%d
+                        RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
+                                  "image", "actif", "mustChangePwd", "matricule", "niveau",
+                                  "derniereConnexion", "createdAt", "updatedAt"
+                `, strings.Join(setClauses, ", "), argIdx)
+
+                row := tx.QueryRow(ctx, updateSQL, args...)
+                updatedUser, err := scanUser(row)
                 if err != nil {
                         if err == pgx.ErrNoRows {
-                                return nil, &domain.NotFoundError{Entity: "User", ID: id}
+                                return &domain.NotFoundError{Entity: "User", ID: id}
                         }
-                        return nil, err
+                        if isUniqueViolation(err) {
+                                return &domain.ConflictError{Message: "email ou matricule déjà utilisé"}
+                        }
+                        return fmt.Errorf("update user: %w", err)
                 }
-                if err := tx.Commit(ctx); err != nil {
-                        return nil, fmt.Errorf("commit: %w", err)
-                }
-                return user, nil
-        }
-
-        setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
-
-        args = append(args, id)
-        updateSQL := fmt.Sprintf(`
-                UPDATE "User" SET %s WHERE "id" = $%d
-                RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
-                          "image", "actif", "mustChangePwd", "matricule", "niveau",
-                          "derniereConnexion", "createdAt", "updatedAt"
-        `, strings.Join(setClauses, ", "), argIdx)
-
-        row := tx.QueryRow(ctx, updateSQL, args...)
-        user, err := scanUser(row)
+                user = updatedUser
+                return nil
+        })
         if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "User", ID: id}
-                }
-                if isUniqueViolation(err) {
-                        return nil, &domain.ConflictError{Message: "email ou matricule déjà utilisé"}
-                }
-                return nil, fmt.Errorf("update user: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return user, nil
 }
 
 // Delete supprime un utilisateur (hard delete avec cascade manuel).
+//
+// BUGFIX (ETUDIANTS-CREATE-RLS) : même fix que Create — utilisation de db.WithTx
+// pour poser les claims RLS (User_delete exige is_responsable()/is_admin()).
+// Les DELETE en cascade sur les tables enfants nécessitent aussi les claims
+// car leurs policies USING sont évaluées pour chaque ligne.
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        var exists bool
-        err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "User" WHERE "id" = $1)`, id).Scan(&exists)
-        if err != nil {
-                return fmt.Errorf("check user exists: %w", err)
-        }
-        if !exists {
-                return &domain.NotFoundError{Entity: "User", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        // Cascade manuel (FK RESTRICT)
-        steps := []struct {
-                desc string
-                sql  string
-        }{
-                {"delete etudiant resultats", `DELETE FROM "Resultat" WHERE "sessionId" IN (SELECT "id" FROM "SessionPassation" WHERE "etudiantId" = $1)`},
-                {"delete etudiant sessions", `DELETE FROM "SessionPassation" WHERE "etudiantId" = $1`},
-                {"delete teacher resultats", `DELETE FROM "Resultat" WHERE "sessionId" IN (SELECT sp."id" FROM "SessionPassation" sp JOIN "Epreuve" e ON e."id" = sp."epreuveId" WHERE e."enseignantId" = $1)`},
-                {"delete teacher sessions", `DELETE FROM "SessionPassation" WHERE "epreuveId" IN (SELECT "id" FROM "Epreuve" WHERE "enseignantId" = $1)`},
-                {"delete epreuves", `DELETE FROM "Epreuve" WHERE "enseignantId" = $1`},
-                {"delete soumissions", `DELETE FROM "Soumission" WHERE "etudiantId" = $1`},
-                {"delete devoirs", `DELETE FROM "Devoir" WHERE "enseignantId" = $1`},
-                {"delete invitations", `DELETE FROM "Invitation" WHERE "createdById" = $1`},
-                {"null alertes", `UPDATE "Alerte" SET "userId" = NULL WHERE "userId" = $1`},
-                {"null filiere responsable", `UPDATE "Filiere" SET "responsableId" = NULL WHERE "responsableId" = $1`},
-                {"delete user", `DELETE FROM "User" WHERE "id" = $1`},
-        }
-
-        for _, step := range steps {
-                if _, err := tx.Exec(ctx, step.sql, id); err != nil {
-                        return fmt.Errorf("%s: %w", step.desc, err)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var exists bool
+                err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "User" WHERE "id" = $1)`, id).Scan(&exists)
+                if err != nil {
+                        return fmt.Errorf("check user exists: %w", err)
                 }
-        }
+                if !exists {
+                        return &domain.NotFoundError{Entity: "User", ID: id}
+                }
 
-        return tx.Commit(ctx)
+                // Cascade manuel (FK RESTRICT)
+                steps := []struct {
+                        desc string
+                        sql  string
+                }{
+                        {"delete etudiant resultats", `DELETE FROM "Resultat" WHERE "sessionId" IN (SELECT "id" FROM "SessionPassation" WHERE "etudiantId" = $1)`},
+                        {"delete etudiant sessions", `DELETE FROM "SessionPassation" WHERE "etudiantId" = $1`},
+                        {"delete teacher resultats", `DELETE FROM "Resultat" WHERE "sessionId" IN (SELECT sp."id" FROM "SessionPassation" sp JOIN "Epreuve" e ON e."id" = sp."epreuveId" WHERE e."enseignantId" = $1)`},
+                        {"delete teacher sessions", `DELETE FROM "SessionPassation" WHERE "epreuveId" IN (SELECT "id" FROM "Epreuve" WHERE "enseignantId" = $1)`},
+                        {"delete epreuves", `DELETE FROM "Epreuve" WHERE "enseignantId" = $1`},
+                        {"delete soumissions", `DELETE FROM "Soumission" WHERE "etudiantId" = $1`},
+                        {"delete devoirs", `DELETE FROM "Devoir" WHERE "enseignantId" = $1`},
+                        {"delete invitations", `DELETE FROM "Invitation" WHERE "createdById" = $1`},
+                        {"null alertes", `UPDATE "Alerte" SET "userId" = NULL WHERE "userId" = $1`},
+                        {"null filiere responsable", `UPDATE "Filiere" SET "responsableId" = NULL WHERE "responsableId" = $1`},
+                        {"delete user", `DELETE FROM "User" WHERE "id" = $1`},
+                }
+
+                for _, step := range steps {
+                        if _, err := tx.Exec(ctx, step.sql, id); err != nil {
+                                return fmt.Errorf("%s: %w", step.desc, err)
+                        }
+                }
+                return nil
+        })
 }
 
 // CountByEtablissement compte les utilisateurs d'un établissement.
