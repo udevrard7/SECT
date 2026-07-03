@@ -64,6 +64,7 @@ import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
 import { ParticipantsList } from './participants-list'
 import { ChatWindowSkeleton, MessagerieEmptyState } from './messagerie-skeletons'
+import { useStreamingContent } from '@/stores/streaming-store'
 import type {
   ConversationType,
   Message,
@@ -114,6 +115,11 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
 
   const { data: conversations } = useConversations()
   const conversation = conversations?.find((c) => c.id === conversationId)
+
+  // MESSAGERIE-STREAMING : contenu IA partiel en cours de génération (salon
+  // collectif avec @assistant). Affiché comme une bulle IA temporaire qui se
+  // remplit en temps réel. Remplacé par le message persisté quand il arrive.
+  const streamingContent = useStreamingContent(conversationId)
 
   const {
     messages,
@@ -440,6 +446,37 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
                 />
               ))}
             </AnimatePresence>
+          )}
+
+          {/* MESSAGERIE-STREAMING : bulle IA temporaire qui se remplit en temps réel.
+              Affichée quand @assistant génère une réponse en salon collectif.
+              Remplacée par le message persisté quand l'event message_new arrive. */}
+          {streamingContent && (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-2.5 self-start max-w-[85%] sm:max-w-[75%]"
+              aria-label="L'assistant IA rédige une réponse"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold/15 border border-gold/30">
+                <Sparkles className="h-4 w-4 text-gold" />
+              </div>
+              <div className="rounded-2xl rounded-bl-sm border border-gold/30 bg-gold/5 px-3.5 py-2.5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[11px] font-semibold text-gold">Assistant IA</span>
+                  <motion.span
+                    className="h-1.5 w-1.5 rounded-full bg-gold/70"
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                </div>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {streamingContent}
+                  {/* Curseur clignotant pour indiquer que la réponse continue */}
+                  <span className="inline-block w-1.5 h-3.5 bg-gold/70 ml-0.5 align-text-bottom animate-pulse" />
+                </p>
+              </div>
+            </motion.div>
           )}
 
           {/* Indicateur "IA rédige…" (à brancher au SSE typing plus tard) */}
