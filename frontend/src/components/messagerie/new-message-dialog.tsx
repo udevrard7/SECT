@@ -246,8 +246,8 @@ export function NewMessageDialog({
         {/* Note sur les règles DM */}
         {user?.role === 'ETUDIANT' && (
           <p className="text-[10px] text-muted-foreground/80 italic">
-            Note : en tant qu'étudiant, vous ne pouvez envoyer un message privé
-            qu'à vos enseignants.
+            Vous pouvez envoyer un message privé à vos enseignants ou aux autres
+            étudiants de votre établissement.
           </p>
         )}
       </DialogContent>

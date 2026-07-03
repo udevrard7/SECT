@@ -38,7 +38,13 @@ func parseIntQueryParam(s string, defaultVal int) int {
 }
 
 // listUsers — GET /api/users
-// Auth : ADMIN, RESPONSABLE, ENSEIGNANT
+// Auth : ADMIN, RESPONSABLE, ENSEIGNANT, ETUDIANT (avec filtres restrictifs)
+//
+// MESSAGERIE-DM-ETUDIANT : l'étudiant peut appeler cet endpoint pour rechercher
+// d'autres étudiants de son établissement (pour les DM). La policy RLS
+// User_select (migration 000041) filtre automatiquement : l'étudiant ne voit
+// que les étudiants de son étab + ses enseignants. Le usecase List applique
+// aussi des filtres selon le rôle (voir UserUseCase.List).
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -46,9 +52,9 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // Vérifier le rôle (ADMIN, RESPONSABLE, ENSEIGNANT)
+        // Vérifier le rôle (tous sauf inconnu)
         role := claims.Role
-        if role != "ADMIN" && role != "RESPONSABLE" && role != "ENSEIGNANT" {
+        if role != "ADMIN" && role != "RESPONSABLE" && role != "ENSEIGNANT" && role != "ETUDIANT" {
                 writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
                 return
         }
