@@ -11224,3 +11224,88 @@ Stage Summary :
   admin_has_etablissement_access(claims.EtablissementID). Exit via bouton header
   (POST /api/auth/exit-assistance-mode) → nouveau JWT sans etablissementId.
 - **Validation end-to-end Agent Browser** à suivre après déploiement (~2-4 min).
+
+---
+Task ID: SECT-ACCESS-ASSISTANCE-VERIFY-004
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation end-to-end finale du mode assistant ADMIN après fixes (commit 39e2c42)
+
+Contexte :
+Les 3 bugs ont été corrigés (commit 39e2c42) et déployés (Render live + Vercel READY).
+Validation complète du flux métier avec Agent Browser en production, en utilisant les
+identifiants réels fournis par l'utilisateur (ADMIN ulrichdouh@gmail.com, RESPONSABLE
+registrar@uniabidjan.com).
+
+Work Log — Test end-to-end complet (flux métier réel) :
+
+ÉTAPE 1 — ADMIN crée une demande d'accès (via UI, pas d'insertion DB directe) :
+- /acces-etablissements → onglet "Demander un accès" → form (Établissement: The
+  University of Abidjan, Motif: Inspection, Commentaire: "Test flux complet").
+- POST /api/etablissement-access → 201. Toast "Demande envoyée".
+- DB vérifiée : EtablissementAccess créé avec statut=EN_ATTENTE ✅.
+
+ÉTAPE 2 — RESPONSABLE approuve la demande :
+- Login registrar@uniabidjan.com (Mme Keita Safiya) → /parametres → onglet
+  "Accès ADMIN" → demande visible (Inspection, En attente) → bouton "Approuver".
+- Dialog durée → 30 jours (défaut) → confirmer.
+- PATCH /api/etablissement-access/{id} {statut: APPROUVE, dureeAccesJours: 30}.
+- Toast "Accès approuvé". UI affiche statut "Approuvé" + dates 03/07→02/08.
+- DB vérifiée : statut=APPROUVE, dateDebut=now, dateFin=now+30j,
+  approuvePar=cmq2dfnri0002lb04w0m6y868 (le responsable) ✅.
+
+ÉTAPE 3 — ADMIN active le mode assistance (sur demande réellement approuvée) :
+- Re-login ulrichdouh@gmail.com → /acces-etablissements → demande approuvée visible
+  avec bouton "Mode assistance" → clic.
+- POST /api/go-auth/assistance-mode {etablissementId} → 200.
+- Toast "Mode assistance activé — Vous accédez maintenant aux données de The
+  University of Abidjan". Redirection /dashboard.
+
+VALIDATION DES 3 FIXES (post-déploiement) :
+
+Fix #3 (HAUT) — Dashboard + garde de rôle en mode assistance :
+- /dashboard rend ResponsableDashboard ("Bonsoir, Administrateur SECT ! Vue
+  stratégique de votre établissement.") au lieu de AdminDashboard ✅.
+- Sidebar = catégories RESPONSABLE (Filières, Programme académique, Affectations,
+  Étudiants, Enseignants, Évaluations, Rapports) ✅.
+- Pages ADMIN-only bloquées (redirigent vers /dashboard) :
+  /acces-etablissements ✅, /monitoring ✅, /logs ✅, /configuration ✅.
+
+Fix #2 (CRITIQUE) — Reload conserve le mode assistance :
+- Avant le fix : reload (F5) → bouton "Quitter" disparaissait, sidebar revenait
+  aux catégories ADMIN (frontend/backend desync).
+- Après le fix : reload (F5) → bouton "Quitter le mode assistance" conservé,
+  sidebar reste RESPONSABLE, dashboard reste ResponsableDashboard ✅.
+
+Navigation entre pages + données réelles (le bug principal rapporté) :
+- /etudiants → "Gestion des Étudiants" (page chargée, navigation OK) ✅.
+- /enseignants → "Gestion des Enseignants" + données réelles ("Ulrich DOUH") ✅.
+- /filieres → données réelles ("SCIENCES ECONOMIQUES GESTION.", "INFORMATIQUE") ✅.
+
+Sortie du mode assistance :
+- Bouton "Quitter le mode assistance" (header) → POST /api/go-auth/exit-assistance-mode
+  → 200 → toast "Mode assistance désactivé — Vous êtes de retour sur votre session
+  ADMIN" → sidebar revient à GESTION CLIENTS + dashboard revient AdminDashboard ✅.
+- Backend testé directement (curl) : retourne nouveau JWT avec etablissement_id="" ✅.
+
+Stage Summary :
+- **3 bugs corrigés et validés en production** (commit 39e2c42, déployé sur
+  Render + Vercel).
+- **Flux métier complet validé** : ADMIN demande → RESPONSABLE approuve (durée) →
+  ADMIN active assistance → navigation pages RESPONSABLE + données réelles → reload
+  conserve l'état → sortie propre → retour session ADMIN normale.
+- **Workflow mode assistant** (confirmé en production) :
+  1. POST /api/etablissement-access → demande EN_ATTENTE
+  2. PATCH /api/etablissement-access/{id} {statut:APPROUVE, dureeAccesJours:N} →
+     dateFin = now + N jours, approuvePar = responsable
+  3. POST /api/auth/assistance-mode {etablissementId} → nouveau JWT avec
+     etablissementId set → /api/me overlay (Fix #2) → frontend conserve l'état
+     au reload → getEffectiveRole=RESPONSABLE (Fix #3) → sidebar/dashboard/pages
+     RESPONSABLE → RLS Neon filtre via admin_has_etablissement_access()
+  4. POST /api/auth/exit-assistance-mode → nouveau JWT sans etablissementId →
+     retour session ADMIN normale
+- **Note** : petit bug d'affichage non bloquant détecté — la demande d'accès
+  affiche "? Admin inconnu —" au lieu du nom de l'admin dans /parametres onglet
+  "Accès ADMIN" côté responsable (le join admin n'est pas résolu correctement
+  dans la liste). À corriger dans une future session.
+- **0 erreur console** durant toute la validation.
+- **Identité commits** : tous poussés avec auteur udevrard7 <ulrichdouh@gmail.com>.
