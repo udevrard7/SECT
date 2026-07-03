@@ -77,6 +77,15 @@ func (r *EtablissementAccessRepository) FindByID(ctx context.Context, id string)
 //     selon is_responsable() AND etablissementId = current_etablissement_id().
 //  2. Clause WHERE manuelle : params.AdminID / params.EtablissementID (forcés
 //     par le usecase) pour filtrer par admin ou établissement.
+//
+// ADMIN-INCONNU-FIX : la requête ne JOIN plus "User" directement. En production,
+// le rôle de connexion Render n'a PAS BYPASSRLS (bonne pratique Neon) → RLS est
+// actif sur "User" → la policy User_select filtre l'admin (etablissementId=NULL)
+// quand c'est un RESPONSABLE qui interroge → LEFT JOIN renvoyait NULL →
+// "Admin inconnu" côté frontend. Désormais, les données admin (name, email) sont
+// récupérées séparément via fetchAdminRefs (bypass system-worker). La clause
+// is_admin() AND "etablissementId" IS NULL AND role='ADMIN' de User_select
+// autorise l'accès quand app.claims.role='ADMIN' (system-worker).
 func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.AccessListParams) ([]*domain.EtablissementAccess, error) {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok {
@@ -110,15 +119,15 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                         whereClause = "WHERE " + strings.Join(where, " AND ")
                 }
 
+                // ADMIN-INCONNU-FIX : plus de LEFT JOIN "User" ici (RLS filtrait l'admin).
+                // Les données admin sont récupérées via fetchAdminRefs ci-dessous.
                 query := fmt.Sprintf(`
                         SELECT ea."id", ea."adminId", ea."etablissementId", ea."motif", ea."statut",
                                ea."dateDebut", ea."dateFin", ea."approuvePar", ea."commentaire",
                                ea."createdAt", ea."updatedAt",
-                               e."id", e."nom",
-                               u."id", u."name", u."email"
+                               e."id", e."nom"
                         FROM "EtablissementAccess" ea
                         LEFT JOIN "Etablissement" e ON e."id" = ea."etablissementId"
-                        LEFT JOIN "User" u ON u."id" = ea."adminId"
                         %s
                         ORDER BY ea."createdAt" DESC`, whereClause)
                 rows, err := tx.Query(ctx, query, args...)
@@ -130,13 +139,11 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                 for rows.Next() {
                         a := &domain.EtablissementAccess{}
                         var etabID, etabNom *string
-                        var adminID, adminName, adminEmail *string
                         err := rows.Scan(
                                 &a.ID, &a.AdminID, &a.EtablissementID, &a.Motif, &a.Statut,
                                 &a.DateDebut, &a.DateFin, &a.ApprouvePar, &a.Commentaire,
                                 &a.CreatedAt, &a.UpdatedAt,
                                 &etabID, &etabNom,
-                                &adminID, &adminName, &adminEmail,
                         )
                         if err != nil {
                                 return fmt.Errorf("scan access: %w", err)
@@ -145,13 +152,6 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                                 a.Etablissement = &domain.EtablissementRef{
                                         ID:  *etabID,
                                         Nom: *etabNom,
-                                }
-                        }
-                        if adminID != nil && adminName != nil && adminEmail != nil {
-                                a.Admin = &domain.UserRef{
-                                        ID:    *adminID,
-                                        Name:  *adminName,
-                                        Email: *adminEmail,
                                 }
                         }
                         result = append(result, a)
@@ -164,7 +164,94 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
         if err != nil {
                 return nil, err
         }
+
+        // ADMIN-INCONNU-FIX : récupérer les données admin (name, email) via une
+        // transaction séparée avec claims system-worker. En production (Render),
+        // le rôle de connexion n'a PAS BYPASSRLS → RLS actif sur "User" → la policy
+        // User_select filtre l'admin (etablissementId=NULL) pour les RESPONSABLE.
+        // Le bypass system-worker (app.claims.role='ADMIN') active la clause
+        // is_admin() AND "etablissementId" IS NULL AND role='ADMIN' de User_select.
+        // Sécurité : les données admin (name, email) ne sont pas sensibles — elles
+        // servent uniquement à l'affichage. L'accès aux demandes lui-même reste
+        // filtré par RLS natif (Query 1 ci-dessus).
+        if len(result) > 0 {
+                adminIDs := make(map[string]bool)
+                for _, a := range result {
+                        if a.AdminID != "" {
+                                adminIDs[a.AdminID] = true
+                        }
+                }
+                if len(adminIDs) > 0 {
+                        adminRefs, err := r.fetchAdminRefs(ctx, adminIDs)
+                        if err != nil {
+                                return nil, fmt.Errorf("fetch admin refs: %w", err)
+                        }
+                        for _, a := range result {
+                                if ref, ok := adminRefs[a.AdminID]; ok {
+                                        a.Admin = ref
+                                }
+                        }
+                }
+        }
+
         return result, nil
+}
+
+// fetchAdminRefs récupère les références utilisateurs (id, name, email) pour
+// un ensemble d'admin IDs, en contournant RLS via claims system-worker.
+//
+// ADMIN-INCONNU-FIX : utilisée par List pour résoudre le bug "Admin inconnu".
+// La policy User_select filtre l'admin (etablissementId=NULL) quand c'est un
+// RESPONSABLE qui interroge (RLS actif en production Render sans BYPASSRLS).
+// Le bypass system-worker (app.claims.role='ADMIN') active la clause
+// is_admin() AND "etablissementId" IS NULL AND role='ADMIN' → l'admin devient
+// visible. Les données retournées (name, email) ne sont pas sensibles.
+func (r *EtablissementAccessRepository) fetchAdminRefs(ctx context.Context, adminIDs map[string]bool) (map[string]*domain.UserRef, error) {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return nil, fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                return nil, fmt.Errorf("set system claims: %w", err)
+        }
+
+        ids := make([]string, 0, len(adminIDs))
+        for id := range adminIDs {
+                ids = append(ids, id)
+        }
+
+        var placeholders []string
+        var args []any
+        for i, id := range ids {
+                placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+                args = append(args, id)
+        }
+
+        query := fmt.Sprintf(`SELECT "id", "name", "email" FROM "User" WHERE "id" IN (%s)`, strings.Join(placeholders, ","))
+        rows, err := tx.Query(ctx, query, args...)
+        if err != nil {
+                return nil, fmt.Errorf("query admin users: %w", err)
+        }
+        defer rows.Close()
+
+        adminRefs := make(map[string]*domain.UserRef, len(ids))
+        for rows.Next() {
+                ref := &domain.UserRef{}
+                if err := rows.Scan(&ref.ID, &ref.Name, &ref.Email); err != nil {
+                        return nil, fmt.Errorf("scan admin user: %w", err)
+                }
+                adminRefs[ref.ID] = ref
+        }
+        if err := rows.Err(); err != nil {
+                return nil, fmt.Errorf("rows err: %w", err)
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return nil, fmt.Errorf("commit: %w", err)
+        }
+        return adminRefs, nil
 }
 
 // Create crée une demande d'accès.
