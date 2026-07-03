@@ -73,14 +73,14 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         return nil
                 })
                 // Tester la comparaison exacte de la policy.
-                var etabIdInRow, policyEval string
+                var etabIdInRow, policyEval, currentEtabInSameQuery string
                 tx3, tx3Err := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
                 if tx3Err == nil {
                         tx3.Exec(r.Context(), "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID)
                         tx3.Exec(r.Context(), "SELECT set_config('app.claims.role', $1, true)", claims.Role)
                         tx3.Exec(r.Context(), "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID)
-                        // Query SANS RLS pour voir l'etablissementId de la row.
-                        _ = tx3.QueryRow(r.Context(), `SELECT "etablissementId"::text FROM "EtablissementAccess" LIMIT 1`).Scan(&etabIdInRow)
+                        // Query qui retourne current_etablissement_id() ET etablissementId dans la MEME query.
+                        _ = tx3.QueryRow(r.Context(), `SELECT current_etablissement_id()::text, "etablissementId"::text FROM "EtablissementAccess" LIMIT 1`).Scan(&currentEtabInSameQuery, &etabIdInRow)
                         // Query la policy evaluation directement.
                         _ = tx3.QueryRow(r.Context(), `SELECT (is_responsable() AND ("etablissementId" = current_etablissement_id()))::text FROM "EtablissementAccess" LIMIT 1`).Scan(&policyEval)
                         tx3.Rollback(r.Context())
@@ -109,12 +109,13 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                                 "etabLen":         len(claims.EtablissementID),
                         },
                         "dbCheck": map[string]any{
-                                "current_etablissement_id": dbEtabID,
-                                "is_responsable":           dbIsResp,
-                                "etabIdInRow":              etabIdInRow,
-                                "policyEval":               policyEval,
-                                "countWithJoin":            countWithJoin,
-                                "tx3Err":                   txErrToString(tx3Err),
+                                "current_etablissement_id":      dbEtabID,
+                                "currentEtabInSameQuery":        currentEtabInSameQuery,
+                                "is_responsable":                dbIsResp,
+                                "etabIdInRow":                   etabIdInRow,
+                                "policyEval":                    policyEval,
+                                "countWithJoin":                 countWithJoin,
+                                "tx3Err":                        txErrToString(tx3Err),
                         },
                         "params":  dbgParams,
                         "count":   len(dbgRecords),
