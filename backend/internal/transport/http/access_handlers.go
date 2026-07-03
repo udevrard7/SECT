@@ -20,6 +20,14 @@ func dbgErrToString(err error) string {
         return err.Error()
 }
 
+// txErrToString convertit une erreur de transaction en string.
+func txErrToString(err error) string {
+        if err == nil {
+                return ""
+        }
+        return err.Error()
+}
+
 // firstRecordID retourne l'ID du premier record ou "" si vide.
 func firstRecordID(records []*domain.EtablissementAccess) string {
         if len(records) == 0 {
@@ -64,15 +72,16 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         }
                         return nil
                 })
-                // Tester la policy RLS directement.
-                var policyCheck string
-                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                        row := tx.QueryRow(r.Context(), `SELECT (is_responsable() AND ("etablissementId" = current_etablissement_id()))::text FROM "EtablissementAccess" LIMIT 1`)
-                        if err := row.Scan(&policyCheck); err != nil {
-                                return err
-                        }
-                        return nil
-                })
+                // Tester la policy RLS directement avec claims manuels (sans db.WithTx).
+                var manualCount int
+                tx2, txErr := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
+                if txErr == nil {
+                        tx2.Exec(r.Context(), "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID)
+                        tx2.Exec(r.Context(), "SELECT set_config('app.claims.role', $1, true)", claims.Role)
+                        tx2.Exec(r.Context(), "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID)
+                        _ = tx2.QueryRow(r.Context(), `SELECT count(*) FROM "EtablissementAccess" WHERE "statut" = $1`, params.Statut).Scan(&manualCount)
+                        tx2.Rollback(r.Context())
+                }
                 // Tester AVEC le LEFT JOIN User.
                 var countWithJoin int
                 _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
@@ -99,8 +108,9 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         "dbCheck": map[string]any{
                                 "current_etablissement_id": dbEtabID,
                                 "is_responsable":           dbIsResp,
-                                "policyCheck":              policyCheck,
+                                "manualCount":              manualCount,
                                 "countWithJoin":            countWithJoin,
+                                "txErr":                    txErrToString(txErr),
                         },
                         "params":  dbgParams,
                         "count":   len(dbgRecords),
