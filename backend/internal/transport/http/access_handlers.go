@@ -2,6 +2,7 @@ package http
 
 import (
         "encoding/json"
+        "log/slog"
         "net/http"
 
         "github.com/go-chi/chi/v5"
@@ -18,6 +19,15 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                 writeJSONError(w, http.StatusUnauthorized, "authentication required")
                 return
         }
+
+        // DEBUG-ACCESS : log les claims pour diagnostiquer pourquoi le responsable
+        // ne voit pas les demandes (accessRecords: null).
+        slog.Info("listAccess claims debug",
+                "userID", claims.UserID,
+                "role", claims.Role,
+                "etablissementID", claims.EtablissementID,
+                "etablissementID_len", len(claims.EtablissementID),
+        )
 
         params := domain.AccessListParams{
                 AdminID:         r.URL.Query().Get("adminId"),
