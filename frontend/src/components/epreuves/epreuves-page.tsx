@@ -2986,11 +2986,17 @@ function SessionSpecialeDialog({
  const [titre, setTitre] = useState('')
  const [titreOverride, setTitreOverride] = useState(false)
  const [isCreating, setIsCreating] = useState(false)
- // UX-FIX : tracker l'ID de l'épreuve déjà initialisée pour éviter de reset
+ // UX-IMPROVE : tracker l'ID de l'épreuve déjà initialisée pour éviter de reset
  // le formulaire (et perdre la sélection étudiant) quand epreuve change de
  // référence (re-fetch TanStack Query). Avant, le useEffect dépendait de
  // [open, epreuve] → à chaque refetch, selectedStudents était reset.
  const initializedEpreuveIdRef = useRef<string | null>(null)
+ // UX-IMPROVE : fetch de TOUS les étudiants inscrits à la filière+niveau de
+ // l'épreuve (pas seulement ceux avec session existante). Avant, seuls les
+ // étudiants ayant déjà une session apparaissaient — les nouveaux inscrits
+ // ou les absents sans session étaient invisibles.
+ const [allStudents, setAllStudents] = useState<Array<{ id: string; name: string; email: string; matricule?: string; filiereNom?: string }>>([])
+ const [studentsSearch, setStudentsSearch] = useState('')
 
  // Reset form when dialog opens with a new epreuve
  useEffect(() => {
@@ -3031,6 +3037,24 @@ function SessionSpecialeDialog({
  }
  setDateDebut(toLocal(debut))
  setDateFin(toLocal(fin))
+
+ // UX-IMPROVE : fetch tous les étudiants inscrits à la filière+niveau de
+ // l'épreuve. Avant, seuls les étudiants avec session existante apparaissaient.
+ if (epreuve.filiereId && epreuve.niveau) {
+   fetch(`/api/etudiants?filiereId=${epreuve.filiereId}&limit=500`)
+     .then(r => r.ok ? r.json() : { etudiants: [] })
+     .then(d => {
+       const etudiants = d.etudiants || d
+       // Filtrer par niveau si l'épreuve a un niveau défini
+       const filtered = epreuve.niveau
+         ? etudiants.filter((e: { niveau?: string }) => e.niveau === epreuve.niveau)
+         : etudiants
+       setAllStudents(filtered)
+     })
+     .catch(() => setAllStudents([]))
+ } else {
+   setAllStudents([])
+ }
  }
  // UX-FIX : reset le ref quand le dialog se ferme pour permettre une
  // ré-initialisation propre à la prochaine ouverture.
@@ -3179,11 +3203,17 @@ function SessionSpecialeDialog({
  </DialogDescription>
  </DialogHeader>
 
- {/* Step indicator */}
+ {/* Step indicator — UX-IMPROVE : numéros + meilleur visuel */}
  <div className="flex items-center gap-1 px-1">
  {stepTitles.map((title, idx) => (
- <div key={idx} className="flex-1">
- <div className={`h-1.5 rounded-full transition-colors ${idx + 1 <= step ?'bg-warning/40' :'bg-muted'}`} />
+ <div key={idx} className="flex-1 flex flex-col items-center">
+ <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
+ idx + 1 < step ? 'bg-warning text-white' :
+ idx + 1 === step ? 'bg-warning text-white ring-4 ring-warning/20' :
+ 'bg-muted text-muted-foreground'
+ }`}>
+ {idx + 1 < step ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+ </div>
  <p className={`text-[10px] mt-1 truncate ${idx + 1 <= step ?'text-warning font-medium' :'text-muted-foreground'}`}>{title}</p>
  </div>
  ))}
@@ -3251,63 +3281,79 @@ function SessionSpecialeDialog({
  </Badge>
  </div>
 
- {(epreuve?.sessions ?? []).length === 0 ? (
+ {/* UX-IMPROVE : barre de recherche dans la liste étudiants */}
+ <div className="relative">
+ <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
+ <Input
+ value={studentsSearch}
+ onChange={(e) => setStudentsSearch(e.target.value)}
+ placeholder="Rechercher par nom, email ou matricule..."
+ className="pl-8 h-9"
+ />
+ </div>
+
+ {/* UX-IMPROVE : affiche TOUS les étudiants inscrits à la filière+niveau,
+     pas seulement ceux avec session existante. */}
+ {allStudents.length === 0 ? (
  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-8">
  <Users className="h-8 w-8 text-muted-foreground/40" />
- <p className="mt-2 text-sm text-muted-foreground">Aucun étudiant inscrit dans cette épreuve.</p>
+ <p className="mt-2 text-sm text-muted-foreground">Aucun étudiant inscrit dans cette filière/niveau.</p>
  </div>
  ) : (
- <ScrollArea className="max-h-72">
- <div className="space-y-3">
- {statusOrder.map((status) => {
- const sessions = sessionsByStatus[status]
- if (!sessions || sessions.length === 0) return null
- const allSelected = sessions.every((s) => selectedStudents.has(s.etudiantId))
- return (
- <div key={status}>
- <div className="flex items-center gap-2 mb-1.5">
- <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${statusColors[status] ||''}`}>
- {statusLabels[status] || status} ({sessions.length})
- </Badge>
+ <>
+ {/* Bouton tout sélectionner/désélectionner */}
+ <div className="flex items-center justify-between">
+ <p className="text-xs text-muted-foreground">{allStudents.length} étudiant{allStudents.length > 1 ?'s' :''} inscrit{allStudents.length > 1 ?'s' :''}</p>
  <Button
  variant="ghost"
  size="sm"
- className="ml-auto h-6 text-[10px] text-muted-foreground hover:text-foreground"
- onClick={() => toggleAllStudents(sessions.map((s) => s.etudiantId))}
+ className="h-7 text-xs"
+ onClick={() => toggleAllStudents(allStudents.map(s => s.id))}
  >
- {allSelected ?'Tout désélectionner' :'Tout sélectionner'}
+ {allStudents.every(s => selectedStudents.has(s.id)) ? 'Tout désélectionner' : 'Tout sélectionner'}
  </Button>
  </div>
+ <ScrollArea className="max-h-80">
  <div className="space-y-1">
- {sessions.map((session) => (
+ {allStudents
+ .filter(s => !studentsSearch ||
+ s.name?.toLowerCase().includes(studentsSearch.toLowerCase()) ||
+ s.email?.toLowerCase().includes(studentsSearch.toLowerCase()) ||
+ s.matricule?.toLowerCase().includes(studentsSearch.toLowerCase()))
+ .map((student) => {
+ // Vérifier si l'étudiant a déjà une session et son statut
+ const existingSession = (epreuve?.sessions ?? []).find(s => s.etudiantId === student.id)
+ const isSelected = selectedStudents.has(student.id)
+ return (
  <div
- key={session.id}
- className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors cursor-pointer ${selectedStudents.has(session.etudiantId) ?'border-warning/40 bg-warning/50' :'hover:bg-muted/30'}`}
- onClick={() => toggleStudent(session.etudiantId)}
+ key={student.id}
+ className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors cursor-pointer ${isSelected ?'border-warning/40 bg-warning/50' :'hover:bg-muted/30'}`}
+ onClick={() => toggleStudent(student.id)}
  >
- {/* UX-FIX : stopPropagation sur la checkbox pour éviter le double toggle.
-     Avant, le clic sur la checkbox bubble vers le div parent → toggleStudent
-     appelé 2× (checkbox + div) → l'étudiant était coché puis décoché. */}
  <Checkbox
- checked={selectedStudents.has(session.etudiantId)}
- onCheckedChange={() => toggleStudent(session.etudiantId)}
+ checked={isSelected}
+ onCheckedChange={() => toggleStudent(student.id)}
  onClick={(e) => e.stopPropagation()}
  />
  <div className="min-w-0 flex-1">
- <p className="text-sm font-medium truncate">{session.etudiant?.name || session.etudiantId}</p>
- <p className="text-xs text-muted-foreground truncate">{session.etudiant?.email}</p>
+ <p className="text-sm font-medium truncate">{student.name}</p>
+ <p className="text-xs text-muted-foreground truncate">{student.email}{student.matricule ? ` · ${student.matricule}` : ''}</p>
  </div>
- {session.score !== null && (
- <span className="text-xs text-muted-foreground">{session.score}/{epreuve?.noteTotal || 20}</span>
+ {/* Afficher le statut de session existante si présent */}
+ {existingSession && (
+ <Badge variant="outline" className={`text-[9px] gap-0.5 py-0 ${statusColors[existingSession.statut] ||''}`}>
+ {statusLabels[existingSession.statut] || existingSession.statut}
+ </Badge>
  )}
- </div>
- ))}
- </div>
+ {existingSession?.score !== null && existingSession?.score !== undefined && (
+ <span className="text-xs text-muted-foreground font-mono">{existingSession.score}/{epreuve?.noteTotal || 20}</span>
+ )}
  </div>
  )
  })}
  </div>
  </ScrollArea>
+ </>
  )}
  </div>
  )}
