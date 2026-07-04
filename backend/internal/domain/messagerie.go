@@ -119,6 +119,8 @@ type Message struct {
         User         *MessageUserRef      `json:"user,omitempty"`
         ReplyTo      *MessageRef          `json:"replyTo,omitempty"`
         Attachments  []MessageAttachment  `json:"attachments,omitempty"`
+        // Niveau 2 — réactions émojis agrégées (1 ReactionSummary par émoji).
+        Reactions    []ReactionSummary    `json:"reactions,omitempty"`
 }
 
 // MessageUserRef — expéditeur allégé (pour hydratation batch).
@@ -146,6 +148,26 @@ type MessageAttachment struct {
         MimeType  string                 `json:"mimeType"`
         Size      int                    `json:"size"`
         CreatedAt time.Time              `json:"createdAt"`
+}
+
+// MessageReaction — réaction émoji d'un utilisateur sur un message.
+// Agrégée côté repo pour produire ReactionSummary (compteur par émoji + liste
+// des userIDs + flag "est-ce ma réaction").
+type MessageReaction struct {
+        ID        string    `json:"id"`
+        MessageID string    `json:"messageId"`
+        UserID    string    `json:"userId"`
+        Emoji     string    `json:"emoji"` // caractère UTF-8 (ex: '👍')
+        CreatedAt time.Time `json:"createdAt"`
+}
+
+// ReactionSummary — réaction agrégée pour un message (1 par émoji distinct).
+// Renvoyé par ListMessages pour hydrater le rendu côté frontend.
+type ReactionSummary struct {
+        Emoji     string   `json:"emoji"`
+        Count     int      `json:"count"`
+        UserIDs   []string `json:"userIds"`
+        ReactedByMe bool   `json:"reactedByMe"` // true si l'utilisateur courant a réagi
 }
 
 // MessageSignalement — signalement d'un message inapproprié.
@@ -347,6 +369,20 @@ type MessagerieRepository interface {
         // Utilisé par DeleteMessage quand le modérateur n'a pas accès à la conversation
         // (ex: responsable modérant un salon CLASSE/PROMO qu'il ne voit pas).
         GetMessageConversationID(ctx context.Context, messageID string) (string, error)
+
+        // ─── Réactions émojis (Niveau 2) ───
+        // ToggleReaction ajoute ou retire la réaction de l'utilisateur sur un message
+        // (toggle : si elle existe → DELETE + retourne false "removed" ; sinon → INSERT
+        // + retourne true "added"). RLS : l'utilisateur ne peut réagir qu'aux messages
+        // visibles (policy Reaction_insert hérite de Message_select).
+        // Retourne (added bool, reaction *MessageReaction si added, err error).
+        ToggleReaction(ctx context.Context, messageID, userID, emoji string) (added bool, reaction *MessageReaction, err error)
+
+        // ListReactionsByMessageIDs retourne toutes les réactions pour une liste de
+        // messageIDs, agrégées par message puis par émoji. Le flag reactedByMe est
+        // positionné selon userID. Utilisé par ListMessages pour hydrater les bulles
+        // en une seule query (évite N+1).
+        ListReactionsByMessageIDs(ctx context.Context, messageIDs []string, userID string) (map[string][]ReactionSummary, error)
 
         // ─── Pièces jointes ───
         CreateAttachment(ctx context.Context, att *MessageAttachment) (*MessageAttachment, error)

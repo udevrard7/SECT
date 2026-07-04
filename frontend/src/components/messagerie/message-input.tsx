@@ -20,10 +20,13 @@ import {
   type ChangeEvent,
 } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, X, Sparkles, Reply } from 'lucide-react'
+import { Send, X, Sparkles, Reply, Smile } from 'lucide-react'
+import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ds'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useTheme } from 'next-themes'
 import type { Message } from '@/types/messagerie'
 
 export interface MessageInputProps {
@@ -66,7 +69,9 @@ export function MessageInput({
   className,
 }: MessageInputProps) {
   const [value, setValue] = useState('')
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const { resolvedTheme } = useTheme()
 
   // Auto-resize : ajuste la hauteur du textarea selon son contenu,
   // jusqu'à MAX_TEXTAREA_HEIGHT (au-delà, scroll interne).
@@ -136,6 +141,26 @@ export function MessageInput({
     textareaRef.current?.focus()
   }, [])
 
+  // Insère un émoji à la position du curseur dans le textarea (pas juste à la fin).
+  // Conserve la sélection + repositionne le curseur après l'émoji inséré.
+  const handleEmojiClick = useCallback((emojiData: { emoji: string }) => {
+    const el = textareaRef.current
+    if (!el) {
+      setValue((prev) => prev + emojiData.emoji)
+      return
+    }
+    const start = el.selectionStart ?? value.length
+    const end = el.selectionEnd ?? value.length
+    const next = value.slice(0, start) + emojiData.emoji + value.slice(end)
+    setValue(next)
+    // Repositionne le curseur après l'émoji (après le re-render).
+    requestAnimationFrame(() => {
+      const pos = start + emojiData.emoji.length
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+  }, [value])
+
   return (
     <div className={cn('border-t border-border bg-card/50 p-2.5', className)}>
       {/* Indicateur de citation (reply) */}
@@ -193,7 +218,7 @@ export function MessageInput({
         )}
       </div>
 
-      {/* Zone de saisie + bouton envoyer */}
+      {/* Zone de saisie + boutons émoji & envoyer */}
       <div className="flex items-end gap-2">
         <textarea
           ref={textareaRef}
@@ -216,6 +241,46 @@ export function MessageInput({
             'scrollbar-thin'
           )}
         />
+        {/* Sélecteur d'émojis (Niveau 1) — insère l'émoji au curseur. */}
+        <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              className={cn(
+                'h-9 w-9 shrink-0 rounded-lg text-muted-foreground hover:text-foreground',
+                'disabled:opacity-40'
+              )}
+              aria-label="Ouvrir le sélecteur d'émojis"
+              title="Émojis"
+            >
+              <Smile className="h-5 w-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            side="top"
+            align="end"
+            sideOffset={8}
+            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            {/* Rendu client-only (le picker utilise window). Thème adapté au mode clair/sombre. */}
+            <EmojiPicker
+              onEmojiClick={(emojiData) => {
+                handleEmojiClick(emojiData)
+              }}
+              theme={(resolvedTheme === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT) as EmojiTheme}
+              emojiStyle={EmojiStyle.NATIVE}
+              width={320}
+              height={360}
+              previewConfig={{ showPreview: false }}
+              searchPlaceHolder="Rechercher un émoji…"
+              lazyLoadEmojis
+            />
+          </PopoverContent>
+        </Popover>
         <Button
           type="button"
           onClick={handleSend}

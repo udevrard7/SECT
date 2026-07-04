@@ -66,6 +66,7 @@ import {
   useSignalMessage,
   useHideMessages,
   useClearConversation,
+  useToggleReaction,
 } from '@/hooks/use-messagerie'
 import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
@@ -152,6 +153,17 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   const signalMessage = useSignalMessage()
   const hideMessages = useHideMessages(conversationId)
   const clearConversation = useClearConversation(conversationId)
+  // Niveau 2 — réactions émojis (toggle).
+  const toggleReaction = useToggleReaction(conversationId)
+
+  // Handler réaction : appelé par MessageBubble quand l'utilisateur clique sur
+  // un émoji existant ou en choisit un via le mini-picker.
+  const handleToggleReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      toggleReaction.mutate({ messageId, emoji })
+    },
+    [toggleReaction]
+  )
 
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
@@ -635,6 +647,7 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
                       onEdit={selectMode ? undefined : handleEdit}
                       onDelete={selectMode ? undefined : handleDelete}
                       onSignal={selectMode ? undefined : handleSignal}
+                      onToggleReaction={selectMode ? undefined : handleToggleReaction}
                       index={i}
                     />
                   </div>

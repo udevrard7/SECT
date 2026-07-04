@@ -12784,3 +12784,50 @@ Validation production :
 - Données de test supprimées ✅
 
 Build Go : EXIT 0. Vet : EXIT 0. Commit cda72a6 poussé. Render déployé.
+Task ID: SECT-MESSAGERIE-EMOJIS-REACTIONS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Niveau 1 (sélecteur d'émojis dans la saisie) + Niveau 2 (réactions aux messages)
+
+Niveau 1 — Sélecteur d'émojis dans la zone de saisie (frontend only, 0 DB) :
+- Installation de emoji-picker-react@4.19.1.
+- message-input.tsx : bouton Smile + Popover shadcn qui ouvre EmojiPicker
+  (thème adapté clair/sombre, emojiStyle NATIVE, recherche, lazy-load).
+- handleEmojiClick insère l'émoji à la position du curseur (pas juste en fin),
+  repositionne le curseur après insertion.
+
+Niveau 2 — Réactions aux messages (full-stack + migration DB) :
+
+Migration 000051 (backend/db/db/migrations/) :
+- Table MessageReaction(id, messageId, userId, emoji, createdAt) + FK CASCADE
+  + UNIQUE(messageId, userId, emoji) pour le toggle idempotent.
+- RLS : Reaction_select (hérite visibilité Message), Reaction_insert (userId=moi
+  + accès au message), Reaction_delete (userId=moi).
+- Appliquée sur Neon : 1 table, 3 policies, 4 index, version 51 enregistrée.
+
+Backend Go :
+- domain/messagerie.go : types MessageReaction + ReactionSummary (emoji, count,
+  userIds, reactedByMe) + champ Reactions []ReactionSummary sur Message +
+  2 méthodes au repository interface (ToggleReaction, ListReactionsByMessageIDs).
+- repository/messagerie.go : ToggleReaction (INSERT ON CONFLICT DO NOTHING puis
+  vérif / DELETE si existait → toggle), ListReactionsByMessageIDs (1 query batch
+  avec ANY($1), agrégation en Go, évite N+1). ListMessages hydrate les réactions
+  après pagination (best-effort, ne bloque pas l'affichage si échec).
+- usecase/messagerie.go : ToggleReaction (vérif accès message via GetMessageByID
+  + RLS, toggle repo, broadcast SSE "reaction_toggle" aux participants).
+- transport/http : handler toggleReaction (POST /api/messagerie/messages/{id}/reactions
+  body {emoji}) + route dans router.go.
+
+Frontend TS :
+- types/messagerie.ts : ReactionSummary + champ reactions sur Message.
+- hooks/use-messagerie.ts : useToggleReaction (optimistic update du cache avec
+  recalcule count/userIds/reactedByMe, rollback onError, invalidate onSettled) +
+  handler SSE "reaction_toggle" (invalide la query messages de la conv concernée).
+- message-bubble.tsx : nouveau composant ReactionBar rendu sous chaque bulle —
+  badges cliquables par émoji (count + style "reactedByMe") + bouton Smile au
+  hover qui ouvre un mini-Popover (8 émojis rapides + picker complet).
+- chat-window.tsx : branche useToggleReaction + passe onToggleReaction à MessageBubble.
+
+Vérifications :
+- go vet ./... + go build ./... : EXIT 0
+- bun run lint : 0 erreur (1 warning préexistant)
+- Migration appliquée sur Neon : table + 3 policies + 4 index + version 51 ✅

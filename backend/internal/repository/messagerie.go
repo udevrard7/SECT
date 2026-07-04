@@ -13,6 +13,7 @@ package repository
 import (
         "context"
         "fmt"
+        "log/slog"
         "strings"
         "time"
 
@@ -915,6 +916,31 @@ func (r *MessagerieRepository) ListMessages(ctx context.Context, conversationID 
                         cursorStr := last.CreatedAt.Format(time.RFC3339Nano) + "|" + last.ID
                         result.NextCursor = &cursorStr
                 }
+
+                // Niveau 2 — hydratation des réactions agrégées (1 query batch,
+                // évite N+1). On récupère toutes les réactions des messages de la
+                // page courante en une seule fois via ListReactionsByMessageIDs.
+                if len(result.Messages) > 0 {
+                        msgIDs := make([]string, len(result.Messages))
+                        for i, m := range result.Messages {
+                                msgIDs[i] = m.ID
+                        }
+                        reactionsMap, rErr := r.ListReactionsByMessageIDs(ctx, msgIDs, claims.UserID)
+                        if rErr != nil {
+                                // Best-effort : si l'hydratation des réactions échoue,
+                                // on ne bloque pas l'affichage des messages (on log
+                                // et on continue sans réactions).
+                                slog.Warn("ListMessages: ListReactionsByMessageIDs failed (best-effort skip)",
+                                        "conversationId", conversationID, "error", rErr)
+                        } else {
+                                for i := range result.Messages {
+                                        if summaries, ok := reactionsMap[result.Messages[i].ID]; ok {
+                                                result.Messages[i].Reactions = summaries
+                                        }
+                                }
+                        }
+                }
+
                 return nil
         })
         if err != nil {
@@ -1583,4 +1609,168 @@ func (r *MessagerieRepository) IsUserStudentInSameEtablissement(ctx context.Cont
                 return false, err
         }
         return isStudent, nil
+}
+
+// ============================================================
+// RÉACTIONS ÉMOJIS (Niveau 2)
+// ============================================================
+
+// ToggleReaction ajoute ou retire la réaction de l'utilisateur sur un message.
+// Toggle : si la réaction (messageId, userId, emoji) existe déjà → DELETE + retourne
+// (false, nil, nil) "removed". Sinon → INSERT + retourne (true, reaction, nil) "added".
+// RLS : policy Reaction_insert exige userId = current_user_id() ET accès au message.
+// La contrainte unique uk_reaction_msg_user_emoji garantit l'idempotence du toggle.
+func (r *MessagerieRepository) ToggleReaction(ctx context.Context, messageID, userID, emoji string) (bool, *domain.MessageReaction, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return false, nil, fmt.Errorf("ToggleReaction: claims manquants dans le context")
+        }
+        if claims.UserID != userID {
+                return false, nil, fmt.Errorf("ToggleReaction: userID != claims.UserID (anti-spoofing)")
+        }
+        if emoji == "" {
+                return false, nil, fmt.Errorf("ToggleReaction: emoji requis")
+        }
+
+        var added bool
+        var reaction *domain.MessageReaction
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // 1. Tente l'INSERT. Si la contrainte unique est violée → la réaction
+                //    existe déjà → on la DELETE (toggle off).
+                reactionID := uuid.New().String()
+                _, insertErr := tx.Exec(ctx, `
+                        INSERT INTO "MessageReaction" ("id", "messageId", "userId", "emoji", "createdAt")
+                        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                        ON CONFLICT ("messageId", "userId", "emoji") DO NOTHING
+                `, reactionID, messageID, userID, emoji)
+                if insertErr != nil {
+                        return fmt.Errorf("insert reaction: %w", insertErr)
+                }
+
+                // 2. Vérifie si l'INSERT a réussi (la réaction est maintenant présente).
+                var insertedID, insertedEmoji string
+                var insertedAt time.Time
+                queryErr := tx.QueryRow(ctx, `
+                        SELECT "id", "emoji", "createdAt"
+                        FROM "MessageReaction"
+                        WHERE "messageId" = $1 AND "userId" = $2 AND "emoji" = $3
+                `, messageID, userID, emoji).Scan(&insertedID, &insertedEmoji, &insertedAt)
+
+                if queryErr == nil && insertedID == reactionID {
+                        // L'INSERT a réussi (notre ID généré est présent) → ajout.
+                        added = true
+                        reaction = &domain.MessageReaction{
+                                ID:        insertedID,
+                                MessageID: messageID,
+                                UserID:    userID,
+                                Emoji:     insertedEmoji,
+                                CreatedAt: insertedAt,
+                        }
+                        return nil
+                }
+                if queryErr != nil && queryErr != pgx.ErrNoRows {
+                        return fmt.Errorf("query reaction after insert: %w", queryErr)
+                }
+
+                // 3. L'INSERT n'a pas réussi (conflit → la réaction existait déjà).
+                //    On la DELETE (toggle off). RLS : policy Reaction_delete exige
+                //    userId = current_user_id().
+                _, delErr := tx.Exec(ctx, `
+                        DELETE FROM "MessageReaction"
+                        WHERE "messageId" = $1 AND "userId" = $2 AND "emoji" = $3
+                `, messageID, userID, emoji)
+                if delErr != nil {
+                        return fmt.Errorf("delete reaction (toggle off): %w", delErr)
+                }
+                added = false
+                return nil
+        })
+        if err != nil {
+                return false, nil, err
+        }
+        return added, reaction, nil
+}
+
+// ListReactionsByMessageIDs récupère toutes les réactions pour une liste de
+// messages et les agrège en map[messageID][]ReactionSummary (1 summary par
+// émoji distinct, avec count, userIds, reactedByMe).
+//
+// Évite le problème N+1 : au lieu de 1 query par message, on fait 1 seule query
+// pour tous les messageIds, puis on agrège en Go.
+//
+// Si messageIDs est vide, retourne une map vide (pas de query).
+func (r *MessagerieRepository) ListReactionsByMessageIDs(ctx context.Context, messageIDs []string, userID string) (map[string][]domain.ReactionSummary, error) {
+        result := map[string][]domain.ReactionSummary{}
+        if len(messageIDs) == 0 {
+                return result, nil
+        }
+
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("ListReactionsByMessageIDs: claims manquants dans le context")
+        }
+
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // 1 query pour toutes les réactions des messageIDs.
+                rows, err := tx.Query(ctx, `
+                        SELECT "messageId", "emoji", "userId"
+                        FROM "MessageReaction"
+                        WHERE "messageId" = ANY($1)
+                        ORDER BY "messageId", "emoji", "createdAt"
+                `, messageIDs)
+                if err != nil {
+                        return fmt.Errorf("query reactions: %w", err)
+                }
+                defer rows.Close()
+
+                // Agrégation temporaire : map[messageID]map[emoji]struct{count, userIds, reactedByMe}
+                type agg struct {
+                        count        int
+                        userIds      []string
+                        reactedByMe  bool
+                }
+                temp := map[string]map[string]*agg{}
+
+                for rows.Next() {
+                        var msgID, emoji, reactorID string
+                        if err := rows.Scan(&msgID, &emoji, &reactorID); err != nil {
+                                return fmt.Errorf("scan reaction: %w", err)
+                        }
+                        if temp[msgID] == nil {
+                                temp[msgID] = map[string]*agg{}
+                        }
+                        a, exists := temp[msgID][emoji]
+                        if !exists {
+                                a = &agg{}
+                                temp[msgID][emoji] = a
+                        }
+                        a.count++
+                        a.userIds = append(a.userIds, reactorID)
+                        if reactorID == userID {
+                                a.reactedByMe = true
+                        }
+                }
+                if err := rows.Err(); err != nil {
+                        return fmt.Errorf("rows.Err after reactions scan: %w", err)
+                }
+
+                // Conversion en map[messageID][]ReactionSummary.
+                for msgID, byEmoji := range temp {
+                        summaries := make([]domain.ReactionSummary, 0, len(byEmoji))
+                        for emoji, a := range byEmoji {
+                                summaries = append(summaries, domain.ReactionSummary{
+                                        Emoji:        emoji,
+                                        Count:        a.count,
+                                        UserIDs:      a.userIds,
+                                        ReactedByMe:  a.reactedByMe,
+                                })
+                        }
+                        result[msgID] = summaries
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
+        }
+        return result, nil
 }

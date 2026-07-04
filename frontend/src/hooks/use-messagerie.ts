@@ -32,6 +32,7 @@ import type {
   MessageListResult,
   MessageSignalement,
   PresenceResult,
+  ReactionSummary,
   SendMessageInput,
   SignalMessageInput,
 } from '@/types/messagerie'
@@ -465,6 +466,105 @@ export function useHideMessages(conversationId: string) {
   })
 }
 
+// ─── 8d. useToggleReaction (réaction émoji — Niveau 2) ───
+
+/**
+ * Ajoute ou retire une réaction émoji sur un message (toggle).
+ * POST /api/messagerie/messages/{messageId}/reactions body { emoji }.
+ *
+ * Optimistic update : on modifie le cache messages immédiatement (ajout ou
+ * retrait de l'émoji selon qu'il est déjà présent pour l'utilisateur), puis on
+ * invalide pour re-synchroniser avec la vérité serveur (count exact, userIds).
+ */
+export function useToggleReaction(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+      fetchJSON<{
+        added: boolean
+        emoji: string
+        messageId: string
+        conversationId: string
+        userId: string
+      }>(`/api/messagerie/messages/${messageId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      }),
+    onMutate: async ({ messageId, emoji }) => {
+      await queryClient.cancelQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+      const previous = queryClient.getQueryData<
+        InfiniteData<MessageListResult>
+      >(messagerieKeys.messages(conversationId))
+      // Optimistic : on recalcule les réactions du message ciblé.
+      queryClient.setQueryData<InfiniteData<MessageListResult>>(
+        messagerieKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              messages: page.messages.map((m) => {
+                if (m.id !== messageId) return m
+                const currentReactions = m.reactions ?? []
+                const existing = currentReactions.find((r) => r.emoji === emoji)
+                let nextReactions: ReactionSummary[]
+                if (existing && existing.reactedByMe) {
+                  // Toggle off : retirer mon userID. Si count tombe à 0, on
+                  // supprime l'entrée.
+                  const newUserIds = existing.userIds.filter((id) => id !== 'me')
+                  if (newUserIds.length === 0) {
+                    nextReactions = currentReactions.filter((r) => r.emoji !== emoji)
+                  } else {
+                    nextReactions = currentReactions.map((r) =>
+                      r.emoji === emoji
+                        ? { ...r, count: newUserIds.length, userIds: newUserIds, reactedByMe: false }
+                        : r
+                    )
+                  }
+                } else if (existing) {
+                  // Toggle on (j'ajoute mon vote à un émoji existant).
+                  nextReactions = currentReactions.map((r) =>
+                    r.emoji === emoji
+                      ? { ...r, count: r.count + 1, userIds: [...r.userIds, 'me'], reactedByMe: true }
+                      : r
+                  )
+                } else {
+                  // Nouvel émoji : on crée l'entrée avec mon vote.
+                  nextReactions = [
+                    ...currentReactions,
+                    { emoji, count: 1, userIds: ['me'], reactedByMe: true },
+                  ]
+                }
+                return { ...m, reactions: nextReactions }
+              }),
+            })),
+          }
+        }
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback en cas d'erreur.
+      if (context?.previous) {
+        queryClient.setQueryData(
+          messagerieKeys.messages(conversationId),
+          context.previous
+        )
+      }
+    },
+    onSettled: () => {
+      // Re-synchronise avec le serveur (count exact, userIds réels).
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+    },
+  })
+}
+
 // ─── 9. useSignalMessage ───
 
 /**
@@ -815,6 +915,27 @@ export function useMessagerieStream() {
         })
       } catch {
         // ignore parse errors (heartbeats, commentaires SSE)
+      }
+    })
+
+    // Event : "reaction_toggle" — un participant a ajouté/retiré une réaction.
+    // On invalide la query messages de la conversation concernée pour re-fetcher
+    // les réactions agrégées à jour (count exact, userIds réels).
+    eventSource.addEventListener('reaction_toggle', (e) => {
+      try {
+        const data = JSON.parse(e.data) as {
+          messageId: string
+          conversationId: string
+          emoji: string
+          added: boolean
+        }
+        if (data?.conversationId) {
+          queryClient.invalidateQueries({
+            queryKey: messagerieKeys.messages(data.conversationId),
+          })
+        }
+      } catch {
+        // ignore parse errors
       }
     })
 
