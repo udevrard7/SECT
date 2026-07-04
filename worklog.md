@@ -12705,3 +12705,52 @@ Amélioration future : ajouter un worker/cron backend qui vérifie périodiqueme
 toutes les épreuves EN_COURS avec dateFin dépassée (pas seulement quand un
 étudiant poll). Aussi : clôture auto 'TOUS_SOUMIS' (quand tous les étudiants
 ont soumis, clôturer automatiquement) — non implémenté pour l'instant.
+Task ID: SECT-MESSAGERIE-NOTIFICATIONS-IN-APP
+Agent: Z.ai Code (tuteur/assistant)
+Task: Remplacer les notifications navigateur (window.confirm) par des modales in-app dans la messagerie
+
+Problème signalé :
+Lors des opérations de messagerie (suppression de message, vider conversation,
+quitter salon, masquer sélection, modération), l'application ouvrait des
+fenêtres de confirmation natives du navigateur (window.confirm) qui
+s'affichaient en dehors de l'app, rompant l'UX.
+
+5 occurrences de confirm() natif identifiées :
+- conversation-list.tsx : handleLeave (quitter salon / supprimer DM)
+- chat-window.tsx : handleDelete (suppression 1 message)
+- chat-window.tsx : handleDeleteSelected (masquer sélection multiple)
+- chat-window.tsx : handleClearConversation (vider conversation)
+- moderation-panel.tsx : handleDeleteMessage (modération soft-delete)
+
+Solution :
+1. Création d'un composant réutilisable `confirm-dialog.tsx` exposant le hook
+   `useConfirmDialog()` qui retourne :
+   - `confirm(opts): Promise<boolean>` — fonction asynchrone non-bloquante
+   - `dialog` — le JSX AlertDialog à rendre une seule fois dans le parent
+
+   Basé sur AlertDialog de shadcn/ui (déjà présent), rendu via React Portal
+   (donc à l'intérieur de l'app). Supporte title, description, confirmLabel,
+   cancelLabel, destructive (style rouge).
+
+2. Intégration dans les 3 fichiers :
+   - conversation-list.tsx : handleLeave devient async, ferme le dropdown
+     avant d'ouvrir la modale (évite le chevauchement).
+   - chat-window.tsx : 3 handlers (handleDelete, handleDeleteSelected,
+     handleClearConversation) transformés en async avec await confirm().
+   - moderation-panel.tsx : handleDeleteMessage avec await confirm().
+
+3. Les toasts de succès/erreur étaient déjà in-app (Sonner) → conservés
+   à l'identique. Seul le mécanisme de confirmation change.
+
+Détails techniques :
+- handleClose utilise un setState fonctionnel pour lire la resolve courante
+  sans dépendance [state.resolve] (évite
+  react-hooks/preserve-manual-memoization).
+- AlertDialog gère le focus trap et l'accessibilité (aria-labelledby,
+  aria-describedby, Escape pour annuler).
+- La modale de moderation-panel se rend par-dessus le Dialog existant grâce
+  au portail React (z-index géré par Radix).
+
+Vérifications :
+- bun run lint : 0 erreur (1 warning préexistant sans rapport)
+- 0 appel confirm()/window.confirm restant dans src/components/messagerie

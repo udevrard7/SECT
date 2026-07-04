@@ -46,6 +46,7 @@ import {
   useLeaveConversation,
 } from '@/hooks/use-messagerie'
 import { ConversationListSkeleton } from './messagerie-skeletons'
+import { useConfirmDialog } from './confirm-dialog'
 import type { ConversationType, ConversationWithMeta } from '@/types/messagerie'
 import { toast } from 'sonner'
 
@@ -125,20 +126,26 @@ function ConversationItem({
   const unread = conversation.unreadCount > 0
   const [menuOpen, setMenuOpen] = useState(false)
   const leaveMutation = useLeaveConversation()
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
-  const handleLeave = () => {
-    if (!confirm(
-      conversation.type === 'DIRECT'
-        ? 'Supprimer cette conversation pour vous ? L\u2019autre participant la conservera.'
-        : 'Quitter ce salon ? Vous pourrez le rejoindre à nouveau via la liste.'
-    )) {
-      setMenuOpen(false)
-      return
-    }
+  const handleLeave = async () => {
+    const isDirect = conversation.type === 'DIRECT'
+    // Ferme le menu dropdown avant d'ouvrir la modale (évite le chevauchement).
+    setMenuOpen(false)
+    const ok = await confirm({
+      title: isDirect ? 'Supprimer cette conversation ?' : 'Quitter ce salon ?',
+      description: isDirect
+        ? "Cette conversation sera supprimée de votre liste. L'autre participant la conservera."
+        : 'Vous ne recevrez plus les messages de ce salon. Vous pourrez le rejoindre à nouveau via la liste.',
+      confirmLabel: isDirect ? 'Supprimer pour moi' : 'Quitter le salon',
+      cancelLabel: 'Annuler',
+      destructive: true,
+    })
+    if (!ok) return
     leaveMutation.mutate(conversation.id, {
       onSuccess: () => {
         toast.success(
-          conversation.type === 'DIRECT' ? 'Conversation supprimée' : 'Salon quitté',
+          isDirect ? 'Conversation supprimée' : 'Salon quitté',
           { description: 'La conversation a été retirée de votre liste.' }
         )
       },
@@ -148,7 +155,6 @@ function ConversationItem({
         })
       },
     })
-    setMenuOpen(false)
   }
 
   return (
@@ -263,6 +269,9 @@ function ConversationItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Modale de confirmation in-app (remplace window.confirm) */}
+      {confirmDialog}
     </div>
   )
 }
