@@ -12155,3 +12155,38 @@ Stage Summary:
 - **Étudiant bloqué** à l'accès /questions-ia (redirection /dashboard).
 - Vague 2 à suivre : cleanup useEffect (toast/abort) + validation worker +
   échec parsing non silencieux + failover async + plafond typesQuestions.
+
+---
+Task ID: SECT-QUESTIONS-IA-VAGUE-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vague 2/3 — cleanup useEffect + validation + plafond + test-zai (HIGH/MEDIUM)
+
+Work Log :
+Frontend (generation-ia-page.tsx) :
+- useRef pour AbortController + loadingToast + useEffect cleanup au unmount.
+  Avant : si l'utilisateur naviguait ailleurs pendant la génération (2-6 min),
+  le fetch IA continuait (gaspillage crédits) et le toast restait collé.
+- Guard double-clic sur handleGenerate et handleSave.
+- Invalidation cache TanStack ['epreuves'] + ['banque-epreuves'] avant router.push.
+  Avant : la nouvelle épreuve n'apparaissait pas immédiatement (cache stale 60s).
+
+Backend (ai_handlers.go) :
+- Plafond typesQuestions : total ≤ 100 par appel. Avant : qcu=1000 possible → coût explosif.
+- Échec parsing non silencieux : 0 questions → 422 (si AI content non vide) ou 503 (si vide).
+  Avant : 200 {questions:[]} → 'succès, 0 questions' sans explication.
+
+Backend (router.go) :
+- /api/questions/test-zai restreint à ADMIN. Avant : ETUDIANT pouvait boucler (coût tokens).
+
+Build Go : EXIT 0. Lint : 0 erreur.
+
+Validation production (Agent Browser, prof01) :
+- Plafond : POST /api/epreuves/generate qcu=200 → 400 'trop de questions demandées (200)'. ✅
+- test-zai : GET /api/questions/test-zai (enseignant) → 403 'insufficient permissions'. ✅
+- Régénération (Vague 1) : toujours fonctionnelle (pas de régression). ✅
+
+Stage Summary:
+- **4 bugs HIGH/MEDIUM corrigés** : cleanup useEffect, plafond, échec parsing, test-zai.
+- **Crédits IA protégés** : plafond 100 questions + test-zai ADMIN only.
+- **UX améliorée** : toast/abort nettoyés au unmount, cache invalidé après save.
+- Vague 3 à suivre : AbortController save/regenerate + fix blank screen + a11y.
