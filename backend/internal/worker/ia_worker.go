@@ -20,11 +20,15 @@ package worker
 
 import (
         "context"
+        "encoding/json"
         "fmt"
         "log/slog"
+        "strings"
 
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
+
+        "github.com/udevrard7/sect/backend/internal/ai"
 )
 
 // IAJob représente une tâche de génération IA en file d'attente.
@@ -61,16 +65,21 @@ var GeneratorQueue = make(chan IAJob, 100)
 
 // IAWorker est le worker qui consomme la queue.
 type IAWorker struct {
-        dbPool *pgxpool.Pool
-        logger *slog.Logger
-        // aiBaseURL + apiKey sont lus depuis la DB au moment du traitement
+        dbPool    *pgxpool.Pool
+        logger    *slog.Logger
+        aiService *ai.AIService // QUESTIONS-IA-FAILOVER : utilise AIService.ChatCompletion (failover inclus)
 }
 
 // NewIAWorker crée un nouveau worker IA.
-func NewIAWorker(dbPool *pgxpool.Pool, logger *slog.Logger) *IAWorker {
+// QUESTIONS-IA-FAILOVER : aiService est maintenant requis pour bénéficier du
+// failover automatique entre providers (avant : getActiveProviderShared LIMIT 1,
+// pas de fallback → si le provider principal tombait, l'épreuve échouait même
+// si un provider de secours était disponible dans AIProviderConfig).
+func NewIAWorker(dbPool *pgxpool.Pool, logger *slog.Logger, aiService *ai.AIService) *IAWorker {
         return &IAWorker{
-                dbPool: dbPool,
-                logger: logger,
+                dbPool:    dbPool,
+                logger:    logger,
+                aiService: aiService,
         }
 }
 
@@ -97,6 +106,18 @@ func (w *IAWorker) Start(ctx context.Context) {
 }
 
 // processJob traite un job IA complet (peut prendre 30-60s).
+//
+// QUESTIONS-IA-FAILOVER : utilise maintenant aiService.ChatCompletion qui
+// implémente le failover automatique (ChatWithFailover). Avant, le worker
+// utilisait getActiveProviderShared (LIMIT 1) + callAIProviderShared sans
+// fallback → si le provider principal tombait (429/5xx/timeout), l'épreuve
+// échouait même si un provider de secours était configuré.
+//
+// QUESTIONS-IA-VALIDATION : valide la réponse IA avant de marquer TERMINEE.
+// Avant, le raw AI response était stocké tel quel → si l'IA retournait du
+// prose ou wrappait dans ```json```, Epreuve.contenu était non-JSON mais
+// statut=TERMINEE → crash UI au poll. Maintenant on valide le JSON et on
+// appelle markEpreuveError si invalide.
 func (w *IAWorker) processJob(ctx context.Context, job IAJob) {
         defer func() {
                 if r := recover(); r != nil {
@@ -108,28 +129,118 @@ func (w *IAWorker) processJob(ctx context.Context, job IAJob) {
         // 1. Mettre à jour le statut EN_COURS
         w.updateEpreuveStatus(ctx, job.EpreuveID, "EN_COURS", "", "")
 
-        // 2. Lire le provider actif depuis la DB
-        provider, err := getActiveProviderShared(ctx, w.dbPool)
-        if err != nil {
-                w.logger.Error("Failed to get active AI provider", "error", err)
-                w.markEpreuveError(ctx, job.EpreuveID, "aucun provider IA actif")
+        // 2. Vérifier que aiService est disponible.
+        if w.aiService == nil {
+                w.logger.Error("AIService not configured on IAWorker")
+                w.markEpreuveError(ctx, job.EpreuveID, "service IA non configuré")
                 return
         }
-        w.logger.Info("Using AI provider", "name", provider.Name, "model", provider.Model)
 
-        // 3. Appeler l'API du provider IA (helper partagé helpers.go).
-        result, err := callAIProviderShared(ctx, provider, job.Messages, w.logger)
+        // 3. Convertir worker.ChatMessage → ai.ChatMessage et appeler l'IA avec failover.
+        aiMessages := make([]ai.ChatMessage, 0, len(job.Messages))
+        for _, m := range job.Messages {
+                aiMessages = append(aiMessages, ai.ChatMessage{Role: m.Role, Content: m.Content})
+        }
+        result, err := w.aiService.ChatCompletion(ctx, aiMessages)
         if err != nil {
-                w.logger.Error("AI provider call failed", "error", err, "provider", provider.Name)
+                w.logger.Error("AI call failed (all providers exhausted)", "error", err, "epreuveId", job.EpreuveID)
                 w.markEpreuveError(ctx, job.EpreuveID, fmt.Sprintf("erreur API IA: %v", err))
                 return
         }
 
-        w.logger.Info("AI generation completed", "epreuveId", job.EpreuveID, "responseLength", len(result))
+        w.logger.Info("AI generation completed", "epreuveId", job.EpreuveID, "responseLength", len(result.Content), "model", result.Model)
 
-        // 4. Mettre à jour l'épreuve avec le résultat (statut TERMINE)
-        w.updateEpreuveStatus(ctx, job.EpreuveID, "TERMINEE", result, "")
+        // 4. QUESTIONS-IA-VALIDATION : valider la réponse IA avant de marquer TERMINEE.
+        // La réponse doit être du JSON valide contenant une clé "questions" (array).
+        // Si l'IA a wrappé dans ```json...``` ou ajouté du prose, on extrait le JSON.
+        // Si le parsing échoue, on ne marque pas TERMINEE (sinon crash UI au poll).
+        validatedContent, parseErr := validateAndExtractJSON(result.Content)
+        if parseErr != nil {
+                w.logger.Error("AI response validation failed", "error", parseErr, "epreuveId", job.EpreuveID, "responseSnippet", truncate(result.Content, 200))
+                w.markEpreuveError(ctx, job.EpreuveID, fmt.Sprintf("réponse IA invalide: %v", parseErr))
+                return
+        }
+
+        // 5. Mettre à jour l'épreuve avec le résultat validé (statut TERMINEE).
+        w.updateEpreuveStatus(ctx, job.EpreuveID, "TERMINEE", validatedContent, "")
         w.logger.Info("IA job completed successfully", "epreuveId", job.EpreuveID)
+}
+
+// validateAndExtractJSON valide que la réponse IA est du JSON exploitable.
+// Retourne le JSON nettoyé (sans markdown wrapper) ou une erreur.
+//
+// Étapes :
+//  1. Si la réponse contient ```json ... ```, extraire le bloc.
+//  2. Tenter json.Unmarshal vers une map générique.
+//  3. Vérifier qu'une clé "questions" existe et est un array non vide.
+//
+// QUESTIONS-IA-VALIDATION : empêche de stocker du contenu non-JSON en DB
+// (qui ferait crasher le frontend au poll de l'épreuve).
+func validateAndExtractJSON(raw string) (string, error) {
+        content := strings.TrimSpace(raw)
+        if content == "" {
+                return "", fmt.Errorf("réponse vide")
+        }
+
+        // Extraire le bloc ```json ... ``` si présent.
+        if strings.Contains(content, "```") {
+                // Cas 1: ```json\n...\n```
+                if idx := strings.Index(content, "```json"); idx >= 0 {
+                        start := idx + len("```json")
+                        if end := strings.Index(content[start:], "```"); end >= 0 {
+                                content = strings.TrimSpace(content[start : start+end])
+                        }
+                } else if idx := strings.Index(content, "```"); idx >= 0 {
+                        // Cas 2: ```\n...\n```
+                        start := idx + len("```")
+                        if end := strings.Index(content[start:], "```"); end >= 0 {
+                                content = strings.TrimSpace(content[start : start+end])
+                        }
+                }
+        }
+
+        // Si pas d'accolades, ce n'est pas du JSON.
+        if !strings.Contains(content, "{") {
+                return "", fmt.Errorf("aucun JSON détecté dans la réponse")
+        }
+
+        // Extraire le bloc JSON (du premier { au dernier }).
+        startIdx := strings.Index(content, "{")
+        endIdx := strings.LastIndex(content, "}")
+        if startIdx < 0 || endIdx < 0 || endIdx <= startIdx {
+                return "", fmt.Errorf("bloc JSON invalide")
+        }
+        jsonStr := content[startIdx : endIdx+1]
+
+        // Valider que c'est du JSON parsable.
+        var parsed map[string]interface{}
+        if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+                return "", fmt.Errorf("JSON invalide: %w", err)
+        }
+
+        // Vérifier la présence d'une clé "questions" (array).
+        questions, ok := parsed["questions"]
+        if !ok {
+                return "", fmt.Errorf("clé 'questions' manquante dans la réponse IA")
+        }
+        questionsArr, ok := questions.([]interface{})
+        if !ok {
+                return "", fmt.Errorf("la clé 'questions' n'est pas un tableau")
+        }
+        if len(questionsArr) == 0 {
+                return "", fmt.Errorf("la clé 'questions' est vide")
+        }
+
+        // Retourner le JSON validé (re-sérialisé pour garantir un format propre).
+        return jsonStr, nil
+}
+
+// truncate retourne s tronqué à maxLen caractères (avec suffixe "…").
+func truncate(s string, maxLen int) string {
+        if len(s) <= maxLen {
+                return s
+        }
+        return s[:maxLen] + "…"
 }
 
 // aiProviderConfig représente la config d'un provider lu depuis la DB.

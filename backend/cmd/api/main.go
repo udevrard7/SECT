@@ -145,7 +145,9 @@ func main() {
         // permettent l'accès full aux 12 tables : AIProviderConfig, Chapter,
         // Devoir, Document, DocumentAudio, Epreuve, EpreuveQuestion,
         // GrilleEvaluation, Question, Reponse, SessionPassation, Soumission.
-        iaWorker := worker.NewIAWorker(pool, logger)
+        // QUESTIONS-IA-FAILOVER : passer aiService au worker pour bénéficier du
+        // failover automatique entre providers (ChatWithFailover).
+        iaWorker := worker.NewIAWorker(pool, logger, aiService)
         iaWorker.RecoverInterruptedJobs(context.Background())
         iaWorker.Start(context.Background())
 
