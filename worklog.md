@@ -12831,3 +12831,35 @@ Vérifications :
 - go vet ./... + go build ./... : EXIT 0
 - bun run lint : 0 erreur (1 warning préexistant)
 - Migration appliquée sur Neon : table + 3 policies + 4 index + version 51 ✅
+
+---
+Task ID: SECT-SESSION-SPECIALE-UX-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: UI/UX formulaire Session spéciale + tous étudiants inscrits à l'UE
+
+2 améliorations majeures.
+
+1. Tous les étudiants inscrits à l'UE :
+   - Fetch /api/etudiants?filiereId=X au montage du dialog
+   - Filtrage par niveau de l'épreuve côté frontend
+   - Affichage nom, email, matricule pour chaque étudiant
+   - Badge statut + score si l'étudiant a déjà une session
+   - Avant : seuls les étudiants avec session existante apparaissaient
+
+2. UI/UX :
+   a. Step indicator avec numéros (1-2-3-4) + check pour étapes complétées
+   b. Barre de recherche (nom, email, matricule)
+   c. ScrollArea agrandi (max-h-80)
+   d. Compteur 'N étudiants inscrits' + bouton 'Tout sélectionner' global
+   e. Matricule affiché à côté de l'email
+
+Validation production (Agent Browser, prof01) :
+- Step indicator : numéros 1-2-3-4 + check + ring ✅
+- 8 étudiants inscrits affichés (avant : seulement ceux avec session) ✅
+- Matricule visible (INF/LJ/24/004) ✅
+- Badge statut session (Retournées) ✅
+- Score précédent (53.96/60) ✅
+- Bouton 'Tout sélectionner' global ✅
+- Barre de recherche présente ✅
+
+Lint : 0 erreur. Commit 8f2f898 poussé. Vercel déployé.
