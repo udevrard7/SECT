@@ -93,7 +93,8 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
         result := &domain.ConversationListResult{Conversations: []domain.ConversationWithMeta{}}
         err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
                 query := `
-                        SELECT c."id", c."type"::text, c."titre", c."etablissementId", c."filiereId", c."niveau",
+                        SELECT c."id", c."type"::text, COALESCE(c."titre", other."name") AS "titre",
+                               c."etablissementId", c."filiereId", c."niveau",
                                c."createdBy", c."createdAt", c."updatedAt", c."deletedAt",
                                lm."id", lm."conversationId", lm."userId", COALESCE(lm."isIA", false), lm."contenu",
                                lm."contenuHtml", lm."replyToId", lm."editedAt", lm."deletedAt", lm."createdAt",
@@ -108,6 +109,18 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
                         FROM "Conversation" c
                         LEFT JOIN "ConversationParticipant" p
                                ON p."conversationId" = c."id" AND p."userId" = $1
+                        -- Bug 1 : pour les conversations DIRECT, récupère le nom de l'AUTRE
+                        -- participant (encore actif) afin d'afficher son nom dans la sidebar
+                        -- même si c."titre" est NULL (cas par défaut : le frontend ne set pas titre).
+                        LEFT JOIN LATERAL (
+                                SELECT u."name"
+                                FROM "ConversationParticipant" op
+                                JOIN "User" u ON u."id" = op."userId"
+                                WHERE op."conversationId" = c."id"
+                                  AND op."userId" <> $1
+                                  AND op."leftAt" IS NULL
+                                LIMIT 1
+                        ) other ON c."type" = 'DIRECT'
                         LEFT JOIN LATERAL (
                                 SELECT m."id", m."conversationId", m."userId", m."isIA", m."contenu", m."contenuHtml",
                                        m."replyToId", m."editedAt", m."deletedAt", m."createdAt"
@@ -116,7 +129,11 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
                                 ORDER BY m."createdAt" DESC
                                 LIMIT 1
                         ) lm ON true
-                        WHERE c."deletedAt" IS NULL
+                        -- Bug 3 : exclut les conversations que l'utilisateur a explicitement
+                        -- quittées (p."leftAt" non-null). p est LEFT JOIN, donc quand l'user
+                        -- n'a jamais été participant (salons auto non encore rejoints),
+                        -- p."leftAt" est NULL → la conversation reste visible.
+                        WHERE c."deletedAt" IS NULL AND (p."leftAt" IS NULL)
                         ORDER BY c."updatedAt" DESC
                 `
                 rows, err := tx.Query(ctx, query, userID)
@@ -943,17 +960,35 @@ func (r *MessagerieRepository) CreateMessage(ctx context.Context, msg *domain.Me
                 }
 
                 // 3. Recharge le message pour peupler les champs DB (defaults).
+                // Bug 2 : on joint "User" pour que msg.User soit hydraté. Sans cela,
+                // le message retourné (puis broadcasté via SSE) a User=nil → le
+                // frontend affiche "Utilisateur" au lieu du nom de l'auteur dans les
+                // salons collectifs. ListMessages fait déjà cette jointure, mais le
+                // message créé et l'event temps-réel en manquaient.
                 row := tx.QueryRow(ctx, `
-                        SELECT "id", "conversationId", "userId", "isIA", "contenu", "contenuHtml",
-                               "replyToId", "editedAt", "deletedAt", "createdAt"
-                        FROM "Message" WHERE "id" = $1
+                        SELECT m."id", m."conversationId", m."userId", m."isIA", m."contenu", m."contenuHtml",
+                               m."replyToId", m."editedAt", m."deletedAt", m."createdAt",
+                               u."id", u."name", u."email", u."role"::text
+                        FROM "Message" m
+                        LEFT JOIN "User" u ON u."id" = m."userId"
+                        WHERE m."id" = $1
                 `, msg.ID)
                 m := &domain.Message{}
+                var uID, uName, uEmail, uRole *string
                 if err := row.Scan(
                         &m.ID, &m.ConversationID, &m.UserID, &m.IsIA, &m.Contenu, &m.ContenuHTML,
                         &m.ReplyToID, &m.EditedAt, &m.DeletedAt, &m.CreatedAt,
+                        &uID, &uName, &uEmail, &uRole,
                 ); err != nil {
                         return fmt.Errorf("reload message: %w", err)
+                }
+                if uID != nil {
+                        m.User = &domain.MessageUserRef{
+                                ID:    *uID,
+                                Name:  derefStr(uName),
+                                Email: derefStr(uEmail),
+                                Role:  derefStr(uRole),
+                        }
                 }
                 created = m
                 return nil
