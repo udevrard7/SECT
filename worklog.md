@@ -12496,3 +12496,37 @@ Work Log :
 
 Données réelles restantes : 5 épreuves (Composition*, CLOTUREES), 30 sessions,
 597 réponses, 17 users, 10 documents, 14 certificats.
+
+---
+Task ID: SECT-SURVEILLANCE-UX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Amélioration UX /surveillance — filtres obligatoires épreuve + date + scroll géré
+
+Problème : toutes les sessions (jusqu'à 200) étaient chargées d'un coup au
+montage → scroll infini sur la page entière.
+
+Solution : les données ne s'affichent qu'APRÈS sélection d'une épreuve ET d'une date.
+
+Backend (surveillance_handlers_v2.go) :
+- Query params dateDebut/dateFin pour filtrer par date d'épreuve.
+- Param optionsOnly=true : skip la query sessions, retourne seulement les
+  épreuves pour le dropdown (évite de fetcher 200 rows juste pour un dropdown).
+
+Frontend (surveillance-page.tsx) :
+- epreuveId démarre à '' (vide) → pas de fetch sessions auto.
+- Nouveau state selectedDate (input type=date).
+- Query sessions enabled seulement si epreuveId ET selectedDate renseignés.
+- Query séparée 'surveillance-epreuves-options' (optionsOnly=true) toujours
+  enabled pour peupler le dropdown.
+- Prompt "Sélectionnez une épreuve et une date" quand filtres manquants.
+- max-h-[calc(100vh-400px)] + overflow-y-auto sur la liste → scroll interne.
+- Labels '*' rouges sur filtres obligatoires.
+
+Build Go : EXIT 0. Lint : 0 erreur. Commits 42ff744 + 30c489e.
+
+Validation production (Agent Browser, prof01) :
+- Page charge sans erreur ✅
+- Prompt "Sélectionnez une épreuve et une date" affiché ✅
+- Dropdown épreuve peuplé (5 options avec compteurs alertes) ✅
+- Filtre date présent (input type=date) ✅
+- Aucune session chargée avant sélection ✅
