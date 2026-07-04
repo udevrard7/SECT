@@ -160,7 +160,12 @@ export function SurveillancePage() {
   const queryClient = useQueryClient()
   const [alertes, setAlertes] = useState<AlerteItem[]>([])
   const [isLive, setIsLive] = useState(true)
-  const [epreuveId, setEpreuveId] = useState('all')
+  // UX-IMPROVE : epreuveId démarre à '' (vide) au lieu de 'all'. Les données
+  // de surveillance ne s'affichent qu'après que l'utilisateur sélectionne une
+  // épreuve ET une date. Avant, toutes les sessions étaient chargées d'un coup
+  // (jusqu'à 200) → scroll infini sur la page.
+  const [epreuveId, setEpreuveId] = useState('')
+  const [selectedDate, setSelectedDate] = useState('')
   const [severity, setSeverity] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [searchInput, setSearchInput] = useState('')
@@ -183,11 +188,20 @@ export function SurveillancePage() {
   // Polling : refetchInterval: isLive ? 30000 : false. Préserve le bouton
   // Pause/Live — si isLive est false, aucun refetch. refetchIntervalInBackground:
   // false arrête le polling si l'onglet est caché (économie réseau).
+  // UX-IMPROVE : la query n'est enabled que si epreuveId ET selectedDate sont
+  // renseignés. Avant, la query se lançait immédiatement avec epreuveId='all'
+  // → toutes les sessions chargées d'un coup.
   const sessionsQuery = useQuery<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>({
-    queryKey: ['surveillance-sessions', user?.id, epreuveId, severity, typeFilter, debouncedSearch],
+    queryKey: ['surveillance-sessions', user?.id, epreuveId, selectedDate, severity, typeFilter, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (epreuveId !== 'all') params.set('epreuveId', epreuveId)
+      if (epreuveId) params.set('epreuveId', epreuveId)
+      // UX-IMPROVE : envoyer la date sélectionnée comme plage de 24h.
+      // dateDebut = date 00:00, dateFin = date 23:59:59.
+      if (selectedDate) {
+        params.set('dateDebut', `${selectedDate}T00:00:00Z`)
+        params.set('dateFin', `${selectedDate}T23:59:59Z`)
+      }
       if (severity !== 'all') params.set('severity', severity)
       if (typeFilter !== 'all') params.set('type', typeFilter)
       if (debouncedSearch) params.set('search', debouncedSearch)
@@ -195,7 +209,8 @@ export function SurveillancePage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return res.json()
     },
-    enabled: !!user?.id,
+    // UX-IMPROVE : enabled seulement si epreuve ET date sont sélectionnés.
+    enabled: !!user?.id && !!epreuveId && !!selectedDate,
     staleTime: 5 * 1000, // 5s : la surveillance est temps-réel, on accepte un refetch rapide au retour
     refetchOnWindowFocus: false,
     refetchInterval: isLive ? 30000 : false,
@@ -265,7 +280,7 @@ export function SurveillancePage() {
         // rare), le callback reçoit undefined et on retourne undefined
         // (pas d'update, le prochain refetch corrigera).
         queryClient.setQueryData<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>(
-          ['surveillance-sessions', user?.id, epreuveId, severity, typeFilter, debouncedSearch],
+          ['surveillance-sessions', user?.id, epreuveId, selectedDate, severity, typeFilter, debouncedSearch],
           (old) => old
             ? { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, flagged: true } : s)) }
             : old,
@@ -394,7 +409,7 @@ export function SurveillancePage() {
 
         <TabsContent value="sessions" className="mt-5">
           <SessionsTab sessions={sessions} epreuves={epreuves} loading={loading} error={error}
-            filters={{ epreuveId, setEpreuveId, severity, setSeverity, typeFilter, setTypeFilter, searchInput, setSearchInput }}
+            filters={{ epreuveId, setEpreuveId, selectedDate, setSelectedDate, severity, setSeverity, typeFilter, setTypeFilter, searchInput, setSearchInput }}
             expandedSession={expandedSession} setExpandedSession={setExpandedSession}
             onOpenDetail={setDetailSession} onFlag={handleFlag} flagging={flagging}
             onOpenScreenshot={(events, index) => setScreenshotViewer({ events, index })} />
@@ -424,22 +439,34 @@ export function SurveillancePage() {
 // ─── Sessions Tab ───
 function SessionsTab({ sessions, epreuves, loading, error, filters, expandedSession, setExpandedSession, onOpenDetail, onFlag, flagging, onOpenScreenshot }: {
   sessions: SurveillanceSession[]; epreuves: EpreuveOption[]; loading: boolean; error: string | null
-  filters: { epreuveId: string; setEpreuveId: (v: string) => void; severity: string; setSeverity: (v: string) => void; typeFilter: string; setTypeFilter: (v: string) => void; searchInput: string; setSearchInput: (v: string) => void }
+  filters: { epreuveId: string; setEpreuveId: (v: string) => void; selectedDate: string; setSelectedDate: (v: string) => void; severity: string; setSeverity: (v: string) => void; typeFilter: string; setTypeFilter: (v: string) => void; searchInput: string; setSearchInput: (v: string) => void }
   expandedSession: string | null; setExpandedSession: (v: string | null) => void
   onOpenDetail: (s: SurveillanceSession) => void; onFlag: (id: string) => void; flagging: string | null
   onOpenScreenshot: (events: LogEvent[], index: number) => void
 }) {
+  // UX-IMPROVE : vérifier si les filtres obligatoires (épreuve + date) sont sélectionnés.
+  const filtersReady = filters.epreuveId !== '' && filters.selectedDate !== ''
+
   return (
     <div className="space-y-4">
       {/* Barre de filtres */}
       <Card><CardContent className="p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Épreuve</label>
+            <label className="text-xs font-medium text-muted-foreground">Épreuve <span className="text-destructive">*</span></label>
             <Select value={filters.epreuveId} onValueChange={filters.setEpreuveId}>
-              <SelectTrigger><SelectValue placeholder="Toutes les épreuves" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">Toutes les épreuves</SelectItem>{epreuves.map((ep) => (<SelectItem key={ep.id} value={ep.id}>{ep.titre} ({ep.totalAlerts} alertes)</SelectItem>))}</SelectContent>
+              <SelectTrigger><SelectValue placeholder="Sélectionnez une épreuve" /></SelectTrigger>
+              <SelectContent>{epreuves.map((ep) => (<SelectItem key={ep.id} value={ep.id}>{ep.titre} ({ep.totalAlerts} alertes)</SelectItem>))}</SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Date <span className="text-destructive">*</span></label>
+            <Input
+              type="date"
+              value={filters.selectedDate}
+              onChange={(e) => filters.setSelectedDate(e.target.value)}
+              className="w-full"
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Sévérité</label>
@@ -465,18 +492,35 @@ function SessionsTab({ sessions, epreuves, loading, error, filters, expandedSess
         </div>
       </CardContent></Card>
 
-      {error && (<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>)}
-
-      {loading ? (
+      {/* UX-IMPROVE : prompt de sélection si filtres obligatoires manquants */}
+      {!filtersReady ? (
+        <Card className="border-dashed"><CardContent className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-info/10"><ScanEye className="h-10 w-10 text-info" /></div>
+          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Sélectionnez une épreuve et une date</h3>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Pour consulter les données de surveillance, choisissez d&apos;abord une épreuve et une date dans les filtres ci-dessus.
+            Cela permet de cibler les sessions pertinentes et d&apos;éviter le chargement de toutes les sessions d&apos;un coup.
+          </p>
+        </CardContent></Card>
+      ) : error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>
+      ) : loading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <PulseSkeleton key={i} variant="card" className="h-32" />)}</div>
       ) : sessions.length === 0 ? (
         <Card className="border-dashed"><CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10"><Shield className="h-10 w-10 text-primary-text" /></div>
           <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucune session à surveiller</h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Les sessions d&apos;évaluation apparaîtront ici dès qu&apos;un étudiant commencera une épreuve.</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Aucune session trouvée pour cette épreuve à la date sélectionnée.</p>
         </CardContent></Card>
       ) : (
-        <div className="space-y-3">{sessions.map((session, idx) => (<SessionCard key={session.id} session={session} expanded={expandedSession === session.id} onToggle={() => setExpandedSession(expandedSession === session.id ? null : session.id)} onOpenDetail={() => onOpenDetail(session)} onFlag={() => onFlag(session.id)} flagging={flagging === session.id} onOpenScreenshot={onOpenScreenshot} index={idx} />))}</div>
+        /* UX-IMPROVE : max-height + scroll au lieu de scroll infini sur la page.
+           La liste fait au max calc(100vh - 400px) — le header + filtres + tabs
+           prennent ~400px. Le scroll est interne à la liste, pas sur la page. */
+        <div className="max-h-[calc(100vh-400px)] space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+          {sessions.map((session, idx) => (
+            <SessionCard key={session.id} session={session} expanded={expandedSession === session.id} onToggle={() => setExpandedSession(expandedSession === session.id ? null : session.id)} onOpenDetail={() => onOpenDetail(session)} onFlag={() => onFlag(session.id)} flagging={flagging === session.id} onOpenScreenshot={onOpenScreenshot} index={idx} />
+          ))}
+        </div>
       )}
     </div>
   )
