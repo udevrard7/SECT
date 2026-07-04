@@ -176,6 +176,18 @@ function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
+// BUGFIX (E2E-TEST) : les propositions générées par l'IA sont des objets
+// {text, isCorrect} (voir generation-ia-page.tsx + buildEpreuvePrompt), mais
+// la passation attendait des strings. React error #31 quand il tentait de
+// rendre {prop} (objet) comme enfant de <span>. Ce helper gère les 2 formats.
+function getPropText(prop: unknown): string {
+  if (typeof prop === 'string') return prop
+  if (prop && typeof prop === 'object' && 'text' in prop) {
+    return String((prop as { text: unknown }).text)
+  }
+  return String(prop)
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function PassationPage() {
@@ -2150,7 +2162,7 @@ export function PassationPage() {
                               <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success-text  shrink-0">
                                 {letter}
                               </span>
-                              <span className="text-sm leading-relaxed">{prop}</span>
+                              <span className="text-sm leading-relaxed">{getPropText(prop)}</span>
                             </Label>
                           </div>
                         )
@@ -2188,7 +2200,7 @@ export function PassationPage() {
                             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success-text  shrink-0">
                               {letter}
                             </span>
-                            <span className="text-sm leading-relaxed">{prop}</span>
+                            <span className="text-sm leading-relaxed">{getPropText(prop)}</span>
                           </div>
                         )
                       })}
