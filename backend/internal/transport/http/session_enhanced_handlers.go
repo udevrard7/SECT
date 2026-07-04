@@ -291,10 +291,27 @@ func (s *Server) epreuveAutoClose(w http.ResponseWriter, r *http.Request) {
                         gracePeriodEndsAt = &graceEnd
                 } else {
                         isClosed = true
-                        if raisonCloture == nil {
-                                rc := "Délai dépassé (fin de période + grâce)"
-                                raisonCloture = &rc
-                        }
+                        rc := "Délai dépassé (fin de période + grâce)"
+                        raisonCloture = &rc
+
+                        // BUGFIX (CLOTURE-AUTO) : l'ancien code détectait isClosed=true
+                        // mais ne mettait PAS à jour le statut en DB. L'épreuve restait
+                        // EN_COURS indéfiniment. Maintenant on clôture réellement :
+                        // statut=CLOTUREE, clotureeAt=now, clotureeAutomatiquement=true,
+                        // raisonCloture="Délai dépassé".
+                        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                                _, err := tx.Exec(r.Context(), `
+                                        UPDATE "Epreuve"
+                                        SET "statut" = 'CLOTUREE',
+                                            "clotureeAt" = $2,
+                                            "clotureeAutomatiquement" = true,
+                                            "raisonCloture" = $3,
+                                            "updatedAt" = CURRENT_TIMESTAMP
+                                        WHERE "id" = $1
+                                          AND "statut" IN ('EN_COURS', 'TERMINEE')
+                                `, epreuveID, now, rc)
+                                return err
+                        })
                 }
         }
 
