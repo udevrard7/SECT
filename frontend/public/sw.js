@@ -17,7 +17,10 @@
  * exhaustif (les URLs Turbopack sont dynamiques) — on cache à la volée.
  */
 
-const CACHE_VERSION = 'sect-v3'
+// UX-FIX : bump de version pour forcer l'invalidation du cache après les
+// fixes E2E (passation propositions, auto-grading, code editor language).
+// Les utilisateurs auront le nouveau SW au prochain reload.
+const CACHE_VERSION = 'sect-v4'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 

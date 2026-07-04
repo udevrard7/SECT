@@ -2340,11 +2340,27 @@ export function PassationPage() {
                   )}
 
                   {/* CODE - Programming question with Monaco Editor */}
-                  {currentQuestion.question.type === 'CODE' && (
+                  {currentQuestion.question.type === 'CODE' && (() => {
+                    // UX-FIX : normaliser le langage. L'IA peut générer "Python",
+                    // "PYTHON", "python(.py)" etc. On normalise en CodingLanguage
+                    // valide (minuscules, sans extension). Avant, l'éditeur
+                    // s'ouvrait en JavaScript par défaut même si la question
+                    // spécifiait Python.
+                    const normalizeLang = (raw: string | undefined): CodingLanguage => {
+                      if (!raw) return 'javascript'
+                      const lower = String(raw).toLowerCase().replace(/\.[a-z]+$/, '').trim()
+                      const valid: CodingLanguage[] = ['python', 'javascript', 'typescript', 'c', 'java']
+                      return (valid as string[]).includes(lower) ? lower as CodingLanguage : 'javascript'
+                    }
+                    const savedLang = activeCodeLanguages[currentQuestion.questionId]
+                    const questionLang = normalizeLang(currentQuestion.question.langage)
+                    const effectiveLang = (savedLang || questionLang) as CodingLanguage
+
+                    return (
                     <CodingQuestionStudent
                       questionId={currentQuestion.questionId}
                       enonce={currentQuestion.question.enonce}
-                      langage={activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage}
+                      langage={effectiveLang}
                       codeInitial={currentQuestion.question.codeInitial || '// Écrivez votre code ici\n'}
                       fonctionSignature={currentQuestion.question.fonctionSignature || ''}
                       testsPublics={currentQuestion.question.testsPublics || []}
@@ -2352,13 +2368,13 @@ export function PassationPage() {
                       currentCode={(() => {
                         const answer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
                         return answer?.code || currentQuestion.question.codeInitial || getDefaultStarterCode(
-                          activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage,
+                          effectiveLang,
                           currentQuestion.question.fonctionSignature || undefined
                         )
                       })()}
                       onCodeChange={(code, testResultsPublics, language) => {
                         // Use the explicitly passed language if available, otherwise fall back to tracked language
-                        const activeLang = language || activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage
+                        const activeLang = (language || activeCodeLanguages[currentQuestion.questionId] || questionLang) as CodingLanguage
                         const existingAnswer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
                         const answer: CodingAnswer = {
                           code,
@@ -2383,7 +2399,8 @@ export function PassationPage() {
                       }}
                       securityConfig={securityConfig}
                     />
-                  )}
+                    )
+                  })()}
                 </div>
 
                 {/* Navigation buttons */}
