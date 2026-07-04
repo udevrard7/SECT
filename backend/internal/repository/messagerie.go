@@ -590,6 +590,15 @@ func (r *MessagerieRepository) EnsureParticipant(ctx context.Context, conversati
 // du participant via leftAt). La conversation n'est plus visible dans sa liste.
 // Pour un DM, équivaut à "supprimer la conversation pour moi".
 // Idempotent : si déjà quittée, ne fait rien.
+//
+// Bug 3 (salons) : pour les salons collectifs (CLASSE/PROMO/EQUIPE/STAFF), un
+// utilisateur peut voir le salon via RLS (basée sur rôle/filière) SANS avoir de
+// row ConversationParticipant (jamais inscrit formellement — lazy registration).
+// L'ancien UPDATE affectait 0 lignes → leftAt n'était jamais posé → le salon
+// restait visible après "Quitter". Fix : UPSERT (INSERT ... ON CONFLICT DO
+// UPDATE) qui crée un row avec leftAt set si l'utilisateur n'en avait pas, ou
+// met à jour leftAt si le row existe. Le WHERE "leftAt" IS NULL sur la branche
+// DO UPDATE garantit l'idempotence (déjà quitté → no-op).
 func (r *MessagerieRepository) LeaveConversation(ctx context.Context, conversationID, userID string) error {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok || claims.UserID == "" {
@@ -600,17 +609,15 @@ func (r *MessagerieRepository) LeaveConversation(ctx context.Context, conversati
         }
 
         return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                ct, err := tx.Exec(ctx, `
-                        UPDATE "ConversationParticipant"
-                        SET "leftAt" = CURRENT_TIMESTAMP
-                        WHERE "conversationId" = $1 AND "userId" = $2 AND "leftAt" IS NULL
-                `, conversationID, userID)
+                _, err := tx.Exec(ctx, `
+                        INSERT INTO "ConversationParticipant" ("id", "conversationId", "userId", "muted", "joinedAt", "leftAt")
+                        VALUES ($3, $1, $2, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT ("conversationId", "userId")
+                        DO UPDATE SET "leftAt" = CURRENT_TIMESTAMP
+                        WHERE "ConversationParticipant"."leftAt" IS NULL
+                `, conversationID, userID, uuid.New().String())
                 if err != nil {
-                        return fmt.Errorf("leave conversation: %w", err)
-                }
-                if ct.RowsAffected() == 0 {
-                        // Déjà quittée ou jamais inscrite → idempotent (pas d'erreur).
-                        return nil
+                        return fmt.Errorf("leave conversation (upsert): %w", err)
                 }
                 return nil
         })

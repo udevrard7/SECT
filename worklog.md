@@ -12639,3 +12639,30 @@ Vérifications :
 - go vet ./... : 0 erreur
 - go build ./... : EXIT 0
 - bun run lint : 0 erreur (1 warning préexistant sans rapport)
+
+---
+Task ID: SECT-MESSAGERIE-BUG3-SALON-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix complémentaire Bug 3 — quitter un salon ne fonctionnait pas (salon restait visible)
+
+Diagnostic post-test API (prof01, production) :
+- Bug 1 ✅, Bug 2 ✅, Bug 3 (DM) ✅ validés en production.
+- Bug 3 (salon) ❌ : quitter le salon PROMO ne le masquait pas.
+
+Root cause : LeaveConversation faisait un simple UPDATE sur
+ConversationParticipant. Pour les salons collectifs, un utilisateur peut voir
+le salon via RLS (basée sur rôle/filière) SANS avoir de row participant (lazy
+registration). L'UPDATE affectait 0 lignes → leftAt jamais posé → le salon
+restait visible après "Quitter".
+
+Fix : LeaveConversation utilise désormais un UPSERT (INSERT ... ON CONFLICT DO
+UPDATE) qui :
+- crée un row avec leftAt set si l'user n'en avait pas (salon visible via RLS
+  mais jamais rejoint formellement)
+- met à jour leftAt si le row existe (leftAt NULL)
+- no-op si déjà quitté (WHERE leftAt IS NULL sur la branche DO UPDATE)
+
+Build Go : EXIT 0. Lint : 0 erreur.
+
+Données de test nettoyées sur Neon : reset DM ASSANI (leftAt→NULL), suppression
+1 message de test. Mot de passe prof01 toujours en test (restauration prévue).
