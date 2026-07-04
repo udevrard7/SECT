@@ -302,10 +302,16 @@ func (w *IAWorker) markEpreuveError(ctx context.Context, epreuveID, errorMsg str
 }
 
 // RecoverInterruptedJobs recherche les epreuves restees bloquees au statut
-// EN_COURS (a cause d'un redemarrage Render) et les reinjecte dans la queue.
+// EN_COURS (a cause d'un redemarrage Render) et les repasse en BROUILLON.
 //
-// A appeler au demarrage de main.go, apres NewIAWorker et avant Start.
-// Graceful shutdown : aucun job n'est jamais perdu a cause de l'infra.
+// QUESTIONS-IA-LOW : l'ancien commentaire prétendait "reinjecte dans la queue"
+// et "aucun job n'est jamais perdu" — c'était faux. Les messages IA du job
+// originel ne sont PAS stockés en DB (seulement contenu, qui est null à ce
+// stade), donc on ne peut pas re-pousser le job dans GeneratorQueue.
+// Comportement réel : on repasse en BROUILLON + log warning. L'utilisateur
+// doit re-cliquer "Générer" manuellement. Le commentaire est maintenant honnête.
+// Amélioration future : stocker les messages du job en DB (colonne JSONB) pour
+// permettre un vrai re-push automatique.
 func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
         tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
