@@ -12754,3 +12754,33 @@ Détails techniques :
 Vérifications :
 - bun run lint : 0 erreur (1 warning préexistant sans rapport)
 - 0 appel confirm()/window.confirm restant dans src/components/messagerie
+
+---
+Task ID: SECT-CLOTURE-AUTO-WORKER
+Agent: Z.ai Code (tuteur/assistant)
+Task: Worker/cron périodique + clôture TOUS_SOUMIS
+
+2 améliorations implémentées et validées en production.
+
+1. Worker/cron backend (auto_close_worker.go) :
+   Goroutine périodique (60s) qui vérifie les épreuves EN_COURS dont
+   dateFin + delaiGrace < now et les clôture automatiquement en DB.
+   Premier check au démarrage (récupère les épreuves expirées pendant le
+   downtime). Garantit la clôture même sans étudiant actif pollant auto-close.
+
+2. Clôture TOUS_SOUMIS :
+   Le worker vérifie aussi les épreuves EN_COURS où toutes les sessions sont
+   SOUMISES/CORRIGEE/RETOURNEE (plus aucune EN_COURS ou NON_COMMENCEE).
+   Si oui, clôture avec raisonCloture='TOUS_SOUMIS'. Avant : code mort
+   (le frontend affichait ce cas mais aucun backend ne le mettait).
+
+Validation production :
+- Test 1 (délai dépassé) : épreuve créée avec dateFin 10min dans le passé
+  → après 90s : statut=CLOTUREE, clotureeAutomatiquement=true,
+  raisonCloture='Délai dépassé' ✅
+- Test 2 (TOUS_SOUMIS) : épreuve créée avec dateFin future + 1 session SOUMISE
+  → après 90s : statut=CLOTUREE, clotureeAutomatiquement=true,
+  raisonCloture='TOUS_SOUMIS' ✅
+- Données de test supprimées ✅
+
+Build Go : EXIT 0. Vet : EXIT 0. Commit cda72a6 poussé. Render déployé.
