@@ -12439,3 +12439,40 @@ Bugs UX notés (non bloquants) :
 Résultat : la création de session spéciale fonctionne après les 2 fixes CRITICAL.
 L'étudiant peut voir et commencer l'épreuve de rattrapage (avec dates immédiates).
 Le contenu (5 questions) est bien hérité de l'épreuve source.
+
+---
+Task ID: SECT-SESSION-SPECIALE-UX-FIXES
+Agent: Z.ai Code (tuteur/assistant)
+Task: 6 améliorations UX précises (post test E2E session spéciale)
+
+Work Log :
+Frontend (epreuves-page.tsx) — 4 fixes :
+1. Checkbox étudiant : stopPropagation sur onClick. Avant, le clic sur la checkbox
+   bubble vers le div parent → toggleStudent appelé 2× → coché puis décoché.
+2. Stepper navigation : useRef tracker l'ID épreuve initialisée. Avant, le useEffect
+   [open, epreuve] se ré-exécutait à chaque refetch TanStack → selectedStudents reset.
+3. Dates par défaut immédiates (now + durée) au lieu de now + 7 jours.
+4. Toast erreur explicite : message + code HTTP + duration 8s (au lieu de toast vide).
+
+Backend (epreuve_enhanced_handlers.go) — 2 fixes :
+5. struct input étendu : lit melangeQuestions, melangePropositions, blocageRetour,
+   type, motif, justificatif, estPartielle, questionsSelectionnees. Propagé au
+   CreateEpreuveInput.
+6. Message informatif : la réponse rappelle de publier + lancer la session.
+
+Build Go : EXIT 0. Lint : 0 erreur. Commit 1cc9b81 poussé.
+
+Validation production (Agent Browser, prof01) :
+- Fix 1 (checkbox) : clic direct sur checkbox → checked=true ✅ (avant : décoché)
+- Fix 2 (stepper) : Suivant → Précédent → sélection conservée ✅ (avant : perdue)
+- Fix 3 (dates) : debut=now, fin=now+60min ✅ (avant : now+7j)
+- Fix 4 (toast) : création 201 → dialog fermé, toast success ✅
+- Fix 5 (melange) : DB montre melangeQuestions=true, melangePropositions=true ✅
+- Fix 6 (message) : response contient message informatif ✅
+
+Stage Summary:
+- **6 améliorations UX déployées et validées** en production.
+- **Checkbox fonctionnelle** : un seul clic suffit (avant : 2 toggles s'annulaient).
+- **Sélection stable** : la navigation entre étapes ne perd plus la sélection.
+- **Dates immédiates** : l'étudiant peut passer l'épreuve tout de suite.
+- **Réglages propagés** : melange/blocage respectés dans l'épreuve dérivée.
