@@ -37,6 +37,7 @@ import {
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { useConfirmDialog } from './confirm-dialog'
 import {
   useListSignalements,
   useResolveSignalement,
@@ -106,6 +107,8 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
   // useDeleteMessage nécessite un conversationId, mais on n'a pas accès à la
   // conversation du message signalé ici. On utilise fetch direct.
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Modale de confirmation in-app (remplace window.confirm natif).
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const handleResolve = useCallback(
     async (signalementId: string, statut: SignalementStatut) => {
@@ -125,9 +128,16 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
 
   const handleDeleteMessage = useCallback(
     async (messageId: string, signalementId?: string) => {
-      if (!confirm('Masquer ce message pour tous les utilisateurs ? (soft-delete)')) {
-        return
-      }
+      // Modale in-app (remplace window.confirm natif navigateur).
+      const ok = await confirm({
+        title: 'Masquer ce message ?',
+        description:
+          'Le message sera soft-deleté pour TOUS les utilisateurs. Si un signalement est associé, il sera automatiquement résolu.',
+        confirmLabel: 'Masquer le message',
+        cancelLabel: 'Annuler',
+        destructive: true,
+      })
+      if (!ok) return
       setDeletingId(messageId)
       try {
         const res = await fetch(`/api/messagerie/messages/${messageId}`, {
@@ -165,7 +175,7 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
         setDeletingId(null)
       }
     },
-    [queryClient, resolveSignalement]
+    [confirm, queryClient, resolveSignalement]
   )
 
   return (
@@ -324,6 +334,9 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
           )}
         </div>
       </DialogContent>
+
+      {/* Modale de confirmation in-app (rendue via portail, par-dessus le Dialog) */}
+      {confirmDialog}
     </Dialog>
   )
 }

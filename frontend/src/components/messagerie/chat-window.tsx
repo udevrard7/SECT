@@ -71,6 +71,7 @@ import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
 import { ParticipantsList } from './participants-list'
 import { ChatWindowSkeleton, MessagerieEmptyState } from './messagerie-skeletons'
+import { useConfirmDialog } from './confirm-dialog'
 import { useStreamingContent } from '@/stores/streaming-store'
 import type {
   ConversationType,
@@ -121,6 +122,9 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   const [showParticipants, setShowParticipants] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set())
+  // Modale de confirmation in-app (remplace les window.confirm natifs qui
+  // ouvraient une fenêtre système extérieure à l'app).
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const { data: conversations } = useConversations()
   const conversation = conversations?.find((c) => c.id === conversationId)
@@ -289,17 +293,22 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   )
 
   const handleDelete = useCallback(
-    (msg: Message) => {
-      // Confirmation simple via window.confirm (suffisant pour MVP)
-      if (typeof window !== 'undefined') {
-        const ok = window.confirm(
-          'Supprimer ce message ? Cette action est définitive (soft-delete côté serveur).'
-        )
-        if (!ok) return
-      }
+    async (msg: Message) => {
+      // Modale in-app (remplace window.confirm natif navigateur).
+      const ok = await confirm({
+        title: 'Supprimer ce message ?',
+        description:
+          msg.userId === currentUserId
+            ? 'Cette action est définitive : le message sera masqué (soft-delete) pour tous les participants.'
+            : 'En tant que modérateur, vous allez masquer ce message (soft-delete) pour tous les participants.',
+        confirmLabel: 'Supprimer',
+        cancelLabel: 'Annuler',
+        destructive: true,
+      })
+      if (!ok) return
       deleteMessage.mutate(msg.id)
     },
-    [deleteMessage]
+    [confirm, deleteMessage, currentUserId]
   )
 
   const handleSignal = useCallback(
@@ -334,15 +343,23 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
     })
   }, [])
 
-  const handleDeleteSelected = useCallback(() => {
+  const handleDeleteSelected = useCallback(async () => {
     if (selectedMsgIds.size === 0) return
-    if (!confirm(`Masquer ${selectedMsgIds.size} message(s) pour vous ? Les autres participants les verront toujours.`)) {
-      return
-    }
+    const count = selectedMsgIds.size
+    // Modale in-app (remplace confirm natif).
+    const ok = await confirm({
+      title: `Masquer ${count} message(s) ?`,
+      description:
+        'Ces messages seront masqués pour vous uniquement. Les autres participants les verront toujours.',
+      confirmLabel: 'Masquer pour moi',
+      cancelLabel: 'Annuler',
+      destructive: true,
+    })
+    if (!ok) return
     hideMessages.mutate(Array.from(selectedMsgIds), {
       onSuccess: () => {
         toast.success('Messages masqués', {
-          description: `${selectedMsgIds.size} message(s) masqué(s) pour vous.`,
+          description: `${count} message(s) masqué(s) pour vous.`,
         })
         setSelectedMsgIds(new Set())
         setSelectMode(false)
@@ -353,12 +370,19 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
         })
       },
     })
-  }, [selectedMsgIds, hideMessages])
+  }, [confirm, selectedMsgIds, hideMessages])
 
-  const handleClearConversation = useCallback(() => {
-    if (!confirm('Vider toute la conversation pour vous ? Les autres participants verront toujours les messages.')) {
-      return
-    }
+  const handleClearConversation = useCallback(async () => {
+    // Modale in-app (remplace confirm natif).
+    const ok = await confirm({
+      title: 'Vider toute la conversation ?',
+      description:
+        'Tous les messages seront masqués pour vous uniquement. Les autres participants les verront toujours.',
+      confirmLabel: 'Vider pour moi',
+      cancelLabel: 'Annuler',
+      destructive: true,
+    })
+    if (!ok) return
     clearConversation.mutate(undefined, {
       onSuccess: (data) => {
         toast.success('Conversation vidée', {
@@ -371,7 +395,7 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
         })
       },
     })
-  }, [clearConversation])
+  }, [confirm, clearConversation])
 
   // ── États de chargement / erreur ──
   if (isLoading) {
@@ -738,6 +762,9 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
           />
         </div>
       )}
+
+      {/* Modale de confirmation in-app (remplace les window.confirm natifs) */}
+      {confirmDialog}
     </div>
   )
 }
