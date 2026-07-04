@@ -12393,3 +12393,49 @@ Stage Summary:
   alias me, feedback IA, SW cache.
 - **Expérience enseignant améliorée** : moins de clics manuels, feedback clair.
 - **Expérience étudiant améliorée** : éditeur s'ouvre au bon langage.
+
+---
+Task ID: SECT-E2E-SESSION-SPECIALE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Test E2E Session spéciale basé sur épreuve existante "Test E2E - Python et Java"
+
+Workflow testé :
+1. Enseignant (prof01) : /epreuves → "Session spéciale" sur "Test E2E - Python et Java"
+2. Config : Rattrapage + motif + sélection ASSANI + paramètres → Créer
+3. Étudiant (INF/LJ/25/008) : /mes-epreuves → "Commencer" l'épreuve de rattrapage
+
+Bugs CRITICAL trouvés et corrigés pendant le test :
+
+1. Mismatch champs frontend/backend (commit 7e64c5d) :
+   - Frontend envoyait 'etudiantsCibles' au lieu de 'etudiants' (backend lit 'etudiants')
+   - Frontend envoyait titre=undefined quand pas d'override (backend exige titre non vide)
+   - Fix : renommer etudiantsCibles → etudiants + générer titre par défaut
+
+2. Backend ne copie pas UE/filiere/niveau depuis l'épreuve source (commit ed75d87) :
+   - Le usecase Create exige uniteEnseignementId non nil
+   - Le frontend ne renvoie pas ces champs (optionnels dans le dialog)
+   - Fix : copier FiliereID, UniteEnseignementID, Niveau, NoteTotal depuis sourceEpreuve
+
+Bugs UX notés (non bloquants) :
+
+3. Checkbox étudiant : clic direct sur la checkbox ne marche pas toujours, il faut
+   cliquer sur la row entière. Probablement un problème de hit area ou de stopPropagation.
+
+4. Stepper navigation : après sélection étudiant + clic Suivant, la sélection peut se
+   perdre (checkbox décochée). Obligé de re-sélectionner.
+
+5. Dates par défaut dans 7 jours : la session spéciale a dateDebut=now+7j par défaut,
+   ce qui rend l'épreuve "Pas encore disponible" pour l'étudiant. Pour une session de
+   rattrapage, des dates immédiates seraient plus appropriées.
+
+6. Backend incomplet : le handler createSessionSpeciale ne lit pas type/motif/
+   melangeQuestions/melangePropositions/blocageRetour (champs ignorés). La création
+   d'épreuve dérivée fonctionne mais ne crée pas de sessions passation individuelles
+   pour les étudiants sélectionnés. L'enseignant doit manuellement "Lancer" la session.
+
+7. Dialog ne se ferme pas après erreur 400 : le dialog reste ouvert même si la création
+   échoue, sans message d'erreur visible (toast vide).
+
+Résultat : la création de session spéciale fonctionne après les 2 fixes CRITICAL.
+L'étudiant peut voir et commencer l'épreuve de rattrapage (avec dates immédiates).
+Le contenu (5 questions) est bien hérité de l'épreuve source.
