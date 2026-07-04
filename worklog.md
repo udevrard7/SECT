@@ -12190,3 +12190,46 @@ Stage Summary:
 - **Crédits IA protégés** : plafond 100 questions + test-zai ADMIN only.
 - **UX améliorée** : toast/abort nettoyés au unmount, cache invalidé après save.
 - Vague 3 à suivre : AbortController save/regenerate + fix blank screen + a11y.
+
+---
+Task ID: SECT-QUESTIONS-IA-VAGUE-3
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vague 3/3 (FINALE) — AbortController save/regenerate + blank screen + erreur query
+
+Work Log :
+Frontend (generation-ia-page.tsx) :
+- AbortController sur handleSave (timeout 60s). Avant : backend hang → spinner infini.
+- AbortController sur handleRegenerateSingleQuestion (timeout 120s). Avant : pas d'annulation possible.
+- Fix blank screen : goToStep empêche navigation vers preview/save si generatedContenu null.
+  Avant : après 'Régénérer tout' (set null), clic 'Aperçu' → page blanche.
+- Erreur TanStack Query gérée : si GET /api/documents échoue, affiche 'Erreur de chargement'
+  avec bouton Réessayer au lieu de 'Aucun document analysé' (trompeur).
+- Commit e6a649a poussé. Vercel déployé.
+
+Validation production (Agent Browser, prof01) :
+- /questions-ia : page charge, titre 'Génération IA d'Épreuves' affiché. ✅
+- 0 erreur console. ✅
+- Pas de régression sur les vagues 1-2. ✅
+
+=== AUDIT QUESTIONS-IA TERMINÉ ===
+
+Bilan global (3 vagues, 10 bugs corrigés) :
+- Vague 1 (CRITICAL/HIGH) : régénération 100% cassée + code mort 3101 lignes + role guard.
+  Commit fd50ef6. Validé : régénération 200, étudiant redirigé.
+- Vague 2 (HIGH/MEDIUM) : cleanup useEffect + plafond 100 questions + échec parsing non
+  silencieux + test-zai ADMIN only. Commit 26d95ea. Validé : plafond 400, test-zai 403.
+- Vague 3 (MEDIUM) : AbortController save/regenerate + fix blank screen + erreur query.
+  Commit e6a649a. Validé : page charge, 0 erreur.
+
+Bugs restants (11 LOW ou backend complexe) :
+- Failover async (ia_worker.go utilise getActiveProviderShared LIMIT 1, pas de fallback).
+  Nécessite refactoring du worker pour utiliser ChatWithFailover — complexe, vague future.
+- Validation worker (raw AI response stocké sans parsing avant TERMINEE).
+  Nécessite d'appeler parseEpreuveResponse côté worker — vague future.
+- Race condition cache practice (examprep_handlers.go). Complex, vague future.
+- a11y (0 aria-label). Amélioration progressive.
+- Divers LOW (useMemo side effect, filtre UE orphelins, selectAll accumule, dates hardcodées,
+  bareme fallback silencieux, prompt injection, fallback subtil preview/titre,
+  RecoverInterruptedJobs, timeouts incohérents, extractJSON dupliqué).
+
+Architecture respectée. Tous les commits signés udevrard7 <ulrichdouh@gmail.com>.
