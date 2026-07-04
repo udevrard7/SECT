@@ -126,6 +126,19 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // QUESTIONS-IA-FIX : plafond sur le nombre total de questions demandées.
+        // Avant : un user pouvait envoyer typesQuestions.qcu=1000 → prompt énorme
+        // → réponse IA de 50-100k tokens → coût et latence explosifs.
+        // Plafond à 100 (cohérent avec la validation frontend generation-ia-page.tsx).
+        totalRequested := body.Config.TypesQuestions.QCU + body.Config.TypesQuestions.QCM +
+                body.Config.TypesQuestions.QRC + body.Config.TypesQuestions.Reflexion +
+                body.Config.TypesQuestions.Code
+        if totalRequested > 100 {
+                writeJSONError(w, http.StatusBadRequest, fmt.Sprintf(
+                        "trop de questions demandées (%d) : le maximum est de 100 par épreuve", totalRequested))
+                return
+        }
+
         // 1. Récupérer le contenu textuel de chaque document via documentUC.
         //    documentUC.GetByID applique RLS (ENSEIGNANT/ADMIN only).
         materials := make([]docMaterial, 0, len(body.DocumentIDs))
@@ -255,6 +268,23 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
 
         // 4. Parser la reponse JSON.
         questions, consignes, baremeTotal := parseEpreuveResponse(result.Content)
+
+        // QUESTIONS-IA-FIX : échec parsing non silencieux. Avant, si l'IA
+        // retournait du prose sans JSON (ou un JSON malformé), parseEpreuveResponse
+        // retournait [] silencieusement → le handler renvoyait 200 {questions:[]}
+        // → l'utilisateur voyait "succès, 0 questions" sans savoir que l'IA
+        // avait mal répondu. Maintenant on distingue :
+        //  - AI content vide → 503 (IA n'a rien répondu)
+        //  - AI content non vide mais 0 questions parsées → 422 (réponse illisible)
+        if len(questions) == 0 {
+                if strings.TrimSpace(result.Content) == "" {
+                        writeJSONError(w, http.StatusServiceUnavailable, "IA n'a retourné aucun contenu")
+                        return
+                }
+                writeJSONError(w, http.StatusUnprocessableEntity,
+                        "réponse IA illisible : l'IA n'a pas produit de JSON valide. Réessayez.")
+                return
+        }
 
         // 5. Reponse — strictement alignee sur le shape attendu par
         //    generation-ia-page.tsx (data.contenu.questions, data.contenu.consignes,

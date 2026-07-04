@@ -359,7 +359,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/questions", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listQuestions)
-                        r.Get("/test-zai", s.testZaiConnection)                          // P2-Q3
+                        // QUESTIONS-IA-FIX : test-zai consomme des tokens IA.
+                        // Avant : RequireAuth seul → un ETUDIANT pouvait boucler
+                        // dessus et faire exploser la facture. Restreint à ADMIN.
+                        r.With(middleware.RequireRole("ADMIN")).Get("/test-zai", s.testZaiConnection)                          // P2-Q3
                         r.Get("/{id}", s.getQuestion)
                         // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
                         r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.createQuestion)
