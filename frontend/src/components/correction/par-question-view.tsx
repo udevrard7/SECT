@@ -384,6 +384,7 @@ export function ParQuestionView({
                         isSaving={isSavingRow}
                         onAiGrade={() => handleAiGrade(session.id, horizontalCurrentQuestion.questionId)}
                         isAiLoading={isAiLoading}
+                        aiSuggestedNote={rep?.noteIA ?? null}
                       />
                     )}
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { PenTool, Loader2, Wand2, Save, Check, CircleDot } from 'lucide-react'
+import { PenTool, Loader2, Wand2, Save, Check, CircleDot, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -45,6 +45,7 @@ export function GradingForm({
   isSaving,
   onAiGrade,
   isAiLoading,
+  aiSuggestedNote, // UX-IMPROVE : note IA pour afficher le badge "IA" si pré-remplie
 }: {
   variant: 'par-copie' | 'par-question'
   bareme: number
@@ -60,6 +61,7 @@ export function GradingForm({
   isSaving: boolean
   onAiGrade: () => void
   isAiLoading: boolean
+  aiSuggestedNote?: number | null
 }) {
   const isParCopie = variant === 'par-copie'
   const containerClass = isParCopie
@@ -71,6 +73,10 @@ export function GradingForm({
   const bodyClass = isParCopie ? 'p-3 space-y-3' : 'p-4 space-y-3'
   const criteriaBtnTextClass = isParCopie ? 'text-[11px]' : 'text-xs'
   const aiButtonLabel = isParCopie ? 'Suggérer une note' : 'Suggérer note IA'
+
+  // UX-IMPROVE : hint visuel quand la note affichée vient de l'IA (pré-remplie).
+  // On compare noteFinale avec la note IA stockée (passée via prop optionnelle).
+  const showAiHint = noteFinale !== '' && parseFloat(noteFinale) === aiSuggestedNote
 
   // Hint "(auto : X)" : s'affiche quand la note saisie diffère du score calculé.
   // En par-question, préservation de la condition supplémentaire `computedScore > 0`.
@@ -177,6 +183,12 @@ export function GradingForm({
             className="w-24 h-9 text-base font-bold font-mono tabular-nums"
           />
           <span className="text-base font-semibold text-muted-foreground font-mono tabular-nums">/ {bareme}</span>
+          {showAiHint && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary">
+              <Sparkles className="h-2.5 w-2.5" />
+              IA
+            </span>
+          )}
           {showAutoHint && (
             <span className="text-[10px] text-warning font-mono tabular-nums">
               (auto : {Math.round(computedScore * 10) / 10})

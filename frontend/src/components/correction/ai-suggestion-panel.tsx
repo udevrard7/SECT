@@ -92,7 +92,7 @@ export function AiSuggestionPanel({
                 className="flex-1 h-7 text-xs bg-secondary hover:bg-secondary/90 text-white"
               >
                 {isApplying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ThumbsUp className="h-3 w-3 mr-1" />}
-                Appliquer
+                Valider la note
               </Button>
               <Button
                 size="sm"
@@ -101,7 +101,7 @@ export function AiSuggestionPanel({
                 className="h-7 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
               >
                 <ThumbsDown className="h-3 w-3 mr-1" />
-                Ignorer
+                Ajuster
               </Button>
             </div>
           </div>
@@ -135,7 +135,7 @@ export function AiSuggestionPanel({
           className="h-7 text-xs bg-secondary hover:bg-secondary/90 text-white"
         >
           <ThumbsUp className="h-3 w-3 mr-1" />
-          Appliquer
+          Valider la note
         </Button>
         <Button
           size="sm"
@@ -143,7 +143,7 @@ export function AiSuggestionPanel({
           onClick={onCopyNote}
           className="h-7 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
         >
-          Copier note
+          Ajuster
         </Button>
       </div>
     </div>
