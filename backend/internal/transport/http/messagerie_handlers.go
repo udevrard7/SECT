@@ -385,6 +385,41 @@ func (s *Server) hideMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 // ============================================================
+// RÉACTIONS ÉMOJIS (Niveau 2)
+// ============================================================
+
+// toggleReaction — POST /api/messagerie/messages/{id}/reactions
+// Body: { "emoji": "👍" }
+// Toggle : si la réaction existe → la retire (added=false) ; sinon → l'ajoute
+// (added=true). Broadcaste un event SSE "reaction_toggle" aux participants.
+func (s *Server) toggleReaction(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        messageID := chi.URLParam(r, "id")
+        var body struct {
+                Emoji string `json:"emoji"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+        if body.Emoji == "" {
+                writeJSONError(w, http.StatusBadRequest, "emoji requis")
+                return
+        }
+        result, err := s.messagerieUC.ToggleReaction(r.Context(), claims, messageID, body.Emoji)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(result)
+}
+
+// ============================================================
 // SIGNALEMENTS
 // ============================================================
 

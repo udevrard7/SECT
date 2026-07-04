@@ -79,6 +79,17 @@ export interface Message {
   user?: MessageUserRef | null
   replyTo?: MessageRef | null
   attachments?: MessageAttachment[]
+  /** Niveau 2 — réactions émojis agrégées (1 ReactionSummary par émoji distinct). */
+  reactions?: ReactionSummary[]
+}
+
+/** Réaction agrégée sur un message (1 par émoji distinct). */
+export interface ReactionSummary {
+  emoji: string
+  count: number
+  userIds: string[]
+  /** true si l'utilisateur courant a réagi avec cet émoji. */
+  reactedByMe: boolean
 }
 
 export interface MessageSignalement {

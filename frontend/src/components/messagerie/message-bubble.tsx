@@ -22,14 +22,23 @@ import {
   Trash2,
   Flag,
   ShieldAlert,
+  Smile,
 } from 'lucide-react'
 import { format, isToday, isYesterday } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { useState, useCallback, type MouseEvent } from 'react'
+import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react'
+import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ds'
 import { MarkdownRenderer } from '@/components/exam-prep/markdown-renderer'
+import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,8 +46,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Button } from '@/components/ui/button'
-import type { Message, SignalementRaison } from '@/types/messagerie'
+import type { Message, ReactionSummary, SignalementRaison } from '@/types/messagerie'
 
 export interface MessageBubbleProps {
   /** Le message à afficher */
@@ -55,6 +63,8 @@ export interface MessageBubbleProps {
   onDelete?: (message: Message) => void
   /** Callback pour signaler le message */
   onSignal?: (message: Message, raison: SignalementRaison) => void
+  /** Callback pour toggle une réaction émoji (Niveau 2) */
+  onToggleReaction?: (messageId: string, emoji: string) => void
   /** Index pour le stagger d'animation (ms) */
   index?: number
 }
@@ -98,9 +108,11 @@ export function MessageBubble({
   onEdit,
   onDelete,
   onSignal,
+  onToggleReaction,
   index = 0,
 }: MessageBubbleProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false)
 
   const isMe = !message.isIA && message.userId === currentUserId
   const isIA = message.isIA
@@ -347,6 +359,18 @@ export function MessageBubble({
           )}
         </div>
 
+        {/* Niveau 2 — Réactions émojis (badges cliquables + bouton ajouter) */}
+        {!isDeleted && onToggleReaction && (
+          <ReactionBar
+            messageId={message.id}
+            reactions={message.reactions}
+            isMe={isMe}
+            onToggleReaction={onToggleReaction}
+            pickerOpen={reactionPickerOpen}
+            setPickerOpen={setReactionPickerOpen}
+          />
+        )}
+
         {/* Timestamp + indicateur "édité" */}
         <div
           className={cn(
@@ -363,5 +387,127 @@ export function MessageBubble({
         </div>
       </div>
     </motion.div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// ReactionBar — Barre de réactions sous chaque bulle (Niveau 2).
+//
+// Affiche :
+//  - Un badge par émoji déjà présent (emoji + count), cliquable pour toggler
+//    (si c'est ma réaction → la retire ; sinon → l'ajoute aussi).
+//  - Un bouton "ajouter une réaction" (icône Smile) qui ouvre un mini-picker
+//    Popover avec les émojis rapides + accès au picker complet.
+// ─────────────────────────────────────────────────────────────
+
+function ReactionBar({
+  messageId,
+  reactions,
+  isMe,
+  onToggleReaction,
+  pickerOpen,
+  setPickerOpen,
+}: {
+  messageId: string
+  reactions?: ReactionSummary[]
+  isMe: boolean
+  onToggleReaction: (messageId: string, emoji: string) => void
+  pickerOpen: boolean
+  setPickerOpen: (open: boolean) => void
+}) {
+  const { resolvedTheme } = useTheme()
+  // Émojis rapides proposés dans le mini-picker (les plus courants).
+  const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '🔥', '👏', '🤔', '😮']
+
+  const handleClick = useCallback(
+    (emoji: string) => {
+      onToggleReaction(messageId, emoji)
+      setPickerOpen(false)
+    },
+    [messageId, onToggleReaction, setPickerOpen]
+  )
+
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-1 px-1',
+        isMe && 'flex-row-reverse'
+      )}
+    >
+      {/* Badges des réactions existantes */}
+      {reactions?.map((r) => (
+        <button
+          key={r.emoji}
+          type="button"
+          onClick={() => onToggleReaction(messageId, r.emoji)}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] transition-colors',
+            r.reactedByMe
+              ? 'border-primary/40 bg-primary/10 text-primary-text'
+              : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted'
+          )}
+          aria-label={`Réagir avec ${r.emoji} (${r.count} personne${r.count > 1 ? 's' : ''}${r.reactedByMe ? ', dont vous' : ''})`}
+          aria-pressed={r.reactedByMe}
+          title={`${r.count} personne${r.count > 1 ? 's' : ''}${r.reactedByMe ? ' (dont vous)' : ''}`}
+        >
+          <span className="text-sm leading-none">{r.emoji}</span>
+          <span className="tabular-nums font-medium">{r.count}</span>
+        </button>
+      ))}
+
+      {/* Bouton "ajouter une réaction" + mini-picker */}
+      <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              'inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground/70 transition-colors hover:border-primary/40 hover:text-primary-text',
+              'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+            )}
+            aria-label="Ajouter une réaction"
+            title="Ajouter une réaction"
+          >
+            <Smile className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align={isMe ? 'end' : 'start'}
+          sideOffset={4}
+          className="w-auto p-2"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          {/* Émojis rapides (1 clic) */}
+          <div className="mb-1.5 flex flex-wrap gap-0.5">
+            {QUICK_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => handleClick(emoji)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-lg transition-colors hover:bg-accent"
+                aria-label={`Réagir avec ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          {/* Séparateur */}
+          <div className="my-1 h-px bg-border" />
+          {/* Picker complet (recherche + catégories) */}
+          <div className="max-h-[280px] overflow-hidden">
+            <EmojiPicker
+              onEmojiClick={(emojiData) => handleClick(emojiData.emoji)}
+              theme={(resolvedTheme === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT) as EmojiTheme}
+              emojiStyle={EmojiStyle.NATIVE}
+              width={280}
+              height={280}
+              previewConfig={{ showPreview: false }}
+              searchPlaceHolder="Rechercher…"
+              lazyLoadEmojis
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }

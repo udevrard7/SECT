@@ -428,6 +428,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Patch("/messages/{id}", s.editMessage)
                         r.Delete("/messages/{id}", s.deleteMessage)
                         r.Post("/messages/{id}/signaler", s.signalMessage)
+                        r.Post("/messages/{id}/reactions", s.toggleReaction)
                         r.Post("/messages/hide", s.hideMessages)
                         // SSE stream temps réel
                         r.Get("/stream", s.messagerieStream)

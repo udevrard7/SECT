@@ -791,3 +791,64 @@ func (uc *MessagerieUseCase) participantIDs(ctx context.Context, conversationID 
         }
         return ids
 }
+
+// ============================================================
+// RÉACTIONS ÉMOJIS (Niveau 2)
+// ============================================================
+
+// ToggleReactionResult est le retour de ToggleReaction : indique si la réaction
+// a été ajoutée (true) ou retirée (false), + l'event à broadcaster.
+type ToggleReactionResult struct {
+        Added       bool                     `json:"added"`        // true = ajoutée, false = retirée
+        Emoji       string                   `json:"emoji"`
+        MessageID   string                   `json:"messageId"`
+        // ConversationID est peuplé pour que le frontend puisse invalider le
+        // cache messages de la bonne conversation (et le hub SSE puisse cibler
+        // les bons participants).
+        ConversationID string                `json:"conversationId"`
+        UserID      string                   `json:"userId"`       // qui a réagi (current user)
+}
+
+// ToggleReaction ajoute ou retire la réaction de l'utilisateur sur un message.
+// Vérifie d'abord que l'utilisateur a accès au message (GetMessageByID → RLS),
+// puis appelle le repo (toggle). Broadcaste un event "reaction_toggle" aux
+// participants via le hub SSE pour mise à jour temps réel.
+func (uc *MessagerieUseCase) ToggleReaction(ctx context.Context, claims db.SessionClaims, messageID, emoji string) (*ToggleReactionResult, error) {
+        if messageID == "" {
+                return nil, &domain.ValidationError{Field: "messageId", Message: "messageId requis"}
+        }
+        if emoji == "" {
+                return nil, &domain.ValidationError{Field: "emoji", Message: "emoji requis"}
+        }
+
+        // 1. Vérifie l'accès au message (RLS : si l'utilisateur ne voit pas le
+        //    message, GetMessageByID retourne NotFoundError → 404).
+        msg, err := uc.messagerieRepo.GetMessageByID(ctx, messageID)
+        if err != nil {
+                return nil, err
+        }
+
+        // 2. Toggle en DB.
+        added, _, err := uc.messagerieRepo.ToggleReaction(ctx, messageID, claims.UserID, emoji)
+        if err != nil {
+                return nil, err
+        }
+
+        result := &ToggleReactionResult{
+                Added:          added,
+                Emoji:          emoji,
+                MessageID:      messageID,
+                ConversationID: msg.ConversationID,
+                UserID:         claims.UserID,
+        }
+
+        // 3. Broadcast un event "reaction_toggle" aux participants (temps réel).
+        if uc.hub != nil {
+                ids := uc.participantIDs(ctx, msg.ConversationID)
+                if len(ids) > 0 {
+                        uc.hub.BroadcastEvent(ids, "reaction_toggle", result)
+                }
+        }
+
+        return result, nil
+}
