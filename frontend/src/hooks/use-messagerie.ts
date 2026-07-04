@@ -771,12 +771,42 @@ export function useMessagerieStream() {
     // Event : "message_new" — quand le message IA final arrive, on clear le
     // contenu streaming de cette conversation (la bulle temporaire est
     // remplacée par le message persisté via l'invalidation query).
+    //
+    // Bug 2 : on fusionne aussi le message entrant directement dans le cache
+    // (sans attendre le refetch) pour qu'il apparaisse immédiatement AVEC le
+    // nom de l'auteur (msg.user est désormais hydraté côté backend). On évite
+    // les doublons (message déjà présent via optimistic update de l'expéditeur)
+    // en filtrant sur l'ID.
     eventSource.addEventListener('message_new', (e) => {
       try {
         const msg = JSON.parse(e.data) as Message
         if (msg.isIA) {
           useStreamingStore.getState().clearStreaming(msg.conversationId)
         }
+        // Fusion immédiate dans le cache messages (évite le flash "Utilisateur"
+        // pendant le round-trip du refetch, et affiche le nom de l'auteur tout
+        // de suite grâce à l'hydratation User côté backend).
+        queryClient.setQueryData<InfiniteData<MessageListResult>>(
+          messagerieKeys.messages(msg.conversationId),
+          (old) => {
+            if (!old) return old
+            // Si le message est déjà présent (optimistic update de l'expéditeur
+            // avec un ID temporaire, ou refetch concurrent), on ne l'ajoute pas.
+            const exists = old.pages.some((page) =>
+              page.messages.some((m) => m.id === msg.id)
+            )
+            if (exists) return old
+            // Sinon, on l'insère en tête de la première page.
+            return {
+              ...old,
+              pages: old.pages.map((page, i) =>
+                i === 0
+                  ? { ...page, messages: [msg, ...page.messages] }
+                  : page
+              ),
+            }
+          }
+        )
         queryClient.invalidateQueries({
           queryKey: messagerieKeys.messages(msg.conversationId),
         })
