@@ -167,6 +167,10 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
         searchFilter := r.URL.Query().Get("search")
         dateDebutFilter := r.URL.Query().Get("dateDebut")
         dateFinFilter := r.URL.Query().Get("dateFin")
+        // UX-IMPROVE : optionsOnly=true → retourner uniquement la liste des
+        // épreuves (pour le dropdown) sans fetcher les sessions. Évite de
+        // charger 200 sessions juste pour peupler un dropdown.
+        optionsOnly := r.URL.Query().Get("optionsOnly") == "true"
 
         type rawSession struct {
                 ID              string
@@ -213,6 +217,8 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
                         args = append(args, "%"+searchFilter+"%")
                         argIdx++
                 }
+                // UX-IMPROVE : skip date filters si optionsOnly (on veut toutes
+                // les épreuves, pas juste celles d'une date spécifique).
                 // UX-IMPROVE : filtre par date d'épreuve (dateDebut/dateFin).
                 // Permet à l'enseignant de cibler une session spécifique dans le temps
                 // au lieu de charger toutes les sessions d'un coup.
@@ -232,6 +238,10 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
                         whereClause = "WHERE " + strings.Join(where, " AND ")
                 }
 
+                // UX-IMPROVE : si optionsOnly, skip la query sessions (on veut
+                // juste les epreuve options pour le dropdown). Économise le
+                // fetch de 200 rows.
+                if !optionsOnly {
                 query := fmt.Sprintf(`
                         SELECT s."id", s."etudiantId",
                                COALESCE(u."name", '') AS etudiant_nom,
@@ -282,6 +292,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
                 if err := rows.Err(); err != nil {
                         return fmt.Errorf("rows iteration: %w", err)
                 }
+                } // fin if !optionsOnly
 
                 // Récupération des épreuves pour le dropdown filtre (S4).
                 var eArgs []any
