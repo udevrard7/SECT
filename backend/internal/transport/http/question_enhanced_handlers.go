@@ -5,10 +5,12 @@ import (
         "encoding/json"
         "strings"
         "fmt"
+        "io"
         "net/http"
 
         "github.com/go-chi/chi/v5"
         "github.com/udevrard7/sect/backend/internal/ai"
+        "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
 )
 
@@ -45,7 +47,7 @@ func (s *Server) regenerateQuestion(w http.ResponseWriter, r *http.Request) {
                 Type       string `json:"type"`
                 Difficulte string `json:"difficulte"`
         }
-        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+        if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
                 return
         }
@@ -61,10 +63,21 @@ func (s *Server) regenerateQuestion(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // Récupérer la question existante pour le contexte
-        existingQ, err := s.questionUC.GetByID(r.Context(), claims, questionID)
-        if err != nil {
-                middleware.MapDomainError(w, err)
+        // Récupérer la question existante pour le contexte (fallback pour type/difficulte).
+        // BUGFIX (QUESTIONS-IA-REGENERATE) : l'ancien code rendait GetByID fatal → 404
+        // si la question n'existait pas en DB. Or en mode preview (questions générées
+        // par l'IA mais non encore persistées), q.id = "q1", "q2" etc. → GetByID
+        // échouait toujours → la régénération single question était 100% cassée.
+        // Fix : GetByID est maintenant non-fatal. Si la question n'existe pas (preview),
+        // on continue avec uniquement les type/difficulte fournis dans le body.
+        var existingQ *domain.Question
+        if eq, err := s.questionUC.GetByID(r.Context(), claims, questionID); err == nil {
+                existingQ = eq
+        }
+        // Si GetByID échoue ET que le body ne fournit pas type/difficulte, on ne peut
+        // pas régénérer → erreur explicite.
+        if (existingQ == nil || existingQ.ID == "") && input.Type == "" {
+                writeJSONError(w, http.StatusBadRequest, "type requis (question non persistée en DB)")
                 return
         }
 
@@ -78,11 +91,11 @@ func (s *Server) regenerateQuestion(w http.ResponseWriter, r *http.Request) {
         }
 
         qType := input.Type
-        if qType == "" {
+        if qType == "" && existingQ != nil {
                 qType = string(existingQ.Type)
         }
         qDiff := input.Difficulte
-        if qDiff == "" {
+        if qDiff == "" && existingQ != nil {
                 qDiff = string(existingQ.Difficulte)
         }
 

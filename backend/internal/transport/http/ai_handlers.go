@@ -104,10 +104,12 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // Le rôle ENSEIGNANT est attendu (les étudiants ne génèrent pas d'épreuves).
-        // On tolère aussi l'ADMIN pour les tests.
-        if claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
-                writeJSONError(w, http.StatusForbidden, "rôle non autorisé (ENSEIGNANT requis)")
+        // QUESTIONS-IA-FIX : le router accepte ENSEIGNANT/ADMIN/RESPONSABLE.
+        // L'ancien code refusait RESPONSABLE (incohérence avec le router).
+        // Un responsable peut vouloir générer des épreuves (il gère le programme
+        // académique). Alignement du handler sur le router.
+        if claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" && claims.Role != "RESPONSABLE" {
+                writeJSONError(w, http.StatusForbidden, "rôle non autorisé (ENSEIGNANT, RESPONSABLE ou ADMIN requis)")
                 return
         }
 

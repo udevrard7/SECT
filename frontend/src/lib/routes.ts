@@ -578,6 +578,11 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   configuration: ['ADMIN'],
   // NOTIFICATIONS-FIX-N7 : centre de notifications admin réservé ADMIN.
   notifications: ['ADMIN'],
+  // QUESTIONS-IA-FIX : Génération IA réservée ENSEIGNANT + ADMIN (+ RESPONSABLE).
+  // Avant ce fix, la page n'était pas listée → accessible à tous les rôles
+  // authentifiés (dont ETUDIANT) via URL directe. L'étudiant voyait le wizard
+  // complet et ne découvrait le 403 qu'au clic "Générer".
+  'questions-ia': ['ENSEIGNANT', 'RESPONSABLE', 'ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)
