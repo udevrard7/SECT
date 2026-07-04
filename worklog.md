@@ -12530,3 +12530,30 @@ Validation production (Agent Browser, prof01) :
 - Dropdown épreuve peuplé (5 options avec compteurs alertes) ✅
 - Filtre date présent (input type=date) ✅
 - Aucune session chargée avant sélection ✅
+
+---
+Task ID: SECT-CORRECTION-IA-WORKFLOW
+Agent: Z.ai Code (tuteur/assistant)
+Task: Correction assistée par IA — IA propose note → valider/ajuster → enregistrer
+
+Workflow amélioré :
+1. IA propose une note → le champ note est PRÉ-REMPLI automatiquement
+2. Badge 'IA' (Sparkles) à côté du champ note (indication visuelle)
+3. 'Valider la note' → enregistre directement (validation + sauvegarde en 1 clic)
+4. 'Ajuster' → ferme le panneau IA, laisse l'enseignant éditer le champ pré-rempli
+5. 'Sauvegarder' → enregistre la note ajustée
+
+Changements :
+- use-correction-state.ts : useEffect pré-remplit noteFinale + commentaire quand
+  noteIA arrive et score === null. handleApplyAi → 'Valider la note IA'
+  (enregistre direct). handleDismissAi → 'Ajuster' (toast info).
+- ai-suggestion-panel.tsx : boutons 'Appliquer'→'Valider la note',
+  'Ignorer'→'Ajuster', 'Copier note'→'Ajuster'.
+- grading-form.tsx : prop aiSuggestedNote + badge 'IA' à côté du champ note.
+- par-copie-view.tsx + par-question-view.tsx : passent aiSuggestedNote.
+
+Lint : 0 erreur. Commit d03ae92 poussé. Vercel déployé.
+
+Validation : page correction charge, copies visibles. Le workflow IA
+s'activera sur les futures copies soumises (les copies actuelles sont
+déjà rendues).
