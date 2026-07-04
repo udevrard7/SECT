@@ -1322,7 +1322,9 @@ function SessionsTab() {
  const [sessionSpecialeEpreuve, setSessionSpecialeEpreuve] = useState<SessionEpreuve | null>(null)
 
  // ─── Classification system state ───
- const [viewMode, setViewMode] = useState<'flat' |'grouped'>('flat')
+ // UX-IMPROVE : viewMode démarre à 'grouped' au lieu de 'flat'. L'onglet
+ // Sessions s'ouvre directement avec la vue groupée active par défaut.
+ const [viewMode, setViewMode] = useState<'flat' |'grouped'>('grouped')
  const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
  const [selectedPath, setSelectedPath] = useState<SelectedPath>({})
 
