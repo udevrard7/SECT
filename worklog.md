@@ -12476,3 +12476,23 @@ Stage Summary:
 - **Sélection stable** : la navigation entre étapes ne perd plus la sélection.
 - **Dates immédiates** : l'étudiant peut passer l'épreuve tout de suite.
 - **Réglages propagés** : melange/blocage respectés dans l'épreuve dérivée.
+
+---
+Task ID: SECT-CLEANUP-TEST-AMELIORATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Suppression des données "Test Amélioration" restantes + dashboard corrigé
+
+Contexte :
+Après suppression des données "Test E2E", le dashboard affichait encore
+"8 corrections en attente". Cause : 2 épreuves "Test Amélioration" (v3 +
+Auto-grading CODE) avec 9 sessions SOUMISE par "Genie Tech" n'avaient pas
+été attrapées par le pattern de suppression initial (Test E2E%, Rattrapage%).
+
+Work Log :
+- Suppression transactionnelle : 6 Reponses + 9 SessionPassation + 4 EpreuveQuestion
+  + 2 Epreuves + 10 Questions orphelines.
+- Vérification API : nbCorrectionsEnAttente=0, nbEpreuves=5, pendingCount=0.
+- Dashboard : "Corrections en attente: 0", "Flux d'Activité: Boîte de réception vide".
+
+Données réelles restantes : 5 épreuves (Composition*, CLOTUREES), 30 sessions,
+597 réponses, 17 users, 10 documents, 14 certificats.
