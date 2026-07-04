@@ -132,19 +132,28 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
         }
 
         var input struct {
-                EpreuveOrigineID string  `json:"epreuveOrigineId"`
-                Titre            string  `json:"titre"`
-                Description      *string `json:"description"`
-                Duree            int     `json:"duree"`
-                DateDebut        string  `json:"dateDebut"`
-                DateFin          string  `json:"dateFin"`
-                FiliereID        *string `json:"filiereId"`
-                UniteEnseignementID *string `json:"uniteEnseignementId"`
-                Niveau           *string `json:"niveau"`
-                SessionExamen    string  `json:"sessionExamen"`
-                NoteTotal        *float64 `json:"noteTotal"`
-                AnneeAcademiqueID *string `json:"anneeAcademiqueId"`
-                Etudiants        []string `json:"etudiants"`
+                EpreuveOrigineID    string   `json:"epreuveOrigineId"`
+                Titre               string   `json:"titre"`
+                Description         *string  `json:"description"`
+                Duree               int      `json:"duree"`
+                DateDebut           string   `json:"dateDebut"`
+                DateFin             string   `json:"dateFin"`
+                FiliereID           *string  `json:"filiereId"`
+                UniteEnseignementID *string  `json:"uniteEnseignementId"`
+                Niveau              *string  `json:"niveau"`
+                SessionExamen       string   `json:"sessionExamen"`
+                NoteTotal           *float64 `json:"noteTotal"`
+                AnneeAcademiqueID   *string  `json:"anneeAcademiqueId"`
+                Etudiants           []string `json:"etudiants"`
+                // UX-FIX : champs envoyés par le frontend mais ignorés avant.
+                Type                string   `json:"type"`               // RATTRAPAGE | DIFFERE
+                Motif               string   `json:"motif"`              // motif de la session
+                Justificatif        string   `json:"justificatif"`       // justificatif optionnel
+                EstPartielle        bool     `json:"estPartielle"`       // partie seulement vs complète
+                QuestionsSelectionnees []string `json:"questionsSelectionnees"` // si estPartielle=true
+                MelangeQuestions    *bool    `json:"melangeQuestions"`
+                MelangePropositions *bool    `json:"melangePropositions"`
+                BlocageRetour       *bool    `json:"blocageRetour"`
         }
         if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
@@ -203,6 +212,10 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
                 AnneeAcademiqueID:   input.AnneeAcademiqueID,
                 GenerationMode:      sourceEpreuve.GenerationMode,
                 Contenu:             sourceEpreuve.Contenu,
+                // UX-FIX : propager melange/blocage depuis l'input frontend.
+                MelangeQuestions:    input.MelangeQuestions,
+                MelangePropositions: input.MelangePropositions,
+                BlocageRetour:       input.BlocageRetour,
         }
         if createInput.Duree == 0 {
                 createInput.Duree = sourceEpreuve.Duree
@@ -214,10 +227,16 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // UX-FIX : la création auto de sessions passation nécessiterait que
+        // l'épreuve soit en statut PLANIFIEE (StartSession refuse BROUILLON).
+        // Comme il n'y a pas de méthode Publish dans EpreuveUseCase, on laisse
+        // l'enseignant publier+ lancer manuellement (2 clics). Amélioration
+        // future : ajouter EpreuveUseCase.Publish + créer les sessions auto.
+
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
         json.NewEncoder(w).Encode(map[string]any{
                 "epreuve":  created,
-                "message":  "Session spéciale créée",
+                "message":  "Session spéciale créée. Pensez à la publier et lancer la session pour que les étudiants puissent la passer.",
         })
 }
