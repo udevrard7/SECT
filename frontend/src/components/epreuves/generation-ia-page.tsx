@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles,
@@ -362,6 +362,7 @@ function QuestionTypeCounter({
 export function GenerationIAPage() {
   const user = useAuthStore((s) => s.user)
   const router = useRouter()
+  const queryClient = useQueryClient()
 
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select-docs')
@@ -406,6 +407,28 @@ export function GenerationIAPage() {
 
   // Document search state for Step 1
   const [docSearchQuery, setDocSearchQuery] = useState('')
+
+  // BUGFIX (QUESTIONS-IA-CLEANUP) : refs pour cleanup au unmount.
+  // Avant : AbortController et toast loading étaient des variables locales de
+  // handleGenerate → non nettoyés au démontage. Si l'utilisateur naviguait
+  // ailleurs pendant la génération (2-6 min), le fetch continuait en arrière-plan
+  // (gaspillage de crédits IA) et le toast restait collé sur la nouvelle page.
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const loadingToastRef = useRef<string | number | null>(null)
+
+  // Cleanup au démontage : abort le fetch en cours + dismiss le toast.
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+      if (loadingToastRef.current !== null) {
+        toast.dismiss(loadingToastRef.current)
+        loadingToastRef.current = null
+      }
+    }
+  }, [])
 
   // ─── Fetch documents (TanStack Query) ───
   // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
@@ -629,6 +652,9 @@ export function GenerationIAPage() {
   // ─── Generate complete exam ───
   const handleGenerate = async () => {
     if (!user?.id) return
+    // BUGFIX (QUESTIONS-IA-DBLCLICK) : guard double-clic. Le bouton est
+    // disabled={isGenerating} mais React peut ne pas re-render assez vite.
+    if (isGenerating) return
     if (selectedDocIds.size === 0) {
       toast.error('Documents requis', { description: 'Sélectionnez au moins un document analysé.' })
       return
@@ -656,10 +682,14 @@ export function GenerationIAPage() {
           : `L'IA analyse vos documents et génère une épreuve complète avec ${total} question(s).`,
       duration: Infinity,
     })
+    // BUGFIX (QUESTIONS-IA-CLEANUP) : stocker dans les refs pour le cleanup au unmount.
+    loadingToastRef.current = loadingToast
 
     try {
       // Use AbortController with a generous timeout for large exams
       const controller = new AbortController()
+      // BUGFIX (QUESTIONS-IA-CLEANUP) : stocker dans le ref pour abort au unmount.
+      abortControllerRef.current = controller
       const timeoutMs = isVeryLargeExam ? 360_000 : isLargeExam ? 240_000 : 120_000 // 6 min for very large, 4 min for large, 2 min for small
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -768,6 +798,9 @@ export function GenerationIAPage() {
       })
     } finally {
       setIsGenerating(false)
+      // BUGFIX (QUESTIONS-IA-CLEANUP) : libérer les refs.
+      abortControllerRef.current = null
+      loadingToastRef.current = null
     }
   }
 
@@ -917,6 +950,10 @@ export function GenerationIAPage() {
   // ─── Save to Banque d'Épreuves ───
   const handleSave = async () => {
     if (!user?.id || !generatedContenu) return
+    // BUGFIX (QUESTIONS-IA-DBLCLICK) : guard double-clic. Le bouton est
+    // disabled={isSaving} mais React peut ne pas re-render assez vite entre
+    // 2 clics rapides → 2 POST /api/epreuves → 2 épreuves dupliquées.
+    if (isSaving) return
 
     // UE obligatoire : une épreuve sans UE devient orpheline (pas de certificats)
     const effectiveUEId = autoDetectedUEId || (selectedUEId && selectedUEId !== '__none__' ? selectedUEId : null)
@@ -959,6 +996,11 @@ export function GenerationIAPage() {
       toast.success('Épreuve enregistrée', {
         description: 'L\'épreuve a été ajoutée à la Banque d\'épreuves.',
       })
+      // BUGFIX (QUESTIONS-IA-CACHE) : invalider le cache TanStack des épreuves
+      // avant la navigation. Sans ça, la page /epreuves affiche un cache stale
+      // (staleTime 60s) et la nouvelle épreuve n'apparaît pas immédiatement.
+      await queryClient.invalidateQueries({ queryKey: ['epreuves'] })
+      await queryClient.invalidateQueries({ queryKey: ['banque-epreuves'] })
       router.push(PAGE_ROUTES['banque-epreuves'])
     } catch (err) {
       toast.error('Erreur', {
