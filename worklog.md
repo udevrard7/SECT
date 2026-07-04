@@ -12119,3 +12119,39 @@ Stage Summary :
   persistée.
 - **6 commits** poussés (auteur udevrard7) : 0950187, 4bd1722, 9e72cff +
   merges.
+
+---
+Task ID: SECT-QUESTIONS-IA-VAGUE-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vague 1/3 — régénération cassée + code mort + role guard (CRITICAL/HIGH)
+
+Work Log :
+- Backend regenerateQuestion (question_enhanced_handlers.go) :
+  * GetByID non-fatal (fallback). Si question non persistée en DB (preview,
+    q.id="q1"), on continue avec type/difficulte du body.
+  * LimitReader 1 MiB sur le body (sécurité).
+  * Nil-check sur existingQ avant d'accéder à Type/Difficulte.
+- Frontend handleRegenerateSingleQuestion (generation-ia-page.tsx) :
+  * Envoie documentId (singulier) au lieu de documentIds (pluriel).
+  * Parse data.question au lieu de data directement (backend wrap {question:{...}}).
+  * setGeneratedContenu(prev => ...) au lieu de capturer generatedContenu (race).
+- Code mort supprimé : questions-ia-page.tsx (1232 lignes) + banque-questions-page.tsx
+  + import orphelin QuestionsIAPage dans page-content.tsx. Dossier questions/ supprimé.
+- Role guard : 'questions-ia' ajouté à PAGE_ALLOWED_ROLES (ENSEIGNANT, RESPONSABLE, ADMIN).
+- Backend epreuvesGenerate : accepte maintenant RESPONSABLE (alignement avec router).
+- Build Go : EXIT 0. Lint frontend : 0 erreur.
+
+Validation production (Agent Browser) :
+- Régénération : POST /api/questions/q1/regenerate avec {documentId, type, difficulte}
+  → 200 avec question générée (enonce, propositions, reponseCorrecte="B", difficulte).
+  Avant : 400 "documentId requis" ou 404 (GetByID "q1"). ✅
+- Role guard : étudiant INF/LJ/25/008 → /questions-ia → redirigé vers /dashboard. ✅
+- Code mort : /questions-ia rend toujours GenerationIAPage (pas de régression). ✅
+
+Stage Summary:
+- **3 bugs CRITICAL/HIGH corrigés** : régénération 100% cassée, code mort 3101 lignes,
+  role guard manquant.
+- **Régénération fonctionnelle** en production (question QCU générée sur les types Python).
+- **Étudiant bloqué** à l'accès /questions-ia (redirection /dashboard).
+- Vague 2 à suivre : cleanup useEffect (toast/abort) + validation worker +
+  échec parsing non silencieux + failover async + plafond typesQuestions.
