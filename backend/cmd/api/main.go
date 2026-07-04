@@ -170,6 +170,13 @@ func main() {
         audioWorker.RecoverInterruptedAudioJobs(context.Background())
         audioWorker.Start(context.Background())
 
+        // CLOTURE-AUTO-WORKER : worker périodique (60s) qui clôture automatiquement
+        // les épreuves EN_COURS dont dateFin + grâce est dépassée, ET les épreuves
+        // où tous les étudiants ont soumis (TOUS_SOUMIS). Garantit la clôture même
+        // sans étudiant actif pollant /api/epreuves/auto-close.
+        autoCloseWorker := worker.NewAutoCloseWorker(pool, logger)
+        autoCloseWorker.Start(context.Background())
+
         // MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
         // utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
         // avec message d'erreur gracieux si timeout. L'approche worker async avec
