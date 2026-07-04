@@ -218,14 +218,29 @@ export function SurveillancePage() {
   })
 
   const sessions = sessionsQuery.data?.sessions ?? []
-  const epreuves = sessionsQuery.data?.epreuves ?? []
   const loading = sessionsQuery.isLoading
   const error = sessionsQuery.error
     ? 'Impossible de charger les données de surveillance.'
     : null
   // dataUpdatedAt est mis à jour à chaque fetch réussi (initial + polling).
-  // Équivalent fonctionnel du setLastRefresh(new Date()) original.
   const lastRefresh = sessionsQuery.dataUpdatedAt > 0 ? new Date(sessionsQuery.dataUpdatedAt) : null
+
+  // UX-IMPROVE : query séparée pour les options d'épreuves (dropdown). Toujours
+  // enabled (pas besoin de filtres). Utilise optionsOnly=true pour ne pas
+  // fetcher les sessions.
+  const epreuvesQuery = useQuery<{ epreuves: EpreuveOption[] }>({
+    queryKey: ['surveillance-epreuves-options', user?.id],
+    queryFn: async () => {
+      const res = await fetch('/api/surveillance?optionsOnly=true')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      return { epreuves: data.epreuves ?? [] }
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000, // 1min : les options d'épreuves changent rarement
+    refetchOnWindowFocus: false,
+  })
+  const epreuves = epreuvesQuery.data?.epreuves ?? []
 
   const statsQuery = useQuery<SurveillanceStats>({
     queryKey: ['surveillance-stats', user?.id],
