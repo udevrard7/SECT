@@ -12326,3 +12326,37 @@ LOW (cette vague) : 9 bugs — useMemo + filtre UE + selectAll + dates + bareme 
 Total : 21 bugs corrigés sur 21 identifiés. 6 commits de fix + 6 worklog commits.
 Tous les commits signés udevrard7 <ulrichdouh@gmail.com>.
 Architecture respectée. Aucune perte de données. Validations production Agent Browser.
+
+---
+Task ID: SECT-E2E-TEST-FULL
+Agent: Z.ai Code (tuteur/assistant)
+Task: Test end-to-end complet : génération IA → passation étudiant → correction enseignant
+
+Workflow testé :
+1. Enseignant (prof01) génère une épreuve via /questions-ia pour UE "Python et de Java"
+   avec 1 QCU + 1 QCM + 1 QRC + 1 REFLEXION + 1 CODE, durée courte.
+2. Sauvegarde + publication + lancement session.
+3. Étudiant (INF/LJ/25/008) passe l'épreuve (5 questions répondues + soumission).
+4. Enseignant corrige l'épreuve (auto-grade + interface manuelle).
+
+Bugs CRITICAL trouvés et corrigés pendant le test :
+
+1. React error #31 — propositions IA {text,isCorrect} non rendables en passation
+   (commit 059ea6f). L'étudiant ne pouvait pas démarrer l'épreuve → crash immédiat.
+   Fix : helper getPropText(prop) qui gère string et objet {text,isCorrect}.
+
+2. Auto-grading QCU/QCM toujours à 0 — reponseCorrecte stocké en TEXTE ("bool")
+   mais réponses étudiant en LETTRES ("D"). L'auto-grader comparait texte vs lettre.
+   Fix code (commit 5fff8f9) : normalisation reponseCorrecte en lettres (A/B/C/D)
+   basé sur isCorrect dans propositions, pour les nouvelles épreuves.
+   Fix DB : mise à jour manuelle du contenu de l'épreuve existante + re-grade
+   des Reponses (QCU=1/1, QCM=2/2, QRC=1/1, total auto=4/20).
+
+Points d'amélioration notés (non bloquants) :
+- L'éditeur de code défaut à JavaScript au lieu du langage de la question (Python).
+- enseignantId=me ne fonctionne pas comme alias pour /api/enseignant/context.
+- Le Service Worker cache l'ancien JS — il faut unregister pour obtenir le fix.
+- "Suggérer une note" (IA grading) ne donne pas de feedback visible après 30s.
+- La page correction nécessite de sélectionner une épreuve avant d'afficher les copies.
+
+Résultat : l'app est fonctionnelle de bout en bout après les 2 fixes CRITICAL.
