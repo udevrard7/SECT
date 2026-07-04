@@ -885,6 +885,12 @@ export function GenerationIAPage() {
       // 2. q.id peut être "q1" (ID temporaire de preview, non persisté en DB).
       //    Le backend a été fixé pour ne pas planter si GetByID échoue (preview).
       // 3. La réponse backend est {question: {...}}, pas {...} directement.
+      // BUGFIX (QUESTIONS-IA-ABORT) : AbortController sur regenerate single.
+      // Timeout 120s (l'IA génère 1 question, généralement 10-30s).
+      const regenController = new AbortController()
+      abortControllerRef.current = regenController
+      const regenTimeoutId = setTimeout(() => regenController.abort(), 120_000)
+
       const res = await fetch(`/api/questions/${q.id}/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -893,7 +899,11 @@ export function GenerationIAPage() {
           type: q.type,
           difficulte: q.difficulte || difficulte,
         }),
+        signal: regenController.signal,
       })
+
+      clearTimeout(regenTimeoutId)
+      abortControllerRef.current = null
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
@@ -982,11 +992,22 @@ export function GenerationIAPage() {
         niveau: selectedNiveau || null,
       }
 
+      // BUGFIX (QUESTIONS-IA-ABORT) : AbortController sur handleSave.
+      // Avant : si le backend hang (DB lock, contention), la requête tournait
+      // indéfiniment sans possibilité d'annulation. Timeout 60s.
+      const saveController = new AbortController()
+      abortControllerRef.current = saveController
+      const saveTimeoutId = setTimeout(() => saveController.abort(), 60_000)
+
       const res = await fetch('/api/epreuves', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: saveController.signal,
       })
+
+      clearTimeout(saveTimeoutId)
+      abortControllerRef.current = null
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
@@ -1024,6 +1045,11 @@ export function GenerationIAPage() {
 
   // ─── Step navigation ───
   const goToStep = (step: Step) => {
+    // BUGFIX (QUESTIONS-IA-BLANK-SCREEN) : empêcher la navigation vers preview
+    // ou save si generatedContenu est null. Avant, l'utilisateur pouvait cliquer
+    // sur "Aperçu" dans le stepper après "Régénérer tout" (qui set null) → la page
+    // rendait null → blank screen avec seulement le stepper visible.
+    if ((step === 'preview' || step === 'save') && !generatedContenu) return
     const currentIdx = wizardSteps.findIndex((s) => s.id === currentStep)
     const targetIdx = wizardSteps.findIndex((s) => s.id === step)
     if (targetIdx <= currentIdx || (targetIdx === currentIdx + 1 && isStepValid(currentStep))) {
@@ -1567,6 +1593,35 @@ export function GenerationIAPage() {
                     <div className="flex flex-col items-center gap-3 text-muted-foreground">
                       <Loader2 className="h-8 w-8 animate-spin text-success-text" />
                       <p className="text-sm font-medium">Chargement des documents...</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ) : documentsQuery.isError ? (
+              // BUGFIX (QUESTIONS-IA-ERROR) : afficher une erreur explicite au
+              // lieu de "Aucun document analysé" quand le fetch échoue (network,
+              // 500, etc.). Avant : l'utilisateur pensait n'avoir aucun document
+              // alors que c'était juste une erreur réseau.
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="rounded-full bg-destructive/15 p-4">
+                        <AlertTriangle className="h-8 w-8 text-destructive" />
+                      </div>
+                      <p className="text-sm font-semibold">Erreur de chargement</p>
+                      <p className="text-xs text-muted-foreground text-center max-w-sm">
+                        Impossible de charger vos documents. Vérifiez votre connexion et réessayez.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => documentsQuery.refetch()}
+                        className="mt-2"
+                      >
+                        <Loader2 className="h-3.5 w-3.5 mr-1.5" />
+                        Réessayer
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
