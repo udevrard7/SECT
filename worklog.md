@@ -12666,3 +12666,42 @@ Build Go : EXIT 0. Lint : 0 erreur.
 
 Données de test nettoyées sur Neon : reset DM ASSANI (leftAt→NULL), suppression
 1 message de test. Mot de passe prof01 toujours en test (restauration prévue).
+
+---
+Task ID: SECT-CLOTURE-AUTO-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Audit + test E2E clôture automatique de session + fix + cleanup
+
+Diagnostic :
+L'endpoint /api/epreuves/auto-close détectait que l'épreuve devait être clôturée
+(isClosed=true, raisonCloture='Délai dépassé') mais ne mettait PAS à jour le
+statut en DB. L'épreuve restait EN_COURS indéfiniment.
+
+Bug confirmé par test E2E :
+1. Création épreuve avec dateFin dans le passé (2h avant now)
+2. Appel /api/epreuves/auto-close → isClosed=true ✅
+3. Vérif DB → statut=EN_COURS (aurait dû être CLOTUREE) ❌
+
+Fix (session_enhanced_handlers.go epreuveAutoClose) :
+Quand dateFin + grâce est dépassé, on fait maintenant un UPDATE en DB :
+  statut = 'CLOTUREE', clotureeAt = now, clotureeAutomatiquement = true,
+  raisonCloture = 'Délai dépassé (fin de période + grâce)'
+Condition : statut IN ('EN_COURS', 'TERMINEE') pour ne pas re-clôturer.
+
+Validation post-fix :
+1. Reset épreuve à EN_COURS
+2. Appel auto-close → isClosed=true ✅
+3. Vérif DB → statut=CLOTUREE, clotureeAutomatiquement=true, raisonCloture='Délai dépassé' ✅
+
+Données de test supprimées : 1 SessionPassation + 1 Epreuve.
+Build Go : EXIT 0. Commit 3addd50 poussé. Render déployé.
+
+Note : le frontend poll auto-close toutes les 15s pendant l'examen. Quand
+dateFin + grâce est dépassé, l'auto-close clôture maintenant réellement
+l'épreuve en DB + auto-submit l'étudiant. Les autres étudiants qui tentent
+de démarrer verront l'épreuve comme CLOTUREE.
+
+Amélioration future : ajouter un worker/cron backend qui vérifie périodiquement
+toutes les épreuves EN_COURS avec dateFin dépassée (pas seulement quand un
+étudiant poll). Aussi : clôture auto 'TOUS_SOUMIS' (quand tous les étudiants
+ont soumis, clôturer automatiquement) — non implémenté pour l'instant.
