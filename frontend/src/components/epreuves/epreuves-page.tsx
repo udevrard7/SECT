@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
  Clock,
@@ -2983,10 +2983,16 @@ function SessionSpecialeDialog({
  const [titre, setTitre] = useState('')
  const [titreOverride, setTitreOverride] = useState(false)
  const [isCreating, setIsCreating] = useState(false)
+ // UX-FIX : tracker l'ID de l'épreuve déjà initialisée pour éviter de reset
+ // le formulaire (et perdre la sélection étudiant) quand epreuve change de
+ // référence (re-fetch TanStack Query). Avant, le useEffect dépendait de
+ // [open, epreuve] → à chaque refetch, selectedStudents était reset.
+ const initializedEpreuveIdRef = useRef<string | null>(null)
 
  // Reset form when dialog opens with a new epreuve
  useEffect(() => {
- if (open && epreuve) {
+ if (open && epreuve && initializedEpreuveIdRef.current !== epreuve.id) {
+ initializedEpreuveIdRef.current = epreuve.id
  setStep(1)
  setType('')
  setMotif('')
@@ -3009,9 +3015,11 @@ function SessionSpecialeDialog({
  })
  setSelectedStudents(preselected)
 
- // Default dates: 1 week from now
+ // UX-FIX : dates par défaut immédiates (now + durée) au lieu de now + 7 jours.
+ // Une session spéciale (rattrapage/différé) est généralement créée pour être
+ // passée rapidement. L'enseignant peut ajuster les dates dans l'étape 3.
  const now = new Date()
- const debut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+ const debut = now
  const fin = new Date(debut.getTime() + epreuve.duree * 60 * 1000)
  const toLocal = (d: Date) => {
  const offset = d.getTimezoneOffset()
@@ -3020,6 +3028,11 @@ function SessionSpecialeDialog({
  }
  setDateDebut(toLocal(debut))
  setDateFin(toLocal(fin))
+ }
+ // UX-FIX : reset le ref quand le dialog se ferme pour permettre une
+ // ré-initialisation propre à la prochaine ouverture.
+ if (!open) {
+ initializedEpreuveIdRef.current = null
  }
  }, [open, epreuve])
 
@@ -3086,13 +3099,22 @@ function SessionSpecialeDialog({
  })
  if (!res.ok) {
  const errData = await res.json().catch(() => ({}))
- throw new Error(errData.error ||'Erreur lors de la création')
+ // UX-FIX : message d'erreur explicite avec le code HTTP et le détail.
+ // Avant, le toast était parfois vide (errData.error undefined).
+ const errMsg = errData?.error || `Erreur ${res.status} lors de la création`
+ throw new Error(errMsg)
  }
- toast.success('Session spéciale créée', { description:`La session ${TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type} a été créée avec succès.` })
+ toast.success('Session spéciale créée', { description:`La session ${TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type} a été créée avec succès.`, duration: 6000 })
  onOpenChange(false)
  onSuccess()
  } catch (err) {
- toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de créer la session spéciale.' })
+ // UX-FIX : toast error avec duration longue (8s) pour que l'utilisateur
+ // ait le temps de lire le message. Le dialog reste ouvert pour permettre
+ // de corriger et réessayer.
+ toast.error('Erreur de création', {
+ description: err instanceof Error ? err.message : 'Impossible de créer la session spéciale. Vérifiez les champs et réessayez.',
+ duration: 8000,
+ })
  } finally {
  setIsCreating(false)
  }
@@ -3260,9 +3282,13 @@ function SessionSpecialeDialog({
  className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors cursor-pointer ${selectedStudents.has(session.etudiantId) ?'border-warning/40 bg-warning/50' :'hover:bg-muted/30'}`}
  onClick={() => toggleStudent(session.etudiantId)}
  >
+ {/* UX-FIX : stopPropagation sur la checkbox pour éviter le double toggle.
+     Avant, le clic sur la checkbox bubble vers le div parent → toggleStudent
+     appelé 2× (checkbox + div) → l'étudiant était coché puis décoché. */}
  <Checkbox
  checked={selectedStudents.has(session.etudiantId)}
  onCheckedChange={() => toggleStudent(session.etudiantId)}
+ onClick={(e) => e.stopPropagation()}
  />
  <div className="min-w-0 flex-1">
  <p className="text-sm font-medium truncate">{session.etudiant?.name || session.etudiantId}</p>
