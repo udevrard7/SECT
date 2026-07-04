@@ -60,6 +60,15 @@ export function useCorrectionState(user: CurrentUser | null) {
   const sessions = sessionsQuery.data ?? []
   const isLoadingSessions = sessionsQuery.isLoading
 
+  // UX-FIX : auto-sélection de l'épreuve si une seule a des soumissions.
+  // Avant, l'enseignant devait manuellement sélectionner l'épreuve dans le
+  // dropdown même si une seule avait des copies à corriger.
+  useEffect(() => {
+    if (!selectedEpreuveId && epreuves.length === 1) {
+      setSelectedEpreuveId(epreuves[0].id)
+    }
+  }, [epreuves, selectedEpreuveId])
+
   // ─── Mutations (TanStack Query) ───
   const aiGradeMutation = useAiGrade()
   const saveGradeMutation = useSaveGrade()
@@ -245,16 +254,27 @@ export function useCorrectionState(user: CurrentUser | null) {
     const qid = questionId ?? currentQuestion?.questionId
     if (!sid || !qid) return
     setIsAiLoading(true)
+    // UX-FIX : toast loading persistant pendant que le worker IA tourne.
+    // Avant, le toast success disparaissait immédiatement (202 Accepted) et
+    // l'utilisateur ne savait pas si l'IA travaillait encore. Le bouton
+    // montrait un spinner mais disparaissait dès la réponse 202.
+    const loadingToast = toast.loading('Évaluation IA en cours...', {
+      description: 'L\'IA analyse la réponse de l\'étudiant. Cela peut prendre 15-30 secondes.',
+      duration: Infinity,
+    })
     try {
       const data = await aiGradeMutation.mutateAsync({ sessionId: sid, questionId: qid })
+      toast.dismiss(loadingToast)
       // P3-CORRECTION : le backend retourne 202 Accepted (async worker).
       // data.noteIA n'existe pas — le worker écrit noteIA sur la Reponse
       // en arrière-plan. Le polling (refetchInterval sur useCorrectionSessions)
       // rafraîchit automatiquement les données quand noteIA est non-null.
       toast.success('Évaluation IA lancée', {
-        description: data.message || 'La correction IA est en cours. Les résultats apparaîtront automatiquement.',
+        description: data.message || 'La correction IA est en cours. Les résultats apparaîtront automatiquement dans quelques secondes.',
+        duration: 6000,
       })
     } catch (err) {
+      toast.dismiss(loadingToast)
       toast.error('Erreur IA', {
         description: err instanceof Error ? err.message : 'Impossible d\'évaluer avec l\'IA.',
       })

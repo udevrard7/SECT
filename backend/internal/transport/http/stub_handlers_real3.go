@@ -920,7 +920,10 @@ func (s *Server) enseignantContextReal(w http.ResponseWriter, r *http.Request) {
         }
 
         enseignantID := r.URL.Query().Get("enseignantId")
-        if enseignantID == "" {
+        // UX-FIX : résoudre l'alias "me" → claims.UserID. Avant, passer
+        // enseignantId=me retournait un contexte vide car "me" n'est pas un
+        // UUID valide. Le frontend utilise parfois "me" comme alias pratique.
+        if enseignantID == "" || enseignantID == "me" {
                 enseignantID = claims.UserID
         }
 
