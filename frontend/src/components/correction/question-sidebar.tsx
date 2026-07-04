@@ -36,7 +36,7 @@ export function QuestionSidebar({
           }).length
           const total = sessions.length
           const isComplete = graded === total
-          const isAutoGraded = isAutoGradedType(q.question.type)
+          const isAutoGraded = isAutoGradedType(((q as { question?: { type?: string }; type?: string }).question?.type ?? (q as { type?: string }).type) as string)
 
           return (
             <button
@@ -53,7 +53,7 @@ export function QuestionSidebar({
               }`} />
               <div className="min-w-0 flex-1">
                 <p className={`text-sm truncate ${isCurrent ? 'font-semibold' : 'font-medium'}`}>
-                  Q{idx + 1} — {getQuestionTypeLabel(q.question.type)}
+                  Q{idx + 1} — {getQuestionTypeLabel(((q as { question?: { type?: string }; type?: string }).question?.type ?? (q as { type?: string }).type) as string)}
                 </p>
               </div>
               <span className="text-[10px] text-muted-foreground shrink-0 font-mono tabular-nums">

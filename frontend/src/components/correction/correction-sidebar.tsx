@@ -136,7 +136,7 @@ export function CorrectionSidebar({
                         {idx + 1}
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="right">Q{idx + 1} — {getQuestionTypeLabel(q.question.type)}</TooltipContent>
+                    <TooltipContent side="right">Q{idx + 1} — {getQuestionTypeLabel(((q as { question?: { type?: string }; type?: string }).question?.type ?? (q as { type?: string }).type) as string)}</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               ))

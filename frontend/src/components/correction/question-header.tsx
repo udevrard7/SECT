@@ -26,7 +26,11 @@ export function QuestionHeader({
   currentQuestionIndex: number
 }) {
   if (!currentQuestion) return null
-  const q = currentQuestion.question
+  // E2E-CORRECTION-FIX : fallback currentQuestion si .question undefined
+  const q = currentQuestion.question ?? (currentQuestion as unknown as {
+    type: string
+    difficulte?: string
+  })
   const correctionBadge = getCorrectionBadge(q.type)
 
   return (
