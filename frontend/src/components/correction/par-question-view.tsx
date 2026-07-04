@@ -131,7 +131,19 @@ export function ParQuestionView({
 
   if (!horizontalCurrentQuestion) return null
 
-  const hq = horizontalCurrentQuestion.question
+  // E2E-CORRECTION-FIX : fallback horizontalCurrentQuestion si .question undefined
+  const hq = (horizontalCurrentQuestion.question ?? horizontalCurrentQuestion) as {
+    type: string
+    enonce: string
+    reponseCorrecte?: string | string[]
+    propositions?: string[] | null
+    difficulte?: string
+    langage?: string
+    codeInitial?: string
+    fonctionSignature?: string
+    testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+    testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+  }
   const totalSessions = sessions.length
   const progressPct = totalSessions > 0 ? (horizontalGradedCount / totalSessions) * 100 : 0
   const expectedAnswer = typeof hq.reponseCorrecte === 'string'
