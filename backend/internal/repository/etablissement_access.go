@@ -213,7 +213,8 @@ func (r *EtablissementAccessRepository) fetchAdminRefs(ctx context.Context, admi
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+        // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return nil, fmt.Errorf("set system claims: %w", err)
         }
 
@@ -263,7 +264,8 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+        // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return nil, fmt.Errorf("set system claims: %w", err)
         }
 
@@ -304,7 +306,8 @@ func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, e
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+        // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return nil, fmt.Errorf("set system claims: %w", err)
         }
 
@@ -368,7 +371,8 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
         defer tx.Rollback(ctx)
 
         // Pose les claims system-worker pour activer la policy RLS is_system().
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+        // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return nil, fmt.Errorf("set system claims: %w", err)
         }
 
@@ -417,7 +421,8 @@ func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string, a
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+        // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return fmt.Errorf("set system claims: %w", err)
         }
 
@@ -470,7 +475,8 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
         defer tx.Rollback(ctx)
 
         // Pose les claims system-worker pour activer la policy RLS is_system().
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+        // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
+        if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return nil, fmt.Errorf("set system claims: %w", err)
         }
 

@@ -282,183 +282,197 @@ func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]
         return result, nil
 }
 
-// Create crée une UE (bypass RLS).
+// Create crée une UE.
+//
+// BUGFIX (AUDIT-RLS-VAGUE-4) : le code utilisait r.pool.BeginTx SANS
+// SetClaimsTx → claims NULL → policy UniteEnseignement_modify_responsable
+// (is_responsable() AND filiere_in_my_etab(filiereId)) voyait NULL → INSERT bloqué.
+// Alignement sur db.WithTx avec claims user depuis le context.
 func (r *UERepository) Create(ctx context.Context, input domain.CreateUEInput) (*domain.UniteEnseignement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        id := uuid.NewString()
-        cm, td, tp := 0, 0, 0
-        if input.VolumeHeuresCM != nil {
-                cm = *input.VolumeHeuresCM
-        }
-        if input.VolumeHeuresTD != nil {
-                td = *input.VolumeHeuresTD
-        }
-        if input.VolumeHeuresTP != nil {
-                tp = *input.VolumeHeuresTP
-        }
-        obligatoire := true
-        if input.Obligatoire != nil {
-                obligatoire = *input.Obligatoire
-        }
-        actif := true
-        if input.Actif != nil {
-                actif = *input.Actif
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("UERepository.Create: claims manquants dans le context")
         }
 
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "UniteEnseignement" ("id", "code", "nom", "description", "filiereId", "niveau", "niveaux",
-                        "semestre", "creditsECTS", "volumeHeuresCM", "volumeHeuresTD", "volumeHeuresTP",
-                        "obligatoire", "actif", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING `+columnsUE,
-                id, input.Code, input.Nom, nullableStrPtr(input.Description), input.FiliereID, input.Niveau,
-                nullableStrPtr(input.Niveaux), nullableIntPtr(input.Semestre), nullableIntPtr(input.CreditsECTS),
-                cm, td, tp, obligatoire, actif)
-
-        ue, err := scanUE(row)
-        if err != nil {
-                if isUniqueViolation(err) {
-                        return nil, &domain.ConflictError{Message: "une UE avec ce code existe déjà dans cette filière"}
+        var ue *domain.UniteEnseignement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                id := uuid.NewString()
+                cm, td, tp := 0, 0, 0
+                if input.VolumeHeuresCM != nil {
+                        cm = *input.VolumeHeuresCM
                 }
-                return nil, fmt.Errorf("create ue: %w", err)
-        }
+                if input.VolumeHeuresTD != nil {
+                        td = *input.VolumeHeuresTD
+                }
+                if input.VolumeHeuresTP != nil {
+                        tp = *input.VolumeHeuresTP
+                }
+                obligatoire := true
+                if input.Obligatoire != nil {
+                        obligatoire = *input.Obligatoire
+                }
+                actif := true
+                if input.Actif != nil {
+                        actif = *input.Actif
+                }
 
-        // Créer les liaisons supplémentaires (UniteEnseignementFiliere)
-        if len(input.FiliereIDsSuppl) > 0 {
-                for _, filiereID := range input.FiliereIDsSuppl {
-                        if filiereID == input.FiliereID {
-                                continue // exclure la filière owner
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "UniteEnseignement" ("id", "code", "nom", "description", "filiereId", "niveau", "niveaux",
+                                "semestre", "creditsECTS", "volumeHeuresCM", "volumeHeuresTD", "volumeHeuresTP",
+                                "obligatoire", "actif", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING `+columnsUE,
+                        id, input.Code, input.Nom, nullableStrPtr(input.Description), input.FiliereID, input.Niveau,
+                        nullableStrPtr(input.Niveaux), nullableIntPtr(input.Semestre), nullableIntPtr(input.CreditsECTS),
+                        cm, td, tp, obligatoire, actif)
+
+                u, err := scanUE(row)
+                if err != nil {
+                        if isUniqueViolation(err) {
+                                return &domain.ConflictError{Message: "une UE avec ce code existe déjà dans cette filière"}
                         }
-                        _, err := tx.Exec(ctx, `
-                                INSERT INTO "UniteEnseignementFiliere" ("id", "uniteEnseignementId", "filiereId", "createdAt")
-                                VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-                                ON CONFLICT DO NOTHING
-                        `, uuid.NewString(), id, filiereID)
-                        if err != nil {
-                                return nil, fmt.Errorf("create ue filiere suppl: %w", err)
+                        return fmt.Errorf("create ue: %w", err)
+                }
+                ue = u
+
+                // Créer les liaisons supplémentaires (UniteEnseignementFiliere)
+                if len(input.FiliereIDsSuppl) > 0 {
+                        for _, filiereID := range input.FiliereIDsSuppl {
+                                if filiereID == input.FiliereID {
+                                        continue // exclure la filière owner
+                                }
+                                _, err := tx.Exec(ctx, `
+                                        INSERT INTO "UniteEnseignementFiliere" ("id", "uniteEnseignementId", "filiereId", "createdAt")
+                                        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+                                        ON CONFLICT DO NOTHING
+                                `, uuid.NewString(), id, filiereID)
+                                if err != nil {
+                                        return fmt.Errorf("create ue filiere suppl: %w", err)
+                                }
                         }
                 }
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return ue, nil
 }
 
 // Update met à jour une UE (partial update).
+//
+// BUGFIX (AUDIT-RLS-VAGUE-4) : le code utilisait r.pool.BeginTx SANS
+// SetClaimsTx → claims NULL → policy UniteEnseignement_modify_responsable
+// bloquait l'UPDATE → NotFoundError. Alignement sur db.WithTx avec claims user.
 func (r *UERepository) Update(ctx context.Context, id string, input domain.UpdateUEInput) (*domain.UniteEnseignement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        var setClauses []string
-        var args []any
-        argIdx := 1
-
-        addSet := func(col string, val any) {
-                setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
-                args = append(args, val)
-                argIdx++
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("UERepository.Update: claims manquants dans le context")
         }
 
-        if input.Code != nil {
-                addSet("code", *input.Code)
-        }
-        if input.Nom != nil {
-                addSet("nom", *input.Nom)
-        }
-        if input.Description != nil {
-                addSet("description", nullableStrPtr(input.Description))
-        }
-        if input.FiliereID != nil {
-                addSet("filiereId", *input.FiliereID)
-        }
-        if input.Niveau != nil {
-                addSet("niveau", *input.Niveau)
-        }
-        if input.Niveaux != nil {
-                addSet("niveaux", nullableStrPtr(input.Niveaux))
-        }
-        if input.Semestre != nil {
-                addSet("semestre", nullableIntPtr(input.Semestre))
-        }
-        if input.CreditsECTS != nil {
-                addSet("creditsECTS", nullableIntPtr(input.CreditsECTS))
-        }
-        if input.VolumeHeuresCM != nil {
-                addSet("volumeHeuresCM", *input.VolumeHeuresCM)
-        }
-        if input.VolumeHeuresTD != nil {
-                addSet("volumeHeuresTD", *input.VolumeHeuresTD)
-        }
-        if input.VolumeHeuresTP != nil {
-                addSet("volumeHeuresTP", *input.VolumeHeuresTP)
-        }
-        if input.Obligatoire != nil {
-                addSet("obligatoire", *input.Obligatoire)
-        }
-        if input.Actif != nil {
-                addSet("actif", *input.Actif)
-        }
+        var ue *domain.UniteEnseignement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var setClauses []string
+                var args []any
+                argIdx := 1
 
-        if len(setClauses) > 0 {
-                setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
-                args = append(args, id)
-                updateSQL := fmt.Sprintf(`UPDATE "UniteEnseignement" SET %s WHERE "id" = $%d RETURNING %s`,
-                        strings.Join(setClauses, ", "), argIdx, columnsUE)
-                row := tx.QueryRow(ctx, updateSQL, args...)
-                ue, err := scanUE(row)
+                addSet := func(col string, val any) {
+                        setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
+                        args = append(args, val)
+                        argIdx++
+                }
+
+                if input.Code != nil {
+                        addSet("code", *input.Code)
+                }
+                if input.Nom != nil {
+                        addSet("nom", *input.Nom)
+                }
+                if input.Description != nil {
+                        addSet("description", nullableStrPtr(input.Description))
+                }
+                if input.FiliereID != nil {
+                        addSet("filiereId", *input.FiliereID)
+                }
+                if input.Niveau != nil {
+                        addSet("niveau", *input.Niveau)
+                }
+                if input.Niveaux != nil {
+                        addSet("niveaux", nullableStrPtr(input.Niveaux))
+                }
+                if input.Semestre != nil {
+                        addSet("semestre", nullableIntPtr(input.Semestre))
+                }
+                if input.CreditsECTS != nil {
+                        addSet("creditsECTS", nullableIntPtr(input.CreditsECTS))
+                }
+                if input.VolumeHeuresCM != nil {
+                        addSet("volumeHeuresCM", *input.VolumeHeuresCM)
+                }
+                if input.VolumeHeuresTD != nil {
+                        addSet("volumeHeuresTD", *input.VolumeHeuresTD)
+                }
+                if input.VolumeHeuresTP != nil {
+                        addSet("volumeHeuresTP", *input.VolumeHeuresTP)
+                }
+                if input.Obligatoire != nil {
+                        addSet("obligatoire", *input.Obligatoire)
+                }
+                if input.Actif != nil {
+                        addSet("actif", *input.Actif)
+                }
+
+                if len(setClauses) > 0 {
+                        setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
+                        args = append(args, id)
+                        updateSQL := fmt.Sprintf(`UPDATE "UniteEnseignement" SET %s WHERE "id" = $%d RETURNING %s`,
+                                strings.Join(setClauses, ", "), argIdx, columnsUE)
+                        row := tx.QueryRow(ctx, updateSQL, args...)
+                        u, err := scanUE(row)
+                        if err != nil {
+                                if err == pgx.ErrNoRows {
+                                        return &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
+                                }
+                                if isUniqueViolation(err) {
+                                        return &domain.ConflictError{Message: "une UE avec ce code existe déjà dans cette filière"}
+                                }
+                                return fmt.Errorf("update ue: %w", err)
+                        }
+                        // Gérer filiereIdsSuppl (full replace)
+                        if input.FiliereIDsSuppl != nil {
+                                // Delete all existing
+                                if _, err := tx.Exec(ctx, `DELETE FROM "UniteEnseignementFiliere" WHERE "uniteEnseignementId" = $1`, id); err != nil {
+                                        return fmt.Errorf("delete ue filieres suppl: %w", err)
+                                }
+                                // Insert new
+                                ownerFiliereID := u.FiliereID
+                                for _, fid := range input.FiliereIDsSuppl {
+                                        if fid == ownerFiliereID {
+                                                continue
+                                        }
+                                        _, err := tx.Exec(ctx, `INSERT INTO "UniteEnseignementFiliere" ("id", "uniteEnseignementId", "filiereId", "createdAt") VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING`, uuid.NewString(), id, fid)
+                                        if err != nil {
+                                                return fmt.Errorf("insert ue filiere suppl: %w", err)
+                                        }
+                                }
+                        }
+                        ue = u
+                        return nil
+                }
+
+                // No fields to update — return existing
+                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "UniteEnseignement" WHERE "id" = $1`, columnsUE), id)
+                u, err := scanUE(row)
                 if err != nil {
                         if err == pgx.ErrNoRows {
-                                return nil, &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
+                                return &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
                         }
-                        if isUniqueViolation(err) {
-                                return nil, &domain.ConflictError{Message: "une UE avec ce code existe déjà dans cette filière"}
-                        }
-                        return nil, fmt.Errorf("update ue: %w", err)
+                        return err
                 }
-                // Gérer filiereIdsSuppl (full replace)
-                if input.FiliereIDsSuppl != nil {
-                        // Delete all existing
-                        if _, err := tx.Exec(ctx, `DELETE FROM "UniteEnseignementFiliere" WHERE "uniteEnseignementId" = $1`, id); err != nil {
-                                return nil, fmt.Errorf("delete ue filieres suppl: %w", err)
-                        }
-                        // Insert new
-                        ownerFiliereID := ue.FiliereID
-                        for _, fid := range input.FiliereIDsSuppl {
-                                if fid == ownerFiliereID {
-                                        continue
-                                }
-                                _, err := tx.Exec(ctx, `INSERT INTO "UniteEnseignementFiliere" ("id", "uniteEnseignementId", "filiereId", "createdAt") VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING`, uuid.NewString(), id, fid)
-                                if err != nil {
-                                        return nil, fmt.Errorf("insert ue filiere suppl: %w", err)
-                                }
-                        }
-                }
-                if err := tx.Commit(ctx); err != nil {
-                        return nil, fmt.Errorf("commit: %w", err)
-                }
-                return ue, nil
-        }
-
-        // No fields to update — return existing
-        row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "UniteEnseignement" WHERE "id" = $1`, columnsUE), id)
-        ue, err := scanUE(row)
+                ue = u
+                return nil
+        })
         if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
-                }
-                return nil, err
-        }
-        if err := tx.Commit(ctx); err != nil {
                 return nil, err
         }
         return ue, nil
@@ -827,41 +841,49 @@ func (r *AnneeAcademiqueRepository) List(ctx context.Context, etablissementID st
         return result, nil
 }
 
-// Create crée une année académique (bypass RLS).
+// Create crée une année académique.
+//
+// BUGFIX (AUDIT-RLS-VAGUE-4) : le code utilisait r.pool.BeginTx SANS
+// SetClaimsTx → claims NULL → policy AnneeAcademique_modify_responsable
+// (is_responsable() AND etablissementId = current_etablissement_id()) voyait NULL
+// → INSERT bloqué. Alignement sur db.WithTx avec claims user depuis le context.
 func (r *AnneeAcademiqueRepository) Create(ctx context.Context, input domain.CreateAnneeInput) (*domain.AnneeAcademique, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        // Parser les dates ISO
-        dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
-        if err != nil {
-                return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
-        }
-        dateFin, err := time.Parse(time.RFC3339, input.DateFin)
-        if err != nil {
-                return nil, &domain.ValidationError{Field: "dateFin", Message: "format ISO invalide"}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("AnneeAcademiqueRepository.Create: claims manquants dans le context")
         }
 
-        id := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "AnneeAcademique" ("id", "libelle", "dateDebut", "dateFin", "etablissementId", "actif", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING `+columnsAnnee,
-                id, input.Libelle, dateDebut, dateFin, input.EtablissementID)
-
-        a, err := scanAnnee(row)
-        if err != nil {
-                if isUniqueViolation(err) {
-                        return nil, &domain.ConflictError{Message: "cette année académique existe déjà pour cet établissement"}
+        var a *domain.AnneeAcademique
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Parser les dates ISO
+                dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
+                if err != nil {
+                        return &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
                 }
-                return nil, fmt.Errorf("create annee: %w", err)
-        }
+                dateFin, err := time.Parse(time.RFC3339, input.DateFin)
+                if err != nil {
+                        return &domain.ValidationError{Field: "dateFin", Message: "format ISO invalide"}
+                }
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                id := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "AnneeAcademique" ("id", "libelle", "dateDebut", "dateFin", "etablissementId", "actif", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING `+columnsAnnee,
+                        id, input.Libelle, dateDebut, dateFin, input.EtablissementID)
+
+                u, err := scanAnnee(row)
+                if err != nil {
+                        if isUniqueViolation(err) {
+                                return &domain.ConflictError{Message: "cette année académique existe déjà pour cet établissement"}
+                        }
+                        return fmt.Errorf("create annee: %w", err)
+                }
+                a = u
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return a, nil
 }
