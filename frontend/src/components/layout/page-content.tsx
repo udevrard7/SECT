@@ -13,7 +13,6 @@ import { EtudiantDashboard } from '@/components/dashboard/etudiant-dashboard'
 // ─── Page component imports ───
 import { DocumentsPage } from '@/components/documents/documents-page'
 import { GenerationIAPage } from '@/components/epreuves/generation-ia-page'
-import { QuestionsIAPage } from '@/components/questions/questions-ia-page'
 import { EpreuvesPage } from '@/components/epreuves/epreuves-page'
 import { DevoirsPage } from '@/components/devoirs/devoirs-page'
 import { MesEpreuvesPage } from '@/components/passation/mes-epreuves-page'

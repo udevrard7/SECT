@@ -834,18 +834,31 @@ export function GenerationIAPage() {
   // ─── Regenerate single question ───
   const handleRegenerateSingleQuestion = async (q: ContenuQuestion) => {
     if (!user?.id || !generatedContenu) return
+    const docIdsArray = Array.from(selectedDocIds)
+    if (docIdsArray.length === 0) {
+      toast.error('Erreur de régénération', {
+        description: 'Aucun document source sélectionné.',
+      })
+      return
+    }
     setRegeneratingQuestionId(q.id)
 
     try {
+      // BUGFIX (QUESTIONS-IA-REGENERATE) :
+      // 1. Backend attend documentId (singulier), pas documentIds (pluriel).
+      //    On envoie le premier document sélectionné (les docs ont été utilisés
+      //    ensemble pour la génération initiale, le premier suffit pour la
+      //    régénération d'une seule question).
+      // 2. q.id peut être "q1" (ID temporaire de preview, non persisté en DB).
+      //    Le backend a été fixé pour ne pas planter si GetByID échoue (preview).
+      // 3. La réponse backend est {question: {...}}, pas {...} directement.
       const res = await fetch(`/api/questions/${q.id}/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          documentIds: Array.from(selectedDocIds),
+          documentId: docIdsArray[0],
           type: q.type,
-          difficulte,
-          langue,
-          enseignantId: user.id,
+          difficulte: q.difficulte || difficulte,
         }),
       })
 
@@ -854,26 +867,35 @@ export function GenerationIAPage() {
         throw new Error(errData.error || 'Erreur lors de la régénération')
       }
 
+      // BUGFIX : la réponse est {question: {type, enonce, ...}}, pas {type, ...}
       const data = await res.json()
+      const rq = data.question || data
+
       const newQ: ContenuQuestion = {
         id: q.id,
-        type: (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(data.type as string) ? data.type : q.type) as ContenuQuestion['type'],
-        enonce: String(data.enonce || q.enonce),
-        propositions: data.propositions || q.propositions,
-        reponseCorrecte: data.reponseCorrecte || q.reponseCorrecte,
-        explication: (data.explication as string | null) ?? q.explication,
-        difficulte: (['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT'].includes(data.difficulte as string)
-          ? data.difficulte : q.difficulte) as ContenuQuestion['difficulte'],
-        bareme: typeof data.bareme === 'number' ? data.bareme : q.bareme,
-        ueCode: (data.ueCode as string | null) ?? q.ueCode,
-        ueNom: (data.ueNom as string | null) ?? q.ueNom,
+        type: (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(rq.type as string) ? rq.type : q.type) as ContenuQuestion['type'],
+        enonce: String(rq.enonce || q.enonce),
+        propositions: rq.propositions || q.propositions,
+        reponseCorrecte: rq.reponseCorrecte || q.reponseCorrecte,
+        explication: (rq.explication as string | null) ?? q.explication,
+        difficulte: (['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT'].includes(rq.difficulte as string)
+          ? rq.difficulte : q.difficulte) as ContenuQuestion['difficulte'],
+        bareme: typeof rq.bareme === 'number' ? rq.bareme : q.bareme,
+        ueCode: (rq.ueCode as string | null) ?? q.ueCode,
+        ueNom: (rq.ueNom as string | null) ?? q.ueNom,
       }
 
-      setGeneratedContenu({
-        ...generatedContenu,
-        questions: generatedContenu.questions.map((existingQ) =>
-          existingQ.id === q.id ? newQ : existingQ
-        ),
+      // BUGFIX : utiliser setGeneratedContenu(prev => ...) au lieu de capturer
+      // generatedContenu dans la closure → évite d'écraser les edits faits
+      // pendant la régénération (race condition).
+      setGeneratedContenu((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          questions: prev.questions.map((existingQ) =>
+            existingQ.id === q.id ? newQ : existingQ
+          ),
+        }
       })
 
       toast.success('Question régénérée')
