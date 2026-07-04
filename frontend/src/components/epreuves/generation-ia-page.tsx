@@ -747,12 +747,35 @@ export function GenerationIAPage() {
 
       const data = await res.json()
       const contenu: GeneratedContenu = {
-        questions: (data.contenu?.questions ?? []).map((q: Record<string, unknown>, idx: number) => ({
+        questions: (data.contenu?.questions ?? []).map((q: Record<string, unknown>, idx: number) => {
+          const qType = (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(q.type as string) ? q.type : 'QRC') as ContenuQuestion['type']
+          const propositions = q.propositions || null
+
+          // BUGFIX (E2E-TEST-AUTOGRADE) : normaliser reponseCorrecte pour QCU/QCM.
+          // L'IA génère reponseCorrecte en TEXTE ("bool", "Le nom doit...") mais
+          // la passation stocke les réponses étudiant en LETTRES ("D", ["B","D"]).
+          // L'auto-grader compare lettre vs texte → toujours 0. Fix : convertir
+          // reponseCorrecte en lettres (A/B/C/D) basé sur isCorrect dans propositions.
+          let reponseCorrecte = q.reponseCorrecte || null
+          if ((qType === 'QCU' || qType === 'QCM') && Array.isArray(propositions)) {
+            const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+            const correctLetters: string[] = []
+            propositions.forEach((prop: Record<string, unknown>, pIdx: number) => {
+              if (prop && typeof prop === 'object' && prop.isCorrect === true && pIdx < LETTERS.length) {
+                correctLetters.push(LETTERS[pIdx])
+              }
+            })
+            if (correctLetters.length > 0) {
+              reponseCorrecte = qType === 'QCU' ? correctLetters[0] : correctLetters
+            }
+          }
+
+          return {
           id: q.id || `q${idx + 1}`,
-          type: (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(q.type as string) ? q.type : 'QRC') as ContenuQuestion['type'],
+          type: qType,
           enonce: String(q.enonce || ''),
-          propositions: q.propositions || null,
-          reponseCorrecte: q.reponseCorrecte || null,
+          propositions,
+          reponseCorrecte,
           explication: (q.explication as string | null) ?? null,
           difficulte: (['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT'].includes(q.difficulte as string)
             ? q.difficulte : 'MOYEN') as ContenuQuestion['difficulte'],
@@ -778,7 +801,8 @@ export function GenerationIAPage() {
           fonctionSignature: (q.fonctionSignature as string | undefined) ?? undefined,
           testsPublics: Array.isArray(q.testsPublics) ? q.testsPublics as Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }> : undefined,
           testsPrives: Array.isArray(q.testsPrives) ? q.testsPrives as Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }> : undefined,
-        })),
+        }
+        }),
         consignes: data.contenu?.consignes || '',
         baremeTotal: data.contenu?.baremeTotal || 0,
       }
