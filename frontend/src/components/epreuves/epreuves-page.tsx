@@ -456,7 +456,8 @@ function ModelesTab() {
   queryClient.invalidateQueries({ queryKey: ['epreuves-modeles', user?.id] })
 
  // View mode (flat list or grouped) — miroir SessionsTab
- const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+ // UX-IMPROVE : viewMode démarre à 'grouped' (comme SessionsTab).
+ const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped')
  const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
 
  // Dialogs
