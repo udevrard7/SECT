@@ -166,6 +166,28 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
         }
 
         // Créer la nouvelle épreuve dérivée
+        // BUGFIX (E2E-SESSION-SPECIALE) : copier FiliereID, UniteEnseignementID,
+        // Niveau, NoteTotal depuis l'épreuve source si non fournis dans l'input.
+        // Avant, le usecase Create rejetait avec 'uniteEnseignementId requis'
+        // car le frontend ne renvoyait pas ces champs (ils sont optionnels dans
+        // le dialog de session spéciale).
+        sourceFiliereID := input.FiliereID
+        if sourceFiliereID == nil && sourceEpreuve.FiliereID != nil {
+                sourceFiliereID = sourceEpreuve.FiliereID
+        }
+        sourceUEID := input.UniteEnseignementID
+        if (sourceUEID == nil || *sourceUEID == "") && sourceEpreuve.UniteEnseignementID != nil {
+                sourceUEID = sourceEpreuve.UniteEnseignementID
+        }
+        sourceNiveau := input.Niveau
+        if (sourceNiveau == nil || *sourceNiveau == "") && sourceEpreuve.Niveau != nil {
+                sourceNiveau = sourceEpreuve.Niveau
+        }
+        sourceNoteTotal := input.NoteTotal
+        if sourceNoteTotal == nil && sourceEpreuve.NoteTotal > 0 {
+                nt := sourceEpreuve.NoteTotal
+                sourceNoteTotal = &nt
+        }
         createInput := domain.CreateEpreuveInput{
                 EnseignantID:        claims.UserID,
                 Titre:               input.Titre,
@@ -173,11 +195,11 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
                 Duree:               input.Duree,
                 DateDebut:           input.DateDebut,
                 DateFin:             input.DateFin,
-                FiliereID:           input.FiliereID,
-                UniteEnseignementID: input.UniteEnseignementID,
-                Niveau:              input.Niveau,
+                FiliereID:           sourceFiliereID,
+                UniteEnseignementID: sourceUEID,
+                Niveau:              sourceNiveau,
                 SessionExamen:       domain.SessionExamen(input.SessionExamen),
-                NoteTotal:           input.NoteTotal,
+                NoteTotal:           sourceNoteTotal,
                 AnneeAcademiqueID:   input.AnneeAcademiqueID,
                 GenerationMode:      sourceEpreuve.GenerationMode,
                 Contenu:             sourceEpreuve.Contenu,
