@@ -12557,3 +12557,85 @@ Lint : 0 erreur. Commit d03ae92 poussé. Vercel déployé.
 Validation : page correction charge, copies visibles. Le workflow IA
 s'activera sur les futures copies soumises (les copies actuelles sont
 déjà rendues).
+Task ID: SECT-ENV-RESETUP
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reconfiguration environnement de travail (nouveau sandbox) — clone, identité Git, vérification services distants, installation Go
+
+Work Log:
+- Clonage du dépôt `udevrard7/SECT` dans `/home/z/sect-project` (branche main, HEAD = 9491da4).
+- Sécurisation du remote : token GitHub retiré de l'URL du remote, stocké hors dépôt dans `/home/z/.git-credentials-sect` (chmod 600) via `credential.helper store`. Le token n'apparaît ni dans `.git/config` ni dans le code.
+- Identité Git locale configurée : `udevrard7 <ulrichdouh@gmail.com>`.
+- Push testé (dry-run) : `Everything up-to-date` ✅.
+- Dépendances frontend installées : `bun install` (1061 packages) dans `frontend/`.
+- Go 1.24.3 installé dans `/home/z/.local/go` (requis car absent du sandbox). Ajouté au PATH (`~/.bashrc`).
+- Compilation backend vérifiée : `go vet ./...` + `go build ./...` → EXIT 0 ✅.
+- Connexion Neon vérifiée via script Node (pg) : PostgreSQL 18.4, 61 tables public, `schema_migrations` à la version 50 (non dirty) ✅.
+- Health Render vérifié : `https://sect-s1pb.onrender.com/health` → HTTP 200 `{"service":"sect-api","status":"ok","version":"0.2.0"}` ✅.
+- Frontend Vercel vérifié : `https://sect-app.vercel.app/` → HTTP 200 ✅.
+
+Stage Summary:
+- **Environnement pleinement opérationnel** dans un nouveau sandbox.
+- **Workflow établi** : modifications locales → `go build` (backend) + `bun run lint` (frontend) → si schéma DB modifié, ajouter migration + appliquer sur Neon → `git add/commit` (identité udevrard7) → `git push origin main` → déploiement auto Vercel (frontend) + Render (backend).
+- **3 services distants sains** : Neon (v18.4, migrations à jour), Render (status ok), Vercel (HTTP 200).
+- **Point d'attention sécurité** : les tokens (GitHub/Neon/Vercel/Render) ayant été partagés en clair dans la conversation, rotation recommandée en fin de session.
+- **Prêt à recevoir les instructions de développement** de l'utilisateur.
+
+---
+Task ID: SECT-MESSAGERIE-3-BUGS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Correction de 3 bugs du module Messagerie signalés par l'utilisateur
+
+Bugs signalés :
+1. Conversation privée (DIRECT) : le nom du destinataire ne s'affiche pas dans
+   la sidebar, on voit "Message direct" à la place.
+2. Dans un salon collectif, on ne sait pas qui a écrit chaque message (pas
+   d'attribution d'auteur).
+3. Quitter un salon / supprimer une conversation privée ne fonctionne pas :
+   la conversation reste affichée dans la sidebar.
+
+Diagnostic (root causes) :
+
+Bug 1 — ListByUser (repository/messagerie.go) retournait c."titre" brut.
+Pour les conversations DIRECT, le frontend ne set pas titre (optionnel) →
+titre=NULL → la sidebar affichait le fallback meta.label = "Message direct".
+Aucune jointure ne récupérait le nom de l'autre participant.
+
+Bug 2 — CreateMessage (repository/messagerie.go) rechargeait le message SANS
+joindre la table User → msg.User=nil. Le message retourné au client (HTTP POST)
+ET l'event SSE broadcasté avaient user=null → le frontend affichait
+"Utilisateur" au lieu du nom de l'auteur. ListMessages faisait déjà la
+jointure (donc après refetch les noms apparaissaient), mais le délai de
+refetch laissait un flash "Utilisateur".
+
+Bug 3 — ListByUser filtrait sur WHERE c."deletedAt" IS NULL mais PAS sur
+p."leftAt". LeaveConversation set leftAt sur le participant, mais :
+- Pour les salons (CLASSE/PROMO/EQUIPE/STAFF) : la RLS Conversation_select
+  est basée sur rôle/filière, pas sur la participation → le salon restait
+  visible après refetch malgré leftAt set.
+- Pour DIRECT : la RLS filtre leftAt IS NULL (donc caché par RLS), mais la
+  query ne le filtrait pas explicitement → double sécurité manquante.
+
+Corrections (3 fichiers) :
+
+backend/internal/repository/messagerie.go :
+- ListByUser : COALESCE(c."titre", other."name") AS "titre" + LATERAL join
+  sur ConversationParticipant+User pour récupérer le nom de l'AUTRE
+  participant actif (type='DIRECT' seulement). [Bug 1]
+- ListByUser : WHERE c."deletedAt" IS NULL AND (p."leftAt" IS NULL).
+  p est LEFT JOIN → si pas de row participant (salon non rejoint), p.leftAt
+  est NULL → visible. Si leftAt set (quitté) → masqué. [Bug 3]
+- CreateMessage : le reload du message inséré joint désormais "User"
+  (LEFT JOIN) et hydrate msg.User (MessageUserRef). Le HTTP response ET
+  l'event SSE broadcasté contiennent maintenant le nom de l'auteur. [Bug 2]
+
+frontend/src/hooks/use-messagerie.ts :
+- useMessagerieStream / event "message_new" : en plus d'invalider la query
+  (refetch), on fusionne directement le message entrant dans le cache
+  messages (setQueryData) avec dédoublonnage par ID. Le message apparaît
+  immédiatement avec le nom de l'auteur, sans attendre le round-trip du
+  refetch. [Bug 2 - UX complémentaire]
+
+Vérifications :
+- go vet ./... : 0 erreur
+- go build ./... : EXIT 0
+- bun run lint : 0 erreur (1 warning préexistant sans rapport)
