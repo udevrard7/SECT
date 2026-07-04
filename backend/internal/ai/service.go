@@ -80,11 +80,12 @@ type AIService struct {
 func NewAIService(dbPool *pgxpool.Pool) *AIService {
         return &AIService{
                 dbPool: dbPool,
-                // Timeout large (3 min) : la génération d'épreuves peut demander
-                // plusieurs questions en une seule complétion (jusqu'à ~6 min côté
-                // frontend via AbortController). On reste en-dessous de la limite
-                // supérieure frontend pour éviter une 504 Go prématurée.
-                client: &http.Client{Timeout: 180 * time.Second},
+                // QUESTIONS-IA-LOW : timeout aligné sur le path async (5 min).
+                // Avant : sync=180s, async=5min → le sync pouvait renvoyer 503 à
+                // 180s alors que l'IA répondait à 200s (l'utilisateur réessayait →
+                // double coût). Maintenant les 2 paths ont le même timeout 5min,
+                // cohérent avec le frontend (AbortController 120-360s).
+                client: &http.Client{Timeout: 5 * time.Minute},
         }
 }
 
