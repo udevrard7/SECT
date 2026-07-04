@@ -415,6 +415,7 @@ export function ParCopieView({
                   isSaving={isSaving}
                   onAiGrade={() => handleAiGrade()}
                   isAiLoading={isAiLoading}
+                  aiSuggestedNote={currentReponse?.noteIA ?? null}
                 />
               )}
             </motion.div>

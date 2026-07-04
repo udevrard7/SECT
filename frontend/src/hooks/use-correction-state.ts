@@ -190,6 +190,24 @@ export function useCorrectionState(user: CurrentUser | null) {
     setExpectedAnswerOpen(false)
   }, [currentQuestionIndex, selectedSessionId])
 
+  // ─── UX-IMPROVE : pré-remplir le champ note avec la suggestion IA ───
+  // Quand l'IA propose une note (noteIA !== null) et que l'enseignant n'a pas
+  // encore saisi de note (noteFinale === '' ou score === null), on pré-remplit
+  // le champ noteFinale + commentaire avec la suggestion. L'enseignant peut
+  // alors valider directement (Sauvegarder) ou ajuster (éditer le champ).
+  useEffect(() => {
+    if (currentReponse && currentReponse.noteIA !== null && currentReponse.noteIA !== undefined) {
+      // Ne pré-remplir que si pas de note existante (score === null) ET
+      // si le champ noteFinale est vide (l'enseignant n'a pas commencé à taper).
+      if (currentReponse.score === null && noteFinale === '') {
+        setNoteFinale(String(currentReponse.noteIA))
+        if (currentReponse.justificationIA && commentaire === '') {
+          setCommentaire(currentReponse.justificationIA)
+        }
+      }
+    }
+  }, [currentReponse?.noteIA, currentReponse?.score])
+
   // ─── Filtered sessions ───
   const filteredSessions = sessions.filter((s) => {
     if (!searchFilter) return true
@@ -283,7 +301,10 @@ export function useCorrectionState(user: CurrentUser | null) {
     }
   }
 
-  // ─── Apply AI suggestion ───
+  // ─── Apply AI suggestion : "Valider la note IA" ───
+  // UX-IMPROVE : enregistre la note IA directement (validation). L'enseignant
+  // n'a plus besoin de cliquer "Sauvegarder" séparément — "Valider" fait les
+  // deux (appliquer + enregistrer).
   const handleApplyAi = async () => {
     if (!selectedSessionId || !currentQuestion || !currentReponse) return
     if (currentReponse.noteIA === null) return
@@ -299,12 +320,12 @@ export function useCorrectionState(user: CurrentUser | null) {
         score: currentReponse.noteIA,
         commentaire: currentReponse.justificationIA || null,
       })
-      toast.success('Suggestion IA appliquée', {
-        description: `Note ${currentReponse.noteIA}/${currentQuestion.bareme} enregistrée.`,
+      toast.success('Note IA validée', {
+        description: `Note ${currentReponse.noteIA}/${currentQuestion.bareme} enregistrée automatiquement.`,
       })
     } catch (err) {
       toast.error('Erreur', {
-        description: err instanceof Error ? err.message : 'Impossible d\'appliquer la suggestion.',
+        description: err instanceof Error ? err.message : 'Impossible de valider la suggestion.',
       })
     } finally {
       setIsApplyingAi(false)
@@ -312,9 +333,16 @@ export function useCorrectionState(user: CurrentUser | null) {
     }
   }
 
-  // ─── Dismiss AI suggestion ───
+  // ─── Dismiss AI suggestion : "Ajuster manuellement" ───
+  // UX-IMPROVE : ferme le panneau IA et laisse l'enseignant éditer la note
+  // dans le champ (qui a été pré-rempli avec la suggestion). Il peut ensuite
+  // cliquer "Sauvegarder" pour enregistrer sa note ajustée.
   const handleDismissAi = () => {
     setShowAiSuggestion(false)
+    toast.info('Ajustez la note', {
+      description: 'Le champ note a été pré-rempli avec la suggestion IA. Modifiez-le puis cliquez Sauvegarder.',
+      duration: 5000,
+    })
   }
 
   // ─── Save handler ───
