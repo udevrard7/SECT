@@ -12360,3 +12360,36 @@ Points d'amélioration notés (non bloquants) :
 - La page correction nécessite de sélectionner une épreuve avant d'afficher les copies.
 
 Résultat : l'app est fonctionnelle de bout en bout après les 2 fixes CRITICAL.
+
+---
+Task ID: SECT-UX-IMPROVEMENTS
+Agent: Z.ai Code (tuteur/assistant)
+Task: 5 améliorations cosmétiques/UX (post test E2E)
+
+Work Log :
+1. passation-page.tsx : normalizeLang() pour l'éditeur de code. L'IA peut
+   générer 'Python', 'PYTHON', 'python.py' → normalisé en 'python' valide.
+   L'éditeur s'ouvre maintenant au bon langage (Python pour une question Python).
+2. use-correction-state.ts : useEffect auto-sélectionne l'épreuve si une seule
+   disponible. L'enseignant n'a plus à la sélectionner manuellement.
+3. security_helpers.go : resolveScopedUserID() résout 'me' → claims.UserID
+   pour tous les rôles. Aussi appliqué dans enseignantContextReal.
+4. use-correction-state.ts : toast loading persistant (duration: Infinity)
+   pendant l'appel IA + toast success 6s après. L'utilisateur sait que l'IA
+   travaille (avant, le toast disparaissait immédiatement sur 202 Accepted).
+5. sw.js : bump CACHE_VERSION sect-v3 → sect-v4 pour forcer l'invalidation
+   du cache après les fixes E2E.
+
+Build Go : EXIT 0. Lint : 0 erreur. Commit e17f7bd poussé.
+
+Validation production (Agent Browser, prof01) :
+- Health Render : 200 OK ✅
+- Vercel : 200 ✅
+- enseignantId=me : retourne 2 filières + 14 étudiants (avant : []) ✅
+- Page correction : charge sans erreur, 0 erreur console ✅
+
+Stage Summary:
+- **5 améliorations UX déployées** : éditeur code langage, auto-sélection,
+  alias me, feedback IA, SW cache.
+- **Expérience enseignant améliorée** : moins de clics manuels, feedback clair.
+- **Expérience étudiant améliorée** : éditeur s'ouvre au bon langage.
