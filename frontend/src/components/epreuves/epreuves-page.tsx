@@ -3063,14 +3063,18 @@ function SessionSpecialeDialog({
  type,
  motif,
  justificatif: justificatif || undefined,
- etudiantsCibles: Array.from(selectedStudents),
+ // BUGFIX (E2E-SESSION-SPECIALE) : le backend attend 'etudiants' (pas
+ // 'etudiantsCibles') et 'titre' est REQUIS (pas optionnel).
+ etudiants: Array.from(selectedStudents),
  estPartielle,
  questionsSelectionnees: estPartielle && selectedQuestions.size > 0 ? Array.from(selectedQuestions) : undefined,
  dateDebut: new Date(dateDebut).toISOString(),
  dateFin: new Date(dateFin).toISOString(),
  duree: duree || undefined,
  delaiGrace: delaiGrace || undefined,
- titre: titreOverride ? titre : undefined,
+ // BUGFIX : titre toujours fourni (backend l'exige). Si pas d'override,
+ // on génère un titre basé sur l'épreuve source + type de session.
+ titre: titreOverride ? titre : `${epreuve.titre} - ${TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type}`,
  melangeQuestions,
  melangePropositions,
  blocageRetour,
