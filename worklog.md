@@ -12863,3 +12863,113 @@ Validation production (Agent Browser, prof01) :
 - Barre de recherche présente ✅
 
 Lint : 0 erreur. Commit 8f2f898 poussé. Vercel déployé.
+
+---
+Task ID: SECT-ONBOARDING-TUTEUR
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reprise du projet par le tuteur — clonage, analyse architecture, vérification infra
+
+Initialisation de la session de tutorat sur le dépôt existant (aucune création de projet).
+
+1. Clonage & identité Git :
+   - Dépôt cloné depuis github.com/udevrard7/SECT (branche main, HEAD = 6607f43)
+   - git config user.name=udevrard7 / user.email=ulrichdouh@gmail.com (conforme)
+   - Remote origin authentifié pour push (token GitHub fourni par le propriétaire)
+   - Working tree clean, à jour avec origin/main
+
+2. Architecture confirmée (monorepo) :
+   - frontend/ : Next.js 16 + React 19 + Tailwind 4 + shadcn/ui + Zustand + TanStack Query → Vercel (sect-app.vercel.app, region fra1)
+   - backend/ : Go 1.24 + chi/v5 + pgx/v5 + JWT HMAC-SHA256 → Render (sect-s1pb.onrender.com, region frankfurt, plan free, Docker)
+   - DB : PostgreSQL 18 sur Neon (RLS) — 62 tables, 28 enums, 143 policies RLS, 104 FK, 200 index
+   - Stockage : Cloudflare R2 (bucket sect-documents, S3-compatible)
+   - CI/CD : GitHub → Vercel (auto) + Render (autoDeploY=true)
+   - Proxy API : vercel.json rewrite /api/:path* → https://sect-s1pb.onrender.com/api/:path*
+
+3. Vérification Neon (connexion pooler OK) :
+   - Connexion établie sur ep-muddy-river-asz862wj-pooler
+   - schéma à jour (contient MessageReaction = migration 51)
+   - ⚠️ Drift : schema_migrations.version = 16 alors que 51 fichiers de migration existent
+     → les migrations 17→51 ont été appliquées en SQL direct sans update de schema_migrations
+     → Conséquence : ne PAS lancer `migrate up` aveuglément (tenterait de rejouer 17-51 et échouerait)
+     → Pour toute nouvelle migration : appliquer en SQL direct + UPDATE schema_migrations SET version=N
+
+4. Méthodologie de travail convenue avec le propriétaire :
+   - Toute modification est commitée et poussée vers GitHub avec l'identité udevrard7 / ulrichdouh@gmail.com
+   - Le push déclenche automatiquement Vercel (frontend) et Render (backend)
+   - Toute évolution du schéma est synchronisée sur Neon
+   - Aucune création de nouveau projet ; on respecte strictement l'architecture en place
+   - ⚠️ Sécurité : tokens (GitHub/Vercel/Render/Neon) partagés en clair → rotation recommandée après session
+
+Stage Summary:
+- Environnement de travail opérationnel dans /home/z/sect (clone frais, identité Git conforme, remote authentifié)
+- Base Neon vérifiée et fonctionnelle ; drift de schema_migrations identifié (à gérer au cas par cas)
+- Prêt à enchaîner sur les évolutions demandées par le propriétaire
+
+---
+Task ID: SECT-FACTURATION-AUDIT-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Audit E2E du module /facturation en conditions réelles (Agent Browser, login admin ulrichdouh@gmail.com)
+
+Audit réalisé sur l'app déployée (sect-app.vercel.app) après login admin OK.
+3 factures manipulées : FAC-2026-00001 (annulée, préexistante), FAC-2026-00002 (créée+payée), FAC-2026-00003 (créée+annulée).
+
+Flux validés OK :
+- Login admin + accès /facturation (rôle ADMIN requis) ✅
+- KPI cards (5) calculés et mis à jour après mutations ✅
+- Onglet Factures : liste, recherche, filtre statut (4 valeurs + Tous) ✅
+- Onglet Analytique : MRR/ARR/churn + 4 graphiques ✅
+- Onglet Prévisions : 6 mois + renouvellements + alertes + résumé ✅
+- Création facture (POST /api/factures) → 201, numéro auto FAC-YYYY-NNNNN, auto-fill ligne abonnement, calcul HT/TVA/TTC ✅
+- Marquer payée (PATCH) → statut PAYEE + datePaiement auto + modePaiement ✅
+- Annuler (DELETE soft) → statut ANNULEE ✅
+- Rendu conditionnel des boutons d'action selon statut ✅
+- Mode sombre ✅
+- Aucune erreur console/runtime sur les flux validés ✅
+
+BUGS DETECTES :
+
+[B1] CRITICAL — Crash dialogue "Voir les détails" (100% reproductible)
+  Symptôme : clic "Voir les détails" → page d'erreur React "Cannot read properties of undefined (reading 'nom')"
+  Cause racine : backend/internal/transport/http/facture_mutation_handlers.go getFactureByID (l.207) fait
+    SELECT factureColumns FROM "Facture" WHERE id=$1 SANS JOIN vers Abonnement/Plan ni Etablissement.
+    La struct factureResponse est PLATE (abonnementId/etablissementId en string, pas d'objets nested).
+    Or le frontend facturation-page.tsx l.1703-1711 lit selectedFacture.etablissement.nom / .ville /
+    .abonnement.plan.nom / .abonnement.plan.prixMensuel → undefined.nom → crash.
+  Contraste : facturesListReal (stub_handlers_real2.go) fait BIEN les LEFT JOIN et retourne
+    abonnement{plan{nom,prixMensuel}} + etablissement{nom,ville}. La liste marche, le détail non.
+  Fix : faire les mêmes LEFT JOIN dans getFactureByID + retourner une struct nested (comme la liste).
+
+[B2] MEDIUM — "Montant moyen" faussé par les factures annulées
+  frontend/src/components/admin/facturation-page.tsx l.370-372 : montantMoyen = sum(montantTtc) / factures.length
+  sur TOUTES les factures (annulées incluses, qui sont à 0 FCFA).
+  Exemple observé : 1 payée à 60 000 + 2 annulées à 0/30 000 → "30 000" au lieu de "60 000".
+  Fix : exclure au minimum les ANNULEE ; idéalement calculer sur PAYEE uniquement (panier moyen réel).
+
+[B3] MEDIUM — Tableau non responsive sur mobile (375px)
+  Table de 9 colonnes (950px de large) dans un viewport 341px → overflow horizontal massif.
+  Les KPI cards et la toolbar s'empilent correctement, mais le tableau oblige à scroller horizontalement.
+  Fix : sur mobile (<640px), passer en mode "cartes" (une carte par facture) ou wrapper le tableau
+    dans un conteneur overflow-x-auto avec indication visuelle de scroll.
+
+[B4] LOW — Échelle graphique micro inutile quand toutes les valeurs sont à 0
+  Onglets Analytique ("Revenus par mois") et Prévisions ("Prévisions 6 mois") affichent des ticks
+    d'axe Y "0k / 0,001k / 0,002k / 0,003k / 0,004k" quand il n'y a pas de revenu.
+  Fix : forcer ticks [0, max] ou masquer les décimales quand max < 1000 ; ou afficher état vide.
+
+AMELIORATIONS PROPOSEES (non-bugs) :
+1. Export CSV/PDF des factures (aucun actuellement) — utile pour compta
+2. Pagination UI (backend limite déjà à 100/200, mais pas de pagination frontend)
+3. Tri des colonnes du tableau (Numéro, Montant, Échéance…)
+4. Filtre par établissement (backend supporte ?etablissementId= mais pas exposé en UI)
+5. Clic sur le numéro de facture → ouvrir détail (pas seulement le bouton Eye)
+6. Indicateur de chargement (skeleton) pendant les mutations
+7. Confirmation avant "Marquer comme payée" si dateEcheance dans le futur (paiement anticipé)
+8. Tests E2E automatisés (Playwright) sur ce module critique pour la compta
+
+Stage Summary:
+- Module fonctionnel sur les flux principaux (création/paiement/annulation/filtres/3 onglets)
+- 1 bug CRITICAL (B1 : dialogue détail inutilisable) à corriger en priorité
+- 2 bugs MEDIUM (B2 montant moyen, B3 responsive mobile) + 1 LOW (B4 échelle graphique)
+- 0 erreur console/runtime sur les flux validés
+- Captures d'écran : /home/z/sect/screenshots/facturation-audit/ (9 PNG)
+- En attente décision propriétaire pour prioriser les fixes
