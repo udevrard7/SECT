@@ -29,6 +29,8 @@ import {
   Building2,
   Trash2,
   Info,
+  Download,
+  ArrowUpDown,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
@@ -200,6 +202,42 @@ function formatChartTick(v: number) {
   return `${(v / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}k`
 }
 
+// SECT-FACTURATION-IMPROVEMENTS : tri des colonnes du tableau Factures.
+type SortKey = 'numero' | 'etablissement' | 'montantHt' | 'montantTtc' | 'dateEmission' | 'dateEcheance'
+type SortDir = 'asc' | 'desc'
+
+const STATUT_LABELS: Record<string, string> = {
+  EN_ATTENTE: 'En attente',
+  PAYEE: 'Payée',
+  EN_RETARD: 'En retard',
+  ANNULEE: 'Annulée',
+}
+
+function compareFactures(a: FactureItem, b: FactureItem, key: SortKey, dir: SortDir): number {
+  let cmp = 0
+  switch (key) {
+    case 'numero':
+      cmp = a.numero.localeCompare(b.numero, 'fr-FR', { numeric: true })
+      break
+    case 'etablissement':
+      cmp = a.etablissement.nom.localeCompare(b.etablissement.nom, 'fr-FR')
+      break
+    case 'montantHt':
+      cmp = a.montantHt - b.montantHt
+      break
+    case 'montantTtc':
+      cmp = a.montantTtc - b.montantTtc
+      break
+    case 'dateEmission':
+      cmp = new Date(a.dateEmission).getTime() - new Date(b.dateEmission).getTime()
+      break
+    case 'dateEcheance':
+      cmp = new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime()
+      break
+  }
+  return dir === 'asc' ? cmp : -cmp
+}
+
 function getStatutBadge(statut: string) {
   switch (statut) {
     case 'EN_ATTENTE':
@@ -340,6 +378,12 @@ export function FacturationPage() {
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('all')
+  // SECT-FACTURATION-IMPROVEMENTS : filtre par établissement + tri + pagination.
+  const [etablissementFilter, setEtablissementFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<SortKey>('dateEmission')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 10
 
   // ─── Dialog state ───
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -388,14 +432,100 @@ export function FacturationPage() {
   const filteredFactures = useMemo(() => {
     return factures.filter((f) => {
       const matchStatut = statutFilter === 'all' || f.statut === statutFilter
+      const matchEtablissement = etablissementFilter === 'all' || f.etablissementId === etablissementFilter
       const matchSearch =
         !search ||
         f.numero.toLowerCase().includes(search.toLowerCase()) ||
         f.etablissement.nom.toLowerCase().includes(search.toLowerCase()) ||
         f.abonnement.plan.nom.toLowerCase().includes(search.toLowerCase())
-      return matchStatut && matchSearch
+      return matchStatut && matchEtablissement && matchSearch
     })
-  }, [factures, search, statutFilter])
+  }, [factures, search, statutFilter, etablissementFilter])
+
+  // SECT-FACTURATION-IMPROVEMENTS : liste triée + slice paginée.
+  const sortedFactures = useMemo(() => {
+    return [...filteredFactures].sort((a, b) => compareFactures(a, b, sortBy, sortDir))
+  }, [filteredFactures, sortBy, sortDir])
+
+  const totalPages = Math.max(1, Math.ceil(sortedFactures.length / PAGE_SIZE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const paginatedFactures = useMemo(() => {
+    const start = (safeCurrentPage - 1) * PAGE_SIZE
+    return sortedFactures.slice(start, start + PAGE_SIZE)
+  }, [sortedFactures, safeCurrentPage])
+
+  // Reset page à 1 quand les filtres changent.
+  const handleFilterChange = <T,>(setter: (v: T) => void) => (v: T) => {
+    setter(v)
+    setCurrentPage(1)
+  }
+
+  const handleSort = (key: SortKey) => {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(key)
+      setSortDir('desc')
+    }
+  }
+
+  // SECT-FACTURATION-IMPROVEMENTS : Export CSV des factures filtrées (tri appliqué, pagination ignorée).
+  const handleExportCSV = () => {
+    const headers = [
+      'Numero',
+      'Etablissement',
+      'Ville',
+      'Plan',
+      'Montant HT',
+      'TVA (%)',
+      'Montant TTC',
+      'Statut',
+      'Date emission',
+      'Date echeance',
+      'Date paiement',
+      'Mode paiement',
+      'Reference paiement',
+      'Notes',
+    ]
+    const escapeCSV = (val: string | number | null | undefined) => {
+      const s = String(val ?? '')
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+    const rows = sortedFactures.map((f) => [
+      f.numero,
+      f.etablissement.nom,
+      f.etablissement.ville ?? '',
+      f.abonnement.plan.nom,
+      f.montantHt,
+      f.tva,
+      f.montantTtc,
+      STATUT_LABELS[f.statut] ?? f.statut,
+      formatDate(f.dateEmission),
+      formatDate(f.dateEcheance),
+      formatDate(f.datePaiement),
+      f.modePaiement ?? '',
+      f.referencePaiement ?? '',
+      f.notes ?? '',
+    ].map(escapeCSV).join(','))
+    const csv = [headers.join(','), ...rows].join('\n')
+    // BOM UTF-8 pour qu'Excel ouvre correctement les accents.
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `factures-sect-${today}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success('Export CSV généré', {
+      description: `${sortedFactures.length} facture(s) exportée(s).`,
+    })
+  }
 
   // ─── Analytics data ───
   const monthlyRevenueData = useMemo(() => {
@@ -724,7 +854,16 @@ export function FacturationPage() {
   }
 
   // ─── Open mark as paid dialog ───
+  // SECT-FACTURATION-IMPROVEMENTS : avertir si paiement anticipé (dateEcheance dans le futur).
   const handleOpenPay = (facture: FactureItem) => {
+    const echeance = new Date(facture.dateEcheance)
+    const now = new Date()
+    const daysEarly = Math.ceil((echeance.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    if (daysEarly > 0) {
+      toast.warning('Paiement anticipé', {
+        description: `Cette facture arrive à échéance dans ${daysEarly} jour(s) (${formatDate(facture.dateEcheance)}).`,
+      })
+    }
     setPayTarget(facture)
     setFormModePaiement('')
     setFormReferencePaiement('')
@@ -924,20 +1063,37 @@ export function FacturationPage() {
         {/* TAB 1: FACTURES                                           */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="factures">
-          {/* Toolbar */}
+          {/* Toolbar — SECT-FACTURATION-IMPROVEMENTS : + filtre établissement + export CSV */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Rechercher par numéro, établissement ou plan..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setCurrentPage(1)
+                }}
                 className="pl-9"
               />
             </div>
-            <Select value={statutFilter} onValueChange={setStatutFilter}>
-              <SelectTrigger className="w-[180px]">
-                <Filter className="h-3.5 w-3.5 mr-1" />
+            <Select value={etablissementFilter} onValueChange={handleFilterChange(setEtablissementFilter)}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <Building2 className="h-3.5 w-3.5 mr-1 shrink-0" />
+                <SelectValue placeholder="Établissement" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les établissements</SelectItem>
+                {etablissements.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.nom}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statutFilter} onValueChange={handleFilterChange(setStatutFilter)}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <Filter className="h-3.5 w-3.5 mr-1 shrink-0" />
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
               <SelectContent>
@@ -948,6 +1104,17 @@ export function FacturationPage() {
                 <SelectItem value="ANNULEE">Annulée</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+              disabled={sortedFactures.length === 0}
+              title="Exporter les factures filtrées en CSV"
+              className="shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </Button>
           </div>
 
           {/* Loading state */}
@@ -987,26 +1154,109 @@ export function FacturationPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="font-display">Numéro</TableHead>
-                      <TableHead className="font-display">Établissement</TableHead>
-                      <TableHead className="text-right font-display">Montant HT</TableHead>
+                      <TableHead className="font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('numero')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Numéro
+                          {sortBy === 'numero' ? (
+                            sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('etablissement')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Établissement
+                          {sortBy === 'etablissement' ? (
+                            sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('montantHt')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
+                        >
+                          Montant HT
+                          {sortBy === 'montantHt' ? (
+                            sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead className="text-right font-display">TVA</TableHead>
-                      <TableHead className="text-right font-display">Montant TTC</TableHead>
+                      <TableHead className="text-right font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('montantTtc')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
+                        >
+                          Montant TTC
+                          {sortBy === 'montantTtc' ? (
+                            sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead className="font-display">Statut</TableHead>
-                      <TableHead className="font-display">Émission</TableHead>
-                      <TableHead className="font-display">Échéance</TableHead>
+                      <TableHead className="font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('dateEmission')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Émission
+                          {sortBy === 'dateEmission' ? (
+                            sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('dateEcheance')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Échéance
+                          {sortBy === 'dateEcheance' ? (
+                            sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredFactures.map((facture) => {
+                    {paginatedFactures.map((facture) => {
                       const isOverdue = facture.statut === 'EN_ATTENTE' && new Date(facture.dateEcheance) < new Date()
                       return (
                         <TableRow key={facture.id} className="group">
                           <TableCell>
-                            <span className="font-mono tabular-nums text-sm font-medium text-success-text">
+                            <button
+                              type="button"
+                              onClick={() => handleViewDetail(facture)}
+                              className="font-mono tabular-nums text-sm font-medium text-success-text hover:underline cursor-pointer"
+                              title="Voir les détails"
+                            >
                               {facture.numero}
-                            </span>
+                            </button>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -1090,7 +1340,7 @@ export function FacturationPage() {
           {/* Factures Cards — mobile (<640px) — SECT-FACTURATION-AUDIT-E2E [B3] */}
           {!isLoading && filteredFactures.length > 0 && (
             <div className="sm:hidden space-y-3">
-              {filteredFactures.map((facture) => {
+              {paginatedFactures.map((facture) => {
                 const isOverdue = facture.statut === 'EN_ATTENTE' && new Date(facture.dateEcheance) < new Date()
                 return (
                   <Card key={facture.id} className="overflow-hidden">
@@ -1192,6 +1442,42 @@ export function FacturationPage() {
                   </Card>
                 )
               })}
+            </div>
+          )}
+
+          {/* Pagination — SECT-FACTURATION-IMPROVEMENTS */}
+          {!isLoading && filteredFactures.length > 0 && totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-3 border-t">
+              <p className="text-xs text-muted-foreground order-2 sm:order-1">
+                Affichage de {(safeCurrentPage - 1) * PAGE_SIZE + 1} à{' '}
+                {Math.min(safeCurrentPage * PAGE_SIZE, sortedFactures.length)} sur{' '}
+                {sortedFactures.length} facture(s)
+              </p>
+              <div className="flex items-center gap-1 order-1 sm:order-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="h-8 gap-1"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Précédent</span>
+                </Button>
+                <span className="text-sm font-medium px-2 font-mono tabular-nums">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  className="h-8 gap-1"
+                >
+                  <span className="hidden sm:inline">Suivant</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
         </TabsContent>
