@@ -205,6 +205,9 @@ func (s *Server) createFacture(w http.ResponseWriter, r *http.Request) {
 }
 
 // getFactureByID — GET /api/factures/{id}
+// SECT-FACTURATION-AUDIT-E2E [B1] : retourne une structure nested (abonnement{plan} + etablissement)
+// identique à facturesListReal, afin que le dialogue de détail frontend puisse lire
+// .etablissement.nom / .abonnement.plan.nom sans crasher (Cannot read properties of undefined).
 func (s *Server) getFactureByID(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok || claims.UserID == "" {
@@ -218,17 +221,140 @@ func (s *Server) getFactureByID(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        found := &factureResponse{}
+        // Structs nested locales (mirror de facturesListReal pour cohérence de payload).
+        type ligneFacture struct {
+                Description string  `json:"description"`
+                Montant     float64 `json:"montant"`
+        }
+        type planRef struct {
+                ID          string   `json:"id"`
+                Nom         string   `json:"nom"`
+                Type        string   `json:"type"`
+                PrixMensuel float64  `json:"prixMensuel"`
+                PrixAnnuel  *float64 `json:"prixAnnuel,omitempty"`
+        }
+        type abonnementRef struct {
+                ID     string  `json:"id"`
+                Statut string  `json:"statut"`
+                Plan   planRef `json:"plan"`
+        }
+        type etablissementRef struct {
+                ID        string  `json:"id"`
+                Nom       string  `json:"nom"`
+                Ville     *string `json:"ville,omitempty"`
+                Email     *string `json:"email,omitempty"`
+                Type      *string `json:"type,omitempty"`
+                Pays      *string `json:"pays,omitempty"`
+                Telephone *string `json:"telephone,omitempty"`
+                Adresse   *string `json:"adresse,omitempty"`
+        }
+        type factureDetail struct {
+                ID                string           `json:"id"`
+                Numero            string           `json:"numero"`
+                AbonnementID      string           `json:"abonnementId"`
+                EtablissementID   string           `json:"etablissementId"`
+                MontantHt         float64          `json:"montantHt"`
+                Tva               float64          `json:"tva"`
+                MontantTtc        float64          `json:"montantTtc"`
+                Statut            string           `json:"statut"`
+                DateEmission      string           `json:"dateEmission"`
+                DateEcheance      string           `json:"dateEcheance"`
+                DatePaiement      *string          `json:"datePaiement,omitempty"`
+                ModePaiement      *string          `json:"modePaiement,omitempty"`
+                ReferencePaiement *string          `json:"referencePaiement,omitempty"`
+                Lignes            []ligneFacture   `json:"lignes"`
+                Notes             *string          `json:"notes,omitempty"`
+                Abonnement        *abonnementRef   `json:"abonnement,omitempty"`
+                Etablissement     *etablissementRef `json:"etablissement,omitempty"`
+        }
+
+        found := &factureDetail{}
         success := false
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                row := tx.QueryRow(r.Context(), fmt.Sprintf(`
-                        SELECT %s FROM "Facture" WHERE "id" = $1
-                `, factureColumns), id)
-                f, err := scanFactureRow(row)
-                if err == nil {
-                        found = f
-                        success = true
+                row := tx.QueryRow(r.Context(), `
+                        SELECT f."id", f."numero", f."abonnementId", f."etablissementId",
+                               f."montantHt", f."tva", f."montantTtc", f."statut",
+                               f."dateEmission", f."dateEcheance", f."datePaiement",
+                               f."modePaiement", f."referencePaiement", f."lignes", f."notes",
+                               a."id", a."statut"::text,
+                               p."id", p."nom", p."type"::text, p."prixMensuel", p."prixAnnuel",
+                               e."id", e."nom", e."ville", e."email", e."type", e."pays", e."telephone", e."adresse"
+                        FROM "Facture" f
+                        LEFT JOIN "Abonnement" a ON a."id" = f."abonnementId"
+                        LEFT JOIN "Plan" p ON p."id" = a."planId"
+                        LEFT JOIN "Etablissement" e ON e."id" = f."etablissementId"
+                        WHERE f."id" = $1
+                `, id)
+
+                var dateEmission, dateEcheance time.Time
+                var datePaiement *time.Time
+                var lignesJSON string
+                var aboID, aboStatut, planID, planNom, planType *string
+                var planPrix, planAnnuel *float64
+                var etabID2, etabNom, etabVille, etabEmail, etabType, etabPays, etabTel, etabAdr *string
+                if err := row.Scan(
+                        &found.ID, &found.Numero, &found.AbonnementID, &found.EtablissementID,
+                        &found.MontantHt, &found.Tva, &found.MontantTtc, &found.Statut,
+                        &dateEmission, &dateEcheance, &datePaiement,
+                        &found.ModePaiement, &found.ReferencePaiement, &lignesJSON, &found.Notes,
+                        &aboID, &aboStatut,
+                        &planID, &planNom, &planType, &planPrix, &planAnnuel,
+                        &etabID2, &etabNom, &etabVille, &etabEmail, &etabType, &etabPays, &etabTel, &etabAdr,
+                ); err != nil {
+                        return nil // not found ou erreur RLS → 404 côté HTTP
                 }
+
+                found.DateEmission = dateEmission.UTC().Format(time.RFC3339)
+                found.DateEcheance = dateEcheance.UTC().Format(time.RFC3339)
+                if datePaiement != nil {
+                        ts := datePaiement.UTC().Format(time.RFC3339)
+                        found.DatePaiement = &ts
+                }
+                found.Lignes = []ligneFacture{}
+                if lignesJSON != "" {
+                        var lignes []ligneFacture
+                        if json.Unmarshal([]byte(lignesJSON), &lignes) == nil {
+                                found.Lignes = lignes
+                        }
+                }
+                if aboID != nil {
+                        plan := planRef{}
+                        if planID != nil {
+                                plan.ID = *planID
+                        }
+                        if planNom != nil {
+                                plan.Nom = *planNom
+                        }
+                        if planType != nil {
+                                plan.Type = *planType
+                        }
+                        if planPrix != nil {
+                                plan.PrixMensuel = *planPrix
+                        }
+                        plan.PrixAnnuel = planAnnuel
+                        aboStatutStr := ""
+                        if aboStatut != nil {
+                                aboStatutStr = *aboStatut
+                        }
+                        found.Abonnement = &abonnementRef{
+                                ID:     *aboID,
+                                Statut: aboStatutStr,
+                                Plan:   plan,
+                        }
+                }
+                if etabID2 != nil && etabNom != nil {
+                        found.Etablissement = &etablissementRef{
+                                ID:        *etabID2,
+                                Nom:       *etabNom,
+                                Ville:     etabVille,
+                                Email:     etabEmail,
+                                Type:      etabType,
+                                Pays:      etabPays,
+                                Telephone: etabTel,
+                                Adresse:   etabAdr,
+                        }
+                }
+                success = true
                 return nil
         })
 

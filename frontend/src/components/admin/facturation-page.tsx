@@ -192,6 +192,14 @@ function formatDateLong(dateStr: string | null) {
   })
 }
 
+// SECT-FACTURATION-AUDIT-E2E [B4] : formatage d'axe Y pour les graphiques de revenus.
+// Évite les ticks micro ridicules ("0,001k") quand les valeurs sont faibles ou nulles.
+function formatChartTick(v: number) {
+  if (v === 0) return '0'
+  if (Math.abs(v) < 1000) return Math.round(v).toLocaleString('fr-FR')
+  return `${(v / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}k`
+}
+
 function getStatutBadge(statut: string) {
   switch (statut) {
     case 'EN_ATTENTE':
@@ -367,8 +375,11 @@ export function FacturationPage() {
     const enRetard = factures.filter((f) => f.statut === 'EN_RETARD')
     const enRetardCount = enRetard.length
     const enRetardMontant = enRetard.reduce((sum, f) => sum + f.montantTtc, 0)
-    const montantMoyen = factures.length > 0
-      ? factures.reduce((sum, f) => sum + f.montantTtc, 0) / factures.length
+    // SECT-FACTURATION-AUDIT-E2E [B2] : exclure les factures ANNULEE du montant moyen
+    // (les annulées ne sont pas des transactions réelles ; les inclure à 0 FCFA faussait la moyenne).
+    const facturesValides = factures.filter((f) => f.statut !== 'ANNULEE')
+    const montantMoyen = facturesValides.length > 0
+      ? facturesValides.reduce((sum, f) => sum + f.montantTtc, 0) / facturesValides.length
       : 0
     return { totalRevenus, enAttenteCount, enAttenteMontant, payeesCount, enRetardCount, enRetardMontant, montantMoyen }
   }, [factures])
@@ -886,6 +897,7 @@ export function FacturationPage() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Montant moyen</p>
               <p className="text-lg font-bold truncate font-mono tabular-nums">{formatCurrency(stats.montantMoyen)}</p>
+              <p className="text-[10px] text-muted-foreground/70 truncate">Factures non annulées</p>
             </div>
           </CardContent>
         </Card>
@@ -968,9 +980,9 @@ export function FacturationPage() {
             </div>
           )}
 
-          {/* Factures Table */}
+          {/* Factures Table — desktop (≥640px) */}
           {!isLoading && filteredFactures.length > 0 && (
-            <div className="rounded-lg border overflow-hidden">
+            <div className="hidden sm:block rounded-lg border overflow-hidden">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -1074,6 +1086,114 @@ export function FacturationPage() {
               </div>
             </div>
           )}
+
+          {/* Factures Cards — mobile (<640px) — SECT-FACTURATION-AUDIT-E2E [B3] */}
+          {!isLoading && filteredFactures.length > 0 && (
+            <div className="sm:hidden space-y-3">
+              {filteredFactures.map((facture) => {
+                const isOverdue = facture.statut === 'EN_ATTENTE' && new Date(facture.dateEcheance) < new Date()
+                return (
+                  <Card key={facture.id} className="overflow-hidden">
+                    <CardContent className="p-4 space-y-3">
+                      {/* En-tête : numéro + statut */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-mono tabular-nums text-sm font-semibold text-success-text">{facture.numero}</p>
+                          <div className="mt-1 flex items-center gap-2 min-w-0">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-[10px] font-bold text-success-text">
+                              {facture.etablissement.nom.charAt(0).toUpperCase()}
+                            </div>
+                            <p className="text-sm font-medium truncate">{facture.etablissement.nom}</p>
+                          </div>
+                          {facture.etablissement.ville && (
+                            <p className="mt-0.5 pl-8 text-xs text-muted-foreground truncate">{facture.etablissement.ville}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0">
+                          {isOverdue && facture.statut === 'EN_ATTENTE' ? (
+                            <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              En retard
+                            </Badge>
+                          ) : (
+                            getStatutBadge(facture.statut)
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Montants */}
+                      <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2.5 text-center">
+                        <div>
+                          <p className="text-[10px] uppercase text-muted-foreground">HT</p>
+                          <p className="text-xs font-medium font-mono tabular-nums">{formatCurrency(facture.montantHt)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase text-muted-foreground">TVA</p>
+                          <p className="text-xs font-medium font-mono tabular-nums">{facture.tva}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase text-muted-foreground">TTC</p>
+                          <p className="text-sm font-bold font-mono tabular-nums text-success-text">{formatCurrency(facture.montantTtc)}</p>
+                        </div>
+                      </div>
+
+                      {/* Dates */}
+                      <div className="flex items-center justify-between text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Émission : </span>
+                          <span className="font-medium">{formatDate(facture.dateEmission)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Échéance : </span>
+                          <span className={`font-medium ${isOverdue ? 'text-destructive' : ''}`}>
+                            {formatDate(facture.dateEcheance)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center justify-end gap-1 border-t pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 text-success-text border-success/30 hover:bg-success/10"
+                          onClick={() => handleViewDetail(facture)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Détails
+                        </Button>
+                        {(facture.statut === 'EN_ATTENTE' || facture.statut === 'EN_RETARD') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-success-text border-success/30 hover:bg-success/10"
+                            onClick={() => handleOpenPay(facture)}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            Payer
+                          </Button>
+                        )}
+                        {facture.statut !== 'ANNULEE' && facture.statut !== 'PAYEE' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-destructive border-destructive/30 hover:bg-destructive/10"
+                            onClick={() => {
+                              setCancelTarget(facture)
+                              setCancelDialogOpen(true)
+                            }}
+                            title="Annuler la facture"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* ═══════════════════════════════════════════════════════════ */}
@@ -1152,17 +1272,17 @@ export function FacturationPage() {
                   <div className="h-[300px] flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : monthlyRevenueData.length === 0 ? (
+                ) : monthlyRevenueData.length === 0 || monthlyRevenueData.every((d) => d.ht === 0 && d.ttc === 0) ? (
                   <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground">
                     <BarChart3 className="h-12 w-12 mb-2 opacity-30" />
-                    <p className="text-sm">Aucune donnée de revenus disponible</p>
+                    <p className="text-sm">Aucune facture payée pour cette période</p>
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={monthlyRevenueData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                       <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${(v / 1000).toLocaleString('fr-FR')}k`} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={formatChartTick} />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend />
                       <Bar dataKey="ht" name="HT" fill={CHART_COLORS.emerald} radius={[4, 4, 0, 0]} />
@@ -1242,7 +1362,7 @@ export function FacturationPage() {
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={revenueByEtablissement} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                      <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${(v / 1000).toLocaleString('fr-FR')}k`} />
+                      <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={formatChartTick} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
                       <Tooltip content={<CustomTooltip />} />
                       <Bar dataKey="revenue" name="Revenu" fill={CHART_COLORS.emerald} radius={[0, 4, 4, 0]} />
@@ -1275,7 +1395,7 @@ export function FacturationPage() {
                     <LineChart data={revenueTrendData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                       <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${(v / 1000).toLocaleString('fr-FR')}k`} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={formatChartTick} />
                       <Tooltip content={<CustomTooltip />} />
                       <Line
                         type="monotone"
@@ -1314,12 +1434,18 @@ export function FacturationPage() {
                 <div className="h-[350px] flex items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
+              ) : forecastData.every((d) => d.projected === 0) ? (
+                <div className="h-[350px] flex flex-col items-center justify-center text-muted-foreground">
+                  <TrendingUp className="h-12 w-12 mb-2 opacity-30" />
+                  <p className="text-sm">Aucun revenu projeté à 6 mois</p>
+                  <p className="text-xs mt-1">Abonnement actif sans prix mensuel ou aucun renouvellement à venir.</p>
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height={350}>
                   <BarChart data={forecastData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${(v / 1000).toLocaleString('fr-FR')}k`} />
+                    <YAxis tick={{ fontSize: 12 }} tickFormatter={formatChartTick} />
                     <Tooltip
                       formatter={(value: number, _name: string, props: { payload?: { confidence?: string } }) => [
                         `${formatCurrency(value)} (Confiance: ${props.payload?.confidence ?? 'N/A'})`,
