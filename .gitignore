@@ -49,3 +49,9 @@ backend/api
 # Frontend
 frontend/.next/
 *.png
+
+# Playwright (SECT-FACTURATION-IMPROVEMENTS)
+frontend/e2e/.auth/
+frontend/playwright-report/
+frontend/test-results/
+frontend/playwright/.cache/
