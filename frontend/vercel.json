@@ -11,6 +11,10 @@
       "destination": "/api/etudiants/:id/releve-notes"
     },
     {
+      "source": "/api/factures/:id/pdf",
+      "destination": "/api/factures/:id/pdf"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://sect-s1pb.onrender.com/api/:path*"
     }
