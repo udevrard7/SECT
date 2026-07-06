@@ -2218,6 +2218,19 @@ export function FacturationPage() {
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
               Fermer
             </Button>
+            {/* SECT-FACTURATION-IMPROVEMENTS : export PDF individuel */}
+            {selectedFacture && (
+              <Button
+                variant="outline"
+                className="border-success/30 text-success-text hover:bg-success/10"
+                onClick={() => {
+                  window.open(`/api/factures/${selectedFacture.id}/pdf`, '_blank')
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Télécharger PDF
+              </Button>
+            )}
             {selectedFacture && (selectedFacture.statut === 'EN_ATTENTE' || selectedFacture.statut === 'EN_RETARD') && (
               <Button
                 className="bg-success hover:bg-success/90"

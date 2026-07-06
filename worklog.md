@@ -13039,3 +13039,75 @@ Stage Summary:
 - Les 4 bugs de l'audit E2E sont corrigés, déployés et validés en production.
 - Module /facturation maintenant pleinement fonctionnel (CRUD + 3 onglets + responsive + détail).
 - Aucune régression introduite (lint/build/vet clean).
+
+---
+Task ID: SECT-FACTURATION-IMPROVEMENTS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Améliorations UX du module /facturation (suite audit E2E)
+
+Commit : 85f8837 (push origin/main, auteur udevrard7 <ulrichdouh@gmail.com>)
+Déploiement : Vercel (frontend uniquement, pas de modif backend) vérifié à 23:24.
+
+6 améliorations implémentées (toutes frontend, données déjà disponibles côté client) :
+
+1. Export CSV — bouton 'Export CSV' dans la toolbar
+   - Exporte les factures filtrées ET triées (pagination ignorée)
+   - 14 colonnes : Numero, Etablissement, Ville, Plan, Montant HT, TVA (%), Montant TTC,
+     Statut, Date emission, Date echeance, Date paiement, Mode paiement, Reference paiement, Notes
+   - BOM UTF-8 pour ouverture Excel correcte des accents
+   - Échappement CSV (virgules, guillemets, sauts de ligne)
+   - Nom fichier : factures-sect-YYYY-MM-DD.csv
+   - Toast confirmation 'N facture(s) exportée(s)'
+   - Validé Agent Browser : click → download déclenché (filename factures-sect-2026-07-06.csv) + toast ✅
+
+2. Tri des colonnes — en-têtes cliquables (Numéro, Établissement, Montant HT, Montant TTC, Émission, Échéance)
+   - Icône ArrowUpRight (asc) / ArrowDownRight (desc) sur colonne active, ArrowUpDown neutre sinon
+   - Tri par défaut dateEmission desc (comportement précédent conservé)
+   - Premier clic sur nouvelle colonne → desc ; clic suivant → toggle asc/desc
+   - Validé Agent Browser : clic Montant TTC → ordre 60k→30k→0 (desc) ; re-clic → 0→30k→60k (asc) ✅
+
+3. Filtre par établissement — Select dans la toolbar
+   - Options : 'Tous les établissements' + liste des établissements chargés
+   - Filtre frontend (etablissementId match)
+   - Reset page à 1 au changement
+   - Validé Agent Browser : select affiche 'The University of Abidjan' ✅
+
+4. Clic sur le numéro de facture → ouvre le dialogue détail
+   - En plus du bouton œil, le numéro est maintenant un bouton (cursor pointer + underline hover)
+   - Validé Agent Browser : clic 'FAC-2026-00002' → dialog 'Détail de la facture' s'ouvre sans crash ✅
+
+5. Pagination UI — 10 factures/page
+   - Boutons Précédent/Suivant + compteur 'X / Y' + décompte 'Affichage de A à B sur N facture(s)'
+   - N'apparaît que si totalPages > 1
+   - Responsive (ordre inversé sur mobile : nav en haut, décompte en bas)
+   - Reset page à 1 quand filtres/recherche changent
+   - Validé Agent Browser : 4 factures < 10 → pas de pagination (correct) ✅
+
+6. Confirmation paiement anticipé
+   - Si dateEcheance dans le futur à l'ouverture du dialog de paiement :
+     toast warning 'Paiement anticipé — Cette facture arrive à échéance dans N jour(s) (date)'
+   - Le dialog s'ouvre quand même (warning informatif, pas bloquant)
+   - Validé Agent Browser : facture échéance 20/08/2026 → toast '45 jour(s)' affiché ✅
+
+Vérifications technique :
+- bun run lint → 0 erreur (1 warning préexistant unrelated)
+- tsc : aucune nouvelle erreur sur facturation-page.tsx
+- toast.warning vérifié disponible dans sonner
+
+Re-validation E2E Agent Browser (login admin) :
+- Toolbar : recherche + filtre établissement + filtre statut + Export CSV ✅
+- En-têtes tri cliquables (6 colonnes) ✅
+- Tri Montant TTC asc/desc fonctionne ✅
+- Numéro cliquable → détail sans crash ✅
+- Export CSV → download + toast (3 factures) ✅
+- Filtre établissement → option correcte ✅
+- Paiement anticipé → toast warning 45 jours ✅
+- Pagination : pas affichée (4 < 10, correct) ✅
+- Responsive mobile 375px : toolbar empilée + cartes ✅
+- 0 erreur console, 0 erreur runtime ✅
+- Capture : /home/z/sect/screenshots/facturation-audit/14-mobile-toolbar-improved.png
+
+Stage Summary:
+- 6 améliorations UX livrées, déployées et validées en production.
+- Module /facturation maintenant complet : CRUD + 3 onglets + responsive + tri + filtres + export + pagination + safeguards.
+- Aucune modification backend nécessaire (tout exploite les données déjà chargées côté client).
