@@ -12973,3 +12973,69 @@ Stage Summary:
 - 0 erreur console/runtime sur les flux validés
 - Captures d'écran : /home/z/sect/screenshots/facturation-audit/ (9 PNG)
 - En attente décision propriétaire pour prioriser les fixes
+
+---
+Task ID: SECT-FACTURATION-FIX-B1-B4
+Agent: Z.ai Code (tuteur/assistant)
+Task: Correction des 4 bugs détectés lors de l'audit E2E (B1+B2+B3+B4)
+
+Commit : 160c570 (push origin/main, auteur udevrard7 <ulrichdouh@gmail.com>)
+Déploiement : Vercel (frontend) + Render (backend) auto-déclenchés, vérifiés en ligne à 23:14.
+
+Corrections :
+
+B1 (CRITICAL) — Crash dialogue 'Voir les détails' [backend]
+  Fichier : backend/internal/transport/http/facture_mutation_handlers.go (getFactureByID)
+  Avant : SELECT factureColumns FROM "Facture" WHERE id=$1 SANS JOIN → struct plate
+         (abonnementId/etablissementId en string) → frontend lisait .etablissement.nom sur
+         undefined → crash React 'Cannot read properties of undefined (reading 'nom')'.
+  Après : LEFT JOIN Abonnement→Plan + Etablissement (mirror de facturesListReal) +
+         struct nested factureDetail{Abonnement{Plan}, Etablissement}.
+  Validation Agent Browser : clic 'Voir les détails' sur FAC-2026-00002 → dialogue s'ouvre
+         SANS crash, affiche Établissement 'The University of Abidjan / Abidjan',
+         Abonnement 'Gratuit / 0 FCFA/mois', lignes, totaux HT/TVA/TTC, notes. ✅
+
+B2 (MEDIUM) — 'Montant moyen' faussé par les factures ANNULEE [frontend]
+  Fichier : frontend/src/components/admin/facturation-page.tsx (useMemo stats)
+  Avant : sum(montantTtc)/factures.length sur TOUTES (annulées à 0 incluses) → 30k au lieu de 60k.
+  Après : filtre facturesValides = factures.filter(statut !== 'ANNULEE') + sous-titre
+         'Factures non annulées' sous la valeur.
+  Validation Agent Browser : 'Montant moyen' = 60 000 FCFA + sous-titre visible. ✅
+
+B3 (MEDIUM) — Tableau non responsive sur mobile [frontend]
+  Fichier : frontend/src/components/admin/facturation-page.tsx (onglet Factures)
+  Avant : table 9 colonnes (950px) dans viewport 375px → overflow horizontal massif.
+  Après : tableau conservé sur desktop (hidden sm:block) + vue en cartes dédiée <640px
+         (sm:hidden) avec numéro, établissement, statut, montants HT/TVA/TTC, dates,
+         et les mêmes boutons d'action conditionnels (Détails/Payer/Annuler).
+  Validation Agent Browser (375px) : cartes affichées, scrollWidth=375=clientWidth,
+         overflow=false. Plus de scroll horizontal. ✅
+
+B4 (LOW) — Échelle graphique micro quand toutes valeurs à 0 [frontend]
+  Fichier : frontend/src/components/admin/facturation-page.tsx (4 graphiques)
+  Avant : tickFormatter (v/1000)k affichait '0k/0,001k/0,002k/0,003k/0,004k' quand max~4.
+  Après : helper formatChartTick(v) → '0' si v=0, valeur brute si <1000, 'Xk' si >=1000
+         (appliqué aux 4 YAxis/XAxis). États vides ajoutés sur 'Revenus par mois'
+         (si tout ht+ttc=0 → 'Aucune facture payée pour cette période') et 'Prévisions 6 mois'
+         (si tout projected=0 → 'Aucun revenu projeté à 6 mois').
+  Validation Agent Browser : 'Tendance' affiche ticks '0/15k/30k/45k/60k' (propre) ;
+         'Prévisions' affiche état vide 'Aucun revenu projeté à 6 mois'. Plus de '0,001k'. ✅
+
+Vérifications technique :
+- go build ./... → EXIT 0 ; go vet ./internal/transport/http/ → clean
+- bun run lint → 0 erreur (1 warning préexistant unrelated dans certificat-pdf-react.tsx)
+- tsc : aucune nouvelle erreur sur facturation-page.tsx (erreurs préexistantes dans
+  abonnements-page/epreuves-page/mes-epreuves-page non touchées)
+
+Re-validation E2E Agent Browser (login admin ulrichdouh@gmail.com) :
+- B1 : dialogue détail s'ouvre sans crash, toutes les données nested affichées ✅
+- B2 : Montant moyen = 60 000 FCFA + sous-titre ✅
+- B3 : mobile 375px → cartes, plus d'overflow horizontal ✅
+- B4 : ticks graphiques propres + états vides cohérents ✅
+- 0 erreur console, 0 erreur runtime sur toute la session ✅
+- Captures : /home/z/sect/screenshots/facturation-audit/10-13 (4 PNG post-fix)
+
+Stage Summary:
+- Les 4 bugs de l'audit E2E sont corrigés, déployés et validés en production.
+- Module /facturation maintenant pleinement fonctionnel (CRUD + 3 onglets + responsive + détail).
+- Aucune régression introduite (lint/build/vet clean).
