@@ -31,9 +31,11 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ulrichdouh@gmail.com'
 
 test.describe('Module /facturation — accès & KPIs', () => {
   test('charge la page avec titre, sous-titre et 5 KPI cards', async ({ page }) => {
-    await page.goto('/facturation', { waitUntil: 'networkidle' })
+    await page.goto('/facturation', { waitUntil: 'domcontentloaded' })
 
-    await expect(page.getByRole('heading', { name: /facturation & revenus/i })).toBeVisible()
+    // Le titre 'Facturation & Revenus' apparaît 2× (sidebar breadcrumb + h1 main).
+    // On cible le h1 main (le 2e, qui a la classe text-2xl).
+    await expect(page.getByRole('heading', { name: /facturation & revenus/i }).nth(1)).toBeVisible()
     await expect(page.getByText(/gérez les factures, suivez les revenus/i)).toBeVisible()
 
     // 5 KPI cards
@@ -169,19 +171,21 @@ test.describe('Module /facturation — tri des colonnes', () => {
 
 test.describe('Module /facturation — création', () => {
   test('ouvre le dialog "Nouvelle facture" et calcule les totaux', async ({ page }) => {
-    await page.goto('/facturation', { waitUntil: 'networkidle' })
+    await page.goto('/facturation', { waitUntil: 'domcontentloaded' })
 
     await page.getByRole('button', { name: /nouvelle facture/i }).click()
-    await expect(page.getByRole('dialog', { name: /nouvelle facture/i })).toBeVisible()
+    const dialog = page.getByRole('dialog', { name: /nouvelle facture/i })
+    await expect(dialog).toBeVisible()
 
-    // Sélectionner le premier abonnement disponible
-    await page.locator('button[role="combobox"]').first().click()
+    // Sélectionner le premier abonnement disponible — scoped au dialog pour
+    // éviter que le clic n'atterrisse sur les combobox de la toolbar (derrière).
+    await dialog.getByRole('combobox').click()
     const firstOption = page.getByRole('option').first()
     await firstOption.click()
     await page.waitForTimeout(500)
 
-    // Ajouter une ligne avec un montant
-    const montantInput = page.getByLabel(/montant/i).first()
+    // Ajouter une ligne avec un montant — le champ utilise un placeholder, pas un label
+    const montantInput = page.getByPlaceholder(/montant/i).first()
     await montantInput.fill('42000')
     await page.waitForTimeout(300)
 
@@ -267,8 +271,8 @@ test.describe('Module /facturation — responsive mobile', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
   test('vue mobile : cartes au lieu de tableau, pas d\'overflow horizontal', async ({ page }) => {
-    await page.goto('/facturation', { waitUntil: 'networkidle' })
-    await page.waitForTimeout(800)
+    await page.goto('/facturation', { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(1500)
 
     // Le tableau desktop doit être caché
     await expect(page.locator('table').first()).not.toBeVisible()
