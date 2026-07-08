@@ -13958,3 +13958,27 @@ Validation E2E (Agent Browser, compte prof01@uniabidjan.com) :
   VLM : nom ✓, logo ✓, ville/pays ✓
 
 go build + vet EXIT 0. ESLint + tsc 0 erreur.
+
+---
+Task ID: SECT-PDF-LOGO-SEUL
+Agent: Z.ai Code (tuteur/assistant)
+Task: En-tête logo seul (sans texte nom redondant) + taille adaptée
+
+L'utilisateur préfère garder UNIQUEMENT le logo (qui contient déjà le nom
+'UNIABIDJAN') plutôt que logo + texte nom (redondant).
+
+3 PDF harmonisés (commit 36a55c6) :
+- Fiche de notes : logo 160×70 seul (avant: 50×50 + texte 13pt)
+- Relevé individuel : logo 170×75 seul (avant: 70×70 + texte 16pt)
+- Certificat paysage : logo 170×60 (avant: 130×45)
+- Certificat portrait : logo 160×55 (avant: 130×45)
+
+Fallback conservé : si pas de logo, le nom s'affiche en texte PlayfairDisplay.
+
+Validation E2E (Agent Browser, prof01@uniabidjan.com) :
+- Fiche PDF : HTTP 200, 37KB, 1 page. VLM : 'logo seul, bien proportionné,
+  centré, ville/pays sous le logo' ✓
+- Relevé PDF : HTTP 200, 40KB, 1 page. VLM : 'logo seul (sans texte nom séparé),
+  bien proportionné et centré' ✓
+- Certificat : non testé en prod (RLS bloque enseignant sur certificats étudiants),
+  mais design identique aux 2 autres (même pattern en-tête).
