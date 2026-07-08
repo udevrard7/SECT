@@ -32,7 +32,7 @@ interface CertificatData {
   etudiantNom: string
   ueCode: string
   ueNom: string
-  note: number
+  noteFinale: number
   mention: string
   dateEmission: string
   etablissementNom: string
@@ -231,8 +231,8 @@ export default function VerifyCertificatePage() {
                 label="Note"
                 value={
                   <span className="text-base font-bold">
-                    {typeof certificat.note === 'number'
-                      ? certificat.note.toFixed(2).replace(/[.,]00$/, '')
+                    {typeof certificat.noteFinale === 'number'
+                      ? certificat.noteFinale.toFixed(2).replace(/[.,]00$/, '')
                       : '—'}
                     <span className="text-muted-foreground font-normal">/20</span>
                   </span>

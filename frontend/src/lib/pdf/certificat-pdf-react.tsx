@@ -143,7 +143,7 @@ const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image>
 function InfoRow({ left, right, isLast = false }: { left: { label: string; value: string }; right: { label: string; value: string }; isLast?: boolean }) {
   const cellStyle = {
     width: '50%' as const,
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 14,
     backgroundColor: CELL_BG,
     borderRightWidth: 1,
@@ -202,41 +202,42 @@ function CertificateLandscape({ data }: { data: CertificatPDFData }) {
         <View style={{ position: 'absolute', top: 38, left: 38, right: 38, bottom: 38, borderWidth: 0.5, borderColor: NAVY }} />
 
         {/* Contenu principal — layout en colonne avec espacements explicites */}
-        <View style={{ paddingHorizontal: 70, paddingVertical: 50, flexDirection: 'column' }}>
+        {/* Bug #2 fix : paddingVertical réduit (50→30) + margins réduites pour tenir sur 1 page */}
+        <View style={{ paddingHorizontal: 70, paddingVertical: 30, flexDirection: 'column' }}>
 
           {/* En-tête établissement */}
-          <View style={{ alignItems: 'center', marginBottom: 18 }}>
+          <View style={{ alignItems: 'center', marginBottom: 10 }}>
             {data.etablissementLogo ? (
-              <PdfImage src={data.etablissementLogo} style={{ width: 140, height: 50, objectFit: 'contain' as const, marginBottom: 4 }} alt="" />
+              <PdfImage src={data.etablissementLogo} style={{ width: 130, height: 45, objectFit: 'contain' as const, marginBottom: 3 }} alt="" />
             ) : (
-              <Text style={{ fontSize: 15, fontFamily: 'PlayfairDisplay', color: NAVY, marginBottom: 2 }}>{data.etablissementNom}</Text>
+              <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY, marginBottom: 2 }}>{data.etablissementNom}</Text>
             )}
-            {etabLocation && <Text style={{ fontSize: 9.5, color: TEXT_GRAY, letterSpacing: 1 }}>{etabLocation}</Text>}
+            {etabLocation && <Text style={{ fontSize: 9, color: TEXT_GRAY, letterSpacing: 1 }}>{etabLocation}</Text>}
           </View>
 
           {/* Titre "CERTIFICAT" */}
-          <View style={{ alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ fontSize: 42, fontFamily: 'PlayfairDisplay', color: NAVY, letterSpacing: 6 }}>CERTIFICAT</Text>
-            <Text style={{ fontSize: 12, color: GOLD, letterSpacing: 7, marginTop: 3, fontWeight: 'bold' }}>DE RÉUSSITE</Text>
+          <View style={{ alignItems: 'center', marginBottom: 4 }}>
+            <Text style={{ fontSize: 38, fontFamily: 'PlayfairDisplay', color: NAVY, letterSpacing: 6 }}>CERTIFICAT</Text>
+            <Text style={{ fontSize: 11, color: GOLD, letterSpacing: 7, marginTop: 2, fontWeight: 'bold' }}>DE RÉUSSITE</Text>
           </View>
 
           {/* Losange décoratif */}
-          <View style={{ alignItems: 'center', marginBottom: 10 }}>
+          <View style={{ alignItems: 'center', marginBottom: 6 }}>
             <View style={{ width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' }} />
           </View>
 
           {/* "Décerné à" + nom */}
-          <View style={{ alignItems: 'center', marginBottom: 4 }}>
-            <Text style={{ fontSize: 11, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 6 }}>Décerné à</Text>
-            <Text style={{ fontSize: 34, fontFamily: 'GreatVibes', color: NAVY, marginBottom: 8 }}>{capitalizeName(data.etudiantNom)}</Text>
-            <View style={{ width: 180, height: 1, backgroundColor: GOLD, marginBottom: 10 }} />
+          <View style={{ alignItems: 'center', marginBottom: 2 }}>
+            <Text style={{ fontSize: 10.5, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 4 }}>Décerné à</Text>
+            <Text style={{ fontSize: 30, fontFamily: 'GreatVibes', color: NAVY, marginBottom: 6 }}>{capitalizeName(data.etudiantNom)}</Text>
+            <View style={{ width: 170, height: 1, backgroundColor: GOLD, marginBottom: 8 }} />
           </View>
 
           {/* Description */}
-          <View style={{ alignItems: 'center', marginBottom: 6 }}>
-            <Text style={{ fontSize: 12, color: TEXT_DARK, marginBottom: 4 }}>a réussi l'évaluation</Text>
-            <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY, fontWeight: 'bold', marginBottom: 4, textAlign: 'center' }}>{intituleText}</Text>
-            <Text style={{ fontSize: 12, color: TEXT_DARK }}>
+          <View style={{ alignItems: 'center', marginBottom: 4 }}>
+            <Text style={{ fontSize: 11.5, color: TEXT_DARK, marginBottom: 3 }}>a réussi l'évaluation</Text>
+            <Text style={{ fontSize: 13, fontFamily: 'PlayfairDisplay', color: NAVY, fontWeight: 'bold', marginBottom: 3, textAlign: 'center' }}>{intituleText}</Text>
+            <Text style={{ fontSize: 11.5, color: TEXT_DARK }}>
               avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
               {data.creditsECTS ? <Text> · {data.creditsECTS} crédits ECTS</Text> : null}
             </Text>
@@ -244,13 +245,13 @@ function CertificateLandscape({ data }: { data: CertificatPDFData }) {
 
           {/* Mention */}
           {data.mention && (
-            <View style={{ alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 12, color: GOLD, fontWeight: 'bold', letterSpacing: 2 }}>MENTION : {data.mention}</Text>
+            <View style={{ alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 11.5, color: GOLD, fontWeight: 'bold', letterSpacing: 2 }}>MENTION : {data.mention}</Text>
             </View>
           )}
 
           {/* Grille d'informations (3 rangées × 2 colonnes) */}
-          <View style={{ borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 3, overflow: 'hidden', marginBottom: 16 }}>
+          <View style={{ borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
             <InfoRow left={{ label: 'Filière', value: data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom }} right={{ label: 'Unité d\'enseignement', value: `${data.ueCode} — ${data.ueNom}` }} />
             <InfoRow left={{ label: 'Niveau', value: data.etudiantNiveau || '—' }} right={{ label: 'Session', value: getSessionLabel(data.sessionType) }} />
             <InfoRow left={{ label: 'Année académique', value: data.anneeAcademique || '—' }} right={{ label: 'Matricule', value: data.etudiantMatricule || '—' }} isLast />
@@ -260,8 +261,8 @@ function CertificateLandscape({ data }: { data: CertificatPDFData }) {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 20 }}>
             {/* Date */}
             <View style={{ width: 200, alignItems: 'center' }}>
-              <Text style={{ fontSize: 7.5, color: TEXT_GRAY, letterSpacing: 0.8, marginBottom: 3, textTransform: 'uppercase' }}>Date d'émission</Text>
-              <Text style={{ fontSize: 10.5, color: TEXT_DARK, fontWeight: 'bold' }}>{formatDate(data.dateEmission)}</Text>
+              <Text style={{ fontSize: 7, color: TEXT_GRAY, letterSpacing: 0.8, marginBottom: 2, textTransform: 'uppercase' }}>Date d'émission</Text>
+              <Text style={{ fontSize: 10, color: TEXT_DARK, fontWeight: 'bold' }}>{formatDate(data.dateEmission)}</Text>
             </View>
 
             {/* QR code */}
@@ -271,9 +272,9 @@ function CertificateLandscape({ data }: { data: CertificatPDFData }) {
 
             {/* Signature */}
             <View style={{ width: 200, alignItems: 'center' }}>
-              <View style={{ width: 120, height: 1, backgroundColor: SIG_LINE, marginBottom: 4 }} />
-              <Text style={{ fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', marginBottom: 1 }}>{data.responsableNom || 'Le Responsable'}</Text>
-              <Text style={{ fontSize: 8, color: TEXT_GRAY }}>Responsable de l'établissement</Text>
+              <View style={{ width: 120, height: 1, backgroundColor: SIG_LINE, marginBottom: 3 }} />
+              <Text style={{ fontSize: 9.5, color: TEXT_DARK, fontWeight: 'bold', marginBottom: 1 }}>{data.responsableNom || 'Le Responsable'}</Text>
+              <Text style={{ fontSize: 7.5, color: TEXT_GRAY }}>Responsable de l'établissement</Text>
             </View>
           </View>
         </View>
