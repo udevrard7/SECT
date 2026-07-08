@@ -63,7 +63,7 @@ function formatDateFR(dateStr: string): string {
 // ─── Badge Detail Modal ───
 
 function BadgeDetailModal({ badge, onClose }: { badge: BadgeWithProgress; onClose: () => void }) {
-  const niveauConfig = NIVEAU_CONFIG[badge.niveauActuel]
+  const niveauConfig = NIVEAU_CONFIG[badge.niveauActuel ?? 'BRONZE']
   const categorieConfig = CATEGORIE_CONFIG[badge.categorie]
 
   return (
@@ -128,7 +128,7 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeWithProgress; onClos
                     </span>
                     <span className="text-xs text-muted-foreground">{niveau.seuil}</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground truncate">{niveau.label}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{niveau.reward}</p>
                 </div>
                 {isAchieved && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />}
               </div>
@@ -160,7 +160,7 @@ function BadgeDetailModal({ badge, onClose }: { badge: BadgeWithProgress; onClos
 // ─── Badge Card Item ───
 
 function BadgeItem({ badge, onClick }: { badge: BadgeWithProgress; onClick: () => void }) {
-  const niveauConfig = NIVEAU_CONFIG[badge.niveauActuel]
+  const niveauConfig = NIVEAU_CONFIG[badge.niveauActuel ?? 'BRONZE']
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -336,7 +336,7 @@ interface BadgeUnlockNotificationProps {
 }
 
 export function BadgeUnlockNotification({ badge, onClose }: BadgeUnlockNotificationProps) {
-  const niveauConfig = NIVEAU_CONFIG[badge.niveauActuel]
+  const niveauConfig = NIVEAU_CONFIG[badge.niveauActuel ?? 'BRONZE']
 
   return (
     <motion.div

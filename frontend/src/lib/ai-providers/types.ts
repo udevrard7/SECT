@@ -182,4 +182,14 @@ export const PROVIDER_TYPES: Record<AIProviderType, {
     defaultModel: 'gemini-2.0-flash',
     models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
   },
+  VOXTRAL: {
+    label: 'Mistral Voxtral',
+    description: 'Mistral Voxtral — synthèse vocale avec voice cloning (TTS)',
+    icon: 'AudioWaveform',
+    requiresBaseUrl: true,
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    defaultModel: 'voxtral-tts',
+    models: ['voxtral-tts', 'voxtral-tts-latest'],
+  },
 }

@@ -2419,7 +2419,7 @@ export function AbonnementsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir suspendre l&apos;abonnement de{' '}
-              <strong>{suspendTarget?.etablissement.nom}</strong> ?
+              <strong>{suspendTarget?.etablissement?.nom}</strong> ?
               L&apos;établissement perdra temporairement l&apos;accès à ses fonctionnalités.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -2440,7 +2440,7 @@ export function AbonnementsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir résilier l&apos;abonnement de{' '}
-              <strong>{cancelTarget?.etablissement.nom}</strong> ? Cette action est irréversible.
+              <strong>{cancelTarget?.etablissement?.nom}</strong> ? Cette action est irréversible.
               Le renouvellement automatique sera désactivé.
             </AlertDialogDescription>
           </AlertDialogHeader>

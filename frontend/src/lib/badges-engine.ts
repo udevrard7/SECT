@@ -41,11 +41,11 @@ export interface BadgeWithProgress {
 
 // Config des niveaux (couleurs pour l'affichage). Étendue avec bgColor et
 // glowColor utilisés par badges-carousel.tsx.
-export const NIVEAU_CONFIG: Record<NiveauBadge, { color: string; label: string; bgColor: string; glowColor: string }> = {
-  BRONZE: { color: 'text-amber-700', label: 'Bronze', bgColor: 'bg-amber-100 dark:bg-amber-950', glowColor: 'shadow-amber-400/30' },
-  ARGENT: { color: 'text-slate-500', label: 'Argent', bgColor: 'bg-slate-100 dark:bg-slate-800', glowColor: 'shadow-slate-400/30' },
-  OR: { color: 'text-yellow-600', label: 'Or', bgColor: 'bg-yellow-100 dark:bg-yellow-950', glowColor: 'shadow-yellow-400/40' },
-  DIAMANT: { color: 'text-cyan-600', label: 'Diamant', bgColor: 'bg-cyan-100 dark:bg-cyan-950', glowColor: 'shadow-cyan-400/40' },
+export const NIVEAU_CONFIG: Record<NiveauBadge, { color: string; label: string; bgColor: string; glowColor: string; borderColor: string }> = {
+  BRONZE: { color: 'text-amber-700', label: 'Bronze', bgColor: 'bg-amber-100 dark:bg-amber-950', glowColor: 'shadow-amber-400/30', borderColor: 'border-amber-300 dark:border-amber-700' },
+  ARGENT: { color: 'text-slate-500', label: 'Argent', bgColor: 'bg-slate-100 dark:bg-slate-800', glowColor: 'shadow-slate-400/30', borderColor: 'border-slate-300 dark:border-slate-600' },
+  OR: { color: 'text-yellow-600', label: 'Or', bgColor: 'bg-yellow-100 dark:bg-yellow-950', glowColor: 'shadow-yellow-400/40', borderColor: 'border-yellow-300 dark:border-yellow-700' },
+  DIAMANT: { color: 'text-cyan-600', label: 'Diamant', bgColor: 'bg-cyan-100 dark:bg-cyan-950', glowColor: 'shadow-cyan-400/40', borderColor: 'border-cyan-300 dark:border-cyan-700' },
 }
 
 export const CATEGORIE_CONFIG: Record<string, { color: string; icon: string; label: string }> = {

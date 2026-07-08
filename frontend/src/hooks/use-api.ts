@@ -33,8 +33,9 @@ import { useAuthStore } from '@/stores/auth-store'
  */
 
 interface UseApiOptions<T> extends Omit<UseQueryOptions<T>, 'queryKey' | 'queryFn'> {
-  /** URL de l'API (relative, ex: '/api/documents') */
-  url: string
+  /** URL de l'API (relative, ex: '/api/documents') — redondant avec le param url,
+   * conservé pour compat. Optionnel car url est déjà passé en paramètre séparé. */
+  url?: string
   /** Activer le polling (ms). 0 = pas de polling. */
   pollInterval?: number
   /** Arrêter le polling quand l'onglet est caché (défaut: true) */

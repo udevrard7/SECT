@@ -161,13 +161,13 @@ function getExamAvailability(epreuve: StudentEpreuve): 'disponible' | 'pas_encor
   const fin = new Date(epreuve.dateFin)
 
   // Check if already submitted
-  const submittedSession = epreuve.sessions.find(
+  const submittedSession = (epreuve.sessions ?? []).find(
     (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE' || s.statut === 'RETOURNEE'
   )
   if (submittedSession) return 'terminee'
 
   // Check if session is in progress
-  const activeSession = epreuve.sessions.find((s) => s.statut === 'EN_COURS')
+  const activeSession = (epreuve.sessions ?? []).find((s) => s.statut === 'EN_COURS')
   if (activeSession) return 'en_cours'
 
   // Check time window
@@ -289,7 +289,7 @@ export function MesEpreuvesPage() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [selectedResult, setSelectedResult] = useState<{
     epreuve: StudentEpreuve
-    session: StudentEpreuve['sessions'][0]
+    session: NonNullable<StudentEpreuve['sessions']>[0]
   } | null>(null)
 
   // ─── Fetch epreuves (TanStack Query) ───
@@ -331,16 +331,17 @@ export function MesEpreuvesPage() {
 
   // ─── Split epreuves into upcoming vs results ───
   const upcomingEpreuves = epreuves.filter((ep) => {
-    const hasCompletedSession = ep.sessions.some(
+    const sessions = ep.sessions ?? []
+    const hasCompletedSession = sessions.some(
       (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE'
     )
     if (hasCompletedSession) return false
     // Show if: no session, or session EN_COURS
-    return ep.sessions.length === 0 || ep.sessions.some((s) => s.statut === 'EN_COURS')
+    return sessions.length === 0 || sessions.some((s) => s.statut === 'EN_COURS')
   })
 
   const completedEpreuves = epreuves.filter((ep) => {
-    return ep.sessions.some(
+    return (ep.sessions ?? []).some(
       (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE' || s.statut === 'RETOURNEE' || s.statut === 'ABSENT' || s.statut === 'NON_SOUMIS'
     )
   })
@@ -354,7 +355,7 @@ export function MesEpreuvesPage() {
     router.push(PAGE_ROUTES.passation + '?epreuveId=' + epreuveId)
   }
 
-  const handleVoirDetail = (epreuve: StudentEpreuve, session: StudentEpreuve['sessions'][0]) => {
+  const handleVoirDetail = (epreuve: StudentEpreuve, session: NonNullable<StudentEpreuve['sessions']>[0]) => {
     setSelectedResult({ epreuve, session })
     setDetailDialogOpen(true)
   }
@@ -437,7 +438,7 @@ export function MesEpreuvesPage() {
               {upcomingEpreuves.map((ep, idx) => {
                 const availability = getExamAvailability(ep)
                 const statusInfo = getStatusIndicator(availability)
-                const activeSession = ep.sessions.find((s) => s.statut === 'EN_COURS')
+                const activeSession = (ep.sessions ?? []).find((s) => s.statut === 'EN_COURS')
                 const canStart = availability === 'disponible'
                 const canResume = availability === 'en_cours'
                 const rem = getTimeRemaining(ep.dateFin)
@@ -546,7 +547,7 @@ export function MesEpreuvesPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {completedEpreuves.map((ep, idx) => {
-                const session = ep.sessions.find(
+                const session = (ep.sessions ?? []).find(
                   (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE' || s.statut === 'RETOURNEE' || s.statut === 'ABSENT' || s.statut === 'NON_SOUMIS'
                 )
                 if (!session) return null

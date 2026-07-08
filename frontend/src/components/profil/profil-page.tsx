@@ -150,7 +150,7 @@ function mapBadgeToReward(badge: BadgeWithProgress): Reward {
     id: badge.cle,
     title: badge.titre,
     description: badge.description,
-    tier: mapRarityToTier(badge.niveauActuel, unlocked),
+    tier: mapRarityToTier(badge.niveauActuel ?? undefined, unlocked),
     icon: getBadgeIcon(badge.icone),
     unlocked,
     unlockedAt: badge.dateObtention ? new Date(badge.dateObtention) : undefined,

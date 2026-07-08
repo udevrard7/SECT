@@ -222,7 +222,12 @@ function getCoverageColor(rate: number) {
 
 // ─── Helper: get all filières for a UE (owner + supplementary) ───
 function getAllFilieresForUE(ue: UEItem): { id: string; nom: string; code: string | null; isOwner: boolean }[] {
-  const result = [{ id: ue.filiere.id, nom: ue.filiere.nom, code: ue.filiere.code, isOwner: true }]
+  const result: { id: string; nom: string; code: string | null; isOwner: boolean }[] = []
+  // Dette technique TS (audit) : ue.filiere est optionnel (filiere?:). Avant, l'accès
+  // direct ue.filiere.id générait TS18048. Guard explicite + type explicite du result.
+  if (ue.filiere) {
+    result.push({ id: ue.filiere.id, nom: ue.filiere.nom, code: ue.filiere.code, isOwner: true })
+  }
   for (const suppl of ue.filieresSuppl ?? []) {
     result.push({ id: suppl.filiere.id, nom: suppl.filiere.nom, code: suppl.filiere.code, isOwner: false })
   }
@@ -393,7 +398,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       const affectationsAtNiveau = affectations.filter((a) => ueIdsAtNiveau.has(a.uniteEnseignementId))
       const enseignantIds = new Set(affectationsAtNiveau.map((a) => a.enseignantId))
       const uesWithAffectation = uesAtNiveau.filter(
-        (ue) => ue._count?.affectations > 0 || affectationsAtNiveau.some((a) => a.uniteEnseignementId === ue.id)
+        (ue) => (ue._count?.affectations ?? 0) > 0 || affectationsAtNiveau.some((a) => a.uniteEnseignementId === ue.id)
       )
       const tauxCouverture = uesAtNiveau.length > 0 ? Math.round((uesWithAffectation.length / uesAtNiveau.length) * 100) : 0
       return {
@@ -421,7 +426,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           return false
         })
         const uesWithAff = uesAtFN.filter(
-          (ue) => ue._count?.affectations > 0 || affectations.some((a) => a.uniteEnseignementId === ue.id)
+          (ue) => (ue._count?.affectations ?? 0) > 0 || affectations.some((a) => a.uniteEnseignementId === ue.id)
         )
         row.niveaux[niveau] = {
           nbUEs: uesAtFN.length,
@@ -437,7 +442,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   const globalCoverage = useMemo(() => {
     if (ues.length === 0) return 0
     const uesWithAff = ues.filter(
-      (ue) => ue._count?.affectations > 0 || affectations.some((a) => a.uniteEnseignementId === ue.id)
+      (ue) => (ue._count?.affectations ?? 0) > 0 || affectations.some((a) => a.uniteEnseignementId === ue.id)
     )
     return Math.round((uesWithAff.length / ues.length) * 100)
   }, [ues, affectations])
@@ -454,7 +459,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       }
       if (search) {
         const q = search.toLowerCase()
-        const filiereNames = [ue.filiere.nom, ...(ue.filieresSuppl?.map((s) => s.filiere.nom) ?? [])]
+        const filiereNames = [ue.filiere?.nom, ...(ue.filieresSuppl?.map((s) => s.filiere.nom) ?? [])].filter((n): n is string => Boolean(n))
         return ue.code.toLowerCase().includes(q) || ue.nom.toLowerCase().includes(q) || filiereNames.some((n) => n.toLowerCase().includes(q))
       }
       return true
