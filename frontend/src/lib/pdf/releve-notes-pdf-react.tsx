@@ -120,14 +120,21 @@ function getSessionLabel(sessionType: string): string {
   return 'Normale'
 }
 
-/** Calcule la moyenne d'une UE (moyenne arithmétique des notes non-null) */
-function computeMoyenneUE(epreuves: EpreuveNote[]): number | null {
-  const notes = epreuves.filter((e) => e.note !== null).map((e) => e.note!)
-  if (notes.length === 0) return null
-  return notes.reduce((a, b) => a + b, 0) / notes.length
+/** Normalise une note sur /20 (gère les barèmes différents : /20, /60, /40...) */
+function normalizeSur20(note: number, noteTotal: number): number {
+  if (noteTotal <= 0) return 0
+  return (note / noteTotal) * 20
 }
 
-/** Calcule la moyenne générale (moyenne arithmétique des moyennes d'UE non-null) */
+/** Calcule la moyenne d'une UE (normalisée sur /20) */
+function computeMoyenneUE(epreuves: EpreuveNote[]): number | null {
+  const notesValides = epreuves.filter((e) => e.note !== null)
+  if (notesValides.length === 0) return null
+  const sommeSur20 = notesValides.reduce((sum, e) => sum + normalizeSur20(e.note!, e.noteTotal), 0)
+  return sommeSur20 / notesValides.length
+}
+
+/** Calcule la moyenne générale (moyenne arithmétique des moyennes d'UE normalisées sur /20) */
 function computeMoyenneGenerale(ues: UERelevé[]): number | null {
   const moyennes = ues.map((u) => computeMoyenneUE(u.epreuves)).filter((m): m is number => m !== null)
   if (moyennes.length === 0) return null
