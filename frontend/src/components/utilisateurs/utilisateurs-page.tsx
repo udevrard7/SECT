@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Users,
@@ -34,6 +34,10 @@ import {
   KeyRound,
   AlertTriangle,
   RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
+  ArrowUpDown,
+  Download,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { ErrorState } from '@/components/shared/error-state'
@@ -157,6 +161,38 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function isValidEmail(s: string): boolean {
   return EMAIL_REGEX.test(s.trim())
+}
+
+// UX-3 (audit E2E) : tri des colonnes côté client (pattern réutilisé de
+// facturation-page.tsx commit 85f8837). La queryKey usersQuery inclut déjà
+// search + filtres + page (côté serveur), mais le tri se fait côté client
+// pour ne pas ajouter un param backend.
+type UserSortKey = 'name' | 'email' | 'role' | 'etablissement' | 'derniereConnexion'
+type SortDir = 'asc' | 'desc'
+
+function compareUsers(a: UserItem, b: UserItem, key: UserSortKey, dir: SortDir): number {
+  let cmp = 0
+  switch (key) {
+    case 'name':
+      cmp = a.name.localeCompare(b.name, 'fr-FR')
+      break
+    case 'email':
+      cmp = a.email.localeCompare(b.email, 'fr-FR')
+      break
+    case 'role':
+      cmp = a.role.localeCompare(b.role, 'fr-FR')
+      break
+    case 'etablissement':
+      cmp = (a.etablissement?.nom ?? '').localeCompare(b.etablissement?.nom ?? '', 'fr-FR')
+      break
+    case 'derniereConnexion':
+      // null = jamais connecté → trié en dernier en asc, en premier en desc
+      const ta = a.derniereConnexion ? new Date(a.derniereConnexion).getTime() : 0
+      const tb = b.derniereConnexion ? new Date(b.derniereConnexion).getTime() : 0
+      cmp = ta - tb
+      break
+  }
+  return dir === 'asc' ? cmp : -cmp
 }
 
 function getInitials(name: string): string {
@@ -312,6 +348,10 @@ export function UtilisateursPage() {
   const [formMatricule, setFormMatricule] = useState('')
   const [emailError, setEmailError] = useState('')
 
+  // UX-3 : tri des colonnes (défaut = nom asc, ordre naturel)
+  const [sortBy, setSortBy] = useState<UserSortKey>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
   // ─── Direct creation result state ───
   const [directCreationResult, setDirectCreationResult] = useState<{
     email: string
@@ -371,6 +411,61 @@ export function UtilisateursPage() {
   const users = usersQuery.data?.users ?? []
   const total = usersQuery.data?.total ?? 0
   const isLoading = usersQuery.isLoading
+
+  // UX-3 : users triés côté client (la queryKey serveur gère search + filtres + page)
+  const sortedUsers = useMemo(
+    () => [...users].sort((a, b) => compareUsers(a, b, sortBy, sortDir)),
+    [users, sortBy, sortDir],
+  )
+
+  const handleSort = (key: UserSortKey) => {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(key)
+      setSortDir('asc')
+    }
+  }
+
+  // UX-4 : Export CSV de la liste filtrée + triée (pattern réutilisé de facturation).
+  // Exporte TOUS les users de la page courante (la pagination est gérée côté serveur
+  // via queryKey ; pour un export complet, l'admin peut ajuster le filtre/page).
+  const handleExportCSV = () => {
+    if (sortedUsers.length === 0) {
+      toast.error('Aucune donnée', { description: 'Aucun utilisateur à exporter.' })
+      return
+    }
+    const headers = ['Nom', 'Email', 'Rôle', 'Établissement', 'Statut', 'Dernière connexion', 'Créé le']
+    const escapeCSV = (val: string | number | null | undefined) => {
+      const s = String(val ?? '')
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+    const rows = sortedUsers.map((u) => [
+      u.name,
+      u.email,
+      getRoleLabel(u.role),
+      u.etablissement?.nom ?? '',
+      u.actif ? 'Actif' : 'Inactif',
+      u.derniereConnexion ? new Date(u.derniereConnexion).toLocaleString('fr-FR') : 'Jamais',
+      new Date(u.createdAt).toLocaleDateString('fr-FR'),
+    ].map(escapeCSV).join(','))
+    const csv = [headers.join(','), ...rows].join('\n')
+    // BOM UTF-8 pour qu'Excel ouvre correctement les accents.
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `utilisateurs-sect-${today}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success('Export CSV généré', { description: `${sortedUsers.length} utilisateur(s) exporté(s).` })
+  }
 
   // Helper pour invalider le cache après mutation (create/update/delete/import)
   const refreshUsers = () => queryClient.invalidateQueries({ queryKey: ['utilisateurs'] })
@@ -995,6 +1090,10 @@ export function UtilisateursPage() {
           />
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportCSV} className="h-9">
+            <Download className="h-4 w-4 mr-1.5" />
+            Export CSV
+          </Button>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
             <SelectTrigger className="w-[150px]">
               <Filter className="h-3.5 w-3.5 mr-1" />
@@ -1098,18 +1197,83 @@ export function UtilisateursPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">Avatar</TableHead>
-                  <TableHead>Nom complet</TableHead>
-                  <TableHead className="hidden md:table-cell">Email</TableHead>
-                  <TableHead>Rôle</TableHead>
-                  <TableHead className="hidden lg:table-cell">Établissement</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('name')}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Nom complet
+                      {sortBy === 'name' ? (
+                        sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('email')}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Email
+                      {sortBy === 'email' ? (
+                        sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('role')}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Rôle
+                      {sortBy === 'role' ? (
+                        sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('etablissement')}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Établissement
+                      {sortBy === 'etablissement' ? (
+                        sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </button>
+                  </TableHead>
                   {!isAdmin && <TableHead className="hidden lg:table-cell">Filière</TableHead>}
                   <TableHead>Statut</TableHead>
-                  <TableHead className="hidden sm:table-cell">Dernière connexion</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('derniereConnexion')}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Dernière connexion
+                      {sortBy === 'derniereConnexion' ? (
+                        sortDir === 'asc' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="w-12">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((u) => (
+                {sortedUsers.map((u) => (
                   <TableRow key={u.id} className="group">
                     <TableCell>
                       <div className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarColor(u.role)}`}>
