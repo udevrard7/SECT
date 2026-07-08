@@ -13749,3 +13749,25 @@ Stage Summary:
 - 0 erreur console. Téléchargement UI + API fonctionnels.
 - Captures : /home/z/sect-screenshots/cert-prod-final.png (paysage),
   cert-portrait-final.png (portrait)
+
+---
+Task ID: SECT-CERTIFICAT-BUGS-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix 2 bugs certificat — note manquante verify + PDF paysage 2 pages
+
+Bug #1 — Note de l'étudiant manquante sur /verify/[code] :
+Cause : le frontend verify page utilisait certificat.note mais le backend Go
+renvoie noteFinale (json:noteFinale dans domain.Certificat struct L54).
+Le champ certificat.note était toujours undefined → la note affichait '—'.
+Fix : interface CertificatData.note → noteFinale + affichage certificat.noteFinale.
+Validé production : /verify/SECT-WNV8-RXJL affiche maintenant 18.17/20 ✓
+
+Bug #2 — PDF paysage sur 2 pages (overflow) :
+Cause : le contenu vertical total (~560pt) dépassait la hauteur utile (519pt).
+Fix : réduction des espacements verticaux (76pt économisés) :
+  - paddingVertical: 50→30, tailles police réduites (titre 42→38, nom 34→30)
+  - marginBottom réduits sur toutes les sections
+  - InfoRow paddingVertical: 8→6
+Validé production : pdfinfo Pages: 1 ✓ + VLM 9/9 éléments visibles ✓
+
+Commit 961915d poussé sur origin/main, déployé sur Vercel.
