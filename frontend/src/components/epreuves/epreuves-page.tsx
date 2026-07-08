@@ -2869,7 +2869,7 @@ function QuestionSelector({
  {questions.length === 0 ? (
  <p className="text-sm text-muted-foreground italic">Aucune question disponible dans le contenu de l&apos;épreuve.</p>
  ) : (
- <ScrollArea className="h-64">
+ <ScrollArea className="h-48 shrink-0">
  <div className="space-y-2 pr-1">
  {typeOrder.map((type) => {
  const typeQuestions = groupedByType[type]
@@ -3196,7 +3196,7 @@ function SessionSpecialeDialog({
 
  return (
  <Dialog open={open} onOpenChange={onOpenChange}>
- <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+ <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
  <DialogHeader>
  <DialogTitle className="flex items-center gap-2">
  <RotateCcw className="h-5 w-5 text-warning" />
