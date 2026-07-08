@@ -13480,3 +13480,63 @@ Stage Summary:
   Les invitations ENSEIGNANT/ETUDIANT restent soumises à la RLS stricte.
 - B-complète maintenant cohérente sur les 2 tables concernées (User + Invitation).
 - Captures: /home/z/sect-screenshots/bug3-fixed-invitation.png
+
+---
+Task ID: SECT-UX3-UX4-VALIDATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Améliorations UX-3 + UX-4 — tri colonnes + export CSV (pattern /facturation)
+
+Contexte :
+Audit E2E (améliorations UX proposées) : le module /utilisateurs manquait du tri des
+colonnes et de l'export CSV, deux patterns déjà implémentés dans /facturation (commit
+85f8837). Réutilisation directe du pattern pour cohérence inter-modules.
+
+Fix appliqué (commit 21b81cc, frontend uniquement, +171 lignes) :
+Fichier: frontend/src/components/utilisateurs/utilisateurs-page.tsx
+
+UX-3 — Colonnes triables (Nom, Email, Rôle, Établissement, Dernière connexion) :
+- Types UserSortKey + SortDir + fonction compareUsers (localeCompare fr-FR)
+- State sortBy/sortDir (défaut = nom asc, ordre naturel alphabétique)
+- sortedUsers via useMemo (tri côté client, la queryKey serveur gère déjà search +
+  filtres + page)
+- handleSort : toggle asc/desc si même colonne, sinon asc sur nouvelle colonne
+- En-têtes cliquables avec icônes : ArrowUpRight (asc) / ArrowDownRight (desc) /
+  ArrowUpDown neutre (muted) pour les colonnes non actives
+- Cas spécial derniereConnexion : null = jamais connecté → trié en dernier en asc
+- 'Filière' et 'Statut' restent non triables (peu pertinent, évite l'encombrement)
+
+UX-4 — Export CSV de la liste filtrée + triée :
+- Bouton 'Export CSV' (icône Download) dans la toolbar, avant les filtres
+- 7 colonnes : Nom, Email, Rôle, Établissement, Statut, Dernière connexion, Créé le
+- Échappement CSV (virgules, guillemets, sauts de ligne)
+- BOM UTF-8 pour ouverture Excel correcte des accents
+- Nom fichier : utilisateurs-sect-YYYY-MM-DD.csv
+- Toast confirmation 'N utilisateur(s) exporté(s)'
+- État vide géré : toast 'Aucune donnée' si 0 user (pas de téléchargement vide)
+- Rôles traduits via getRoleLabel ('Responsable des études' au lieu de 'RESPONSABLE')
+- Dates formatées en fr-FR
+
+Aucune modif backend. Aucune régression sur les bugs #1/#2/#3 récemment corrigés.
+
+Validation E2E Agent Browser (post-déploiement Vercel, commit 21b81cc) :
+1. Tri par nom : défaut asc (Alpha Bravo → Mme Keita) → clic toggle desc (Mme Keita
+   → Alpha Bravo) ✓
+2. Tri par email : asc (alpha-bravo → registrar) → clic toggle desc (registrar →
+   alpha-bravo) ✓
+3. Export CSV : content-type text/csv;charset=utf-8, BOM UTF-8, 7 colonnes
+   correctes, 2 lignes de données, tri appliqué, rôles traduits, dates fr-FR ✓
+4. Export avec liste vide (recherche 'zzznomatch') : toast 'Aucune donnée —
+   Aucun utilisateur à exporter.' (pas de téléchargement vide) ✓
+5. Responsive mobile 375px : pas d'overflow (scrollWidth=clientWidth=375), bouton
+   Export CSV visible ✓
+6. 0 erreur console/runtime sur toute la session ✓
+
+Nettoyage : le user de test 'Alpha Bravo' a été supprimé via l'UI (flux DELETE
+re-validé). La liste est revenue à 1 user (Mme Keita).
+
+Stage Summary:
+- UX-3 + UX-4 LIVRÉES et VALIDÉES en production. Le module /utilisateurs bénéficie
+  maintenant du tri des colonnes (5 colonnes triables) + export CSV (7 colonnes),
+  cohérents avec le pattern /facturation.
+- Aucune modif backend. Aucune régression. ESLint + tsc propres.
+- Captures: /home/z/sect-screenshots/ux-01-tri-default.png, ux-02-mobile.png
