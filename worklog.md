@@ -13852,3 +13852,39 @@ Note : test E2E production non finalisé car l'admin n'a pas d'EtablissementAcce
 validé avec des données mock réalistes (ASSANI Emile Junior, 3 UE, 5 épreuves).
 Pour tester en production, utiliser un compte enseignant (prof01@uniabidjan.com)
 ou responsable.
+
+---
+Task ID: SECT-SESSION-SPECIALE-QUESTIONS-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix chevauchement liste questions session spéciale étape 3 (/mes-étudiants)
+
+Bug : à l'étape 3 du wizard 'Session spéciale' (onglet Sessions /epreuves), quand
+on choisit 'Partie seulement — Sélectionner des questions', la liste des questions
+se chevauchait avec les autres éléments du dialog (dates, boutons footer).
+
+Reproduction (Agent Browser, compte prof01@uniabidjan.com) :
+1. /epreuves → onglet Sessions → développer INFORMATIQUE → bouton 'Session spéciale'
+2. Wizard étape 1 : Rattrapage + motif → Suivant
+3. Wizard étape 2 : Tout sélectionner (étudiants) → Suivant
+4. Wizard étape 3 : cliquer 'Partie seulement' → liste questions s'affiche
+
+Diagnostic :
+- ScrollArea utilisait max-h-64 (256px max). Le composant ScrollArea de Radix ne
+  respecte PAS max-h-* — son viewport interne s'étire à la hauteur du contenu
+  (1274px mesurés), déborde du dialog (519px) et chevauche les boutons.
+- dialogBottom: 548px, scrollAreaBottom: 1640px → overflow de ~1100px
+- De plus, DialogContent avait overflow-hidden → les boutons footer étaient coupés
+
+Fix (2 commits a5511d8 + fcfd125) :
+1. ScrollArea max-h-64 → h-48 shrink-0 (192px fixe + empêche le rétrécissement flex)
+2. DialogContent overflow-hidden → overflow-y-auto (le dialog peut scroller si besoin)
+
+Validation Agent Browser (post-déploiement Vercel) :
+- ScrollArea height: 192px (au lieu de 1274px) ✓
+- Boutons Suivant/Précédent: visibles (visible: true) ✓
+- VLM : 'Les questions sont lisibles et séparées. Les boutons sont visibles et
+  non chevauchés. Aucun problème de chevauchement.' ✓
+
+Captures :
+- Avant : /home/z/sect-screenshots/bug-questions-chevauchement.png
+- Après : /home/z/sect-screenshots/bug-questions-fixed-v2.png
