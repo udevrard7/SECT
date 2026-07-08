@@ -218,9 +218,17 @@ func (uc *UserUseCase) Create(ctx context.Context, claims db.SessionClaims, inpu
         // "fantôme" dans un étab auquel il n'a pas accès. Le repo bypass RLS, donc
         // la policy User_insert (qui contient admin_has_etablissement_access) était
         // court-circuitée.
+        //
+        // 000052 (B-complète) : exception pour la création de RESPONSABLE — l'ADMIN
+        // (propriétaire PaaS) peut créer un RESPONSABLE dans n'importe quel étab sans
+        // EtablissementAccess. Cohérent avec la policy User_insert (migration 000052)
+        // et checkOwnership. Les ENSEIGNANTS/ÉTUDIANTS créés par ADMIN restent soumis
+        // au check strict.
         if creatorRole == domain.RoleAdmin && input.EtablissementID != nil && *input.EtablissementID != "" {
-                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
-                        return nil, "", err
+                if input.Role != domain.RoleResponsable {
+                        if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
+                                return nil, "", err
+                        }
                 }
         }
 
@@ -309,20 +317,27 @@ func (uc *UserUseCase) Update(ctx context.Context, claims db.SessionClaims, id s
         // pas transférer un user vers un autre étab).
         // ADMIN : si input.EtablissementID fourni et différent de l'existant, valider
         // l'accès au nouvel étab via ValidateAccessForEtablissement.
+        //
+        // 000052 (B-complète) : exception pour les RESPONSABLE — l'ADMIN peut transférer
+        // un RESPONSABLE vers n'importe quel étab sans EtablissementAccess (gestion PaaS).
+        // Cohérent avec checkOwnership et la policy User_update (migration 000052).
         if input.EtablissementID != nil {
                 if claims.Role == string(domain.RoleResponsable) {
                         // RESPONSABLE ne peut pas transférer — force à son étab
                         ownEtab := claims.EtablissementID
                         input.EtablissementID = &ownEtab
                 } else if claims.Role == string(domain.RoleAdmin) && *input.EtablissementID != "" {
-                        // ADMIN : valider l'accès au nouvel étab (si différent de l'existant)
-                        existingEtab := ""
-                        if existing.EtablissementID != nil {
-                                existingEtab = *existing.EtablissementID
-                        }
-                        if *input.EtablissementID != existingEtab {
-                                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
-                                        return nil, err
+                        // 000052 B-complète : skip pour RESPONSABLE (le target existing est un RESPONSABLE)
+                        if existing.Role != domain.RoleResponsable {
+                                // ADMIN : valider l'accès au nouvel étab (si différent de l'existant)
+                                existingEtab := ""
+                                if existing.EtablissementID != nil {
+                                        existingEtab = *existing.EtablissementID
+                                }
+                                if *input.EtablissementID != existingEtab {
+                                        if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
+                                                return nil, err
+                                        }
                                 }
                         }
                 }
@@ -440,11 +455,21 @@ func (uc *UserUseCase) CountUserDependencies(ctx context.Context, userID string)
 // a un etablissementId. Avant ce fix, le repo bypass RLS sur les writes et
 // checkOwnership ADMIN était un no-op → un ADMIN pouvait muter des users dans
 // n'importe quel établissement sans autorisation EtablissementAccess.
+//
+// 000052 (B-complète) : l'ADMIN (propriétaire PaaS) gère TOUS les RESPONSABLE
+// sans EtablissementAccess. On court-circuite le check quand le target est un
+// RESPONSABLE. Les ENSEIGNANTS/ÉTUDIANTS restent soumis au check strict (RLS +
+// ValidateAccessForEtablissement). Cohérent avec la migration 000052 qui ajoute
+// la clause `is_admin() AND role='RESPONSABLE'` aux 4 policies User.
 func (uc *UserUseCase) checkOwnership(ctx context.Context, claims db.SessionClaims, target *domain.User) error {
         role := domain.Role(claims.Role)
 
         switch role {
         case domain.RoleAdmin:
+                // 000052 B-complète : skip access check pour les RESPONSABLE (gestion PaaS).
+                if target.Role == domain.RoleResponsable {
+                        return nil
+                }
                 // ADMIN : si le target a un établissement, valider l'accès via EtablissementAccess.
                 // Si le target n'a pas d'établissement (admin plat), pas de check.
                 if target.EtablissementID != nil && *target.EtablissementID != "" {

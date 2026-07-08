@@ -2275,58 +2275,53 @@ CREATE POLICY "GrilleEvaluation_modify_enseignant" ON "GrilleEvaluation"
 -- ============================================================
 
 -- User (table centrale — accès complexes par rôle)
-CREATE POLICY "User_select" ON "User"
-  FOR SELECT TO neondb_owner
-  USING (
-    -- Tout utilisateur se voit lui-même
-    "id" = current_user_id()
-    -- ETUDIANT : voit aussi les enseignants de ses filières (pour aide)
-    -- U4 fix (migration 000014) : la cible doit être ENSEIGNANT (pas le current user).
-    -- Avant : `is_etudiant() AND is_enseignant()` = toujours FALSE (dead code).
-    OR (is_etudiant() AND "role" = 'ENSEIGNANT' AND EXISTS (
+-- État courant consolidé : 000007/000014/000024/000041 + 000052 (B-complète)
+CREATE POLICY "User_select" ON "User" FOR SELECT TO PUBLIC USING (
+  (id = current_user_id())
+  OR (is_etudiant() AND (role = 'ENSEIGNANT'::"Role") AND EXISTS (
       SELECT 1 FROM "EnseignantFiliere" ef
-      JOIN "User" me ON me."id" = current_user_id()
-      WHERE ef."enseignantId" = "User"."id"
-        AND ef."filiereId" = me."filiereId"
-    ))
-    -- ENSEIGNANT : voit les étudiants de ses filières
-    OR (is_enseignant() AND "role" = 'ETUDIANT' AND EXISTS (
+      WHERE ef."enseignantId" = "User".id
+        AND ef."filiereId" = current_user_filiere_id()
+  ))
+  OR (is_etudiant() AND (role = 'ETUDIANT'::"Role") AND "etablissementId" = current_etablissement_id())
+  OR (is_enseignant() AND (role = 'ETUDIANT'::"Role") AND EXISTS (
       SELECT 1 FROM "EnseignantFiliere" ef
       WHERE ef."enseignantId" = current_user_id()
         AND ef."filiereId" = "User"."filiereId"
-    ))
-    -- RESPONSABLE : voit tous les utilisateurs de son établissement
-    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
-    -- ADMIN : pas d'accès direct aux utilisateurs d'établissement (sauf via EtablissementAccess)
-    OR (is_admin() AND "etablissementId" IS NOT NULL AND admin_has_etablissement_access("etablissementId"))
-    OR (is_admin() AND "etablissementId" IS NULL AND "role" = 'ADMIN')
-  );
--- UPDATE : un utilisateur modifie son propre profil ; RESPONSABLE gère son établissement
-CREATE POLICY "User_update" ON "User"
-  FOR UPDATE TO neondb_owner
+  ))
+  OR (is_enseignant() AND (role IN ('ENSEIGNANT'::"Role", 'RESPONSABLE'::"Role")) AND "etablissementId" = current_etablissement_id())
+  OR (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+  OR (is_admin() AND ("etablissementId" IS NOT NULL) AND admin_has_etablissement_access("etablissementId"))
+  OR (is_admin() AND ("etablissementId" IS NULL) AND (role = 'ADMIN'::"Role"))
+  -- 000052 B-complète : ADMIN voit TOUS les RESPONSABLE (gestion PaaS)
+  OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
+);
+-- UPDATE : self + RESPONSABLE gère son étab + ADMIN avec accès + 000052 RESPONSABLE
+CREATE POLICY "User_update" ON "User" FOR UPDATE TO PUBLIC
   USING (
-    "id" = current_user_id()
-    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND "etablissementId" IS NOT NULL AND admin_has_etablissement_access("etablissementId"))
+    (id = current_user_id())
+    OR (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+    OR (is_admin() AND ("etablissementId" IS NOT NULL) AND admin_has_etablissement_access("etablissementId"))
+    OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
   )
   WITH CHECK (
-    "id" = current_user_id()
-    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND "etablissementId" IS NOT NULL AND admin_has_etablissement_access("etablissementId"))
+    (id = current_user_id())
+    OR (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+    OR (is_admin() AND ("etablissementId" IS NOT NULL) AND admin_has_etablissement_access("etablissementId"))
+    OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
   );
--- INSERT : RESPONSABLE crée des utilisateurs dans son établissement ; ADMIN crée des ADMIN
-CREATE POLICY "User_insert" ON "User"
-  FOR INSERT TO neondb_owner
-  WITH CHECK (
-    (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND ("role" = 'ADMIN' OR ("etablissementId" IS NOT NULL AND admin_has_etablissement_access("etablissementId"))))
-  );
--- DELETE : RESPONSABLE supprime dans son établissement ; ADMIN avec accès
-CREATE POLICY "User_delete" ON "User"
-  FOR DELETE TO neondb_owner
+-- INSERT : RESPONSABLE crée dans son étab ; ADMIN crée ADMIN/RESPONSABLE ; 000052 RESPONSABLE sans accès
+CREATE POLICY "User_insert" ON "User" FOR INSERT TO PUBLIC WITH CHECK (
+  (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+  OR (is_admin() AND ((role = 'ADMIN'::"Role") OR (("etablissementId" IS NOT NULL) AND admin_has_etablissement_access("etablissementId"))))
+  OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
+);
+-- DELETE : RESPONSABLE supprime dans son étab ; ADMIN avec accès ; 000052 RESPONSABLE
+CREATE POLICY "User_delete" ON "User" FOR DELETE TO PUBLIC
   USING (
-    (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND "etablissementId" IS NOT NULL AND admin_has_etablissement_access("etablissementId"))
+    (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+    OR (is_admin() AND ("etablissementId" IS NOT NULL) AND admin_has_etablissement_access("etablissementId"))
+    OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
   );
 
 -- Invitation (gérée par RESPONSABLE de l'établissement)
