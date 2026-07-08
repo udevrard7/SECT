@@ -129,14 +129,14 @@ function FicheNotesDocument({ data }: { data: FicheNotesPDFData }) {
     `Niveau ${data.niveau}`,
   ].filter(Boolean).join(' — ')
 
-  // Largeurs de colonnes : Matricule (60) + Nom (120) + [épreuves auto] + Moyenne (50)
-  const fixedColsWidth = 60 + 120 + 50
+  // Largeurs de colonnes : Matricule (70) + Nom (140) + [épreuves auto] + Moyenne (55)
+  const fixedColsWidth = 70 + 140 + 55
   const pageWidth = 842
   const padding = 80
   const availableWidth = pageWidth - padding * 2 - fixedColsWidth
   const epreuveColWidth = data.epreuves.length > 0
-    ? Math.max(40, Math.min(80, availableWidth / data.epreuves.length))
-    : 80
+    ? Math.max(45, Math.min(85, availableWidth / data.epreuves.length))
+    : 85
 
   return (
     <Document>
@@ -177,19 +177,19 @@ function FicheNotesDocument({ data }: { data: FicheNotesPDFData }) {
         <View style={{ borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 2, overflow: 'hidden' }}>
           {/* En-tête tableau */}
           <View style={{ flexDirection: 'row', backgroundColor: NAVY }}>
-            <Text style={{ width: 60, fontSize: 7, color: WHITE, fontWeight: 'bold', paddingVertical: 5, paddingHorizontal: 6, letterSpacing: 0.5 }}>MATRICULE</Text>
-            <Text style={{ width: 120, fontSize: 7, color: WHITE, fontWeight: 'bold', paddingVertical: 5, paddingHorizontal: 6, letterSpacing: 0.5 }}>NOM</Text>
+            <Text style={{ width: 70, fontSize: 8, color: WHITE, fontWeight: 'bold', paddingVertical: 6, paddingHorizontal: 6, letterSpacing: 0.5 }}>MATRICULE</Text>
+            <Text style={{ width: 140, fontSize: 8, color: WHITE, fontWeight: 'bold', paddingVertical: 6, paddingHorizontal: 6, letterSpacing: 0.5 }}>NOM</Text>
             {data.epreuves.map((ep) => {
               const titre = ep.titre.length > 18 ? ep.titre.slice(0, 16) + '…' : ep.titre
               return (
-                <Text key={ep.id} style={{ width: epreuveColWidth, fontSize: 6.5, color: WHITE, fontWeight: 'bold', paddingVertical: 5, paddingHorizontal: 3, textAlign: 'center' }}>
+                <Text key={ep.id} style={{ width: epreuveColWidth, fontSize: 7.5, color: WHITE, fontWeight: 'bold', paddingVertical: 6, paddingHorizontal: 3, textAlign: 'center' }}>
                   {titre}
                   {'\n'}
-                  <Text style={{ fontSize: 5.5, color: GOLD }}>({ep.ueCode || '—'})</Text>
+                  <Text style={{ fontSize: 6.5, color: GOLD }}>({ep.ueCode || '—'})</Text>
                 </Text>
               )
             })}
-            <Text style={{ width: 50, fontSize: 7, color: GOLD, fontWeight: 'bold', paddingVertical: 5, paddingHorizontal: 6, textAlign: 'center', letterSpacing: 0.5 }}>MOY.</Text>
+            <Text style={{ width: 55, fontSize: 8, color: GOLD, fontWeight: 'bold', paddingVertical: 6, paddingHorizontal: 6, textAlign: 'center', letterSpacing: 0.5 }}>MOY.</Text>
           </View>
 
           {/* Lignes étudiants */}
@@ -197,20 +197,20 @@ function FicheNotesDocument({ data }: { data: FicheNotesPDFData }) {
             const bgColor = idx % 2 === 0 ? WHITE : CELL_BG_ALT
             return (
               <View key={etu.id} style={{ flexDirection: 'row', backgroundColor: bgColor, borderBottomWidth: idx === data.etudiants.length - 1 ? 0 : 0.3, borderColor: GOLD_BORDER }}>
-                <Text style={{ width: 60, fontSize: 7, color: TEXT_DARK, paddingVertical: 4, paddingHorizontal: 6, fontFamily: 'Inter' }}>{etu.matricule || '—'}</Text>
-                <Text style={{ width: 120, fontSize: 7.5, color: TEXT_DARK, paddingVertical: 4, paddingHorizontal: 6, fontWeight: 'bold' }}>
+                <Text style={{ width: 70, fontSize: 8, color: TEXT_DARK, paddingVertical: 5, paddingHorizontal: 6, fontFamily: 'Inter' }}>{etu.matricule || '—'}</Text>
+                <Text style={{ width: 140, fontSize: 8.5, color: TEXT_DARK, paddingVertical: 5, paddingHorizontal: 6, fontWeight: 'bold' }}>
                   {etu.name.length > 28 ? etu.name.slice(0, 26) + '…' : etu.name}
                 </Text>
                 {data.epreuves.map((ep) => {
                   const note = etu.notes?.[ep.id]
                   const noteColor = getNoteColor(note ?? null, ep.noteMax)
                   return (
-                    <Text key={ep.id} style={{ width: epreuveColWidth, fontSize: 7.5, color: noteColor, fontWeight: 'bold', paddingVertical: 4, paddingHorizontal: 3, textAlign: 'center' }}>
+                    <Text key={ep.id} style={{ width: epreuveColWidth, fontSize: 8.5, color: noteColor, fontWeight: 'bold', paddingVertical: 5, paddingHorizontal: 3, textAlign: 'center' }}>
                       {note !== null && note !== undefined ? formatNote(note) : '—'}
                     </Text>
                   )
                 })}
-                <Text style={{ width: 50, fontSize: 8, color: NAVY, fontWeight: 'bold', paddingVertical: 4, paddingHorizontal: 6, textAlign: 'center' }}>
+                <Text style={{ width: 55, fontSize: 9, color: NAVY, fontWeight: 'bold', paddingVertical: 5, paddingHorizontal: 6, textAlign: 'center' }}>
                   {etu.moyenne != null ? formatNote(etu.moyenne) : '—'}
                 </Text>
               </View>

@@ -66,6 +66,17 @@ func (uc *EtablissementUseCase) List(ctx context.Context, claims db.SessionClaim
 // GetByID récupère un établissement par ID.
 func (uc *EtablissementUseCase) GetByID(ctx context.Context, claims db.SessionClaims, id string) (*domain.Etablissement, error) {
         role := domain.Role(claims.Role)
+        // ACCES-ETAB-FIX : les ENSEIGNANT et ETUDIANT peuvent consulter leur PROPRE
+        // établissement (pour récupérer le nom + logo dans les PDF : fiche de notes,
+        // relevé individuel, certificat). La RLS Etablissement_select filtre déjà :
+        // `NOT is_admin() AND id = current_etablissement_id()` → un ENSEIGNANT ne
+        // peut voir QUE son établissement. Le usecase n'a pas besoin de refaire ce
+        // filtrage. Pour ADMIN/RESPONSABLE, on garde le comportement existant.
+        if role == domain.RoleEnseignant || role == domain.RoleEtudiant {
+                // Anti-IDOR : l'enseignant/étudiant ne peut demander QUE son étab.
+                // La RLS filtre les autres → FindByID retournera NotFound si id != sien.
+                return uc.etabRepo.FindByID(ctx, id)
+        }
         if role != domain.RoleAdmin && role != domain.RoleResponsable {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
