@@ -2325,22 +2325,24 @@ CREATE POLICY "User_delete" ON "User" FOR DELETE TO PUBLIC
   );
 
 -- Invitation (gérée par RESPONSABLE de l'établissement)
-CREATE POLICY "Invitation_select" ON "Invitation"
-  FOR SELECT TO neondb_owner
+-- État courant consolidé : 000007/000024 + 000053 (B-complète étendue)
+CREATE POLICY "Invitation_select" ON "Invitation" FOR SELECT TO PUBLIC USING (
+  ("createdById" = current_user_id())
+  OR (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+  OR (is_admin() AND (("etablissementId" IS NULL) OR admin_has_etablissement_access("etablissementId")))
+  -- 000053 B-complète : ADMIN voit toutes les invitations RESPONSABLE (gestion PaaS)
+  OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
+);
+CREATE POLICY "Invitation_modify" ON "Invitation" FOR ALL TO PUBLIC
   USING (
-    "createdById" = current_user_id()
-    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND ("etablissementId" IS NULL OR admin_has_etablissement_access("etablissementId")))
-  );
-CREATE POLICY "Invitation_modify" ON "Invitation"
-  FOR ALL TO neondb_owner
-  USING (
-    (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND ("etablissementId" IS NULL OR admin_has_etablissement_access("etablissementId")))
+    (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+    OR (is_admin() AND (("etablissementId" IS NULL) OR admin_has_etablissement_access("etablissementId")))
+    OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
   )
   WITH CHECK (
-    (is_responsable() AND "etablissementId" = current_etablissement_id())
-    OR (is_admin() AND ("etablissementId" IS NULL OR admin_has_etablissement_access("etablissementId")))
+    (is_responsable() AND ("etablissementId" = current_etablissement_id()))
+    OR (is_admin() AND (("etablissementId" IS NULL) OR admin_has_etablissement_access("etablissementId")))
+    OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
   );
 
 -- PasswordReset (self-service — l'utilisateur réinitialise son propre mot de passe)
