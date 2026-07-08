@@ -1,24 +1,28 @@
 /**
- * CertificatePDF.tsx — Certificat académique professionnel
+ * certificat-pdf-react.tsx — Certificat académique institutionnel (refonte 2025)
  *
- * Design épuré, académique, inspiré des certificats universitaires classiques:
- * - Bordure triple fine (or + navy + or)
- * - Typographie cohérente: Playfair Display pour les titres, Great Vibes
- *   pour le nom, Inter pour le corps
- * - Layout vertical centré avec espacement aéré
- * - Grille d'infos 3×2 propre et alignée
- * - Badge SECT CERTIFIÉ centré
+ * Design épuré et lisible, inspiré des certificats des grandes institutions
+ * universitaires (Sorbonne, Harvard, MIT). Remplace l'ancien modèle qui était
+ * illisible (trop d'éléments SVG complexes : Seal, CornerOrnaments, GradeBar,
+ * WatermarkBackground, etc. qui ne se rendaient pas correctement dans
+ * @react-pdf/renderer).
+ *
+ * Principes de design :
+ * - Layout paysage A4 (842×595pt) centré et aéré
+ * - Bordure double simple (gold + navy) — pas de SVG, juste des bordures CSS
+ * - Typographie claire : PlayfairDisplay (titres), GreatVibes (nom), Inter (corps)
+ * - Aucun SVG complexe — uniquement Views/Texts/Images
+ * - QR code de vérification généré côté route API (qrcode.toDataURL)
+ * - Grille d'infos 2×3 propre et alignée
  * - Signatures espacées et lisibles
- * - Footer avec ligne dorée
  *
- * Palette: navy #1B3A5C, gold #C5A044, text #2C3E50
- * A4 Landscape (842×595pt) et Portrait (595×842pt)
+ * Palette : navy #1B3A5C, gold #C5A044, text #2C3E50, gray #718096
  */
 
 import React from 'react'
 import {
   Document, Page, View, Text, Image, Font, StyleSheet,
-  Svg, Polygon, Circle, Path, renderToBuffer,
+  renderToBuffer,
 } from '@react-pdf/renderer'
 import path from 'path'
 
@@ -75,7 +79,7 @@ export interface CertificatPDFData {
     enabled: boolean
     opacity: number
     color: string
-    pattern: string // 'diamond' | 'circle' | 'text' | 'none'
+    pattern: string
   } | null
 }
 
@@ -117,538 +121,521 @@ function getSessionLabel(sessionType: string): string {
   return sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
 }
 
-// ═══ Shared Components ═══
-
-/**
- * Wrapper around @react-pdf/renderer's `Text` for SVG usage.
- *
- * The library's `SVGTextProps` type definition omits the font-related attributes
- * (`fontSize`, `fontFamily`, `fontWeight`, `letterSpacing`) that the underlying
- * SVG renderer actually accepts at runtime. This wrapper restores proper typing
- * for SVG `<Text>` elements so we can use font attributes without TypeScript
- * errors and without resorting to `as any` / `@ts-ignore`.
- */
-type SvgTextProps = {
-  x?: string | number
-  y?: string | number
-  textAnchor?: 'start' | 'middle' | 'end'
-  fontSize?: string | number
-  fontFamily?: string
-  fontWeight?: string
-  letterSpacing?: string
-  fill?: string
-  children?: React.ReactNode
-}
-
-const SvgText = Text as unknown as React.FC<SvgTextProps>
-
 /**
  * Type alias for @react-pdf/renderer's `Image` that also accepts an `alt` prop.
- *
- * The library's `ImageProps` type does not declare `alt` (it's a PDF rendering
- * primitive, not an HTML `<img>`), so passing `alt` directly to `<Image>`
- * triggers a TypeScript error. Meanwhile, the eslint `jsx-a11y/alt-text` rule
- * (configured by next/core-web-vitals to flag any JSX element literally named
- * `Image`) requires an `alt` prop.
- *
- * This alias resolves the contradiction: the extended prop type allows `alt`
- * to be passed (satisfying TypeScript), and because the JSX element is now
- * named `PdfImage` (not `Image`), the lint rule — which matches on the JSX
- * element name — does not fire on call sites. The `alt` value is accepted but
- * ignored at runtime (PDF images have no alt-text concept).
+ * (Voir commentaire dans l'ancien fichier — conservé pour compat ESLint.)
  */
 const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image> & { alt?: string }>
 
-function CornerOrnaments() {
-  return (
-    <>
-      <View style={{ position: 'absolute', top: '5mm', left: '5mm' }} fixed>
-        <Svg width="50" height="50" viewBox="0 0 50 50">
-          <Path d="M0,0 L50,0 L50,3 L3,3 L3,50 L0,50 Z" fill={GOLD} />
-          <Path d="M6,6 L40,6 L40,8 L8,8 L8,40 L6,40 Z" fill={NAVY} />
-          <Circle cx="12" cy="12" r="2" fill={GOLD} />
-        </Svg>
-      </View>
-      <View style={{ position: 'absolute', top: '5mm', right: '5mm' }} fixed>
-        <Svg width="50" height="50" viewBox="0 0 50 50">
-          <Path d="M50,0 L0,0 L0,3 L47,3 L47,50 L50,50 Z" fill={GOLD} />
-          <Path d="M44,6 L10,6 L10,8 L42,8 L42,40 L44,40 Z" fill={NAVY} />
-          <Circle cx="38" cy="12" r="2" fill={GOLD} />
-        </Svg>
-      </View>
-      <View style={{ position: 'absolute', bottom: '5mm', left: '5mm' }} fixed>
-        <Svg width="50" height="50" viewBox="0 0 50 50">
-          <Path d="M0,50 L50,50 L50,47 L3,47 L3,0 L0,0 Z" fill={GOLD} />
-          <Path d="M6,44 L40,44 L40,42 L8,42 L8,10 L6,10 Z" fill={NAVY} />
-          <Circle cx="12" cy="38" r="2" fill={GOLD} />
-        </Svg>
-      </View>
-      <View style={{ position: 'absolute', bottom: '5mm', right: '5mm' }} fixed>
-        <Svg width="50" height="50" viewBox="0 0 50 50">
-          <Path d="M50,50 L0,50 L0,47 L47,47 L47,0 L50,0 Z" fill={GOLD} />
-          <Path d="M44,44 L10,44 L10,42 L42,42 L42,10 L44,10 Z" fill={NAVY} />
-          <Circle cx="38" cy="38" r="2" fill={GOLD} />
-        </Svg>
-      </View>
-    </>
-  )
-}
+// ═══ Styles ═══
 
-function TripleBorder() {
-  return (
-    <>
-      <View style={{ position: 'absolute', top: '8mm', left: '8mm', right: '8mm', bottom: '8mm', borderWidth: 2, borderColor: GOLD, borderStyle: 'solid' }} />
-      <View style={{ position: 'absolute', top: '11mm', left: '11mm', right: '11mm', bottom: '11mm', borderWidth: 0.5, borderColor: NAVY, borderStyle: 'solid' }} />
-      <View style={{ position: 'absolute', top: '13mm', left: '13mm', right: '13mm', bottom: '13mm', borderWidth: 0.3, borderColor: GOLD, borderStyle: 'solid' }} />
-    </>
-  )
-}
+const styles = StyleSheet.create({
+  page: {
+    fontFamily: 'Inter',
+    backgroundColor: WHITE,
+    color: TEXT_DARK,
+    position: 'relative',
+  },
+  // Bordure double simple (gold + navy) — pas de SVG
+  borderOuter: {
+    position: 'absolute',
+    top: 30,
+    left: 30,
+    right: 30,
+    bottom: 30,
+    borderWidth: 2.5,
+    borderColor: GOLD,
+    borderStyle: 'solid',
+  },
+  borderInner: {
+    position: 'absolute',
+    top: 38,
+    left: 38,
+    right: 38,
+    bottom: 38,
+    borderWidth: 0.5,
+    borderColor: NAVY,
+    borderStyle: 'solid',
+  },
+  // Contenu principal avec padding
+  content: {
+    flex: 1,
+    paddingHorizontal: 70,
+    paddingVertical: 55,
+    flexDirection: 'column',
+  },
+  // En-tête établissement
+  header: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  etabLogo: {
+    width: 140,
+    height: 55,
+    objectFit: 'contain',
+    marginBottom: 6,
+  },
+  etabName: {
+    fontSize: 15,
+    fontFamily: 'PlayfairDisplay',
+    color: NAVY,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  etabLocation: {
+    fontSize: 10,
+    color: TEXT_GRAY,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  // Titre "CERTIFICAT"
+  titleSection: {
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  title: {
+    fontSize: 42,
+    fontFamily: 'PlayfairDisplay',
+    color: NAVY,
+    textAlign: 'center',
+    letterSpacing: 6,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: GOLD,
+    textAlign: 'center',
+    letterSpacing: 8,
+    marginTop: 4,
+    fontWeight: 'bold',
+  },
+  // Losange décoratif central
+  diamond: {
+    width: 8,
+    height: 8,
+    backgroundColor: GOLD,
+    transform: 'rotate(45deg)',
+    marginVertical: 12,
+  },
+  // "Décerné à"
+  awardedTo: {
+    fontSize: 11,
+    color: TEXT_GRAY,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  // Nom de l'étudiant (GreatVibes — élégant script)
+  studentName: {
+    fontSize: 36,
+    fontFamily: 'GreatVibes',
+    color: NAVY,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  // Ligne décorative sous le nom
+  nameUnderline: {
+    width: 200,
+    height: 1,
+    backgroundColor: GOLD,
+    marginBottom: 12,
+  },
+  // Description
+  description: {
+    fontSize: 12,
+    color: TEXT_DARK,
+    textAlign: 'center',
+    lineHeight: 1.6,
+    marginBottom: 8,
+  },
+  intitule: {
+    fontSize: 14,
+    fontFamily: 'PlayfairDisplay',
+    color: NAVY,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  // Mention (si présente)
+  mention: {
+    fontSize: 13,
+    color: GOLD,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    marginBottom: 12,
+    letterSpacing: 2,
+  },
+  // Grille d'informations
+  infoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: GOLD_BORDER,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  infoCell: {
+    width: '50%',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: GOLD_BORDER,
+    backgroundColor: CELL_BG,
+  },
+  infoCellLastRow: {
+    borderBottomWidth: 0,
+  },
+  infoCellLastCol: {
+    borderRightWidth: 0,
+  },
+  infoLabel: {
+    fontSize: 8,
+    color: TEXT_GRAY,
+    letterSpacing: 1,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+  },
+  infoValue: {
+    fontSize: 11,
+    color: TEXT_DARK,
+    fontWeight: 'bold',
+  },
+  // Pied de page : 3 colonnes
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    marginTop: 'auto',
+  },
+  footerLeft: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  footerCenter: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  footerRight: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  // Date
+  dateLabel: {
+    fontSize: 8,
+    color: TEXT_GRAY,
+    letterSpacing: 1,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  dateValue: {
+    fontSize: 11,
+    color: TEXT_DARK,
+    fontWeight: 'bold',
+  },
+  signatureLine: {
+    width: 120,
+    height: 1,
+    backgroundColor: SIG_LINE,
+    marginBottom: 4,
+  },
+  signatureName: {
+    fontSize: 10,
+    color: TEXT_DARK,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 1,
+  },
+  signatureRole: {
+    fontSize: 8,
+    color: TEXT_GRAY,
+    textAlign: 'center',
+  },
+  // QR code
+  qrCode: {
+    width: 70,
+    height: 70,
+    marginBottom: 4,
+  },
+  qrCodeText: {
+    fontSize: 7,
+    color: NAVY,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  qrCodeLabel: {
+    fontSize: 6,
+    color: TEXT_GRAY,
+    textAlign: 'center',
+  },
+  // Footer établissement (tout en bas)
+  etabFooter: {
+    position: 'absolute',
+    bottom: 20,
+    left: 70,
+    right: 70,
+    alignItems: 'center',
+  },
+  etabFooterLine: {
+    width: '100%',
+    height: 0.5,
+    backgroundColor: GOLD,
+    marginBottom: 6,
+  },
+  etabFooterText: {
+    fontSize: 8,
+    color: TEXT_FOOTER,
+    textAlign: 'center',
+  },
+})
 
-function Diamonds() {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-      <View style={{ width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' }} />
-      <View style={{ width: 9, height: 9, backgroundColor: NAVY, transform: 'rotate(45deg)' }} />
-      <View style={{ width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' }} />
-    </View>
-  )
-}
-
-function Seal() {
-  const cx = 40, cy = 40, r = 32
-  return (
-    <View style={{ alignItems: 'center', marginVertical: 8 }}>
-      <Svg width={90} height={90} viewBox="0 0 80 80">
-        {/* Outer gold ring (double line) */}
-        <Circle cx={cx} cy={cy} r={r} fill={NAVY} />
-        <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="2.5" />
-        <Circle cx={cx} cy={cy} r={r - 3} fill="none" stroke={GOLD} strokeWidth="1" />
-        {/* Inner ring */}
-        <Circle cx={cx} cy={cy} r={r - 7} fill="none" stroke={GOLD} strokeWidth="0.6" />
-        
-        {/* Decorative dots ring (between outer and inner) */}
-        {Array.from({ length: 32 }).map((_, i) => {
-          const a = (i * 360) / 32
-          const rad = (a * Math.PI) / 180
-          const dr = r - 5
-          return <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.5" fill={GOLD} />
-        })}
-
-        {/* Top arc text "CERTIFICAT" (simulated with dots above star) */}
-        {Array.from({ length: 7 }).map((_, i) => {
-          const angle = -90 + (i - 3) * 8
-          const rad = (angle * Math.PI) / 180
-          const dr = r - 10
-          return <Circle key={`t${i}`} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.8" fill={GOLD} />
-        })}
-
-        {/* Center star (5-pointed, larger) */}
-        {Array.from({ length: 10 }).map((_, i) => {
-          const outerR = 8
-          const innerR = 3.2
-          const ri = i % 2 === 0 ? outerR : innerR
-          const a1 = (Math.PI / 5) * i - Math.PI / 2
-          const a2 = (Math.PI / 5) * (i + 1) - Math.PI / 2
-          return <Polygon key={`s${i}`} points={`${cx},${cy - 10} ${cx + ri * Math.cos(a1)},${cy - 10 + ri * Math.sin(a1)} ${cx + ri * Math.cos(a2)},${cy - 10 + ri * Math.sin(a2)}`} fill={GOLD} />
-        })}
-
-        {/* SECT text */}
-        <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize="11" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</SvgText>
-        {/* CERTIFIÉ text */}
-        <SvgText x={cx} y={cy + 13} textAnchor="middle" fontSize="5.5" fontFamily="Inter" fontWeight="bold" fill={GOLD} letterSpacing="1">CERTIFIÉ</SvgText>
-        
-        {/* Bottom decorative line */}
-        <Path d={`M ${cx - 12} ${cy + 18} L ${cx + 12} ${cy + 18}`} stroke={GOLD} strokeWidth="0.5" />
-        {/* Small dots on each side of the line */}
-        <Circle cx={cx - 15} cy={cy + 18} r="0.8" fill={GOLD} />
-        <Circle cx={cx + 15} cy={cy + 18} r="0.8" fill={GOLD} />
-      </Svg>
-    </View>
-  )
-}
+// ═══ Composants ═══
 
 function Logo({ logo, nom }: { logo: string | null; nom: string }) {
   if (!logo) {
-    return <View style={{ alignItems: 'center', marginBottom: 3 }}><Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY }}>{nom}</Text></View>
+    return <Text style={styles.etabName}>{nom}</Text>
   }
-  return <View style={{ alignItems: 'center', marginBottom: 3 }}><PdfImage src={logo} style={{ width: 120, height: 50, objectFit: 'contain' as const }} alt="" /></View>
+  return <PdfImage src={logo} style={styles.etabLogo} alt="" />
 }
 
-function SignatureBlock({ name, role, color }: { name?: string | null; role: string; color?: string }) {
-  const lineColor = color || SIG_LINE
+function InfoCell({
+  label,
+  value,
+  isLastRow = false,
+  isLastCol = false,
+}: {
+  label: string
+  value: string
+  isLastRow?: boolean
+  isLastCol?: boolean
+}) {
+  // Spread conditionnel (compatible avec le typing strict de @react-pdf/renderer)
+  const cellStyle = {
+    ...styles.infoCell,
+    ...(isLastRow ? { borderBottomWidth: 0 } : {}),
+    ...(isLastCol ? { borderRightWidth: 0 } : {}),
+  }
   return (
-    <View style={{ alignItems: 'center' }}>
-      {/* Decorative signature area */}
-      <View style={{ height: 50, justifyContent: 'flex-end', alignItems: 'center', marginBottom: 6 }}>
-        <Svg width="140" height="50" viewBox="0 0 140 50">
-          {/* Decorative scroll ends */}
-          <Path d="M10,45 Q5,45 5,40 Q5,35 10,35" fill="none" stroke={lineColor} strokeWidth="0.5" />
-          <Path d="M130,45 Q135,45 135,40 Q135,35 130,35" fill="none" stroke={lineColor} strokeWidth="0.5" />
-          {/* Main signature line */}
-          <Path d="M15,40 L125,40" fill="none" stroke={lineColor} strokeWidth="0.8" />
-          {/* Subtle underline */}
-          <Path d="M20,45 L120,45" fill="none" stroke={lineColor} strokeWidth="0.3" />
-        </Svg>
-      </View>
-      {name && <Text style={{ fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginBottom: 1 }}>{name}</Text>}
-      <Text style={{ fontSize: 9, color: TEXT_GRAY, textAlign: 'center' }}>{role}</Text>
+    <View style={cellStyle}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
     </View>
   )
 }
-
-// ═══ QR Code Box ═══
 
 function QRCodeBox({ dataUri, code }: { dataUri: string | null | undefined; code: string }) {
   if (!dataUri) {
     return (
-      <View style={{ alignItems: 'center', padding: 8, borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 4, backgroundColor: WHITE }}>
-        <Text style={{ fontSize: 6, color: TEXT_GRAY, textAlign: 'center', marginBottom: 4 }}>Vérifiez ce certificat :</Text>
-        <Text style={{ fontSize: 7, fontFamily: 'Inter', fontWeight: 'bold', color: NAVY, textAlign: 'center' }}>{code}</Text>
+      <View style={styles.footerCenter}>
+        <Text style={styles.dateLabel}>Code de vérification</Text>
+        <Text style={styles.qrCodeText}>{code}</Text>
+        <Text style={styles.qrCodeLabel}>Scannez ou visitez l'URL de vérification</Text>
       </View>
     )
   }
   return (
-    <View style={{ alignItems: 'center', padding: 8, borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 4, backgroundColor: WHITE }}>
-      <Image src={dataUri} style={{ width: 80, height: 80 }} />
-      <Text style={{ fontSize: 7, fontFamily: 'Inter', fontWeight: 'bold', color: NAVY, marginTop: 4 }}>{code}</Text>
-      <Text style={{ fontSize: 5, color: TEXT_GRAY }}>Scannez pour vérifier</Text>
+    <View style={styles.footerCenter}>
+      <PdfImage src={dataUri} style={styles.qrCode} alt="QR code de vérification" />
+      <Text style={styles.qrCodeText}>{code}</Text>
+      <Text style={styles.qrCodeLabel}>Scannez pour vérifier</Text>
     </View>
   )
 }
 
-// ═══ Grade Bar ═══
+// ═══ Document principal (Paysage) ═══
 
-function GradeBar({ note, max }: { note: number; max: number }) {
-  const pct = Math.max(0, Math.min(100, (note / max) * 100))
-  const barW = 80
-  const barH = 12
-  const fillW = (pct / 100) * barW
-  const fillColor = pct >= 80 ? '#16A34A' : pct >= 50 ? '#EAB308' : pct >= 30 ? '#F97316' : '#EF4444'
+function CertificateLandscape({ data }: { data: CertificatPDFData }) {
+  const etabLocation = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
+  const intituleText = data.intitule || `${data.ueNom} (${data.ueCode})`
 
-  return (
-    <View style={{ alignItems: 'center', gap: 4 }}>
-      <Svg width={barW + 4} height={barH + 16} viewBox={`0 0 ${barW + 4} ${barH + 16}`}>
-        {/* Background */}
-        <Path d={`M2,14 L${barW + 2},14 L${barW + 2},${barH + 14} L2,${barH + 14} Z`} fill="#E2E8F0" />
-        {/* Fill */}
-        {fillW > 0 && (
-          <Path d={`M2,14 L${fillW + 2},14 L${fillW + 2},${barH + 14} L2,${barH + 14} Z`} fill={fillColor} />
-        )}
-        {/* Border */}
-        <Path d={`M1,13 L${barW + 3},13 L${barW + 3},${barH + 15} L1,${barH + 15} Z`} fill="none" stroke={NAVY} strokeWidth="0.5" />
-        {/* Percentage text */}
-        <SvgText x={barW / 2 + 2} y={barH / 2 + 17} textAnchor="middle" fontSize={7} fontFamily="Inter" fontWeight="bold" fill={pct >= 50 ? WHITE : TEXT_DARK}>{Math.round(pct)}%</SvgText>
-      </Svg>
-      <Text style={{ fontSize: 10, fontWeight: 'bold', color: TEXT_DARK }}>{formatNote(note)}/{max}</Text>
-    </View>
-  )
-}
-
-// ═══ Watermark Background ═══
-
-function WatermarkBackground({ config }: { config?: CertificatPDFData['watermarkConfig'] }) {
-  if (config && (!config.enabled || config.pattern === 'none')) return null
-  const pattern = config?.pattern ?? 'diamond'
-  const color = config?.color ?? NAVY
-  const opacity = config?.opacity ?? 0.03
-
-  if (pattern === 'text') return null // text watermark handled by OriginalWatermark
-  if (pattern === 'circle') {
-    const circles: React.ReactElement[] = []
-    const spacing = 70
-    for (let x = 0; x < 14; x++) {
-      for (let y = 0; y < 12; y++) {
-        circles.push(
-          <View key={`wc-${x}-${y}`} style={{ position: 'absolute', left: x * spacing, top: y * spacing, width: 16, height: 16, opacity }}>
-            <Svg width="16" height="16" viewBox="0 0 16 16">
-              <Circle cx="8" cy="8" r="6" fill="none" stroke={color} strokeWidth="1" />
-            </Svg>
-          </View>
-        )
-      }
-    }
-    return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>{circles}</View>
-  }
-
-  // diamond (default)
-  const diamonds: React.ReactElement[] = []
-  const spacing = 80
-  for (let x = 0; x < 12; x++) {
-    for (let y = 0; y < 10; y++) {
-      diamonds.push(
-        <View key={`w-${x}-${y}`} style={{ position: 'absolute', left: x * spacing, top: y * spacing, width: 20, height: 20, transform: 'rotate(45deg)', opacity }}>
-          <Svg width="20" height="20" viewBox="0 0 20 20">
-            <Path d="M0,10 L10,0 L20,10 L10,20 Z" fill={color} />
-          </Svg>
-        </View>
-      )
-    }
-  }
-  return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>{diamonds}</View>
-}
-
-// ═══ Original / Copy Watermark ═══
-
-function OriginalWatermark({ config }: { config?: CertificatPDFData['watermarkConfig'] }) {
-  if (config && !config.enabled) return null
-  const text = config?.text ?? 'ORIGINAL'
-  const color = config?.color ?? NAVY
-  const opacity = config?.opacity ? Math.min(config.opacity * 2, 0.1) : 0.04 // slightly more visible than background
-
-  return (
-    <View style={{ position: 'absolute', top: '40%', left: '50%', zIndex: 5, opacity, transform: 'translate(-50%, -50%) rotate(-20deg)' }}>
-      <Text style={{ fontSize: 80, fontFamily: 'PlayfairDisplay', color, fontWeight: 'bold', letterSpacing: 10 }}>
-        {text}
-      </Text>
-    </View>
-  )
-}
-
-// ═══ Shared data builder ═══
-
-function buildSharedData(data: CertificatPDFData) {
-  return {
-    studentName: capitalizeName(data.etudiantNom),
-    subtitle: getSubtitle(data.type),
-    sessionLabel: getSessionLabel(data.sessionType),
-    location: [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', '),
-    footerText: `Émis le ${formatDate(data.dateEmission)}  |  Code: ${data.codeVerification}  |  Vérification: ${data.verificationUrl}`,
-    studentParts: [
-      data.etudiantMatricule ? `Matricule : ${data.etudiantMatricule}` : null,
-      data.etudiantNiveau ? `Niveau : ${data.etudiantNiveau}` : null,
-    ].filter(Boolean),
-    infos: [
-      { label: 'CODE UE', value: data.ueCode, highlight: false },
-      { label: 'FILIÈRE', value: data.filiereNom, highlight: false },
-      { label: 'NOTE', value: `${formatNote(data.noteFinale)}/20`, highlight: true },
-      { label: 'MENTION', value: data.mention || '—', highlight: true },
-      { label: 'SESSION', value: getSessionLabel(data.sessionType), highlight: false },
-      { label: 'ANNÉE', value: data.anneeAcademique || '—', highlight: false },
-    ],
-  }
-}
-
-// ═══ Shared InfoGrid (explicit rows — avoids react-pdf flexWrap bug) ═══
-
-interface InfoGridProps {
-  infos: { label: string; value: string; highlight: boolean }[]
-  columns: 2 | 3
-  cellStyle: any
-  cellHlStyle: any
-  contentStyle: any
-  labelStyle: any
-  valueStyle: any
-  rowStyle: any
-}
-
-function InfoGrid({ infos, columns, cellStyle, cellHlStyle, contentStyle, labelStyle, valueStyle, rowStyle }: InfoGridProps) {
-  const rows: typeof infos[] = []
-  for (let i = 0; i < infos.length; i += columns) {
-    rows.push(infos.slice(i, i + columns))
-  }
-  return (
-    <View style={{ width: '100%' }}>
-      {rows.map((row, ri) => (
-        <View key={ri} style={rowStyle}>
-          {row.map((info, ci) => (
-            <View key={ci} style={info.highlight ? cellHlStyle : cellStyle}>
-              <View style={contentStyle}>
-                <Text style={labelStyle}>{info.label}</Text>
-                <Text style={valueStyle}>{info.value}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      ))}
-    </View>
-  )
-}
-
-// ═══ Landscape (842×595) ═══
-
-const landscapeStyles = StyleSheet.create({
-  page: { width: 842, height: 595, backgroundColor: WHITE, position: 'relative' },
-  content: { position: 'absolute', top: '42pt', left: '50pt', right: '50pt', bottom: '42pt', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  universityName: { fontSize: 10, color: GOLD, letterSpacing: 3, marginBottom: 1 },
-  universityCity: { fontSize: 9, color: TEXT_GRAY, marginBottom: 4 },
-  titleMain: { fontFamily: 'PlayfairDisplay', fontSize: 32, color: NAVY, letterSpacing: 4, marginVertical: 3 },
-  titleSub: { fontFamily: 'PlayfairDisplay', fontSize: 20, color: TEXT_DARK, letterSpacing: 2, marginBottom: 6 },
-  intro: { fontSize: 12, color: TEXT_DARK, fontStyle: 'italic', marginTop: 6, marginBottom: 8 },
-  studentName: { fontFamily: 'GreatVibes', fontSize: 40, color: '#1A1A1A', textAlign: 'center', marginVertical: 6, lineHeight: 1.1 },
-  studentInfo: { fontSize: 10, color: TEXT_GRAY, marginTop: 4, marginBottom: 8 },
-  ueIntro: { fontSize: 11, color: TEXT_DARK, marginTop: 4, marginBottom: 2 },
-  ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 12 },
-  infoGrid: { width: '82%', marginBottom: 10 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, width: '100%' },
-  infoCell: { flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
-  infoCellHl: { flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
-  cellContent: { alignItems: 'center' },
-  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 13, color: '#0D1B2A', fontWeight: 'bold', textAlign: 'center' },
-  sigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 12, paddingHorizontal: 20 },
-  sigCol: { width: '28%', alignItems: 'center' },
-  sigCenter: { width: '28%', alignItems: 'center', justifyContent: 'center' },
-  sigSpace: { height: 45, borderBottom: `1pt solid ${SIG_LINE}`, width: '100%', marginBottom: 6 },
-  sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
-  sigName: { fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
-  footer: { marginTop: 'auto', paddingTop: 6, borderTop: `1pt solid ${GOLD}`, textAlign: 'center', width: '100%' },
-  footerText: { fontSize: 8, color: TEXT_FOOTER, textAlign: 'center' },
-})
-
-export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
-  const s = buildSharedData(data)
   return (
     <Document>
-      <Page size={[842, 595]} style={landscapeStyles.page}>
-        <WatermarkBackground config={data.watermarkConfig} />
-        <OriginalWatermark config={data.watermarkConfig} />
-        <CornerOrnaments />
-        <TripleBorder />
-        <View style={landscapeStyles.content}>
-          {/* QR Code — top-right */}
-          <View style={{ position: 'absolute', top: -10, right: -10, zIndex: 20 }}>
+      <Page size={[842, 595]} style={styles.page}>
+        {/* Bordure double */}
+        <View style={styles.borderOuter} />
+        <View style={styles.borderInner} />
+
+        {/* Contenu */}
+        <View style={styles.content}>
+          {/* En-tête établissement */}
+          <View style={styles.header}>
+            <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
+            {etabLocation && <Text style={styles.etabLocation}>{etabLocation}</Text>}
+          </View>
+
+          {/* Titre */}
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>CERTIFICAT</Text>
+            <Text style={styles.subtitle}>DE RÉUSSITE</Text>
+          </View>
+
+          {/* Losange décoratif */}
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.diamond} />
+          </View>
+
+          {/* "Décerné à" + nom */}
+          <Text style={styles.awardedTo}>Décerné à</Text>
+          <Text style={styles.studentName}>{capitalizeName(data.etudiantNom)}</Text>
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.nameUnderline} />
+          </View>
+
+          {/* Description */}
+          <Text style={styles.description}>
+            a réussi l'évaluation
+          </Text>
+          <Text style={styles.intitule}>{intituleText}</Text>
+          <Text style={styles.description}>
+            avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
+            {data.creditsECTS && (
+              <Text> · {data.creditsECTS} crédits ECTS</Text>
+            )}
+          </Text>
+
+          {/* Mention */}
+          {data.mention && (
+            <Text style={styles.mention}>MENTION : {data.mention}</Text>
+          )}
+
+          {/* Grille d'informations */}
+          <View style={styles.infoGrid}>
+            <InfoCell label="Filière" value={data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom} />
+            <InfoCell label="Unité d'enseignement" value={`${data.ueCode} — ${data.ueNom}`} isLastCol />
+            <InfoCell label="Niveau" value={data.etudiantNiveau || '—'} />
+            <InfoCell label="Session" value={getSessionLabel(data.sessionType)} isLastCol />
+            <InfoCell label="Année académique" value={data.anneeAcademique || '—'} isLastRow />
+            <InfoCell label="Matricule" value={data.etudiantMatricule || '—'} isLastRow isLastCol />
+          </View>
+
+          {/* Pied de page : date | QR code | signature */}
+          <View style={styles.footer}>
+            {/* Date */}
+            <View style={styles.footerLeft}>
+              <Text style={styles.dateLabel}>Date d'émission</Text>
+              <Text style={styles.dateValue}>{formatDate(data.dateEmission)}</Text>
+            </View>
+
+            {/* QR code de vérification */}
             <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
-          </View>
-          <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
-          <Text style={landscapeStyles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
-          {s.location ? <Text style={landscapeStyles.universityCity}>{s.location}</Text> : null}
-          <Text style={landscapeStyles.titleMain}>CERTIFICAT DE RÉUSSITE</Text>
-          <Text style={landscapeStyles.titleSub}>{s.subtitle}</Text>
-          <Diamonds />
-          <Text style={landscapeStyles.intro}>Nous certifions par la présente que</Text>
-          <Text style={landscapeStyles.studentName}>{s.studentName}</Text>
-          {s.studentParts.length > 0 ? <Text style={landscapeStyles.studentInfo}>{s.studentParts.join('  •  ')}</Text> : null}
-          <Text style={landscapeStyles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
-          <Text style={landscapeStyles.ueName}>{data.ueNom}</Text>
-          <View style={landscapeStyles.infoGrid}>
-            <InfoGrid
-              infos={s.infos}
-              columns={3}
-              cellStyle={landscapeStyles.infoCell}
-              cellHlStyle={landscapeStyles.infoCellHl}
-              contentStyle={landscapeStyles.cellContent}
-              labelStyle={landscapeStyles.label}
-              valueStyle={landscapeStyles.value}
-              rowStyle={landscapeStyles.infoRow}
-            />
-          </View>
-          {/* Jauge de note */}
-          <View style={{ marginTop: 4, marginBottom: 8 }}>
-            <GradeBar note={data.noteFinale} max={20} />
-          </View>
-          <View style={landscapeStyles.sigRow}>
-            <View style={landscapeStyles.sigCol}>
-              <SignatureBlock role="Signature de l'enseignant" />
-            </View>
-            <View style={landscapeStyles.sigCenter}>
-              <Seal />
-            </View>
-            <View style={landscapeStyles.sigCol}>
-              <SignatureBlock name={data.responsableNom} role="Le Responsable pédagogique" />
+
+            {/* Signature */}
+            <View style={styles.footerRight}>
+              <View style={styles.signatureLine} />
+              <Text style={styles.signatureName}>{data.responsableNom || 'Le Responsable'}</Text>
+              <Text style={styles.signatureRole}>Responsable de l'établissement</Text>
             </View>
           </View>
-          <View style={landscapeStyles.footer}>
-            <Text style={landscapeStyles.footerText}>{s.footerText}</Text>
-          </View>
+        </View>
+
+        {/* Footer établissement */}
+        <View style={styles.etabFooter}>
+          <View style={styles.etabFooterLine} />
+          <Text style={styles.etabFooterText}>
+            {data.etablissementNom} · Certificat émis via SECT — Plateforme d'évaluation IA
+          </Text>
         </View>
       </Page>
     </Document>
   )
 }
 
-// ═══ Portrait (595×842) ═══
+// ═══ Document (Portrait) ═══
 
-const portraitStyles = StyleSheet.create({
-  page: { width: 595, height: 842, backgroundColor: WHITE, position: 'relative' },
-  content: { position: 'absolute', top: '50pt', left: '42pt', right: '42pt', bottom: '50pt', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  universityName: { fontSize: 10, color: GOLD, letterSpacing: 3, marginBottom: 1 },
-  universityCity: { fontSize: 9, color: TEXT_GRAY, marginBottom: 6 },
-  titleMain: { fontFamily: 'PlayfairDisplay', fontSize: 30, color: NAVY, letterSpacing: 4, marginVertical: 4 },
-  titleSub: { fontFamily: 'PlayfairDisplay', fontSize: 20, color: TEXT_DARK, letterSpacing: 2, marginBottom: 8 },
-  intro: { fontSize: 12, color: TEXT_DARK, fontStyle: 'italic', marginTop: 8, marginBottom: 8 },
-  studentName: { fontFamily: 'GreatVibes', fontSize: 38, color: '#1A1A1A', textAlign: 'center', marginVertical: 6, lineHeight: 1.1 },
-  studentInfo: { fontSize: 10, color: TEXT_GRAY, marginTop: 4, marginBottom: 8 },
-  ueIntro: { fontSize: 11, color: TEXT_DARK, marginTop: 4, marginBottom: 2 },
-  ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 14 },
-  infoGrid: { width: '88%', marginBottom: 14 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, width: '100%' },
-  infoCell: { flex: 1, marginHorizontal: 4, padding: 10, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
-  infoCellHl: { flex: 1, marginHorizontal: 4, padding: 10, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
-  cellContent: { alignItems: 'center' },
-  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 13, color: '#0D1B2A', fontWeight: 'bold', textAlign: 'center' },
-  sigContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 14, paddingHorizontal: 10 },
-  sigBlock: { width: '28%', alignItems: 'center' },
-  sigCenter: { width: '28%', alignItems: 'center', justifyContent: 'center' },
-  sigSpace: { height: 45, borderBottom: `1pt solid ${SIG_LINE}`, width: '100%', marginBottom: 6 },
-  sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
-  sigName: { fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
-  footer: { marginTop: 'auto', paddingTop: 6, borderTop: `1pt solid ${GOLD}`, textAlign: 'center', width: '100%' },
-  footerText: { fontSize: 8, color: TEXT_FOOTER, textAlign: 'center' },
-})
+function CertificatePortrait({ data }: { data: CertificatPDFData }) {
+  const etabLocation = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
+  const intituleText = data.intitule || `${data.ueNom} (${data.ueCode})`
 
-export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
-  const s = buildSharedData(data)
   return (
     <Document>
-      <Page size={[595, 842]} style={portraitStyles.page}>
-        <WatermarkBackground config={data.watermarkConfig} />
-        <OriginalWatermark config={data.watermarkConfig} />
-        <CornerOrnaments />
-        <TripleBorder />
-        <View style={portraitStyles.content}>
-          {/* QR Code — top-right */}
-          <View style={{ position: 'absolute', top: -8, right: -8, zIndex: 20 }}>
+      <Page size={[595, 842]} style={styles.page}>
+        {/* Bordure double */}
+        <View style={styles.borderOuter} />
+        <View style={styles.borderInner} />
+
+        {/* Contenu */}
+        <View style={[styles.content, { paddingHorizontal: 55, paddingVertical: 60 }]}>
+          {/* En-tête établissement */}
+          <View style={styles.header}>
+            <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
+            {etabLocation && <Text style={styles.etabLocation}>{etabLocation}</Text>}
+          </View>
+
+          {/* Titre */}
+          <View style={styles.titleSection}>
+            <Text style={[styles.title, { fontSize: 36 }]}>CERTIFICAT</Text>
+            <Text style={styles.subtitle}>DE RÉUSSITE</Text>
+          </View>
+
+          {/* Losange décoratif */}
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.diamond} />
+          </View>
+
+          {/* "Décerné à" + nom */}
+          <Text style={styles.awardedTo}>Décerné à</Text>
+          <Text style={[styles.studentName, { fontSize: 32 }]}>{capitalizeName(data.etudiantNom)}</Text>
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.nameUnderline} />
+          </View>
+
+          {/* Description */}
+          <Text style={styles.description}>
+            a réussi l'évaluation
+          </Text>
+          <Text style={styles.intitule}>{intituleText}</Text>
+          <Text style={styles.description}>
+            avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
+            {data.creditsECTS && (
+              <Text> · {data.creditsECTS} crédits ECTS</Text>
+            )}
+          </Text>
+
+          {/* Mention */}
+          {data.mention && (
+            <Text style={styles.mention}>MENTION : {data.mention}</Text>
+          )}
+
+          {/* Grille d'informations */}
+          <View style={[styles.infoGrid, { marginHorizontal: 0 }]}>
+            <InfoCell label="Filière" value={data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom} />
+            <InfoCell label="Unité d'enseignement" value={`${data.ueCode} — ${data.ueNom}`} isLastCol />
+            <InfoCell label="Niveau" value={data.etudiantNiveau || '—'} />
+            <InfoCell label="Session" value={getSessionLabel(data.sessionType)} isLastCol />
+            <InfoCell label="Année académique" value={data.anneeAcademique || '—'} isLastRow />
+            <InfoCell label="Matricule" value={data.etudiantMatricule || '—'} isLastRow isLastCol />
+          </View>
+
+          {/* Pied de page */}
+          <View style={styles.footer}>
+            <View style={styles.footerLeft}>
+              <Text style={styles.dateLabel}>Date d'émission</Text>
+              <Text style={styles.dateValue}>{formatDate(data.dateEmission)}</Text>
+            </View>
             <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
-          </View>
-          <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
-          <Text style={portraitStyles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
-          {s.location ? <Text style={portraitStyles.universityCity}>{s.location}</Text> : null}
-          <Text style={portraitStyles.titleMain}>CERTIFICAT DE RÉUSSITE</Text>
-          <Text style={portraitStyles.titleSub}>{s.subtitle}</Text>
-          <Diamonds />
-          <Text style={portraitStyles.intro}>Nous certifions par la présente que</Text>
-          <Text style={portraitStyles.studentName}>{s.studentName}</Text>
-          {s.studentParts.length > 0 ? <Text style={portraitStyles.studentInfo}>{s.studentParts.join('  •  ')}</Text> : null}
-          <Text style={portraitStyles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
-          <Text style={portraitStyles.ueName}>{data.ueNom}</Text>
-          <View style={portraitStyles.infoGrid}>
-            <InfoGrid
-              infos={s.infos}
-              columns={2}
-              cellStyle={portraitStyles.infoCell}
-              cellHlStyle={portraitStyles.infoCellHl}
-              contentStyle={portraitStyles.cellContent}
-              labelStyle={portraitStyles.label}
-              valueStyle={portraitStyles.value}
-              rowStyle={portraitStyles.infoRow}
-            />
-          </View>
-          {/* Jauge de note */}
-          <View style={{ marginTop: 6, marginBottom: 10 }}>
-            <GradeBar note={data.noteFinale} max={20} />
-          </View>
-          <View style={portraitStyles.sigContainer}>
-            <View style={portraitStyles.sigBlock}>
-              <SignatureBlock role="Signature de l'enseignant" />
-            </View>
-            <View style={portraitStyles.sigCenter}>
-              <Seal />
-            </View>
-            <View style={portraitStyles.sigBlock}>
-              <SignatureBlock name={data.responsableNom} role="Le Responsable pédagogique" />
+            <View style={styles.footerRight}>
+              <View style={styles.signatureLine} />
+              <Text style={styles.signatureName}>{data.responsableNom || 'Le Responsable'}</Text>
+              <Text style={styles.signatureRole}>Responsable</Text>
             </View>
           </View>
-          <View style={portraitStyles.footer}>
-            <Text style={portraitStyles.footerText}>{s.footerText}</Text>
-          </View>
+        </View>
+
+        {/* Footer établissement */}
+        <View style={[styles.etabFooter, { left: 55, right: 55 }]}>
+          <View style={styles.etabFooterLine} />
+          <Text style={styles.etabFooterText}>
+            {data.etablissementNom} · Certificat émis via SECT
+          </Text>
         </View>
       </Page>
     </Document>
   )
 }
 
-// ═══ Dispatcher ═══
+// ═══ Exports ═══
 
 export function CertificateDocument({ data, orientation = 'landscape' }: { data: CertificatPDFData; orientation?: 'landscape' | 'portrait' }) {
   return orientation === 'portrait' ? <CertificatePortrait data={data} /> : <CertificateLandscape data={data} />

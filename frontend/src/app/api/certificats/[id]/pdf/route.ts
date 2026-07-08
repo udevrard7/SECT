@@ -18,6 +18,7 @@
  * Sécurité : le token n'est jamais exposé côté client (route server-side).
  */
 import { NextRequest, NextResponse } from 'next/server'
+import QRCode from 'qrcode'
 import { renderCertificatPDF, type CertificatPDFData } from '@/lib/pdf/certificat-pdf-react'
 
 export const runtime = 'nodejs'
@@ -71,6 +72,21 @@ export async function GET(
 
     // 3. Mapper vers CertificatPDFData
     const origin = req.nextUrl.origin
+    const verificationUrl = `${origin}/verify/${cert.codeVerification || ''}`
+
+    // Générer le QR code de vérification (data URI PNG)
+    let qrCodeDataUri: string | null = null
+    try {
+      qrCodeDataUri = await QRCode.toDataURL(verificationUrl, {
+        width: 200,
+        margin: 1,
+        color: { dark: '#1B3A5C', light: '#FFFFFF' },
+        errorCorrectionLevel: 'M',
+      })
+    } catch {
+      // Si la génération échoue, le certificat affichera juste le code texte
+    }
+
     const pdfData: CertificatPDFData = {
       codeVerification: cert.codeVerification || '',
       type: cert.type || 'STANDARD',
@@ -92,8 +108,9 @@ export async function GET(
       sessionType: cert.sessionType || 'NORMALE',
       anneeAcademique: cert.anneeAcademique ?? null,
       dateEmission: cert.dateEmission || new Date().toISOString(),
-      verificationUrl: `${origin}/verify/${cert.codeVerification || ''}`,
+      verificationUrl,
       statut: cert.statut || 'EMIS',
+      qrCodeDataUri,
     }
 
     // 4. Générer le PDF
