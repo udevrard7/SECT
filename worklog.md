@@ -13356,3 +13356,64 @@ Stage Summary:
 - Aucune modif backend. Aucune régression (UPDATE/DELETE/invitations non touchés).
 - ESLint + tsc : 0 nouvelle erreur sur le fichier modifié.
 - Commits : 4481e27 (fix) + 3163bed (worklog) poussés sur origin/main.
+
+---
+Task ID: SECT-BUG1-FIX-VALIDATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix + validation BUG #1 — validation email silencieuse (feedback inline + ordre)
+
+Diagnostic affiné (re-test Agent Browser avant de coder) :
+Le BUG #1 tel que décrit dans l'audit ("aucune validation visible") était partiellement
+inexact. Le re-test propre a montré que la validation existait déjà via toasts :
+  - Email vide → toast "Champs manquants" ✓ (le grep d'audit ne matchait pas "manquants")
+  - Email invalide + pas d'étab → toast "Établissement requis" ✓ (check étab avant email)
+  - Email invalide + étab sélectionné → POST → backend 400 → toast "Erreur — email invalide" ✓
+
+MAIS 3 lacunes UX réelles persistaient :
+  1. Pas de validation inline (pas de bordure rouge ni message sous le champ)
+  2. Ordre sous-optimal : l'admin devait remplir l'étab AVANT de découvrir l'email
+     invalide (aller-retour inutile)
+  3. Toast générique "Erreur — email invalide" peu actionable
+
+Fix appliqué (commit efb9295) :
+Fichier: frontend/src/components/utilisateurs/utilisateurs-page.tsx (+66 lignes)
+- Helper isValidEmail() côté client avec la MÊME regex que le backend Go
+  (^[^\s@]+@[^\s@]+\.[^\s@]+$ → local@domain.tld)
+- State emailError pour feedback inline persistant
+- Validation format email au submit dans les 3 modes (direct, invitation, edit),
+  placée AVANT le check établissement (évite l'aller-retour inutile)
+- Toast amélioré : "Email invalide — Adresse email invalide (format attendu :
+  nom@universite.fr)" au lieu du générique "Erreur — email invalide"
+- Feedback inline sous le champ : message rouge + icône AlertCircle + role="alert"
+  (accessibilité) + aria-invalid sur l'input + bordure destructive sur les champs
+  avec icône Mail (direct + invitation)
+- Clear emailError au onChange (reset visuel dès que l'utilisateur corrige)
+- Reset emailError à l'ouverture du dialog (resetForm + handleOpenEdit)
+
+Aucune modif backend (la validation isValidEmail côté Go reste en place comme filet
+de sécurité). Aucune régression sur les autres validations (champs vides, étab requis).
+
+Validation E2E Agent Browser (post-déploiement Vercel, commit efb9295) :
+1. Mode direct, email "invalid-email" SANS étab → toast "Email invalide" +
+   inline error + aria-invalid sur direct-email ✓ (avant le fix : "Établissement requis"
+   se déclenchait avant → l'admin devait sélectionner l'étab pour découvrir l'email invalide)
+2. Clear erreur au onChange (email valide) → hasInlineError=false, ariaInvalid=false ✓
+3. Happy path (email valide + étab) → POST 201 + dialog "Compte créé avec succès" +
+   toast "Utilisateur créé" ✓ (pas de régression, BUG #2 fix toujours actif)
+4. Mode invitation, email "pas-un-email" → toast + inline error + aria-invalid sur
+   invite-email ✓
+5. Mode édition, email "email-modifie-invalide" → toast + inline error + aria-invalid
+   sur user-email ✓
+6. Mode édition, email VALIDE → pas d'erreur + toast "Utilisateur modifié" ✓ (régression)
+7. 0 erreur console/runtime sur toute la session ✓
+
+Nettoyage : le user de test "Test Validation" a été supprimé via l'UI (flux DELETE
+re-validé). La liste est revenue à 1 user (Mme Keita).
+
+Stage Summary:
+- BUG #1 CORRIGÉ et VALIDÉ en production. Les 3 modes (direct, invitation, edit)
+  bénéficient maintenant d'une validation email côté client avec feedback inline
+  (message rouge + icône + aria-invalid) + toast clair et actionable + ordre de
+  validation optimal (email vérifié avant l'établissement).
+- Aucune modif backend. Aucune régression. ESLint + tsc propres.
+- Captures: /home/z/sect-screenshots/bug1-fixed.png
