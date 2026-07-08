@@ -13294,3 +13294,65 @@ Stage Summary:
 - B-complète VALIDÉE en production: admin voit bien le responsable sans accès étab.
 - 6 améliorations UX proposées (dont 2 déjà implémentées ailleurs à réutiliser).
 - Captures: /home/z/sect-screenshots/u0{1..6}-*.png (6 PNG).
+
+---
+Task ID: SECT-BUG2-FIX-VALIDATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix + validation BUG #2 — liste ne se rafraîchit pas après création (recherche active)
+
+Diagnostic affiné (re-test Agent Browser avant de coder) :
+Le BUG #2 décrit lors de l'audit était en réalité un bug UX CONDITIONNEL, pas un
+bug technique. Le flux de création fonctionnait :
+  POST 201 → dialog create fermé → dialog DirectResult "Compte créé avec succès"
+  ouvert (avec mot de passe temporaire) → refreshUsers() invalidait le cache →
+  la liste se rafraîchissait avec le nouveau user.
+
+MAIS : si une recherche était active au moment de la création (ex: "zzznonexistent"
+pendant l'audit), la queryKey ['utilisateurs', 'zzznonexistent', ...] restait
+filtrée → le refetch retournait 0 résultat → la liste affichait "Aucun responsable
+trouvé" → l'admin pensait que la création avait échoué.
+
+Re-test propre (sans recherche active) : POST 201 → dialog DirectResult ouvert →
+rowCount=2 → tout fonctionnait. Confirmation que le bug est conditionnel à la
+recherche active.
+
+Fix appliqué (commit 4481e27) :
+Fichier: frontend/src/components/utilisateurs/utilisateurs-page.tsx
+Mode: 'direct' de handleSubmit (lignes 620-629)
+  setSearch('')          // reset recherche → queryKey devient ['utilisateurs','',...]
+  setPage(1)             // reset pagination
+  toast.success('Utilisateur créé', { description: `${formName} a été créé avec succès.` })
+  refreshUsers()         // invalidateQueries → refetch avec queryKey vide
+
+Le toast.success a été ajouté car le dialog DirectResult seul disparaît sans trace
+à la fermeture. UPDATE/DELETE n'avaient pas ce bug (le user existe déjà et matche
+la recherche). Mode 'invitation' non concerné (l'invitation n'apparaît pas dans la
+liste users).
+
+Validation E2E Agent Browser (post-déploiement Vercel, commit 4481e27) :
+Scénario reproduit EXACTement le bug initial :
+  1. Recherche "zzzfiltre-actif" → liste vide ("Aucun responsable") ✓ (bug reproduit)
+  2. Ouverture dialog create → mode direct → remplissage formulaire
+  3. Submit (recherche "zzzfiltre-actif" encore active avant clic)
+  4. APRÈS submit :
+     - Toast "Utilisateur créé — Bug2 Verif Fix a été créé avec succès." ✓
+     - Recherche reset à "" ✓ (AVANT le fix restait à "zzzfiltre-actif")
+     - Dialog "Compte créé avec succès" ouvert ✓
+  5. Fermeture dialog → liste affiche 3 users (dont "Bug2 Verif Fix") ✓
+  6. 0 erreur console/runtime ✓
+
+Nettoyage : les 2 users de test (Bug2 Test, Bug2 Verif Fix) ont été supprimés via
+l'UI (flux DELETE validé au passage). La liste est revenue à 1 user (Mme Keita).
+
+Captures :
+  /home/z/sect-screenshots/bug2-01-initial.png (avant — recherche active = liste vide)
+  /home/z/sect-screenshots/bug2-02-direct-result.png (dialog DirectResult)
+  /home/z/sect-screenshots/bug2-03-fixed.png (après — liste avec nouveau user)
+
+Stage Summary:
+- BUG #2 CORRIGÉ et VALIDÉ en production. Le scénario exact qui causait le bug
+  (création avec recherche active) fonctionne maintenant : toast + reset recherche
+  + liste rafraîchie avec le nouveau user.
+- Aucune modif backend. Aucune régression (UPDATE/DELETE/invitations non touchés).
+- ESLint + tsc : 0 nouvelle erreur sur le fichier modifié.
+- Commits : 4481e27 (fix) + 3163bed (worklog) poussés sur origin/main.
