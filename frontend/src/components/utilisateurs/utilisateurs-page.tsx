@@ -38,6 +38,7 @@ import {
   ArrowDownRight,
   ArrowUpDown,
   Download,
+  Save,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { ErrorState } from '@/components/shared/error-state'
@@ -85,6 +86,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { PulseSkeleton } from '@/components/ds'
@@ -1353,8 +1355,11 @@ export function UtilisateursPage() {
                               </>
                             )}
                           </DropdownMenuItem>
+                          {/* UX-6 (audit E2E) : séparateur avant l'action destructive
+                              pour éviter le misclick Supprimer au lieu de Désactiver. */}
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            className="text-destructive"
+                            className="text-destructive focus:text-destructive"
                             onClick={() => setDeleteTarget(u)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -2059,8 +2064,17 @@ export function UtilisateursPage() {
                   onClick={handleSubmit}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Enregistrer
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Enregistrement...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Enregistrer
+                    </>
+                  )}
                 </Button>
               </>
             )}
