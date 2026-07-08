@@ -93,6 +93,10 @@ export function MesEtudiantsPage() {
   const [downloading, setDownloading] = useState<'' | 'csv' | 'pdf'>('')
   const [selectedEtudiant, setSelectedEtudiant] = useState<Etudiant | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Amélioration filtres : tri des colonnes + statut connexion
+  const [sortBy, setSortBy] = useState<'name' | 'matricule' | 'nbEpreuves' | 'derniereConnexion'>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [releveDownloadingId, setReleveDownloadingId] = useState<string | null>(null)
 
   // Debounce recherche 350ms
   useEffect(() => {
@@ -148,6 +152,67 @@ export function MesEtudiantsPage() {
   const loading = etudiantsQuery.isLoading
   const error = etudiantsQuery.error ? (etudiantsQuery.error as Error).message : null
   const refreshEtudiants = () => queryClient.invalidateQueries({ queryKey: ['mes-etudiants', user?.id] })
+
+  // Amélioration filtres : tri côté client (pattern réutilisé de /utilisateurs)
+  const sortedEtudiants = useMemo(() => {
+    const sorted = [...etudiants].sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'name':
+          cmp = a.name.localeCompare(b.name, 'fr-FR')
+          break
+        case 'matricule':
+          cmp = (a.matricule ?? '').localeCompare(b.matricule ?? '', 'fr-FR')
+          break
+        case 'nbEpreuves':
+          cmp = a.nbEpreuves - b.nbEpreuves
+          break
+        case 'derniereConnexion':
+          const ta = a.derniereConnexion ? new Date(a.derniereConnexion).getTime() : 0
+          const tb = b.derniereConnexion ? new Date(b.derniereConnexion).getTime() : 0
+          cmp = ta - tb
+          break
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [etudiants, sortBy, sortDir])
+
+  const handleSort = (key: typeof sortBy) => {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(key)
+      setSortDir('asc')
+    }
+  }
+
+  // Téléchargement du relevé individuel (bouton par ligne)
+  const handleDownloadReleve = async (etu: Etudiant) => {
+    setReleveDownloadingId(etu.id)
+    try {
+      const res = await fetch(`/api/enseignant/releve-notes-pdf?etudiantId=${etu.id}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Échec')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const safeName = etu.name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
+      a.download = `releve_notes_${safeName}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Relevé de notes téléchargé', {
+        description: `Relevé individuel de ${etu.name}`,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec du téléchargement')
+    } finally {
+      setReleveDownloadingId(null)
+    }
+  }
 
   // Filtres remplis ?
   const filtersReady = !!filiereFilter && !!niveauFilter
@@ -428,16 +493,60 @@ export function MesEtudiantsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="font-display">Étudiant</TableHead>
-                      <TableHead className="font-display">Matricule</TableHead>
+                      <TableHead className="font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('name')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Étudiant
+                          <span className="text-[10px] text-muted-foreground">
+                            {sortBy === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="font-display">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('matricule')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Matricule
+                          <span className="text-[10px] text-muted-foreground">
+                            {sortBy === 'matricule' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </button>
+                      </TableHead>
                       <TableHead className="font-display hidden md:table-cell">UEs</TableHead>
-                      <TableHead className="font-display text-center hidden lg:table-cell">Épreuves</TableHead>
-                      <TableHead className="font-display hidden xl:table-cell">Dernière connexion</TableHead>
-                      <TableHead className="font-display text-right">Détail</TableHead>
+                      <TableHead className="font-display text-center hidden lg:table-cell">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('nbEpreuves')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Épreuves
+                          <span className="text-[10px] text-muted-foreground">
+                            {sortBy === 'nbEpreuves' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="font-display hidden xl:table-cell">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('derniereConnexion')}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                        >
+                          Dernière connexion
+                          <span className="text-[10px] text-muted-foreground">
+                            {sortBy === 'derniereConnexion' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="font-display text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {etudiants.map((etu, i) => (
+                    {sortedEtudiants.map((etu, i) => (
                       <motion.tr
                         key={etu.id}
                         initial={{ opacity: 0, x: -8 }}
@@ -489,16 +598,34 @@ export function MesEtudiantsPage() {
                             : '—'}
                         </TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenDetail(etu)}
-                            className="gap-1.5 ds-press"
-                            aria-label={`Voir les notes de ${etu.name}`}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">Voir notes</span>
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenDetail(etu)}
+                              className="gap-1.5 ds-press"
+                              aria-label={`Voir les notes de ${etu.name}`}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Voir notes</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownloadReleve(etu)}
+                              disabled={releveDownloadingId === etu.id}
+                              className="gap-1.5 ds-press"
+                              aria-label={`Relevé PDF de ${etu.name}`}
+                              title="Relevé de notes PDF institutionnel"
+                            >
+                              {releveDownloadingId === etu.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <FileText className="h-3.5 w-3.5" />
+                              )}
+                              <span className="hidden lg:inline">Relevé PDF</span>
+                            </Button>
+                          </div>
                         </TableCell>
                       </motion.tr>
                     ))}
