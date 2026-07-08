@@ -185,6 +185,10 @@ interface ModeleEpreuve {
  hasContenuFormat: boolean
  createdAt: string
  updatedAt: string
+ // Dette technique TS (audit) : index signature pour compatibilité avec
+ // GroupableEpreuve (epreuve-grouped-view.tsx). ModeleEpreuve est structurellement
+ // compatible mais manquait l'index signature [key: string]: unknown.
+ [key: string]: unknown
 }
 
 // For the Sessions view
@@ -601,8 +605,8 @@ function ModelesTab() {
    titre: epreuve.titre,
    description: epreuve.description,
    duree: epreuve.duree,
-   dateDebut: epreuve.dateDebut,
-   dateFin: epreuve.dateFin,
+   dateDebut: epreuve.updatedAt,
+   dateFin: epreuve.updatedAt,
    noteTotal: epreuve.noteTotal ?? 20,
    etablissement: { nom: 'SECT', logo: null, ville: null, pays: null },
    filiere: epreuve.filiere ? { nom: epreuve.filiere.nom, code: epreuve.filiere.code ?? null } : null,
@@ -703,7 +707,7 @@ function ModelesTab() {
  {(epreuve.sourceDocuments ?? []).length > 0 && (
  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
  <FileText className="h-3 w-3" />
- {epreuve.sourceDocuments.map((d) => d.nomFichier).join(',')}
+ {(epreuve.sourceDocuments ?? []).map((d) => d.nomFichier).join(',')}
  </div>
  )}
 
