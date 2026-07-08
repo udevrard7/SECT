@@ -617,6 +617,15 @@ export function UtilisateursPage() {
         setDirectResultDialogOpen(true)
         setCopiedCredentials(false)
 
+        // BUG #2 fix (audit E2E) : reset recherche + pagination pour que le nouveau
+        // user apparaisse dans la liste. Avant, si une recherche était active au
+        // moment de la création (ex: "zzz"), le nouveau user ne matchait pas le
+        // filtre → la liste restait vide → l'admin pensait que la création avait
+        // échoué. + toast.success pour feedback persistant (le dialog DirectResult
+        // seul disparaît à la fermeture sans trace).
+        setSearch('')
+        setPage(1)
+        toast.success('Utilisateur créé', { description: `${formName.trim()} a été créé avec succès.` })
         refreshUsers()
       } catch (err) {
         toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
