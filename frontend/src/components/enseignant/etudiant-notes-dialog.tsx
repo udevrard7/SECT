@@ -15,8 +15,10 @@
  * les statuts, framer-motion pour l'entrée, score-circle pour la moyenne.
  */
 
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
@@ -24,8 +26,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { PulseSkeleton } from '@/components/ds'
-import { Mail, GraduationCap, BookOpen, AlertCircle, Award, Loader2 } from 'lucide-react'
+import { Mail, GraduationCap, BookOpen, AlertCircle, Award, Loader2, FileText, Download } from 'lucide-react'
 
 // ─── Types ───
 
@@ -80,6 +83,35 @@ const STATUT_LABELS: Record<string, { label: string; variant: 'default' | 'secon
 // ─── Composant ───
 
 export function EtudiantNotesDialog({ etudiant, open, onOpenChange }: Props) {
+  const [downloadingReleve, setDownloadingReleve] = useState(false)
+
+  const handleDownloadReleve = async () => {
+    if (!etudiant) return
+    setDownloadingReleve(true)
+    try {
+      const res = await fetch(`/api/enseignant/releve-notes-pdf?etudiantId=${etudiant.id}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Échec')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const safeName = etudiant.name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
+      a.download = `releve_notes_${safeName}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Relevé de notes téléchargé', {
+        description: `Relevé individuel de ${etudiant.name}`,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec du téléchargement')
+    } finally {
+      setDownloadingReleve(false)
+    }
+  }
+
   const notesQuery = useQuery<{ resultats: SessionResultat[] }>({
     queryKey: ['etudiant-notes', etudiant?.id],
     queryFn: async () => {
@@ -298,6 +330,26 @@ export function EtudiantNotesDialog({ etudiant, open, onOpenChange }: Props) {
                 Notes normalisées sur 20. Les évaluations en cours ou abandonnées ne sont pas comptées dans la moyenne.
               </p>
             </motion.div>
+          )}
+
+          {/* Bouton Relevé PDF institutionnel */}
+          {!loading && !error && (
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleDownloadReleve}
+                disabled={downloadingReleve}
+                className="gap-1.5"
+              >
+                {downloadingReleve ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5" />
+                )}
+                <span>Relevé PDF</span>
+              </Button>
+            </div>
           )}
         </div>
       </DialogContent>
