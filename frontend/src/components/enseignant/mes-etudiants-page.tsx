@@ -96,7 +96,6 @@ export function MesEtudiantsPage() {
   // Amélioration filtres : tri des colonnes + statut connexion
   const [sortBy, setSortBy] = useState<'name' | 'matricule' | 'nbEpreuves' | 'derniereConnexion'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [releveDownloadingId, setReleveDownloadingId] = useState<string | null>(null)
 
   // Debounce recherche 350ms
   useEffect(() => {
@@ -184,33 +183,6 @@ export function MesEtudiantsPage() {
     } else {
       setSortBy(key)
       setSortDir('asc')
-    }
-  }
-
-  // Téléchargement du relevé individuel (bouton par ligne)
-  const handleDownloadReleve = async (etu: Etudiant) => {
-    setReleveDownloadingId(etu.id)
-    try {
-      const res = await fetch(`/api/enseignant/releve-notes-pdf?etudiantId=${etu.id}`)
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error ?? 'Échec')
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      const safeName = etu.name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
-      a.download = `releve_notes_${safeName}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success('Relevé de notes téléchargé', {
-        description: `Relevé individuel de ${etu.name}`,
-      })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Échec du téléchargement')
-    } finally {
-      setReleveDownloadingId(null)
     }
   }
 
@@ -517,7 +489,7 @@ export function MesEtudiantsPage() {
                           </span>
                         </button>
                       </TableHead>
-                      <TableHead className="font-display hidden md:table-cell">UEs</TableHead>
+                      {/* Colonne UEs masquée pour ergonomie (les UEs restent visibles dans le dialog détail) */}
                       <TableHead className="font-display text-center hidden lg:table-cell">
                         <button
                           type="button"
@@ -571,24 +543,6 @@ export function MesEtudiantsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="font-mono text-xs">{etu.matricule ?? '—'}</TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <div className="flex flex-wrap gap-1">
-                            {etu.ues && etu.ues.length > 0 ? (
-                              etu.ues.slice(0, 3).map((ue) => (
-                                <Badge key={ue.id} variant="outline" className="text-xs font-mono">
-                                  {ue.code}
-                                </Badge>
-                              ))
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                            {etu.ues && etu.ues.length > 3 && (
-                              <Badge variant="secondary" className="text-xs">
-                                +{etu.ues.length - 3}
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
                         <TableCell className="hidden lg:table-cell text-center font-mono tabular-nums text-sm">
                           {etu.nbEpreuves}
                         </TableCell>
@@ -598,34 +552,16 @@ export function MesEtudiantsPage() {
                             : '—'}
                         </TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenDetail(etu)}
-                              className="gap-1.5 ds-press"
-                              aria-label={`Voir les notes de ${etu.name}`}
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              <span className="hidden sm:inline">Voir notes</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownloadReleve(etu)}
-                              disabled={releveDownloadingId === etu.id}
-                              className="gap-1.5 ds-press"
-                              aria-label={`Relevé PDF de ${etu.name}`}
-                              title="Relevé de notes PDF institutionnel"
-                            >
-                              {releveDownloadingId === etu.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <FileText className="h-3.5 w-3.5" />
-                              )}
-                              <span className="hidden lg:inline">Relevé PDF</span>
-                            </Button>
-                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDetail(etu)}
+                            className="gap-1.5 ds-press"
+                            aria-label={`Voir les notes de ${etu.name}`}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Voir notes</span>
+                          </Button>
                         </TableCell>
                       </motion.tr>
                     ))}
