@@ -13922,3 +13922,39 @@ Validation E2E (Agent Browser, compte prof01@uniabidjan.com) :
 - Toast : 'Fiche de notes PDF téléchargée' ✓
 - VLM : bordure ✓, en-tête ✓, titre ✓, tableau notes colorées ✓, signatures ✓,
   footer ✓ — 'Design institutionnel et lisible'
+
+---
+Task ID: SECT-PDF-ETABLISSEMENT-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix nom + logo établissement + lisibilité fiche de notes
+
+Bug : le nom et logo de l'établissement ne s'affichaient pas sur la FICHE DE
+NOTES et le relevé individuel (en-tête montrait 'Établissement' par défaut).
+
+Cause : le usecase GetByID (etablissement.go L69) refusait les ENSEIGNANT et
+ETUDIANT avec 'rôle non autorisé' (seuls ADMIN + RESPONSABLE étaient autorisés).
+Les routes API fiche-notes-pdf et releve-notes-pdf appellent /api/etablissements/{id}
+pour récupérer le nom + logo → 403 pour l'enseignant → valeurs par défaut.
+
+Fix backend (usecase/etablissement.go GetByID) :
+- Les ENSEIGNANT et ETUDIANT peuvent maintenant consulter leur PROPRE établissement
+  (pour récupérer nom + logo dans les PDF). La RLS Etablissement_select filtre
+  déjà : 'NOT is_admin() AND id = current_etablissement_id()' → un enseignant ne
+  peut voir QUE son établissement (anti-IDOR).
+- ADMIN/RESPONSABLE : comportement inchangé.
+
+Amélioration lisibilité fiche de notes (fiche-notes-pdf-react.tsx) :
+- Largeur colonnes : Matricule 60→70, Nom 120→140, Moyenne 50→55
+- Tailles police : en-tête 7→8, épreuves 6.5→7.5, code UE 5.5→6.5, matricule 7→8,
+  nom 7.5→8.5, notes 7.5→8.5, moyenne 8→9
+- Padding vertical : en-tête 5→6, lignes 4→5
+
+Validation E2E (Agent Browser, compte prof01@uniabidjan.com) :
+- /api/etablissements/{id} : 200 OK avec nom + logo + ville + pays ✓
+- Fiche PDF : HTTP 200, 39KB, 1 page
+  VLM : nom 'The University of Abidjan' ✓, logo 'UNIABIDJAN' ✓, ville/pays ✓,
+  tableau lisible ✓, signatures ✓
+- Relevé individuel : HTTP 200, 41KB, 1 page
+  VLM : nom ✓, logo ✓, ville/pays ✓
+
+go build + vet EXIT 0. ESLint + tsc 0 erreur.
