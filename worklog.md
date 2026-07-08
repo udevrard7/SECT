@@ -13771,3 +13771,35 @@ Fix : réduction des espacements verticaux (76pt économisés) :
 Validé production : pdfinfo Pages: 1 ✓ + VLM 9/9 éléments visibles ✓
 
 Commit 961915d poussé sur origin/main, déployé sur Vercel.
+
+---
+Task ID: SECT-CERTIFICAT-PRINT-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix bouton Imprimer certificat — fenêtre d'impression navigateur
+
+Bug : le bouton 'Imprimer' sur la carte certificat ne déclenchait pas la fenêtre
+d'impression du navigateur. L'ancienne méthode utilisait un iframe caché
+(display:none) avec iframe.contentWindow.print(), mais Chrome/Firefox ne
+déclenchent pas onload de manière fiable pour les PDFs dans les iframes cachées,
+et contentWindow.print() est souvent bloqué.
+
+Fix (commit 554a632) : nouvelle approche robuste via window.open() + embed PDF :
+1. Fetch le blob PDF (/api/certificats/{id}/pdf)
+2. window.open('', '_blank') ouvre une nouvelle fenêtre
+3. Injecte un HTML minimal avec <embed type='application/pdf' src={blobURL}>
+4. Après chargement (window.onload + délai 800ms), window.print() lance la
+   fenêtre d'impression native du navigateur
+
+Fallback si popup bloquée :
+- window.open(url, '_blank') ouvre le PDF dans un nouvel onglet
+- Toast info : 'Utilisez Ctrl+P (Cmd+P sur Mac) pour imprimer.'
+
+Validation E2E Agent Browser (post-déploiement Vercel) :
+- Clic bouton Imprimer → fetch PDF déclenché (HTTP 200) ✓
+- window.open('', '_blank') appelé (nouvelle fenêtre) ✓
+- Toast 'Préparation de l'impression… La fenêtre d'impression va s'ouvrir.' ✓
+- Page courante intacte (pas de crash) ✓
+- 0 erreur console ✓
+
+En navigateur réel, la nouvelle fenêtre s'ouvre avec le PDF et lance
+automatiquement window.print() après 800ms → fenêtre d'impression native.
