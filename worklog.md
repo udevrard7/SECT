@@ -13540,3 +13540,52 @@ Stage Summary:
   cohérents avec le pattern /facturation.
 - Aucune modif backend. Aucune régression. ESLint + tsc propres.
 - Captures: /home/z/sect-screenshots/ux-01-tri-default.png, ux-02-mobile.png
+
+---
+Task ID: SECT-UX5-UX6-VALIDATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Améliorations UX-5 + UX-6 — spinner bouton edit + séparateur menu actions
+
+Contexte :
+Audit E2E (améliorations UX proposées) : finalisation des 2 dernières améliorations
+du module /utilisateurs.
+
+Fix appliqué (commit 0d3de4a, frontend uniquement, +17 lignes) :
+Fichier: frontend/src/components/utilisateurs/utilisateurs-page.tsx
+
+UX-5 — Spinner + disable sur le bouton Enregistrer (edit mode) :
+Les boutons 'Envoyer l'invitation' (mode invitation) et 'Créer le compte' (mode
+direct) avaient déjà le pattern complet (spinner + texte changeant + icône). Le
+bouton 'Enregistrer' (mode edit) était incomplet : spinner seul, pas de texte
+changeant, pas d'icône.
+Harmonisation : icône Save (état idle) + Loader2 + 'Enregistrement...' (état
+submitting) + disabled. Les 3 boutons submit suivent maintenant le même pattern
+cohérent (anti double-submit + feedback visuel clair).
+
+UX-6 — Séparateur + focus destructive dans le menu Actions :
+Les icônes distinctes étaient déjà présentes (Edit3 / PowerOff-Power / Trash2 +
+text-destructive sur Supprimer). Manquait : un séparateur visuel entre
+'Désactiver/Activer' et 'Supprimer' pour éviter le misclick sur l'action
+destructive (irréversible — cascade delete).
+Ajout : DropdownMenuSeparator entre les 2 items + focus:text-destructive pour
+feedback hover cohérent sur l'item Supprimer.
+
+Aucune modif backend. Aucune régression sur bugs #1/#2/#3 + UX-3/UX-4.
+
+Validation E2E Agent Browser (post-déploiement Vercel, commit 0d3de4a) :
+1. UX-6 séparateur : menu Actions ouvert → DOM contient 1 [role=separator] entre
+   'Désactiver' et 'Supprimer' (classe bg-border -mx-1 my-1 h-px) ✓
+2. UX-5 état idle : bouton 'Enregistrer' avec icône Save + non disabled ✓
+3. UX-5 état submitting (capturé pendant le POST) : btnText='Enregistrement...',
+   btnDisabled=true, hasSpinner=true, hasSaveIcon=false (Save remplacée par
+   Loader2 animate-spin) ✓
+4. UX-5 après submit : dialog fermé + toast 'Utilisateur modifié — Mme Keita
+   Safiya a été mis à jour.' ✓
+5. 0 erreur console/runtime sur toute la session ✓
+
+Stage Summary:
+- UX-5 + UX-6 LIVRÉES et VALIDÉES en production. Les 3 boutons submit (edit,
+  invitation, direct) suivent maintenant le même pattern spinner+icône+texte
+  changeant. Le menu Actions a un séparateur visuel avant l'action destructive.
+- Aucune modif backend. Aucune régression. ESLint + tsc propres.
+- Captures: /home/z/sect-screenshots/ux5-edit-spinner.png, ux6-menu-separator.png
