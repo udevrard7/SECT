@@ -13642,3 +13642,55 @@ Stage Summary:
 - Dette technique TypeScript ÉLIMINÉE. Le frontend est maintenant 100% tsc-clean.
 - 31 erreurs corrigées dans 9 fichiers, 0 régression (smoke test validé).
 - Commit 3cddd9d poussé sur origin/main, déployé sur Vercel.
+
+---
+Task ID: SECT-CERTIFICAT-REFONTE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Refonte complète du certificat téléchargeable (module /mes-certificats)
+
+Contexte :
+L'ancien certificat (660 lignes) était illisible : trop d'éléments SVG complexes
+(Seal avec 32 points + étoile calculée, CornerOrnaments, TripleBorder, GradeBar,
+WatermarkBackground, Diamonds) qui ne se rendaient pas correctement dans
+@react-pdf/renderer.
+
+Refonte complète (commits 33a6fe9 + 9537a84) :
+
+Ancien modèle supprimé, nouveau design institutionnel épuré :
+- Bordure double simple (gold + navy) — bordures CSS, pas de SVG
+- Typographie : PlayfairDisplay (titres), GreatVibes (nom élégant script), Inter (corps)
+- Layout paysage A4 (842×595pt) centré et aéré
+- 9 zones : bordure, en-tête établissement, titre CERTIFICAT, nom étudiant,
+  description avec note, mention, grille d'infos 3×2, pied de page (date+QR+signature),
+  footer établissement
+
+QR code de vérification (route API) :
+- Génération via qrcode.toDataURL (lib déjà installée, non utilisée avant)
+- Couleurs navy/white cohérentes avec le design
+- errorCorrectionLevel M
+- Affiché dans le pied de page central avec le code de vérification
+
+Bug de layout react-pdf corrigé (v2) :
+La v1 utilisait marginTop:'auto' et flexWrap avec width:'%' qui ne fonctionnent
+PAS dans @react-pdf/renderer (modèle de layout différent du CSS web). Résultat :
+le pied de page (date, QR code, signature) et la grille d'infos étaient
+silencieusement absents du PDF rendu.
+Fix : flexDirection:'row' avec colonnes de largeur fixe + InfoRow explicites.
+
+Validation visuelle (VLM sur PDF rendu → PNG 200dpi) :
+v1 : 4/9 éléments visibles (titre, nom, description, mention)
+     — grille, footer, QR code, date, signature ABSENTS
+v2 : 8/9 éléments visibles (footer établissement sous la bordure)
+v3 : 9/9 éléments VISIBLES ✓
+
+Validation technique :
+- ESLint : 0 erreur
+- tsc --noEmit : 0 erreur sur tout le frontend
+- PDF généré en local (29KB) avec données mock + QR code réel → rendu parfait
+
+Stage Summary:
+- Certificat refondu : ancien modèle complexe (660 lignes, SVG illisible) remplacé
+  par un design épuré institutionnel (290 lignes, 100% lisible, 9/9 zones visibles).
+- QR code de vérification ajouté (généré côté route API).
+- Aucun breaking change (interface CertificatPDFData conservée).
+- Capture : /home/z/sect-screenshots/certificat-refonte-v3.png
