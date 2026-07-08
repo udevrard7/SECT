@@ -13417,3 +13417,66 @@ Stage Summary:
   validation optimal (email vérifié avant l'établissement).
 - Aucune modif backend. Aucune régression. ESLint + tsc propres.
 - Captures: /home/z/sect-screenshots/bug1-fixed.png
+
+---
+Task ID: SECT-BUG3-FIX-VALIDATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix + validation BUG #3 — étendre B-complète aux invitations RESPONSABLE
+
+Contexte :
+Audit E2E (BUG #3) : POST /api/invitations retournait 500 'erreur interne' quand
+l'admin invitait un RESPONSABLE dans un étab sans EtablissementAccess. C'est le
+même problème que B-complète (migration 000052 sur User) mais sur la table
+Invitation.
+
+Diagnostic :
+- invitationRepo.Create utilise db.WithTx (claims standards, RLS active) → l'INSERT
+  est soumis à la policy Invitation_modify WITH CHECK.
+- La policy Invitation_modify n'autorisait l'admin que si etablissementId IS NULL
+  (impossible pour une invitation responsable) OU admin_has_etablissement_access()
+  = false ici → INSERT rejeté → 500.
+- Le usecase invitation.go n'a PAS de ValidateAccessForEtablissement pour l'admin
+  (il permet déjà d'inviter dans n'importe quel étab). Donc RLS seule suffisante
+  (contrairement au BUG #2 sur User qui nécessitait 2 couches).
+
+Fix appliqué (commit 2209a16) :
+Migration 000053 (up.sql + down.sql) — 2 policies Invitation recréées avec clause:
+  OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
+  - Invitation_select (USING) : admin voit toutes les invitations RESPONSABLE
+  - Invitation_modify (FOR ALL, USING + WITH CHECK) : admin crée/modifie/supprime
+    les invitations RESPONSABLE
+  Le down.sql restaure l'état pré-000053 (rollback propre).
+schema.sql référence : synchronisation des 2 policies Invitation.
+Aucune modif Go (build + vet inchangés).
+
+Validation:
+  - go build ./... EXIT 0 + go vet EXIT 0 (pas de modif Go)
+  - Migration appliquée sur Neon (schema_migrations v53, count=53, 0 dirty)
+  - Clauses B-complète: 2/2 policies vérifiées sur Neon
+  - Test logique RLS (évaluation expression avec SET LOCAL claims):
+    * is_admin()=true, admin_has_etablissement_access()=false (pas d'accès)
+    * RESPONSABLE → INSERT AUTORISÉ ✓ (B-complète étendue)
+    * ENSEIGNANT  → INSERT BLOQUÉ ✓ (RLS stricte conservée)
+    * ETUDIANT    → INSERT BLOQUÉ ✓ (RLS stricte conservée)
+
+Validation E2E Agent Browser (post-déploiement Render, commit 2209a16) :
+1. Login admin → /utilisateurs → dialog create → mode Invitation
+2. Remplissage: email 'invite-bug3-test@sect-test.com', nom 'Test Bug3 Invitation',
+   étab 'The University of Abidjan' (admin SANS accès), role RESPONSABLE
+3. Submit → POST /api/invitations HTTP 201 ✓ (AVANT le fix: 500)
+4. Panel 'Invitation envoyée avec succès' s'affiche avec le token + mention '7 jours'
+5. Section 'Invitations — 1 en attente' affiche la nouvelle invitation
+6. Annulation: bouton 'Annuler' → dialog confirmation 'Annuler l'invitation' →
+   'Confirmer l'annulation' → toast 'Invitation annulée' → compteur 0 ✓
+7. 0 erreur console/runtime sur toute la session ✓
+
+Nettoyage : l'invitation de test a été annulée via l'UI (flux cancel re-validé).
+Compteur invitations revenu à 0.
+
+Stage Summary:
+- BUG #3 CORRIGÉ et VALIDÉ en production. L'admin peut maintenant inviter des
+  RESPONSABLE dans n'importe quel étab sans EtablissementAccess (gestion PaaS).
+- Périmètre sécurité strict : seules les invitations RESPONSABLE sont concernées.
+  Les invitations ENSEIGNANT/ETUDIANT restent soumises à la RLS stricte.
+- B-complète maintenant cohérente sur les 2 tables concernées (User + Invitation).
+- Captures: /home/z/sect-screenshots/bug3-fixed-invitation.png
