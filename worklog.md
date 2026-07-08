@@ -13803,3 +13803,52 @@ Validation E2E Agent Browser (post-déploiement Vercel) :
 
 En navigateur réel, la nouvelle fenêtre s'ouvre avec le PDF et lance
 automatiquement window.print() après 800ms → fenêtre d'impression native.
+
+---
+Task ID: SECT-RELEVE-NOTES-PDF
+Agent: Z.ai Code (tuteur/assistant)
+Task: Relevé de notes PDF institutionnel multi-UE + amélioration filtres /mes-etudiants
+
+Nouveau relevé de notes individuel PDF (commit 099f1e7) :
+
+Générateur PDF (releve-notes-pdf-react.tsx, 318 lignes) :
+- Design institutionnel cohérent avec le certificat refondu (bordure gold/navy,
+  PlayfairDisplay + Inter)
+- En-tête : logo + nom établissement + ville/pays
+- Titre 'RELEVÉ DE NOTES' + année académique
+- Carte étudiant (nom, matricule, filière, niveau)
+- Sections par UE (multi-UE, pas une seule note) :
+  * En-tête UE navy avec code + nom + crédits ECTS
+  * Tableau épreuves (titre, session, note colorée rouge/vert, mention)
+  * Moyenne UE calculée
+- Synthèse globale encadrée gold :
+  * Moyenne générale + Mention (TB≥16, B≥14, AB≥12, P≥10)
+  * Crédits ECTS validés/total
+- Date + lieu + Signatures (enseignant + responsable) + Footer
+
+Route API (/api/enseignant/releve-notes-pdf) :
+- Fetch /api/me + /api/etudiants ou /api/users/{id} + /api/resultats +
+  /api/etablissements/{id}
+- Regroupe les notes par UE
+- Aucune modif backend
+
+Boutons 'Relevé PDF' ajoutés :
+1. Dans EtudiantNotesDialog (footer du dialog détail)
+2. Dans mes-etudiants-page (colonne Actions de chaque ligne, icône FileText)
+
+Amélioration filtres (mes-etudiants-page) :
+- Tri colonnes cliquables : Étudiant, Matricule, Épreuves, Dernière connexion
+- sortedEtudiants via useMemo (pattern /utilisateurs)
+
+Validation :
+- ESLint : 0 erreur
+- tsc --noEmit : 0 erreur sur tout le frontend
+- VLM : 10/10 éléments visibles (bordure, en-tête, titre, carte étudiant,
+  sections UE, moyennes UE, synthèse, date/lieu, signatures, footer)
+- PDF : 22KB, 1 page (pdfinfo Pages: 1)
+
+Note : test E2E production non finalisé car l'admin n'a pas d'EtablissementAccess
+(RLS bloque /api/etudiants et /api/users/{id} pour les étudiants). Le PDF a été
+validé avec des données mock réalistes (ASSANI Emile Junior, 3 UE, 5 épreuves).
+Pour tester en production, utiliser un compte enseignant (prof01@uniabidjan.com)
+ou responsable.
