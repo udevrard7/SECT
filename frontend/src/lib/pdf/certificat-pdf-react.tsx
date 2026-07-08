@@ -2,21 +2,43 @@
  * certificat-pdf-react.tsx — Certificat académique institutionnel (refonte 2025)
  *
  * Design épuré et lisible, inspiré des certificats des grandes institutions
- * universitaires (Sorbonne, Harvard, MIT). Remplace l'ancien modèle qui était
- * illisible (trop d'éléments SVG complexes : Seal, CornerOrnaments, GradeBar,
- * WatermarkBackground, etc. qui ne se rendaient pas correctement dans
- * @react-pdf/renderer).
+ * universitaires (Sorbonne, Harvard, MIT).
  *
- * Principes de design :
- * - Layout paysage A4 (842×595pt) centré et aéré
- * - Bordure double simple (gold + navy) — pas de SVG, juste des bordures CSS
- * - Typographie claire : PlayfairDisplay (titres), GreatVibes (nom), Inter (corps)
- * - Aucun SVG complexe — uniquement Views/Texts/Images
- * - QR code de vérification généré côté route API (qrcode.toDataURL)
- * - Grille d'infos 2×3 propre et alignée
- * - Signatures espacées et lisibles
+ * IMPORTANT : @react-pdf/renderer a un modèle de layout différent du CSS web.
+ * - marginTop: 'auto' ne pousse PAS en bas (contrairement au flexbox web)
+ * - flexWrap avec width: '%' peut échouer silencieusement
+ * → Utilisation de hauteurs fixes et flexDirection: 'row' explicites.
  *
- * Palette : navy #1B3A5C, gold #C5A044, text #2C3E50, gray #718096
+ * Layout A4 Paysage (842×595pt) :
+ *   ┌─────────────────────────────────────┐
+ *   │ ╔═════════════════════════════════╗ │  ← bordure gold + navy
+ *   │ ║  [Logo / Nom établissement]     ║ │  ~55pt
+ *   │ ║  [Ville, Pays]                  ║ │
+ *   │ ║                                 ║ │
+ *   │ ║      CERTIFICAT                 ║ │  ~130pt (PlayfairDisplay 42pt)
+ *   │ ║      DE RÉUSSITE                ║ │  (gold, espacé)
+ *   │ ║          ◆                      ║ │  (losange gold)
+ *   │ ║      Décerné à                  ║ │  (italique, gris)
+ *   │ ║   ASSANI Emile Junior           ║ │  (GreatVibes 36pt, élégant script)
+ *   │ ║      ───────────                ║ │  (ligne gold)
+ *   │ ║  a réussi l'évaluation          ║ │
+ *   │ ║   Programmation Système         ║ │  (PlayfairDisplay bold)
+ *   │ ║  avec la note de 18.17/20       ║ │
+ *   │ ║   MENTION : Très Bien           ║ │  (gold, si présente)
+ *   │ ║                                 ║ │
+ *   │ ║  ┌──────────┬──────────┐        ║ │  ~370pt (grille 3×2)
+ *   │ ║  │ Filière  │ UE       │        ║ │
+ *   │ ║  ├──────────┼──────────┤        ║ │
+ *   │ ║  │ Niveau   │ Session  │        ║ │
+ *   │ ║  ├──────────┼──────────┤        ║ │
+ *   │ ║  │ Année    │ Matricule│        ║ │
+ *   │ ║  └──────────┴──────────┘        ║ │
+ *   │ ║                                 ║ │
+ *   │ ║  Date    [QR]    Signature      ║ │  ~500pt (footer 3 colonnes)
+ *   │ ║  ───────────────────────────    ║ │  (ligne gold)
+ *   │ ║  Établissement · SECT           ║ │  ~555pt
+ *   │ ╚═════════════════════════════════╝ │
+ *   └─────────────────────────────────────┘
  */
 
 import React from 'react'
@@ -87,7 +109,6 @@ export interface CertificatPDFData {
 
 const NAVY = '#1B3A5C'
 const GOLD = '#C5A044'
-const GOLD_LIGHT = '#FFF8E7'
 const GOLD_BORDER = '#E8D09A'
 const TEXT_DARK = '#2C3E50'
 const TEXT_GRAY = '#718096'
@@ -111,335 +132,58 @@ function capitalizeName(name: string): string {
   return name.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 
-function getSubtitle(type: string): string {
-  if (type === 'EXPERT') return "Niveau Expert"
-  if (type === 'AVANCE') return "Niveau Avancé"
-  return "Niveau Standard"
-}
-
 function getSessionLabel(sessionType: string): string {
   return sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
 }
 
-/**
- * Type alias for @react-pdf/renderer's `Image` that also accepts an `alt` prop.
- * (Voir commentaire dans l'ancien fichier — conservé pour compat ESLint.)
- */
 const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image> & { alt?: string }>
 
-// ═══ Styles ═══
+// ═══ Composant : grille d'infos (3 rangées × 2 colonnes, layout explicite) ═══
 
-const styles = StyleSheet.create({
-  page: {
-    fontFamily: 'Inter',
-    backgroundColor: WHITE,
-    color: TEXT_DARK,
-    position: 'relative',
-  },
-  // Bordure double simple (gold + navy) — pas de SVG
-  borderOuter: {
-    position: 'absolute',
-    top: 30,
-    left: 30,
-    right: 30,
-    bottom: 30,
-    borderWidth: 2.5,
-    borderColor: GOLD,
-    borderStyle: 'solid',
-  },
-  borderInner: {
-    position: 'absolute',
-    top: 38,
-    left: 38,
-    right: 38,
-    bottom: 38,
-    borderWidth: 0.5,
-    borderColor: NAVY,
-    borderStyle: 'solid',
-  },
-  // Contenu principal avec padding
-  content: {
-    flex: 1,
-    paddingHorizontal: 70,
-    paddingVertical: 55,
-    flexDirection: 'column',
-  },
-  // En-tête établissement
-  header: {
-    alignItems: 'center',
-    marginBottom: 25,
-  },
-  etabLogo: {
-    width: 140,
-    height: 55,
-    objectFit: 'contain',
-    marginBottom: 6,
-  },
-  etabName: {
-    fontSize: 15,
-    fontFamily: 'PlayfairDisplay',
-    color: NAVY,
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  etabLocation: {
-    fontSize: 10,
-    color: TEXT_GRAY,
-    textAlign: 'center',
-    letterSpacing: 1,
-  },
-  // Titre "CERTIFICAT"
-  titleSection: {
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  title: {
-    fontSize: 42,
-    fontFamily: 'PlayfairDisplay',
-    color: NAVY,
-    textAlign: 'center',
-    letterSpacing: 6,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: GOLD,
-    textAlign: 'center',
-    letterSpacing: 8,
-    marginTop: 4,
-    fontWeight: 'bold',
-  },
-  // Losange décoratif central
-  diamond: {
-    width: 8,
-    height: 8,
-    backgroundColor: GOLD,
-    transform: 'rotate(45deg)',
-    marginVertical: 12,
-  },
-  // "Décerné à"
-  awardedTo: {
-    fontSize: 11,
-    color: TEXT_GRAY,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginBottom: 8,
-  },
-  // Nom de l'étudiant (GreatVibes — élégant script)
-  studentName: {
-    fontSize: 36,
-    fontFamily: 'GreatVibes',
-    color: NAVY,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  // Ligne décorative sous le nom
-  nameUnderline: {
-    width: 200,
-    height: 1,
-    backgroundColor: GOLD,
-    marginBottom: 12,
-  },
-  // Description
-  description: {
-    fontSize: 12,
-    color: TEXT_DARK,
-    textAlign: 'center',
-    lineHeight: 1.6,
-    marginBottom: 8,
-  },
-  intitule: {
-    fontSize: 14,
-    fontFamily: 'PlayfairDisplay',
-    color: NAVY,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  // Mention (si présente)
-  mention: {
-    fontSize: 13,
-    color: GOLD,
-    textAlign: 'center',
-    fontWeight: 'bold',
-    marginBottom: 12,
-    letterSpacing: 2,
-  },
-  // Grille d'informations
-  infoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: GOLD_BORDER,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  infoCell: {
-    width: '50%',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: GOLD_BORDER,
-    backgroundColor: CELL_BG,
-  },
-  infoCellLastRow: {
-    borderBottomWidth: 0,
-  },
-  infoCellLastCol: {
-    borderRightWidth: 0,
-  },
-  infoLabel: {
-    fontSize: 8,
-    color: TEXT_GRAY,
-    letterSpacing: 1,
-    marginBottom: 3,
-    textTransform: 'uppercase',
-  },
-  infoValue: {
-    fontSize: 11,
-    color: TEXT_DARK,
-    fontWeight: 'bold',
-  },
-  // Pied de page : 3 colonnes
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingHorizontal: 20,
-    marginTop: 'auto',
-  },
-  footerLeft: {
-    width: '30%',
-    alignItems: 'center',
-  },
-  footerCenter: {
-    width: '30%',
-    alignItems: 'center',
-  },
-  footerRight: {
-    width: '30%',
-    alignItems: 'center',
-  },
-  // Date
-  dateLabel: {
-    fontSize: 8,
-    color: TEXT_GRAY,
-    letterSpacing: 1,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  dateValue: {
-    fontSize: 11,
-    color: TEXT_DARK,
-    fontWeight: 'bold',
-  },
-  signatureLine: {
-    width: 120,
-    height: 1,
-    backgroundColor: SIG_LINE,
-    marginBottom: 4,
-  },
-  signatureName: {
-    fontSize: 10,
-    color: TEXT_DARK,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 1,
-  },
-  signatureRole: {
-    fontSize: 8,
-    color: TEXT_GRAY,
-    textAlign: 'center',
-  },
-  // QR code
-  qrCode: {
-    width: 70,
-    height: 70,
-    marginBottom: 4,
-  },
-  qrCodeText: {
-    fontSize: 7,
-    color: NAVY,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  qrCodeLabel: {
-    fontSize: 6,
-    color: TEXT_GRAY,
-    textAlign: 'center',
-  },
-  // Footer établissement (tout en bas)
-  etabFooter: {
-    position: 'absolute',
-    bottom: 20,
-    left: 70,
-    right: 70,
-    alignItems: 'center',
-  },
-  etabFooterLine: {
-    width: '100%',
-    height: 0.5,
-    backgroundColor: GOLD,
-    marginBottom: 6,
-  },
-  etabFooterText: {
-    fontSize: 8,
-    color: TEXT_FOOTER,
-    textAlign: 'center',
-  },
-})
-
-// ═══ Composants ═══
-
-function Logo({ logo, nom }: { logo: string | null; nom: string }) {
-  if (!logo) {
-    return <Text style={styles.etabName}>{nom}</Text>
-  }
-  return <PdfImage src={logo} style={styles.etabLogo} alt="" />
-}
-
-function InfoCell({
-  label,
-  value,
-  isLastRow = false,
-  isLastCol = false,
-}: {
-  label: string
-  value: string
-  isLastRow?: boolean
-  isLastCol?: boolean
-}) {
-  // Spread conditionnel (compatible avec le typing strict de @react-pdf/renderer)
+function InfoRow({ left, right, isLast = false }: { left: { label: string; value: string }; right: { label: string; value: string }; isLast?: boolean }) {
   const cellStyle = {
-    ...styles.infoCell,
-    ...(isLastRow ? { borderBottomWidth: 0 } : {}),
-    ...(isLastCol ? { borderRightWidth: 0 } : {}),
+    width: '50%' as const,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: CELL_BG,
+    borderRightWidth: 1,
+    borderBottomWidth: isLast ? 0 : 1,
+    borderColor: GOLD_BORDER,
+  }
+  const cellStyleLast = {
+    ...cellStyle,
+    borderRightWidth: 0,
   }
   return (
-    <View style={cellStyle}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+    <View style={{ flexDirection: 'row' }}>
+      <View style={cellStyle}>
+        <Text style={{ fontSize: 7.5, color: TEXT_GRAY, letterSpacing: 0.8, marginBottom: 2, textTransform: 'uppercase' }}>{left.label}</Text>
+        <Text style={{ fontSize: 10.5, color: TEXT_DARK, fontWeight: 'bold' }}>{left.value}</Text>
+      </View>
+      <View style={cellStyleLast}>
+        <Text style={{ fontSize: 7.5, color: TEXT_GRAY, letterSpacing: 0.8, marginBottom: 2, textTransform: 'uppercase' }}>{right.label}</Text>
+        <Text style={{ fontSize: 10.5, color: TEXT_DARK, fontWeight: 'bold' }}>{right.value}</Text>
+      </View>
     </View>
   )
 }
 
+// ═══ Composant : QR code ═══
+
 function QRCodeBox({ dataUri, code }: { dataUri: string | null | undefined; code: string }) {
   if (!dataUri) {
     return (
-      <View style={styles.footerCenter}>
-        <Text style={styles.dateLabel}>Code de vérification</Text>
-        <Text style={styles.qrCodeText}>{code}</Text>
-        <Text style={styles.qrCodeLabel}>Scannez ou visitez l'URL de vérification</Text>
+      <View style={{ alignItems: 'center' }}>
+        <Text style={{ fontSize: 7, color: TEXT_GRAY, marginBottom: 3 }}>Code de vérification</Text>
+        <Text style={{ fontSize: 8, color: NAVY, fontWeight: 'bold' }}>{code}</Text>
       </View>
     )
   }
   return (
-    <View style={styles.footerCenter}>
-      <PdfImage src={dataUri} style={styles.qrCode} alt="QR code de vérification" />
-      <Text style={styles.qrCodeText}>{code}</Text>
-      <Text style={styles.qrCodeLabel}>Scannez pour vérifier</Text>
+    <View style={{ alignItems: 'center' }}>
+      <PdfImage src={dataUri} style={{ width: 65, height: 65, marginBottom: 3 }} alt="QR code" />
+      <Text style={{ fontSize: 7, color: NAVY, fontWeight: 'bold' }}>{code}</Text>
+      <Text style={{ fontSize: 5.5, color: TEXT_GRAY }}>Scannez pour vérifier</Text>
     </View>
   )
 }
@@ -452,88 +196,92 @@ function CertificateLandscape({ data }: { data: CertificatPDFData }) {
 
   return (
     <Document>
-      <Page size={[842, 595]} style={styles.page}>
-        {/* Bordure double */}
-        <View style={styles.borderOuter} />
-        <View style={styles.borderInner} />
+      <Page size={[842, 595]} style={{ fontFamily: 'Inter', backgroundColor: WHITE, color: TEXT_DARK, position: 'relative' }}>
+        {/* Bordure double (position absolue) */}
+        <View style={{ position: 'absolute', top: 30, left: 30, right: 30, bottom: 30, borderWidth: 2.5, borderColor: GOLD }} />
+        <View style={{ position: 'absolute', top: 38, left: 38, right: 38, bottom: 38, borderWidth: 0.5, borderColor: NAVY }} />
 
-        {/* Contenu */}
-        <View style={styles.content}>
+        {/* Contenu principal — layout en colonne avec espacements explicites */}
+        <View style={{ paddingHorizontal: 70, paddingVertical: 50, flexDirection: 'column' }}>
+
           {/* En-tête établissement */}
-          <View style={styles.header}>
-            <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
-            {etabLocation && <Text style={styles.etabLocation}>{etabLocation}</Text>}
+          <View style={{ alignItems: 'center', marginBottom: 18 }}>
+            {data.etablissementLogo ? (
+              <PdfImage src={data.etablissementLogo} style={{ width: 140, height: 50, objectFit: 'contain' as const, marginBottom: 4 }} alt="" />
+            ) : (
+              <Text style={{ fontSize: 15, fontFamily: 'PlayfairDisplay', color: NAVY, marginBottom: 2 }}>{data.etablissementNom}</Text>
+            )}
+            {etabLocation && <Text style={{ fontSize: 9.5, color: TEXT_GRAY, letterSpacing: 1 }}>{etabLocation}</Text>}
           </View>
 
-          {/* Titre */}
-          <View style={styles.titleSection}>
-            <Text style={styles.title}>CERTIFICAT</Text>
-            <Text style={styles.subtitle}>DE RÉUSSITE</Text>
+          {/* Titre "CERTIFICAT" */}
+          <View style={{ alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontSize: 42, fontFamily: 'PlayfairDisplay', color: NAVY, letterSpacing: 6 }}>CERTIFICAT</Text>
+            <Text style={{ fontSize: 12, color: GOLD, letterSpacing: 7, marginTop: 3, fontWeight: 'bold' }}>DE RÉUSSITE</Text>
           </View>
 
           {/* Losange décoratif */}
-          <View style={{ alignItems: 'center' }}>
-            <View style={styles.diamond} />
+          <View style={{ alignItems: 'center', marginBottom: 10 }}>
+            <View style={{ width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' }} />
           </View>
 
           {/* "Décerné à" + nom */}
-          <Text style={styles.awardedTo}>Décerné à</Text>
-          <Text style={styles.studentName}>{capitalizeName(data.etudiantNom)}</Text>
-          <View style={{ alignItems: 'center' }}>
-            <View style={styles.nameUnderline} />
+          <View style={{ alignItems: 'center', marginBottom: 4 }}>
+            <Text style={{ fontSize: 11, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 6 }}>Décerné à</Text>
+            <Text style={{ fontSize: 34, fontFamily: 'GreatVibes', color: NAVY, marginBottom: 8 }}>{capitalizeName(data.etudiantNom)}</Text>
+            <View style={{ width: 180, height: 1, backgroundColor: GOLD, marginBottom: 10 }} />
           </View>
 
           {/* Description */}
-          <Text style={styles.description}>
-            a réussi l'évaluation
-          </Text>
-          <Text style={styles.intitule}>{intituleText}</Text>
-          <Text style={styles.description}>
-            avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
-            {data.creditsECTS && (
-              <Text> · {data.creditsECTS} crédits ECTS</Text>
-            )}
-          </Text>
+          <View style={{ alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 12, color: TEXT_DARK, marginBottom: 4 }}>a réussi l'évaluation</Text>
+            <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY, fontWeight: 'bold', marginBottom: 4, textAlign: 'center' }}>{intituleText}</Text>
+            <Text style={{ fontSize: 12, color: TEXT_DARK }}>
+              avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
+              {data.creditsECTS ? <Text> · {data.creditsECTS} crédits ECTS</Text> : null}
+            </Text>
+          </View>
 
           {/* Mention */}
           {data.mention && (
-            <Text style={styles.mention}>MENTION : {data.mention}</Text>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 12, color: GOLD, fontWeight: 'bold', letterSpacing: 2 }}>MENTION : {data.mention}</Text>
+            </View>
           )}
 
-          {/* Grille d'informations */}
-          <View style={styles.infoGrid}>
-            <InfoCell label="Filière" value={data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom} />
-            <InfoCell label="Unité d'enseignement" value={`${data.ueCode} — ${data.ueNom}`} isLastCol />
-            <InfoCell label="Niveau" value={data.etudiantNiveau || '—'} />
-            <InfoCell label="Session" value={getSessionLabel(data.sessionType)} isLastCol />
-            <InfoCell label="Année académique" value={data.anneeAcademique || '—'} isLastRow />
-            <InfoCell label="Matricule" value={data.etudiantMatricule || '—'} isLastRow isLastCol />
+          {/* Grille d'informations (3 rangées × 2 colonnes) */}
+          <View style={{ borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 3, overflow: 'hidden', marginBottom: 16 }}>
+            <InfoRow left={{ label: 'Filière', value: data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom }} right={{ label: 'Unité d\'enseignement', value: `${data.ueCode} — ${data.ueNom}` }} />
+            <InfoRow left={{ label: 'Niveau', value: data.etudiantNiveau || '—' }} right={{ label: 'Session', value: getSessionLabel(data.sessionType) }} />
+            <InfoRow left={{ label: 'Année académique', value: data.anneeAcademique || '—' }} right={{ label: 'Matricule', value: data.etudiantMatricule || '—' }} isLast />
           </View>
 
-          {/* Pied de page : date | QR code | signature */}
-          <View style={styles.footer}>
+          {/* Pied de page : 3 colonnes (Date | QR code | Signature) */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 20 }}>
             {/* Date */}
-            <View style={styles.footerLeft}>
-              <Text style={styles.dateLabel}>Date d'émission</Text>
-              <Text style={styles.dateValue}>{formatDate(data.dateEmission)}</Text>
+            <View style={{ width: 200, alignItems: 'center' }}>
+              <Text style={{ fontSize: 7.5, color: TEXT_GRAY, letterSpacing: 0.8, marginBottom: 3, textTransform: 'uppercase' }}>Date d'émission</Text>
+              <Text style={{ fontSize: 10.5, color: TEXT_DARK, fontWeight: 'bold' }}>{formatDate(data.dateEmission)}</Text>
             </View>
 
-            {/* QR code de vérification */}
-            <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
+            {/* QR code */}
+            <View style={{ width: 200, alignItems: 'center' }}>
+              <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
+            </View>
 
             {/* Signature */}
-            <View style={styles.footerRight}>
-              <View style={styles.signatureLine} />
-              <Text style={styles.signatureName}>{data.responsableNom || 'Le Responsable'}</Text>
-              <Text style={styles.signatureRole}>Responsable de l'établissement</Text>
+            <View style={{ width: 200, alignItems: 'center' }}>
+              <View style={{ width: 120, height: 1, backgroundColor: SIG_LINE, marginBottom: 4 }} />
+              <Text style={{ fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', marginBottom: 1 }}>{data.responsableNom || 'Le Responsable'}</Text>
+              <Text style={{ fontSize: 8, color: TEXT_GRAY }}>Responsable de l'établissement</Text>
             </View>
           </View>
         </View>
 
-        {/* Footer établissement */}
-        <View style={styles.etabFooter}>
-          <View style={styles.etabFooterLine} />
-          <Text style={styles.etabFooterText}>
+        {/* Footer établissement (position absolue, à l'intérieur de la bordure) */}
+        <View style={{ position: 'absolute', bottom: 45, left: 70, right: 70, alignItems: 'center' }}>
+          <View style={{ width: '100%', height: 0.5, backgroundColor: GOLD, marginBottom: 5 }} />
+          <Text style={{ fontSize: 7.5, color: TEXT_FOOTER, textAlign: 'center' }}>
             {data.etablissementNom} · Certificat émis via SECT — Plateforme d'évaluation IA
           </Text>
         </View>
@@ -550,83 +298,86 @@ function CertificatePortrait({ data }: { data: CertificatPDFData }) {
 
   return (
     <Document>
-      <Page size={[595, 842]} style={styles.page}>
+      <Page size={[595, 842]} style={{ fontFamily: 'Inter', backgroundColor: WHITE, color: TEXT_DARK, position: 'relative' }}>
         {/* Bordure double */}
-        <View style={styles.borderOuter} />
-        <View style={styles.borderInner} />
+        <View style={{ position: 'absolute', top: 30, left: 30, right: 30, bottom: 30, borderWidth: 2.5, borderColor: GOLD }} />
+        <View style={{ position: 'absolute', top: 38, left: 38, right: 38, bottom: 38, borderWidth: 0.5, borderColor: NAVY }} />
 
         {/* Contenu */}
-        <View style={[styles.content, { paddingHorizontal: 55, paddingVertical: 60 }]}>
-          {/* En-tête établissement */}
-          <View style={styles.header}>
-            <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
-            {etabLocation && <Text style={styles.etabLocation}>{etabLocation}</Text>}
+        <View style={{ paddingHorizontal: 55, paddingVertical: 55, flexDirection: 'column' }}>
+
+          {/* En-tête */}
+          <View style={{ alignItems: 'center', marginBottom: 18 }}>
+            {data.etablissementLogo ? (
+              <PdfImage src={data.etablissementLogo} style={{ width: 130, height: 45, objectFit: 'contain' as const, marginBottom: 4 }} alt="" />
+            ) : (
+              <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY, marginBottom: 2 }}>{data.etablissementNom}</Text>
+            )}
+            {etabLocation && <Text style={{ fontSize: 9, color: TEXT_GRAY, letterSpacing: 1 }}>{etabLocation}</Text>}
           </View>
 
           {/* Titre */}
-          <View style={styles.titleSection}>
-            <Text style={[styles.title, { fontSize: 36 }]}>CERTIFICAT</Text>
-            <Text style={styles.subtitle}>DE RÉUSSITE</Text>
+          <View style={{ alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontSize: 36, fontFamily: 'PlayfairDisplay', color: NAVY, letterSpacing: 5 }}>CERTIFICAT</Text>
+            <Text style={{ fontSize: 11, color: GOLD, letterSpacing: 6, marginTop: 3, fontWeight: 'bold' }}>DE RÉUSSITE</Text>
           </View>
 
-          {/* Losange décoratif */}
-          <View style={{ alignItems: 'center' }}>
-            <View style={styles.diamond} />
+          <View style={{ alignItems: 'center', marginBottom: 10 }}>
+            <View style={{ width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' }} />
           </View>
 
-          {/* "Décerné à" + nom */}
-          <Text style={styles.awardedTo}>Décerné à</Text>
-          <Text style={[styles.studentName, { fontSize: 32 }]}>{capitalizeName(data.etudiantNom)}</Text>
-          <View style={{ alignItems: 'center' }}>
-            <View style={styles.nameUnderline} />
+          {/* Nom */}
+          <View style={{ alignItems: 'center', marginBottom: 4 }}>
+            <Text style={{ fontSize: 11, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 6 }}>Décerné à</Text>
+            <Text style={{ fontSize: 30, fontFamily: 'GreatVibes', color: NAVY, marginBottom: 8 }}>{capitalizeName(data.etudiantNom)}</Text>
+            <View style={{ width: 160, height: 1, backgroundColor: GOLD, marginBottom: 10 }} />
           </View>
 
           {/* Description */}
-          <Text style={styles.description}>
-            a réussi l'évaluation
-          </Text>
-          <Text style={styles.intitule}>{intituleText}</Text>
-          <Text style={styles.description}>
-            avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
-            {data.creditsECTS && (
-              <Text> · {data.creditsECTS} crédits ECTS</Text>
-            )}
-          </Text>
+          <View style={{ alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 11, color: TEXT_DARK, marginBottom: 4 }}>a réussi l'évaluation</Text>
+            <Text style={{ fontSize: 13, fontFamily: 'PlayfairDisplay', color: NAVY, fontWeight: 'bold', marginBottom: 4, textAlign: 'center' }}>{intituleText}</Text>
+            <Text style={{ fontSize: 11, color: TEXT_DARK }}>
+              avec la note de <Text style={{ fontWeight: 'bold', color: NAVY }}>{formatNote(data.noteFinale)}/20</Text>
+              {data.creditsECTS ? <Text> · {data.creditsECTS} crédits ECTS</Text> : null}
+            </Text>
+          </View>
 
           {/* Mention */}
           {data.mention && (
-            <Text style={styles.mention}>MENTION : {data.mention}</Text>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 11, color: GOLD, fontWeight: 'bold', letterSpacing: 2 }}>MENTION : {data.mention}</Text>
+            </View>
           )}
 
-          {/* Grille d'informations */}
-          <View style={[styles.infoGrid, { marginHorizontal: 0 }]}>
-            <InfoCell label="Filière" value={data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom} />
-            <InfoCell label="Unité d'enseignement" value={`${data.ueCode} — ${data.ueNom}`} isLastCol />
-            <InfoCell label="Niveau" value={data.etudiantNiveau || '—'} />
-            <InfoCell label="Session" value={getSessionLabel(data.sessionType)} isLastCol />
-            <InfoCell label="Année académique" value={data.anneeAcademique || '—'} isLastRow />
-            <InfoCell label="Matricule" value={data.etudiantMatricule || '—'} isLastRow isLastCol />
+          {/* Grille */}
+          <View style={{ borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 3, overflow: 'hidden', marginBottom: 20 }}>
+            <InfoRow left={{ label: 'Filière', value: data.filiereCode ? `${data.filiereNom} (${data.filiereCode})` : data.filiereNom }} right={{ label: 'Unité d\'enseignement', value: `${data.ueCode} — ${data.ueNom}` }} />
+            <InfoRow left={{ label: 'Niveau', value: data.etudiantNiveau || '—' }} right={{ label: 'Session', value: getSessionLabel(data.sessionType) }} />
+            <InfoRow left={{ label: 'Année académique', value: data.anneeAcademique || '—' }} right={{ label: 'Matricule', value: data.etudiantMatricule || '—' }} isLast />
           </View>
 
           {/* Pied de page */}
-          <View style={styles.footer}>
-            <View style={styles.footerLeft}>
-              <Text style={styles.dateLabel}>Date d'émission</Text>
-              <Text style={styles.dateValue}>{formatDate(data.dateEmission)}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 10 }}>
+            <View style={{ width: 150, alignItems: 'center' }}>
+              <Text style={{ fontSize: 7.5, color: TEXT_GRAY, letterSpacing: 0.8, marginBottom: 3, textTransform: 'uppercase' }}>Date d'émission</Text>
+              <Text style={{ fontSize: 10, color: TEXT_DARK, fontWeight: 'bold' }}>{formatDate(data.dateEmission)}</Text>
             </View>
-            <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
-            <View style={styles.footerRight}>
-              <View style={styles.signatureLine} />
-              <Text style={styles.signatureName}>{data.responsableNom || 'Le Responsable'}</Text>
-              <Text style={styles.signatureRole}>Responsable</Text>
+            <View style={{ width: 150, alignItems: 'center' }}>
+              <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
+            </View>
+            <View style={{ width: 150, alignItems: 'center' }}>
+              <View style={{ width: 100, height: 1, backgroundColor: SIG_LINE, marginBottom: 4 }} />
+              <Text style={{ fontSize: 9, color: TEXT_DARK, fontWeight: 'bold', marginBottom: 1 }}>{data.responsableNom || 'Le Responsable'}</Text>
+              <Text style={{ fontSize: 7.5, color: TEXT_GRAY }}>Responsable</Text>
             </View>
           </View>
         </View>
 
         {/* Footer établissement */}
-        <View style={[styles.etabFooter, { left: 55, right: 55 }]}>
-          <View style={styles.etabFooterLine} />
-          <Text style={styles.etabFooterText}>
+        <View style={{ position: 'absolute', bottom: 45, left: 55, right: 55, alignItems: 'center' }}>
+          <View style={{ width: '100%', height: 0.5, backgroundColor: GOLD, marginBottom: 5 }} />
+          <Text style={{ fontSize: 7, color: TEXT_FOOTER, textAlign: 'center' }}>
             {data.etablissementNom} · Certificat émis via SECT
           </Text>
         </View>
