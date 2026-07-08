@@ -13111,3 +13111,186 @@ Stage Summary:
 - 6 améliorations UX livrées, déployées et validées en production.
 - Module /facturation maintenant complet : CRUD + 3 onglets + responsive + tri + filtres + export + pagination + safeguards.
 - Aucune modification backend nécessaire (tout exploite les données déjà chargées côté client).
+
+---
+Task ID: SECT-RLS-B-COMPLETE-052
+Agent: Z.ai Code (tuteur/assistant)
+Task: B-complète — ADMIN (propriétaire PaaS) gère TOUS les RESPONSABLE sans EtablissementAccess
+
+Contexte :
+L'admin devait voir + créer + modifier + supprimer n'importe quel RESPONSABLE même
+sans accès étab approuvé. La RLS stricte (admin ne voit que les users des étab avec
+EtablissementAccess) bloquait la gestion PaaS. B-complète = périmètre RESPONSABLE
+uniquement ; ENSEIGNANTS/ÉTUDIANTS restent strictement RLS-protégés.
+
+Work Log :
+- Investigation complète de l'état courant :
+  * Lu worklog (contexte SECT-ACCESS-ASSISTANCE-VERIFY-004 + SECT-ADMIN-INCONNU-FIX-005)
+  * Lu migrations 000014 (fix_user_select_rls) + 000041 (user_select_etudiant_voir_etudiants)
+  * Interrogé Neon : policies User_select/insert/update/delete RÉELLES (4 policies)
+  * Lu usecase user.go : checkOwnership (L447), Create (L221), Update (L317) — 3 checks
+    qui bloquent l'admin via ValidateAccessForEtablissement AVANT la RLS
+  * Confirmé : la RLS seule ne suffisait pas (les checks usecase s'exécutent avant)
+
+- Migration 000052 (up.sql + down.sql) — 4 policies User recréées avec clause:
+    OR (is_admin() AND (role = 'RESPONSABLE'::"Role"))
+  basées sur l'état Neon réel (000041 pour select, 000007/000024 pour insert/update/delete)
+
+- Usecase user.go — 3 ajustements cohérents:
+  * checkOwnership : return nil si target.Role == RESPONSABLE (débloque GetByID/Update/Delete)
+  * Create : skip ValidateAccessForEtablissement si input.Role == RESPONSABLE
+  * Update : skip le check de transfert d'étab si existing.Role == RESPONSABLE
+  CanCreate (ADMIN→RESPONSABLE) inchangé. La hardcode List (repoParams.Role=RESPONSABLE
+  pour admin global, L96) conservé comme prévu.
+
+- schema.sql référence : synchronisé les 4 policies User (inclut 000041 + 000052).
+
+- Validation technique:
+  * go build ./... → EXIT 0
+  * go vet ./internal/usecase/ ./internal/transport/http/ → EXIT 0
+  * Migration appliquée sur Neon (transaction: DDL + INSERT schema_migrations v52)
+    → max(version)=52, count=52, 0 dirty
+  * Vérification clauses: 4/4 policies ont la clause RESPONSABLE ✓
+
+- Validation logique RLS (neondb_owner a BYPASSRLS=true → RLS non appliquée sur cette
+  connexion ; test via évaluation manuelle de l'expression policy avec SET LOCAL claims):
+  * is_admin()=true, admin_has_etablissement_access(etab)=false (pas d'accès)
+  * RESPONSABLE : total=1, visible=1 ✓ (B-complète fonctionne)
+  * ENSEIGNANT  : total=1, visible=0 ✓ (RLS stricte conservée)
+  * ETUDIANT    : total=14, visible=0 ✓ (RLS stricte conservée)
+  → Périmètre strictement respecté.
+
+- Commit 0f81989 (auteur udevrard7 <ulrichdouh@gmail.com>) + push origin main ✅
+- Déploiement Render (backend) déclenché → /health HTTP 200 ✅
+- Neon synchronisé : schema_migrations v52 (DB = repo migrations).
+
+Stage Summary:
+- B-complète livrée et déployée. L'admin peut maintenant gérer tous les RESPONSABLE
+  (PaaS) sans EtablissementAccess, via 4 endpoints (list/create/update/delete).
+- Périmètre sécurité strict : seuls les RESPONSABLE sont concernés. Les
+  ENSEIGNANTS/ÉTUDIANTS restent soumis à la RLS étab (admin doit avoir un accès
+  APPROUVÉ pour les voir/muter). Les data sensibles (Session/Reponse/Resultat/
+  surveillance) restent protégées par leurs propres policies RLS indépendantes.
+- 2 couches modifiées (RLS + usecase) — la RLS seule ne suffisait pas.
+- Validation E2E Agent Browser (login admin → /api/users) à faire avec identifiants.
+
+---
+Task ID: SECT-UTILISATEURS-E2E-AUDIT
+Agent: Z.ai Code (tuteur/assistant)
+Task: Audit E2E du module /utilisateurs (admin) via Agent Browser en production
+
+Contexte :
+Validation en conditions réelles du module /utilisateurs (terminé selon l'utilisateur :
+frontend + backend + DB + R2 + IA async). Login admin ulrichdouh@gmail.com sur
+https://sect-app.vercel.app/utilisateurs. B-complète (migration 000052) déployée.
+
+Work Log — Tests effectués (Agent Browser, 6 captures):
+1. Login admin → redirect /dashboard OK (session persistée)
+2. Navigation /utilisateurs → rendu OK, 1 responsable visible (Mme Keita Safiya,
+   The University of Abidjan, Actif). B-complète validée (admin voit le responsable
+   sans EtablissementAccess).
+3. Recherche "keita" → 1 résultat ✓ ; "zzznonexistent" → état vide "Aucun
+   responsable trouvé" + sous-texte aide ✓
+4. CRUD Responsable:
+   - CREATE (Création directe): POST /api/users 201 ✓ mais BUG (voir ci-dessous)
+   - READ: GET /api/users retourne 2 users ✓
+   - UPDATE: PATCH /api/users/:id 200 ✓ + toast + dialog ferme + liste refresh ✓
+   - DELETE: DELETE /api/users/:id 200 ✓ + toast + dialog ferme + liste refresh ✓
+   - CREATE (Invitation par email): POST /api/invitations 500 ✗ BUG (voir ci-dessous)
+5. Validation formulaire:
+   - Email invalide "invalid-email" → BUG #1 (aucun feedback visible)
+   - Établissement non sélectionné → toast "Établissement requis" ✓ (validation client)
+6. Filtres: rôle (Tous/Responsable) + statut (Tous/Actif/Inactif) — cohérents ✓
+7. Responsive mobile 375px: pas d'overflow (scrollWidth=clientWidth=375),
+   tableau condensé (colonnes Email/Établissement/Connexion masquées), cartes 2x2 ✓
+8. Dark mode: bascule OK, lisibilité bonne, badges contrastés ✓
+9. Stats cards: Total 1 / Actifs 1 / Inactifs 0 / Avec établissement 1 ✓
+10. Erreurs console/runtime cumulées: 0 (juste logs PWA info) ✓
+
+BUGS IDENTIFIÉS:
+
+BUG #1 (HAUT) — Validation email formulaire create silencieuse [frontend]
+  Fichier: frontend/src/components/utilisateurs/utilisateurs-page.tsx (dialog create)
+  Symptôme: soumettre avec email invalide ("invalid-email", "email-invalide-sans-arobase")
+  → aucune erreur visible (pas de message sous le champ, pas de toast, dialog reste
+  ouvert). Le bouton "Créer le compte" semble ne rien faire.
+  Cause probable: zod schema email ou react-hook-form onError non configuré, ou
+  validation déléguée au backend mais erreur 400 non catchée/affichée.
+  Impact: utilisateur ne comprend pas pourquoi rien ne se passe → frustration.
+  Fix: ajouter validation zod email côté client + afficher message sous le champ
+  + toast d'erreur si 400 du backend.
+
+BUG #2 (MOYEN) — Toast générique "Erreur interne" sans détail [frontend+backend]
+  Fichier: invitation_handlers.go (createInvitation) + frontend error handling
+  Symptôme: POST /api/invitations 500 → toast "Erreur interne" sans contexte.
+  Cause: le backend masque l'erreur réelle (erreur RLS Invitation_modify — voir
+  bug #4). Le frontend affiche le message brut.
+  Fix: (a) corriger la cause (bug #4), (b) améliorer le message frontend pour
+  les 500 ("Une erreur est survenue, réessayez. Si le problème persiste,
+  contactez le support.").
+
+BUG #3 (CRITIQUE) — Liste ne se rafraîchit pas après CREATE [frontend]
+  Fichier: frontend/src/components/utilisateurs/utilisateurs-page.tsx (mutation create)
+  Symptôme: POST /api/users 201 ✓ → responsable créé en DB (vérifié via API directe)
+  MAIS: dialog reste ouvert, aucun toast de succès, liste affiche "Aucun
+  responsable trouvé" (le GET de refetch utilise encore l'ancien filtre de
+  recherche "zzznonexistent" qui ne matche pas le nouveau user).
+  Cause probable: queryClient.invalidateQueries après create ne déclenche pas
+  le refetch correct, OU le state de recherche actif filtre le nouveau user.
+  À comparer avec UPDATE/DELETE qui fonctionnent parfaitement (même pattern).
+  Impact: admin pense que la création a échoué, re-crée → doublons potentiels.
+  Workaround actuel: recharger la page manuellement (F5).
+  Fix: vérifier la mutation create dans useApi.ts ou utilisateurs-page.tsx —
+  s'assurer que queryKey est correctement invalidée ET que la recherche est
+  reset après création.
+
+BUG #4 (HAUT) — POST /api/invitations 500 pour admin sans accès étab [backend RLS]
+  Fichier: backend/db/db/migrations (policy Invitation_modify)
+  Symptôme: admin tente d'inviter un RESPONSABLE dans un étab sans EtablissementAccess
+  → POST /api/invitations 500 "erreur interne".
+  Cause: la policy Invitation_modify WITH CHECK autorise l'admin uniquement si
+  etablissementId IS NULL (impossible pour une invitation responsable) OU
+  admin_has_etablissement_access(etablissementId) = false ici.
+  C'est le MÊME problème que B-complète sur la table User, mais pour Invitation.
+  Fix: migration 000053 — ajouter clause `OR (is_admin() AND role='RESPONSABLE')`
+  à Invitation_modify (avec_check). + ajuster usecase invitation.go si check
+  d'accès (actuellement aucun, mais à vérifier). Cohérent avec B-complète.
+  Note: pas corrigé sans confirmation utilisateur (extension du périmètre B).
+
+PROPOSITIONS D'AMÉLIORATIONS UX:
+
+UX-1 (MOYEN) — Fermer le dialog create après succès + toast de confirmation
+  Actuellement BUG #3 (dialog reste ouvert). Après fix: dialog se ferme +
+  toast "Responsable créé" + liste refresh + reset recherche.
+
+UX-2 (BAS) — Bouton "Voir détails" / aperçu rapide du responsable
+  Le menu Actions n'a que Modifier/Désactiver/Supprimer. Ajouter "Voir détails"
+  qui ouvre un dialog read-only avec: établissement, date création, dernière
+  connexion, nombre d'enseignants/étudiants gérés, stats activités.
+  Évite de devoir cliquer Modifier juste pour consulter.
+
+UX-3 (BAS) — Colonnes triables
+  Les en-têtes (Nom, Email, Établissement, Dernière connexion) ne sont pas
+  cliquables pour trier. Pattern déjà implémenté dans /facturation (commit
+  85f8837) — réutilisable.
+
+UX-4 (BAS) — Export CSV de la liste
+  Pattern déjà implémenté dans /facturation. Bouton "Export CSV" dans la toolbar.
+
+UX-5 (BAS) — Indicateur visuel "création en cours" (spinner bouton)
+  Pendant le POST /api/users (~1-2s), le bouton "Créer le compte" devrait
+  afficher un spinner + être disabled pour éviter double-submit.
+
+UX-6 (BAS) — Confirmation "Désactiver" vs "Supprimer"
+  Le menu propose Désactiver ET Supprimer côte à côte. Ajouter une icône
+  distincte (UserX pour désactiver, Trash2 rouge pour supprimer) + possibly
+  un séparateur visuel pour éviter misclick.
+
+Stage Summary:
+- Module /utilisateurs fonctionnel pour les flux principaux (list, search, read,
+  update, delete, filters, responsive, dark mode). 0 erreur console/runtime.
+- 4 bugs identifiés dont 1 CRITIQUE (BUG #3: pas de refresh après create) et
+  1 lié à B-complète (BUG #4: invitation 500 = même problème RLS sur Invitation).
+- B-complète VALIDÉE en production: admin voit bien le responsable sans accès étab.
+- 6 améliorations UX proposées (dont 2 déjà implémentées ailleurs à réutiliser).
+- Captures: /home/z/sect-screenshots/u0{1..6}-*.png (6 PNG).
