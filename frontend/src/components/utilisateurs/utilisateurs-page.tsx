@@ -146,6 +146,19 @@ interface ImportError {
 
 // ─── Utility functions ───
 
+// BUG #1 fix (audit E2E) : validation email côté client.
+// Même regex que le backend (internal/usecase/user.go isValidEmail) :
+// ^[^\s@]+@[^\s@]+\.[^\s@]+$ → local@domain.tld
+// Avant : aucun check client → l'admin remplissait l'étab avant de
+// découvrir que l'email était invalide (aller-retour inutile + toast
+// générique "Erreur — email invalide"). Maintenant : validation inline
+// au submit + message sous le champ + aria-invalid (accessibilité).
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function isValidEmail(s: string): boolean {
+  return EMAIL_REGEX.test(s.trim())
+}
+
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -297,6 +310,7 @@ export function UtilisateursPage() {
   const [formFiliereId, setFormFiliereId] = useState('')
   const [formActif, setFormActif] = useState(true)
   const [formMatricule, setFormMatricule] = useState('')
+  const [emailError, setEmailError] = useState('')
 
   // ─── Direct creation result state ───
   const [directCreationResult, setDirectCreationResult] = useState<{
@@ -438,6 +452,7 @@ export function UtilisateursPage() {
     setFormFiliereId('')
     setFormActif(true)
     setFormMatricule('')
+    setEmailError('')
     setInvitationResult(null)
     setCopiedToken(false)
     setCopiedCredentials(false)
@@ -472,6 +487,7 @@ export function UtilisateursPage() {
     setFormFiliereId(target.filiereId ?? '')
     setFormActif(target.actif)
     setFormMatricule('')
+    setEmailError('')
     setCreateDialogOpen(true)
   }
 
@@ -481,6 +497,13 @@ export function UtilisateursPage() {
       // Edit existing user
       if (!formName || !formEmail) {
         toast.error('Champs manquants', { description: 'Le nom et l\'email sont obligatoires.' })
+        return
+      }
+      // BUG #1 fix : validation format email côté client (edit mode)
+      if (!isValidEmail(formEmail)) {
+        const msg = 'Adresse email invalide (format attendu : nom@universite.fr)'
+        setEmailError(msg)
+        toast.error('Email invalide', { description: msg })
         return
       }
 
@@ -520,6 +543,13 @@ export function UtilisateursPage() {
     if (registrationMode === 'invitation') {
       if (!formEmail.trim()) {
         toast.error('Champ requis', { description: 'L\'email est obligatoire.' })
+        return
+      }
+      // BUG #1 fix : validation format email côté client (invitation mode)
+      if (!isValidEmail(formEmail)) {
+        const msg = 'Adresse email invalide (format attendu : nom@universite.fr)'
+        setEmailError(msg)
+        toast.error('Email invalide', { description: msg })
         return
       }
       if (isEtablissementRequired && !formEtablissementId) {
@@ -579,6 +609,16 @@ export function UtilisateursPage() {
     if (registrationMode === 'direct') {
       if (!formName.trim() || !formEmail.trim()) {
         toast.error('Champs manquants', { description: 'Le nom et l\'email sont obligatoires.' })
+        return
+      }
+      // BUG #1 fix : validation format email côté client (direct mode).
+      // Placé AVANT le check établissement pour éviter un aller-retour inutile
+      // (l'admin découvrait l'email invalide seulement après avoir sélectionné
+      // l'établissement, car le check étab se déclenchait avant).
+      if (!isValidEmail(formEmail)) {
+        const msg = 'Adresse email invalide (format attendu : nom@universite.fr)'
+        setEmailError(msg)
+        toast.error('Email invalide', { description: msg })
         return
       }
       if (isEtablissementRequired && !formEtablissementId) {
@@ -1469,8 +1509,15 @@ export function UtilisateursPage() {
                     type="email"
                     placeholder="Ex: jean@sect.fr"
                     value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
+                    aria-invalid={!!emailError}
+                    onChange={(e) => { setFormEmail(e.target.value); setEmailError('') }}
                   />
+                  {emailError && (
+                    <p className="text-xs text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" />
+                      {emailError}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1570,11 +1617,18 @@ export function UtilisateursPage() {
                       id="invite-email"
                       type="email"
                       placeholder="utilisateur@universite.fr"
-                      className="pl-9"
+                      className={`pl-9 ${emailError ? 'border-destructive' : ''}`}
+                      aria-invalid={!!emailError}
                       value={formEmail}
-                      onChange={(e) => setFormEmail(e.target.value)}
+                      onChange={(e) => { setFormEmail(e.target.value); setEmailError('') }}
                     />
                   </div>
+                  {emailError && (
+                    <p className="text-xs text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" />
+                      {emailError}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1716,11 +1770,18 @@ export function UtilisateursPage() {
                       id="direct-email"
                       type="email"
                       placeholder="utilisateur@universite.fr"
-                      className="pl-9"
+                      className={`pl-9 ${emailError ? 'border-destructive' : ''}`}
+                      aria-invalid={!!emailError}
                       value={formEmail}
-                      onChange={(e) => setFormEmail(e.target.value)}
+                      onChange={(e) => { setFormEmail(e.target.value); setEmailError('') }}
                     />
                   </div>
+                  {emailError && (
+                    <p className="text-xs text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" />
+                      {emailError}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
