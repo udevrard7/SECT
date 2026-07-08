@@ -13888,3 +13888,37 @@ Validation Agent Browser (post-déploiement Vercel) :
 Captures :
 - Avant : /home/z/sect-screenshots/bug-questions-chevauchement.png
 - Après : /home/z/sect-screenshots/bug-questions-fixed-v2.png
+
+---
+Task ID: SECT-MES-ETUDIANTS-ERGONOMIE-FICHE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Masquer colonne UEs + supprimer relevé par ligne + refonte fiche collective
+
+3 changements (commit 7210a0b) :
+
+1. Masquer la colonne UEs du tableau (ergonomie) :
+   - Suppression en-tête 'UEs' + cellule (badges UE)
+   - Les UEs restent visibles dans le dialog de détail
+   - Tableau : Étudiant | Matricule | Épreuves | Connexion | Actions (5 col au lieu de 6)
+
+2. Supprimer le bouton 'Relevé PDF' par ligne :
+   - Redondant avec le bouton 'Relevé PDF' du dialog
+   - Suppression handleDownloadReleve + releveDownloadingId state
+   - Colonne Actions : bouton simple 'Voir notes'
+
+3. Refonte fiche de notes collective (design institutionnel) :
+   - Nouveau générateur fiche-notes-pdf-react.tsx (@react-pdf/renderer)
+   - Remplace jsPDF brut (tableau basique sans en-tête)
+   - Design cohérent certificat + relevé individuel :
+     bordure gold/navy, en-tête établissement (logo+nom+ville), titre
+     PlayfairDisplay, tableau navy avec notes colorées (rouge<10/vert≥10),
+     lignes alternées, légende, signatures enseignant+responsable, footer
+   - Route API refondue : + fetch /api/me (enseignant) + /api/etablissements/{id}
+
+Validation E2E (Agent Browser, compte prof01@uniabidjan.com) :
+- Colonne UEs masquée : hasUEsCol=false, colCount=5 ✓
+- Bouton Relevé PDF par ligne : supprimé (bouton simple Voir notes) ✓
+- Fiche PDF collective : HTTP 200, 17KB, application/pdf, 1 page ✓
+- Toast : 'Fiche de notes PDF téléchargée' ✓
+- VLM : bordure ✓, en-tête ✓, titre ✓, tableau notes colorées ✓, signatures ✓,
+  footer ✓ — 'Design institutionnel et lisible'
