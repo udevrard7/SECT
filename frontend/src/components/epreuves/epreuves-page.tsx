@@ -2869,7 +2869,7 @@ function QuestionSelector({
  {questions.length === 0 ? (
  <p className="text-sm text-muted-foreground italic">Aucune question disponible dans le contenu de l&apos;épreuve.</p>
  ) : (
- <ScrollArea className="max-h-64">
+ <ScrollArea className="h-64">
  <div className="space-y-2 pr-1">
  {typeOrder.map((type) => {
  const typeQuestions = groupedByType[type]
