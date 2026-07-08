@@ -205,10 +205,10 @@ function CertificateLandscape({ data }: { data: CertificatPDFData }) {
         {/* Bug #2 fix : paddingVertical réduit (50→30) + margins réduites pour tenir sur 1 page */}
         <View style={{ paddingHorizontal: 70, paddingVertical: 30, flexDirection: 'column' }}>
 
-          {/* En-tête établissement */}
+          {/* En-tête établissement — logo seul (le logo contient déjà le nom) */}
           <View style={{ alignItems: 'center', marginBottom: 10 }}>
             {data.etablissementLogo ? (
-              <PdfImage src={data.etablissementLogo} style={{ width: 130, height: 45, objectFit: 'contain' as const, marginBottom: 3 }} alt="" />
+              <PdfImage src={data.etablissementLogo} style={{ width: 170, height: 60, objectFit: 'contain' as const, marginBottom: 3 }} alt="" />
             ) : (
               <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY, marginBottom: 2 }}>{data.etablissementNom}</Text>
             )}
@@ -307,10 +307,10 @@ function CertificatePortrait({ data }: { data: CertificatPDFData }) {
         {/* Contenu */}
         <View style={{ paddingHorizontal: 55, paddingVertical: 55, flexDirection: 'column' }}>
 
-          {/* En-tête */}
+          {/* En-tête établissement — logo seul (le logo contient déjà le nom) */}
           <View style={{ alignItems: 'center', marginBottom: 18 }}>
             {data.etablissementLogo ? (
-              <PdfImage src={data.etablissementLogo} style={{ width: 130, height: 45, objectFit: 'contain' as const, marginBottom: 4 }} alt="" />
+              <PdfImage src={data.etablissementLogo} style={{ width: 160, height: 55, objectFit: 'contain' as const, marginBottom: 4 }} alt="" />
             ) : (
               <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY, marginBottom: 2 }}>{data.etablissementNom}</Text>
             )}

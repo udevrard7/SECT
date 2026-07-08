@@ -258,15 +258,15 @@ function ReleveNotesDocument({ data }: { data: ReleveNotesPDFData }) {
         <View style={{ position: 'absolute', top: 25, left: 25, right: 25, bottom: 25, borderWidth: 2.5, borderColor: GOLD }} />
         <View style={{ position: 'absolute', top: 33, left: 33, right: 33, bottom: 33, borderWidth: 0.5, borderColor: NAVY }} />
 
-        {/* En-tête établissement */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15, gap: 12 }}>
-          {data.etablissementLogo && (
-            <PdfImage src={data.etablissementLogo} style={{ width: 70, height: 70, objectFit: 'contain' as const }} alt="" />
-          )}
-          <View style={{ alignItems: 'center' }}>
+        {/* En-tête établissement — logo seul (le logo contient déjà le nom) */}
+        <View style={{ alignItems: 'center', marginBottom: 12 }}>
+          {data.etablissementLogo ? (
+            <PdfImage src={data.etablissementLogo} style={{ width: 170, height: 75, objectFit: 'contain' as const }} alt="" />
+          ) : (
+            // Fallback si pas de logo : afficher le nom
             <Text style={{ fontSize: 16, fontFamily: 'PlayfairDisplay', color: NAVY }}>{data.etablissementNom}</Text>
-            {etabLocation && <Text style={{ fontSize: 9, color: TEXT_GRAY, letterSpacing: 1 }}>{etabLocation}</Text>}
-          </View>
+          )}
+          {etabLocation && <Text style={{ fontSize: 9, color: TEXT_GRAY, letterSpacing: 1, marginTop: 2 }}>{etabLocation}</Text>}
         </View>
 
         {/* Titre */}
