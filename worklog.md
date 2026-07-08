@@ -13982,3 +13982,22 @@ Validation E2E (Agent Browser, prof01@uniabidjan.com) :
   bien proportionné et centré' ✓
 - Certificat : non testé en prod (RLS bloque enseignant sur certificats étudiants),
   mais design identique aux 2 autres (même pattern en-tête).
+
+---
+Task ID: SECT-RELEVE-MOYENNE-SUR-20
+Agent: Z.ai Code (tuteur/assistant)
+Task: Uniformiser moyenne générale sur /20 (relevé individuel)
+
+Bug : les moyennes (UE + générale) étaient calculées en moyennes arithmétiques
+brutes des notes, sans normalisation. Si les épreuves ont des barèmes différents
+(/20, /60, /40...), la moyenne était fausse.
+
+Fix (commit 8ac0ff4) :
+- Ajout normalizeSur20(note, noteTotal) : (note/noteTotal) * 20
+- computeMoyenneUE : chaque note normalisée sur /20 avant la moyenne
+- computeMoyenneGenerale : moyenne des moyennes d'UE (déjà sur /20)
+
+Validation E2E (Agent Browser, prof01@uniabidjan.com) :
+- Relevé PDF : HTTP 200, 40KB, 1 page
+- VLM : MOYENNE GÉNÉRALE = 16.00/20 ✓, Moyenne UE = 16.00/20 ✓
+  (format X/20 correct quel que soit le barème des épreuves)
