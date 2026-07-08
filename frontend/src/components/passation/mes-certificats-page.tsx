@@ -410,15 +410,54 @@ export function MesCertificatsPage() {
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
-      const iframe = document.createElement('iframe')
-      iframe.style.display = 'none'
-      iframe.src = url
-      document.body.appendChild(iframe)
-      iframe.onload = () => {
-        iframe.contentWindow?.print()
-        setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 1000)
+
+      // Ouvrir une nouvelle fenêtre avec le PDF embarqué dans du HTML.
+      // Cette approche est plus robuste que l'iframe cachée (display:none) qui ne
+      // déclenche pas onload de manière fiable pour les PDFs dans Chrome/Firefox,
+      // et dont contentWindow.print() est souvent bloqué.
+      const printWindow = window.open('', '_blank', 'width=900,height=700')
+      if (!printWindow) {
+        // Popup bloquée — fallback : ouvrir le PDF directement dans un nouvel onglet
+        window.open(url, '_blank')
+        toast.info('PDF ouvert dans un nouvel onglet', {
+          description: 'Utilisez Ctrl+P (Cmd+P sur Mac) pour imprimer.',
+        })
+        setTimeout(() => URL.revokeObjectURL(url), 60000)
+        return
       }
-      toast.success('Impression lancée')
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Certificat — Impression</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              html, body { width: 100%; height: 100%; overflow: hidden; }
+              embed { width: 100vw; height: 100vh; border: none; }
+            </style>
+          </head>
+          <body>
+            <embed type="application/pdf" src="${url}" />
+            <script>
+              // Lancer l'impression après un court délai (le PDF met ~500ms à se rendre)
+              window.onload = function() {
+                setTimeout(function() {
+                  window.focus();
+                  window.print();
+                }, 800);
+              };
+            </script>
+          </body>
+        </html>
+      `)
+      printWindow.document.close()
+
+      toast.success('Préparation de l’impression…', {
+        description: 'La fenêtre d’impression va s’ouvrir.',
+      })
+      // Nettoyer l'URL blob après un délai généreux
+      setTimeout(() => URL.revokeObjectURL(url), 120000)
     } catch {
       toast.error("Échec de l'impression")
     } finally {
