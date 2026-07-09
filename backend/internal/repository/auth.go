@@ -150,6 +150,56 @@ func (r *AuthRepository) RevokeAllUserRefreshTokens(ctx context.Context, userID 
         return nil
 }
 
+// --- Password reset ("mot de passe oublié") ---
+
+// CreatePasswordResetToken insère un nouveau token de reset en base.
+// Fonction SECURITY DEFINER create_password_reset_token (migration 000054).
+func (r *AuthRepository) CreatePasswordResetToken(ctx context.Context, t *domain.PasswordResetToken) error {
+        if _, err := r.pool.Exec(ctx,
+                `SELECT create_password_reset_token($1, $2, $3, $4, $5, $6)`,
+                t.ID, t.UserID, t.TokenHash, t.ExpiresAt, t.IP, t.UserAgent,
+        ); err != nil {
+                return fmt.Errorf("insert password reset token: %w", err)
+        }
+        return nil
+}
+
+// FindPasswordResetTokenByHash récupère un token de reset non utilisé par son hash.
+// Fonction SECURITY DEFINER find_password_reset_token_by_hash (migration 000054).
+// Retourne nil + NotFoundError si introuvable (ou déjà utilisé — la fonction
+// SQL filtre usedAt IS NULL).
+func (r *AuthRepository) FindPasswordResetTokenByHash(ctx context.Context, hash string) (*domain.PasswordResetToken, error) {
+        row := r.pool.QueryRow(ctx, `SELECT * FROM find_password_reset_token_by_hash($1)`, hash)
+        t := &domain.PasswordResetToken{}
+        err := row.Scan(&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &t.UsedAt, &t.CreatedAt)
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return nil, &domain.NotFoundError{Entity: "PasswordResetToken", ID: hash}
+                }
+                return nil, fmt.Errorf("query password reset token: %w", err)
+        }
+        return t, nil
+}
+
+// MarkPasswordResetTokenUsed marque un token comme utilisé (usedAt = now).
+// Fonction SECURITY DEFINER mark_password_reset_token_used (migration 000054).
+func (r *AuthRepository) MarkPasswordResetTokenUsed(ctx context.Context, tokenID string) error {
+        if _, err := r.pool.Exec(ctx, `SELECT mark_password_reset_token_used($1)`, tokenID); err != nil {
+                return fmt.Errorf("mark password reset token used: %w", err)
+        }
+        return nil
+}
+
+// InvalidateUserPasswordResetTokens marque tous les tokens non utilisés d'un
+// utilisateur comme utilisés (un token consommé invalide les autres).
+// Fonction SECURITY DEFINER invalidate_user_password_reset_tokens (migration 000054).
+func (r *AuthRepository) InvalidateUserPasswordResetTokens(ctx context.Context, userID string) error {
+        if _, err := r.pool.Exec(ctx, `SELECT invalidate_user_password_reset_tokens($1)`, userID); err != nil {
+                return fmt.Errorf("invalidate user password reset tokens: %w", err)
+        }
+        return nil
+}
+
 // CreateAuditLog insère une entrée d'audit. Le champ userId peut être NULL.
 //
 // NB : AuditLog a une policy INSERT WITH CHECK(true) → RLS autorise l'insertion

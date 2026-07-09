@@ -48,6 +48,34 @@ func (rt *RefreshToken) IsValid() bool {
         return !rt.IsRevoked() && !rt.IsExpired()
 }
 
+// PasswordResetToken est l'entité persistée pour le reset "mot de passe oublié".
+// Analogie avec RefreshToken : seul le HASH SHA-256 du token est stocké en DB.
+type PasswordResetToken struct {
+        ID        string
+        UserID    string
+        TokenHash string // SHA-256 du token en clair
+        ExpiresAt time.Time
+        UsedAt    *time.Time // nil = non utilisé
+        CreatedAt time.Time
+        IP        string
+        UserAgent string
+}
+
+// IsUsed retourne true si le token a déjà été consommé.
+func (t *PasswordResetToken) IsUsed() bool {
+        return t.UsedAt != nil
+}
+
+// IsExpired retourne true si le token a expiré.
+func (t *PasswordResetToken) IsExpired() bool {
+        return time.Now().After(t.ExpiresAt)
+}
+
+// IsValid retourne true si le token est utilisable (non utilisé + non expiré).
+func (t *PasswordResetToken) IsValid() bool {
+        return !t.IsUsed() && !t.IsExpired()
+}
+
 // AuthRepository définit l'interface pour les opérations d'authentification.
 type AuthRepository interface {
         // FindUserForAuth récupère un utilisateur par email OU matricule,
@@ -83,6 +111,23 @@ type AuthRepository interface {
 
         // RevokeAllUserRefreshTokens révoque tous les refresh tokens actifs d'un utilisateur.
         RevokeAllUserRefreshTokens(ctx context.Context, userID string) error
+
+        // --- Password reset ("mot de passe oublié") ---
+
+        // CreatePasswordResetToken insère un nouveau token de reset (hashé) en base.
+        CreatePasswordResetToken(ctx context.Context, t *PasswordResetToken) error
+
+        // FindPasswordResetTokenByHash récupère un token de reset par son hash.
+        // Ne retourne que les tokens non utilisés. Retourne nil + NotFoundError
+        // si introuvable (ou déjà utilisé).
+        FindPasswordResetTokenByHash(ctx context.Context, hash string) (*PasswordResetToken, error)
+
+        // MarkPasswordResetTokenUsed marque un token de reset comme utilisé (usedAt = now).
+        MarkPasswordResetTokenUsed(ctx context.Context, tokenID string) error
+
+        // InvalidateUserPasswordResetTokens marque tous les tokens non utilisés
+        // d'un utilisateur comme utilisés (un token consommé invalide les autres).
+        InvalidateUserPasswordResetTokens(ctx context.Context, userID string) error
 
         // CreateAuditLog insère une entrée dans le journal d'audit.
         CreateAuditLog(ctx context.Context, entry *AuditLogEntry) error
@@ -135,6 +180,10 @@ const (
         AuditActionRefreshToken   = "TOKEN_REFRESHED"
         AuditActionChangePassword = "CHANGE_PASSWORD"
         AuditActionPasswordReset  = "PASSWORD_RESET"
+
+        // Self-service "mot de passe oublié" (000054)
+        AuditActionPasswordResetRequested = "PASSWORD_RESET_REQUESTED"
+        AuditActionPasswordResetConfirmed = "PASSWORD_RESET_CONFIRMED"
 )
 
 // Erreurs spécifiques à l'auth

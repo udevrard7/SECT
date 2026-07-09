@@ -15,6 +15,7 @@ import (
         appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/jwt"
+        "github.com/udevrard7/sect/backend/internal/mailer"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/monitoring"
         "github.com/udevrard7/sect/backend/internal/repository"
@@ -100,7 +101,17 @@ func main() {
         }
 
         signer := jwt.NewSigner(cfg.JWTSecret)
-        authUC := usecase.NewAuthUseCase(authRepo, signer)
+        // SELF-SERVICE RESET (000054) : mailer pour l'envoi du lien de reset.
+        // SMTPMailer si SMTP_HOST configuré, sinon LogMailer (logs le lien sur stdout,
+        // visible dans le dashboard Render — utile avant configuration SMTP réelle).
+        mailSvc := mailer.New(mailer.Config{
+                Host:     cfg.SMTPHost,
+                Port:     cfg.SMTPPort,
+                User:     cfg.SMTPUser,
+                Password: cfg.SMTPPassword,
+                From:     cfg.SMTPFrom,
+        }, logger)
+        authUC := usecase.NewAuthUseCase(authRepo, signer, mailSvc, cfg.AppBaseURL)
         // E1/E6/U1/U7 : accessUC doit être créé AVANT etabUC et userUC car les
         // deux dépendent de accessUC pour valider l'autorisation ADMIN sur les writes.
         accessUC := usecase.NewAccessUseCase(accessRepo)

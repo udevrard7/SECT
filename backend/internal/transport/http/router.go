@@ -151,6 +151,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/auth/login", s.login)
                 r.Post("/api/auth/refresh", s.refresh)
                 r.Post("/api/auth/logout", s.logout)
+                // SELF-SERVICE RESET (000054) : "mot de passe oublié" — 2 endpoints publics.
+                // requestPasswordReset : toujours 200 (anti-énumération).
+                // confirmPasswordReset : valide le token + définit le nouveau mot de passe.
+                r.Post("/api/auth/password-reset", s.requestPasswordReset)
+                r.Post("/api/auth/password-reset/confirm", s.confirmPasswordReset)
                 // ACCESS-ASSISTANCE : mode assistance ADMIN (accès temporaire aux pages RESPONSABLE).
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/assistance-mode", s.enterAssistanceMode)
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/exit-assistance-mode", s.exitAssistanceMode)
