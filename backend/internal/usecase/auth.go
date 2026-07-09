@@ -3,6 +3,10 @@ package usecase
 
 import (
         "context"
+        "crypto/rand"
+        "crypto/sha256"
+        "encoding/base64"
+        "encoding/hex"
         "encoding/json"
         "fmt"
         "time"
@@ -11,6 +15,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/jwt"
+        "github.com/udevrard7/sect/backend/internal/mailer"
         "golang.org/x/crypto/bcrypt"
 )
 
@@ -31,17 +36,26 @@ const (
         MaxLoginAttempts = 5
         LockDuration     = 15 * time.Minute
         BcryptCost       = 10 // identique à bcryptjs côté Next.js
+
+        // PasswordResetTokenTTL : durée de validité d'un lien de reset (30 min).
+        PasswordResetTokenTTL = 30 * time.Minute
+        // resetTokenLen : nombre d'octets aléatoires du token (32 → 256 bits d'entropie).
+        resetTokenLen = 32
 )
 
 // AuthUseCase implémente les cas d'usage d'authentification.
 type AuthUseCase struct {
-        authRepo domain.AuthRepository
-        signer   *jwt.Signer
+        authRepo   domain.AuthRepository
+        signer     *jwt.Signer
+        mailer     mailer.Mailer
+        appBaseURL string
 }
 
 // NewAuthUseCase crée un nouveau AuthUseCase.
-func NewAuthUseCase(authRepo domain.AuthRepository, signer *jwt.Signer) *AuthUseCase {
-        return &AuthUseCase{authRepo: authRepo, signer: signer}
+// mailer peut être un SMTPMailer (production) ou un LogMailer (dev/fallback).
+// appBaseURL sert à construire le lien de reset (ex: https://sect-app.vercel.app).
+func NewAuthUseCase(authRepo domain.AuthRepository, signer *jwt.Signer, ml mailer.Mailer, appBaseURL string) *AuthUseCase {
+        return &AuthUseCase{authRepo: authRepo, signer: signer, mailer: ml, appBaseURL: appBaseURL}
 }
 
 // LoginRequest est le payload de /api/auth/login.
@@ -329,6 +343,169 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID string, req Ch
         _ = uc.audit(ctx, &userID, &user.Email, domain.AuditActionChangePassword, ip, nil)
 
         return nil
+}
+
+// --- Mot de passe oublié (self-service reset) ---
+
+// RequestPasswordReset génère un token de reset et envoie l'email.
+//
+// Sécurité anti-énumération : retourne TOUJOURS nil (succès) même si l'email
+// n'existe pas. L'appelant renvoie un message générique "si un compte existe,
+// un email a été envoyé". Ainsi un attaquant ne peut pas deviner quels emails
+// sont enregistrés. On logge quand même les emails introuvables pour monitoring.
+func (uc *AuthUseCase) RequestPasswordReset(ctx context.Context, email, ip, userAgent string) error {
+        // 1. Chercher l'utilisateur par email (bypass RLS via find_user_for_auth).
+        //    On ne traite que les emails (pas les matricules) pour le reset.
+        user, err := uc.authRepo.FindUserForAuth(ctx, email)
+        if err != nil {
+                // Utilisateur introuvable → on ne fait rien, mais on retourne nil
+                // (anti-énumération). Pas d'audit pour éviter le bruit / le flooding.
+                return nil
+        }
+
+        // 2. Vérifier que le compte est actif (un compte désactivé ne peut pas reset).
+        if !user.Actif {
+                return nil // silencieux (anti-énumération)
+        }
+
+        // 3. Générer le token (32 octets → base64url, ~256 bits d'entropie).
+        plaintext, hash, err := generateResetToken()
+        if err != nil {
+                return fmt.Errorf("generate reset token: %w", err)
+        }
+
+        // 4. Persister le hash en base.
+        t := &domain.PasswordResetToken{
+                ID:        generateID(),
+                UserID:    user.ID,
+                TokenHash: hash,
+                ExpiresAt: time.Now().Add(PasswordResetTokenTTL),
+                IP:        ip,
+                UserAgent: userAgent,
+        }
+        if err := uc.authRepo.CreatePasswordResetToken(ctx, t); err != nil {
+                return fmt.Errorf("create password reset token: %w", err)
+        }
+
+        // 5. Construire le lien + envoyer l'email.
+        resetLink := uc.appBaseURL + "/reset-password?token=" + plaintext
+        body := fmt.Sprintf(`Bonjour,
+
+Vous avez demandé la réinitialisation de votre mot de passe sur SECT.
+
+Cliquez sur le lien suivant pour définir un nouveau mot de passe (valable %d minutes) :
+
+%s
+
+Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email — votre mot de passe restera inchangé.
+
+— L'équipe SECT`,
+                int(PasswordResetTokenTTL.Minutes()), resetLink)
+
+        if err := uc.mailer.Send(mailer.Email{
+                To:      user.Email,
+                Subject: "SECT — Réinitialisation de votre mot de passe",
+                Body:    body,
+        }); err != nil {
+                return fmt.Errorf("send reset email: %w", err)
+        }
+
+        // 6. Audit
+        _ = uc.audit(ctx, &user.ID, &user.Email, domain.AuditActionPasswordResetRequested, ip, map[string]any{
+                "expiresAt": t.ExpiresAt,
+        })
+
+        return nil
+}
+
+// ConfirmPasswordReset valide le token et définit le nouveau mot de passe.
+//
+// Étapes :
+//  1. Hasher le token reçu, récupérer la ligne (non utilisée).
+//  2. Vérifier non expiré.
+//  3. Valider le nouveau mot de passe (min 8 chars).
+//  4. Hasher bcrypt + update_password (SECURITY DEFINER).
+//  5. Marquer le token utilisé + invalider les autres tokens du user.
+//  6. Révoquer tous les refresh tokens (force re-login, comme ChangePassword).
+//  7. Audit.
+func (uc *AuthUseCase) ConfirmPasswordReset(ctx context.Context, token, newPassword, ip string) error {
+        if token == "" {
+                return &domain.InvalidTokenError{Reason: "empty token"}
+        }
+        if len(newPassword) < 8 {
+                return &domain.ValidationError{Field: "newPassword", Message: "minimum 8 caractères"}
+        }
+
+        // 1. Hasher + lookup
+        hash := hashResetToken(token)
+        t, err := uc.authRepo.FindPasswordResetTokenByHash(ctx, hash)
+        if err != nil {
+                if _, ok := err.(*domain.NotFoundError); ok {
+                        return &domain.InvalidTokenError{Reason: "not found or already used"}
+                }
+                return fmt.Errorf("find password reset token: %w", err)
+        }
+
+        // 2. Vérifier expiration
+        if t.IsExpired() {
+                return &domain.InvalidTokenError{Reason: "expired"}
+        }
+
+        // 3. Récupérer l'utilisateur (pour audit + vérifier actif)
+        user, err := uc.authRepo.GetUserByID(ctx, t.UserID)
+        if err != nil {
+                return fmt.Errorf("get user: %w", err)
+        }
+        if !user.Actif {
+                return &domain.AccountDisabledError{}
+        }
+
+        // 4. Hasher + update password
+        bhash, err := bcrypt.GenerateFromPassword([]byte(newPassword), BcryptCost)
+        if err != nil {
+                return fmt.Errorf("hash password: %w", err)
+        }
+        if err := uc.authRepo.UpdatePassword(ctx, t.UserID, string(bhash)); err != nil {
+                return fmt.Errorf("update password: %w", err)
+        }
+
+        // 5. Marquer le token utilisé + invalider les autres tokens du user
+        if err := uc.authRepo.MarkPasswordResetTokenUsed(ctx, t.ID); err != nil {
+                return fmt.Errorf("mark token used: %w", err)
+        }
+        if err := uc.authRepo.InvalidateUserPasswordResetTokens(ctx, t.UserID); err != nil {
+                // Non bloquant : le reset a réussi, on logge juste.
+                _ = err
+        }
+
+        // 6. Révoquer tous les refresh tokens (force re-login autres sessions)
+        if err := uc.authRepo.RevokeAllUserRefreshTokens(ctx, t.UserID); err != nil {
+                _ = err // non bloquant
+        }
+
+        // 7. Audit
+        _ = uc.audit(ctx, &t.UserID, &user.Email, domain.AuditActionPasswordResetConfirmed, ip, nil)
+
+        return nil
+}
+
+// generateResetToken crée un token de reset aléatoire (clair) + son hash SHA-256.
+// Le token en clair est encodé en base64url (URL-safe pour les query params).
+func generateResetToken() (plaintext string, hash string, err error) {
+        buf := make([]byte, resetTokenLen)
+        if _, err := rand.Read(buf); err != nil {
+                return "", "", fmt.Errorf("generate random: %w", err)
+        }
+        plaintext = base64.RawURLEncoding.EncodeToString(buf)
+        hash = hashResetToken(plaintext)
+        return plaintext, hash, nil
+}
+
+// hashResetToken calcule le hash SHA-256 (hex) d'un token de reset.
+// Même approche que jwt.HashRefreshToken (cohérence avec les refresh tokens).
+func hashResetToken(plaintext string) string {
+        h := sha256.Sum256([]byte(plaintext))
+        return hex.EncodeToString(h[:])
 }
 
 // --- Helpers ---

@@ -135,10 +135,6 @@ export function LoginForm() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSending, setResetSending] = useState(false)
   const [resetSent, setResetSent] = useState(false)
-  const [resetToken, setResetToken] = useState<string | null>(null)
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmSending, setConfirmSending] = useState(false)
 
   const login = useAuthStore((state) => state.login)
   const loginStudent = useAuthStore((state) => state.loginStudent)
@@ -197,7 +193,7 @@ export function LoginForm() {
       })
       if (res.ok) {
         setResetSent(true)
-        toast.success('Email envoyé', { description: 'Vérifiez votre boîte de réception.' })
+        toast.success('Email envoyé', { description: 'Si un compte existe, un lien de réinitialisation a été envoyé.' })
       } else {
         toast.error('Erreur', { description: 'Impossible d\'envoyer l\'email.' })
       }
@@ -207,32 +203,6 @@ export function LoginForm() {
       setResetSending(false)
     }
   }, [resetEmail])
-
-  const handleResetConfirm = useCallback(async () => {
-    if (!resetToken?.trim() || !newPassword.trim()) return
-    setConfirmSending(true)
-    try {
-      const res = await fetch('/api/auth/password-reset/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: resetToken.trim(), newPassword: newPassword.trim() }),
-      })
-      if (res.ok) {
-        toast.success('Mot de passe réinitialisé', { description: 'Vous pouvez vous connecter.' })
-        setConfirmDialogOpen(false)
-        setResetDialogOpen(false)
-        setResetSent(false)
-        setResetToken(null)
-        setNewPassword('')
-      } else {
-        toast.error('Erreur', { description: 'Token invalide ou expiré.' })
-      }
-    } catch {
-      toast.error('Erreur', { description: 'Vérifiez votre connexion.' })
-    } finally {
-      setConfirmSending(false)
-    }
-  }, [resetToken, newPassword])
 
   const isPersonnel = loginMode === 'personnel'
   const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule ou Email'
@@ -711,39 +681,95 @@ export function LoginForm() {
         </motion.div>
       </div>
 
-      {/* ════════ DIALOG : Mot de passe oublié (UF4) ════════ */}
-      {/* Avant ce fix : le dialog appelait /api/auth/password-reset qui n'existe pas */}
-      {/* côté backend (404). Le flux self-service password-reset n'est pas implémenté. */}
-      {/* Maintenant : dialog informatif qui explique la procédure (contacter l'admin */}
-      {/* qui peut reset via /api/users/{id}/reset-password — fixé en USERS-FIX-STEP-2). */}
+      {/* ════════ DIALOG : Mot de passe oublié (self-service reset — 000054) ════════ */}
+      {/* Flux : l'utilisateur saisit son email → POST /api/auth/password-reset */}
+      {/* → le backend génère un token (valable 30 min) et envoie un email avec un */}
+      {/* lien /reset-password?token=... → l'utilisateur clique et choisit son nouveau */}
+      {/* mot de passe. Anti-énumération : réponse 200 générique qu'un compte existe ou non. */}
       <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
         <DialogContent className="max-w-md rounded-2xl border-[#1E1B4B]/10">
           <DialogHeader>
             <DialogTitle className="text-[#1E1B4B] font-bold">Mot de passe oublié ?</DialogTitle>
             <DialogDescription className="text-[#1E1B4B]/50">
-              Procédure de réinitialisation
+              Réinitialisation par email
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2 text-sm text-[#1E1B4B]/80">
-            <p>
-              La réinitialisation autonome par email n&apos;est pas encore disponible sur la plateforme.
-              Pour réinitialiser votre mot de passe :
-            </p>
-            <ol className="list-decimal list-inside space-y-1.5 ml-1">
-              <li>Contactez le responsable de votre établissement ou un administrateur SECT.</li>
-              <li>Indiquez votre adresse email professionnelle.</li>
-              <li>L&apos;administrateur réinitialisera votre mot de passe via le panneau d&apos;administration.</li>
-              <li>Vous recevrez un mot de passe temporaire à changer lors de votre prochaine connexion.</li>
-            </ol>
-            <p className="text-xs text-[#1E1B4B]/60 pt-2 border-t border-[#1E1B4B]/10">
-              Si vous êtes administrateur et que vous connaissez votre mot de passe, vous pouvez le changer depuis votre profil.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setResetDialogOpen(false)} className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold">
-              J&apos;ai compris
-            </Button>
-          </DialogFooter>
+
+          {!resetSent ? (
+            <>
+              <div className="space-y-3 py-2">
+                <p className="text-sm text-[#1E1B4B]/80">
+                  Saisissez votre adresse email professionnelle. Vous recevrez un lien
+                  de réinitialisation valable <span className="font-semibold">30 minutes</span>.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="resetEmail" className="text-xs font-semibold text-[#1E1B4B]/60 uppercase tracking-wider">
+                    Adresse email
+                  </Label>
+                  <div className="relative group">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
+                    <Input
+                      id="resetEmail"
+                      type="email"
+                      placeholder="votre.email@universite.fr"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && resetEmail.trim()) handleResetRequest() }}
+                      className="pl-10 h-11 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/60 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  onClick={() => setResetDialogOpen(false)}
+                  variant="outline"
+                  className="rounded-xl border-[#1E1B4B]/15 text-[#1E1B4B]/70 hover:bg-[#1E1B4B]/5"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  onClick={handleResetRequest}
+                  disabled={resetSending || !resetEmail.trim()}
+                  className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
+                >
+                  {resetSending ? (
+                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Envoi...</>
+                  ) : (
+                    'Envoyer le lien'
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-3 py-2 text-sm text-[#1E1B4B]/80">
+                <div className="flex items-start gap-3">
+                  <Mail className="h-5 w-5 text-[#84CC16] mt-0.5 shrink-0" />
+                  <div className="space-y-2">
+                    <p className="font-medium text-[#1E1B4B]">Lien envoyé</p>
+                    <p>
+                      Si un compte existe pour <span className="font-semibold">{resetEmail}</span>,
+                      un email contenant un lien de réinitialisation vient d&apos;être envoyé.
+                    </p>
+                    <p className="text-xs text-[#1E1B4B]/60">
+                      Le lien est valable 30 minutes. Pensez à vérifier vos spams.
+                      Si vous ne recevez rien, votre email n&apos;est peut-être pas associé
+                      à un compte SECT.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={() => { setResetDialogOpen(false); setResetSent(false); setResetEmail('') }}
+                  className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
+                >
+                  Fermer
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
