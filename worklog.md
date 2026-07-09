@@ -14062,3 +14062,115 @@ Stage Summary:
 - README désormais synchronisé avec l'état réel (61 tables, 143 RLS, 53 migrations,
   40 domaines API, 183 routes). Toute la section API/DB/Architecture réécrite
   sur données vérifiées. Anomalie migration 000050 documentée pour futur fix.
+
+---
+Task ID: SECT-PASSWORD-RESET
+Agent: Z.ai Code (tuteur/assistant)
+Task: Implémenter le flot "mot de passe oublié" sur la page de login (email → lien 30 min → nouveau mot de passe)
+
+Contexte : le bouton "Mot de passe oublié ?" existait sur /login mais ouvrait un
+dialog informatif "pas disponible". Le frontend appelait déjà /api/auth/password-reset
+et /confirm mais le backend n'avait PAS ces endpoints (404). Le reset existant
+(/api/users/{id}/reset-password) était un reset ADMIN, pas self-service.
+
+Flot implémenté :
+1. User saisit email sur /login → dialog → POST /api/auth/password-reset {email}
+2. Backend : find_user_for_auth(email) ; si trouvé + actif → génère token (32 octets
+   crypto/rand → base64url, 256 bits d'entropie), hash SHA-256 stocké en DB, envoie
+   email avec lien {APP_BASE_URL}/reset-password?token=...
+3. Anti-énumération : /password-reset retourne TOUJOURS 200 générique (même si
+   l'email n'existe pas) — un attaquant ne peut pas deviner les emails enregistrés.
+4. User clique le lien → /reset-password?token=... → formulaire nouveau mot de passe
+5. POST /api/auth/password-reset/confirm {token, newPassword}
+6. Backend : hash token → find (non utilisé) → check expiry → update_password
+   (SECURITY DEFINER) → mark token used → invalidate autres tokens du user →
+   revoke tous les refresh tokens → audit.
+7. Redirection vers /login.
+
+Backend (Go) :
+- Migration 000054 : table PasswordResetToken (id, userId, tokenHash unique,
+  expiresAt, usedAt, createdAt, ip, userAgent) + FK User CASCADE + 2 policies RLS
+  (self) + 4 fonctions SECURITY DEFINER (create/find_by_hash/mark_used/
+  invalidate_user_tokens). Pattern identique à RefreshToken (000008).
+- internal/mailer (NEW) : interface Mailer + SMTPMailer (net/smtp, STARTTLS) +
+  LogMailer (fallback qui journalise le lien sur stdout). Factory New() choisit
+  selon config.IsConfigured(). Sur Render sans SMTP, LogMailer → lien visible
+  dans les logs dashboard.
+- config : SMTP_HOST/PORT/USER/PASS/FROM + APP_BASE_URL (défaut Vercel).
+- domain/auth.go : entité PasswordResetToken (IsUsed/IsExpired/IsValid) + 4 méthodes
+  AuthRepository + 2 actions audit (PASSWORD_RESET_REQUESTED/CONFIRMED).
+- repository/auth.go : 4 méthodes appelant les fonctions SECURITY DEFINER.
+- usecase/auth.go : RequestPasswordReset (anti-énumération, toujours nil) +
+  ConfirmPasswordReset (valide token, update password, revoke refresh, audit).
+  Token TTL = 30 min. Helpers generateResetToken (base64url) + hashResetToken
+  (SHA-256 hex, cohérent avec jwt.HashRefreshToken). AuthUseCase étendu avec
+  mailer + appBaseURL.
+- handlers : requestPasswordReset (POST /api/auth/password-reset, public, 200
+  générique) + confirmPasswordReset (POST /api/auth/password-reset/confirm,
+  public, 200/401). Routes ajoutées dans le groupe auth public (login/refresh/logout).
+- main.go : mailer.New() depuis cfg.SMTP* → passé à NewAuthUseCase(authRepo,
+  signer, mailSvc, cfg.AppBaseURL).
+
+Frontend (Next.js) :
+- /reset-password (NEW) : page dédiée. Lit ?token= via useSearchParams (dans
+  Suspense). 3 états : pas de token → "Lien invalide" ; token présent → formulaire
+  (nouveau mdp + confirmation, validation 8 chars + match) ; succès → "Mot de
+  passe modifié" + redirection /login. Couleurs SECT (bleu nuit/lime/ambre).
+- login-form.tsx : refonte du dialog "Mot de passe oublié". Avant : texte
+  informatif "pas disponible". Maintenant : formulaire email + bouton "Envoyer le
+  lien" → état "Lien envoyé" avec message anti-énumération. Suppression du flux
+  manuel de collage de token (resetToken/newPassword/confirmDialogOpen) obsolète.
+- proxy.ts : '/reset-password' ajouté à PUBLIC_PATHS (sinon le middleware
+  redirigeait vers /login?error=SessionExpired — l'utilisateur non authentifié
+  ne pouvait pas accéder à la page de reset).
+
+DB Neon :
+- Migration 000054 appliquée en SQL direct (bun+pg) car le doublon 000050
+  (certificat_select_is_system + resultat_modify_etudiant) bloque golang-migrate
+  (duplicate version error au scan du dossier). Approche identique à
+  MIGRATIONS_RECONCILIATION.md. Version 54 insérée dans schema_migrations.
+- Vérifié : table PasswordResetToken créée, 4 fonctions SECURITY DEFINER présentes,
+  2 policies RLS actives.
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+
+Validation E2E (production sect-app.vercel.app + Render backend) :
+- POST /api/auth/password-reset {email inexistant} → 200 + message générique ✓
+  (anti-énumération)
+- POST /api/auth/password-reset/confirm {token vide} → 401 "token invalide" ✓
+- Flot complet (token réel) :
+  * Insertion d'un token connu pour prof01@uniabidjan.com via create_password_reset_token
+  * POST /confirm {token, "TestReset123!"} → 200 "mot de passe réinitialisé" ✓
+  * POST /login {prof01, "TestReset123!"} → 200 + access token + user Ulrich DOUH ✓
+  * Restauration du hash original + cleanup des tokens de test ✓
+  * POST /login {prof01, "TestReset123!"} → 401 (restauration confirmée) ✓
+- Agent Browser (/login) :
+  * Bouton "Mot de passe oublié ?" présent ✓
+  * Click → dialog avec champ email + bouton "Envoyer le lien" ✓
+  * Saisie email + envoi → état "Lien envoyé" + toast ✓
+- Agent Browser (/reset-password) :
+  * Sans token → "Lien invalide" + bouton retour ✓
+  * Avec faux token → formulaire nouveau mdp ✓
+  * Saisie mots de passe + submit avec faux token → toast "Réinitialisation
+    impossible: token invalide" ✓
+  * Aucune erreur console ✓
+
+Commits :
+- d771b74 feat(auth): mot de passe oublié — reset self-service par email
+- 6e02cfa fix(frontend): /reset-password ajouté aux routes publiques du proxy
+
+Stage Summary:
+- Flot "mot de passe oublié" entièrement fonctionnel en production (testé E2E
+  avec reset+login réel puis restauration).
+- Backend : 2 endpoints publics + migration 000054 + package mailer (SMTP + log
+  fallback).
+- Frontend : page /reset-password dédiée + dialog login refondu.
+- Sécurité : anti-énumération, tokens hashés (SHA-256), usage unique, TTL 30 min,
+  révocation refresh tokens après reset, min 8 chars.
+- IMPORTANT : l'envoi d'email réel requiert la configuration des variables
+  SMTP_HOST/SMTP_USER/SMTP_PASS/SMTP_FROM sur Render. Sans SMTP, le LogMailer
+  journalise le lien de reset sur stdout (visible dans le dashboard Render) — le
+  flot fonctionne mais l'email n'est pas réellement envoyé. APP_BASE_URL (défaut
+  https://sect-app.vercel.app) contrôle le domaine du lien.
