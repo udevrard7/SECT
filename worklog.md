@@ -14001,3 +14001,64 @@ Validation E2E (Agent Browser, prof01@uniabidjan.com) :
 - Relevé PDF : HTTP 200, 40KB, 1 page
 - VLM : MOYENNE GÉNÉRALE = 16.00/20 ✓, Moyenne UE = 16.00/20 ✓
   (format X/20 correct quel que soit le barème des épreuves)
+
+---
+Task ID: SECT-README-SYNC
+Agent: Z.ai Code (tuteur/assistant)
+Task: Mettre à jour le README qui était en retard sur la réalité du projet
+
+Le README annonçait des chiffres obsolètes (50 tables, 96 policies RLS,
+8 migrations, 115 endpoints / 36 domaines) alors que le projet a beaucoup
+évolué (messagerie, grilles d'évaluation, invitations, failover AI, etc.).
+
+Chiffres collectés directement depuis le dépôt cloné + base Neon (via bun+pg),
+pas depuis la doc existante :
+
+Backend (router.go) :
+- 40 groupes de routes (r.Mount/r.Route) — anciens 36
+- 183 enregistrements de routes (méthode + chemin)
+- 6 nouveaux domaines : messagerie, grilles-evaluation, affectations,
+  invitations, soumissions, failover
+- internal/ : ai, cache, monitoring, worker présents (non documentés avant)
+
+Base Neon (PostgreSQL 18.4, user neondb_owner) :
+- 61 tables (BASE TABLE) + 1 vue — anciennes 50
+- 28 types enum (118 valeurs au total)
+- 104 FK — anciennes 82
+- 200 index — anciens 162
+- 143 policies RLS sur 59 tables activées — anciennes 96/49
+- 39 triggers — anciens 35
+- 58 fonctions publiques
+- 53 migrations appliquées (versions 1→53, aucune dirty) — anciennes 8
+
+Anomalie constatée (non bloquante, déjà documentée) :
+- Migration 000050 dupliquée (2 fichiers up+down : certificat_select_is_system
+  + resultat_modify_etudiant), même problème que les doublons 000039/000040
+  historiques. Les 2 effets sont appliqués en DB, version 50 enregistrée.
+  → renvoi vers backend/db/MIGRATIONS_RECONCILIATION.md dans le README.
+
+Autres corrections :
+- Arbre architecture mis à jour (internal/ai cache monitoring worker,
+  frontend e2e docs supabase vercel.json, suppression frontend/prisma legacy,
+  db/db/migrations chemin réel, worklog.md racine)
+- Table infra : Neon endpoint ep-muddy-river-asz862wj (eu-central-1)
+- Note proxy Vercel→Render (vercel.json rewrites /api/*)
+- Sécurité : 143 policies RLS sur 59 tables
+- Remplacement référence .env.example inexistant → instruction création .env
+- Lien vers MIGRATIONS_RECONCILIATION.md
+
+Vérifications :
+- go build ./... EXIT 0
+- go vet ./... EXIT 0
+- Diff : README.md uniquement (102 insertions, 64 suppressions)
+
+Commit : 7f4bc8f15ab94310855e885e07eb1073c6689c84
+Auteur : udevrard7 <ulrichdouh@gmail.com>
+Push : bc5fc56..7f4bc8f main → origin/main ✓
+- Vercel : redéploiement frontend déclenché (README only, pas de code)
+- Render : backend inchangé (aucun fichier backend/ modifié)
+
+Stage Summary:
+- README désormais synchronisé avec l'état réel (61 tables, 143 RLS, 53 migrations,
+  40 domaines API, 183 routes). Toute la section API/DB/Architecture réécrite
+  sur données vérifiées. Anomalie migration 000050 documentée pour futur fix.
