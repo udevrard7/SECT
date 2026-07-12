@@ -305,6 +305,64 @@ func (s *Server) deleteAbonnement(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]string{"message": "abonnement résilié"})
 }
 
+// softDeleteAbonnement — DELETE /api/abonnements/{id}/hard (soft delete)
+//
+// SECT-ABONNEMENT-SOFT-DELETE : supprime un abonnement RÉSILIÉ en posant
+// deletedAt = NOW() (soft delete). L'abonnement disparaît des listes mais
+// reste en DB pour l'audit/facturation.
+//
+// Sécurité : ne peut soft delete QUE si statut = RESILIE. Sinon → 409 Conflict
+// (l'utilisateur doit d'abord résilier l'abonnement avant de le supprimer).
+func (s *Server) softDeleteAbonnement(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        deleted := false
+        conflict := false
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                // 1. Vérifier le statut actuel (ne peut soft delete que si RESILIE).
+                var statut string
+                err := tx.QueryRow(r.Context(), `SELECT "statut"::text FROM "Abonnement" WHERE "id" = $1`, id).Scan(&statut)
+                if err != nil {
+                        return nil // non trouvé → 404 ci-dessous
+                }
+                if statut != "RESILIE" {
+                        conflict = true
+                        return nil
+                }
+                // 2. Soft delete : poser deletedAt = NOW().
+                tag, err := tx.Exec(r.Context(), `
+                        UPDATE "Abonnement" SET "deletedAt" = now(), "updatedAt" = now()
+                        WHERE "id" = $1 AND "deletedAt" IS NULL
+                `, id)
+                if err == nil && tag.RowsAffected() > 0 {
+                        deleted = true
+                }
+                return nil
+        })
+
+        if conflict {
+                writeJSONError(w, http.StatusConflict, "seul un abonnement résilié peut être supprimé. Résiliez-le d'abord.")
+                return
+        }
+        if !deleted {
+                writeJSONError(w, http.StatusNotFound, "abonnement non trouvé, non résilié, ou déjà supprimé")
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]string{"message": "abonnement supprimé"})
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // A2 : Mutations Plan
 // ──────────────────────────────────────────────────────────────────────────

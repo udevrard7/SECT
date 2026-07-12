@@ -570,6 +570,7 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
                         FROM "Abonnement" a
                         LEFT JOIN "Etablissement" e ON e."id" = a."etablissementId"
                         LEFT JOIN "Plan" p ON p."id" = a."planId"
+                        WHERE a."deletedAt" IS NULL
                         ORDER BY a."createdAt" DESC
                 `)
                 if err != nil {
@@ -685,7 +686,7 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
                        "support", "description", "actif",
                        "branche", "prixParEtudiant", "quotaIAGeneration", "quotaIACorrection",
                        "classeesMax", "popular",
-                       (SELECT count(*) FROM "Abonnement" a WHERE a."planId" = "Plan"."id") AS count_abonnements
+                       (SELECT count(*) FROM "Abonnement" a WHERE a."planId" = "Plan"."id" AND a."deletedAt" IS NULL) AS count_abonnements
                 FROM "Plan"
         `
         var args []any
