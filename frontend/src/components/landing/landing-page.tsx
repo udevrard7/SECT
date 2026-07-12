@@ -56,7 +56,6 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import {
   Accordion,
@@ -1228,51 +1227,69 @@ function Testimonials() {
    9. PRICING (monthly/annual toggle, FCFA)
    ════════════════════════════════════════════════════════════════════ */
 function PricingSection({ onDemo }: { onDemo: () => void }) {
-  const [annual, setAnnual] = useState(false)
+  const fmt = (n: number) => n.toLocaleString('fr-FR').replace(/\u202F/g, ' ')
 
-  const plans = [
+  // ─── B2C : Enseignants freelance ───
+  const plansB2C = [
     {
-      name: 'Starter',
-      monthly: 30000,
+      name: 'Prof Solo',
+      tagline: 'Pour découvrir SECT',
+      priceMain: 'Gratuit',
+      priceSuffix: '',
+      priceSub: '',
       features: [
-        'Jusqu\'à 100 étudiants',
-        '5 examens / mois',
-        'Correction QCM automatique',
-        'Support email (48 h)',
-        '1 administrateur',
+        '1 enseignant',
+        '2 classes / groupes',
+        '40 étudiants max',
+        'Génération IA : 3 épreuves/mois',
+        'Correction IA : 3 épreuves/mois',
+        'Export PDF inclus',
       ],
       popular: false,
+      cta: 'Commencer gratuitement',
+      href: '/souscrire-b2c?plan=prof-solo',
     },
     {
-      name: 'Professionnel',
-      monthly: 80000,
+      name: 'Prof Premium',
+      tagline: 'Pour gagner du temps avec l\'IA',
+      priceMain: '4 900',
+      priceSuffix: 'FCFA / mois',
+      priceSub: '49 000 FCFA / an',
       features: [
-        'Jusqu\'à 2 000 étudiants',
-        'Examens illimités',
-        'IA générative avancée',
-        'Anti-fraude & proctoring complet',
-        'Analytics détaillés',
-        'Support prioritaire 24/7',
-        'Certificats & badges',
+        '1 enseignant',
+        'Classes illimitées',
+        '200 étudiants max',
+        'Génération IA illimitée',
+        'Correction IA illimitée',
+        'Export PDF + support prioritaire',
       ],
       popular: true,
-    },
-    {
-      name: 'Entreprise',
-      monthly: null,
-      features: [
-        'Étudiants illimités',
-        'Tout du plan Professionnel',
-        'Déploiement on-premise',
-        'SSO & intégration SI',
-        'SLA garanti 99,9 %',
-        'Account manager dédié',
-      ],
-      popular: false,
+      cta: 'S\'abonner maintenant',
+      href: '/souscrire-b2c?plan=prof-premium',
     },
   ]
 
-  const fmt = (n: number) => n.toLocaleString('fr-FR').replace(/\u202F/g, ' ')
+  // ─── B2B : Institutions (modèle capitation) ───
+  const planB2B = {
+    name: 'Institutionnel',
+    tagline: 'Universités, grandes écoles, centres de formation',
+    priceMain: '900',
+    priceSuffix: 'FCFA / étudiant / an',
+    priceSub: 'Plancher 50 étudiants (45 000 FCFA / an)',
+    features: [
+      'Enseignants illimités',
+      'Filières illimitées',
+      'Étudiants illimités',
+      'Génération IA illimitée',
+      'Correction IA illimitée',
+      'Proctoring anti-fraude inclus',
+      'Support téléphone dédié',
+      'Logs d\'audit pour la direction',
+    ],
+    popular: true,
+    cta: 'Demander une démo',
+    exemple: 'École de 1 000 étudiants = 900 000 FCFA / an',
+  }
 
   return (
     <section id="tarifs" className="relative py-12 sm:py-16 bg-[#0A1628] overflow-hidden">
@@ -1291,73 +1308,124 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
           </p>
         </Reveal>
 
-        {/* Toggle */}
-        <Reveal delay={0.1} className="flex items-center justify-center gap-3 mb-8">
-          <span className={`text-sm ${!annual ? 'text-white font-medium' : 'text-zinc-500'}`}>Mensuel</span>
-          <Switch checked={annual} onCheckedChange={setAnnual} aria-label="Basculer en facturation annuelle" />
-          <span className={`text-sm ${annual ? 'text-white font-medium' : 'text-zinc-500'}`}>
-            Annuel
-            <Badge className="ml-2 bg-emerald-500/15 text-emerald-300 border-emerald-400/20 hover:bg-emerald-500/15">
-              -20%
-            </Badge>
-          </span>
+        {/* ─── B2C : Enseignants freelance ─── */}
+        <Reveal className="text-center mb-5 mt-10">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-400/30 bg-violet-500/10">
+            <GraduationCap className="h-4 w-4 text-violet-300" />
+            <span className="text-xs font-semibold text-violet-200 uppercase tracking-wider">
+              Enseignants freelance & indépendants (B2C)
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-zinc-500 max-w-xl mx-auto">
+            Pour le professeur dont l&apos;établissement n&apos;est pas équipé. Sans engagement, annulable à tout moment.
+          </p>
         </Reveal>
 
-        <div className="grid md:grid-cols-3 gap-5 items-start">
-          {plans.map((plan, i) => {
-            const price = plan.monthly === null ? null : annual ? Math.round(plan.monthly * 0.8) : plan.monthly
-            return (
-              <Reveal key={plan.name} delay={i * 0.1}>
-                <div
-                  className={`relative h-full rounded-2xl border p-6 transition-all duration-300 ${
-                    plan.popular
-                      ? 'border-violet-400/40 bg-gradient-to-b from-violet-500/[0.07] to-[#0D1B30] md:-mt-4 md:mb-4 shadow-[0_0_50px_rgba(139,92,246,0.15)]'
-                      : 'border-white/[0.07] bg-white/[0.02]'
-                  }`}
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-orange-500 rounded-full">
-                      <span className="text-xs font-bold text-white uppercase tracking-wider">Populaire</span>
-                    </div>
-                  )}
-                  <h3 className="text-lg font-semibold text-white mb-1">{plan.name}</h3>
-                  <div className="mb-5 mt-3">
-                    {price === null ? (
-                      <span className="text-3xl font-bold text-white">Sur mesure</span>
-                    ) : (
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-4xl font-bold text-white">{fmt(price)}</span>
-                        <span className="text-sm text-zinc-500">FCFA / mois</span>
-                      </div>
-                    )}
-                    {annual && price !== null && (
-                      <p className="text-[11px] text-emerald-400 mt-1">Facturé annuellement</p>
-                    )}
+        <div className="grid md:grid-cols-2 gap-5 items-start max-w-3xl mx-auto mb-12">
+          {plansB2C.map((plan, i) => (
+            <Reveal key={plan.name} delay={i * 0.1}>
+              <div
+                className={`relative h-full rounded-2xl border p-6 transition-all duration-300 ${
+                  plan.popular
+                    ? 'border-violet-400/40 bg-gradient-to-b from-violet-500/[0.07] to-[#0D1B30] shadow-[0_0_50px_rgba(139,92,246,0.15)]'
+                    : 'border-white/[0.07] bg-white/[0.02]'
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-orange-500 rounded-full">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">⭐ Populaire</span>
                   </div>
-                  <ul className="space-y-2.5 mb-6">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm text-zinc-300">
-                        <Check className="h-4 w-4 text-violet-400 mt-0.5 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
+                )}
+                <h3 className="text-lg font-semibold text-white mb-1">{plan.name}</h3>
+                <p className="text-xs text-zinc-400 mb-4">{plan.tagline}</p>
+                <div className="mb-5 mt-3">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-4xl font-bold text-white">{plan.priceMain}</span>
+                    {plan.priceSuffix && <span className="text-sm text-zinc-500">{plan.priceSuffix}</span>}
+                  </div>
+                  {plan.priceSub && (
+                    <p className="text-[11px] text-emerald-400 mt-1">{plan.priceSub}</p>
+                  )}
+                </div>
+                <ul className="space-y-2.5 mb-6">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm text-zinc-300">
+                      <Check className="h-4 w-4 text-violet-400 mt-0.5 shrink-0" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <a href={plan.href}>
                   <MagneticButton
                     className={`w-full rounded-lg font-semibold text-sm ${
                       plan.popular
                         ? 'bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_24px_rgba(249,115,22,0.3)]'
                         : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.1]'
                     }`}
-                    onClick={onDemo}
                   >
-                    {plan.popular ? 'Commencer l\'essai gratuit' : 'Nous contacter'}
+                    {plan.cta}
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </MagneticButton>
-                </div>
-              </Reveal>
-            )
-          })}
+                </a>
+              </div>
+            </Reveal>
+          ))}
         </div>
+
+        {/* ─── B2B : Institutions (modèle capitation) ─── */}
+        <Reveal className="text-center mb-5">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-orange-400/30 bg-orange-500/10">
+            <Server className="h-4 w-4 text-orange-300" />
+            <span className="text-xs font-semibold text-orange-200 uppercase tracking-wider">
+              Institutions (B2B) — modèle capitation
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-zinc-500 max-w-xl mx-auto">
+            Pour les universités, grandes écoles et centres de formation. Facturation par étudiant actif.
+          </p>
+        </Reveal>
+
+        <Reveal delay={0.1}>
+          <div className="relative h-full rounded-2xl border border-orange-400/40 bg-gradient-to-b from-orange-500/[0.07] to-[#0D1B30] p-7 max-w-3xl mx-auto shadow-[0_0_50px_rgba(249,115,22,0.15)]">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-orange-500 rounded-full">
+              <span className="text-xs font-bold text-white uppercase tracking-wider">⭐ Populaire</span>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+              <div>
+                <h3 className="text-xl font-semibold text-white mb-1">{planB2B.name}</h3>
+                <p className="text-xs text-zinc-400">{planB2B.tagline}</p>
+              </div>
+              <div className="text-left sm:text-right">
+                <div className="flex items-baseline gap-1.5 sm:justify-end">
+                  <span className="text-4xl font-bold text-white">{planB2B.priceMain}</span>
+                  <span className="text-sm text-zinc-500">{planB2B.priceSuffix}</span>
+                </div>
+                <p className="text-[11px] text-emerald-400 mt-1">{planB2B.priceSub}</p>
+              </div>
+            </div>
+            <ul className="grid sm:grid-cols-2 gap-2.5 mb-6">
+              {planB2B.features.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-zinc-300">
+                  <Check className="h-4 w-4 text-orange-400 mt-0.5 shrink-0" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <div className="rounded-lg bg-white/[0.04] border border-white/[0.08] p-3 mb-5">
+              <p className="text-xs text-zinc-300 flex items-center gap-2">
+                <Users className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                <span className="font-medium text-white">Exemple :</span> {planB2B.exemple}
+              </p>
+            </div>
+            <MagneticButton
+              className="w-full rounded-lg font-semibold text-sm bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_24px_rgba(249,115,22,0.3)]"
+              onClick={onDemo}
+            >
+              {planB2B.cta}
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </MagneticButton>
+          </div>
+        </Reveal>
       </div>
     </section>
   )

@@ -15029,3 +15029,44 @@ Stage Summary:
   l'abonnement est créé ACTIF avec le bon montantPaye en DB.
 - Séparation stricte respectée : wizard admin = B2B uniquement, /souscrire-b2c =
   B2C uniquement.
+
+---
+Task ID: SECT-LANDING-TARIFS-B2B-B2C
+Agent: Z.ai Code (tuteur/assistant)
+Task: Mettre à jour la section tarif du landing page pour aligner avec /abonnements
+
+Contexte : Le landing page affichait d'anciens plans (Starter 30000, Professionnel
+80000, Entreprise "sur mesure") qui ne correspondent plus au modèle économique
+actuel (B2C Prof Solo/Premium + B2B capitation 900 FCFA/étudiant/an).
+
+Refonte PricingSection (landing-page.tsx) :
+- Suppression du toggle mensuel/annuel (plus pertinent : B2C fixe + B2B capitation annuel)
+- Suppression des 3 anciens plans (Starter/Professionnel/Entreprise)
+- 2 sous-sections distinctes :
+
+  1. B2C "Enseignants freelance & indépendants" (badge violet + GraduationCap) :
+     - Prof Solo : Gratuit, 1 prof, 2 classes, 40 étudiants, IA 3/mois → CTA
+       "Commencer gratuitement" → /souscrire-b2c?plan=prof-solo
+     - Prof Premium ⭐ : 4 900 FCFA/mois (49 000/an), classes ∞, 200 étudiants,
+       IA ∞ → CTA "S'abonner maintenant" → /souscrire-b2c?plan=prof-premium
+
+  2. B2B "Institutions — modèle capitation" (badge orange + Server) :
+     - Institutionnel ⭐ : 900 FCFA/étudiant/an, plancher 50 étudiants
+       (45 000 FCFA/an), tout illimité + proctoring + support téléphone
+     - Encart exemple : "École de 1 000 étudiants = 900 000 FCFA / an"
+     - CTA "Demander une démo" (onDemo callback existant)
+
+- CTAs B2C : liens directs vers /souscrire-b2c avec query param plan
+- CTA B2B : onDemo (wizard admin après auth)
+- Conservation du design (navy + violet + orange + DotGrid + GlowOrb + Reveal)
+- Import Switch supprimé (plus utilisé après suppression du toggle)
+
+Vérifications :
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+
+Stage Summary:
+- Section tarif du landing page alignée avec le module /abonnements. Les visiteurs
+  voient clairement les 2 branches (B2C enseignants + B2B institutions) avec les
+  bons prix et les CTA appropriés (B2C → /souscrire-b2c, B2B → démo).
+- L'argumentaire capitation "900 FCFA/élève/an = l'équivalent d'un cahier" est
+  mis en avant via l'encart exemple (1 000 étudiants = 900 000 FCFA/an).
