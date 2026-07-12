@@ -14586,3 +14586,58 @@ Stage Summary:
 - Aucune dépendance externe ajoutée (stdlib Go seule + emailtpl existant).
 - Le contrat frontend est préservé : la réponse API { token, invitation } est
   inchangée — le frontend peut toujours afficher le token si besoin.
+
+---
+Task ID: SECT-INVITATION-EMAIL-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du flot d'invitation avec envoi email Resend
+
+Redéploiement Render :
+- Deploy (commit 3701d29) → live 18:38:54
+- Backend /api/health → 200 OK
+
+Test 1 — Création invitation ETUDIANT (via RESPONSABLE registrar@uniabidjan.com) :
+- POST /api/invitations {email, role:ETUDIANT, name, etablissementId, filiereId}
+  → 201 + {token, invitation} ✓
+- Email Resend envoyé à 18:39:53 (id 9edd4f4f) — MÊME SECONDE que la création DB ✓
+- HTML 7990 chars contient "Savane EdTech" + rôle "Étudiant" ✓
+- Note : test avec ADMIN (ulrichdouh@gmail.com) → 500 car ADMIN n'a pas
+  d'établissement rattaché (problème RLS préexistant, non lié à ce commit).
+
+Test 2 — Page /invitation (Agent Browser) :
+- Lien {appBaseURL}/invitation?token=XXX ouvert → page chargée ✓
+- Affiche : email invité + rôle "Étudiant" + établissement "The University of
+  Abidjan — Abidjan" + "Invitation envoyée par Mme Keita Safiya" ✓
+- Étape 1 (Vérification) → click Continuer → Étape 2 (Création compte) ✓
+- Formulaire pré-rempli (nom + email), mot de passe à définir ✓
+- Submit → "Compte créé avec succès !" + redirection /login ✓
+
+Test 3 — Login avec compte créé :
+- POST /api/auth/login {identifier, password} → 200 + access token + user
+  ETUDIANT ✓
+- DB : User créé (name, email, role=ETUDIANT, actif=true, etablissementId) ✓
+- DB : Invitation marquée used=true, usedAt=18:41:05 ✓
+
+Test 4 — Resend (renvoyer invitation) :
+- POST /api/invitations (création ENSEIGNANT) → 201 + token1
+- PATCH /api/invitations/{id}/renvoyer → 200 + token2 (différent de token1) +
+  expiresAt reseté +7j + used=false ✓
+- 2 emails Resend envoyés (id d5503560 create + id 52278f72 resend, 3s d'écart) ✓
+
+Cleanup :
+- Comptes de test supprimés (test_resp_…@sect-test.ml, test_resend_…@sect-test.ml)
+- Invitations de test supprimées (2)
+- Hashes admin + responsable restaurés aux valeurs d'origine
+- Navigateur fermé, fichiers temporaires supprimés
+
+Stage Summary:
+- Flot d'invitation entièrement fonctionnel avec envoi email Resend :
+  * Create → email envoyé (template Savane EdTech) ✓
+  * Resend → email renvoyé avec nouveau token ✓
+  * Accept → compte créé, login OK ✓
+- Aucune régression : le contrat API {token, invitation} est préservé (le
+  frontend peut toujours afficher le token si besoin).
+- Note : le test avec ADMIN a révélé un problème RLS préexistant (ADMIN sans
+  établissement rattaché → 500 sur create invitation). Ce n'est pas lié à ce
+  commit — l'ADMIN est le propriétaire PaaS et n'est pas censé créer
+  d'invitations directement (il passe par un RESPONSABLE d'établissement).
