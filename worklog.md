@@ -14430,3 +14430,69 @@ Stage Summary:
 - IMPORTANT pour l'utilisateur : le mot de passe admin a été temporairement changé
   pendant les tests (AdminSECT2026!). Il a été restauré à la fin, mais l'utilisateur
   devrait définir son propre mot de passe via le flot reset maintenant fonctionnel.
+
+---
+Task ID: SECT-EMAIL-TEMPLATES-SAVANE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Templates HTML professionnels "Savane EdTech" (palette africaine + motif kente + DS unifié)
+
+Contexte : Les emails transactionnels étaient en texte brut avec un fallback HTML
+minimal (<pre> en SECT-RESEND-MAILER). L'utilisateur demande des templates pro,
+captivants, respectant l'identité visuelle "Savane EdTech" : palette africaine
+(vert lime + terre cuite + bleu nuit + or) + motif kente + composants DS unifiés.
+
+Identité visuelle récupérée du frontend (login-form.tsx) :
+- Palette : #84CC16 (vert lime), #65A30D (lime foncé), #C2410C (terre cuite),
+  #1E1B4B (bleu nuit), #0A1931 (bleu nuit profond), #F59E0B (or), #FFFBEB (crème)
+- Motif kente : bandes verticales tricolores + triangles diagonaux + points dorés
+- Branding : "SECT" + tagline "Savane EdTech — Système d'Évaluation"
+
+Nouveau package internal/emailtpl :
+- base.go : palette de couleurs (const), EmailData struct, DefaultData(),
+  baseTemplate() (wrapper HTML avec header/corps/footer DS), buttonHTML() (CTA
+  vert lime gradient + ombre), infoBoxHTML() (fond crème + bordure or).
+  Structure : header bleu nuit + badge logo "S" vert lime + 2 bandes kente
+  (haut/bas), corps carte blanche, footer bleu nuit + bande kente + copyright.
+  Inline-CSS complet (compatibilité Gmail/Outlook/Apple Mail). Preheader caché.
+- password_reset.go : PasswordResetData struct, PasswordResetHTML() (titre H2
+  + salutation + corps explicatif + bouton CTA + infoBox TTL/sécurité + lien
+  de secours monospace), PasswordResetText() (version texte brut).
+
+Mailer (internal/mailer/mailer.go) :
+- SMTPMailer.Send() : si e.HTML non vide, envoie multipart/alternative
+  (boundary unique, partie text + partie HTML). Avant : texte seul uniquement.
+  Cohérent avec ResendMailer qui envoie déjà text+html.
+- ResendMailer : inchangé (déjà supporte text+html via payload JSON).
+- Commentaire ajouté sur l'import time (utilisé par Resend + SMTP).
+
+Usecase auth (RequestPasswordReset) :
+- Remplacement du body texte brut par template HTML + texte via emailtpl.
+- mailer.Email{Body: textBody, HTML: htmlBody} — les 2 versions envoyées.
+- recipientName = user.Name (personnalisation salutation "Bonjour Ulrich DOUH,").
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- Test envoi réel Resend (mini-runner cmd/mailtest, supprimé après) :
+  message_id 7a7e0615-f623-491a-89a6-9bc266fdd6ab ✓
+- HTML rendu 7344 chars, sauvegardé et prévisualisé via Agent Browser
+  (http.server local + fichier HTML).
+
+Validation visuelle VLM (glm-4.6v) :
+- Desktop : "Élégante, structurée, header/footer cohérents. Couleurs bien
+  rendues (vert lime CTA, terre cuite alerte, bleu nuit fond, or sous-titre).
+  Motif kente visible en haut/bas. Bouton CTA proéminent. Texte hiérarchisé
+  et lisible. Aucun problème de layout."
+- Mobile : "Structure adaptée mobile. CTA tactile (≈90% largeur, ≈50px hauteur).
+  Hiérarchie claire. word-break:break-all sur lien de secours (déjà présent).
+  Suggestions mineures (contraste infoBox) notées pour itération future."
+
+Stage Summary:
+- Templates HTML "Savane EdTech" opérationnels. Le flot reset password envoie
+  désormais des emails professionnels avec identité visuelle africaine (palette
+  + motif kente + composants DS unifiés).
+- Package emailtpl réutilisable : baseTemplate + buttonHTML + infoBoxHTML
+  permettent d'ajouter facilement d'autres templates (welcome, invitation,
+  notification, etc.) en respectant le DS.
+- Compatible tous clients email (inline-CSS, multipart/alternative SMTP,
+  text+html Resend). Aucune dépendance externe (stdlib Go seule).
+- VLM valide la qualité visuelle desktop + mobile.

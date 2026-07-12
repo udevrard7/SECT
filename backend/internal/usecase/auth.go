@@ -14,6 +14,7 @@ import (
         "github.com/google/uuid"
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
+        "github.com/udevrard7/sect/backend/internal/emailtpl"
         "github.com/udevrard7/sect/backend/internal/jwt"
         "github.com/udevrard7/sect/backend/internal/mailer"
         "golang.org/x/crypto/bcrypt"
@@ -387,25 +388,21 @@ func (uc *AuthUseCase) RequestPasswordReset(ctx context.Context, email, ip, user
                 return fmt.Errorf("create password reset token: %w", err)
         }
 
-        // 5. Construire le lien + envoyer l'email.
+        // 5. Construire le lien + envoyer l'email (template HTML "Savane EdTech").
         resetLink := uc.appBaseURL + "/reset-password?token=" + plaintext
-        body := fmt.Sprintf(`Bonjour,
-
-Vous avez demandé la réinitialisation de votre mot de passe sur SECT.
-
-Cliquez sur le lien suivant pour définir un nouveau mot de passe (valable %d minutes) :
-
-%s
-
-Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email — votre mot de passe restera inchangé.
-
-— L'équipe SECT`,
-                int(PasswordResetTokenTTL.Minutes()), resetLink)
+        tplData := emailtpl.PasswordResetData{
+                EmailData:   emailtpl.DefaultData(user.Name, uc.appBaseURL),
+                ResetLink:   resetLink,
+                TTLMinutes:  int(PasswordResetTokenTTL.Minutes()),
+        }
+        htmlBody := emailtpl.PasswordResetHTML(tplData)
+        textBody := emailtpl.PasswordResetText(tplData)
 
         if err := uc.mailer.Send(mailer.Email{
                 To:      user.Email,
                 Subject: "SECT — Réinitialisation de votre mot de passe",
-                Body:    body,
+                Body:    textBody,
+                HTML:    htmlBody,
         }); err != nil {
                 return fmt.Errorf("send reset email: %w", err)
         }
