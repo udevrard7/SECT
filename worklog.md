@@ -14534,3 +14534,55 @@ Stage Summary:
 - VLM (glm-4.6v) avait validé la qualité visuelle desktop + mobile en local.
 - Le test production confirme : HTML bien rendu, branding présent, bouton CTA
   fonctionnel, reset complet (email → clic → form → login).
+
+---
+Task ID: SECT-INVITATION-EMAIL
+Agent: Z.ai Code (tuteur/assistant)
+Task: Brancher le mailer sur le flot d'invitation (Create + Resend) avec template HTML Savane EdTech
+
+Contexte : Audit du flot d'invitation (E1-INVITATIONS) — il manquait l'envoi d'email.
+Le InvitationUseCase.Create() générait un token en DB + le retournait dans la
+réponse API, mais N'ENVOYAIT AUCUN EMAIL. Le frontend affichait un toast
+"Invitation envoyée" trompeur + montrait le token pour test manuel. Idem pour
+Resend(). Conséquence : aucun invité ne recevait réellement son lien d'invitation.
+
+Gap identifié :
+- InvitationUseCase n'avait pas de dépendance mailer.
+- Aucun template d'invitation n'existait (seul reset-password en avait un).
+
+Implémentation :
+- Nouveau template internal/emailtpl/invitation.go :
+  * InvitationData struct (AcceptLink, TTLDays, Role, RoleLabel, EtablissementNom,
+    FiliereNom, InviterName).
+  * RoleLabelFR() exporté (ENSEIGNANT→"Enseignant", ETUDIANT→"Étudiant",
+    RESPONSABLE→"Responsable pédagogique").
+  * InvitationHTML() : titre "Vous êtes invité à rejoindre SECT" + salutation +
+    contexte + carte crème (rôle/étab/filière/invitant) + bouton CTA "Accepter
+    l'invitation" + infoBox TTL 7 jours + lien secours. Base DS unifiée.
+  * InvitationText() : version texte brut.
+- InvitationUseCase :
+  * Ajout champs mailer + appBaseURL à la struct.
+  * NewInvitationUseCase(repo, mailSvc, appBaseURL) — nouveau contrat.
+  * Create() : après repo.Create, appelle sendInvitationEmail() (non bloquant).
+  * Resend() : après repo.Update, appelle sendInvitationEmail() (non bloquant).
+  * sendInvitationEmail() : récupère les relations via FindByID (étab + filière),
+    construit le lien {appBaseURL}/invitation?token={token}, envoie via mailer.
+    Non bloquant : si échec, l'invitation reste en DB + token retourné pour fallback.
+- main.go : invitationUC = NewInvitationUseCase(invitationRepo, mailSvc, cfg.AppBaseURL).
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- Test envoi réel Resend (mini-runner cmd/mailtest, supprimé après) :
+  message_id aa7d1a1a-bd1b-404b-a7c1-c9331379ca49 ✓
+- HTML rendu 8119 chars, prévisualisé via Agent Browser (http.server local).
+- VLM glm-4.6v valide : couleurs Savane EdTech présentes, carte contexte claire,
+  CTA proéminent, motif kente (3 bandes vert/orange/jaune) visible en haut du header.
+
+Stage Summary:
+- Le flot d'invitation envoie désormais de VRAIS emails via Resend avec template
+  "Savane EdTech" (palette africaine + motif kente + DS unifié).
+- Create ET Resend déclenchent l'envoi. Non bloquant : si Resend tombe, l'invitation
+  reste créée + token retourné dans la réponse API (le frontend peut l'afficher).
+- Aucune dépendance externe ajoutée (stdlib Go seule + emailtpl existant).
+- Le contrat frontend est préservé : la réponse API { token, invitation } est
+  inchangée — le frontend peut toujours afficher le token si besoin.
