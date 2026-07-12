@@ -14722,3 +14722,63 @@ Stage Summary:
   invitation) affichent désormais le vrai nom du produit "SECT — Système d'Évaluation
   Casse-Tête" au lieu de "Savane EdTech" (qui était le nom du thème design).
 - Le thème "Savane" (palette africaine + motif kente) est conservé visuellement.
+
+---
+Task ID: SECT-ABONNEMENTS-B2B-B2C
+Agent: Z.ai Code (tuteur/assistant)
+Task: Restructuration module /abonnements — séparation B2C/B2B + modèle capitation
+
+Contexte : L'offre actuelle (4 plans orientés B2B : Gratuit/29900/89900/249000)
+était trop cher pour un prof solo et pas assez rentable pour les grandes universités.
+Restructuration en 2 branches + modèle capitation pour le B2B.
+
+Nouvelle structure (3 plans) :
+- B2C "Prof Solo" : 0 FCFA (1 prof, 2 classes, 40 étudiants, IA 3 épreuves/mois gen
+  + 3 corrections/mois)
+- B2C "Prof Premium" ⭐ : 4 900 FCFA/mois (1 prof, classes ∞, 200 étudiants, IA ∞)
+- B2B "Institutionnel" : 900 FCFA/étudiant/an (plancher 50 étudiants = 45 000 FCFA/an,
+  tout illimité, support téléphone)
+
+Migration DB 000055 (appliquée en SQL direct — doublon 000050 bloque golang-migrate) :
+- Ajout colonnes Plan : branche, prixParEtudiant, quotaIAGeneration,
+  quotaIACorrection, classeesMax, popular
+- Désactivation 4 anciens plans (actif=false, branche=NULL) — conservés pour
+  l'historique des abonnements existants
+- Création 3 nouveaux plans avec ON CONFLICT DO UPDATE (idempotent)
+
+Backend (stub_handlers_real.go plansListReal) :
+- Ajout champs Branche, PrixParEtudiant, QuotaIAGeneration, QuotaIACorrection,
+  ClasseesMax, Popular au struct plan + SELECT + Scan
+- Filtre optionnel ?branche=B2C|B2B (retourne seulement les plans actifs de la
+  branche). Sans filtre : tous les plans (actifs d'abord, puis legacy inactifs).
+- Tri adapté : par prixMensuel ASC si filtre, par actif DESC sinon.
+
+Frontend (abonnements-page.tsx) :
+- PlanItem : ajout champs branche, prixParEtudiant, quotaIAGeneration,
+  quotaIACorrection, classeesMax, popular
+- getPlanFeatures : 3 modes d'affichage adaptatifs :
+  * B2C : focus enseignant solo (classes, étudiants, quotas IA/mois)
+  * B2B capitation : tout illimité + support téléphone
+  * Legacy : affichage historique (volume de ressources)
+- getPlanPriceDisplay : affichage prix adaptatif :
+  * Capitation : "900 FCFA /étudiant/an" + sub "Plancher 50 étudiants"
+  * Gratuit : "Gratuit" + badge Freemium (B2C)
+  * Fixe : "4 900 FCFA /mois" + sub annuel
+- Cartes : séparation en 3 sections (B2C / B2B / Legacy) avec titres + compteurs
+- Badges : ⭐ Populaire (plan.popular), Capitation (plan.prixParEtudiant), Inactif
+  (!plan.actif), ring-2 sur les plans populaires
+- Opacité réduite (opacity-60) sur les plans legacy désactivés
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+- Migration DB appliquée : 7 plans en DB (3 actifs + 4 legacy inactifs)
+
+Stage Summary:
+- Module /abonnements restructuré en 2 branches (B2C enseignants + B2B institutions)
+  avec modèle capitation pour le B2B. 3 nouveaux plans actifs remplacent les 4
+  anciens (conservés inactifs pour l'historique).
+- L'argumentaire commercial "900 FCFA/élève/an = l'équivalent d'un cahier de rames"
+  est mis en avant sur la carte B2B.
+- Prof Premium est marqué "Populaire" (badge ⭐ + ring vert) pour guider la conversion.
+- L'admin voit les 3 sections distinctes (B2C / B2B / Legacy) sur la page abonnements.

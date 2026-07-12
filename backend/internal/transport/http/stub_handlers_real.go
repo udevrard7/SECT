@@ -640,6 +640,10 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // SECT-ABONNEMENTS-B2B-B2C : filtre optionnel par branche (B2C | B2B).
+        // Si absent, tous les plans (actifs ET inactifs pour l'admin).
+        brancheFilter := r.URL.Query().Get("branche")
+
         type plan struct {
                 ID                  string   `json:"id"`
                 Nom                 string   `json:"nom"`
@@ -659,36 +663,60 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
                 Support             string   `json:"support"`
                 Description         *string  `json:"description,omitempty"`
                 Actif               bool     `json:"actif"`
+                // SECT-ABONNEMENTS-B2B-B2C : nouveaux champs pour la restructuration.
+                Branche             *string  `json:"branche,omitempty"`       // B2C | B2B
+                PrixParEtudiant     bool     `json:"prixParEtudiant"`          // modèle capitation (B2B)
+                QuotaIAGeneration   *int     `json:"quotaIAGeneration,omitempty"` // null = illimité
+                QuotaIACorrection   *int     `json:"quotaIACorrection,omitempty"` // null = illimité
+                ClasseesMax         *int     `json:"classeesMax,omitempty"`   // B2C : nb classes, null = illimité
+                Popular             bool     `json:"popular"`                  // badge "Populaire"
                 // ABONNEMENTS-FIX-A7 : _count.abonnements (style Prisma) attendu par le frontend.
                 Count               *struct {
                         Abonnements int `json:"abonnements"`
                 } `json:"_count,omitempty"`
         }
 
+        // Construction de la requête avec filtre optionnel.
+        query := `
+                SELECT "id", "nom", "type"::text, "prixMensuel", "prixAnnuel",
+                       "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
+                       "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
+                       "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
+                       "support", "description", "actif",
+                       "branche", "prixParEtudiant", "quotaIAGeneration", "quotaIACorrection",
+                       "classeesMax", "popular",
+                       (SELECT count(*) FROM "Abonnement" a WHERE a."planId" = "Plan"."id") AS count_abonnements
+                FROM "Plan"
+        `
+        var args []any
+        if brancheFilter == "B2C" || brancheFilter == "B2B" {
+                query += ` WHERE "branche" = $1 AND "actif" = true`
+                args = append(args, brancheFilter)
+        } else {
+                // Sans filtre : tous les plans actifs d'abord, puis inactifs (legacy).
+                query += ` ORDER BY "actif" DESC, "branche" NULLS LAST, "prixMensuel" ASC`
+        }
+        if brancheFilter == "B2C" || brancheFilter == "B2B" {
+                query += ` ORDER BY "prixMensuel" ASC`
+        }
+
         result := []plan{}
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "nom", "type"::text, "prixMensuel", "prixAnnuel",
-                               "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
-                               "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
-                               "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
-                               "support", "description", "actif",
-                               (SELECT count(*) FROM "Abonnement" a WHERE a."planId" = "Plan"."id") AS count_abonnements
-                        FROM "Plan"
-                        ORDER BY "prixMensuel" ASC
-                `)
+                rows, err := tx.Query(r.Context(), query, args...)
                 if err != nil {
                         return err
                 }
                 defer rows.Close()
                 for rows.Next() {
-                                p := plan{}
+                        p := plan{}
                         var nbAbo int
                         if err := rows.Scan(&p.ID, &p.Nom, &p.Type, &p.PrixMensuel, &p.PrixAnnuel,
                                 &p.NbEtablissementsMax, &p.NbFilieresMax, &p.NbEnseignantsMax,
                                 &p.NbEtudiantsMax, &p.NbQuestionsMax, &p.NbEvaluationsMois,
                                 &p.IaGeneration, &p.IaCorrection, &p.Proctoring, &p.ExportPDF,
-                                &p.Support, &p.Description, &p.Actif, &nbAbo); err != nil {
+                                &p.Support, &p.Description, &p.Actif,
+                                &p.Branche, &p.PrixParEtudiant, &p.QuotaIAGeneration, &p.QuotaIACorrection,
+                                &p.ClasseesMax, &p.Popular, &nbAbo); err != nil {
                                 return err
                         }
                         p.Count = &struct {

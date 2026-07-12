@@ -110,6 +110,13 @@ interface PlanItem {
   description: string | null
   actif: boolean
   createdAt: string
+  // SECT-ABONNEMENTS-B2B-B2C : nouveaux champs pour la restructuration.
+  branche?: string | null // 'B2C' | 'B2B' | null (legacy)
+  prixParEtudiant?: boolean // modèle capitation (B2B)
+  quotaIAGeneration?: number | null // null = illimité
+  quotaIACorrection?: number | null // null = illimité
+  classeesMax?: number | null // B2C : nb classes, null = illimité
+  popular?: boolean // badge "Populaire"
   _count?: { abonnements: number }
 }
 
@@ -1002,7 +1009,51 @@ export function AbonnementsPage() {
   }
 
   // ─── Plan feature list helper ───
+  // SECT-ABONNEMENTS-B2B-B2C : affichage adaptatif selon la branche (B2C/B2B).
+  // B2C : met en avant classes + étudiants + quotas IA (épreuves/mois).
+  // B2B capitation : met en avant le modèle par étudiant + illimités.
+  // Legacy (anciens plans) : affichage historique (volume de ressources).
   const getPlanFeatures = (plan: PlanItem) => {
+    const isB2C = plan.branche === 'B2C'
+    const isB2B = plan.branche === 'B2B'
+    const isCapitation = plan.prixParEtudiant === true
+
+    // Helper pour afficher un quota IA (null = illimité, sinon nb/mois)
+    const iaLabel = (quota: number | null | undefined, baseLabel: string) => {
+      if (quota === null || quota === undefined) return `${baseLabel} illimitée`
+      return `${baseLabel} (${quota}/mois)`
+    }
+
+    if (isB2C) {
+      // B2C : focus sur l'enseignant solo
+      const features = [
+        { label: '1 enseignant', included: true },
+        { label: plan.classeesMax ? `${plan.classeesMax} classes` : 'Classes illimitées', included: true },
+        { label: `${plan.nbEtudiantsMax} étudiants`, included: true },
+        { label: iaLabel(plan.quotaIAGeneration, 'Génération IA'), included: plan.iaGeneration },
+        { label: iaLabel(plan.quotaIACorrection, 'Correction IA'), included: plan.iaCorrection },
+        { label: 'Export PDF', included: plan.exportPDF },
+        { label: 'Proctoring', included: plan.proctoring },
+      ]
+      return features
+    }
+
+    if (isB2B && isCapitation) {
+      // B2B capitation : tout illimité, facturation par étudiant
+      const features = [
+        { label: 'Enseignants illimités', included: true },
+        { label: 'Filières illimitées', included: true },
+        { label: 'Étudiants illimités', included: true },
+        { label: 'Génération IA illimitée', included: plan.iaGeneration },
+        { label: 'Correction IA illimitée', included: plan.iaCorrection },
+        { label: 'Proctoring inclus', included: plan.proctoring },
+        { label: 'Export PDF', included: plan.exportPDF },
+        { label: 'Support téléphone dédié', included: plan.support === 'telephone' },
+      ]
+      return features
+    }
+
+    // Legacy (anciens plans) — affichage historique
     const features = [
       { label: `${plan.nbEtablissementsMax} établissement${plan.nbEtablissementsMax > 1 ? 's' : ''}`, included: true },
       { label: `${plan.nbFilieresMax} filière${plan.nbFilieresMax > 1 ? 's' : ''}`, included: true },
@@ -1016,6 +1067,28 @@ export function AbonnementsPage() {
       { label: 'Export PDF', included: plan.exportPDF },
     ]
     return features
+  }
+
+  // SECT-ABONNEMENTS-B2B-B2C : affichage du prix selon le modèle (fixe vs capitation).
+  const getPlanPriceDisplay = (plan: PlanItem) => {
+    if (plan.prixParEtudiant === true) {
+      // Modèle capitation : 900 FCFA/étudiant/an
+      return {
+        main: formatCurrency(plan.prixAnnuel ?? 900),
+        suffix: '/étudiant/an',
+        sub: 'Plancher 50 étudiants (45 000 FCFA/an)',
+        badge: 'Capitation',
+      }
+    }
+    if (plan.prixMensuel === 0) {
+      return { main: 'Gratuit', suffix: '', sub: '', badge: plan.branche === 'B2C' ? 'Freemium' : '' }
+    }
+    return {
+      main: formatCurrency(plan.prixMensuel),
+      suffix: '/mois',
+      sub: plan.prixAnnuel ? `${formatCurrency(plan.prixAnnuel)}/an` : '',
+      badge: '',
+    }
   }
 
   return (
@@ -1148,84 +1221,121 @@ export function AbonnementsPage() {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {plans.map((plan) => {
-                const colors = getPlanColor(plan.type)
-                const features = getPlanFeatures(plan)
-                return (
-                  <Card
-                    key={plan.id}
-                    className={`relative transition-shadow hover:shadow-md ${colors.border} ${colors.bg}`}
-                  >
-                    <div className={`absolute -top-0 left-1/2 -translate-x-1/2 -translate-y-1/2`}>
-                      <Badge className={`${colors.badge} text-xs font-semibold`}>
-                        {plan.type}
-                      </Badge>
-                    </div>
-
-                    <CardHeader className={`pb-2 pt-6 ${colors.header} rounded-t-lg`}>
-                      <CardTitle className={`text-lg font-bold ${colors.accent}`}>
-                        {plan.nom}
-                      </CardTitle>
-                      <div className="mt-1">
-                        <span className="text-3xl font-bold font-mono tabular-nums">{plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
-                        </span>
-                        {plan.prixMensuel > 0 && (
-                          <span className="text-sm text-muted-foreground">/mois</span>
-                        )}
-                      </div>
-                      {plan.prixAnnuel != null && plan.prixAnnuel > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          {formatCurrency(plan.prixAnnuel)}/an
-                        </p>
-                      )}
-                    </CardHeader>
-
-                    <CardContent className="p-4">
-                      <ul className="space-y-2 text-sm">
-                        {features.map((f, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            {f.included ? (
-                              <Check className="h-4 w-4 text-success-text mt-0.5 shrink-0" />
-                            ) : (
-                              <X className="h-4 w-4 text-gray-400 dark:text-gray-600 mt-0.5 shrink-0" />
+            <div className="space-y-6">
+              {/* SECT-ABONNEMENTS-B2B-B2C : séparation B2C / B2B / Legacy */}
+              {[
+                { key: 'B2C', label: 'B2C — Enseignants Freelance & Indépendants', plans: plans.filter(p => p.branche === 'B2C') },
+                { key: 'B2B', label: 'B2B — Institutions (modèle capitation)', plans: plans.filter(p => p.branche === 'B2B') },
+                { key: 'legacy', label: 'Anciens plans (désactivés)', plans: plans.filter(p => !p.branche) },
+              ].filter(section => section.plans.length > 0).map(section => (
+                <div key={section.key} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{section.label}</h3>
+                    <Badge variant="secondary" className="text-xs">{section.plans.length}</Badge>
+                    {section.key === 'B2B' && (
+                      <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Capitation</Badge>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {section.plans.map((plan) => {
+                      const colors = getPlanColor(plan.type)
+                      const features = getPlanFeatures(plan)
+                      const priceDisplay = getPlanPriceDisplay(plan)
+                      const isPopular = plan.popular === true
+                      const isInactive = !plan.actif
+                      return (
+                        <Card
+                          key={plan.id}
+                          className={`relative transition-shadow hover:shadow-md ${colors.border} ${colors.bg} ${isPopular ? 'ring-2 ring-success shadow-lg' : ''} ${isInactive ? 'opacity-60' : ''}`}
+                        >
+                          {/* Badge en haut : Popular / Capitation / type */}
+                          <div className="absolute -top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1">
+                            {isPopular && (
+                              <Badge className="bg-success text-success-foreground text-xs font-semibold shadow-md">
+                                ⭐ Populaire
+                              </Badge>
                             )}
-                            <span className={f.included ? '' : 'text-muted-foreground line-through'}>
-                              {f.label}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                            {!isPopular && (
+                              <Badge className={`${colors.badge} text-xs font-semibold`}>
+                                {plan.type}
+                              </Badge>
+                            )}
+                          </div>
 
-                      <div className="mt-3 flex items-center gap-1.5">
-                        <span className="text-xs text-muted-foreground">Support :</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {plan.support === 'telephone' ? 'Téléphone' : plan.support === 'chat' ? 'Chat' : 'Email'}
-                        </Badge>
-                      </div>
+                          <CardHeader className={`pb-2 pt-6 ${colors.header} rounded-t-lg`}>
+                            <CardTitle className={`text-lg font-bold ${colors.accent} flex items-center gap-2`}>
+                              {plan.nom}
+                              {plan.prixParEtudiant && (
+                                <Badge variant="outline" className="text-xs border-warning/40 text-warning">Capitation</Badge>
+                              )}
+                            </CardTitle>
+                            <div className="mt-1">
+                              <span className="text-3xl font-bold font-mono tabular-nums">{priceDisplay.main}</span>
+                              {priceDisplay.suffix && (
+                                <span className="text-sm text-muted-foreground">{priceDisplay.suffix}</span>
+                              )}
+                            </div>
+                            {priceDisplay.sub && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{priceDisplay.sub}</p>
+                            )}
+                            {plan.description && (
+                              <p className="text-xs text-muted-foreground italic mt-1">{plan.description}</p>
+                            )}
+                          </CardHeader>
 
-                      <div className="mt-2 flex items-center gap-1.5">
-                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">
-                          {plan._count?.abonnements ?? 0} abonné{(plan._count?.abonnements ?? 0) > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                    </CardContent>
+                          <CardContent className="p-4">
+                            <ul className="space-y-2 text-sm">
+                              {features.map((f, idx) => (
+                                <li key={idx} className="flex items-start gap-2">
+                                  {f.included ? (
+                                    <Check className="h-4 w-4 text-success-text mt-0.5 shrink-0" />
+                                  ) : (
+                                    <X className="h-4 w-4 text-gray-400 dark:text-gray-600 mt-0.5 shrink-0" />
+                                  )}
+                                  <span className={f.included ? '' : 'text-muted-foreground line-through'}>
+                                    {f.label}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
 
-                    <CardFooter className="p-4 pt-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={`w-full ${colors.badge} border-current hover:opacity-80`}
-                        onClick={() => handleOpenEditPlan(plan)}
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                        Modifier
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                )
-              })}
+                            <div className="mt-3 flex items-center gap-1.5">
+                              <span className="text-xs text-muted-foreground">Support :</span>
+                              <Badge variant="secondary" className="text-xs">
+                                {plan.support === 'telephone' ? 'Téléphone' : plan.support === 'chat' ? 'Chat' : 'Email'}
+                              </Badge>
+                            </div>
+
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">
+                                {plan._count?.abonnements ?? 0} abonné{(plan._count?.abonnements ?? 0) > 1 ? 's' : ''}
+                              </span>
+                              {!plan.actif && (
+                                <Badge variant="outline" className="text-xs border-muted-foreground/30 text-muted-foreground ml-auto">
+                                  Inactif
+                                </Badge>
+                              )}
+                            </div>
+                          </CardContent>
+
+                          <CardFooter className="p-4 pt-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`w-full ${colors.badge} border-current hover:opacity-80`}
+                              onClick={() => handleOpenEditPlan(plan)}
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                              Modifier
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </TabsContent>
