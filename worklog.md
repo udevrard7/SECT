@@ -14315,3 +14315,62 @@ Stage Summary:
 - Domaine sect.ftci.fr vérifié, délivrabilité confirmée.
 - Aucun changement de code supplémentaire (la validation E2E confirme le commit
   8d9d4d6). Pas de nouveau commit nécessaire.
+
+---
+Task ID: SECT-RESEND-RESET-UX-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix "token invalide" lors du reset password — UX robuste + messages distincts
+
+Contexte : L'utilisateur a cliqué sur un lien de reset reçu par email
+(ezW46eUXfX2JgMmyh4dGh7kndeBifmMaq59gHnt69o8) → page /reset-password → validation →
+toast "Réinitialisation impossible: token invalide".
+
+Investigation DB Neon :
+- Token ezW46eUX… trouvé en DB (hash 550552fb…) — créé 15:59:30, marqué usedAt
+  16:09:16.749.
+- À 16:09:16, le token 98214cf1… (créé 16:08:59 par un test E2E API) a été confirmé
+  → ConfirmPasswordReset appelle InvalidateUserPasswordResetTokens(userId) qui
+  invalide TOUS les tokens non utilisés du user, y compris ezW46eUX… qui était
+  encore valide.
+- Cause racine : effet de bord de InvalidateUserPasswordResetTokens (sécurité
+  voulue — un reset confirmé invalide les autres liens en circulation). Le token
+  de l'utilisateur a été invalidé par mon test E2E concurrent. MAIS le message
+  "token invalide" était trop générique pour l'UX.
+
+Backend (middleware/auth.go MapDomainError) :
+- InvalidTokenError : message distinct selon Reason :
+  - "expired" → "le lien a expiré (validité 30 minutes). Demandez un nouveau lien."
+  - "not found or already used" → "ce lien a déjà été utilisé ou n'est plus valide.
+    Demandez un nouveau lien."
+  - "empty token" → "jeton manquant dans la requête"
+  - default → "token invalide, expiré ou déjà utilisé"
+- Sécurité préservée : "not found" et "already used" restent indistinguables
+  (anti-énumération — un attaquant ne peut pas savoir si le token a existé).
+
+Frontend (/reset-password/page.tsx) :
+- token = searchParams.get('token').trim() → nettoie espaces/CRLF que certains
+  webmails insèrent dans les liens longs.
+- Protection double-submit : if (submitting || done) return au début de
+  handleSubmit + bouton disabled={submitting || done || fatalError || ...}.
+  Empêche un double-clic rapide d'envoyer 2 requêtes (la 2e échouerait en 401
+  car le token est consommé par la 1ère).
+- Erreur fatale (401) → écran dédié fatalError au lieu d'un toast éphémère :
+  affiche le message backend + "Pour des raisons de sécurité, chaque lien ne
+  peut être utilisé qu'une seule fois et expire après 30 minutes." + bouton
+  "Demander un nouveau lien" (redirige /login).
+- États visuels clairs : Lien invalide (pas de token) / Lien non valide
+  (fatalError) / Mot de passe modifié (done) / Formulaire (défaut).
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0 (frontend), tsc --noEmit EXIT 0
+- Fix TS : disabled={... || !!fatalError || ...} (string → boolean)
+
+Stage Summary:
+- UX du reset password rendue robuste : double-submit impossible, messages
+  distincts (expiré vs déjà utilisé), écran dédié avec action de récupération.
+- Cause racine du bug utilisateur identifiée : effet de bord de
+  InvalidateUserPasswordResetTokens (sécurité) couplé à un message trop générique.
+  Aucun changement de logique métier — juste UX + clarté des messages.
+- Le comportement de sécurité (invalider les autres tokens après un reset
+  confirmé) est PRESERVÉ — c'est une protection importante.
