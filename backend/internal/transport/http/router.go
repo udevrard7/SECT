@@ -156,6 +156,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // confirmPasswordReset : valide le token + définit le nouveau mot de passe.
                 r.Post("/api/auth/password-reset", s.requestPasswordReset)
                 r.Post("/api/auth/password-reset/confirm", s.confirmPasswordReset)
+                // SECT-B2C-SOUSCRIPTION-AUTO : souscription B2C publique (enseignant
+                // freelance). Crée auto étab personnel + user ENSEIGNANT + abonnement.
+                r.Post("/api/subscriptions/b2c", s.createB2CSubscription)
                 // ACCESS-ASSISTANCE : mode assistance ADMIN (accès temporaire aux pages RESPONSABLE).
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/assistance-mode", s.enterAssistanceMode)
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/exit-assistance-mode", s.exitAssistanceMode)
