@@ -15143,3 +15143,39 @@ Stage Summary:
   bouton Trash2 dédié. Le soft delete masque l'abonnement des listes tout en
   conservant les données en DB pour l'audit/facturation.
 - Sécurité : on ne peut soft delete QUE si statut = RESILIE (sinon 409 Conflict).
+
+---
+Task ID: SECT-ABONNEMENT-SOFT-DELETE-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du soft delete des abonnements résiliés
+
+Redéploiements :
+- Render backend (commit b069c57) → live 23:23:56
+- Vercel frontend → auto-déployé
+
+Tests API (curl + backend Render) :
+1. Soft delete abonnement RESILIE → 200 "abonnement supprimé" ✓
+2. Vérif DB : deletedAt IS NOT NULL (soft-deleted) ✓
+3. Vérif liste GET /api/abonnements : abonnement soft-deleted MASQUÉ
+   (5 abonnements visibles, le soft-deleted absent) ✓
+4. Soft delete abonnement ACTIF → 409 "seul un abonnement résilié peut être
+   supprimé. Résiliez-le d'abord." ✓ (sécurité : ne pas supprimer un ACTIF)
+
+Tests UI (Agent Browser sect-app.vercel.app/abonnements) :
+1. Login admin → /abonnements → onglet "Abonnements" ✓
+2. Lignes statut "Résilié" → bouton "Supprimer définitivement" (Trash2) visible ✓
+3. Lignes statut ACTIF → boutons "Suspendre" + "Résilier" (pas de Supprimer) ✓
+4. Click "Supprimer définitivement" → dialog confirmation avec :
+   - Titre "Supprimer l'abonnement"
+   - Warning "données conservées pour audit/facturation"
+   - Boutons "Annuler" + "Supprimer définitivement" ✓
+
+Cleanup :
+- Hash admin restauré. Abos test supprimés. Navigateur fermé.
+
+Stage Summary:
+- Soft delete des abonnements résiliés opérationnel en production. L'admin peut
+  maintenant supprimer définitivement (soft delete) les abonnements résiliés via
+  un bouton Trash2 dédié. Les abonnements soft-deleted sont masqués des listes
+  mais conservés en DB pour l'audit/facturation.
+- Sécurité : impossible de soft delete un abonnement non résilié (409 Conflict).
