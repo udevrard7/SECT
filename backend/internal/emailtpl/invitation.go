@@ -150,6 +150,6 @@ func InvitationText(d InvitationData) string {
         b.WriteString(d.AcceptLink)
         b.WriteString("\n\n")
         b.WriteString("Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.\n\n")
-        b.WriteString("— L'équipe SECT (Savane EdTech)")
+        b.WriteString("— L'équipe SECT (Système d'Évaluation Casse-Tête)")
         return b.String()
 }

@@ -32,7 +32,7 @@ type InvitationUseCase struct {
 
 // NewInvitationUseCase crée un nouveau InvitationUseCase.
 // mailer + appBaseURL sont utilisés pour envoyer l'email d'invitation (template
-// HTML "Savane EdTech") via ResendMailer (ou fallback SMTP/Log).
+// HTML "Savane" — SECT) via ResendMailer (ou fallback SMTP/Log).
 func NewInvitationUseCase(invitationRepo domain.InvitationRepository, mailSvc mailer.Mailer, appBaseURL string) *InvitationUseCase {
         return &InvitationUseCase{
                 invitationRepo: invitationRepo,
