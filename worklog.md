@@ -15070,3 +15070,29 @@ Stage Summary:
   bons prix et les CTA appropriés (B2C → /souscrire-b2c, B2B → démo).
 - L'argumentaire capitation "900 FCFA/élève/an = l'équivalent d'un cahier" est
   mis en avant via l'encart exemple (1 000 étudiants = 900 000 FCFA/an).
+
+---
+Task ID: SECT-LANDING-TARIFS-B2B-B2C-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production de la section tarif landing page
+
+Test E2E Agent Browser (sect-app.vercel.app/#tarifs) :
+- Section B2C "Enseignants freelance & indépendants" affichée ✓
+- Prof Solo : Gratuit, 40 étudiants max, IA 3/mois ✓
+- Prof Premium ⭐ : 4 900 FCFA/mois, 49 000 FCFA/an, 200 étudiants, IA ∞ ✓
+- CTA B2C pointent vers /souscrire-b2c?plan=prof-solo|prof-premium ✓
+- Section B2B "Institutions — modèle capitation" affichée ✓
+- Institutionnel ⭐ : 900 FCFA/étudiant/an, plancher 50 (45 000 FCFA/an) ✓
+- Encart exemple : "École 1000 étudiants = 900 000 FCFA/an" ✓
+- CTA B2B : "Demander une démo" (onDemo) ✓
+
+VLM glm-4.6v valide (capture ciblée) :
+- "Prof Solo : Gratuit — Pour découvrir SECT"
+- "Prof Premium : 4 900 FCFA/mois (49 000 FCFA/an) — POPULAIRE"
+- "Institutionnel : 900 FCFA/étudiant/an (45 000 FCFA/an pour 50 étudiants) — POPULAIRE"
+
+Cleanup : navigateur fermé, captures supprimées.
+
+Stage Summary:
+- Section tarif du landing page alignée avec /abonnements et validée en production.
+- Les visiteurs voient clairement les 2 branches avec les bons prix et CTA.
