@@ -14830,3 +14830,67 @@ Stage Summary:
 - L'API supporte le filtre ?branche=B2C|B2B pour récupérer sélectivement les plans.
 - Les 4 anciens plans sont conservés (inactifs) pour l'historique des abonnements
   existants — aucun abonnement existant n'est cassé.
+
+---
+Task ID: SECT-B2C-SOUSCRIPTION-AUTO
+Agent: Z.ai Code (tuteur/assistant)
+Task: Souscription B2C auto — création auto établissement personnel pour enseignants freelance
+
+Contexte : Le wizard de souscription existant est B2B uniquement (admin crée
+étab + responsable + abonnement). Pour le B2C (Prof Solo / Prof Premium), un
+enseignant freelance doit pouvoir s'inscrire SEUL, sans admin. La contrainte
+Abonnement.etablissementId NOT NULL nécessite la création auto d'un étab perso.
+
+Flot B2C (public, sans auth) :
+  /souscrire-b2c → choix plan → inscription (nom + email + mdp + ville) →
+  création auto [étab perso + user ENSEIGNANT + abonnement ACTIF] → confirmation
+  → /login
+
+Migration DB 000056 (SQL direct) :
+- Fonction SECURITY DEFINER create_b2c_subscription(p_plan_id, p_user_name,
+  p_user_email, p_user_password_hash, p_ville) :
+  1. Valide le plan (actif + branche='B2C')
+  2. Anti-doublon (si email existe → RAISE 'EMAIL_EXISTS')
+  3. Crée Etablissement personnel (type='PERSONNEL', nom='Espace personnel — {Name}')
+  4. Crée User ENSEIGNANT (rattaché étab, mustChangePwd=false)
+  5. Crée Abonnement ACTIF (dateFin = null si gratuit, +30j si payant)
+  6. Retourne {user_id, email, name, role, etab_id, etab_nom, abo_id, statut, date_fin}
+- RAISE EXCEPTION avec codes métier (PLAN_NOT_FOUND, PLAN_NOT_B2C, EMAIL_EXISTS)
+  pour mapping HTTP côté handler.
+- REVOKE EXECUTE FROM PUBLIC + GRANT TO neondb_owner (sécurité).
+
+Backend (b2c_subscription_handlers.go — NOUVEAU) :
+- POST /api/subscriptions/b2c (PUBLIC — pas d'auth)
+- Body : { planId, name, email, password, ville? }
+- Validation : planId/name requis, email valide, password ≥ 8 chars
+- Hash bcrypt cost 10 (cohérent avec auth.go) avant appel SQL
+- Appel create_b2c_subscription via appdb.WithTx (claims ADMIN pour bypass RLS)
+- Mapping erreurs : PLAN_NOT_FOUND→400, PLAN_NOT_B2C→400, EMAIL_EXISTS→409
+- Réponse 201 : { user, etablissementId, abonnementId, message }
+- Route ajoutée dans router.go groupe public (login/refresh/logout/reset)
+
+Frontend (src/app/souscrire-b2c/page.tsx — NOUVEAU) :
+- Page publique (proxy.ts PUBLIC_PATHS mis à jour)
+- Design "Savane EdTech" : palette africaine (vert lime/terre cuite/bleu nuit/or)
+  + motif kente en fond + bandeau kente supérieur
+- 2 étapes :
+  Étape 1 : Choix plan (2 cartes : Prof Solo gratuit + Prof Premium 4900/mois
+  avec badge ⭐ Populaire + ring vert)
+  Étape 2 : Formulaire inscription (nom, email, ville optionnel, mdp + confirm)
+  avec récap plan sélectionné (changement possible)
+- Écran succès : confirmation + email de connexion + bouton "Se connecter"
+- Protection double-submit + validation inline (mdp 8 chars, correspondance)
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+- Migration DB appliquée : fonction create_b2c_subscription créée (SECURITY_DEFINER=true)
+
+Stage Summary:
+- Le flot B2C est opérationnel : un enseignant freelance peut s'inscrire seul sur
+  /souscrire-b2c, choisir Prof Solo (gratuit) ou Prof Premium (4900/mois), et
+  obtenir automatiquement un espace personnel (étab + user ENSEIGNANT + abonnement
+  ACTIF) sans intervention d'un admin.
+- La transaction est atomique (SECURITY DEFINER) : si une étape échoue, rien n'est
+  créé. Anti-doublon sur l'email.
+- Le design respecte l'identité "Savane EdTech" (palette africaine + kente).
