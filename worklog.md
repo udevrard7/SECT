@@ -15096,3 +15096,50 @@ Cleanup : navigateur fermé, captures supprimées.
 Stage Summary:
 - Section tarif du landing page alignée avec /abonnements et validée en production.
 - Les visiteurs voient clairement les 2 branches avec les bons prix et CTA.
+
+---
+Task ID: SECT-ABONNEMENT-SOFT-DELETE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Soft delete des abonnements résiliés (impossible de supprimer actuellement)
+
+Contexte : Le bouton "Résilier" actuel ne fait que passer le statut à RESILIE.
+L'abonnement reste visible dans la liste sans possibilité de le supprimer. Aucune
+colonne deletedAt n'existait pour le soft delete.
+
+Migration DB 000057 (SQL direct) :
+- Ajout colonne "deletedAt" (TIMESTAMP, nullable) à Abonnement
+- Index partiel "Abonnement_deletedAt_idx" WHERE deletedAt IS NULL (performance)
+- La RLS existante (Abonnement_modify_admin) couvre le UPDATE deletedAt
+
+Backend :
+- abonnementsListReal : filtre WHERE a."deletedAt" IS NULL (masque les soft-deleted)
+- plansListReal : count_abonnements filtre aussi deletedAt IS NULL
+- Nouveau handler softDeleteAbonnement : DELETE /api/abonnements/{id}/hard
+  * Vérifie statut = RESILIE (sinon → 409 Conflict)
+  * Pose deletedAt = NOW() (soft delete)
+  * Réponse 200 "abonnement supprimé"
+- Route ajoutée dans router.go : r.Delete("/{id}/hard", s.softDeleteAbonnement)
+
+Frontend (abonnements-page.tsx) :
+- Import Trash2 (lucide-react)
+- État deleteTarget + handler handleDeleteAbo (fetch DELETE /hard)
+- Bouton "Supprimer" (Trash2) visible UNIQUEMENT si statut === 'RESILIE'
+- Dialog confirmation : "Supprimer l'abonnement" avec warning "données conservées
+  pour audit/facturation"
+- Toast succès "Abonnement supprimé" + refresh data
+
+Règle métier :
+- statut = ACTIF/SUSPENDU/ESSAI → bouton "Résilier" (Ban) visible
+- statut = RESILIE + deletedAt IS NULL → bouton "Supprimer" (Trash2) visible
+- statut = RESILIE + deletedAt IS NOT NULL → masqué des listes (soft deleted)
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+- Migration DB appliquée : colonne deletedAt créée
+
+Stage Summary:
+- Les abonnements résiliés peuvent maintenant être supprimés (soft delete) via un
+  bouton Trash2 dédié. Le soft delete masque l'abonnement des listes tout en
+  conservant les données en DB pour l'audit/facturation.
+- Sécurité : on ne peut soft delete QUE si statut = RESILIE (sinon 409 Conflict).

@@ -11,6 +11,7 @@ import {
   Eye,
   Ban,
   PauseCircle,
+  Trash2,
   CheckCircle2,
   Users,
   TrendingUp,
@@ -411,6 +412,8 @@ export function AbonnementsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<AbonnementItem | null>(null)
   const [suspendTarget, setSuspendTarget] = useState<AbonnementItem | null>(null)
+  // SECT-ABONNEMENT-SOFT-DELETE : suppression définitive (soft delete) des abonnements résiliés.
+  const [deleteTarget, setDeleteTarget] = useState<AbonnementItem | null>(null)
   const [detailAbo, setDetailAbo] = useState<AbonnementItem | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
@@ -822,6 +825,29 @@ export function AbonnementsPage() {
       await refreshData()
     } catch {
       toast.error('Erreur', { description: 'Impossible de résilier l\'abonnement.' })
+    }
+  }
+
+  // ─── Soft delete abonnement (SECT-ABONNEMENT-SOFT-DELETE) ───
+  // Supprime définitivement (soft delete) un abonnement RÉSILIÉ. L'abonnement
+  // disparaît des listes mais reste en DB pour l'audit/facturation.
+  const handleDeleteAbo = async () => {
+    if (!deleteTarget) return
+    try {
+      const res = await fetch(`/api/abonnements/${deleteTarget.id}/hard`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.error || 'Erreur')
+      }
+      toast.success('Abonnement supprimé', {
+        description: `L'abonnement de ${deleteTarget.etablissement?.nom ?? "—"} a été supprimé définitivement.`,
+      })
+      setDeleteTarget(null)
+      await refreshData()
+    } catch (err) {
+      toast.error('Suppression impossible', {
+        description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+      })
     }
   }
 
@@ -1501,6 +1527,17 @@ export function AbonnementsPage() {
                                 title="Résilier"
                               >
                                 <Ban className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {abo.statut === 'RESILIE' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => setDeleteTarget(abo)}
+                                title="Supprimer définitivement"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
                           </div>
@@ -2612,6 +2649,31 @@ export function AbonnementsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleCancelAbo}>Résilier</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── SECT-ABONNEMENT-SOFT-DELETE : Suppression définitive (soft delete) ─── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Supprimer l&apos;abonnement
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer définitivement l&apos;abonnement de{' '}
+              <strong>{deleteTarget?.etablissement?.nom}</strong> ?
+              <br />
+              <span className="text-xs text-muted-foreground mt-2 block">
+                Cet abonnement est déjà résilié. La suppression le masquera des listes
+                mais les données seront conservées en base pour l&apos;audit et la facturation.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleDeleteAbo}>Supprimer définitivement</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

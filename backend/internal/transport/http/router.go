@@ -654,7 +654,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         // ABONNEMENTS-FIX-A1 : mutations (POST/PATCH/DELETE).
                         r.Post("/", s.createAbonnement)
                         r.Patch("/{id}", s.updateAbonnement)
-                        r.Delete("/{id}", s.deleteAbonnement)
+                        r.Delete("/{id}", s.deleteAbonnement) // résilier (statut → RESILIE)
+                        // SECT-ABONNEMENT-SOFT-DELETE : soft delete (deletedAt = NOW()),
+                        // seulement si déjà résilié. Masque l'abonnement des listes.
+                        r.Delete("/{id}/hard", s.softDeleteAbonnement)
                 })
 
                 r.Route("/api/factures", func(r chi.Router) {
