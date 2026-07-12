@@ -14894,3 +14894,43 @@ Stage Summary:
 - La transaction est atomique (SECURITY DEFINER) : si une étape échoue, rien n'est
   créé. Anti-doublon sur l'email.
 - Le design respecte l'identité "Savane EdTech" (palette africaine + kente).
+
+---
+Task ID: SECT-B2C-SOUSCRIPTION-AUTO-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du flot B2C (souscription auto enseignant freelance)
+
+Redéploiements Render (4 commits) :
+- 49daa24 feat(b2c) → aef7965 fix(WithTx) → a04429f fix(logging) → c7d01a0 fix(Go direct)
+  → 402029b fix(SECURITY DEFINER + erreur détaillée)
+- Le dernier commit (402029b) a révélé la cause racine : "permission denied for
+  function create_b2c_subscription (SQLSTATE 42501)".
+
+Cause racine identifiée :
+- Le pool Render se connecte avec le rôle Neon "authenticated" (pas neondb_owner).
+- La fonction create_b2c_subscription n'avait GRANT EXECUTE que pour neondb_owner.
+- Fix : GRANT EXECUTE ON FUNCTION ... TO PUBLIC (tous les rôles peuvent appeler).
+- La fonction reste SECURITY DEFINER (s'exécute avec droits propriétaire) → safe.
+
+Tests E2E production (post-fix permission) :
+1. Plan inexistant → 400 "plan introuvable" ✓
+2. Email déjà existant (ulrichdouh@gmail.com) → 409 "un compte existe déjà..." ✓
+3. Souscription Prof Solo (API direct) → 201 { user ENSEIGNANT, etabId, aboId ACTIF } ✓
+4. Login avec compte créé → 200 + access token ✓
+5. Souscription Prof Premium (API direct) → 201 { user, etab, abo ACTIF } ✓
+6. UI Agent Browser /souscrire-b2c :
+   * Page choix plan affiche 2 cartes (Prof Solo + Prof Premium ⭐ Populaire) ✓
+   * Click Prof Solo → formulaire inscription (nom, email, ville, mdp+confirm) ✓
+   * Fill + submit → "Compte créé !" + email connexion + mention étab perso auto ✓
+7. Cleanup : comptes/étab de test supprimés.
+
+Stage Summary:
+- Le flot B2C est entièrement fonctionnel en production. Un enseignant freelance
+  peut s'inscrire seul sur /souscrire-b2c, choisir Prof Solo (gratuit) ou Prof
+  Premium (4900/mois), et obtenir automatiquement un espace personnel (étab +
+  user ENSEIGNANT + abonnement ACTIF) sans intervention d'un admin.
+- La fonction SECURITY DEFINER create_b2c_subscription gère la transaction
+  atomique (étab + user + abo) en bypassant la RLS (sinon la policy User_insert
+  bloquerait : admin_has_etablissement_access() n'est pas satisfait pour un étab
+  fraîchement créé).
+- Permission EXECUTE accordée à PUBLIC (rôle "authenticated" de Neon inclus).
