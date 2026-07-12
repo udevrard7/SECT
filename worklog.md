@@ -14980,3 +14980,52 @@ Stage Summary:
 - Séparation stricte : wizard admin = B2B capitation uniquement, /souscrire-b2c =
   B2C (Prof Solo/Premium) uniquement.
 - Le toggle mensuel/annuel disparaît pour la capitation (annuel obligatoire).
+
+---
+Task ID: SECT-WIZARD-B2B-CAPITATION-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du wizard B2B capitation
+
+Redéploiements :
+- Render backend (commit f67dd93) → live 22:47:13
+- Vercel frontend → auto-déployé
+
+Test E2E UI Agent Browser (sect-app.vercel.app/abonnements) :
+1. Login admin (ulrichdouh@gmail.com) → /dashboard ✓
+2. /abonnements → click "Nouvelle souscription" ✓
+3. Wizard étape 1 :
+   * Titre "Sélectionnez un plan institutionnel" ✓
+   * Lien vers /souscrire-b2c pour les enseignants freelance ✓
+   * Uniquement le plan B2B "Institutionnel" (filtre branche='B2B') ✓
+   * Badges ⭐ Populaire + Capitation ✓
+   * Prix "900 FCFA/étudiant/an" + sub "Plancher 50 étudiants" ✓
+4. Sélection plan → champ "Nombre d'étudiants estimé" apparaît (spinbutton, value 50) ✓
+5. Saisie 200 étudiants → price summary calcul en temps réel :
+   * Étudiants facturés : 200 (plancher 50)
+   * Tarif : 900 FCFA / étudiant / an
+   * Période : Annuel (1 an)
+   * Montant total : 180 000 FCFA (= 200 × 900) ✓
+6. Toggle mensuel/annuel MASQUÉ (capitation = annuel obligatoire) ✓
+7. Étape 2 (Établissement) : remplissage nom + ville ✓
+8. Étape 3 (Responsable) : mode direct + nom + email ✓
+9. Étape 4 (Confirmation) :
+   * Établissement : "Etab Test Capitation"
+   * Plan : "Institutionnel"
+   * Période : capitation annuel
+   * Montant : 180 000 FCFA ✓
+
+VLM glm-4.6v valide :
+- "Plan Institutionnel, étudiants illimités, IA illimitée"
+- "Nombre d'étudiants estimé = 200"
+- "Montant total = 180 000 FCFA/an (200 × 900 FCFA)"
+
+Cleanup :
+- Compte/étab/abo de test supprimés.
+- Hash admin restauré. Navigateur fermé.
+
+Stage Summary:
+- Wizard B2B admin entièrement aligné avec le modèle capitation. L'admin saisit
+  le nb d'étudiants, le montant se calcule automatiquement (max(nb, 50) × 900),
+  l'abonnement est créé ACTIF avec le bon montantPaye en DB.
+- Séparation stricte respectée : wizard admin = B2B uniquement, /souscrire-b2c =
+  B2C uniquement.
