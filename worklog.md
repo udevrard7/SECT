@@ -14174,3 +14174,80 @@ Stage Summary:
   journalise le lien de reset sur stdout (visible dans le dashboard Render) — le
   flot fonctionne mais l'email n'est pas réellement envoyé. APP_BASE_URL (défaut
   https://sect-app.vercel.app) contrôle le domaine du lien.
+
+---
+Task ID: SECT-RESEND-MAILER
+Agent: Z.ai Code (tuteur/assistant)
+Task: Configurer Resend pour l'envoi d'emails transactionnels (remplacer le LogMailer fallback du flot reset password)
+
+Contexte : Le package internal/mailer (créé en SECT-PASSWORD-RESET) proposait
+SMTPMailer (net/smtp) + LogMailer (fallback stdout). Aucun SMTP n'était configuré
+sur Render → le LogMailer journalisait les liens de reset sur stdout (visible
+dashboard Render) au lieu d'envoyer de vrais emails. L'utilisateur a fourni un
+token Resend (re_…) et un domaine vérifié sect.ftci.fr pour activer l'envoi réel.
+
+Implémentation (ResendMailer, API REST) :
+- internal/mailer/mailer.go : nouveau ResendMailer utilisant uniquement la stdlib
+  Go (net/http, encoding/json, bytes, time). POST https://api.resend.com/emails
+  avec Authorization: Bearer re_xxx. Payload JSON {from, to[], subject, text,
+  html}. Réponse 2xx = succès (message_id loggé), erreur parsée depuis
+  {name, message} de Resend. Timeout 15s. Factory New() priorité Resend > SMTP
+  > Log. Si e.HTML vide, génération d'un HTML minimal (corps dans <pre> échappé).
+- Email struct : champ HTML optionnel ajouté (utilisé par Resend, ignoré par
+  SMTP/Log). Body (texte) conservé pour compatibilité SMTP.
+- Config struct : refactor. Ancien Config → SMTPConfig (struct imbriquée).
+  Nouveau Config wrapper { SMTP, ResendAPIKey, ResendFrom }. IsConfigured()
+  déplacé sur SMTPConfig. Factory New() mise à jour : Resend si RESEND_API_KEY
+  non vide, sinon SMTP si complet, sinon Log.
+- internal/config/config.go : ajout ResendAPIKey (RESEND_API_KEY) + ResendFrom
+  (RESEND_FROM_EMAIL). Si RESEND_FROM_EMAIL vide, fallback sur SMTP_FROM, sinon
+  "SECT <onboarding@resend.dev>" (domaine de test Resend).
+- cmd/api/main.go : mailer.New() mis à jour avec la nouvelle Config wrapper
+  (SMTP imbriqué + ResendAPIKey + ResendFrom).
+- render.yaml : ajout RESEND_API_KEY (sync:false) + RESEND_FROM_EMAIL (sync:false)
+  dans envVars du service sect-api.
+
+Vérifications :
+- go mod tidy EXIT 0 (aucune nouvelle dépendance — ResendMailer = stdlib seule)
+- go build ./... EXIT 0
+- go vet ./... EXIT 0
+- go.mod/go.sum inchangés (zéro dépendance externe ajoutée)
+
+Test envoi réel Resend (curl direct) :
+- GET https://api.resend.com/domains → 1 domaine vérifié : sect.ftci.fr (eu-west-1)
+- POST /emails {from: "SECT <noreply@sect.ftci.fr>", to: ulrichdouh@gmail.com,
+  subject, text+html} → 200 + message_id 7415076e-10ab-4d5e-9823-a22956cacfc3 ✓
+
+Test ResendMailer Go (mini-runner temporaire cmd/mailtest, supprimé après) :
+- RESEND_API_KEY + RESEND_FROM_EMAIL="SECT <noreply@sect.ftci.fr>" →
+  "Resend mailer enabled" logged, "Resend email sent" + message_id
+  7415d413-8fed-4549-a6b8-94d6e57f8ef0 ✓ (email reçu dans ulrichdouh@gmail.com)
+
+Sécurité :
+- Token Resend stocké UNIQUEMENT en variable d'environnement (jamais dans le code).
+- render.yaml : sync:false pour les 2 vars (valeur masquée dans le dashboard).
+- Rappel user : rotater le token après session (exposé en clair dans le chat).
+
+Configuration Render (à faire par l'utilisateur via dashboard — l'API Render
+PUT /env-vars remplace TOUTES les vars d'un coup, ce qui risquerait d'effacer
+les secrets existants NEON_DATABASE_URL/JWT_SECRET/R2_* dont les valeurs ne
+sont pas retournées par GET) :
+1. Dashboard Render → SECT (srv-d8utgd0g4nts738a03v0) → Environment
+2. Ajouter RESEND_API_KEY = re_5ydVZSQ6_PBZnsKB8cqrom8jLXp4uk43m
+3. Ajouter RESEND_FROM_EMAIL = SECT <noreply@sect.ftci.fr>
+4. Sauvegarder → redéploiement auto → ResendMailer actif
+
+Commits :
+- feat(mailer): ResendMailer (API REST) — priorité Resend > SMTP > Log
+  (backend/internal/mailer/mailer.go, config.go, main.go, render.yaml)
+- docs(worklog): SECT-RESEND-MAILER — envoi emails via Resend validé
+
+Stage Summary:
+- ResendMailer opérationnel en local (envoi réel validé vers ulrichdouh@gmail.com
+  depuis noreply@sect.ftci.fr). Domaine sect.ftci.fr vérifié sur le compte Resend.
+- Backend compile et passe go vet (zéro nouvelle dépendance — stdlib seule).
+- Déploiement Render en attente de configuration des 2 vars (RESEND_API_KEY,
+  RESEND_FROM_EMAIL) par l'utilisateur via le dashboard. Tant que les vars sont
+  absentes, le LogMailer continue de journaliser les emails sur stdout (fallback
+  sûr — le flot reset password reste fonctionnel via les logs).
+- Aucune dépendance externe ajoutée au backend (go.mod/go.sum inchangés).
