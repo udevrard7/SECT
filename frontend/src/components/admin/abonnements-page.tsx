@@ -463,7 +463,9 @@ export function AbonnementsPage() {
 
   // Wizard form - Step 1: Plan
   const [wizPlanId, setWizPlanId] = useState('')
-  const [wizPeriodeFacturation, setWizPeriodeFacturation] = useState<'mensuel' | 'annuel'>('mensuel')
+  const [wizPeriodeFacturation, setWizPeriodeFacturation] = useState<'mensuel' | 'annuel'>('annuel')
+  // SECT-ABONNEMENTS-B2B-B2C : nb d'étudiants estimé pour le modèle capitation (B2B).
+  const [wizNbEtudiants, setWizNbEtudiants] = useState<number>(50)
 
   // Wizard form - Step 2: Établissement
   const [wizNom, setWizNom] = useState('')
@@ -573,12 +575,18 @@ export function AbonnementsPage() {
 
   // ─── Wizard step validation ───
   const wizSelectedPlan = plans.find((p) => p.id === wizPlanId)
+  // SECT-ABONNEMENTS-B2B-B2C : calcul du prix selon le modèle (capitation vs fixe).
+  // Capitation B2B : max(nbEtudiants, 50) × prixAnnuel (900 FCFA/étudiant/an).
+  // Fixe : prixAnnuel (annuel) ou prixMensuel (mensuel).
+  const isCapitation = wizSelectedPlan?.prixParEtudiant === true
   const wizPlanPrice = wizSelectedPlan
-    ? wizPeriodeFacturation === 'annuel'
-      ? (wizSelectedPlan.prixAnnuel ?? wizSelectedPlan.prixMensuel * 12)
-      : wizSelectedPlan.prixMensuel
+    ? isCapitation
+      ? Math.max(wizNbEtudiants, 50) * (wizSelectedPlan.prixAnnuel ?? 900)
+      : wizPeriodeFacturation === 'annuel'
+        ? (wizSelectedPlan.prixAnnuel ?? wizSelectedPlan.prixMensuel * 12)
+        : wizSelectedPlan.prixMensuel
     : 0
-  const wizAbonnementDates = getAbonnementDates(wizPeriodeFacturation)
+  const wizAbonnementDates = getAbonnementDates(isCapitation ? 'annuel' : wizPeriodeFacturation)
 
   const canGoStep2 = !!wizPlanId
   const canGoStep3 = !!wizNom.trim()
@@ -608,6 +616,8 @@ export function AbonnementsPage() {
         responsableMode: wizRespMode,
         planId: wizPlanId,
         periodeFacturation: wizPeriodeFacturation,
+        // SECT-ABONNEMENTS-B2B-B2C : nb étudiants estimé pour capitation B2B.
+        nbEtudiantsEstime: isCapitation ? Math.max(wizNbEtudiants, 50) : undefined,
       }
 
       const res = await fetch('/api/etablissements', {
@@ -628,7 +638,7 @@ export function AbonnementsPage() {
           responsableEmail: wizRespEmail,
           temporaryPassword: data.responsable.temporaryPassword,
           planNom: wizSelectedPlan?.nom ?? data.abonnement?.planNom ?? '',
-          periode: wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel',
+          periode: isCapitation ? 'Annuel (capitation)' : (wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'),
           montant: wizPlanPrice,
           dateDebut: wizAbonnementDates.debut,
           dateFin: wizAbonnementDates.fin,
@@ -641,7 +651,7 @@ export function AbonnementsPage() {
           responsableEmail: wizRespEmail,
           temporaryPassword: '',
           planNom: wizSelectedPlan?.nom ?? data.abonnement?.planNom ?? '',
-          periode: wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel',
+          periode: isCapitation ? 'Annuel (capitation)' : (wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'),
           montant: wizPlanPrice,
           dateDebut: wizAbonnementDates.debut,
           dateFin: wizAbonnementDates.fin,
@@ -1553,23 +1563,25 @@ export function AbonnementsPage() {
                 <div className="space-y-1">
                   <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success-text">
                     <CreditCard className="h-4 w-4" />
-                    Sélectionnez un plan
+                    Sélectionnez un plan institutionnel
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Choisissez le plan d&apos;abonnement et la période de facturation.
+                    Modèle capitation : 900 FCFA / étudiant / an (plancher 50 étudiants).
+                    Pour un enseignant freelance, utilisez <a href="/souscrire-b2c" className="text-success-text underline">/souscrire-b2c</a>.
                   </p>
                 </div>
 
-                {plans.filter((p) => p.actif).length === 0 ? (
+                {plans.filter((p) => p.actif && p.branche === 'B2B').length === 0 ? (
                   <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
                     <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Aucun plan actif. Créez d&apos;abord un plan.</p>
+                    <p className="text-sm">Aucun plan B2B actif. Créez d&apos;abord un plan institutionnel.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {plans.filter((p) => p.actif).map((plan) => {
+                  <div className="grid grid-cols-1 gap-3">
+                    {plans.filter((p) => p.actif && p.branche === 'B2B').map((plan) => {
                       const colors = getPlanColor(plan.type)
                       const isSelected = wizPlanId === plan.id
+                      const priceDisplay = getPlanPriceDisplay(plan)
                       return (
                         <button
                           key={plan.id}
@@ -1586,18 +1598,24 @@ export function AbonnementsPage() {
                               <CheckCircle2 className="h-5 w-5 text-success-text" />
                             </div>
                           )}
-                          <Badge className={`${colors.badge} text-[10px] mb-2`}>{plan.type}</Badge>
+                          <div className="flex items-center gap-2 mb-2">
+                            {plan.popular && (
+                              <Badge className="bg-success text-success-foreground text-[10px]">⭐ Populaire</Badge>
+                            )}
+                            {plan.prixParEtudiant && (
+                              <Badge className="bg-warning/15 text-warning border-warning/30 text-[10px]">Capitation</Badge>
+                            )}
+                          </div>
                           <p className="font-bold text-sm font-mono tabular-nums">{plan.nom}</p>
                           <div className="mt-1">
-                            <span className="text-lg font-bold font-mono tabular-nums">{plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
-                            </span>
-                            {plan.prixMensuel > 0 && <span className="text-xs text-muted-foreground">/mois</span>}
+                            <span className="text-lg font-bold font-mono tabular-nums">{priceDisplay.main}</span>
+                            {priceDisplay.suffix && <span className="text-xs text-muted-foreground">{priceDisplay.suffix}</span>}
                           </div>
-                          {plan.prixAnnuel != null && plan.prixAnnuel > 0 && (
-                            <p className="text-xs text-muted-foreground">{formatCurrency(plan.prixAnnuel)}/an</p>
+                          {priceDisplay.sub && (
+                            <p className="text-xs text-warning font-medium">{priceDisplay.sub}</p>
                           )}
                           <ul className="mt-2 space-y-0.5">
-                            {getPlanFeatures(plan).slice(0, 4).map((f, i) => (
+                            {getPlanFeatures(plan).slice(0, 5).map((f, i) => (
                               <li key={i} className="flex items-center gap-1 text-[11px]">
                                 {f.included ? <Check className="h-3 w-3 text-success-text shrink-0" /> : <X className="h-3 w-3 text-gray-400 shrink-0" />}
                                 <span className={f.included ? '' : 'line-through text-muted-foreground'}>{f.label}</span>
@@ -1610,8 +1628,28 @@ export function AbonnementsPage() {
                   </div>
                 )}
 
-                {/* Période de facturation */}
-                {wizPlanId && (
+                {/* SECT-ABONNEMENTS-B2B-B2C : nb étudiants estimé (capitation B2B) */}
+                {wizPlanId && isCapitation && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      Nombre d&apos;étudiants estimé
+                    </Label>
+                    <Input
+                      type="number"
+                      min={50}
+                      value={wizNbEtudiants}
+                      onChange={(e) => setWizNbEtudiants(Math.max(50, parseInt(e.target.value) || 50))}
+                      className="h-10"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Plancher facturé : 50 étudiants (45 000 FCFA/an). Si vous déclarez plus, le montant est ajusté proportionnellement.
+                    </p>
+                  </div>
+                )}
+
+                {/* Période de facturation — masquée pour capitation (annuel par défaut) */}
+                {wizPlanId && !isCapitation && (
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold">Période de facturation</Label>
                     <div className="flex rounded-lg border overflow-hidden">
@@ -1640,25 +1678,42 @@ export function AbonnementsPage() {
                         Annuel
                       </button>
                     </div>
+                  </div>
+                )}
 
-                    {/* Price summary */}
-                    {wizSelectedPlan && (
-                      <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-1.5">
+                {/* Price summary */}
+                {wizSelectedPlan && (
+                  <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Plan :</span>
+                      <span className="text-sm font-semibold">{wizSelectedPlan.nom}</span>
+                    </div>
+                    {isCapitation ? (
+                      <>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Plan :</span>
-                          <span className="text-sm font-semibold">{wizSelectedPlan.nom}</span>
+                          <span className="text-xs text-muted-foreground">Étudiants facturés :</span>
+                          <span className="text-sm font-medium">{Math.max(wizNbEtudiants, 50)} (plancher 50)</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Tarif :</span>
+                          <span className="text-sm font-medium">{formatCurrency(wizSelectedPlan.prixAnnuel ?? 900)} / étudiant / an</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">Période :</span>
-                          <span className="text-sm font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
+                          <span className="text-sm font-medium">Annuel (1 an)</span>
                         </div>
-                        <Separator />
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Montant :</span>
-                          <span className="text-sm font-bold text-success-text font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
-                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Période :</span>
+                        <span className="text-sm font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
                       </div>
                     )}
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Montant total :</span>
+                      <span className="text-sm font-bold text-success-text font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
+                    </div>
                   </div>
                 )}
               </div>

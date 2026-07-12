@@ -217,24 +217,55 @@ func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionCla
                         result.InvitationExpiresAt = expiresAt
                 }
 
-                // 3. Créer l'abonnement (statut ESSAI par défaut, 14 jours période essai).
+                // 3. Créer l'abonnement. SECT-ABONNEMENTS-B2B-B2C : modèle capitation
+                // (B2B) vs modèle fixe (legacy). On récupère branche + prixParEtudiant
+                // pour calculer le montant et la date de fin correctement.
                 aboID := "abo_" + uuid.NewString()
-                var planNom string
-                if err := tx.QueryRow(ctx, `SELECT "nom" FROM "Plan" WHERE "id" = $1`, *input.PlanID).Scan(&planNom); err != nil {
+                var planNom, planBranche string
+                var planPrixParEtudiant bool
+                var planPrixAnnuel float64
+                if err := tx.QueryRow(ctx, `
+                        SELECT "nom", COALESCE("branche", ''), COALESCE("prixParEtudiant", false), COALESCE("prixAnnuel", 0)
+                        FROM "Plan" WHERE "id" = $1
+                `, *input.PlanID).Scan(&planNom, &planBranche, &planPrixParEtudiant, &planPrixAnnuel); err != nil {
                         return &domain.ValidationError{Field: "planId", Message: "plan introuvable"}
                 }
-                // Calculer la date de fin selon la période (annuel = +1 an, mensuel = +1 mois).
-                dateFin := time.Now().Add(30 * 24 * time.Hour) // mensuel par défaut
-                if input.PeriodeFacturation != nil && *input.PeriodeFacturation == "annuel" {
+
+                // Calcul du montant + date de fin selon le modèle.
+                var montantPaye float64
+                var dateFin time.Time
+                var statut string
+                var periodeEssai int
+
+                if planPrixParEtudiant && planBranche == "B2B" {
+                        // ─── Modèle capitation (B2B) ───
+                        // Montant = max(nbEtudiants, plancher 50) × prixParEtudiant/an.
+                        // Statut ACTIF directement (pas d'essai). Date de fin = +1 an.
+                        nbEtudiants := 50 // plancher par défaut
+                        if input.NbEtudiantsEstime != nil && *input.NbEtudiantsEstime > 50 {
+                                nbEtudiants = *input.NbEtudiantsEstime
+                        }
+                        montantPaye = float64(nbEtudiants) * planPrixAnnuel
                         dateFin = time.Now().Add(365 * 24 * time.Hour)
+                        statut = "ACTIF"
+                        periodeEssai = 0
+                } else {
+                        // ─── Modèle fixe (legacy ou B2C) ───
+                        // Mensuel = +30j, Annuel = +365j. Statut ESSAI 14 jours.
+                        dateFin = time.Now().Add(30 * 24 * time.Hour) // mensuel par défaut
+                        if input.PeriodeFacturation != nil && *input.PeriodeFacturation == "annuel" {
+                                dateFin = time.Now().Add(365 * 24 * time.Hour)
+                        }
+                        statut = "ESSAI"
+                        periodeEssai = 14
                 }
-                statut := "ESSAI"
+
                 if _, err := tx.Exec(ctx, `
                         INSERT INTO "Abonnement" ("id", "etablissementId", "planId", "statut", "dateDebut",
                                 "dateFin", "periodeEssaiJours", "montantPaye", "renouvellementAuto",
                                 "createdAt", "updatedAt")
-                        VALUES ($1, $2, $3, $4::"StatutAbonnement", now(), $5, 14, 0, true, now(), now())
-                `, aboID, etab.ID, *input.PlanID, statut, dateFin); err != nil {
+                        VALUES ($1, $2, $3, $4::"StatutAbonnement", now(), $5, $6, $7, true, now(), now())
+                `, aboID, etab.ID, *input.PlanID, statut, dateFin, periodeEssai, montantPaye); err != nil {
                         return fmt.Errorf("create abonnement: %w", err)
                 }
                 result.AbonnementID = aboID

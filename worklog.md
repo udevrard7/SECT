@@ -14934,3 +14934,49 @@ Stage Summary:
   bloquerait : admin_has_etablissement_access() n'est pas satisfait pour un étab
   fraîchement créé).
 - Permission EXECUTE accordée à PUBLIC (rôle "authenticated" de Neon inclus).
+
+---
+Task ID: SECT-WIZARD-B2B-CAPITATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Adapter le wizard B2B admin au modèle capitation (séparation stricte B2B/B2C)
+
+Contexte : Le wizard de souscription admin était orienté ancien modèle fixe (prix
+mensuel/annuel) et ne gérait pas la capitation. De plus, il affichait tous les
+plans actifs (B2C + B2B mélangés). Séparation stricte demandée : wizard admin =
+B2B uniquement, /souscrire-b2c = B2C uniquement.
+
+Backend (domain/etablissement.go + usecase/etablissement.go) :
+- CreateEtablissementInput : ajout champ NbEtudiantsEstime *int (capitation B2B).
+- EtablissementUseCase.Create : récupère branche + prixParEtudiant + prixAnnuel
+  du plan. Si capitation B2B :
+  * montantPaye = max(nbEtudiants, 50) × prixAnnuel (900 FCFA/étudiant/an)
+  * dateFin = +365 jours (annuel obligatoire)
+  * statut = ACTIF (pas d'essai)
+  * periodeEssaiJours = 0
+  Sinon (legacy/B2C) : comportement inchangé (ESSAI 14j, mensuel/annuel).
+
+Frontend (abonnements-page.tsx) :
+- État wizNbEtudiants (default 50, plancher) + wizPeriodeFacturation default 'annuel'.
+- isCapitation = wizSelectedPlan?.prixParEtudiant === true
+- wizPlanPrice : si capitation → max(nbEtudiants, 50) × prixAnnuel, sinon fixe.
+- Étape 1 refondue :
+  * Filtre plans B2B uniquement (p.branche === 'B2B' && p.actif)
+  * Carte affiche badges ⭐ Populaire + Capitation + prix capitation
+  * Champ "Nombre d'étudiants estimé" (input number, min 50) si capitation
+  * Toggle mensuel/annuel MASQUÉ pour capitation (annuel obligatoire)
+  * Price summary adaptatif : capitation affiche étudiants facturés + tarif/étudiant
+  * Lien vers /souscrire-b2c pour les enseignants freelance
+- Body fetch : nbEtudiantsEstime envoyé si capitation.
+- Credentials étape 4 : periode = 'Annuel (capitation)' si capitation.
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+
+Stage Summary:
+- Wizard B2B admin aligné avec le modèle capitation. L'admin saisit le nb d'étudiants
+  estimé, le montant se calcule automatiquement (max(nb, 50) × 900 FCFA/an), et
+  l'abonnement est créé ACTIF (pas d'essai) avec le bon montantPaye en DB.
+- Séparation stricte : wizard admin = B2B capitation uniquement, /souscrire-b2c =
+  B2C (Prof Solo/Premium) uniquement.
+- Le toggle mensuel/annuel disparaît pour la capitation (annuel obligatoire).
