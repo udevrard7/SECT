@@ -14782,3 +14782,51 @@ Stage Summary:
   est mis en avant sur la carte B2B.
 - Prof Premium est marqué "Populaire" (badge ⭐ + ring vert) pour guider la conversion.
 - L'admin voit les 3 sections distinctes (B2C / B2B / Legacy) sur la page abonnements.
+
+---
+Task ID: SECT-ABONNEMENTS-B2B-B2C-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du module /abonnements restructuré
+
+Redéploiements :
+- Render backend (commit 6a7aa61) → live 21:46:14
+- Vercel frontend → auto-déployé
+
+Test 1 — API GET /api/plans (post-deploy) :
+- 7 plans retournés (3 actifs + 4 legacy inactifs) ✓
+- Champs nouveaux présents : branche, prixParEtudiant, quotaIAGeneration,
+  quotaIACorrection, classeesMax, popular ✓
+- Tri : actifs d'abord, puis legacy par prixMensuel ASC ✓
+
+Test 2 — Filtre ?branche=B2C :
+- 2 plans : Prof Solo (0, IA 3/3, 2 classes) + Prof Premium (4900, IA ∞, ∞ classes) ✓
+
+Test 3 — Filtre ?branche=B2B :
+- 1 plan : Institutionnel (prixAnnuel 900, capitation true, popular true) ✓
+
+Test 4 — UI Agent Browser (sect-app.vercel.app/abonnements) :
+- Login admin → /dashboard → /abonnements ✓
+- 3 sections affichées :
+  * "B2C — ENSEIGNANTS FREELANCE & INDÉPENDANTS" (2 plans)
+  * "B2B — INSTITUTIONS (MODÈLE CAPITATION)" (1 plan)
+  * "Anciens plans (désactivés)" (4 plans, opacité réduite)
+- Badges : ⭐ Populaire (Prof Premium + Institutionnel), Capitation (Institutionnel),
+  Inactif (4 legacy) ✓
+- Prix affichés : Gratuit / 4 900 FCFA/mois / 900 FCFA/étudiant/an ✓
+
+Test 5 — VLM glm-4.6v (screenshot plein page) :
+- "3 sections distinctes : B2C / B2B / Anciens plans" ✓
+- "Prix corrects : Prof Solo Gratuit, Prof Premium 4 900/mois, Institutionnel
+  900/étudiant/an" ✓
+- "Badges Populaire (vert + étoile), Capitation (orange), Inactif (gris)" ✓
+- "Qualité visuelle professionnelle et fonctionnelle" ✓
+
+Cleanup :
+- Hash admin restauré. Navigateur fermé. Fichiers temporaires supprimés.
+
+Stage Summary:
+- Module /abonnements restructuré et validé en production. L'admin voit désormais
+  3 sections claires (B2C / B2B / Legacy) avec les nouveaux plans et badges.
+- L'API supporte le filtre ?branche=B2C|B2B pour récupérer sélectivement les plans.
+- Les 4 anciens plans sont conservés (inactifs) pour l'historique des abonnements
+  existants — aucun abonnement existant n'est cassé.
