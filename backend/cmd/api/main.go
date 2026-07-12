@@ -130,8 +130,10 @@ func main() {
         ueUC := usecase.NewUEUseCase(ueRepo)
         efUC := usecase.NewEnseignantFiliereUseCase(efRepo)
         anneeUC := usecase.NewAnneeUseCase(anneeRepo)
-        // E1-INVITATIONS : usecase invitations (token + bcrypt + matricule).
-        invitationUC := usecase.NewInvitationUseCase(invitationRepo)
+        // E1-INVITATIONS : usecase invitations (token + bcrypt + matricule + email).
+        // mailer passé pour l'envoi de l'email d'invitation (template "Savane EdTech"
+        // via ResendMailer en production).
+        invitationUC := usecase.NewInvitationUseCase(invitationRepo, mailSvc, cfg.AppBaseURL)
         epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo)
         questionUC := usecase.NewQuestionUseCase(questionRepo)
         sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
