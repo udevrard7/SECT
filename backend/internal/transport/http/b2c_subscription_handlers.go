@@ -58,6 +58,8 @@ type b2cSubscriptionResponse struct {
 // Réponse : 201 { user, etablissementId, abonnementId, message } ou
 // 400 (validation) / 409 (email existe déjà) / 500 (erreur interne).
 func (s *Server) createB2CSubscription(w http.ResponseWriter, r *http.Request) {
+        slog.Info("createB2CSubscription handler called", "method", r.Method, "path", r.URL.Path)
+
         var req b2cSubscriptionRequest
         if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
