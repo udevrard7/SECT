@@ -1,63 +1,67 @@
 // Package emailtpl fournit des templates HTML professionnels pour les emails
-// transactionnels de SECT "Savane EdTech".
+// transactionnels de SECT (Système d'Évaluation Casse-Tête).
 //
-// Identité visuelle :
-//   - Palette africaine : vert lime (#84CC16), terre cuite (#C2410C),
+// Identité visuelle (thème "Savane" — palette africaine + motif kente) :
+//   - Palette : vert lime (#84CC16), terre cuite (#C2410C),
 //     bleu nuit (#1E1B4B / #0A1931), or (#F59E0B)
 //   - Motif kente (bandes tricolores + triangles diagonaux + points dorés)
 //   - Composants DS unifiés (header, footer, bouton, carte)
+//
+// NB : "Savane" est le nom du thème design (palette + motif), PAS le nom du
+// produit. Le produit est "SECT — Système d'Évaluation Casse-Tête".
 //
 // Tous les templates sont inline-CSS (compatibilité maximale clients email :
 // Gmail, Outlook, Apple Mail, etc.). Aucune dépendance externe.
 package emailtpl
 
-// Palette de couleurs "Savane EdTech" (réutilisée dans tous les templates).
+// Palette de couleurs du thème "Savane" (réutilisée dans tous les templates).
 const (
-	ColorLime      = "#84CC16" // vert lime — accents, boutons primaire
-	ColorLimeDark  = "#65A30D" // vert lime foncé — hover
-	ColorTerracotta = "#C2410C" // terre cuite — alertes, erreurs
-	ColorNavy      = "#1E1B4B" // bleu nuit — fond, titres
-	ColorNavyDeep  = "#0A1931" // bleu nuit profond — dégradé
-	ColorGold      = "#F59E0B" // or — highlights, étoiles
-	ColorCream     = "#FFFBEB" // crème — fond carte
-	ColorWhite     = "#FFFFFF"
-	ColorTextMuted = "#6B7280" // gris — texte secondaire
+        ColorLime      = "#84CC16" // vert lime — accents, boutons primaire
+        ColorLimeDark  = "#65A30D" // vert lime foncé — hover
+        ColorTerracotta = "#C2410C" // terre cuite — alertes, erreurs
+        ColorNavy      = "#1E1B4B" // bleu nuit — fond, titres
+        ColorNavyDeep  = "#0A1931" // bleu nuit profond — dégradé
+        ColorGold      = "#F59E0B" // or — highlights, étoiles
+        ColorCream     = "#FFFBEB" // crème — fond carte
+        ColorWhite     = "#FFFFFF"
+        ColorTextMuted = "#6B7280" // gris — texte secondaire
 )
 
 // EmailData contient les données communes à tous les templates.
 type EmailData struct {
-	// RecipientName : nom du destinataire (ex: "Ulrich DOUH"). Si vide, "Bonjour"
-	// est utilisé.
-	RecipientName string
-	// AppName : "SECT" (ou "Savane EdTech" pour le sous-titre).
-	AppName    string
-	AppTagline string // "Système d'Évaluation Casse-Tête"
-	// AppURL : URL publique du frontend (pour le logo, les liens).
-	AppURL string
-	// SupportEmail : email de contact support (footer).
-	SupportEmail string
-	// Year : année courante pour le copyright footer.
-	Year string
+        // RecipientName : nom du destinataire (ex: "Ulrich DOUH"). Si vide, "Bonjour"
+        // est utilisé.
+        RecipientName string
+        // AppName : nom du produit = "SECT".
+        AppName    string
+        // AppTagline : sous-titre du produit = "Système d'Évaluation Casse-Tête".
+        AppTagline string
+        // AppURL : URL publique du frontend (pour le logo, les liens).
+        AppURL string
+        // SupportEmail : email de contact support (footer).
+        SupportEmail string
+        // Year : année courante pour le copyright footer.
+        Year string
 }
 
 // DefaultData retourne un EmailData avec les valeurs par défaut de SECT.
 func DefaultData(recipientName, appURL string) EmailData {
-	return EmailData{
-		RecipientName: recipientName,
-		AppName:       "SECT",
-		AppTagline:    "Savane EdTech — Système d'Évaluation",
-		AppURL:        appURL,
-		SupportEmail:  "support@sect.ftci.fr",
-		Year:          "2026",
-	}
+        return EmailData{
+                RecipientName: recipientName,
+                AppName:       "SECT",
+                AppTagline:    "Système d'Évaluation Casse-Tête",
+                AppURL:        appURL,
+                SupportEmail:  "support@sect.ftci.fr",
+                Year:          "2026",
+        }
 }
 
 // greeting retourne "Bonjour Prénom," ou "Bonjour," si le nom est vide.
 func (d EmailData) greeting() string {
-	if d.RecipientName != "" {
-		return "Bonjour " + d.RecipientName + ","
-	}
-	return "Bonjour,"
+        if d.RecipientName != "" {
+                return "Bonjour " + d.RecipientName + ","
+        }
+        return "Bonjour,"
 }
 
 // baseTemplate wrappe le contenu HTML dans la structure DS unifiée :
@@ -66,9 +70,9 @@ func (d EmailData) greeting() string {
 // Le motif kente est reproduit en CSS inline (bandes verticales tricolores +
 // triangles diagonaux) — fidèle à l'UI web sans dépendre d'images externes.
 func baseTemplate(d EmailData, title, preheader, bodyHTML string) string {
-	// Le preheader est le texte d'aperçu affiché par les clients email après
-	// l'objet. Caché visuellement mais présent pour les crawlers.
-	return `<!DOCTYPE html>
+        // Le preheader est le texte d'aperçu affiché par les clients email après
+        // l'objet. Caché visuellement mais présent pour les crawlers.
+        return `<!DOCTYPE html>
 <html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="UTF-8">
@@ -147,7 +151,7 @@ func baseTemplate(d EmailData, title, preheader, bodyHTML string) string {
                 </tr>
               </table>
               <p style="margin:0 0 8px;text-align:center;font-size:13px;color:rgba(255,255,255,0.7);">
-                © ` + d.Year + ` ` + d.AppName + ` — Savane EdTech
+                © ` + d.Year + ` ` + d.AppName + ` — ` + d.AppTagline + `
               </p>
               <p style="margin:0 0 16px;text-align:center;font-size:12px;color:rgba(255,255,255,0.5);">
                 Plateforme d'évaluation propulsée par l'IA pour l'enseignement supérieur en Afrique.
@@ -172,7 +176,7 @@ func baseTemplate(d EmailData, title, preheader, bodyHTML string) string {
 // buttonHTML génère un bouton CTA inline-CSS (compatible tous clients email).
 // Utilisé pour les liens primaires (reset password, confirmation, etc.).
 func buttonHTML(label, href string) string {
-	return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;">
+        return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;">
   <tr>
     <td align="center">
       <a href="` + href + `" target="_blank" style="display:inline-block;background:linear-gradient(135deg,` + ColorLime + ` 0%,` + ColorLimeDark + ` 100%);color:` + ColorNavy + `;font-weight:700;font-size:16px;text-decoration:none;padding:16px 40px;border-radius:12px;box-shadow:0 6px 20px rgba(132,204,22,0.35);letter-spacing:0.3px;">
@@ -185,7 +189,7 @@ func buttonHTML(label, href string) string {
 
 // infoBoxHTML génère une boîte d'information (fond crème, bordure or).
 func infoBoxHTML(content string) string {
-	return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;background-color:` + ColorCream + `;border-left:4px solid ` + ColorGold + `;border-radius:8px;">
+        return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;background-color:` + ColorCream + `;border-left:4px solid ` + ColorGold + `;border-radius:8px;">
   <tr>
     <td style="padding:16px 20px;font-size:14px;line-height:1.6;color:` + ColorNavy + `;">
       ` + content + `

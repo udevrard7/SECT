@@ -14641,3 +14641,51 @@ Stage Summary:
   établissement rattaché → 500 sur create invitation). Ce n'est pas lié à ce
   commit — l'ADMIN est le propriétaire PaaS et n'est pas censé créer
   d'invitations directement (il passe par un RESPONSABLE d'établissement).
+
+---
+Task ID: SECT-EMAIL-TEMPLATENAME-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Corriger le nom du produit dans tous les templates email — "Savane EdTech" → "SECT (Système d'Évaluation Casse-Tête)"
+
+Contexte : L'utilisateur a remarqué (capture écran) que le tagline des emails
+affichait "SAVANE EDTECH — SYSTÈME D'ÉVALUATION" au lieu du vrai nom du produit.
+"Savane EdTech" était le nom du THÈME design (palette africaine + motif kente),
+PAS le nom du produit. Le vrai nom est "SECT — Système d'Évaluation Casse-Tête"
+(cf. README.md ligne 1).
+
+9 occurrences de "Savane EdTech" trouvées dans le backend :
+- emailtpl/base.go (doc package, AppTagline, footer, commentaires)
+- emailtpl/password_reset.go (signature texte)
+- emailtpl/invitation.go (signature texte)
+- usecase/auth.go (commentaire)
+- usecase/invitation.go (commentaire NewInvitationUseCase)
+
+Corrections :
+- base.go DefaultData : AppTagline "Savane EdTech — Système d'Évaluation"
+  → "Système d'Évaluation Casse-Tête"
+- base.go footer : "© 2026 SECT — Savane EdTech" → "© 2026 SECT — " + d.AppTagline
+  (utilise maintenant la variable au lieu d'une string hardcodée)
+- password_reset.go texte : "— L'équipe SECT (Savane EdTech)"
+  → "— L'équipe SECT (Système d'Évaluation Casse-Tête)"
+- invitation.go texte : idem
+- Commentaires doc mis à jour : "Savane EdTech" → "Savane" (thème) + précision
+  que le produit est "SECT — Système d'Évaluation Casse-Tête"
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- grep "Savane EdTech" backend/ → 0 occurrence ✓
+- Test envoi réel Resend (mini-runner cmd/mailtest, supprimé après) :
+  message_id bc68215c-b647-4392-9bc7-4115ac22722b ✓
+- HTML vérifié : "Savane EdTech" absent, "Système d'Évaluation Casse-Tête" présent
+  (tagline + footer + signature texte)
+- VLM glm-4.6v valide : logo "SECT", tagline "SYSTÈME D'ÉVALUATION CASSE-TÊTE",
+  footer "© 2026 SECT — Système d'Évaluation Casse-Tête"
+
+Stage Summary:
+- Tous les templates email affichent désormais le vrai nom du produit :
+  "SECT — Système d'Évaluation Casse-Tête". Le thème design "Savane" (palette
+  africaine + motif kente) est conservé mais n'apparaît plus comme nom de marque.
+- Correction appliquée à : base.go (header tagline + footer copyright),
+  password_reset.go (signature texte), invitation.go (signature texte).
+- Le footer utilise maintenant la variable d.AppTagline au lieu d'une string
+  hardcodée (plus maintenable).

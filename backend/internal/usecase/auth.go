@@ -388,7 +388,7 @@ func (uc *AuthUseCase) RequestPasswordReset(ctx context.Context, email, ip, user
                 return fmt.Errorf("create password reset token: %w", err)
         }
 
-        // 5. Construire le lien + envoyer l'email (template HTML "Savane EdTech").
+        // 5. Construire le lien + envoyer l'email (template HTML "Savane" — SECT).
         resetLink := uc.appBaseURL + "/reset-password?token=" + plaintext
         tplData := emailtpl.PasswordResetData{
                 EmailData:   emailtpl.DefaultData(user.Name, uc.appBaseURL),
