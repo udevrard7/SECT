@@ -101,15 +101,19 @@ func main() {
         }
 
         signer := jwt.NewSigner(cfg.JWTSecret)
-        // SELF-SERVICE RESET (000054) : mailer pour l'envoi du lien de reset.
-        // SMTPMailer si SMTP_HOST configuré, sinon LogMailer (logs le lien sur stdout,
-        // visible dans le dashboard Render — utile avant configuration SMTP réelle).
+        // Mailer pour l'envoi des emails transactionnels (reset password, etc.).
+        // Priorité : Resend (RESEND_API_KEY) > SMTP (SMTP_HOST) > LogMailer (fallback).
+        // Resend est recommandé : délivrabilité élevée, analytics dans le dashboard.
         mailSvc := mailer.New(mailer.Config{
-                Host:     cfg.SMTPHost,
-                Port:     cfg.SMTPPort,
-                User:     cfg.SMTPUser,
-                Password: cfg.SMTPPassword,
-                From:     cfg.SMTPFrom,
+                SMTP: mailer.SMTPConfig{
+                        Host:     cfg.SMTPHost,
+                        Port:     cfg.SMTPPort,
+                        User:     cfg.SMTPUser,
+                        Password: cfg.SMTPPassword,
+                        From:     cfg.SMTPFrom,
+                },
+                ResendAPIKey: cfg.ResendAPIKey,
+                ResendFrom:   cfg.ResendFrom,
         }, logger)
         authUC := usecase.NewAuthUseCase(authRepo, signer, mailSvc, cfg.AppBaseURL)
         // E1/E6/U1/U7 : accessUC doit être créé AVANT etabUC et userUC car les

@@ -29,13 +29,19 @@ type Config struct {
         Environment string `env:"ENVIRONMENT" default:"development"`
 
         // SMTP (emails transactionnels — mot de passe oublié)
-        // Si SMTP_HOST est vide, un LogMailer journalise les emails (utile en dev
-        // et sur Render avant configuration SMTP).
+        // Fallback si Resend n'est pas configuré. Si SMTP_HOST est vide, un LogMailer
+        // journalise les emails (utile en dev).
         SMTPHost     string
         SMTPPort     string
         SMTPUser     string
         SMTPPassword string
         SMTPFrom     string
+
+        // Resend (recommandé — emails transactionnels via API REST)
+        // Si RESEND_API_KEY est non vide, ResendMailer est utilisé en priorité.
+        // RESEND_FROM_EMAIL doit être une adresse sur un domaine vérifié dans Resend.
+        ResendAPIKey string
+        ResendFrom   string
 
         // AppBaseURL est l'URL publique du frontend (pour construire le lien de
         // reset password). Par défaut l'URL Vercel de production.
@@ -57,6 +63,9 @@ func Load() (*Config, error) {
                 SMTPUser:     getEnv("SMTP_USER", ""),
                 SMTPPassword: getEnv("SMTP_PASS", ""),
                 SMTPFrom:     getEnv("SMTP_FROM", ""),
+
+                ResendAPIKey: getEnv("RESEND_API_KEY", ""),
+                ResendFrom:   getEnv("RESEND_FROM_EMAIL", ""),
 
                 AppBaseURL: getEnv("APP_BASE_URL", "https://sect-app.vercel.app"),
         }

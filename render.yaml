@@ -28,3 +28,9 @@ services:
         value: sect-documents
       - key: R2_ENDPOINT
         sync: false
+      # Resend (emails transactionnels — mot de passe oublié, etc.)
+      # Priorité Resend > SMTP > LogMailer. Voir backend/internal/mailer.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
