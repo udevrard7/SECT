@@ -19,9 +19,11 @@ package http
 
 import (
         "encoding/json"
+        "log/slog"
         "net/http"
         "strings"
 
+        "github.com/jackc/pgx/v5/pgconn"
         "golang.org/x/crypto/bcrypt"
 )
 
@@ -111,8 +113,20 @@ func (s *Server) createB2CSubscription(w http.ResponseWriter, r *http.Request) {
                 &resp.EtablissementID, &resp.EtablissementNom,
                 &resp.AbonnementID, &resp.AbonnementStatut, &dateFin,
         ); err != nil {
-                // Détecter les erreurs métier levées par RAISE EXCEPTION
+                // Logger l'erreur complète pour debug (sera visible dans les logs Render).
+                slog.Error("create_b2c_subscription failed",
+                        "error", err.Error(),
+                        "planId", req.PlanID,
+                        "email", req.Email,
+                )
+                // Détecter les erreurs métier levées par RAISE EXCEPTION (code P0001).
+                // pgx retourne un *pgconn.PgError dont le champ Message contient le
+                // texte du RAISE (ex: "PLAN_NOT_FOUND").
                 errMsg := err.Error()
+                // Vérifier aussi via pgconn.PgError pour le code SQLSTATE P0001.
+                if pgErr, ok := err.(*pgconn.PgError); ok {
+                        errMsg = pgErr.Message
+                }
                 switch {
                 case strings.Contains(errMsg, "PLAN_NOT_FOUND"):
                         writeJSONError(w, http.StatusBadRequest, "plan introuvable")
