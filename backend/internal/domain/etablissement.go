@@ -121,6 +121,9 @@ type CreateEtablissementInput struct {
         ResponsableMode       *string `json:"responsableMode,omitempty"` // "direct" | "invitation"
         PlanID                *string `json:"planId,omitempty"`
         PeriodeFacturation    *string `json:"periodeFacturation,omitempty"` // "mensuel" | "annuel"
+        // SECT-ABONNEMENTS-B2B-B2C : nb d'étudiants estimé pour le modèle capitation
+        // (B2B). Plancher 50 étudiants. Si non fourni, 50 est utilisé par défaut.
+        NbEtudiantsEstime     *int    `json:"nbEtudiantsEstime,omitempty"`
 }
 
 // UpdateEtablissementInput — partial update.
