@@ -29,13 +29,18 @@ function ResetLoading() {
 function ResetPasswordContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const token = searchParams.get('token')
+  // Trim + sanitize: certains webmails cassent les liens longs (espace, CRLF).
+  // On nettoie le token pour éviter les erreurs silencieuses.
+  const token = (searchParams.get('token') || '').trim()
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  // Erreur fatale (token déjà utilisé/expiré) → on bascule sur un écran dédié
+  // au lieu d'un toast éphémère, avec un bouton "Demander un nouveau lien".
+  const [fatalError, setFatalError] = useState<string | null>(null)
 
   const hasToken = !!token
 
@@ -49,6 +54,8 @@ function ResetPasswordContent() {
       toast.error('Les mots de passe ne correspondent pas')
       return
     }
+    // Protection double-submit : si déjà en cours, on ignore.
+    if (submitting || done) return
     setSubmitting(true)
     try {
       const res = await fetch('/api/auth/password-reset/confirm', {
@@ -66,14 +73,20 @@ function ResetPasswordContent() {
       } else {
         const data = await res.json().catch(() => ({}))
         const msg = data?.error || 'Token invalide, expiré ou déjà utilisé.'
-        toast.error('Réinitialisation impossible', { description: msg })
+        // Erreur fatale (401) : le token ne peut plus être utilisé → écran dédié
+        // avec bouton "Demander un nouveau lien". Sinon toast (validation).
+        if (res.status === 401) {
+          setFatalError(msg)
+        } else {
+          toast.error('Réinitialisation impossible', { description: msg })
+        }
       }
     } catch {
       toast.error('Erreur', { description: 'Vérifiez votre connexion.' })
     } finally {
       setSubmitting(false)
     }
-  }, [token, newPassword, confirmPassword, router])
+  }, [token, newPassword, confirmPassword, router, submitting, done])
 
   // --- États spéciaux ---
   if (!hasToken) {
@@ -85,6 +98,28 @@ function ResetPasswordContent() {
         </p>
         <Button onClick={() => router.push('/login')} className="w-full h-11 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold">
           <ArrowLeft className="h-4 w-4 mr-2" /> Retour à la connexion
+        </Button>
+      </Shell>
+    )
+  }
+
+  // Écran d'erreur fatale : token déjà utilisé / expiré / invalide.
+  // On propose de redemander un lien plutôt que de bloquer l'utilisateur.
+  if (fatalError) {
+    return (
+      <Shell title="Lien non valide" icon={<KeyRound className="h-7 w-7 text-[#C2410C]" />}>
+        <p className="text-sm text-[#1E1B4B]/70 mb-2">
+          {fatalError}
+        </p>
+        <p className="text-xs text-[#1E1B4B]/55 mb-5">
+          Pour des raisons de sécurité, chaque lien ne peut être utilisé qu&apos;une seule fois
+          et expire après 30 minutes.
+        </p>
+        <Button
+          onClick={() => router.push('/login')}
+          className="w-full h-11 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" /> Demander un nouveau lien
         </Button>
       </Shell>
     )
@@ -163,7 +198,7 @@ function ResetPasswordContent() {
 
         <Button
           onClick={handleSubmit}
-          disabled={submitting || newPassword.length < 8 || newPassword !== confirmPassword}
+          disabled={submitting || done || !!fatalError || newPassword.length < 8 || newPassword !== confirmPassword}
           className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all"
         >
           {submitting ? (

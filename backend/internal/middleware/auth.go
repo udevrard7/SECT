@@ -142,7 +142,20 @@ func MapDomainError(w http.ResponseWriter, err error) {
         case *domain.AccountLockedError:
                 writeJSONErrorMsg(w, http.StatusTooManyRequests, "compte temporairement verrouillé")
         case *domain.InvalidTokenError:
-                writeJSONErrorMsg(w, http.StatusUnauthorized, "token invalide")
+                // Message distinct selon la reason pour permettre au frontend d'afficher
+                // un message clair (déjà utilisé vs expiré vs non trouvé). Sécurité : on
+                // ne révèle pas si le token existe — "not found" et "already used"
+                // renvoient le même message "déjà utilisé ou invalide" (anti-énumération).
+                msg := "token invalide, expiré ou déjà utilisé"
+                switch e.Reason {
+                case "expired":
+                        msg = "le lien a expiré (validité 30 minutes). Demandez un nouveau lien."
+                case "empty token":
+                        msg = "jeton manquant dans la requête"
+                case "not found or already used":
+                        msg = "ce lien a déjà été utilisé ou n'est plus valide. Demandez un nouveau lien."
+                }
+                writeJSONErrorMsg(w, http.StatusUnauthorized, msg)
         case *domain.NotFoundError:
                 writeJSONErrorMsg(w, http.StatusNotFound, e.Entity+" introuvable")
         case *domain.ConflictError:
@@ -170,12 +183,12 @@ func writeJSONErrorMsg(w http.ResponseWriter, status int, msg string) {
 // réservée aux contextes académiques : étudiant, enseignant, responsable).
 // Retourne 403 avec un message explicite si claims.Role == "ADMIN".
 func BlockAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := ClaimsFromContext(r.Context())
-		if ok && claims.Role == "ADMIN" {
-			writeJSONErrorMsg(w, http.StatusForbidden, "le compte ADMIN (propriétaire PaaS) n'a pas accès à la messagerie")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                claims, ok := ClaimsFromContext(r.Context())
+                if ok && claims.Role == "ADMIN" {
+                        writeJSONErrorMsg(w, http.StatusForbidden, "le compte ADMIN (propriétaire PaaS) n'a pas accès à la messagerie")
+                        return
+                }
+                next.ServeHTTP(w, r)
+        })
 }
