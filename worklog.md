@@ -15365,3 +15365,44 @@ Stage Summary:
 - Le bouton "Demander une démo" B2B fonctionne désormais : ouvre un dialog
   formulaire, envoie un email à l'admin avec toutes les infos du prospect.
   Le prospect reçoit un écran de succès "Demande envoyée".
+
+---
+Task ID: SECT-PASSWORD-AUTOCOMPLETE-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix mot de passe non persistant après reset (autocomplete manquant)
+
+Contexte : L'utilisateur change son mot de passe via "mot de passe oublié" (le
+reset réussit, le hash est bien mis à jour en DB), mais après déconnexion le
+login avec le nouveau mot de passe échoue ("identifiants incorrects"). Tests API
+confirmés : le hash EST persisté et le login API fonctionne. Le problème vient
+du navigateur.
+
+Cause racine : AUCUN attribut autoComplete sur les champs password → le
+gestionnaire de mots de passe du navigateur (Chrome, Firefox, Safari, 1Password)
+autofill/sauvegarde le MAUVAIS mot de passe :
+1. Sur /reset-password : le navigateur peut autofill l'ANCIEN mot de passe au
+   lieu de laisser l'utilisateur taper le nouveau, ou sauvegarder un mot de
+   passe généré automatiquement au lieu de celui tapé.
+2. Sur /login : le navigateur autofill le mot de passe SAUVÉ (qui peut être
+   l'ancien ou un faux) au lieu du nouveau que l'utilisateur vient de définir.
+
+Correction : ajout attributs autoComplete sur TOUS les formulaires password :
+- login-form.tsx :
+  * Email/identifier → autoComplete="username" (aide le gestionnaire à associer)
+  * Password → autoComplete="current-password" (remplit le mdp sauvé pour ce user)
+- reset-password/page.tsx :
+  * newPassword + confirmPassword → autoComplete="new-password" (empêche l'autofill
+    de l'ancien mdp, signale au gestionnaire de sauvegarder le NOUVEAU)
+- accept-invitation-page.tsx :
+  * password + confirmPassword → autoComplete="new-password"
+- souscrire-b2c/page.tsx :
+  * password + confirmPassword → autoComplete="new-password"
+
+Vérifications :
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+
+Stage Summary:
+- Les formulaires password ont maintenant les bons attributs autoComplete. Les
+  gestionnaires de mots de passe des navigateurs ne devraient plus interférer
+  avec le reset/login. L'utilisateur peut maintenant changer son mot de passe
+  et se reconnecter sans problème.

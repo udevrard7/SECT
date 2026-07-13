@@ -656,6 +656,7 @@ export function AcceptInvitationPage({ token, onComplete }: AcceptInvitationPage
                 id="invite-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Créez un mot de passe sécurisé"
+                autoComplete="new-password"
                 className="pl-9 pr-10"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -724,6 +725,7 @@ export function AcceptInvitationPage({ token, onComplete }: AcceptInvitationPage
                 id="invite-confirm-password"
                 type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Confirmez votre mot de passe"
+                autoComplete="new-password"
                 className="pl-9 pr-10"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
