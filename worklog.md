@@ -15584,3 +15584,31 @@ Stage Summary:
 - Email de bienvenue Premium : code en place mais bug goroutine à corriger
   (context.Background() tué après fin requête).
 - Email de bienvenue Invitation : code en place, avantages adaptés par rôle.
+
+---
+Task ID: SECT-WELCOME-EMAIL-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix email bienvenue Premium non reçu (goroutine tué sur Render free tier)
+
+Cause racine : les emails de bienvenue étaient envoyés en goroutine asynchrone
+(`go s.sendB2CPremiumWelcomeEmail(...)`) avec `context.Background()`. Sur Render
+free tier, le goroutine peut être tué avant la fin de l'envoi quand la requête
+HTTP se termine → l'email n'est jamais envoyé.
+
+Correction : rendre les 3 envois d'email de bienvenue SYNCHRONES avec un context
+à timeout de 30s :
+1. b2c_subscription_handlers.go sendB2CWelcomeEmail (Prof Solo) :
+   `go s.sendB2CWelcomeEmail(...)` → `s.sendB2CWelcomeEmail(...)`
+2. b2c_subscription_handlers.go sendB2CPremiumWelcomeEmail (Prof Premium) :
+   `go s.sendB2CPremiumWelcomeEmail(...)` → `s.sendB2CPremiumWelcomeEmail(...)`
+   + `context.Background()` → `context.WithTimeout(context.Background(), 30*time.Second)`
+   + logging succès/échec via slog
+3. usecase/invitation.go sendWelcomeEmail (invitation) :
+   `go uc.sendWelcomeEmail(...)` → `uc.sendWelcomeEmail(...)`
+   + `context.Background()` → `context.WithTimeout(context.Background(), 30*time.Second)`
+
+Justification : l'appel Resend prend < 1s, c'est acceptable pour l'utilisateur
+de attendre 1s de plus pour garantir la réception de l'email de bienvenue.
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0

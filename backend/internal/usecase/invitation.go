@@ -352,20 +352,25 @@ func (uc *InvitationUseCase) Accept(ctx context.Context, input domain.AcceptInvi
                 return nil, err
         }
 
-        // SECT-WELCOME-EMAIL : envoyer l'email de bienvenue (non bloquant).
-        // On utilise une goroutine pour ne pas ralentir la réponse HTTP.
+        // SECT-WELCOME-EMAIL : envoyer l'email de bienvenue (synchrone).
+        // SYNCHRONE : sur Render free tier, un goroutine peut être tué avant la fin.
+        // L'appel Resend prend < 1s, c'est acceptable pour l'utilisateur.
         if uc.mailer != nil {
-                go uc.sendWelcomeEmail(invitation, user)
+                uc.sendWelcomeEmail(invitation, user)
         }
 
         return user, nil
 }
 
 // sendWelcomeEmail envoie l'email de bienvenue après acceptation d'invitation.
-// Non bloquant — appelé en goroutine.
+// SYNCHRONE : utilise un context avec timeout de 30s.
 func (uc *InvitationUseCase) sendWelcomeEmail(invitation *domain.Invitation, user *domain.User) {
+        // Context avec timeout de 30s (évite les fuites si DB ou Resend est lent).
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+        defer cancel()
+
         // Récupérer les infos enrichies (étab + filière + créateur) pour l'email.
-        full, err := uc.invitationRepo.FindByID(context.Background(), invitation.ID)
+        full, err := uc.invitationRepo.FindByID(ctx, invitation.ID)
         if err == nil && full != nil {
                 invitation = full
         }

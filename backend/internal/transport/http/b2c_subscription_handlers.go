@@ -157,11 +157,12 @@ func (s *Server) createB2CSubscription(w http.ResponseWriter, r *http.Request) {
                 resp.Message = "Compte enseignant créé avec succès. Vous pouvez vous connecter."
         }
 
-        // SECT-WELCOME-EMAIL : envoyer l'email de bienvenue (non bloquant).
+        // SECT-WELCOME-EMAIL : envoyer l'email de bienvenue (synchrone).
         // Pour Prof Solo : envoyé immédiatement. Pour Prof Premium : envoyé après
         // confirmation du paiement (dans confirmB2CPayment).
+        // SYNCHRONE : sur Render free tier, un goroutine peut être tué avant la fin.
         if !resp.PaymentRequired {
-                go s.sendB2CWelcomeEmail(resp.User.Name, resp.User.Email, req.PlanID, req.PeriodeAbonnement)
+                s.sendB2CWelcomeEmail(resp.User.Name, resp.User.Email, req.PlanID, req.PeriodeAbonnement)
         }
 
         w.Header().Set("Content-Type", "application/json")
@@ -302,8 +303,9 @@ func (s *Server) confirmB2CPayment(w http.ResponseWriter, r *http.Request) {
         )
 
         // SECT-WELCOME-EMAIL : envoyer l'email de bienvenue Premium après paiement.
-        // On récupère l'email + nom du user via l'abonnement pour l'envoi.
-        go s.sendB2CPremiumWelcomeEmail(aboID)
+        // SYNCHRONE (pas de goroutine) : sur Render free tier, un goroutine peut être
+        // tué avant la fin de l'envoi. L'appel Resend prend < 1s, c'est acceptable.
+        s.sendB2CPremiumWelcomeEmail(aboID)
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
@@ -311,15 +313,20 @@ func (s *Server) confirmB2CPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 // sendB2CPremiumWelcomeEmail envoie l'email de bienvenue Premium après paiement.
-// Récupère les infos user via l'abonnement (non bloquant, asynchrone).
+// SYNCHRONE : utilise un context avec timeout de 30s (au lieu de context.Background
+// qui peut être tué). L'appel Resend prend < 1s, c'est acceptable pour l'utilisateur.
 func (s *Server) sendB2CPremiumWelcomeEmail(aboID string) {
         if s.mailer == nil {
                 return
         }
 
+        // Context avec timeout de 30s (évite les fuites si DB ou Resend est lent).
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+        defer cancel()
+
         // Récupérer l'email + nom du user via l'abonnement.
         var userEmail, userName string
-        err := s.dbPool.QueryRow(context.Background(), `
+        err := s.dbPool.QueryRow(ctx, `
                 SELECT u."email", u."name"
                 FROM "Abonnement" a
                 JOIN "User" u ON u."etablissementId" = a."etablissementId"
@@ -347,10 +354,14 @@ func (s *Server) sendB2CPremiumWelcomeEmail(aboID string) {
                 },
         }
 
-        _ = s.mailer.Send(mailer.Email{
+        if err := s.mailer.Send(mailer.Email{
                 To:      userEmail,
                 Subject: "Bienvenue sur SECT — Votre compte Premium est actif",
                 Body:    emailtpl.WelcomeB2CText(tplData),
                 HTML:    emailtpl.WelcomeB2CHTML(tplData),
-        })
+        }); err != nil {
+                slog.Error("sendB2CPremiumWelcomeEmail: failed to send email", "aboId", aboID, "email", userEmail, "error", err.Error())
+        } else {
+                slog.Info("B2C Premium welcome email sent", "aboId", aboID, "email", userEmail)
+        }
 }
