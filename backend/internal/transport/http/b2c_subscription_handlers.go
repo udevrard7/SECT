@@ -25,6 +25,8 @@ import (
 
         "github.com/go-chi/chi/v5"
         "github.com/google/uuid"
+        "github.com/jackc/pgx/v5"
+        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/emailtpl"
         "github.com/udevrard7/sect/backend/internal/mailer"
         "golang.org/x/crypto/bcrypt"
@@ -313,26 +315,28 @@ func (s *Server) confirmB2CPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 // sendB2CPremiumWelcomeEmail envoie l'email de bienvenue Premium après paiement.
-// SYNCHRONE : utilise un context avec timeout de 30s (au lieu de context.Background
-// qui peut être tué). L'appel Resend prend < 1s, c'est acceptable pour l'utilisateur.
+// SYNCHRONE : utilise appdb.WithTx avec claims ADMIN (bypass RLS) + timeout 30s.
 func (s *Server) sendB2CPremiumWelcomeEmail(aboID string) {
         if s.mailer == nil {
                 return
         }
 
-        // Context avec timeout de 30s (évite les fuites si DB ou Resend est lent).
+        // Context avec timeout de 30s.
         ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
 
         // Récupérer l'email + nom du user via l'abonnement.
+        // WithTx pose les claims ADMIN → bypass RLS (User_select requiert des claims).
         var userEmail, userName string
-        err := s.dbPool.QueryRow(ctx, `
-                SELECT u."email", u."name"
-                FROM "Abonnement" a
-                JOIN "User" u ON u."etablissementId" = a."etablissementId"
-                WHERE a."id" = $1 AND u."role" = 'ENSEIGNANT'
-                LIMIT 1
-        `, aboID).Scan(&userEmail, &userName)
+        err := appdb.WithTx(ctx, s.dbPool, appdb.SessionClaims{Role: "ADMIN", UserID: "b2c-system"}, func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `
+                        SELECT u."email", u."name"
+                        FROM "Abonnement" a
+                        JOIN "User" u ON u."etablissementId" = a."etablissementId"
+                        WHERE a."id" = $1 AND u."role" = 'ENSEIGNANT'
+                        LIMIT 1
+                `, aboID).Scan(&userEmail, &userName)
+        })
         if err != nil {
                 slog.Error("sendB2CPremiumWelcomeEmail: failed to get user", "aboId", aboID, "error", err.Error())
                 return
