@@ -159,6 +159,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // SECT-B2C-SOUSCRIPTION-AUTO : souscription B2C publique (enseignant
                 // freelance). Crée auto étab personnel + user ENSEIGNANT + abonnement.
                 r.Post("/api/subscriptions/b2c", s.createB2CSubscription)
+                // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
+                // Active l'abonnement EN_ATTENTE_PAIEMENT → ACTIF.
+                r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
                 // ACCESS-ASSISTANCE : mode assistance ADMIN (accès temporaire aux pages RESPONSABLE).
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/assistance-mode", s.enterAssistanceMode)
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/exit-assistance-mode", s.exitAssistanceMode)
