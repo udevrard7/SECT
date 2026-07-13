@@ -15179,3 +15179,59 @@ Stage Summary:
   un bouton Trash2 dédié. Les abonnements soft-deleted sont masqués des listes
   mais conservés en DB pour l'audit/facturation.
 - Sécurité : impossible de soft delete un abonnement non résilié (409 Conflict).
+
+---
+Task ID: SECT-B2C-PAIEMENT
+Agent: Z.ai Code (tuteur/assistant)
+Task: Wizard multi-étapes B2C avec paiement pour Prof Premium
+
+Contexte : Prof Premium (4 900 FCFA/mois) doit nécessiter un paiement avant
+activation. Prof Solo (gratuit) reste activé directement. V1 = simulation,
+V2 = CinetPay (Mobile Money + cartes).
+
+Migration DB 000058 :
+- Ajout statut EN_ATTENTE_PAIEMENT à l'enum StatutAbonnement
+- Colonnes Abonnement : methodePaiement, datePaiement, referenceTransaction, periodeAbonnement
+- Fonction create_b2c_subscription recréée (nouvelle signature avec p_periode_abonnement) :
+  * Prof Solo (gratuit) → statut ACTIF, pas de paiement requis
+  * Prof Premium (payant) → statut EN_ATTENTE_PAIEMENT, dateFin = +24h (délai paiement)
+- Nouvelle fonction confirm_b2c_payment(p_abonnement_id, p_methode_paiement, p_reference) :
+  * Vérifie statut = EN_ATTENTE_PAIEMENT
+  * Passe à ACTIF + pose datePaiement + referenceTransaction + dateFin = +30j
+- GRANT EXECUTE TO PUBLIC sur les 2 fonctions
+
+Backend (b2c_subscription_handlers.go) :
+- createB2CSubscription : nouveau champ PeriodeAbonnement (mensuel|auto) dans la
+  requête. Scan des nouveaux champs (AbonnementMontant, PaymentRequired). Message
+  adapté selon paiement requis ou non.
+- Nouveau handler confirmB2CPayment : POST /api/subscriptions/b2c/{id}/confirm-payment
+  * V1 : génère référence SIM_xxx (simulation)
+  * V2 : recevra webhook CinetPay + validation API
+  * Appelle confirm_b2c_payment → active l'abonnement
+  * 200 si succès, 404 si abonnement introuvable, 409 si pas EN_ATTENTE_PAIEMENT
+- Route ajoutée : r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
+
+Frontend (souscrire-b2c/page.tsx) :
+- Wizard multi-étapes (4 étapes) :
+  Étape 1 : Choix plan (Prof Solo / Prof Premium avec badge "Paiement requis")
+  Étape 2 : Inscription + choix mode facturation (Premium only : mensuel manuel / auto)
+  Étape 3 : Paiement (Premium only) — récap + bouton "Payer 4 900 FCFA" + warning V1 simulation
+  Étape 4 : Confirmation (compte créé/activé)
+- Prof Solo : étapes 1 → 2 → 4 (pas de paiement, abonnement ACTIF directement)
+- Prof Premium : étapes 1 → 2 → 3 → 4 (paiement requis, EN_ATTENTE_PAIEMENT puis ACTIF)
+- État subscriptionData conserve la réponse API (statut, paymentRequired, abonnementId)
+- handlePayment appelle /confirm-payment, met à jour le statut → ACTIF
+- Choix mode facturation : "Mensuel manuel" (rappel email) vs "Auto (prélèvement)"
+  envoyé comme periodeAbonnement à l'API
+- Design "Savane EdTech" (palette africaine + motif kente + bandeau kente)
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+- Migration DB appliquée : enum + colonnes + 2 fonctions SECURITY DEFINER
+
+Stage Summary:
+- Prof Premium ne peut plus être activé sans paiement. L'abonnement est créé
+  EN_ATTENTE_PAIEMENT, puis passe à ACTIF après confirmation du paiement (V1
+  simulation, V2 CinetPay). Prof Solo reste gratuit et activé directement.
+- L'utilisateur choisit le mode de facturation (mensuel manuel ou auto) à l'étape 2.
