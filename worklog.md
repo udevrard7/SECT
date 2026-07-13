@@ -15286,3 +15286,45 @@ Stage Summary:
 - V1 simulation active (référence SIM_xxx). V2 CinetPay prête à brancher
   (endpoint /confirm-payment existe, il faudra valider la transaction via
   l'API CinetPay avant d'appeler confirm_b2c_payment).
+
+---
+Task ID: SECT-DEMO-REQUEST
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix bouton "Demander une démo" B2B (ne faisait rien) + dialog formulaire
+
+Contexte : Le bouton "Demander une démo" du plan B2B (landing page /#tarifs)
+appelait onDemo qui ne faisait que router.push('/login'). Aucune action utile
+pour un prospect B2B. L'utilisateur signale que "rien ne se passe".
+
+Backend :
+- Nouveau template emailtpl/demo_request.go : DemoRequestHTML/Text (palette Savane,
+  carte contexte prospect : nom/email/tel/etab/ville/nb étudiants + message)
+- Nouveau handler submitDemoRequest : POST /api/demo-request (PUBLIC)
+  * Valide nom, email, etablissementNom, nbEtudiants requis
+  * Envoie email à l'admin (ulrichdouh@gmail.com) via ResendMailer
+  * Réponse 200 "Votre demande de démo a été envoyée"
+- Server struct : ajout champs mailer + appBaseURL
+- NewServer : 2 nouveaux paramètres (mailSvc, appBaseURL)
+- Route publique /api/demo-request ajoutée dans router.go
+
+Frontend (landing-page.tsx PricingSection) :
+- État local demoOpen + demoForm + demoSubmitting + demoDone
+- openDemoDialog() : ouvre le dialog (remplace onDemo pour le B2B CTA)
+- handleDemoSubmit() : POST /api/demo-request + affiche écran succès
+- Dialog avec formulaire :
+  * Nom complet + Email (requis)
+  * Téléphone + Ville (optionnel)
+  * Nom établissement + Nb étudiants (requis, avec rappel tarif capitation)
+  * Message (optionnel, textarea)
+- Écran succès : "Demande envoyée ! Notre équipe vous contactera dans les 24h"
+- Design cohérent avec le landing (navy + orange + zinc)
+- Import Dialog/DialogContent/DialogHeader/DialogTitle/DialogDescription ajouté
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- bun run lint EXIT 0, tsc --noEmit EXIT 0
+
+Stage Summary:
+- Le bouton "Demander une démo" B2B ouvre désormais un dialog avec formulaire.
+  Le prospect remplit ses infos (nom, email, étab, nb étudiants, message) et
+  l'admin reçoit un email via Resend avec tous les détails pour le contacter.
