@@ -15328,3 +15328,40 @@ Stage Summary:
 - Le bouton "Demander une démo" B2B ouvre désormais un dialog avec formulaire.
   Le prospect remplit ses infos (nom, email, étab, nb étudiants, message) et
   l'admin reçoit un email via Resend avec tous les détails pour le contacter.
+
+---
+Task ID: SECT-DEMO-REQUEST-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du bouton "Demander une démo" B2B
+
+Redéploiements :
+- Render backend (commit 6f723a3) → live 01:20:00
+- Vercel frontend → auto-déployé
+
+Tests API :
+- POST /api/demo-request (curl direct) → 200 "Votre demande de démo a été envoyée" ✓
+- Email Resend envoyé (id visible dans dashboard) ✓
+
+Tests UI (Agent Browser sect-app.vercel.app/#tarifs) :
+1. Scroll section tarifs → bouton "Demander une démo" visible ✓
+2. Click bouton → dialog s'ouvre avec formulaire ✓
+   - Champs : Nom, Email, Téléphone, Ville, Établissement, Nb étudiants, Message
+   - Bouton "Envoyer ma demande" (disabled tant que requis manquants) ✓
+3. Fill (Dr. Test UI + email + Université Test UI + 800 étudiants) ✓
+4. Click "Envoyer ma demande" → écran succès "Demande envoyée !" ✓
+   "Notre équipe vous contactera dans les 24h"
+5. Vérif email Resend (récupération par ID) :
+   - To: ulrichdouh@gmail.com ✓
+   - Subject: "SECT — Nouvelle demande de démo B2B" ✓
+   - Contient "Dr. Test UI" ✓
+   - Contient "Université Test UI" ✓
+   - Contient "800" (nb étudiants) ✓
+   - Contient "demo.ui.test@ecole-demo.edu" ✓
+   - HTML 6343 chars (template Savane EdTech complet) ✓
+
+Cleanup : navigateur fermé.
+
+Stage Summary:
+- Le bouton "Demander une démo" B2B fonctionne désormais : ouvre un dialog
+  formulaire, envoie un email à l'admin avec toutes les infos du prospect.
+  Le prospect reçoit un écran de succès "Demande envoyée".
