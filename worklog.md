@@ -15406,3 +15406,64 @@ Stage Summary:
   gestionnaires de mots de passe des navigateurs ne devraient plus interférer
   avec le reset/login. L'utilisateur peut maintenant changer son mot de passe
   et se reconnecter sans problème.
+
+---
+Task ID: SECT-QUOTA-GUARDS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Implémentation des guards de quota — empêcher le dépassement des limites du plan
+
+Contexte : Audit révélé qu'AUCUNE logique métier ne vérifiait les quotas. Un
+utilisateur Prof Solo (40 étudiants max, 3 épreuves IA/mois) pouvait ajouter 200
+étudiants et générer 50 épreuves IA. Une école B2B déclarant 50 étudiants pouvait
+en avoir 500 (perte de revenu capitation).
+
+Implémentation :
+
+1. Domain (domain/quota.go) :
+   - PlanLimits struct (récupéré depuis abonnement actif + plan)
+   - QuotaExceededError (resource, current, max, planNom) — message clair/actionable
+   - QuotaChecker interface (CheckStudents/Enseignants/Filieres/Evaluations/IAGeneration/IACorrection + IncrementIA)
+
+2. Repository (repository/quota.go) :
+   - QuotaRepository avec pool pgx
+   - GetActivePlanLimits : JOIN Abonnement + Plan WHERE statut=ACTIF + deletedAt IS NULL
+   - CheckStudentsQuota : count User WHERE role=ETUDIANT AND actif=true vs plan.nbEtudiantsMax
+   - CheckEnseignantsQuota : idem ENSEIGNANT
+   - CheckFilieresQuota : count Filiere vs plan.nbFilieresMax
+   - CheckEvaluationsQuota : count Epreuve ce mois vs plan.nbEvaluationsMois
+   - CheckIAGenerationQuota : count IAUsage ce mois vs plan.quotaIAGeneration (nil=illimité)
+   - CheckIACorrectionQuota : idem correction
+   - IncrementIAGeneration/Correction : upsert IAUsage (ON CONFLICT DO UPDATE count+1)
+
+3. Migration DB 000059 : table IAUsage (etablissementId, type, month, count) + unique index + FK
+
+4. Middleware : QuotaExceededError → HTTP 429 Too Many Requests avec message clair
+
+5. Guards ajoutés (usecases) :
+   - UserUseCase.Create : CheckStudentsQuota (ETUDIANT) + CheckEnseignantsQuota (ENSEIGNANT)
+   - InvitationUseCase.Accept : idem (avant création User via token invitation)
+   - FiliereUseCase.Create : CheckFilieresQuota
+   - EpreuveUseCase.Create : CheckEvaluationsQuota
+
+6. Guards ajoutés (handlers IA) :
+   - ai_handlers.go (epreuvesGenerate) : CheckIAGenerationQuota avant appel LLM + IncrementIAGeneration après succès
+   - question_enhanced_handlers.go (regenerateQuestion) : CheckIAGenerationQuota avant appel LLM
+
+7. main.go : QuotaRepository créé + injecté dans UserUseCase, InvitationUseCase, FiliereUseCase, EpreuveUseCase, Server (pour handlers IA)
+
+Règles métier :
+   - nbEtudiantsMax = 0 → illimité (plans B2B "illimité")
+   - quotaIAGeneration = nil → illimité (plans B2B + Prof Premium)
+   - Pas d'abonnement actif → pas de limites (legacy/gratuit sans plan)
+   - 0 = illimité, nil = illimité, sinon limite stricte
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- Migration DB appliquée : table IAUsage créée
+
+Stage Summary:
+- Les quotas sont désormais vérifiés avant chaque création : étudiants, enseignants,
+  filières, évaluations/mois, génération IA/mois. Un dépassement retourne 429 avec
+  un message clair ("quota étudiants dépassé : 40/40 atteint (plan Prof Solo)").
+- Le compteur IA est tracké mensuellement via la table IAUsage (upsert atomique).
+- Les plans B2B "illimité" (nb=0 ou quota=nil) ne sont pas bloqués.

@@ -164,6 +164,9 @@ func MapDomainError(w http.ResponseWriter, err error) {
                 writeJSONErrorMsg(w, http.StatusForbidden, e.Message)
         case *domain.ValidationError:
                 writeJSONErrorMsg(w, http.StatusBadRequest, e.Message)
+        case *domain.QuotaExceededError:
+                // 429 Too Many Requests — quota dépassé. Le message est clair et actionable.
+                writeJSONErrorMsg(w, http.StatusTooManyRequests, e.Error())
         default:
                 writeJSONErrorMsg(w, http.StatusInternalServerError, "erreur interne")
         }

@@ -28,16 +28,19 @@ type InvitationUseCase struct {
         invitationRepo domain.InvitationRepository
         mailer         mailer.Mailer
         appBaseURL     string
+        quotaChecker   domain.QuotaChecker // SECT-QUOTA-GUARDS : nil = pas de vérification
 }
 
 // NewInvitationUseCase crée un nouveau InvitationUseCase.
 // mailer + appBaseURL sont utilisés pour envoyer l'email d'invitation (template
 // HTML "Savane" — SECT) via ResendMailer (ou fallback SMTP/Log).
-func NewInvitationUseCase(invitationRepo domain.InvitationRepository, mailSvc mailer.Mailer, appBaseURL string) *InvitationUseCase {
+// quotaChecker est optionnel (nil = pas de vérification de quota).
+func NewInvitationUseCase(invitationRepo domain.InvitationRepository, mailSvc mailer.Mailer, appBaseURL string, quotaChecker domain.QuotaChecker) *InvitationUseCase {
         return &InvitationUseCase{
                 invitationRepo: invitationRepo,
                 mailer:         mailSvc,
                 appBaseURL:     appBaseURL,
+                quotaChecker:   quotaChecker,
         }
 }
 
@@ -318,6 +321,22 @@ func (uc *InvitationUseCase) Accept(ctx context.Context, input domain.AcceptInvi
         }
         if time.Now().After(invitation.ExpiresAt) {
                 return nil, &domain.InvitationStateError{Code: "EXPIRED", Message: "Invitation expirée"}
+        }
+
+        // SECT-QUOTA-GUARDS : vérifier le quota avant acceptation.
+        // L'invitation contient l'etablissementId + le rôle invité.
+        if uc.quotaChecker != nil && invitation.EtablissementID != nil && *invitation.EtablissementID != "" {
+                etabID := *invitation.EtablissementID
+                if invitation.Role == domain.RoleEtudiant {
+                        if err := uc.quotaChecker.CheckStudentsQuota(ctx, etabID); err != nil {
+                                return nil, err
+                        }
+                }
+                if invitation.Role == domain.RoleEnseignant {
+                        if err := uc.quotaChecker.CheckEnseignantsQuota(ctx, etabID); err != nil {
+                                return nil, err
+                        }
+                }
         }
 
         // Hasher le password (bcrypt cost 10).

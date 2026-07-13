@@ -26,14 +26,16 @@ import (
 // établissement sans autorisation EtablissementAccess (le repo bypass RLS sur
 // les writes, et checkOwnership ADMIN était un no-op avec TODO commenté).
 type UserUseCase struct {
-        userRepo domain.UserRepository
-        authRepo domain.AuthRepository
-        accessUC *AccessUseCase
+        userRepo    domain.UserRepository
+        authRepo    domain.AuthRepository
+        accessUC    *AccessUseCase
+        quotaChecker domain.QuotaChecker // SECT-QUOTA-GUARDS : nil = pas de vérification
 }
 
 // NewUserUseCase crée un nouveau UserUseCase.
-func NewUserUseCase(userRepo domain.UserRepository, authRepo domain.AuthRepository, accessUC *AccessUseCase) *UserUseCase {
-        return &UserUseCase{userRepo: userRepo, authRepo: authRepo, accessUC: accessUC}
+// quotaChecker est optionnel (nil = pas de vérification de quota).
+func NewUserUseCase(userRepo domain.UserRepository, authRepo domain.AuthRepository, accessUC *AccessUseCase, quotaChecker domain.QuotaChecker) *UserUseCase {
+        return &UserUseCase{userRepo: userRepo, authRepo: authRepo, accessUC: accessUC, quotaChecker: quotaChecker}
 }
 
 // GetProfile récupère le profil de l'utilisateur courant.
@@ -227,6 +229,23 @@ func (uc *UserUseCase) Create(ctx context.Context, claims db.SessionClaims, inpu
         if creatorRole == domain.RoleAdmin && input.EtablissementID != nil && *input.EtablissementID != "" {
                 if input.Role != domain.RoleResponsable {
                         if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
+                                return nil, "", err
+                        }
+                }
+        }
+
+        // SECT-QUOTA-GUARDS : vérifier le quota avant création.
+        // Pas de vérification si pas d'établissement (ADMIN sans étab) ou si
+        // quotaChecker est nil (config dev).
+        if uc.quotaChecker != nil && input.EtablissementID != nil && *input.EtablissementID != "" {
+                etabID := *input.EtablissementID
+                if input.Role == domain.RoleEtudiant {
+                        if err := uc.quotaChecker.CheckStudentsQuota(ctx, etabID); err != nil {
+                                return nil, "", err
+                        }
+                }
+                if input.Role == domain.RoleEnseignant {
+                        if err := uc.quotaChecker.CheckEnseignantsQuota(ctx, etabID); err != nil {
                                 return nil, "", err
                         }
                 }
