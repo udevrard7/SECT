@@ -11,6 +11,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/ai"
         "github.com/udevrard7/sect/backend/internal/cache"
         "github.com/udevrard7/sect/backend/internal/domain"
+        "github.com/udevrard7/sect/backend/internal/mailer"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/monitoring"
         "github.com/udevrard7/sect/backend/internal/repository"
@@ -51,6 +52,10 @@ type Server struct {
         // Monitoring : Event Recorder + Health Checker (audit monitoring 2025)
         monRecorder      *monitoring.Recorder
         monHealthChecker *monitoring.HealthChecker
+        // SECT-DEMO-REQUEST : mailer pour l'envoi d'emails depuis les handlers
+        // (demande de démo B2B, etc.) + URL publique du frontend.
+        mailer     mailer.Mailer
+        appBaseURL string
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -82,6 +87,8 @@ func NewServer(
         authMiddleware func(http.Handler) http.Handler,
         monRecorder *monitoring.Recorder,
         monHealthChecker *monitoring.HealthChecker,
+        mailSvc mailer.Mailer,
+        appBaseURL string,
 ) *Server {
         s := &Server{
                 dbPool:           dbPool,
@@ -109,6 +116,8 @@ func NewServer(
                 storage:          storage,
                 monRecorder:      monRecorder,
                 monHealthChecker: monHealthChecker,
+                mailer:           mailSvc,
+                appBaseURL:       appBaseURL,
         }
         // CACHE-RAM-1 : initialiser le cache RAM write-behind.
         s.sessionCache = cache.NewSessionCache()
@@ -162,6 +171,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
                 // Active l'abonnement EN_ATTENTE_PAIEMENT → ACTIF.
                 r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
+                // SECT-DEMO-REQUEST : demande de démo B2B depuis le landing page (public).
+                // Envoie un email à l'admin avec les infos du prospect.
+                r.Post("/api/demo-request", s.submitDemoRequest)
                 // ACCESS-ASSISTANCE : mode assistance ADMIN (accès temporaire aux pages RESPONSABLE).
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/assistance-mode", s.enterAssistanceMode)
                 r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/exit-assistance-mode", s.exitAssistanceMode)

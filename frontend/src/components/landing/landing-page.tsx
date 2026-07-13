@@ -58,6 +58,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -1229,6 +1236,42 @@ function Testimonials() {
 function PricingSection({ onDemo }: { onDemo: () => void }) {
   const fmt = (n: number) => n.toLocaleString('fr-FR').replace(/\u202F/g, ' ')
 
+  // SECT-DEMO-REQUEST : dialog de demande de démo B2B (formulaire + envoi email admin)
+  const [demoOpen, setDemoOpen] = useState(false)
+  const [demoSubmitting, setDemoSubmitting] = useState(false)
+  const [demoDone, setDemoDone] = useState(false)
+  const [demoForm, setDemoForm] = useState({
+    nom: '', email: '', telephone: '', etablissementNom: '', ville: '', nbEtudiants: '', message: '',
+  })
+
+  const handleDemoSubmit = async () => {
+    if (!demoForm.nom.trim() || !demoForm.email.includes('@') || !demoForm.etablissementNom.trim() || !demoForm.nbEtudiants.trim()) return
+    setDemoSubmitting(true)
+    try {
+      const res = await fetch('/api/demo-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(demoForm),
+      })
+      if (res.ok) {
+        setDemoDone(true)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.error || 'Erreur lors de l\'envoi')
+      }
+    } catch {
+      alert('Erreur de connexion')
+    } finally {
+      setDemoSubmitting(false)
+    }
+  }
+
+  const openDemoDialog = () => {
+    setDemoDone(false)
+    setDemoForm({ nom: '', email: '', telephone: '', etablissementNom: '', ville: '', nbEtudiants: '', message: '' })
+    setDemoOpen(true)
+  }
+
   // ─── B2C : Enseignants freelance ───
   const plansB2C = [
     {
@@ -1419,7 +1462,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
             </div>
             <MagneticButton
               className="w-full rounded-lg font-semibold text-sm bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_24px_rgba(249,115,22,0.3)]"
-              onClick={onDemo}
+              onClick={openDemoDialog}
             >
               {planB2B.cta}
               <ChevronRight className="ml-1 h-4 w-4" />
@@ -1427,6 +1470,127 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
           </div>
         </Reveal>
       </div>
+
+      {/* SECT-DEMO-REQUEST : Dialog demande de démo B2B */}
+      <Dialog open={demoOpen} onOpenChange={setDemoOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          {demoDone ? (
+            <div className="text-center py-8">
+              <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                <Check className="h-8 w-8 text-emerald-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Demande envoyée !</h3>
+              <p className="text-sm text-zinc-400 mb-6">
+                Merci pour votre intérêt. Notre équipe vous contactera dans les 24h pour planifier votre démonstration personnalisée.
+              </p>
+              <Button
+                className="bg-orange-500 hover:bg-orange-400 text-white"
+                onClick={() => setDemoOpen(false)}
+              >
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                  <Server className="h-5 w-5 text-orange-400" />
+                  Demander une démo B2B
+                </DialogTitle>
+                <DialogDescription className="text-zinc-400">
+                  Découvrez SECT pour votre institution. Notre équipe vous contactera dans les 24h.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 mt-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-zinc-400 font-medium">Nom complet *</label>
+                    <Input
+                      value={demoForm.nom}
+                      onChange={(e) => setDemoForm({ ...demoForm, nom: e.target.value })}
+                      placeholder="Dr. Jean Kouassi"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-zinc-400 font-medium">Email *</label>
+                    <Input
+                      type="email"
+                      value={demoForm.email}
+                      onChange={(e) => setDemoForm({ ...demoForm, email: e.target.value })}
+                      placeholder="directeur@ecole.edu"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-zinc-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-zinc-400 font-medium">Téléphone</label>
+                    <Input
+                      value={demoForm.telephone}
+                      onChange={(e) => setDemoForm({ ...demoForm, telephone: e.target.value })}
+                      placeholder="+225 07 00 00 00"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-zinc-400 font-medium">Ville</label>
+                    <Input
+                      value={demoForm.ville}
+                      onChange={(e) => setDemoForm({ ...demoForm, ville: e.target.value })}
+                      placeholder="Abidjan"
+                      className="bg-white/5 border-white/10 text-white placeholder:text-zinc-500"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-zinc-400 font-medium">Nom de l'établissement *</label>
+                  <Input
+                    value={demoForm.etablissementNom}
+                    onChange={(e) => setDemoForm({ ...demoForm, etablissementNom: e.target.value })}
+                    placeholder="Université d'Abidjan"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-zinc-400 font-medium">Nombre d'étudiants *</label>
+                  <Input
+                    value={demoForm.nbEtudiants}
+                    onChange={(e) => setDemoForm({ ...demoForm, nbEtudiants: e.target.value })}
+                    placeholder="ex: 1000"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-500"
+                  />
+                  <p className="text-[11px] text-zinc-500">Tarif capitation : 900 FCFA / étudiant / an (plancher 50).</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-zinc-400 font-medium">Message (optionnel)</label>
+                  <textarea
+                    value={demoForm.message}
+                    onChange={(e) => setDemoForm({ ...demoForm, message: e.target.value })}
+                    placeholder="Vos besoins spécifiques, questions..."
+                    rows={3}
+                    className="w-full rounded-md bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                  />
+                </div>
+                <Button
+                  className="w-full bg-orange-500 hover:bg-orange-400 text-white font-semibold mt-2"
+                  disabled={demoSubmitting || !demoForm.nom.trim() || !demoForm.email.includes('@') || !demoForm.etablissementNom.trim() || !demoForm.nbEtudiants.trim()}
+                  onClick={handleDemoSubmit}
+                >
+                  {demoSubmitting ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Envoi...</>
+                  ) : (
+                    <>Envoyer ma demande <Send className="h-4 w-4 ml-2" /></>
+                  )}
+                </Button>
+                <p className="text-[11px] text-zinc-500 text-center">
+                  Réponse sous 24h ouvrées. Sans engagement.
+                </p>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
