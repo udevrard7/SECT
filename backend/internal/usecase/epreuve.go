@@ -155,12 +155,14 @@ func (uc *QuestionUseCase) BatchSoftDelete(ctx context.Context, claims db.Sessio
 
 // EpreuveUseCase implémente les cas d'usage des épreuves.
 type EpreuveUseCase struct {
-        epreuveRepo domain.EpreuveRepository
+        epreuveRepo  domain.EpreuveRepository
+        quotaChecker domain.QuotaChecker // SECT-QUOTA-GUARDS : nil = pas de vérification
 }
 
 // NewEpreuveUseCase crée un nouveau EpreuveUseCase.
-func NewEpreuveUseCase(epreuveRepo domain.EpreuveRepository) *EpreuveUseCase {
-        return &EpreuveUseCase{epreuveRepo: epreuveRepo}
+// quotaChecker est optionnel (nil = pas de vérification de quota).
+func NewEpreuveUseCase(epreuveRepo domain.EpreuveRepository, quotaChecker domain.QuotaChecker) *EpreuveUseCase {
+        return &EpreuveUseCase{epreuveRepo: epreuveRepo, quotaChecker: quotaChecker}
 }
 
 // List liste les épreuves.
@@ -234,6 +236,14 @@ func (uc *EpreuveUseCase) Create(ctx context.Context, claims db.SessionClaims, i
         }
         if input.GenerationMode != "" && !domain.ValidModesGeneration[input.GenerationMode] {
                 input.GenerationMode = domain.ModeManuelle
+        }
+
+        // SECT-QUOTA-GUARDS : vérifier le quota d'évaluations/mois avant création.
+        // Utilise claims.EtablissementID (posé pour RESPONSABLE/ENSEIGNANT).
+        if uc.quotaChecker != nil && claims.EtablissementID != "" {
+                if err := uc.quotaChecker.CheckEvaluationsQuota(ctx, claims.EtablissementID); err != nil {
+                        return nil, err
+                }
         }
 
         return uc.epreuveRepo.Create(ctx, input)

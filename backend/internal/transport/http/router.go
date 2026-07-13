@@ -56,6 +56,9 @@ type Server struct {
         // (demande de démo B2B, etc.) + URL publique du frontend.
         mailer     mailer.Mailer
         appBaseURL string
+        // SECT-QUOTA-GUARDS : vérification des quotas IA (génération/correction)
+        // dans les handlers AI avant appel au LLM.
+        quotaChecker domain.QuotaChecker
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -89,6 +92,7 @@ func NewServer(
         monHealthChecker *monitoring.HealthChecker,
         mailSvc mailer.Mailer,
         appBaseURL string,
+        quotaChecker domain.QuotaChecker,
 ) *Server {
         s := &Server{
                 dbPool:           dbPool,
@@ -118,6 +122,7 @@ func NewServer(
                 monHealthChecker: monHealthChecker,
                 mailer:           mailSvc,
                 appBaseURL:       appBaseURL,
+                quotaChecker:     quotaChecker,
         }
         // CACHE-RAM-1 : initialiser le cache RAM write-behind.
         s.sessionCache = cache.NewSessionCache()

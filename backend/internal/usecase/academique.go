@@ -2,7 +2,7 @@
 package usecase
 
 import (
-	"fmt"
+        "fmt"
         "context"
         "time"
 
@@ -16,12 +16,14 @@ import (
 
 // FiliereUseCase implémente les cas d'usage des filières.
 type FiliereUseCase struct {
-        filiereRepo domain.FiliereRepository
+        filiereRepo  domain.FiliereRepository
+        quotaChecker domain.QuotaChecker // SECT-QUOTA-GUARDS : nil = pas de vérification
 }
 
 // NewFiliereUseCase crée un nouveau FiliereUseCase.
-func NewFiliereUseCase(filiereRepo domain.FiliereRepository) *FiliereUseCase {
-        return &FiliereUseCase{filiereRepo: filiereRepo}
+// quotaChecker est optionnel (nil = pas de vérification de quota).
+func NewFiliereUseCase(filiereRepo domain.FiliereRepository, quotaChecker domain.QuotaChecker) *FiliereUseCase {
+        return &FiliereUseCase{filiereRepo: filiereRepo, quotaChecker: quotaChecker}
 }
 
 // List liste les filières avec tenant scoping.
@@ -67,6 +69,12 @@ func (uc *FiliereUseCase) Create(ctx context.Context, claims db.SessionClaims, i
         }
         if input.EtablissementID == "" {
                 return nil, &domain.ValidationError{Field: "etablissementId", Message: "requis"}
+        }
+        // SECT-QUOTA-GUARDS : vérifier le quota de filières avant création.
+        if uc.quotaChecker != nil {
+                if err := uc.quotaChecker.CheckFilieresQuota(ctx, input.EtablissementID); err != nil {
+                        return nil, err
+                }
         }
         return uc.filiereRepo.Create(ctx, input)
 }

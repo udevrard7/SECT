@@ -36,6 +36,14 @@ func (s *Server) regenerateQuestion(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // SECT-QUOTA-GUARDS : vérifier le quota de génération IA avant régénération.
+        if s.quotaChecker != nil && claims.EtablissementID != "" {
+                if err := s.quotaChecker.CheckIAGenerationQuota(r.Context(), claims.EtablissementID); err != nil {
+                        middleware.MapDomainError(w, err)
+                        return
+                }
+        }
+
         questionID := chi.URLParam(r, "id")
         if questionID == "" {
                 writeJSONError(w, http.StatusBadRequest, "id requis")

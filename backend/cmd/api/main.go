@@ -80,6 +80,8 @@ func main() {
         examPrepRepo := repository.NewExamPrepRepository(pool)
         // Task 6 : Messagerie — chat temps réel + IA hybride.
         messagerieRepo := repository.NewMessagerieRepository(pool)
+        // SECT-QUOTA-GUARDS : QuotaRepository pour vérifier les limites des plans.
+        quotaRepo := repository.NewQuotaRepository(pool)
 
         // R2 storage client (optionnel — si credentials non fournis, storage = nil)
         var storageClient domain.StorageClient
@@ -125,16 +127,16 @@ func main() {
         // U5 (CRITICAL) : UserUseCase dépend de authRepo pour ResetPassword +
         // UnlockAccount + RevokeAllUserRefreshTokens + CreateAuditLog.
         // U1/U7 (CRITICAL) : UserUseCase dépend de accessUC pour ValidateAccessForEtablissement.
-        userUC := usecase.NewUserUseCase(userRepo, authRepo, accessUC)
-        filiereUC := usecase.NewFiliereUseCase(filiereRepo)
+        userUC := usecase.NewUserUseCase(userRepo, authRepo, accessUC, quotaRepo)
+        filiereUC := usecase.NewFiliereUseCase(filiereRepo, quotaRepo)
         ueUC := usecase.NewUEUseCase(ueRepo)
         efUC := usecase.NewEnseignantFiliereUseCase(efRepo)
         anneeUC := usecase.NewAnneeUseCase(anneeRepo)
         // E1-INVITATIONS : usecase invitations (token + bcrypt + matricule + email).
         // mailer passé pour l'envoi de l'email d'invitation (template "Savane EdTech"
         // via ResendMailer en production).
-        invitationUC := usecase.NewInvitationUseCase(invitationRepo, mailSvc, cfg.AppBaseURL)
-        epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo)
+        invitationUC := usecase.NewInvitationUseCase(invitationRepo, mailSvc, cfg.AppBaseURL, quotaRepo)
+        epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo)
         questionUC := usecase.NewQuestionUseCase(questionRepo)
         sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
         resultatUC := usecase.NewResultatUseCase(resultatRepo)
@@ -200,7 +202,7 @@ func main() {
         // channel in-memory ne fonctionnait pas de façon fiable sur Render free
         // (cold start tue le worker goroutine avant traitement du job).
 
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
 
         // CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
         // toutes les 30s en une série d'appels SaveReponse (un par question).

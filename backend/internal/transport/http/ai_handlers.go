@@ -113,6 +113,14 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // SECT-QUOTA-GUARDS : vérifier le quota de génération IA avant l'appel LLM.
+        if s.quotaChecker != nil && claims.EtablissementID != "" {
+                if err := s.quotaChecker.CheckIAGenerationQuota(r.Context(), claims.EtablissementID); err != nil {
+                        middleware.MapDomainError(w, err)
+                        return
+                }
+        }
+
         // Lire le body (limité à 1 MiB — on ne stocke pas le contenu des documents
         // dans le body, seulement leurs IDs ; le contenu est lu depuis la DB).
         var body epreuvesGenerateBody
@@ -275,6 +283,11 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
         if err != nil {
                 writeJSONError(w, http.StatusServiceUnavailable, "IA indisponible: "+err.Error())
                 return
+        }
+
+        // SECT-QUOTA-GUARDS : incrémenter le compteur de génération IA du mois.
+        if s.quotaChecker != nil && claims.EtablissementID != "" {
+                _ = s.quotaChecker.IncrementIAGeneration(r.Context(), claims.EtablissementID)
         }
 
         // 4. Parser la reponse JSON.
