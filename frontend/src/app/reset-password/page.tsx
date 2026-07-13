@@ -158,6 +158,7 @@ function ResetPasswordContent() {
               id="newPassword"
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
+              autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
@@ -185,6 +186,7 @@ function ResetPasswordContent() {
               id="confirmPassword"
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}

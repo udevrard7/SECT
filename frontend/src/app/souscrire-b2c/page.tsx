@@ -511,6 +511,7 @@ function SouscrireB2CContent() {
             <Input
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pl-10 pr-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/60 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
@@ -535,6 +536,7 @@ function SouscrireB2CContent() {
             <Input
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitInscription() }}
