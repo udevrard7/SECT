@@ -15505,3 +15505,48 @@ Stage Summary:
   d'enseignant, de filière, d'épreuve et chaque génération IA est désormais
   vérifiée contre les limites du plan actif. Un dépassement retourne 429 avec
   un message clair et actionable.
+
+---
+Task ID: SECT-WELCOME-EMAILS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Emails de bienvenue après inscription B2C + acceptation invitation
+
+Contexte : Un utilisateur qui s'inscrit à une offre B2C (Prof Solo/Premium) ou
+qui accepte une invitation doit recevoir un email de bienvenue adapté avec ses
+avantages et accès.
+
+Nouveaux templates (internal/emailtpl/) :
+- welcome_b2c.go : WelcomeB2CData + WelcomeB2CHTML/Text
+  * Carte plan (nom + prix) + section paiement (Premium only) + liste avantages
+  * Guide de démarrage (4 étapes) + bouton CTA "Accéder à mon espace"
+  * Avantages adaptés : Solo (40 étudiants, 3 IA/mois) vs Premium (∞, IA ∞)
+- welcome_invitation.go : WelcomeInvitationData + WelcomeInvitationHTML/Text
+  * Carte contexte (rôle + étab + filière + invitant) + liste accès
+  * Avantages adaptés selon le rôle :
+    - Étudiant : épreuves, examens, notes, certificats, exam-prep, messagerie
+    - Enseignant : création épreuves, IA, correction, proctoring, analytics, messagerie
+    - Responsable : gestion étab, filières, invitations, stats, abonnements, audit
+  * Guide de démarrage + bouton CTA
+
+Backend B2C (b2c_subscription_handlers.go) :
+- createB2CSubscription : envoie email bienvenue après création (go routine async)
+  * Prof Solo → envoyé immédiatement (compte ACTIF)
+  * Prof Premium → envoyé après confirmation paiement (dans confirmB2CPayment)
+- sendB2CWelcomeEmail : construit template avec plan + avantages, envoie via mailer
+- sendB2CPremiumWelcomeEmail : récupère user via abonnement, envoie template Premium
+- confirmB2CPayment : appelle sendB2CPremiumWelcomeEmail après activation ACTIF
+
+Backend Invitation (invitation.go) :
+- Accept : après AcceptInvitation réussie, appelle sendWelcomeEmail (go routine)
+- sendWelcomeEmail : récupère infos enrichies (étab + filière + créateur) via
+  FindByID, construit template avec avantages selon rôle, envoie via mailer
+
+Vérifications :
+- go build ./... EXIT 0, go vet ./... EXIT 0
+- Emails envoyés en asynchrone (go routine) — non bloquant pour la réponse HTTP
+
+Stage Summary:
+- Les utilisateurs B2C (Prof Solo/Premium) reçoivent un email de bienvenue avec
+  leurs avantages et un guide de démarrage. Les utilisateurs invités (étudiants,
+  enseignants, responsables) reçoivent un email avec leurs accès spécifiques.
+- Templates "Savane EdTech" (palette africaine + motif kente + DS unifié).

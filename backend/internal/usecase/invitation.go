@@ -347,5 +347,92 @@ func (uc *InvitationUseCase) Accept(ctx context.Context, input domain.AcceptInvi
         input.Password = string(hash)
 
         // Créer le User + marquer l'invitation used en une seule transaction.
-        return uc.invitationRepo.AcceptInvitation(ctx, invitation, input)
+        user, err := uc.invitationRepo.AcceptInvitation(ctx, invitation, input)
+        if err != nil {
+                return nil, err
+        }
+
+        // SECT-WELCOME-EMAIL : envoyer l'email de bienvenue (non bloquant).
+        // On utilise une goroutine pour ne pas ralentir la réponse HTTP.
+        if uc.mailer != nil {
+                go uc.sendWelcomeEmail(invitation, user)
+        }
+
+        return user, nil
+}
+
+// sendWelcomeEmail envoie l'email de bienvenue après acceptation d'invitation.
+// Non bloquant — appelé en goroutine.
+func (uc *InvitationUseCase) sendWelcomeEmail(invitation *domain.Invitation, user *domain.User) {
+        // Récupérer les infos enrichies (étab + filière + créateur) pour l'email.
+        full, err := uc.invitationRepo.FindByID(context.Background(), invitation.ID)
+        if err == nil && full != nil {
+                invitation = full
+        }
+
+        var etabNom, filiereNom, inviterName string
+        if invitation.Etablissement != nil {
+                etabNom = invitation.Etablissement.Nom
+        } else if invitation.VerifyEtablissement != nil {
+                etabNom = invitation.VerifyEtablissement.Nom
+        }
+        if invitation.Filiere != nil {
+                filiereNom = invitation.Filiere.Nom
+        } else if invitation.VerifyFiliere != nil {
+                filiereNom = invitation.VerifyFiliere.Nom
+        }
+        if invitation.VerifyCreatedBy != nil {
+                inviterName = invitation.VerifyCreatedBy.Name
+        }
+
+        // Avantages selon le rôle
+        roleLabel := emailtpl.RoleLabelFR(string(invitation.Role))
+        var avantages []string
+        switch invitation.Role {
+        case domain.RoleEtudiant:
+                avantages = []string{
+                        "Accès à vos épreuves et examens en ligne",
+                        "Passation d'examens avec surveillance anti-fraude",
+                        "Consultation de vos notes et relevés en temps réel",
+                        "Réception de vos certificats et badges numériques",
+                        "Espace de révision (exam-prep) avec IA",
+                        "Messagerie avec vos enseignants",
+                }
+        case domain.RoleEnseignant:
+                avantages = []string{
+                        "Création d'épreuves (QCU, QCM, QRC, code)",
+                        "Génération d'examens par IA",
+                        "Correction automatique par IA",
+                        "Surveillance anti-fraude (proctoring)",
+                        "Tableau de bord analytics pédagogiques",
+                        "Messagerie avec vos étudiants",
+                }
+        case domain.RoleResponsable:
+                avantages = []string{
+                        "Gestion de votre établissement",
+                        "Création de filières et unités d'enseignement",
+                        "Invitation d'enseignants et d'étudiants",
+                        "Tableau de bord et statistiques globales",
+                        "Gestion des abonnements et facturation",
+                        "Accès aux logs d'audit et sécurité",
+                }
+        }
+
+        tplData := emailtpl.WelcomeInvitationData{
+                EmailData:        emailtpl.DefaultData(user.Name, uc.appBaseURL),
+                Role:             string(invitation.Role),
+                RoleLabel:        roleLabel,
+                EtablissementNom: etabNom,
+                FiliereNom:       filiereNom,
+                InviterName:      inviterName,
+                LoginURL:         uc.appBaseURL + "/login",
+                Avantages:        avantages,
+        }
+
+        _ = uc.mailer.Send(mailer.Email{
+                To:      user.Email,
+                Subject: "Bienvenue sur SECT — Votre compte est prêt",
+                Body:    emailtpl.WelcomeInvitationText(tplData),
+                HTML:    emailtpl.WelcomeInvitationHTML(tplData),
+        })
 }
