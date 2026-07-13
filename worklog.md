@@ -15235,3 +15235,54 @@ Stage Summary:
   EN_ATTENTE_PAIEMENT, puis passe à ACTIF après confirmation du paiement (V1
   simulation, V2 CinetPay). Prof Solo reste gratuit et activé directement.
 - L'utilisateur choisit le mode de facturation (mensuel manuel ou auto) à l'étape 2.
+
+---
+Task ID: SECT-B2C-PAIEMENT-E2E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation E2E production du wizard B2C avec paiement
+
+Redéploiements :
+- Render backend (commit aa10e4d) → live 01:07:01
+- Vercel frontend → auto-déployé
+
+Tests API (curl + backend Render) :
+1. Prof Solo (gratuit) → 201 + statut ACTIF + paymentRequired: false + montant: 0 ✓
+2. Prof Premium (payant) → 201 + statut EN_ATTENTE_PAIEMENT + paymentRequired: true
+   + montant: 4900 ✓
+3. confirm-payment Premium → 200 + statut ACTIF + reference: SIM_xxx
+   + dateFin: +30j ✓
+4. Vérif DB Premium après paiement :
+   - statut: ACTIF ✓
+   - montantPaye: 4900 ✓
+   - methodePaiement: simulation ✓
+   - referenceTransaction: SIM_01b1fdcf713945af ✓
+   - datePaiement: posée ✓
+   - dateFin: 2026-08-12 (+30j) ✓
+   - periodeAbonnement: mensuel ✓
+
+Tests UI (Agent Browser sect-app.vercel.app/souscrire-b2c) :
+1. Étape 1 (choix plan) : 2 cartes avec badge "Paiement requis" sur Premium ✓
+2. Click Prof Premium → étape 2 (inscription + choix mode facturation) ✓
+   - Boutons "Mensuel manuel" / "Auto (prélèvement)" ✓
+   - Bouton "Continuer vers le paiement" ✓
+3. Fill formulaire + submit → étape 3 (paiement) ✓
+   - Toast "Compte créé. Finalisez votre paiement" ✓
+   - Récap (Plan Premium, mode facturation, montant 4 900 FCFA) ✓
+   - Warning "Mode démo : paiement simulé" ✓
+   - Bouton "Payer 4 900 FCFA" ✓
+4. Click "Payer" → étape 4 (confirmation) ✓
+   - "Compte activé !" (pas "Compte créé" — preuve paiement confirmé) ✓
+   - "Votre abonnement Prof Premium est maintenant actif" ✓
+   - "actif jusqu'au 12/08/2026" (+30j) ✓
+   - Bouton "Se connecter" ✓
+
+Cleanup :
+- 3 comptes test + 5 etabs orphelins supprimés. Navigateur fermé.
+
+Stage Summary:
+- Wizard B2C multi-étapes avec paiement entièrement fonctionnel en production.
+  Prof Premium ne peut plus être activé sans paiement. Le flot complet :
+  choix plan → inscription → paiement → confirmation marche end-to-end.
+- V1 simulation active (référence SIM_xxx). V2 CinetPay prête à brancher
+  (endpoint /confirm-payment existe, il faudra valider la transaction via
+  l'API CinetPay avant d'appeler confirm_b2c_payment).
