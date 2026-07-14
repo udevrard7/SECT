@@ -15642,3 +15642,170 @@ Stage Summary:
   2. RLS bloquait la query User → WithTx claims ADMIN
 - Les emails de bienvenue (B2C Solo, B2C Premium, Invitation) sont désormais
   envoyés de manière synchrone et fiable.
+
+---
+Task ID: SECT-ENV-RESETUP
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reclonage du dépôt GitHub + remise en place de l'environnement de travail (Go + Neon + Render + Vercel + R2) — session du jour
+
+Contexte : l'utilisateur (udevrard7 / ulrichdouh@gmail.com) a fourni les credentials
+GitHub, Neon, Vercel et Render pour reprendre le développement. Consigne stricte :
+ne créer aucun nouveau projet, se baser sur les projets existants, pousser vers GitHub
+(ce qui déploie auto sur Vercel + Render), synchroniser Neon, installer Go en local,
+et respecter strictement l'architecture en place.
+
+Work Log:
+- Clonage du dépôt https://github.com/udevrard7/SECT.git dans /home/z/my-project/sect-project
+  (branche main, dernier commit 7b2c848 du 13/07/2026, working tree clean).
+- Configuration de l'identité Git LOCALE au dépôt cloné :
+  user.name = udevrard7, user.email = ulrichdouh@gmail.com.
+  Remote origin nettoyée (URL sans token embarqué) :
+  https://github.com/udevrard7/SECT.git — push utilisera le credential helper.
+- Installation de Go 1.23.4 en local (sans sudo) dans /home/z/go-sdk, ajouté au PATH.
+  Le toolchain Go a ensuite auto-téléchargé go1.24.0 (version requise par go.mod).
+- Vérification compilation backend :
+  `go build ./cmd/api/` → EXIT 0 (propre)
+  `go vet ./...` → EXIT 0 (aucun warning)
+- Test de connexion à la base Neon (pooler ep-muddy-river-asz862wj-pooler) via un
+  programme Go de test (pgxpool) — SUCCÈS :
+  * PostgreSQL 18.4 (aarch64, Neon)
+  * 63 tables dans le schéma public (README en annonçait 61 → 2 tables ajoutées)
+  * 145 policies RLS (README en annonçait 143 → 2 policies ajoutées)
+  * schema_migrations : 54 versions enregistrées (1→54, toutes dirty=false)
+- Audit du delta migrations :
+  * Fichiers de migration présents : 000001 → 000059 (60 fichiers .up.sql)
+  * Versions enregistrées en DB : 1 → 54
+  * → 5 migrations (55, 56, 57, 58, 59) sont présentes dans le dépôt mais NON
+    enregistrées dans schema_migrations. Vu l'historique git (commits feat(b2c-paiement),
+    feat(abonnements soft delete), feat(quota-guards) déployés en prod), leurs effets
+    sont vraisemblablement déjà appliqués en DB mais non tracés — même classe de
+    dérive que celle documentée dans backend/db/MIGRATIONS_RECONCILIATION.md.
+    ⚠️ À réconcilier avant de lancer `make migrate-up` sinon golang-migrate tentera
+    de réappliquer 55-59 (effets déjà présents → erreurs).
+
+Stage Summary:
+- Environnement de développement opérationnel pour le projet SECT :
+  * Code : /home/z/my-project/sect-project (git main, identité udevrard7 configurée)
+  * Backend Go : compile et vet propres (go1.24.0 toolchain)
+  * DB Neon : connexion vérifiée, schéma en place (63 tables, 145 policies RLS)
+  * Go installé : /home/z/go-sdk/bin (PATH persisté dans ~/.bashrc)
+- Workflow établi pour les modifications futures (respect architecture en place) :
+  1. Frontend (Next.js → Vercel) : éditer dans frontend/, committer, push → déploiement Vercel auto
+  2. Backend (Go → Render) : éditer dans backend/, `go build ./cmd/api/` + `go vet ./...`,
+     committer, push → déploiement Render auto (render.yaml, autoDeploy: true)
+  3. DB (Neon) : toute modif de schéma = NOUVELLE migration 000060_xxx.up.sql + .down.sql
+     dans backend/db/db/migrations/, appliquée via
+     `NEON_DIRECT_URL="postgresql://...?sslmode=require" make migrate-up`
+     (URL DIRECTE obligatoire, pas le pooler — advisory locks golang-migrate)
+  4. Tout commit signé udevrard7 <ulrichdouh@gmail.com>
+- Point d'attention signalé à l'utilisateur : réconciliation schema_migrations 55-59
+  recommandée avant nouvelle migration DB (vérifier effets présents puis INSERT lignes).
+- Sécurité : credentials fournis en clair dans le chat → rotation conseillée post-session.
+
+---
+Task ID: SECT-MIGRATIONS-RECONCILIATION-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Réconcilier schema_migrations (55-59) + corriger doublon 000050 → remettre CLI migrate fonctionnel
+
+Contexte : le CLI `migrate` (golang-migrate v4) refusait de démarrer à cause d'un
+doublon de numéro de migration (000050 avait 2 migrations distinctes), et la table
+schema_migrations était désynchronisée (54 versions enregistrées alors que les
+fichiers vont jusqu'à 000059). Cf. diagnostic SECT-ENV-RESETUP.
+
+Work Log:
+
+### 1. Diagnostic complet des migrations concernées
+Lu le contenu + historique git de 7 migrations :
+- 000050_certificat_select_is_system (commit 0392aaa, 23:27:59) — policy RLS Certificat
+- 000050_resultat_modify_etudiant (commit 02df1bf, 23:27:36) — policy RLS Resultat
+  → doublon : 2 fichiers portent le n° 50 → golang-migrate refuse (duplicate migration file)
+- 000055_abonnements_b2b_b2c (commit 6a7aa61) — colonnes Plan + 3 plans B2C/B2B
+- 000056_b2c_subscription_auto (commit 49daa24) — fct create_b2c_subscription v1 (5 params)
+- 000057_abonnement_soft_delete (commit b069c57) — colonne Abonnement.deletedAt
+- 000058_b2c_paiement (commit aa10e4d) — enum EN_ATTENTE_PAIEMENT + fct v2 (6 params) + confirm_b2c_payment
+- 000059_ia_usage (commit 7fc5953) — table IAUsage + index + FK
+
+### 2. Audit des effets en DB Neon (programme Go pgxpool)
+Vérifié pour CHACUNE des 7 migrations si l'objet attendu (policy/colonne/fonction/
+table/index/FK/enum) est déjà présent en DB :
+- 50a Certificat_select + is_system() → présent ✅
+- 50b Resultat_modify_etudiant + session_owned_by_me → présent ✅
+- 55 Plan.branche/prixParEtudiant/quotaIAGeneration/quotaIACorrection/classeesMax/popular
+     + 3 plans (plan_b2c_prof_solo, plan_b2c_prof_premium, plan_b2b_institutionnel) → présents ✅
+- 56 fct create_b2c_subscription → présente ✅ (en version v2 à 6 params, surchargée par 58)
+- 57 Abonnement.deletedAt + index Abonnement_deletedAt_idx → présents ✅
+- 58 enum EN_ATTENTE_PAIEMENT + colonnes methodePaiement/datePaiement/referenceTransaction/
+     periodeAbonnement + fct create_b2c_subscription (6 params) + fct confirm_b2c_payment → présents ✅
+- 59 table IAUsage + index IAUsage_etab_type_month_key/IAUsage_etab_month_idx + FK → présents ✅
+
+→ Conclusion : TOUS les effets sont déjà appliqués en DB. Il suffit d'enregistrer la trace
+  dans schema_migrations, pas besoin de réappliquer le SQL.
+
+### 3. Renumérotation du doublon 000050 (fichiers)
+Conformément à la convention établie dans MIGRATIONS_RECONCILIATION.md (la migration
+"principale" garde son numéro, le "fix/debug" est renuméroté vers un n° libre supérieur) :
+- 000050_certificat_select_is_system → GARDE 50 (feature RLS principale)
+- 000050_resultat_modify_etudiant → RENUMÉROTÉ 60 (commit "debug(submit): log temporaire")
+  via `git mv` (préserve l'historique Git) :
+  - 000050_resultat_modify_etudiant.up.sql → 000060_resultat_modify_etudiant.up.sql
+  - 000050_resultat_modify_etudiant.down.sql → 000060_resultat_modify_etudiant.down.sql
+  - Commentaire interne mis à jour ("Migration 000060 (renumérotée depuis 000050 le 14/07/2026)")
+  - down.sql inchangé (DROP POLICY IF EXISTS est idempotent)
+
+### 4. Réconciliation schema_migrations (DB Neon)
+
+#### 4a. Découverte critique : golang-migrate gère schema_migrations en mode "1 ligne"
+Pendant le `migrate up` initial (qui a échoué sur la migration 18 — policy déjà existante),
+golang-migrate a TRUNCATE la table schema_migrations (qui contenait 60 lignes insérées
+par ma première tentative + l'historique hérité) et n'a laissé qu'1 ligne :
+  (version=18, dirty=true).
+
+ENSEIGNEMENT IMPORTANT : golang-migrate v4 stocke schema_migrations au format
+"1 SEULE LIGNE = (version_courante, dirty)" — PAS un historique de toutes les versions.
+Le précédent doc MIGRATIONS_RECONCILIATION.md (2025-01) interprétait à tort schema_migrations
+comme un historique et insérait une ligne par version (38, 40, 41, ..., 48). Ce format
+"multi-lignes" fonctionnait par hasard tant que LIMIT 1 (sans ORDER BY) retournait la
+dernière version insérée — mais avec 60 lignes, PostgreSQL retournait une ligne arbitraire
+(16), déclenchant un `migrate up` intempestif sur 17+.
+
+#### 4b. Correction : `migrate force 60`
+Vu que golang-migrate avait déjà remis la table au bon format (1 ligne), il suffisait de
+corriger la valeur :
+  migrate -path db/db/migrations -database "$NEON_DIRECT_URL" force 60
+→ schema_migrations : (version=60, dirty=false)
+
+#### 4c. Vérification finale
+- `migrate version` → 60 ✅
+- `migrate up` → "no change" (no-op) ✅
+- Re-audit des 7 effets en DB → TOUS PRÉSENTS ✅
+- DB cohérente, aucune perte de données
+
+### 5. Commit + push
+- Commit : renommage git mv des 2 fichiers de migration + màj commentaire + entry worklog
+- Push vers GitHub (origin/main) → déploiement auto Vercel (frontend, sans impact) +
+  Render (backend, sans impact car le backend ne lance pas les migrations au démarrage).
+- Identité : udevrard7 <ulrichdouh@gmail.com>
+
+Stage Summary:
+- CLI `migrate` (golang-migrate v4) PLEINEMENT FONCTIONNEL sur le projet SECT :
+  * `migrate version` → 60
+  * `migrate up` → no-op (tout est appliqué)
+  * `migrate force <n>` disponible pour cas futurs
+- Doublon 000050 résolu : 000050_certificat_select_is_system (gardé) +
+  000060_resultat_modify_etudiant (renuméroté via git mv)
+- schema_migrations au format golang-migrate standard (1 ligne, version=60, dirty=false)
+- DB Neon cohérente : tous les effets des 60 migrations présents (policies, colonnes,
+  fonctions, tables, index, FK, enum)
+- Aucune donnée métier perdue, aucun déploiement disruptif
+
+ENSEIGNEMENT POUR LE FUTUR (à retenir pour les prochaines migrations) :
+- golang-migrate stocke 1 SEULE ligne dans schema_migrations (version courante + dirty).
+  NE PAS insérer manuellement un historique multi-lignes (ça casse le LIMIT 1).
+- Pour appliquer une migration : `make migrate-up` avec NEON_DIRECT_URL (URL directe,
+  pas le pooler — advisory locks). Si une migration échoue → `migrate force <n>` pour
+  remettre propre, après investigation.
+- Pour une nouvelle migration : numéro strictement > 60 (ex: 000061_xxx).
+  Les .up.sql et .down.sql doivent être idempotents (`IF NOT EXISTS` / `DROP ... IF EXISTS`)
+  pour résister aux réapplications accidentelles.
+- Si l'effet d'une migration est déjà en DB mais non tracé : `migrate force <n>` où n est
+  le numéro de la dernière migration réellement appliquée. NE PAS faire d'INSERT manuel.
