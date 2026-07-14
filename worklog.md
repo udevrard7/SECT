@@ -15809,3 +15809,83 @@ ENSEIGNEMENT POUR LE FUTUR (à retenir pour les prochaines migrations) :
   pour résister aux réapplications accidentelles.
 - Si l'effet d'une migration est déjà en DB mais non tracé : `migrate force <n>` où n est
   le numéro de la dernière migration réellement appliquée. NE PAS faire d'INSERT manuel.
+
+---
+Task ID: SECT-LOCAL-DEV
+Agent: Z.ai Code (tuteur/assistant)
+Task: Lancer le backend Go + le frontend Next.js en local pour développement
+
+Contexte : l'utilisateur veut un environnement de dev local complet (backend Go
+sur 8080 + frontend Next.js sur 3000) pour développer sur SECT.
+
+Work Log:
+
+### 1. Investigation de l'architecture existante
+- Caddyfile : gateway route tout vers localhost:3000, sauf ?XTransformPort=<port>
+- Template sandbox Next.js tournait sur port 3000 (pid 1130) → tué pour libérer le port
+- Frontend SECT utilise vercel.json rewrites (/api/* → Render) → ne s'applique PAS en dev
+- useApi hook fait fetch('/api/...') relatifs → besoin d'un proxy dev
+- Routes /api/go-auth/* sont des shims Next.js qui appellent NEXT_PUBLIC_API_URL
+
+### 2. Configuration du proxy API dev-only (next.config.ts)
+Ajout d'une fonction `rewrites()` DEV-ONLY (gated par NODE_ENV === 'development') :
+- /api/:path* → ${NEXT_PUBLIC_API_URL}/api/:path* (default http://localhost:8080)
+- afterFiles : Next.js vérifie d'abord les routes existantes (go-auth/*, PDF routes)
+  puis fallback sur le proxy vers le backend Go
+- Aucun impact en production (vercel.json reste la source de vérité en prod)
+
+### 3. Fichiers d'environnement locaux (gitignorés)
+- backend/.env : NEON_DATABASE_URL (pooler), NEON_DIRECT_URL, JWT_SECRET (dev),
+  CORS_ORIGINS=localhost:3000, APP_BASE_URL=localhost:3000
+  → Valeurs QUOTÉES car les connection strings contiennent des & (shell bg operator)
+- frontend/.env.local : NEXT_PUBLIC_API_URL=http://localhost:8080
+
+### 4. Démarrage des services (pattern disown)
+Découverte : les processus background meurent entre les appels Bash tool si on
+utilise setsid/nohup. Solution : pattern inspiré de .zscripts/dev.sh —
+`cmd & PID=$!; disown "$PID"; unset PID` dans un script standalone.
+- Script : /home/z/my-project/sect-project/start-dev.sh (gitignoré, paths sandbox)
+- Backend Go : go run ./cmd/api → port 8080, connecté à Neon, workers démarrés
+- Frontend Next.js : bun run dev (1066 packages installés) → port 3000
+
+### 5. Vérifications curl
+- backend /health → HTTP 200 ✓
+- backend /api/health → HTTP 200 ✓
+- frontend / → HTTP 200 (34KB, landing SECT) ✓
+- frontend /login → HTTP 200 ✓
+- proxy /api/health (frontend→backend) → HTTP 200 ✓
+
+### 6. Vérification E2E avec Agent Browser (Chrome 150 headless)
+- Landing page : titre "SECT — Vos examens corrigés par l'IA en 2 minutes",
+  hero "Vos copies corrigées en 2 minutes", sections problème/solution, stats,
+  footer "L'évaluation universitaire réinventée par l'IA. Conçue pour l'Afrique."
+  → Aucune erreur console/page/hydration
+- Login page : formulaire complet (toggle Personnel/Étudiant, email, password,
+  mot de passe oublié), bouton passe de "Connexion..." (loading session check)
+  à "Se connecter" (enabled) → session check fonctionne
+- Test login (test@example.com / wrongpassword) :
+  Backend log : POST /api/auth/login status=401 duration_ms=516 user_agent=node
+  → Chaîne E2E validée : Browser → Next.js shim → Go backend → Neon DB → 401
+- Responsive : desktop (nav complète) + mobile iPhone 14 (menu hamburger "Ouvrir
+  le menu"), contenu s'adapte correctement
+- Footer présent (bodyH=8166px, vpH=800px → footer en bas naturellement)
+- Captures : sect-landing-desktop.png, sect-landing-mobile.png
+
+### 7. Note : erreur non-bloquante pré-existante
+Backend log au démarrage : "RecoverHomework: query failed: column s.deletedAt
+does not exist (SQLSTATE 42703)". Un worker s'attend à une colonne deletedAt
+sur une table (probablement Session/Soumission) qui ne l'a pas. Non-fatal —
+le backend démarre et sert les requêtes. À investiguer dans une task dédiée.
+
+Stage Summary:
+- Environnement de dev local SECT PLEINEMENT OPÉRATIONNEL :
+  * Backend Go sur http://localhost:8080 (connecté à Neon, /health 200)
+  * Frontend Next.js sur http://localhost:3000 (landing + login rendus)
+  * Proxy API dev-only : /api/* → localhost:8080 (rewrites next.config.ts)
+  * Chaîne E2E validée : login → backend → DB → réponse
+- Modifications commitées :
+  * frontend/next.config.ts : rewrites() dev-only (0 impact production)
+  * .gitignore : start-dev.sh ajouté (utilitaire sandbox-local)
+- Process persistent entre appels Bash (pattern disown + unset)
+- Prêt pour développement : modifier frontend/ ou backend/, les hot-reloads
+  sont actifs (Turbopack pour Next.js, go run pour Go)
