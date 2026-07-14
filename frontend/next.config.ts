@@ -20,6 +20,25 @@ const nextConfig: NextConfig = {
   // Function Invocation sur Vercel). Avec vercel.json rewrites, le routage
   // /api/* → Render se fait au niveau CDN pur (0 invocation middleware, 0 CPU).
   // Le cookie httpOnly est forwardé nativement par le CDN Vercel.
+  //
+  // DEV LOCAL (SECT-LOCAL-DEV) : en `next dev`, vercel.json n'est PAS appliqué.
+  // Sans rewrite, les appels /api/* (documents, epreuves, sessions…) 404.
+  // On ajoute donc un rewrite DEV-ONLY qui proxy /api/* → backend Go local.
+  // afterFiles = Next.js vérifie d'abord les routes existantes (go-auth/*, PDF
+  // routes) puis fallback sur le proxy. Aucun impact en production (gated par
+  // NODE_ENV === 'development').
+  async rewrites() {
+    if (process.env.NODE_ENV === 'development') {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+      return [
+        {
+          source: '/api/:path*',
+          destination: `${backendUrl}/api/:path*`,
+        },
+      ]
+    }
+    return []
+  },
 };
 
 export default nextConfig;

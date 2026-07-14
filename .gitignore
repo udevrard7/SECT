@@ -55,3 +55,6 @@ frontend/e2e/.auth/
 frontend/playwright-report/
 frontend/test-results/
 frontend/playwright/.cache/
+
+# Local dev utility (sandbox-specific paths)
+start-dev.sh
