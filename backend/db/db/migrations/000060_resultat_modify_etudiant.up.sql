@@ -1,4 +1,5 @@
--- Migration 000050 : Resultat_modify_etudiant — autorise l'étudiant à créer
+-- Migration 000060 (renumérotée depuis 000050 le 14/07/2026 — voir SECT-MIGRATIONS-RECONCILIATION-2) :
+-- Resultat_modify_etudiant — autorise l'étudiant à créer
 -- son propre Resultat au submit (UpsertResultat dans Submit).
 --
 -- BUG E2E-EVAL-RESULTAT : la policy Resultat_modify existante exige
