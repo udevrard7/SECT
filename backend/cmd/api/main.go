@@ -14,6 +14,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/config"
         appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
+        "github.com/udevrard7/sect/backend/internal/geniuspay"
         "github.com/udevrard7/sect/backend/internal/jwt"
         "github.com/udevrard7/sect/backend/internal/mailer"
         "github.com/udevrard7/sect/backend/internal/middleware"
@@ -203,6 +204,19 @@ func main() {
         // (cold start tue le worker goroutine avant traitement du job).
 
         server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
+
+        // SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
+        // Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.
+        if cfg.GeniusPayAPIKey != "" {
+                gpClient := geniuspay.NewClient(cfg.GeniusPayAPIKey, cfg.GeniusPayAPISecret, cfg.GeniusPayBaseURL)
+                server.WithGeniusPay(gpClient, cfg.GeniusPayWebhookSecret)
+                logger.Info("GeniusPay client configured",
+                        "baseURL", cfg.GeniusPayBaseURL,
+                        "webhookSecretSet", cfg.GeniusPayWebhookSecret != "",
+                )
+        } else {
+                logger.Warn("GeniusPay not configured (GENIUSPAY_API_KEY empty) — payment endpoints will return 503")
+        }
 
         // CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
         // toutes les 30s en une série d'appels SaveReponse (un par question).

@@ -11,6 +11,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/ai"
         "github.com/udevrard7/sect/backend/internal/cache"
         "github.com/udevrard7/sect/backend/internal/domain"
+        "github.com/udevrard7/sect/backend/internal/geniuspay"
         "github.com/udevrard7/sect/backend/internal/mailer"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/monitoring"
@@ -59,6 +60,10 @@ type Server struct {
         // SECT-QUOTA-GUARDS : vérification des quotas IA (génération/correction)
         // dans les handlers AI avant appel au LLM.
         quotaChecker domain.QuotaChecker
+        // SECT-GENIUSPAY-WAVE : client GeniusPay pour paiement Wave B2C Prof Premium.
+        // Peut être nil si GENIUSPAY_API_KEY non configuré (handlers retournent 503).
+        geniusPay              *geniuspay.Client
+        geniusPayWebhookSecret string
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -130,6 +135,15 @@ func NewServer(
         return s
 }
 
+// WithGeniusPay injecte le client GeniusPay + le secret webhook dans le Server.
+// Appelé depuis main.go après NewServer si GENIUSPAY_API_KEY est configuré.
+// SECT-GENIUSPAY-WAVE.
+func (s *Server) WithGeniusPay(client *geniuspay.Client, webhookSecret string) *Server {
+        s.geniusPay = client
+        s.geniusPayWebhookSecret = webhookSecret
+        return s
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         s.router.ServeHTTP(w, r)
 }
@@ -176,6 +190,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
                 // Active l'abonnement EN_ATTENTE_PAIEMENT → ACTIF.
                 r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
+                // SECT-GENIUSPAY-WAVE : paiement Wave via GeniusPay (V2, remplace la V1 simulation).
+                // initiate-payment : crée le paiement Wave → retourne paymentUrl pour redirection.
+                // payment-status : polling frontend après retour Wave (active l'abo si completed).
+                r.Post("/api/subscriptions/b2c/{id}/initiate-payment", s.initiateB2CPayment)
+                r.Get("/api/subscriptions/b2c/{id}/payment-status", s.getB2CPaymentStatus)
+                // Webhook GeniusPay (public, signature HMAC vérifiée dans le handler).
+                // Reçoit payment.success/failed et active l'abonnement de façon idempotente.
+                r.Post("/api/webhooks/geniuspay", s.geniuspayWebhook)
                 // SECT-DEMO-REQUEST : demande de démo B2B depuis le landing page (public).
                 // Envoie un email à l'admin avec les infos du prospect.
                 r.Post("/api/demo-request", s.submitDemoRequest)

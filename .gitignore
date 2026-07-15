@@ -58,3 +58,11 @@ frontend/playwright/.cache/
 
 # Local dev utility (sandbox-specific paths)
 start-dev.sh
+
+# GeniusPay MCP temp files + docs (lues via MCP, pas dans le repo)
+docs-geniuspay-*.md
+mcp-call.sh
+read-resource.sh
+
+# GeniusPay contract (dev reference, not for repo)
+GENIUSPAY_CONTRACT.md
