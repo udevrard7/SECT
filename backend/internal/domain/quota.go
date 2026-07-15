@@ -51,6 +51,10 @@ type QuotaChecker interface {
         CheckEvaluationsQuota(ctx context.Context, etablissementID string) error
         CheckIAGenerationQuota(ctx context.Context, etablissementID string) error
         CheckIACorrectionQuota(ctx context.Context, etablissementID string) error
+        // SECT-B2C-EXPIRE (Option C) : vérifie le nombre d'étudiants UNIQUES ayant
+        // démarré au moins une session ce mois-ci. Empêche le contournement du quota
+        // par désactivation/réactivation d'étudiants en lots.
+        CheckActiveStudentsUsageQuota(ctx context.Context, etablissementID string) error
         IncrementIAGeneration(ctx context.Context, etablissementID string) error
         IncrementIACorrection(ctx context.Context, etablissementID string) error
         GetPlanLimitsForUser(ctx context.Context, userID string) (*PlanLimits, string, error)

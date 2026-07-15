@@ -80,18 +80,19 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // SECT-B2C-EXPIRE : vérifier le quota d'usage AVANT de démarrer la session.
-        // Si l'établissement a plus d'étudiants actifs que le plan ne le permet
-        // (ex: 200 étudiants en Premium rétrogradé Solo=40), bloquer la passation.
-        // Le prof doit soit désactiver des étudiants, soit renouveler Premium.
+        // SECT-B2C-EXPIRE (Option C) : vérifier le quota d'usage AVANT de démarrer
+        // la session. On compte les étudiants UNIQUES ayant déjà démarré une session
+        // ce mois-ci (pas les étudiants actifs — empêche le contournement par
+        // désactivation/réactivation en lots de 40).
         if s.quotaChecker != nil && claims.EtablissementID != "" {
-                if err := s.quotaChecker.CheckStudentsQuota(r.Context(), claims.EtablissementID); err != nil {
-                        // Si quota dépassé, retourner 402 Payment Required avec message clair
+                if err := s.quotaChecker.CheckActiveStudentsUsageQuota(r.Context(), claims.EtablissementID); err != nil {
+                        // Si quota dépassé, retourner 402 avec message clair
                         if qe, ok := err.(*domain.QuotaExceededError); ok {
                                 writeJSONError(w, http.StatusPaymentRequired, fmt.Sprintf(
-                                        "Votre établissement a %d étudiants actifs, mais votre plan %s limite à %d. "+
-                                                "Contactez votre enseignant pour mettre à niveau ou désactiver des étudiants.",
-                                        qe.Current, qe.PlanNom, qe.Max,
+                                        "Votre plan %s permet à %d étudiants de composer par mois. "+
+                                                "%d étudiant(s) ont déjà composé ce mois-ci. "+
+                                                "Pour permettre à plus d'étudiants de composer, renouvelez Premium.",
+                                        qe.PlanNom, qe.Max, qe.Current,
                                 ))
                                 return
                         }
