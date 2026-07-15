@@ -60,21 +60,23 @@ func (s *Server) createB2BFactureIfApplicable(aboID, planID string, modePaiement
                 "aboId", aboID, "factureId", factureID, "numero", factureNumero,
                 "montantTTC", montantTTC, "nbEtudiants", nbEtudiants)
 
-        // 3. Envoyer l'email au RESPONSABLE
+        // 3. Récupérer les infos pour le contrat + la facture
         if s.mailer == nil {
                 return
         }
 
-        var respEmail, respName, etabNom string
+        var respEmail, respName, etabNom, etabVille, etabPays, etabTel string
+        var dateDebut, dateFin time.Time
         err = appdb.WithTx(ctx, s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
                 return tx.QueryRow(ctx, `
-                        SELECT u."email", u."name", e."nom"
+                        SELECT u."email", u."name", e."nom", COALESCE(e."ville",''), COALESCE(e."pays",''),
+                               COALESCE(e."telephone",''), a."dateDebut", a."dateFin"
                         FROM "Abonnement" a
                         JOIN "Etablissement" e ON e."id" = a."etablissementId"
                         JOIN "User" u ON u."etablissementId" = a."etablissementId" AND u."role" = 'RESPONSABLE'
                         WHERE a."id" = $1
                         LIMIT 1
-                `, aboID).Scan(&respEmail, &respName, &etabNom)
+                `, aboID).Scan(&respEmail, &respName, &etabNom, &etabVille, &etabPays, &etabTel, &dateDebut, &dateFin)
         })
         if err != nil {
                 slog.Error("createB2BFacture: failed to get responsable", "aboId", aboID, "error", err.Error())
@@ -84,15 +86,47 @@ func (s *Server) createB2BFactureIfApplicable(aboID, planID string, modePaiement
         factureURL := s.appBaseURL + "/api/factures/" + factureID + "/pdf"
         loginURL := s.appBaseURL + "/login"
 
-        // Réutiliser le template facture_paid (déjà créé pour B2C)
+        // ── SECT-B2B-CONTRACT : envoyer le CONTRAT avant la facture ──
+        contractNum := "CTR-" + time.Now().Format("2006") + "-" + factureNumero[8:] // CTR-2026-00001
+        contractTpl := emailtpl.B2BContractData{
+                EmailData:    emailtpl.DefaultData(respName, s.appBaseURL),
+                EtabNom:      etabNom,
+                EtabVille:    etabVille,
+                EtabPays:     etabPays,
+                EtabTel:      etabTel,
+                RespName:     respName,
+                RespEmail:    respEmail,
+                PlanNom:      "Institutionnel (B2B)",
+                DateDebut:    dateDebut.Format("02/01/2006"),
+                DateFin:      dateFin.Format("02/01/2006"),
+                NbEtudiants:  nbEtudiants,
+                PrixEtudiant: "900 FCFA/an",
+                MontantTotal: formatFCFA(montantTTC),
+                ModePaiement: modePaiement,
+                ReferenceTx:  referencePaiement,
+                ContractNum:  contractNum,
+                LoginURL:     loginURL,
+        }
+        if err := s.mailer.Send(mailer.Email{
+                To:      respEmail,
+                Subject: "Contrat d'abonnement SECT — " + etabNom + " — " + contractNum,
+                Body:    emailtpl.B2BContractText(contractTpl),
+                HTML:    emailtpl.B2BContractHTML(contractTpl),
+        }); err != nil {
+                slog.Error("createB2BFacture: contract email failed", "aboId", aboID, "email", respEmail, "error", err.Error())
+        } else {
+                slog.Info("B2B contract email sent", "aboId", aboID, "contractNum", contractNum, "email", respEmail)
+        }
+
+        // ── Ensuite : envoyer la FACTURE ──
         tplData := emailtpl.FacturePaidData{
                 EmailData:  emailtpl.DefaultData(respName, s.appBaseURL),
                 Numero:     factureNumero,
                 PlanNom:    "Institutionnel (B2B)",
                 MontantTTC: formatFCFA(montantTTC),
                 Periode:    "annuel (capitation)",
-                DateDebut:  time.Now().Format("02/01/2006"),
-                DateFin:    time.Now().AddDate(1, 0, 0).Format("02/01/2006"),
+                DateDebut:  dateDebut.Format("02/01/2006"),
+                DateFin:    dateFin.Format("02/01/2006"),
                 FactureURL: factureURL,
                 LoginURL:   loginURL,
         }
