@@ -265,26 +265,41 @@ func nullableString(s *string) any {
         return *s
 }
 
-// GetPendingAbonnementByEtablissementID (SECT-GENIUSPAY-WAVE-SECURITY) :
-// retourne l'ID de l'abonnement EN_ATTENTE_PAIEMENT lié à un établissement,
-// ou "" si aucun. Contourne RLS (appelé avant pose des claims dans Login/Refresh).
-func (r *AuthRepository) GetPendingAbonnementByEtablissementID(ctx context.Context, etablissementID string) (string, error) {
+// GetPendingAbonnementByEtablissementID (SECT-GENIUSPAY-WAVE-SECURITY +
+// SECT-B2C-EXPIRE) : retourne l'ID + reason de l'abonnement qui bloque le login :
+//   - EN_ATTENTE_PAIEMENT → reason="pending" (jamais payé)
+//   - EXPIRE → reason="expired" (worker a passé le statut)
+//   - ACTIF avec dateFin < NOW() → reason="expired" (worker pas encore passé)
+//
+// Retourne ("", "") si aucun abonnement bloquant → login OK.
+// Contourne RLS (appelé avant pose des claims dans Login/Refresh).
+func (r *AuthRepository) GetPendingAbonnementByEtablissementID(ctx context.Context, etablissementID string) (abonnementID string, reason string, err error) {
         if etablissementID == "" {
-                return "", nil
+                return "", "", nil
         }
-        var aboID string
-        err := r.pool.QueryRow(ctx, `
-                SELECT "id" FROM "Abonnement"
-                WHERE "etablissementId" = $1 AND "statut" = 'EN_ATTENTE_PAIEMENT'
+        err = r.pool.QueryRow(ctx, `
+                SELECT "id",
+                  CASE
+                    WHEN "statut" = 'EN_ATTENTE_PAIEMENT' THEN 'pending'
+                    ELSE 'expired'
+                  END AS reason
+                FROM "Abonnement"
+                WHERE "etablissementId" = $1
+                  AND "deletedAt" IS NULL
+                  AND (
+                    "statut" = 'EN_ATTENTE_PAIEMENT'
+                    OR "statut" = 'EXPIRE'
+                    OR ("statut" = 'ACTIF' AND "dateFin" IS NOT NULL AND "dateFin" < NOW())
+                  )
                 ORDER BY "createdAt" DESC LIMIT 1
-        `, etablissementID).Scan(&aboID)
+        `, etablissementID).Scan(&abonnementID, &reason)
         if err != nil {
                 if err == pgx.ErrNoRows {
-                        return "", nil // Pas d'abonnement en attente → login OK
+                        return "", "", nil // Pas d'abonnement bloquant → login OK
                 }
-                return "", fmt.Errorf("get pending abonnement: %w", err)
+                return "", "", fmt.Errorf("get pending abonnement: %w", err)
         }
-        return aboID, nil
+        return abonnementID, reason, nil
 }
 
 // scanAuthUser scan une ligne User avec tous les champs auth.

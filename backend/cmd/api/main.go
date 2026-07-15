@@ -202,6 +202,12 @@ func main() {
         relanceWorker := worker.NewRelanceWorker(pool, logger, mailSvc, cfg.AppBaseURL)
         relanceWorker.Start(context.Background())
 
+        // SECT-B2C-EXPIRE : worker d'expiration des abonnements B2C.
+        // Vérifie toutes les 1h les abonnements ACTIF dont dateFin < NOW(), les passe
+        // à EXPIRE (bloque l'accès), envoie email avec option renouvellement/downgrade.
+        expireWorker := worker.NewExpireWorker(pool, logger, mailSvc, cfg.AppBaseURL)
+        expireWorker.Start(context.Background())
+
         // MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
         // utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
         // avec message d'erreur gracieux si timeout. L'approche worker async avec

@@ -171,13 +171,20 @@ export function LoginForm() {
       } else if (loginErr?.status === 403) {
         setLoginError(loginErr.message || 'Votre compte a été désactivé.')
       } else if (loginErr?.status === 402) {
-        // SECT-GENIUSPAY-WAVE-SECURITY : paiement requis — rediriger vers la page
-        // de retry paiement avec l'abonnement ID (sans recréer de compte).
+        // SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : paiement requis.
+        // Rediriger selon reason :
+        //   - pending → /paiement/retry (jamais payé, finaliser inscription)
+        //   - expired → /abonnement-expire (expiré, renouveler OU rétrograder)
         const aboId = loginErr.abonnementId
+        const reason = loginErr.reason
         if (aboId) {
           // Stocker en localStorage pour /paiement/succes
           try { localStorage.setItem('sect_pending_abo', aboId) } catch {}
-          window.location.href = `/paiement/retry?abo=${encodeURIComponent(aboId)}`
+          if (reason === 'expired') {
+            window.location.href = `/abonnement-expire?abo=${encodeURIComponent(aboId)}`
+          } else {
+            window.location.href = `/paiement/retry?abo=${encodeURIComponent(aboId)}`
+          }
         } else {
           setLoginError('Paiement requis. Veuillez finaliser votre inscription sur la page de souscription.')
         }

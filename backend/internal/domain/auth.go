@@ -149,11 +149,11 @@ type AuthRepository interface {
         // une chance de se souvenir).
         UnlockAccount(ctx context.Context, userID string) error
 
-        // GetPendingAbonnementByEtablissementID (SECT-GENIUSPAY-WAVE-SECURITY) :
-        // retourne l'ID de l'abonnement EN_ATTENTE_PAIEMENT lié à un établissement,
-        // ou nil si aucun abonnement en attente. Utilisé par Login/Refresh pour
-        // bloquer l'auth des utilisateurs B2C Premium n'ayant pas encore payé.
-        GetPendingAbonnementByEtablissementID(ctx context.Context, etablissementID string) (abonnementID string, err error)
+        // GetPendingAbonnementByEtablissementID (SECT-GENIUSPAY-WAVE-SECURITY +
+        // SECT-B2C-EXPIRE) : retourne l'ID + reason de l'abonnement bloquant le login.
+        // reason = "pending" (EN_ATTENTE_PAIEMENT) ou "expired" (EXPIRE / dateFin < NOW).
+        // Retourne ("", "", nil) si aucun → login OK.
+        GetPendingAbonnementByEtablissementID(ctx context.Context, etablissementID string) (abonnementID string, reason string, err error)
 }
 
 // AuthUser est l'entité User avec les champs sensibles nécessaires à l'auth.
@@ -202,11 +202,14 @@ type AccountDisabledError struct{}
 func (e *AccountDisabledError) Error() string { return "compte désactivé" }
 
 // PaymentPendingError — SECT-GENIUSPAY-WAVE-SECURITY : levé quand un utilisateur
-// B2C (Prof Premium) tente de se connecter alors que son abonnement est encore
-// EN_ATTENTE_PAIEMENT. Le frontend utilise AbonnementID pour rediriger vers
-// la page de retry paiement (/paiement/succes?abo=... ou /souscrire-b2c).
+// B2C (Prof Premium) tente de se connecter alors que son abonnement bloque l'accès.
+// Le frontend utilise AbonnementID + Reason pour rediriger vers la bonne page :
+//   - Reason="pending"  → /paiement/retry (jamais payé, EN_ATTENTE_PAIEMENT)
+//   - Reason="expired"  → /abonnement-expire (expiré, renouvellement ou downgrade)
 type PaymentPendingError struct {
         AbonnementID string
+        // Reason : "pending" (EN_ATTENTE_PAIEMENT) ou "expired" (EXPIRE / dateFin < NOW)
+        Reason string
 }
 
 func (e *PaymentPendingError) Error() string {

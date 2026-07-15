@@ -197,6 +197,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/subscriptions/b2c/{id}/initiate-payment", s.initiateB2CPayment)
                 r.Get("/api/subscriptions/b2c/{id}/payment-status", s.getB2CPaymentStatus)
                 r.Post("/api/subscriptions/b2c/{id}/renew", s.renewB2CPayment)
+                // SECT-B2C-EXPIRE : rétrograde un abonnement Premium EXPIRE vers Prof Solo gratuit.
+                r.Post("/api/subscriptions/b2c/{id}/downgrade", s.downgradeB2CToSolo)
                 // Webhook GeniusPay (public, signature HMAC vérifiée dans le handler).
                 // Reçoit payment.success/failed et active l'abonnement de façon idempotente.
                 r.Post("/api/webhooks/geniuspay", s.geniuspayWebhook)
