@@ -111,8 +111,6 @@ func (s *Server) createB2BSubscription(w http.ResponseWriter, r *http.Request) {
                 switch {
                 case strings.Contains(errMsg, "EMAIL_EXISTS"):
                         writeJSONError(w, http.StatusConflict, "un compte existe déjà avec cet email")
-                case strings.Contains(errMsg, "EMAIL_NOT_PROFESSIONAL"):
-                        writeJSONError(w, http.StatusBadRequest, "veuillez utiliser un email professionnel (pas gmail/yahoo/hotmail)")
                 case strings.Contains(errMsg, "ETAB_ALREADY_EXISTS"):
                         writeJSONError(w, http.StatusConflict, "un établissement avec ce nom a déjà un essai ou un abonnement actif")
                 case strings.Contains(errMsg, "PHONE_ALREADY_USED"):

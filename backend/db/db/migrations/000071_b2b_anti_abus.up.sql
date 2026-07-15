@@ -16,6 +16,8 @@ ALTER TABLE "Etablissement" ADD COLUMN IF NOT EXISTS "emailVerified" BOOLEAN NOT
 ALTER TABLE "Etablissement" ADD COLUMN IF NOT EXISTS "adminValidated" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Etablissement" ADD COLUMN IF NOT EXISTS "emailVerificationToken" TEXT;
 ALTER TABLE "Etablissement" ADD COLUMN IF NOT EXISTS "emailVerifiedAt" TIMESTAMP(3);
+-- SECT-B2B-ANTI-ABUS : flag pour signaler à l'admin les emails non-pro
+ALTER TABLE "Etablissement" ADD COLUMN IF NOT EXISTS "emailProfessionnel" BOOLEAN NOT NULL DEFAULT true;
 
 -- ═══ 3. Index pour anti-doublon (téléphone unique par établissement B2B) ═══
 -- Un même téléphone ne peut pas être utilisé pour 2 établissements B2B
@@ -63,10 +65,13 @@ DECLARE
   v_blocked_domains text[] := ARRAY['gmail.com','yahoo.com','yahoo.fr','hotmail.com','outlook.com','live.com','icloud.com','aol.com','mail.com','protonmail.com','tempmail.com'];
   v_token text;
 BEGIN
-  -- ═══ SOLUTION 5 : Email professionnel requis ═══
+  -- ═══ SOLUTION 5 : Signaliser les emails non-professionnels (info admin) ═══
+  -- En Afrique, beaucoup d'établissements utilisent Gmail/Yahoo/Outlook légitimement.
+  -- On ne BLOQUE pas ces emails, on les signale à l'admin pour validation plus attentive.
   v_email_domain := lower(split_part(p_resp_email, '@', 2));
   IF v_email_domain = ANY(v_blocked_domains) THEN
-    RAISE EXCEPTION 'EMAIL_NOT_PROFESSIONAL';
+    -- Ne pas bloquer, juste log pour info admin
+    RAISE NOTICE 'Email non-professionnel détecté: %', v_email_domain;
   END IF;
 
   -- Anti-doublon email (déjà existant)
@@ -112,12 +117,14 @@ BEGIN
     "id", "nom", "type", "ville", "pays", "telephone", "actif",
     "certWatermarkEnabled", "certWatermarkOpacity",
     "emailVerified", "adminValidated", "emailVerificationToken",
+    "emailProfessionnel",
     "createdAt", "updatedAt"
   ) VALUES (
     v_etab_id, p_etab_nom, COALESCE(p_etab_type, 'UNIVERSITE'),
     p_etab_ville, COALESCE(p_etab_pays, 'Côte d''Ivoire'), p_etab_telephone, true,
     false, 0.1,
     false, false, v_token,
+    NOT (v_email_domain = ANY(v_blocked_domains)),
     NOW(), NOW()
   );
 
