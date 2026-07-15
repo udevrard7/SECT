@@ -262,6 +262,12 @@ func (s *Server) updateAbonnement(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // SECT-B2B-FACTURATION : si l'admin vient de passer l'abonnement à ACTIF
+        // et que c'est un plan B2B (capitation), créer automatiquement la facture.
+        if input.Statut != nil && *input.Statut == "ACTIF" {
+                go s.createB2BFactureIfApplicable(updated.ID, updated.PlanID)
+        }
+
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{"abonnement": updated})
 }

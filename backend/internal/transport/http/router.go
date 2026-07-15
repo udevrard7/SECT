@@ -187,6 +187,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // SECT-B2C-SOUSCRIPTION-AUTO : souscription B2C publique (enseignant
                 // freelance). Crée auto étab personnel + user ENSEIGNANT + abonnement.
                 r.Post("/api/subscriptions/b2c", s.createB2CSubscription)
+                // SECT-B2B-FACTURATION : self-service B2B (inscription établissement).
+                r.Post("/api/subscriptions/b2b", s.createB2BSubscription)
                 // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
                 // Active l'abonnement EN_ATTENTE_PAIEMENT → ACTIF.
                 r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
