@@ -17,7 +17,7 @@ import type { NextRequest } from 'next/server'
 
 const PUBLIC_PATHS = ['/', '/login', '/reset-password', '/invitation', '/verify', '/offline', '/souscrire-b2c', '/paiement', '/abonnement-expire']
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Pages publiques — laisser passer sans vérification
