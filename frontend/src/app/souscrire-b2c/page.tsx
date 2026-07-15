@@ -3,11 +3,12 @@
 import { useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Lock, Eye, EyeOff, Loader2, GraduationCap, CheckCircle2, ArrowLeft, ArrowRight, Mail, User, MapPin, Sparkles, Zap, Shield, CreditCard, AlertCircle, Calendar, RefreshCw } from 'lucide-react'
+import { Lock, Eye, EyeOff, Loader2, GraduationCap, CheckCircle2, ArrowLeft, ArrowRight, Mail, User, MapPin, Sparkles, Zap, Shield, CreditCard, AlertCircle, Calendar, RefreshCw, Phone, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { initiatePayment, isValidWavePhone, normalizeWavePhone, setPendingAbonnement } from '@/hooks/use-payment'
 
 // Wrappeur Suspense car useSearchParams doit être dans un Suspense boundary
 export default function SouscrireB2CPage() {
@@ -128,6 +129,10 @@ function SouscrireB2CContent() {
   const [paying, setPaying] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionResponse | null>(null)
 
+  // ─── Paiement Wave (Premium only) ───
+  const [wavePhone, setWavePhone] = useState('')
+  const [phoneTouched, setPhoneTouched] = useState(false)
+
   const selectedPlan = PLANS_B2C.find(p => p.id === selectedPlanId)
   const isPremium = selectedPlan?.paymentRequired === true
 
@@ -178,38 +183,74 @@ function SouscrireB2CContent() {
     }
   }, [selectedPlanId, name, email, password, confirmPassword, ville, periodeAbonnement, isPremium, submitting])
 
-  // ─── Étape 3 : simuler le paiement (V1) ───
+  // ─── Étape 3 : initier le paiement Wave via GeniusPay ───
+  // Contrat GP-7 (GENIUSPAY_CONTRACT.md) :
+  //   POST /api/subscriptions/b2c/{id}/initiate-payment
+  //   body { customerPhone, customerName? } → { paymentUrl, reference, ... }
+  //   puis window.location.href = paymentUrl (redirige vers la page Wave)
   const handlePayment = useCallback(async () => {
     if (!subscriptionData?.abonnementId || paying) return
+
+    const normalized = normalizeWavePhone(wavePhone)
+    if (!isValidWavePhone(normalized)) {
+      toast.error('Téléphone Wave invalide', {
+        description: 'Format attendu : +225 suivi de 10 chiffres (ex: +2250777123456).',
+      })
+      setPhoneTouched(true)
+      return
+    }
+
     setPaying(true)
     try {
-      const res = await fetch(`/api/subscriptions/b2c/${subscriptionData.abonnementId}/confirm-payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ methodePaiement: 'simulation' }),
-      })
+      // Stocker l'abonnement en cours AVANT la redirection — permet à /paiement/succes
+      // de retrouver l'ID si Wave omet le query param `abo`.
+      setPendingAbonnement(subscriptionData.abonnementId)
+
+      const res = await fetch(
+        `/api/subscriptions/b2c/${subscriptionData.abonnementId}/initiate-payment`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerPhone: normalized,
+            customerName: subscriptionData.user?.name,
+          }),
+        },
+      )
       const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        // Mettre à jour le statut de l'abonnement dans subscriptionData
-        setSubscriptionData(prev => prev ? {
-          ...prev,
-          abonnementStatut: 'ACTIF',
-          abonnementDateFin: data.dateFin,
-          message: data.message,
-        } : null)
-        setStep(4)
-        toast.success('Paiement confirmé', {
-          description: 'Votre abonnement Prof Premium est maintenant actif.',
+
+      if (res.ok && data.paymentUrl) {
+        toast.success('Redirection vers Wave...', {
+          description: 'Vous allez être redirigé vers la page de paiement sécurisée.',
+        })
+        // Redirection externe vers la page de paiement Wave (hébergée par GeniusPay)
+        window.location.href = data.paymentUrl
+        return
+      }
+
+      // Gestion fine des erreurs selon le contrat
+      const errMsg = data?.error || 'Erreur inconnue'
+      if (res.status === 400) {
+        toast.error('Téléphone requis', { description: errMsg })
+      } else if (res.status === 404) {
+        toast.error('Abonnement introuvable', { description: 'Veuillez recommencer votre inscription.' })
+      } else if (res.status === 409) {
+        toast.error('Abonnement déjà traité', { description: errMsg })
+      } else if (res.status === 502) {
+        toast.error('Service de paiement indisponible', {
+          description: 'GeniusPay est momentanément indisponible. Réessayez dans un instant.',
         })
       } else {
-        toast.error('Paiement impossible', { description: data?.error || 'Erreur.' })
+        toast.error('Paiement impossible', { description: errMsg })
       }
     } catch {
-      toast.error('Erreur', { description: 'Vérifiez votre connexion.' })
+      toast.error('Erreur réseau', {
+        description: 'Vérifiez votre connexion internet et réessayez.',
+      })
     } finally {
       setPaying(false)
     }
-  }, [subscriptionData, paying])
+  }, [subscriptionData, wavePhone, paying])
 
   // ════════════════════════════════════════════════════════════════════
   // ÉTAPE 4 : Confirmation (compte créé, éventuellement payé)
@@ -248,13 +289,19 @@ function SouscrireB2CContent() {
   }
 
   // ════════════════════════════════════════════════════════════════════
-  // ÉTAPE 3 : Paiement (Premium only)
+  // ÉTAPE 3 : Paiement Wave via GeniusPay (Premium only)
+  // GP-7 : demande téléphone Wave → POST initiate-payment → redirect paymentUrl
   // ════════════════════════════════════════════════════════════════════
   if (step === 3 && subscriptionData) {
+    const normalizedPhone = normalizeWavePhone(wavePhone)
+    const phoneValid = isValidWavePhone(normalizedPhone)
+    const showPhoneError = phoneTouched && wavePhone.length > 0 && !phoneValid
+
     return (
-      <Shell title="Paiement" icon={<CreditCard className="h-7 w-7 text-[#84CC16]" />}>
+      <Shell title="Paiement Wave" icon={<WaveMark className="h-7 w-7" />}>
         <p className="text-sm text-[#1E1B4B]/70 mb-5">
-          Finalisez votre paiement pour activer votre abonnement <strong style={{ color: '#1E1B4B' }}>Prof Premium</strong>.
+          Finalisez votre paiement pour activer votre abonnement{' '}
+          <strong style={{ color: '#1E1B4B' }}>Prof Premium</strong>.
         </p>
 
         {/* Récap paiement */}
@@ -278,37 +325,77 @@ function SouscrireB2CContent() {
             <span className="text-sm font-semibold text-[#1E1B4B]">Montant à payer</span>
             <span className="text-2xl font-bold text-[#1E1B4B] font-mono">4 900 FCFA</span>
           </div>
-          <p className="text-xs text-[#1E1B4B]/60 mt-1">Valable 30 jours. Renouvellement {periodeAbonnement === 'auto' ? 'automatique' : 'manuel'}.</p>
+          <p className="text-xs text-[#1E1B4B]/60 mt-1">
+            Valable 30 jours. Renouvellement {periodeAbonnement === 'auto' ? 'automatique' : 'manuel'}.
+          </p>
         </div>
 
-        {/* Avertissement V1 simulation */}
-        <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-3 mb-5">
+        {/* Champ téléphone Wave */}
+        <div className="space-y-1.5 mb-5">
+          <Label className="text-xs font-semibold text-[#1E1B4B]/60 uppercase tracking-wider">
+            Numéro Wave
+          </Label>
+          <div className="relative group">
+            <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
+            <Input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel-national"
+              placeholder="+225 07 77 12 34 56"
+              value={wavePhone}
+              onChange={(e) => setWavePhone(e.target.value)}
+              onBlur={() => setPhoneTouched(true)}
+              className="pl-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/60 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all font-mono tracking-wide"
+              aria-invalid={showPhoneError}
+              aria-describedby="wave-phone-help"
+            />
+          </div>
+          {showPhoneError ? (
+            <p id="wave-phone-help" className="text-xs text-[#C2410C] flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              Format invalide. Entrez votre numéro au format +225 suivi de 10 chiffres.
+            </p>
+          ) : (
+            <p id="wave-phone-help" className="text-xs text-[#1E1B4B]/50">
+              Numéro WaveMoney rattaché à votre compte Wave. Paiement sécurisé via GeniusPay.
+            </p>
+          )}
+        </div>
+
+        {/* Note sécurité */}
+        <div className="bg-[#84CC16]/8 border border-[#84CC16]/25 rounded-lg p-3 mb-5">
           <p className="text-xs text-[#1E1B4B] flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-[#F59E0B] shrink-0 mt-0.5" />
+            <Shield className="h-4 w-4 text-[#65A30D] shrink-0 mt-0.5" />
             <span>
-              <strong>Mode démo :</strong> le paiement est simulé. En production, l'intégration
-              CinetPay (Mobile Money + cartes bancaires) sera activée.
+              Vous serez redirigé vers la page sécurisée <strong>Wave</strong> pour valider le
+              paiement de <strong>4 900 FCFA</strong>. Aucune donnée bancaire n'est stockée par SECT.
             </span>
           </p>
         </div>
 
-        {/* Bouton paiement simulé */}
+        {/* Bouton de paiement — primary lime, marque Wave en accent */}
         <Button
           onClick={handlePayment}
-          disabled={paying}
+          disabled={paying || (wavePhone.length > 0 && !phoneValid)}
           className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all"
         >
           {paying ? (
-            <><Loader2 className="h-5 w-5 animate-spin mr-2" /> Traitement du paiement...</>
+            <>
+              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Redirection vers Wave...
+            </>
           ) : (
-            <><CreditCard className="h-5 w-5 mr-2" /> Payer 4 900 FCFA</>
+            <>
+              <WaveMark className="h-5 w-5 mr-2" />
+              Payer 4 900 FCFA avec Wave
+              <ExternalLink className="h-3.5 w-3.5 ml-2 opacity-70" />
+            </>
           )}
         </Button>
 
         {/* Sécurité */}
         <div className="flex items-center justify-center gap-4 pt-3 text-xs text-[#1E1B4B]/50">
           <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Paiement sécurisé</span>
-          <span className="flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> AES-256</span>
+          <span className="flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> SSL/TLS</span>
         </div>
 
         <div className="pt-3 text-center">
@@ -624,5 +711,39 @@ function Shell({ title, icon, children }: { title: string; icon: React.ReactNode
         {children}
       </motion.div>
     </div>
+  )
+}
+
+// ═══ WaveMark — marque Wave (accent cyan/teal, jamais en primary) ═══
+// La couleur officielle Wave est #1DC8FF (soft blue). Conformément aux règles
+// du projet (pas de bleu/indigo en primary), on l'utilise UNIQUEMENT comme
+// accent sur la marque Wave — jamais comme couleur de bouton principal.
+function WaveMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* Vague stylisée */}
+      <path
+        d="M2 14c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3"
+        stroke="#1DC8FF"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 19c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3"
+        stroke="#1DC8FF"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.55"
+      />
+      <circle cx="12" cy="6" r="2.2" fill="#1DC8FF" />
+    </svg>
   )
 }

@@ -46,6 +46,19 @@ type Config struct {
         // AppBaseURL est l'URL publique du frontend (pour construire le lien de
         // reset password). Par défaut l'URL Vercel de production.
         AppBaseURL string
+
+        // GeniusPay (SECT-GENIUSPAY-WAVE) : paiement Wave pour B2C Prof Premium.
+        // Clé API (sk_sandbox_... / sk_live_...) pour create_payment + get_payment.
+        GeniusPayAPIKey string
+        // Secret API (ss_sandbox_... / ss_live_...) — requis pour payouts uniquement
+        // (non utilisé pour les paiements entrants, mais stocké pour usage futur).
+        GeniusPayAPISecret string
+        // Secret webhook (whsec_sandbox_... / whsec_live_...) pour vérifier la
+        // signature HMAC-SHA256 des webhooks entrants.
+        GeniusPayWebhookSecret string
+        // Base URL de l'API GeniusPay (sandbox = https://api.geniuspay.ci/sandbox,
+        // production = https://api.geniuspay.ci/v1/merchant).
+        GeniusPayBaseURL string
 }
 
 // Load reads configuration from environment variables.
@@ -68,6 +81,13 @@ func Load() (*Config, error) {
                 ResendFrom:   getEnv("RESEND_FROM_EMAIL", ""),
 
                 AppBaseURL: getEnv("APP_BASE_URL", "https://sect-app.vercel.app"),
+
+                // SECT-GENIUSPAY-WAVE
+                GeniusPayAPIKey:        getEnv("GENIUSPAY_API_KEY", ""),
+                GeniusPayAPISecret:     getEnv("GENIUSPAY_API_SECRET", ""),
+                GeniusPayWebhookSecret: getEnv("GENIUSPAY_WEBHOOK_SECRET", ""),
+                // Base URL : défaut sandbox (dev). En prod, set GENIUSPAY_BASE_URL=https://api.geniuspay.ci/v1/merchant
+                GeniusPayBaseURL: getEnv("GENIUSPAY_BASE_URL", "https://api.geniuspay.ci"),
         }
 
         // Parse CORS origins (comma-separated)
