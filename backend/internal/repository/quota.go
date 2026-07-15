@@ -81,6 +81,30 @@ func (r *QuotaRepository) CheckStudentsQuota(ctx context.Context, etablissementI
         if err != nil {
                 return err
         }
+
+        // SECT-B2B-FACTURATION (Priorité 5) : pour le B2B capitation, vérifier le
+        // nbrEtudiantsPayes. Si l'établissement a payé pour N étudiants et qu'il
+        // en a déjà N actifs, on bloque (il doit payer la régularisation).
+        if plan.Branche == "B2B" {
+                var nbPaye *int
+                err = r.pool.QueryRow(ctx, `
+                        SELECT "nbrEtudiantsPayes" FROM "Abonnement"
+                        WHERE "etablissementId" = $1 AND "statut" = 'ACTIF' AND "deletedAt" IS NULL
+                        ORDER BY "createdAt" DESC LIMIT 1
+                `, etablissementID).Scan(&nbPaye)
+                if err == nil && nbPaye != nil && *nbPaye > 0 {
+                        if count >= *nbPaye {
+                                return &domain.QuotaExceededError{
+                                        Resource: "étudiants (capitation payée)",
+                                        Current:  count,
+                                        Max:      *nbPaye,
+                                        PlanNom:  plan.PlanNom,
+                                }
+                        }
+                        return nil // OK, sous le quota payé
+                }
+        }
+
         if count >= plan.NbEtudiantsMax {
                 return &domain.QuotaExceededError{
                         Resource: "étudiants",

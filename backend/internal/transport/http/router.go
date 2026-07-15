@@ -189,6 +189,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/subscriptions/b2c", s.createB2CSubscription)
                 // SECT-B2B-FACTURATION : self-service B2B (inscription établissement).
                 r.Post("/api/subscriptions/b2b", s.createB2BSubscription)
+                // SECT-B2B-FACTURATION : paiement Wave capitation B2B.
+                r.Post("/api/subscriptions/b2b/{id}/initiate-payment", s.initiateB2BPayment)
                 // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
                 // Active l'abonnement EN_ATTENTE_PAIEMENT → ACTIF.
                 r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
