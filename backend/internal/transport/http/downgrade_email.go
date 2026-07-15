@@ -89,9 +89,11 @@ LIMITES DU PLAN SOLO
 
 IMPORTANT — PASSATION D'ÉPREUVES
 ────────────────────────────────
-Si vous avez plus de %d étudiants actifs, ils ne pourront plus démarrer
-de session d'examen. Pour réactiver la passation, vous devez :
-  1. Désactiver des étudiants jusqu'à atteindre %d actifs, OU
+Votre plan Solo permet à %d étudiants de composer par mois (tous examens
+confondus). Une fois cette limite atteinte, aucun étudiant ne pourra plus
+démarrer de session d'examen ce mois-ci — même si vous désactivez/réactivez
+des étudiants. Pour permettre à plus d'étudiants de composer :
+  1. Attendre le mois suivant (le compteur se réinitialise), OU
   2. Renouveler votre abonnement Premium
 
 RENOUVELLER PREMIUM
@@ -104,7 +106,6 @@ L'équipe SECT`,
                 surplus.Filieres, surplus.Etudiants, surplus.Epreuves,
                 surplus.FilieresMax, surplus.Filieres,
                 surplus.EtudiantsMax, surplus.Etudiants,
-                surplus.EtudiantsMax,
                 surplus.EtudiantsMax,
                 s.appBaseURL,
         )
