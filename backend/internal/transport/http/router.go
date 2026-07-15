@@ -193,8 +193,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // SECT-GENIUSPAY-WAVE : paiement Wave via GeniusPay (V2, remplace la V1 simulation).
                 // initiate-payment : crée le paiement Wave → retourne paymentUrl pour redirection.
                 // payment-status : polling frontend après retour Wave (active l'abo si completed).
+                // renew : renouvellement d'un abonnement ACTIF (prolonge dateFin de 30j).
                 r.Post("/api/subscriptions/b2c/{id}/initiate-payment", s.initiateB2CPayment)
                 r.Get("/api/subscriptions/b2c/{id}/payment-status", s.getB2CPaymentStatus)
+                r.Post("/api/subscriptions/b2c/{id}/renew", s.renewB2CPayment)
                 // Webhook GeniusPay (public, signature HMAC vérifiée dans le handler).
                 // Reçoit payment.success/failed et active l'abonnement de façon idempotente.
                 r.Post("/api/webhooks/geniuspay", s.geniuspayWebhook)
