@@ -113,7 +113,14 @@ export function AppSidebar() {
   // les pages de l'établissement au lieu des pages ADMIN globales.
   const effectiveRole = getEffectiveRole(user.role, user.etablissementId)
   const { pageId: currentPageId } = getPageContext(pathname, user.role, user.etablissementId)
-  const categories = NAV_CATEGORIES[effectiveRole] ?? []
+  const allCategories = NAV_CATEGORIES[effectiveRole] ?? []
+
+  // SECT-B2C-SELF-SERVICE : filtrer les catégories b2cOnly pour les profs B2B.
+  // Un prof B2C (étab type PERSONNEL) voit toutes les catégories ; un prof B2B
+  // (étab normal) ne voit pas les catégories marquées b2cOnly (ex: "Gestion
+  // pédagogique" avec filières/UE/étudiants — réservées au self-service B2C).
+  const isB2C = user.etablissement?.type === 'PERSONNEL'
+  const categories = allCategories.filter((cat) => !cat.b2cOnly || isB2C)
 
   // Handlers de survol — actifs uniquement en mode 'hover' sur desktop.
   // Au survol du rail d'icônes, la sidebar s'étend (setOpen(true)) ; à la

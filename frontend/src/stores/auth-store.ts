@@ -9,7 +9,7 @@ export interface AuthUser {
   role: UserRole
   etablissementId?: string | null
   filiereId?: string | null
-  etablissement?: { id: string; nom: string } | null
+  etablissement?: { id: string; nom: string; type?: string } | null
   filiere?: { id: string; nom: string } | null
   image?: string | null
   actif?: boolean
@@ -96,6 +96,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         }
 
         set({ user, isAuthenticated: true, isLoading: false, hasCheckedSession: true, mustChangePassword: user.mustChangePwd || false })
+
+        // SECT-B2C-SELF-SERVICE : récupérer l'user complet (avec etablissement.type)
+        // via /api/go-auth/session → /api/me. Le login initial ne retourne que
+        // l'user de base (sans etablissement ref). Sans cet appel, le menu B2C
+        // (b2cOnly) ne s'afficherait qu'au prochain reload de page.
+        // Non bloquant : si ça échoue, le menu se mettra à jour au prochain refresh.
+        get().refreshSession().catch(() => {})
+
         return true
       }
 
