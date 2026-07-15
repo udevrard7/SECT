@@ -264,8 +264,17 @@ func (s *Server) updateAbonnement(w http.ResponseWriter, r *http.Request) {
 
         // SECT-B2B-FACTURATION : si l'admin vient de passer l'abonnement à ACTIF
         // et que c'est un plan B2B (capitation), créer automatiquement la facture.
+        // SECT-B2B-PAYMENT-METHODS : passe le mode de paiement (virement/cheque/especes/wave).
         if input.Statut != nil && *input.Statut == "ACTIF" {
-                go s.createB2BFactureIfApplicable(updated.ID, updated.PlanID)
+                modePaiement := "virement" // défaut
+                if input.ModePaiement != nil && *input.ModePaiement != "" {
+                        modePaiement = *input.ModePaiement
+                }
+                refPaiement := ""
+                if input.ModePaiement != nil {
+                        refPaiement = *input.ModePaiement + "-" + time.Now().Format("20060102")
+                }
+                go s.createB2BFactureIfApplicable(updated.ID, updated.PlanID, modePaiement, refPaiement)
         }
 
         w.Header().Set("Content-Type", "application/json")
