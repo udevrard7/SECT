@@ -16089,3 +16089,82 @@ Stage Summary:
 - Webhook secret (whsec_sandbox_...) encore à récupérer sur dashboard GeniusPay pour
   activer la vérif signature (dev mode accepte sans pour l'instant)
 - Commit + push → déploiement auto Vercel (frontend) + Render (backend)
+
+---
+Task ID: SECT-GENIUSPAY-WAVE-PROD-VALIDATED
+Agent: Z.ai Code (tuteur/assistant)
+Task: Validation paiement Wave en production + restauration prix + corrections finales
+
+Contexte : après l'intégration GeniusPay (SECT-GENIUSPAY-WAVE), l'utilisateur a
+testé le paiement sur sect-app.vercel.app. Erreur initiale "GeniusPay non configuré
+sur le serveur" car le backend Render n'avait pas les vars env GeniusPay.
+
+Work Log:
+
+### 1. Diagnostic : production vs local
+- Tests curl ont montré que le backend LOCAL (localhost:8080) fonctionnait (200 OK)
+  mais les requêtes navigateur n'arrivaient jamais au backend local.
+- Cause : l'utilisateur testait sur sect-app.vercel.app (production Vercel → Render),
+  pas sur le Preview Panel (localhost:3000). Le backend Render n'avait pas GENIUSPAY_*.
+
+### 2. Configuration Render via API (token rnd_PugkeQaBwXc2Dz4A9Uy4ePZctMwz)
+- Service Render trouvé : srv-d8utgd0g4nts738a03v0 (name="SECT", plan free, Docker)
+- Lecture des 12 env vars existants (NEON_DATABASE_URL, JWT_SECRET, R2_*, RESEND_*, etc.)
+- Ajout des 4 vars GeniusPay SANS écraser les existantes (PUT /v1/services/{id}/env-vars) :
+  * GENIUSPAY_API_KEY=pk_live_...
+  * GENIUSPAY_API_SECRET=sk_live_...
+  * GENIUSPAY_WEBHOOK_SECRET=(vide)
+  * GENIUSPAY_BASE_URL=https://geniuspay.ci/api
+- Déploiement déclenché → LIVE en 30s (commit 1da496f)
+
+### 3. Découverte endpoint production
+- api.geniuspay.ci → 503 "no available server" (sandbox ET live)
+- geniuspay.ci/api/v1/merchant/payments → 201 OK (production fonctionne)
+- Le code backend utilise GENIUSPAY_BASE_URL + "/v1/merchant/payments"
+  → en prod : https://geniuspay.ci/api/v1/merchant/payments ✓
+
+### 4. Test production (avant paiement utilisateur)
+- Baisse temporaire prix Prof Premium à 200 FCFA (min API ; 100 rejeté)
+- initiate-payment sur sect-app.vercel.app → 200 OK, paiement Wave 200 FCFA créé
+- payment-status → 200 OK, paymentStatus: "pending"
+- L'utilisateur peut tester avec un petit montant
+
+### 5. PAIEMENT RÉEL VALIDÉ PAR L'UTILISATEUR ✅
+- Référence : MTX-H5XCGL5KY5
+- Montant : 200 XOF (fees 105, net 95)
+- Status : completed (créé 01:10:39, complété 01:12:16)
+- Abonnement : abo_b2c_50b30d589cb24519a2d664e6e50a6ca0 → statut ACTIF à 01:12:22
+- Flux complet E2E validé en production :
+  inscription B2C → initiate-payment → paiement Wave → polling payment-status
+  → confirm_b2c_payment → abonnement ACTIF
+
+### 6. Restauration après validation
+- Prix Prof Premium restauré à 4900 FCFA/mois en DB Neon ✓
+- Abonnements de test supprimés (abo_b2c_test_wave_001/002, prodtest_001, agent-browser)
+  → abonnement réel de l'utilisateur CONSERVÉ (abo_b2c_50b30d589cb24519a2d664e6e50a6ca0)
+- Debug log temporaire retiré de internal/geniuspay/client.go
+- .env local restauré avec clés SANDBOX (les clés LIVE sont sur Render uniquement)
+
+### 7. Correction frontend : montant dynamique
+- souscrire-b2c/page.tsx : 3 occurrences "4 900 FCFA" hardcodées remplacées par
+  {new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA
+  → le bouton affiche maintenant le vrai montant venant de l'API (4900 en prod)
+- Lint frontend : 0 erreurs
+
+### 8. Vérifications finales
+- go build ./cmd/api/ → EXIT 0
+- go vet ./... → EXIT 0
+- bun run lint → EXIT 0
+
+Stage Summary:
+- PAIEMENT WAVE VALIDÉ EN PRODUCTION RÉELLE (200 FCFA, abonnement activé)
+- Backend Render configuré avec les 4 vars GeniusPay production
+- Endpoint production identifié : geniuspay.ci/api (pas api.geniuspay.ci qui est 503)
+- Prix restauré à 4900 FCFA, données de test nettoyées
+- Frontend : montant dynamique (plus de hardcodage)
+- Flux E2E complet opérationnel : inscription → Wave → activation automatique
+- ⚠️ Reste à faire (utilisateur) :
+  1. Récupérer whsec_live_... sur dashboard GeniusPay → ajouter sur Render
+  2. Configurer URL webhook production sur dashboard GeniusPay :
+     https://sect-s1pb.onrender.com/api/webhooks/geniuspay
+  3. Roter les clés pk_live/sk_live (partagées dans le chat)
