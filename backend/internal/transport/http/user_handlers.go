@@ -122,17 +122,27 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // ADMIN ou RESPONSABLE seulement
-        role := claims.Role
-        if role != "ADMIN" && role != "RESPONSABLE" {
-                writeJSONError(w, http.StatusForbidden, "rôle non autorisé à créer des utilisateurs")
-                return
-        }
-
         var input domain.CreateUserInput
         if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
                 return
+        }
+
+        // Permission check : ADMIN/RESPONSABLE peuvent créer, ou ENSEIGNANT B2C
+        // (étab PERSONNEL) qui ne peut créer que des ÉTUDIANTS.
+        // SECT-B2C-SELF-SERVICE
+        role := claims.Role
+        if role != "ADMIN" && role != "RESPONSABLE" {
+                if role == "ENSEIGNANT" {
+                        isB2C, err := s.isB2CSelfService(r.Context(), claims)
+                        if err != nil || !isB2C || input.Role != "ETUDIANT" {
+                                writeJSONError(w, http.StatusForbidden, "rôle non autorisé à créer des utilisateurs")
+                                return
+                        }
+                } else {
+                        writeJSONError(w, http.StatusForbidden, "rôle non autorisé à créer des utilisateurs")
+                        return
+                }
         }
 
         user, temporaryPassword, err := s.userUC.Create(r.Context(), claims, input)
@@ -163,8 +173,17 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 
         role := claims.Role
         if role != "ADMIN" && role != "RESPONSABLE" {
-                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
-                return
+                // SECT-B2C-SELF-SERVICE : ENSEIGNANT B2C peut modifier les ETUDIANTS de son étab
+                if role == "ENSEIGNANT" {
+                        isB2C, err := s.isB2CSelfService(r.Context(), claims)
+                        if err != nil || !isB2C {
+                                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                                return
+                        }
+                } else {
+                        writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                        return
+                }
         }
 
         id := chi.URLParam(r, "id")
@@ -202,8 +221,17 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 
         role := claims.Role
         if role != "ADMIN" && role != "RESPONSABLE" {
-                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
-                return
+                // SECT-B2C-SELF-SERVICE : ENSEIGNANT B2C peut supprimer les ETUDIANTS de son étab
+                if role == "ENSEIGNANT" {
+                        isB2C, err := s.isB2CSelfService(r.Context(), claims)
+                        if err != nil || !isB2C {
+                                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                                return
+                        }
+                } else {
+                        writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                        return
+                }
         }
 
         id := chi.URLParam(r, "id")

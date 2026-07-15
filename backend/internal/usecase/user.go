@@ -214,6 +214,17 @@ func (uc *UserUseCase) Create(ctx context.Context, claims db.SessionClaims, inpu
                 input.EtablissementID = &ownEtab
         }
 
+        // SECT-B2C-SELF-SERVICE : ENSEIGNANT B2C force etablissementId au sien
+        // (pour ne pas créer un étudiant dans un autre étab). Le middleware a déjà
+        // vérifié que c'est un étab PERSONNEL.
+        if creatorRole == domain.RoleEnseignant {
+                if claims.EtablissementID == "" {
+                        return nil, "", &domain.UnauthorizedError{Message: "enseignant sans établissement"}
+                }
+                ownEtab := claims.EtablissementID
+                input.EtablissementID = &ownEtab
+        }
+
         // U7 (CRITICAL) : ADMIN doit avoir un accès EtablissementAccess valide pour
         // créer un user dans un établissement. Avant ce fix, input.EtablissementID
         // était utilisé tel quel sans validation → ADMIN pouvait créer un RESPONSABLE

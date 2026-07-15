@@ -149,10 +149,13 @@ type UserDependencyCounter interface {
 // Permission helpers
 
 // CreatableRoles définit la matrice de permissions : qui peut créer quel rôle.
+// SECT-B2C-SELF-SERVICE : ENSEIGNANT peut créer ETUDIANT (pour le B2C self-service).
+// Defense-in-depth : le middleware RequireRoleOrPersonalEtab + la RLS User_insert
+// limitent ce droit aux ENSEIGNANTS dans un étab PERSONNEL (B2C).
 var CreatableRoles = map[Role][]Role{
         RoleAdmin:       {RoleResponsable},
         RoleResponsable: {RoleEnseignant, RoleEtudiant},
-        RoleEnseignant:  {},
+        RoleEnseignant:  {RoleEtudiant}, // B2C self-service (middleware + RLS filtrent)
         RoleEtudiant:    {},
 }
 
