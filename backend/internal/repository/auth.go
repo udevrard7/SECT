@@ -265,6 +265,28 @@ func nullableString(s *string) any {
         return *s
 }
 
+// GetPendingAbonnementByEtablissementID (SECT-GENIUSPAY-WAVE-SECURITY) :
+// retourne l'ID de l'abonnement EN_ATTENTE_PAIEMENT lié à un établissement,
+// ou "" si aucun. Contourne RLS (appelé avant pose des claims dans Login/Refresh).
+func (r *AuthRepository) GetPendingAbonnementByEtablissementID(ctx context.Context, etablissementID string) (string, error) {
+        if etablissementID == "" {
+                return "", nil
+        }
+        var aboID string
+        err := r.pool.QueryRow(ctx, `
+                SELECT "id" FROM "Abonnement"
+                WHERE "etablissementId" = $1 AND "statut" = 'EN_ATTENTE_PAIEMENT'
+                ORDER BY "createdAt" DESC LIMIT 1
+        `, etablissementID).Scan(&aboID)
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return "", nil // Pas d'abonnement en attente → login OK
+                }
+                return "", fmt.Errorf("get pending abonnement: %w", err)
+        }
+        return aboID, nil
+}
+
 // scanAuthUser scan une ligne User avec tous les champs auth.
 // L'ordre des 14 champs correspond aux colonnes retournées par les fonctions
 // SECURITY DEFINER find_user_for_auth et get_user_by_id_auth (migration 000022).

@@ -21,6 +21,9 @@ export interface AuthUser {
 export interface LoginError {
   status: number
   message: string
+  // SECT-GENIUSPAY-WAVE-SECURITY : pour 402 Payment Required
+  abonnementId?: string
+  retryUrl?: string
 }
 
 interface AuthState {
@@ -66,7 +69,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
       if (!resp.ok) {
         set({ isLoading: false })
-        throw { status: resp.status, message: data.error || 'Identifiants incorrects' } as LoginError
+        throw {
+          status: resp.status,
+          message: data.error || 'Identifiants incorrects',
+          // SECT-GENIUSPAY-WAVE-SECURITY : 402 Payment Required inclut abonnementId + retryUrl
+          abonnementId: data.abonnementId,
+          retryUrl: data.retryUrl,
+        } as LoginError
       }
 
       if (data.user) {

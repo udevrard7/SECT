@@ -148,6 +148,12 @@ type AuthRepository interface {
         // débloquer sans reset le password (ex: user a oublié mais admin veut lui donner
         // une chance de se souvenir).
         UnlockAccount(ctx context.Context, userID string) error
+
+        // GetPendingAbonnementByEtablissementID (SECT-GENIUSPAY-WAVE-SECURITY) :
+        // retourne l'ID de l'abonnement EN_ATTENTE_PAIEMENT lié à un établissement,
+        // ou nil si aucun abonnement en attente. Utilisé par Login/Refresh pour
+        // bloquer l'auth des utilisateurs B2C Premium n'ayant pas encore payé.
+        GetPendingAbonnementByEtablissementID(ctx context.Context, etablissementID string) (abonnementID string, err error)
 }
 
 // AuthUser est l'entité User avec les champs sensibles nécessaires à l'auth.
@@ -194,6 +200,18 @@ func (e *InvalidCredentialsError) Error() string { return "identifiants incorrec
 type AccountDisabledError struct{}
 
 func (e *AccountDisabledError) Error() string { return "compte désactivé" }
+
+// PaymentPendingError — SECT-GENIUSPAY-WAVE-SECURITY : levé quand un utilisateur
+// B2C (Prof Premium) tente de se connecter alors que son abonnement est encore
+// EN_ATTENTE_PAIEMENT. Le frontend utilise AbonnementID pour rediriger vers
+// la page de retry paiement (/paiement/succes?abo=... ou /souscrire-b2c).
+type PaymentPendingError struct {
+        AbonnementID string
+}
+
+func (e *PaymentPendingError) Error() string {
+        return "paiement en attente — finalisez votre paiement pour activer votre compte"
+}
 
 type AccountLockedError struct {
         LockedUntil time.Time

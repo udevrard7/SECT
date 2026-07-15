@@ -16168,3 +16168,65 @@ Stage Summary:
   2. Configurer URL webhook production sur dashboard GeniusPay :
      https://sect-s1pb.onrender.com/api/webhooks/geniuspay
   3. Roter les clés pk_live/sk_live (partagées dans le chat)
+
+---
+Task ID: SECT-GENIUSPAY-WAVE-SECURITY
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix bug de sécurité — user B2C Premium pouvait se connecter sans avoir payé
+
+Contexte : create_b2c_subscription crée l'utilisateur avec actif=true immédiatement,
+avant tout paiement. Le check `if !user.Actif` dans Login passait donc → l'utilisateur
+pouvait se connecter même si son abonnement était EN_ATTENTE_PAIEMENT (paiement échoué
+ou abandonné). Bug critique : accès gratuit à la plateforme Premium.
+
+Work Log:
+
+### 1. Investigation
+- create_b2c_subscription (migration 000058) : user créé avec actif=true, mustChangePwd=false
+- Login flow (auth.go) : check `!user.Actif` ligne 129 → passait car actif=true
+- Refresh flow (auth.go) : même check ligne 249 → idem
+
+### 2. Fix backend
+- domain/auth.go : nouveau `PaymentPendingError{AbonnementID string}`
+- domain/auth.go : nouvelle méthode AuthRepository `GetPendingAbonnementByEtablissementID`
+- repository/auth.go : implémentation (query Abonnement EN_ATTENTE_PAIEMENT par etabID,
+  bypass RLS car appelé avant pose des claims). Retourne "" si aucun → login OK.
+- usecase/auth.go Login() : après check actif (étape 4), check pending abonnement (étape 4b).
+  Si pendingAboID != "" → return PaymentPendingError{AbonnementID}. Non bloquant si erreur
+  de check (log audit + continue, ne pas casser le login).
+- usecase/auth.go Refresh() : même check (étape 5b) pour bloquer le refresh token rotation.
+- middleware/auth.go MapDomainError : case *PaymentPendingError → HTTP 402 Payment Required
+  + body JSON {error, code:"PAYMENT_REQUIRED", abonnementId, retryUrl:"/souscrire-b2c"}
+
+### 3. Fix frontend
+- stores/auth-store.ts : LoginError étendu avec abonnementId?, retryUrl?. Le throw inclut
+  data.abonnementId + data.retryUrl du body 402.
+- components/auth/login-form.tsx : case status 402 → store abonnementId en localStorage +
+  redirect vers /paiement/retry?abo=<id>
+- app/paiement/retry/page.tsx (NOUVEAU) : page publique qui demande le numéro Wave +
+  appelle initiate-payment avec l'abonnement ID existant → redirect vers Wave.
+  Pas de recréation de compte (l'utilisateur existe déjà).
+
+### 4. Tests E2E
+- User test créé en DB avec abonnement EN_ATTENTE_PAIEMENT + password connu
+- Login direct (localhost:8080) → HTTP 402 + {abonnementId, code, error, retryUrl} ✅
+- Login via proxy frontend (localhost:3000) → HTTP 402 + mêmes données ✅
+- Page /paiement/retry?abo=<id> rendue correctement (Agent Browser) ✅
+- go build EXIT 0, go vet EXIT 0, bun lint EXIT 0 ✅
+
+### 5. Sécurité
+- Le check ne leak pas d'info : si le password est faux → 401 (InvalidCredentialsError,
+  retourne "identifiants incorrects" sans révéler que le paiement est pending). Le 402
+  n'apparaît QUE si le password est correct (utilisateur légitime).
+- Password reset flows non bloqués : un user avec paiement pending peut reset son password
+  (il ne peut juste pas se connecter tant qu'il n'a pas payé).
+- Idempotent : si l'abonnement passe à ACTIF (via webhook/polling), le check retourne ""
+  et le login réussit.
+
+Stage Summary:
+- Bug de sécurité critique CORRIGÉ : un user B2C Premium avec abonnement
+  EN_ATTENTE_PAIEMENT ne peut plus se connecter (HTTP 402 + redirect vers /paiement/retry)
+- Login ET Refresh bloqués (empêche le contournement via refresh token)
+- Page /paiement/retry permet de finaliser le paiement sans recréer de compte
+- Aucune regression pour les users normaux (Prof Solo = ACTIF immédiatement, pas de pending)
+- Le check est non-bloquant en cas d'erreur DB (log + continue, préfère login que downtime)

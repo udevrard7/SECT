@@ -170,6 +170,17 @@ export function LoginForm() {
         setLoginError('Erreur serveur. Veuillez réessayer plus tard.')
       } else if (loginErr?.status === 403) {
         setLoginError(loginErr.message || 'Votre compte a été désactivé.')
+      } else if (loginErr?.status === 402) {
+        // SECT-GENIUSPAY-WAVE-SECURITY : paiement requis — rediriger vers la page
+        // de retry paiement avec l'abonnement ID (sans recréer de compte).
+        const aboId = loginErr.abonnementId
+        if (aboId) {
+          // Stocker en localStorage pour /paiement/succes
+          try { localStorage.setItem('sect_pending_abo', aboId) } catch {}
+          window.location.href = `/paiement/retry?abo=${encodeURIComponent(aboId)}`
+        } else {
+          setLoginError('Paiement requis. Veuillez finaliser votre inscription sur la page de souscription.')
+        }
       } else if (loginErr?.status === 0) {
         setLoginError('Problème de connexion. Vérifiez votre réseau.')
       } else {
