@@ -202,9 +202,15 @@ BEGIN
     v_new_date_fin := NOW() + INTERVAL '30 days';
   END IF;
 
-  -- 3. Mettre à jour l'abonnement
+  -- 3. Mettre à jour l'abonnement.
+  -- BUG FIX (SECT-B2C-RENEW-PLAN) : restaurer le planId vers Premium. Avant ce
+  -- fix, un prof rétrogradé en Solo qui renouvelait restait en plan Solo malgré
+  -- le paiement Premium (le renew ne restaurait pas le planId). Désormais, tout
+  -- renouvellement payant restaure automatiquement le plan Premium.
   UPDATE "Abonnement"
-  SET "datePaiement" = NOW(),
+  SET "planId" = 'plan_b2c_prof_premium',
+      "statut" = 'ACTIF'::"StatutAbonnement",
+      "datePaiement" = NOW(),
       "dateFin" = v_new_date_fin,
       "methodePaiement" = p_methode_paiement,
       "referenceTransaction" = p_reference_transaction,

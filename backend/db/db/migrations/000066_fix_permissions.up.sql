@@ -13,6 +13,7 @@ GRANT EXECUTE ON FUNCTION public.create_b2c_subscription(text, text, text, text,
 GRANT EXECUTE ON FUNCTION public.confirm_b2c_payment(text, text, text) TO sect_app;
 GRANT EXECUTE ON FUNCTION public.create_b2c_facture(text) TO sect_app;
 GRANT EXECUTE ON FUNCTION public.renew_b2c_subscription(text, text, text) TO sect_app;
+GRANT EXECUTE ON FUNCTION public.renew_b2c_subscription(text, text, text) TO PUBLIC;
 GRANT EXECUTE ON FUNCTION public.expire_b2c_subscriptions() TO sect_app;
 GRANT EXECUTE ON FUNCTION public.downgrade_b2c_to_solo(text) TO sect_app;
 
