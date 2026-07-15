@@ -133,6 +133,27 @@ func (uc *AuthUseCase) Login(ctx context.Context, req LoginRequest, ip, userAgen
                 return nil, &domain.AccountDisabledError{}
         }
 
+        // 4b. SECT-GENIUSPAY-WAVE-SECURITY : vérifier qu'il n'y a pas d'abonnement
+        // EN_ATTENTE_PAIEMENT lié à l'établissement de l'utilisateur. Si oui, le
+        // utilisateur B2C Premium n'a pas encore payé → bloquer le login et retourner
+        // l'abonnement ID pour que le frontend puisse rediriger vers le paiement.
+        // Only for users with an établissement (B2C/B2B). ADMIN global (etabID=nil) bypass.
+        if user.EtablissementID != nil && *user.EtablissementID != "" {
+                pendingAboID, err := uc.authRepo.GetPendingAbonnementByEtablissementID(ctx, *user.EtablissementID)
+                if err != nil {
+                        // Non bloquant : log + continue (ne pas casser le login sur une erreur de check)
+                        _ = uc.audit(ctx, strPtr(user.ID), strPtr(user.Email), domain.AuditActionLoginFailed, ip, map[string]any{
+                                "reason": "pending_abo_check_error", "error": err.Error(),
+                        })
+                } else if pendingAboID != "" {
+                        _ = uc.audit(ctx, strPtr(user.ID), strPtr(user.Email), domain.AuditActionLoginFailed, ip, map[string]any{
+                                "reason":        "payment_pending",
+                                "abonnementId":  pendingAboID,
+                        })
+                        return nil, &domain.PaymentPendingError{AbonnementID: pendingAboID}
+                }
+        }
+
         // 5. Login réussi : reset attempts, update derniereConnexion
         if err := uc.authRepo.UpdateLoginSuccess(ctx, user.ID); err != nil {
                 return nil, fmt.Errorf("update login success: %w", err)
@@ -227,6 +248,16 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, user
         // 5. Vérifier actif
         if !user.Actif {
                 return nil, &domain.AccountDisabledError{}
+        }
+
+        // 5b. SECT-GENIUSPAY-WAVE-SECURITY : même check que Login — si l'utilisateur
+        // a un abonnement EN_ATTENTE_PAIEMENT, bloquer le refresh (sinon un user
+        // pourrait obtenir un nouvel access token via refresh même sans avoir payé).
+        if user.EtablissementID != nil && *user.EtablissementID != "" {
+                pendingAboID, err := uc.authRepo.GetPendingAbonnementByEtablissementID(ctx, *user.EtablissementID)
+                if err == nil && pendingAboID != "" {
+                        return nil, &domain.PaymentPendingError{AbonnementID: pendingAboID}
+                }
         }
 
         // 6. Créer un nouveau refresh token
