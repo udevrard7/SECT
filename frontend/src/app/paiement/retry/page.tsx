@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Phone, Loader2, Shield, ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,7 @@ import { initiatePayment, setPendingAbonnement } from '@/hooks/use-payment'
  *
  * Query params : ?abo=<abonnementId> (requis)
  */
-export default function PaiementRetryPage() {
+function PaiementRetryContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const aboId = searchParams.get('abo') || ''
@@ -173,5 +173,13 @@ export default function PaiementRetryPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PaiementRetryPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-slate-400" /></div>}>
+      <PaiementRetryContent />
+    </Suspense>
   )
 }
