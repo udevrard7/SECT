@@ -16345,3 +16345,52 @@ Stage Summary:
 - Les pages /filieres, /unites-enseignement, /etudiants existent déjà et
   fonctionnent via l'API (middleware RequireRoleOrPersonalEtab de SECT-B2C-SELF-SERVICE)
 - Le type d'étab est exposé via /api/me → /api/go-auth/session → auth-store
+
+---
+Task ID: SECT-FACTURE-EMAIL
+Agent: Z.ai Code (tuteur/assistant)
+Task: Facture par email après paiement + Relance J-7 + Renouvellement
+
+3 étapes implémentées pour boucler le cycle de vie B2C Premium :
+1. Facture automatique + email à la confirmation de paiement
+2. Worker de relance J-7 avant expiration
+3. Endpoint + page de renouvellement
+
+Work Log:
+
+### Étape 1 — Facture + email
+- Migration 000063 : colonne Abonnement.factureId + fonction create_b2c_facture
+  (idempotente, numero FAC-YYYY-XXXXX, montant HT/TTC depuis plan, statut PAYEE)
+- Template emailtpl/facture_paid.go (HTML + texte, lien PDF + login)
+- facture_email_handlers.go : createAndSendFacture() appelé après confirm_b2c_payment
+  dans handleGeniusPaySuccess (webhook) ET getB2CPaymentStatus (polling)
+- Idempotence : email envoyé seulement si facture nouvellement créée
+
+### Étape 2 — Worker relance J-7
+- Migration 000064 : colonne Abonnement.relanceEnvoyee (boolean, default false)
+  + index partiel pour le worker
+- Template emailtpl/abonnement_expiration.go (HTML + texte, bouton renouvellement)
+- worker/relance_worker.go : goroutine ticker 6h, query abonnements ACTIF avec
+  dateFin dans [now, now+7j] ET relanceEnvoyee=false, envoie email + set flag
+- Démarrage dans main.go : relanceWorker.Start(ctx)
+
+### Étape 3 — Renouvellement
+- Fonction SQL renew_b2c_subscription (prolonge dateFin de 30j, idempotente par référence)
+- Handler renewB2CPayment : POST /api/subscriptions/b2c/{id}/renew (public)
+  crée paiement Wave avec metadata.renewal=true, reset relanceEnvoyee=false
+- Webhook handler : si metadata.renewal=true → renew_b2c_subscription au lieu de confirm_b2c_payment
+- Frontend /paiement/renouvellement?abo=<id> : page de renouvellement (wave phone + redirect)
+
+### Tests E2E
+- POST /renew abo inexistant → 404 ✅
+- Page /paiement/renouvellement → HTTP 200 ✅
+- Agent Browser : page rendue (titre, champ Wave, bouton "Renouveler — 4 900 FCFA") ✅
+- Relance Worker démarré ("checking every 6h") ✅
+- go build EXIT 0, go vet EXIT 0, bun lint EXIT 0 ✅
+
+Stage Summary:
+- Cycle de vie B2C Premium complet :
+  Inscription → Paiement Wave → Facture email → ... → J-7 Relance email → Renouvellement → Facture email
+- Idempotence partout (facture, relance, renouvellement)
+- Worker 6h non-bloquant (goroutine + ticker)
+- Email synchrone (Render free tier friendly)

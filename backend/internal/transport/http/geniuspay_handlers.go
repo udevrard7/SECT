@@ -297,6 +297,8 @@ func (s *Server) getB2CPaymentStatus(w http.ResponseWriter, r *http.Request) {
                                 "aboId", aboID, "ref", geniusRef)
                         // Envoyer l'email de bienvenue Premium (synchrone, comme confirmB2CPayment)
                         go s.sendB2CPremiumWelcomeEmail(aboID)
+                        // SECT-FACTURE-EMAIL : créer la facture + envoyer email
+                        go s.createAndSendFacture(context.Background(), aboID)
                 }
         } else if gpResp.Status == "failed" || gpResp.Status == "cancelled" {
                 resp.Message = "Paiement " + gpResp.Status
@@ -414,16 +416,30 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
                 return // Ne pas activer — possible tentative de fraude
         }
 
-        // Activer l'abonnement via la fonction SECURITY DEFINER (idempotente)
+        // Activer l'abonnement via la fonction SECURITY DEFINER (idempotente).
+        // SECT-FACTURE-EMAIL : si metadata.renewal=true, appeler renew_b2c_subscription
+        // (prolonge la dateFin au lieu d'exiger EN_ATTENTE_PAIEMENT).
+        isRenewal := payload.Data.Metadata["renewal"] == "true"
         var success bool
         var statut string
-        err := s.dbPool.QueryRow(ctx, `
-                SELECT o_success, o_statut FROM confirm_b2c_payment($1, $2, $3)
-        `, aboID, "wave", ref).Scan(&success, &statut)
-        if err != nil {
-                slog.Error("handleGeniusPaySuccess: confirm_b2c_payment failed",
-                        "aboId", aboID, "ref", ref, "error", err.Error())
-                return
+        if isRenewal {
+                err := s.dbPool.QueryRow(ctx, `
+                        SELECT o_success, o_statut FROM renew_b2c_subscription($1, $2, $3)
+                `, aboID, "wave", ref).Scan(&success, &statut)
+                if err != nil {
+                        slog.Error("handleGeniusPaySuccess: renew_b2c_subscription failed",
+                                "aboId", aboID, "ref", ref, "error", err.Error())
+                        return
+                }
+        } else {
+                err := s.dbPool.QueryRow(ctx, `
+                        SELECT o_success, o_statut FROM confirm_b2c_payment($1, $2, $3)
+                `, aboID, "wave", ref).Scan(&success, &statut)
+                if err != nil {
+                        slog.Error("handleGeniusPaySuccess: confirm_b2c_payment failed",
+                                "aboId", aboID, "ref", ref, "error", err.Error())
+                        return
+                }
         }
 
         if success {
@@ -432,6 +448,8 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
                 // Email de bienvenue Premium synchrone (dans une goroutine pour répondre
                 // le webhook rapidement, mais avec timeout interne de 30s)
                 go s.sendB2CPremiumWelcomeEmail(aboID)
+                // SECT-FACTURE-EMAIL : créer la facture + envoyer email
+                go s.createAndSendFacture(ctx, aboID)
         } else {
                 // success=false = déjà ACTIF ou statut inattendu — idempotence normale
                 slog.Info("GeniusPay webhook: abonnement déjà traité",
@@ -444,4 +462,127 @@ func min(a, b int) int {
                 return a
         }
         return b
+}
+
+// renewB2CPayment — POST /api/subscriptions/b2c/{id}/renew
+//
+// SECT-FACTURE-EMAIL (Étape 3) : initie un paiement Wave pour renouveler un
+// abonnement B2C qui arrive à expiration. Le paiement Wave prolonge l'abonnement
+// de 30 jours après confirmation (via le même flux webhook/polling que l'initial).
+//
+// Le handler reset aussi relanceEnvoyee=false pour permettre une nouvelle relance
+// au cycle suivant.
+//
+// PUBLIC (pas d'auth) — l'utilisateur reçoit l'email de relance avec le lien
+// contenant l'abonnement ID, il n'est pas forcément connecté.
+func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
+        aboID := chi.URLParam(r, "id")
+        if aboID == "" {
+                writeJSONError(w, http.StatusBadRequest, "id abonnement requis")
+                return
+        }
+
+        var req initiatePaymentRequest
+        _ = json.NewDecoder(r.Body).Decode(&req)
+        req.CustomerPhone = strings.TrimSpace(req.CustomerPhone)
+        req.CustomerName = strings.TrimSpace(req.CustomerName)
+
+        if !validateWavePhone(req.CustomerPhone) {
+                writeJSONError(w, http.StatusBadRequest, "téléphone client requis (format international +225...)")
+                return
+        }
+
+        ctx := r.Context()
+
+        // 1. Vérifier que l'abonnement existe + est ACTIF (renouvelable)
+        var aboStatut, planID, etabID string
+        var planPrix float64
+        err := appdb.WithTx(ctx, s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `
+                        SELECT a."statut"::text, a."planId", a."etablissementId", p."prixMensuel"
+                        FROM "Abonnement" a
+                        JOIN "Plan" p ON p."id" = a."planId"
+                        WHERE a."id" = $1
+                `, aboID).Scan(&aboStatut, &planID, &etabID, &planPrix)
+        })
+        if err != nil {
+                if strings.Contains(err.Error(), "no rows") {
+                        writeJSONError(w, http.StatusNotFound, "abonnement introuvable")
+                        return
+                }
+                slog.Error("renewB2CPayment: query failed", "aboId", aboID, "error", err.Error())
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+                return
+        }
+
+        if aboStatut != "ACTIF" {
+                writeJSONError(w, http.StatusConflict, "abonnement non actif (statut: "+aboStatut+")")
+                return
+        }
+
+        if s.geniusPay == nil || !s.geniusPay.IsConfigured() {
+                writeJSONError(w, http.StatusServiceUnavailable, "paiement GeniusPay non configuré sur le serveur")
+                return
+        }
+
+        // 2. Créer le paiement Wave (même flux que initiate-payment)
+        successURL := s.appBaseURL + "/paiement/succes?abo=" + aboID
+        errorURL := s.appBaseURL + "/paiement/erreur?abo=" + aboID
+
+        amount := int(planPrix)
+        gpReq := geniuspay.CreatePaymentRequest{
+                Amount:        amount,
+                Currency:      "XOF",
+                PaymentMethod: "wave_ci",
+                CustomerPhone: req.CustomerPhone,
+                CustomerName:  req.CustomerName,
+                Description:   "SECT Prof Premium - Renouvellement 1 mois",
+                SuccessURL:    successURL,
+                ErrorURL:      errorURL,
+                Metadata: map[string]string{
+                        "abonnement_id":    aboID,
+                        "plan_id":          planID,
+                        "etablissement_id": etabID,
+                        "renewal":          "true",
+                },
+        }
+
+        gpResp, err := s.geniusPay.CreatePayment(ctx, gpReq)
+        if err != nil {
+                slog.Error("renewB2CPayment: GeniusPay CreatePayment failed",
+                        "aboId", aboID, "error", err.Error())
+                writeJSONError(w, http.StatusBadGateway, "GeniusPay indisponible: "+err.Error())
+                return
+        }
+
+        // 3. Mettre à jour l'abonnement avec la nouvelle référence GeniusPay
+        // (l'ancienne est écrasée — c'est intentionnel, le renouvellement remplace
+        // le paiement en cours). Reset relanceEnvoyee=false.
+        err = appdb.WithTx(ctx, s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+                _, err := tx.Exec(ctx, `
+                        UPDATE "Abonnement"
+                        SET "geniuspayReference" = $1, "geniuspayPaymentUrl" = $2,
+                            "relanceEnvoyee" = false, "updatedAt" = NOW()
+                        WHERE "id" = $3
+                `, gpResp.Reference, gpResp.PaymentURL, aboID)
+                return err
+        })
+        if err != nil {
+                slog.Error("renewB2CPayment: failed to update abonnement", "aboId", aboID, "error", err.Error())
+        }
+
+        slog.Info("B2C renewal payment initiated",
+                "aboId", aboID, "reference", gpResp.Reference, "amount", amount)
+
+        resp := initiatePaymentResponse{
+                AbonnementID: aboID,
+                Reference:    gpResp.Reference,
+                PaymentURL:   gpResp.PaymentURL,
+                Amount:       amount,
+                Currency:     "XOF",
+                Status:       gpResp.Status,
+        }
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode(resp)
 }

@@ -197,6 +197,11 @@ func main() {
         autoCloseWorker := worker.NewAutoCloseWorker(pool, logger)
         autoCloseWorker.Start(context.Background())
 
+        // SECT-FACTURE-EMAIL : worker de relance J-7 avant expiration abonnement B2C.
+        // Vérifie toutes les 6h les abonnements ACTIF dont dateFin ≤ 7j, envoie email.
+        relanceWorker := worker.NewRelanceWorker(pool, logger, mailSvc, cfg.AppBaseURL)
+        relanceWorker.Start(context.Background())
+
         // MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
         // utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
         // avec message d'erreur gracieux si timeout. L'approche worker async avec
