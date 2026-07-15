@@ -419,10 +419,35 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
         // Activer l'abonnement via la fonction SECURITY DEFINER (idempotente).
         // SECT-FACTURE-EMAIL : si metadata.renewal=true, appeler renew_b2c_subscription
         // (prolonge la dateFin au lieu d'exiger EN_ATTENTE_PAIEMENT).
+        // SECT-B2B-FACTURATION : si metadata.b2b_capitation=true, activer l'abonnement
+        // B2B (ESSAI→ACTIF) via updateAbonnement + créer facture capitation.
         isRenewal := payload.Data.Metadata["renewal"] == "true"
+        isB2BCapitation := payload.Data.Metadata["b2b_capitation"] == "true"
         var success bool
         var statut string
-        if isRenewal {
+
+        if isB2BCapitation {
+                // B2B : activer l'abonnement (ESSAI→ACTIF) + créer facture capitation
+                _, err := s.dbPool.Exec(ctx, `
+                        UPDATE "Abonnement"
+                        SET "statut" = 'ACTIF'::"StatutAbonnement",
+                            "dateFin" = NOW() + INTERVAL '1 year',
+                            "datePaiement" = NOW(),
+                            "methodePaiement" = 'wave',
+                            "referenceTransaction" = $2,
+                            "updatedAt" = NOW()
+                        WHERE "id" = $1 AND "statut" IN ('ESSAI', 'EXPIRE')
+                `, aboID, ref)
+                if err != nil {
+                        slog.Error("handleGeniusPaySuccess: B2B activation failed",
+                                "aboId", aboID, "ref", ref, "error", err.Error())
+                        return
+                }
+                success = true
+                statut = "ACTIF"
+                // Créer la facture capitation (idempotente)
+                go s.createB2BFactureIfApplicable(aboID, "plan_b2b_institutionnel")
+        } else if isRenewal {
                 err := s.dbPool.QueryRow(ctx, `
                         SELECT o_success, o_statut FROM renew_b2c_subscription($1, $2, $3)
                 `, aboID, "wave", ref).Scan(&success, &statut)
