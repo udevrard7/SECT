@@ -16230,3 +16230,71 @@ Stage Summary:
 - Page /paiement/retry permet de finaliser le paiement sans recréer de compte
 - Aucune regression pour les users normaux (Prof Solo = ACTIF immédiatement, pas de pending)
 - Le check est non-bloquant en cas d'erreur DB (log + continue, préfère login que downtime)
+
+---
+Task ID: SECT-B2C-SELF-SERVICE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Auto-setup structure + permissions ENSEIGNANT B2C (Option A + B)
+
+Contexte : un prof B2C (Solo/Premium) est seul dans son étab PERSONNEL, sans
+RESPONSABLE. create_b2c_subscription ne créait aucune structure pédagogique → le
+prof était bloqué. De plus, les routes CRUD exigeaient RESPONSABLE/ADMIN.
+
+Work Log:
+
+### 1. Migration 000062 (auto-setup + policies RLS)
+- Fonction helper is_enseignant_in_personal_etab() : true si ENSEIGNANT + étab PERSONNEL
+- Policies RLS modifiées pour autoriser ENSEIGNANT B2C sur :
+  * Filiere_modify_responsable (créer/modifier/supprimer filières)
+  * UniteEnseignement_modify_responsable (créer/modifier/supprimer UE)
+  * UniteEnseignementFiliere_modify_responsable (liens UE↔filière)
+  * EnseignantFiliere_modify_responsable (auto-affectation)
+  * User_insert/update/delete (uniquement role='ETUDIANT' pour insert/update)
+  * AnneeAcademique_modify_responsable (créer/modifier années)
+- create_b2c_subscription modifiée pour auto-créer :
+  * 1 AnneeAcademique "2025-2026" (définie comme courante)
+  * 1 Filiere "Mes classes" (prof = responsable)
+  * 1 UE "Cours par défaut" (niveau L1, semestre 1)
+  * 1 UniteEnseignementFiliere (lien UE↔filière)
+  * 1 EnseignantFiliere (auto-affectation prof↔filière)
+
+### 2. Middleware RequireRoleOrPersonalEtab
+- internal/middleware/b2c_middleware.go : nouveau middleware factory
+  RequireRoleOrPersonalEtab(pool, roles...) qui autorise si :
+  1. User a un des rôles spécifiés (ADMIN, RESPONSABLE), OU
+  2. User est ENSEIGNANT ET son étab est PERSONNEL (query DB 3s timeout)
+- Appliqué aux routes : filières, UE, users, années-academiques, enseignant-filieres
+
+### 3. Handler + usecase fixes (defense-in-depth)
+- b2c_helpers.go : Server.isB2CSelfService(ctx, claims) — query DB étab type
+- user_handlers.go : createUser/updateUser/deleteUser — allow ENSEIGNANT B2C
+  (createUser limite à role='ETUDIANT')
+- domain/user.go : CreatableRoles[RoleEnseignant] = {RoleEtudiant}
+- usecase/user.go : force etablissementId au sien pour ENSEIGNANT (comme RESPONSABLE)
+- usecase/academique.go : 20 checks role élargis à ENSEIGNANT + 7 force-etab étendus
+
+### 4. Tests E2E validés
+- Inscription B2C Prof Solo → auto-setup créé (année + filière + UE + affectations) ✅
+- Login OK (ACTIF, pas de pending payment) ✅
+- Create étudiant avec token ENSEIGNANT B2C → HTTP 201 ✅
+- Create filière avec token ENSEIGNANT B2C → HTTP 201 ✅
+- Create UE avec token ENSEIGNANT B2C → HTTP 201 ✅
+- go build EXIT 0, go vet EXIT 0, bun lint EXIT 0 ✅
+
+### 5. Architecture defense-in-depth (4 couches)
+1. Middleware RequireRoleOrPersonalEtab : bloque ENSEIGNANT non-PERSONNEL
+2. Handler isB2CSelfService : vérifie étab type + limite role cible (ETUDIANT only)
+3. Usecase CanCreate + force-etab : force etablissementId au sien
+4. RLS policies : is_enseignant_in_personal_etab() au niveau DB
+
+Stage Summary:
+- Le prof B2C est maintenant autonome après inscription :
+  * Structure pédagogique auto-créée (année + filière + UE + affectations)
+  * Peut créer/modifier/supprimer filières, UE, étudiants dans SON étab
+  * Peut changer son année académique courante
+  * Ne peut créer que des ETUDIANTS (pas d'autres enseignants/responsables)
+- Aucune regression pour les users B2B (RESPONSABLE/ADMIN gardent tous leurs droits)
+- Les ENSEIGNANTS B2B (étab non-PERSONNEL) restent bloqués (pas de création)
+- Frontend : les pages /filieres, /etudiants etc. existent déjà et fonctionnent
+  via l'API. Le menu ENSEIGNANT n'affiche pas encore ces pages (à ajouter dans
+  une future task pour UX complet B2C).

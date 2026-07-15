@@ -29,11 +29,11 @@ func NewFiliereUseCase(filiereRepo domain.FiliereRepository, quotaChecker domain
 // List liste les filières avec tenant scoping.
 func (uc *FiliereUseCase) List(ctx context.Context, claims db.SessionClaims, params domain.FiliereListParams) ([]*domain.Filiere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         // RESPONSABLE : auto-scoped à son établissement
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 if claims.EtablissementID == "" {
                         return []*domain.Filiere{}, nil
                 }
@@ -45,7 +45,7 @@ func (uc *FiliereUseCase) List(ctx context.Context, claims db.SessionClaims, par
 // GetByID récupère une filière par ID.
 func (uc *FiliereUseCase) GetByID(ctx context.Context, claims db.SessionClaims, id string) (*domain.Filiere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         return uc.filiereRepo.FindByID(ctx, id)
@@ -54,14 +54,14 @@ func (uc *FiliereUseCase) GetByID(ctx context.Context, claims db.SessionClaims, 
 // Create crée une filière.
 func (uc *FiliereUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateFiliereInput) (*domain.Filiere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if input.Nom == "" {
                 return nil, &domain.ValidationError{Field: "nom", Message: "requis"}
         }
         // RESPONSABLE : force etablissementId au sien
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 if claims.EtablissementID == "" {
                         return nil, &domain.UnauthorizedError{Message: "responsable sans établissement"}
                 }
@@ -82,11 +82,11 @@ func (uc *FiliereUseCase) Create(ctx context.Context, claims db.SessionClaims, i
 // Update met à jour une filière (ownership check).
 func (uc *FiliereUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateFiliereInput) (*domain.Filiere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         // Ownership check pour RESPONSABLE
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 existing, err := uc.filiereRepo.FindByID(ctx, id)
                 if err != nil {
                         return nil, err
@@ -102,14 +102,14 @@ func (uc *FiliereUseCase) Update(ctx context.Context, claims db.SessionClaims, i
 // SoftDelete désactive une filière.
 func (uc *FiliereUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) (*domain.Filiere, *domain.Filiere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         existing, err := uc.filiereRepo.FindByID(ctx, id)
         if err != nil {
                 return nil, nil, err
         }
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 if (existing.ResponsableID == nil || *existing.ResponsableID != claims.UserID) &&
                         existing.EtablissementID != claims.EtablissementID {
                         return nil, nil, &domain.UnauthorizedError{Message: "vous n'êtes pas responsable de cette filière"}
@@ -133,7 +133,7 @@ func (uc *FiliereUseCase) SoftDelete(ctx context.Context, claims db.SessionClaim
 // Retourne le nom de la filière supprimée (pour le toast frontend).
 func (uc *FiliereUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) (string, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return "", &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
 
@@ -142,7 +142,7 @@ func (uc *FiliereUseCase) HardDelete(ctx context.Context, claims db.SessionClaim
                 return "", err
         }
 
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 if (existing.ResponsableID == nil || *existing.ResponsableID != claims.UserID) &&
                         existing.EtablissementID != claims.EtablissementID {
                         return "", &domain.UnauthorizedError{Message: "vous n'êtes pas responsable de cette filière"}
@@ -173,7 +173,7 @@ func (uc *FiliereUseCase) HardDelete(ctx context.Context, claims db.SessionClaim
 // la confirmation si !CanDelete. BUGFIX (FILIERES-CRITICAL-FIX-1).
 func (uc *FiliereUseCase) GetDependencies(ctx context.Context, claims db.SessionClaims, id string) (*domain.FiliereDependencies, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         return uc.filiereRepo.GetFiliereDependencies(ctx, id)
@@ -182,7 +182,7 @@ func (uc *FiliereUseCase) GetDependencies(ctx context.Context, claims db.Session
 // BulkUpdate met à jour le statut de plusieurs filières.
 func (uc *FiliereUseCase) BulkUpdate(ctx context.Context, claims db.SessionClaims, input domain.BulkFiliereInput) (int, []*domain.Filiere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return 0, nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if len(input.IDs) == 0 {
@@ -198,7 +198,7 @@ func (uc *FiliereUseCase) BulkUpdate(ctx context.Context, claims db.SessionClaim
 
         // RESPONSABLE : scoped à son établissement
         etabScope := ""
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 etabScope = claims.EtablissementID
         }
 
@@ -261,7 +261,7 @@ func (uc *UEUseCase) GetByID(ctx context.Context, claims db.SessionClaims, id st
 // Create crée une UE (ADMIN/RESPONSABLE).
 func (uc *UEUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateUEInput) (*domain.UniteEnseignement, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if input.Code == "" {
@@ -285,7 +285,7 @@ func (uc *UEUseCase) Create(ctx context.Context, claims db.SessionClaims, input 
 // Update met à jour une UE.
 func (uc *UEUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateUEInput) (*domain.UniteEnseignement, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if input.Niveau != nil && !domain.IsValidNiveau(*input.Niveau) {
@@ -300,7 +300,7 @@ func (uc *UEUseCase) Update(ctx context.Context, claims db.SessionClaims, id str
 // SoftDelete désactive une UE.
 func (uc *UEUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) (*domain.UniteEnseignement, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         return uc.ueRepo.SoftDelete(ctx, id)
@@ -313,7 +313,7 @@ func (uc *UEUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id
 // avant d'appeler ce endpoint.
 func (uc *UEUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if id == "" {
@@ -326,7 +326,7 @@ func (uc *UEUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #1).
 func (uc *UEUseCase) GetDependencies(ctx context.Context, claims db.SessionClaims, id string) (*domain.UEDependencies, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if id == "" {
@@ -365,7 +365,7 @@ func (uc *EnseignantFiliereUseCase) List(ctx context.Context, claims db.SessionC
 // Create crée une ou plusieurs assignations (supporte single + bulk).
 func (uc *EnseignantFiliereUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateAssignmentInput) (*domain.EnseignantFiliere, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if input.EnseignantID == "" {
@@ -383,7 +383,7 @@ func (uc *EnseignantFiliereUseCase) Create(ctx context.Context, claims db.Sessio
 // Delete supprime une assignation.
 func (uc *EnseignantFiliereUseCase) Delete(ctx context.Context, claims db.SessionClaims, input domain.DeleteAssignmentInput) error {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if input.ID != nil && *input.ID != "" {
@@ -433,7 +433,7 @@ func (uc *AnneeUseCase) List(ctx context.Context, claims db.SessionClaims, etabl
 // Create crée une année académique (ADMIN/RESPONSABLE).
 func (uc *AnneeUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateAnneeInput) (*domain.AnneeAcademique, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if input.Libelle == "" || input.DateDebut == "" || input.DateFin == "" || input.EtablissementID == "" {
@@ -449,7 +449,7 @@ func (uc *AnneeUseCase) Create(ctx context.Context, claims db.SessionClaims, inp
                 return nil, &domain.ValidationError{Field: "dateFin", Message: "la date de fin doit être après la date de début"}
         }
         // RESPONSABLE : force etablissementId au sien
-        if role == domain.RoleResponsable {
+        if role == domain.RoleResponsable || role == domain.RoleEnseignant {
                 input.EtablissementID = claims.EtablissementID
         }
         return uc.anneeRepo.Create(ctx, input)
@@ -459,7 +459,7 @@ func (uc *AnneeUseCase) Create(ctx context.Context, claims db.SessionClaims, inp
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
 func (uc *AnneeUseCase) FindByID(ctx context.Context, claims db.SessionClaims, id string) (*domain.AnneeAcademique, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if id == "" {
@@ -472,7 +472,7 @@ func (uc *AnneeUseCase) FindByID(ctx context.Context, claims db.SessionClaims, i
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
 func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateAnneeInput) (*domain.AnneeAcademique, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if id == "" {
@@ -485,7 +485,7 @@ func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id 
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
 func (uc *AnneeUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) (*domain.AnneeAcademique, error) {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if id == "" {
@@ -500,7 +500,7 @@ func (uc *AnneeUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims,
 // établissement, etab.anneeAcademiqueCouranteId deviendra NULL (ON DELETE SET NULL).
 func (uc *AnneeUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
         if id == "" {

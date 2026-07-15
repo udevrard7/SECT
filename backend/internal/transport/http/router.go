@@ -240,7 +240,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listUsers)
                         r.Get("/{id}", s.getUser)
                         r.Group(func(r chi.Router) {
-                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+                                // SECT-B2C-SELF-SERVICE : ENSEIGNANT dans étab PERSONNEL peut créer
+                                // des ÉTUDIANTS (la RLS User_insert limite à role='ETUDIANT').
+                                r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "RESPONSABLE", "ADMIN"))
                                 r.Post("/", s.createUser)
                                 r.Post("/import", s.importUsers) // ETUDIANTS-FIX-E2
                                 r.Patch("/{id}", s.updateUser)
@@ -273,7 +275,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         // PARAMETRES-FIX-P3 : endpoint dédié pour supprimer le logo.
                         r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}/logo", s.deleteLogo)
                         // Migration 000017 : gestion de l'année académique courante.
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/{id}/annee-courante", s.setCurrentAnnee)
+                        // SECT-B2C-SELF-SERVICE : le prof B2C peut changer son année courante.
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/{id}/annee-courante", s.setCurrentAnnee)
                         r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}/watermark", s.updateWatermark)
                 })
 
@@ -301,11 +304,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/export", s.exportFilieres)
                         r.Get("/{id}/dependencies", s.getFiliereDependencies)
                         r.Get("/{id}", s.getFiliere)
-                        // Mutations : ADMIN + RESPONSABLE uniquement.
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createFiliere)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/bulk", s.bulkFilieres)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateFiliere)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteFiliere)
+                        // Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
+                        // SECT-B2C-SELF-SERVICE : le prof B2C gère ses filières autonomement.
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createFiliere)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/bulk", s.bulkFilieres)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateFiliere)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteFiliere)
                 })
 
                 // /api/unites-enseignement
@@ -316,10 +320,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listUEs)
                         r.Get("/{id}/dependencies", s.getUEDependencies)
                         r.Get("/{id}", s.getUE)
-                        // Mutations : ADMIN + RESPONSABLE uniquement.
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createUE)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateUE)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteUE)
+                        // Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
+                        // SECT-B2C-SELF-SERVICE : le prof B2C gère ses UE autonomement.
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createUE)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateUE)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteUE)
                 })
 
                 // /api/enseignant-filieres
@@ -329,7 +334,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listEnseignantFilieres)
                         r.Group(func(r chi.Router) {
-                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+                                // SECT-B2C-SELF-SERVICE : ENSEIGNANT B2C peut s'affecter lui-même.
+                                r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "RESPONSABLE", "ADMIN"))
                                 r.Post("/", s.createEnseignantFilieres)
                                 r.Delete("/", s.deleteEnseignantFilieres)
                         })
@@ -362,10 +368,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listAnnees)
                         r.Get("/{id}", s.getAnnee)
-                        // Mutations : ADMIN + RESPONSABLE uniquement.
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)
-                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteAnnee)
+                        // Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteAnnee)
                 })
 
                 // E1-INVITATIONS — endpoints authentifiés (RESPONSABLE, ADMIN
