@@ -464,6 +464,58 @@ func min(a, b int) int {
         return b
 }
 
+// downgradeB2CToSolo — POST /api/subscriptions/b2c/{id}/downgrade
+//
+// SECT-B2C-EXPIRE : rétrograde un abonnement Premium EXPIRE vers Prof Solo
+// gratuit. Le prof peut ainsi continuer à utiliser SECT en mode limité (2 classes,
+// 40 étudiants, 3 épreuves IA/mois) sans payer.
+//
+// PUBLIC (pas d'auth) — l'utilisateur clique sur le lien dans l'email d'expiration,
+// il n'est pas forcément connecté (son login est bloqué justement).
+func (s *Server) downgradeB2CToSolo(w http.ResponseWriter, r *http.Request) {
+        aboID := chi.URLParam(r, "id")
+        if aboID == "" {
+                writeJSONError(w, http.StatusBadRequest, "id abonnement requis")
+                return
+        }
+
+        ctx := r.Context()
+
+        // Appeler la fonction SQL downgrade_b2c_to_solo (idempotente + checks)
+        var success bool
+        var newPlanID, newPlanNom, message string
+        err := s.dbPool.QueryRow(ctx, `
+                SELECT o_success, o_abonnement_id, o_new_plan_id, o_new_plan_nom, o_message
+                FROM downgrade_b2c_to_solo($1)
+        `, aboID).Scan(&success, &aboID, &newPlanID, &newPlanNom, &message)
+        if err != nil {
+                slog.Error("downgradeB2CToSolo: SQL failed", "aboId", aboID, "error", err.Error())
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+err.Error())
+                return
+        }
+
+        if !success {
+                // Abonnement non expiré, déjà Solo, ou introuvable
+                slog.Info("downgradeB2CToSolo: rejected", "aboId", aboID, "message", message)
+                writeJSONError(w, http.StatusConflict, message)
+                return
+        }
+
+        slog.Info("B2C abonnement downgraded to Solo",
+                "aboId", aboID, "newPlan", newPlanNom)
+
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode(map[string]any{
+                "success":       true,
+                "abonnementId":  aboID,
+                "newPlanId":     newPlanID,
+                "newPlanNom":    newPlanNom,
+                "message":       message,
+                "loginUrl":      "/login",
+        })
+}
+
 // renewB2CPayment — POST /api/subscriptions/b2c/{id}/renew
 //
 // SECT-FACTURE-EMAIL (Étape 3) : initie un paiement Wave pour renouveler un

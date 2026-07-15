@@ -133,13 +133,15 @@ func (uc *AuthUseCase) Login(ctx context.Context, req LoginRequest, ip, userAgen
                 return nil, &domain.AccountDisabledError{}
         }
 
-        // 4b. SECT-GENIUSPAY-WAVE-SECURITY : vérifier qu'il n'y a pas d'abonnement
-        // EN_ATTENTE_PAIEMENT lié à l'établissement de l'utilisateur. Si oui, le
-        // utilisateur B2C Premium n'a pas encore payé → bloquer le login et retourner
-        // l'abonnement ID pour que le frontend puisse rediriger vers le paiement.
+        // 4b. SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : vérifier qu'il n'y a pas
+        // d'abonnement bloquant (EN_ATTENTE_PAIEMENT, EXPIRE, ou ACTIF expiré) lié à
+        // l'établissement de l'utilisateur. Si oui, bloquer le login et retourner
+        // l'abonnement ID + reason pour que le frontend redirige vers la bonne page :
+        //   - pending → /paiement/retry
+        //   - expired → /abonnement-expire
         // Only for users with an établissement (B2C/B2B). ADMIN global (etabID=nil) bypass.
         if user.EtablissementID != nil && *user.EtablissementID != "" {
-                pendingAboID, err := uc.authRepo.GetPendingAbonnementByEtablissementID(ctx, *user.EtablissementID)
+                pendingAboID, aboReason, err := uc.authRepo.GetPendingAbonnementByEtablissementID(ctx, *user.EtablissementID)
                 if err != nil {
                         // Non bloquant : log + continue (ne pas casser le login sur une erreur de check)
                         _ = uc.audit(ctx, strPtr(user.ID), strPtr(user.Email), domain.AuditActionLoginFailed, ip, map[string]any{
@@ -147,10 +149,10 @@ func (uc *AuthUseCase) Login(ctx context.Context, req LoginRequest, ip, userAgen
                         })
                 } else if pendingAboID != "" {
                         _ = uc.audit(ctx, strPtr(user.ID), strPtr(user.Email), domain.AuditActionLoginFailed, ip, map[string]any{
-                                "reason":        "payment_pending",
-                                "abonnementId":  pendingAboID,
+                                "reason":       "payment_" + aboReason,
+                                "abonnementId": pendingAboID,
                         })
-                        return nil, &domain.PaymentPendingError{AbonnementID: pendingAboID}
+                        return nil, &domain.PaymentPendingError{AbonnementID: pendingAboID, Reason: aboReason}
                 }
         }
 
@@ -250,13 +252,14 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, user
                 return nil, &domain.AccountDisabledError{}
         }
 
-        // 5b. SECT-GENIUSPAY-WAVE-SECURITY : même check que Login — si l'utilisateur
-        // a un abonnement EN_ATTENTE_PAIEMENT, bloquer le refresh (sinon un user
-        // pourrait obtenir un nouvel access token via refresh même sans avoir payé).
+        // 5b. SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : même check que Login —
+        // si l'utilisateur a un abonnement bloquant (pending ou expired), bloquer le
+        // refresh (sinon un user pourrait obtenir un nouvel access token via refresh
+        // même sans avoir payé / après expiration).
         if user.EtablissementID != nil && *user.EtablissementID != "" {
-                pendingAboID, err := uc.authRepo.GetPendingAbonnementByEtablissementID(ctx, *user.EtablissementID)
+                pendingAboID, aboReason, err := uc.authRepo.GetPendingAbonnementByEtablissementID(ctx, *user.EtablissementID)
                 if err == nil && pendingAboID != "" {
-                        return nil, &domain.PaymentPendingError{AbonnementID: pendingAboID}
+                        return nil, &domain.PaymentPendingError{AbonnementID: pendingAboID, Reason: aboReason}
                 }
         }
 

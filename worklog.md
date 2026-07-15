@@ -16394,3 +16394,42 @@ Stage Summary:
 - Idempotence partout (facture, relance, renouvellement)
 - Worker 6h non-bloquant (goroutine + ticker)
 - Email synchrone (Render free tier friendly)
+
+---
+Task ID: SECT-B2C-EXPIRE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Expiration auto + blocage login + downgrade vers Prof Solo
+
+3 fixes pour interrompre l'accès à l'expiration et offrir une option de rétrogradation :
+
+Fix 1 — Worker d'expiration :
+- Migration 000065 : fonction expire_b2c_subscriptions() (ACTIF→EXPIRE si dateFin < NOW)
+- worker/expire_worker.go : ticker 1h, appelle la fonction + envoie email expiration
+- Template emailtpl/abonnement_expired.go (HTML+texte, 2 boutons : renouveler + downgrade)
+- Démarrage dans main.go
+
+Fix 2 — Étendre check de login :
+- repository/auth.go GetPendingAbonnementByEtablissementID : retourne (aboID, reason, err)
+  reason="pending" (EN_ATTENTE_PAIEMENT) ou "expired" (EXPIRE / ACTIF avec dateFin < NOW)
+- domain/auth.go PaymentPendingError étendu avec Reason
+- usecase/auth.go Login() + Refresh() : utilisent reason
+- middleware/auth.go : HTTP 402 inclut reason
+
+Fix 3 — Frontend + downgrade :
+- login-form.tsx : 402 → redirect selon reason (pending → /paiement/retry, expired → /abonnement-expire)
+- Page /abonnement-expire (nouvelle) : 2 options (Renouveler Wave / Continuer en gratuit)
+- Handler downgradeB2CToSolo : POST /api/subscriptions/b2c/{id}/downgrade
+- Fonction SQL downgrade_b2c_to_solo : Premium EXPIRE → Prof Solo (ACTIF, dateFin NULL)
+- proxy.ts : /abonnement-expire ajouté à PUBLIC_PATHS
+
+Tests E2E validés :
+- Abonnement ACTIF avec dateFin < NOW → expire_b2c_subscriptions() → EXPIRE ✅
+- Login → 402 PAYMENT_REQUIRED + reason=expired + abonnementId ✅
+- POST /downgrade → success=true, newPlanNom=Prof Solo ✅
+- Re-login après downgrade → 200 OK (user connecté en Solo gratuit) ✅
+- Page /abonnement-expire rendue (2 options, 0 erreur) ✅
+- go build EXIT 0, go vet EXIT 0, bun lint EXIT 0 ✅
+
+Flux complet :
+  dateFin < NOW → Worker (1h) → EXPIRE + email → Login bloqué (402 expired)
+  → /abonnement-expire → choix : Renouveler (Wave) OU Downgrade (Solo gratuit)

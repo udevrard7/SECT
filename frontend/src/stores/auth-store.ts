@@ -21,9 +21,11 @@ export interface AuthUser {
 export interface LoginError {
   status: number
   message: string
-  // SECT-GENIUSPAY-WAVE-SECURITY : pour 402 Payment Required
+  // SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : pour 402 Payment Required
   abonnementId?: string
   retryUrl?: string
+  // reason : "pending" (jamais payé) ou "expired" (abonnement expiré)
+  reason?: string
 }
 
 interface AuthState {
@@ -75,6 +77,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           // SECT-GENIUSPAY-WAVE-SECURITY : 402 Payment Required inclut abonnementId + retryUrl
           abonnementId: data.abonnementId,
           retryUrl: data.retryUrl,
+          // SECT-B2C-EXPIRE : reason = "pending" (jamais payé) ou "expired" (expiré)
+          reason: data.reason,
         } as LoginError
       }
 

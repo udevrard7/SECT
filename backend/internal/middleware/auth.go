@@ -140,15 +140,18 @@ func MapDomainError(w http.ResponseWriter, err error) {
         case *domain.AccountDisabledError:
                 writeJSONErrorMsg(w, http.StatusForbidden, "compte désactivé")
         case *domain.PaymentPendingError:
-                // SECT-GENIUSPAY-WAVE-SECURITY : 402 Payment Required + abonnement ID.
-                // Le frontend utilise abonnementId pour rediriger vers le retry paiement.
+                // SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : 402 Payment Required +
+                // abonnement ID + reason. Le frontend redirige selon reason :
+                //   - "pending" → /paiement/retry (jamais payé)
+                //   - "expired" → /abonnement-expire (expiré, renouvellement ou downgrade)
                 w.Header().Set("Content-Type", "application/json")
                 w.WriteHeader(http.StatusPaymentRequired)
                 _ = json.NewEncoder(w).Encode(map[string]any{
-                        "error":         "paiement requis — finalisez votre paiement pour activer votre compte",
-                        "code":          "PAYMENT_REQUIRED",
-                        "abonnementId":  e.AbonnementID,
-                        "retryUrl":      "/souscrire-b2c",
+                        "error":        "paiement requis — finalisez votre paiement pour activer votre compte",
+                        "code":         "PAYMENT_REQUIRED",
+                        "reason":       e.Reason, // "pending" ou "expired"
+                        "abonnementId": e.AbonnementID,
+                        "retryUrl":     "/souscrire-b2c",
                 })
         case *domain.AccountLockedError:
                 writeJSONErrorMsg(w, http.StatusTooManyRequests, "compte temporairement verrouillé")
