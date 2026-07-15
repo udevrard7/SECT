@@ -189,6 +189,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/subscriptions/b2c", s.createB2CSubscription)
                 // SECT-B2B-FACTURATION : self-service B2B (inscription établissement).
                 r.Post("/api/subscriptions/b2b", s.createB2BSubscription)
+                // SECT-B2B-ANTI-ABUS : vérification email + validation admin + liste en attente
+                r.Get("/api/b2b/verify-email", s.verifyB2BEmail)
                 // SECT-B2B-FACTURATION : paiement Wave capitation B2B.
                 r.Post("/api/subscriptions/b2b/{id}/initiate-payment", s.initiateB2BPayment)
                 // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
@@ -707,6 +709,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/abonnements", func(r chi.Router) {
                         r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.abonnementsListReal)
+                        // SECT-B2B-ANTI-ABUS : liste des établissements en attente de validation.
+                        r.Get("/pending-b2b", s.listPendingB2B)
+                        // SECT-B2B-ANTI-ABUS : valider un établissement (ESSAI démarre).
+                        r.Post("/b2b/{id}/validate", s.validateB2BEstablishment)
                         // ABONNEMENTS-FIX-A1 : mutations (POST/PATCH/DELETE).
                         r.Post("/", s.createAbonnement)
                         r.Patch("/{id}", s.updateAbonnement)
