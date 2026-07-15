@@ -445,8 +445,8 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
                 }
                 success = true
                 statut = "ACTIF"
-                // Créer la facture capitation (idempotente)
-                go s.createB2BFactureIfApplicable(aboID, "plan_b2b_institutionnel")
+                // Créer la facture capitation (idempotente) — mode wave (automatique)
+                go s.createB2BFactureIfApplicable(aboID, "plan_b2b_institutionnel", "wave", ref)
         } else if isRenewal {
                 err := s.dbPool.QueryRow(ctx, `
                         SELECT o_success, o_statut FROM renew_b2c_subscription($1, $2, $3)
