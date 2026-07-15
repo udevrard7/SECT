@@ -73,8 +73,8 @@ export default function SouscrireB2BPage() {
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
             <p className="text-xs text-blue-700">
-              ⚠️ Utilisez un email professionnel. Les adresses Gmail, Yahoo, Hotmail
-              ne sont pas acceptées pour les inscriptions B2B.
+              💡 Vous pouvez utiliser un email Gmail, Yahoo ou Outlook. Notre équipe
+              vérifiera votre établissement avant l'activation de l'essai.
             </p>
           </div>
           <Button onClick={() => router.push('/')} variant="outline" className="w-full">
