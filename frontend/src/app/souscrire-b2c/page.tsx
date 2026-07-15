@@ -323,7 +323,7 @@ function SouscrireB2CContent() {
           <div className="border-t border-[#F59E0B]/20 my-2"></div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-[#1E1B4B]">Montant à payer</span>
-            <span className="text-2xl font-bold text-[#1E1B4B] font-mono">4 900 FCFA</span>
+            <span className="text-2xl font-bold text-[#1E1B4B] font-mono">{new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA</span>
           </div>
           <p className="text-xs text-[#1E1B4B]/60 mt-1">
             Valable 30 jours. Renouvellement {periodeAbonnement === 'auto' ? 'automatique' : 'manuel'}.
@@ -368,7 +368,7 @@ function SouscrireB2CContent() {
             <Shield className="h-4 w-4 text-[#65A30D] shrink-0 mt-0.5" />
             <span>
               Vous serez redirigé vers la page sécurisée <strong>Wave</strong> pour valider le
-              paiement de <strong>4 900 FCFA</strong>. Aucune donnée bancaire n'est stockée par SECT.
+              paiement de <strong>{new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA</strong>. Aucune donnée bancaire n'est stockée par SECT.
             </span>
           </p>
         </div>
@@ -386,7 +386,7 @@ function SouscrireB2CContent() {
           ) : (
             <>
               <WaveMark className="h-5 w-5 mr-2" />
-              Payer 4 900 FCFA avec Wave
+              Payer {new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA avec Wave
               <ExternalLink className="h-3.5 w-3.5 ml-2 opacity-70" />
             </>
           )}
