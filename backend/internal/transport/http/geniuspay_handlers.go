@@ -504,6 +504,13 @@ func (s *Server) downgradeB2CToSolo(w http.ResponseWriter, r *http.Request) {
         slog.Info("B2C abonnement downgraded to Solo",
                 "aboId", aboID, "newPlan", newPlanNom)
 
+        // SECT-B2C-EXPIRE (Option C) : envoyer un email au prof avec le récapitulatif
+        // des données en surplus (filières, étudiants, évaluations) par rapport aux
+        // limites Solo. Le prof garde ses données mais ne peut plus en créer au-delà
+        // des quotas Solo, ET les étudiants ne peuvent plus passer d'épreuves si le
+        // nombre d'étudiants actifs dépasse la limite Solo (40).
+        go s.sendDowngradeEmail(ctx, aboID)
+
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
         json.NewEncoder(w).Encode(map[string]any{

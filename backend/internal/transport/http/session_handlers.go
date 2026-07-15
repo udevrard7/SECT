@@ -3,6 +3,7 @@ package http
 import (
         "context"
         "encoding/json"
+        "fmt"
         "net/http"
         "strconv"
 
@@ -77,6 +78,24 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
         if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
                 return
+        }
+
+        // SECT-B2C-EXPIRE : vérifier le quota d'usage AVANT de démarrer la session.
+        // Si l'établissement a plus d'étudiants actifs que le plan ne le permet
+        // (ex: 200 étudiants en Premium rétrogradé Solo=40), bloquer la passation.
+        // Le prof doit soit désactiver des étudiants, soit renouveler Premium.
+        if s.quotaChecker != nil && claims.EtablissementID != "" {
+                if err := s.quotaChecker.CheckStudentsQuota(r.Context(), claims.EtablissementID); err != nil {
+                        // Si quota dépassé, retourner 402 Payment Required avec message clair
+                        if qe, ok := err.(*domain.QuotaExceededError); ok {
+                                writeJSONError(w, http.StatusPaymentRequired, fmt.Sprintf(
+                                        "Votre établissement a %d étudiants actifs, mais votre plan %s limite à %d. "+
+                                                "Contactez votre enseignant pour mettre à niveau ou désactiver des étudiants.",
+                                        qe.Current, qe.PlanNom, qe.Max,
+                                ))
+                                return
+                        }
+                }
         }
 
         sess, resumed, err := s.sessionUC.StartSession(r.Context(), claims, input)

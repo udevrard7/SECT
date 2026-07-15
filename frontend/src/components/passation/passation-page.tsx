@@ -521,7 +521,14 @@ export function PassationPage() {
         body: JSON.stringify({ etudiantId: user.id, epreuveId }),
       })
 
-      if (!res.ok) throw new Error('Impossible de démarrer la session')
+      if (!res.ok) {
+        // SECT-B2C-EXPIRE : 402 = quota étudiant dépassé (plan Solo)
+        if (res.status === 402) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Votre établissement a dépassé la limite d\'étudiants du plan. Contactez votre enseignant.')
+        }
+        throw new Error('Impossible de démarrer la session')
+      }
       const data = await res.json()
       setSession(data.session)
 
