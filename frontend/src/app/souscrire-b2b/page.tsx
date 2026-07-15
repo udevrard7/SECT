@@ -57,21 +57,28 @@ export default function SouscrireB2BPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-orange-100 mb-4">
             <CheckCircle2 className="h-9 w-9 text-orange-600" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Inscription réussie !</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Inscription reçue !</h1>
           <p className="text-sm text-slate-600 mb-6">
-            Votre établissement a été créé avec une période d'essai de <strong>14 jours</strong>.
-            Notre équipe vous contactera pour finaliser votre abonnement institutionnel.
+            Un <strong>email de vérification</strong> vous a été envoyé. Cliquez sur le lien
+            qu'il contient pour confirmer votre adresse email.
           </p>
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 text-left">
-            <p className="text-xs text-slate-600 mb-1">Prochaines étapes :</p>
+            <p className="text-xs text-slate-600 mb-2">Prochaines étapes :</p>
             <ol className="text-sm text-slate-700 list-decimal list-inside space-y-1">
-              <li>Connectez-vous avec votre email</li>
-              <li>Configurez votre établissement</li>
-              <li>Notre équipe vous contacte pour l'activation</li>
+              <li>Vérifiez votre email (boîte de réception)</li>
+              <li>Cliquez sur le lien de vérification</li>
+              <li>Notre équipe valide votre établissement sous 24h</li>
+              <li>Vous recevez un email de confirmation → essai 14 jours</li>
             </ol>
           </div>
-          <Button onClick={() => router.push('/login')} className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-semibold">
-            Se connecter
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+            <p className="text-xs text-blue-700">
+              ⚠️ Utilisez un email professionnel. Les adresses Gmail, Yahoo, Hotmail
+              ne sont pas acceptées pour les inscriptions B2B.
+            </p>
+          </div>
+          <Button onClick={() => router.push('/')} variant="outline" className="w-full">
+            Retour à l'accueil
           </Button>
         </div>
       </div>
