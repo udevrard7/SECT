@@ -53,9 +53,12 @@ type User struct {
 }
 
 // EtablissementRef est une référence légère à un établissement (pour les réponses API).
+// SECT-B2C-SELF-SERVICE : Type exposé pour que le frontend puisse conditionner
+// l'affichage du menu de gestion (filieres/UE/etudiants) aux profs B2C (PERSONNEL).
 type EtablissementRef struct {
-        ID  string `json:"id"`
-        Nom string `json:"nom"`
+        ID   string `json:"id"`
+        Nom  string `json:"nom"`
+        Type string `json:"type,omitempty"` // "PERSONNEL" pour B2C, sinon type étab B2B
 }
 
 // FiliereRef est une référence légère à une filière.

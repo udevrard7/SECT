@@ -4,6 +4,8 @@ import (
         "encoding/json"
         "net/http"
 
+        "github.com/jackc/pgx/v5"
+        db "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
 )
@@ -49,6 +51,28 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
         if claims.Role == string(domain.RoleAdmin) && claims.EtablissementID != "" {
                 etabID := claims.EtablissementID
                 user.EtablissementID = &etabID
+        }
+
+        // SECT-B2C-SELF-SERVICE : populer user.Etablissement (ref avec type) pour que
+        // le frontend puisse conditionner l'affichage du menu de gestion aux profs B2C
+        // (étab type PERSONNEL). Query directe (bypass RLS via SystemClaims) car le
+        // handler /api/me est authentifié mais on veut lire l'étab sans dépendre des
+        // policies Etablissement_select (qui peuvent filtrer).
+        if user.EtablissementID != nil && *user.EtablissementID != "" && user.Etablissement == nil {
+                var etabNom, etabType string
+                err := db.WithTx(r.Context(), s.dbPool, db.SystemClaims(), func(tx pgx.Tx) error {
+                        return tx.QueryRow(r.Context(),
+                                `SELECT "nom", COALESCE("type", '') FROM "Etablissement" WHERE "id" = $1`,
+                                *user.EtablissementID,
+                        ).Scan(&etabNom, &etabType)
+                })
+                if err == nil {
+                        user.Etablissement = &domain.EtablissementRef{
+                                ID:   *user.EtablissementID,
+                                Nom:  etabNom,
+                                Type: etabType,
+                        }
+                }
         }
 
         w.Header().Set("Content-Type", "application/json")

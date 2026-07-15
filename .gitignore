@@ -66,3 +66,6 @@ read-resource.sh
 
 # GeniusPay contract (dev reference, not for repo)
 GENIUSPAY_CONTRACT.md
+start-dev.sh
+docs-geniuspay-*.md
+GENIUSPAY_CONTRACT.md

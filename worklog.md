@@ -16298,3 +16298,50 @@ Stage Summary:
 - Frontend : les pages /filieres, /etudiants etc. existent déjà et fonctionnent
   via l'API. Le menu ENSEIGNANT n'affiche pas encore ces pages (à ajouter dans
   une future task pour UX complet B2C).
+
+---
+Task ID: SECT-B2C-MENU
+Agent: Z.ai Code (tuteur/assistant)
+Task: Menu ENSEIGNANT B2C — "Mes filières/UE/Étudiants" conditionnel au type PERSONNEL
+
+Contexte : après SECT-B2C-SELF-SERVICE (permissions + auto-setup), il fallait
+exposer ces pages dans le menu sidebar du prof B2C, mais UNIQUEMENT pour les
+profs B2C (étab PERSONNEL). Les profs B2B ne doivent pas les voir (ils dépendent
+de leur RESPONSABLE).
+
+Work Log:
+
+### 1. Backend : exposer etablissement.type dans /api/me
+- domain/user.go : EtablissementRef étendu avec champ Type
+- transport/http/handlers.go me() : popule user.Etablissement (ref avec type)
+  via query directe (SystemClaims bypass RLS) si user.EtablissementID non null
+
+### 2. Frontend : AuthUser + syncFromSession
+- stores/auth-store.ts : AuthUser.etablissement étendu avec type?
+- login() : appelle refreshSession() après login pour récupérer l'user complet
+  (avec etab.type) — sans cela, le menu b2cOnly ne s'afficherait qu'au reload
+
+### 3. Menu sidebar : catégorie b2cOnly
+- lib/routes.ts : NavCategory étendu avec b2cOnly?: boolean
+- Nouvelle catégorie "ens-gestion-b2c" (label "Gestion pédagogique") ajoutée au
+  menu ENSEIGNANT avec b2cOnly: true + 3 items : Mes filières, Mes unités,
+  Mes étudiants
+- components/layout/sidebar.tsx : filtre allCategories.filter(cat =>
+  !cat.b2cOnly || isB2C) où isB2C = user.etablissement?.type === 'PERSONNEL'
+
+### 4. Tests E2E (Agent Browser)
+- Inscription B2C Prof Solo → auto-setup (déjà validé SECT-B2C-SELF-SERVICE)
+- Login → dashboard → menu sidebar affiche "GESTION PÉDAGOGIQUE" avec :
+  * Mes filières
+  * Mes unités
+  * Mes étudiants
+- Aucune erreur console/page
+- Lint frontend EXIT 0, go build EXIT 0, go vet EXIT 0
+
+Stage Summary:
+- Le prof B2C voit maintenant "Gestion pédagogique" dans sa sidebar avec
+  Mes filières / Mes unités / Mes étudiants
+- Les profs B2B (étab non-PERSONNEL) ne voient PAS cette catégorie (b2cOnly)
+- Les pages /filieres, /unites-enseignement, /etudiants existent déjà et
+  fonctionnent via l'API (middleware RequireRoleOrPersonalEtab de SECT-B2C-SELF-SERVICE)
+- Le type d'étab est exposé via /api/me → /api/go-auth/session → auth-store

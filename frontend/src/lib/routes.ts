@@ -327,6 +327,13 @@ export interface NavCategory {
   icon: string
   items: NavItem[]
   defaultOpen?: boolean
+  /**
+   * SECT-B2C-SELF-SERVICE : si true, cette catégorie n'est affichée QUE pour
+   * les enseignants B2C (établissement de type PERSONNEL). Les enseignants B2B
+   * (établissement normal géré par un RESPONSABLE) ne la voient pas.
+   * La sidebar vérifie user.etablissement?.type === 'PERSONNEL'.
+   */
+  b2cOnly?: boolean
 }
 
 // ─── ADMIN categories ───
@@ -495,6 +502,21 @@ const ENSEIGNANT_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'mes-etudiants', label: 'Mes étudiants', icon: 'Users' },
       { id: 'aide-etudiants', label: 'Aide des étudiants', icon: 'HelpCircle' },
+    ],
+  },
+  {
+    // SECT-B2C-SELF-SERVICE : catégorie exclusive aux profs B2C (étab PERSONNEL).
+    // Permet au prof freelance de gérer ses filières, UE et étudiants sans
+    // RESPONSABLE. Les profs B2B ne voient pas cette catégorie (b2cOnly: true).
+    id: 'ens-gestion-b2c',
+    label: 'Gestion pédagogique',
+    icon: 'Settings2',
+    defaultOpen: true,
+    b2cOnly: true,
+    items: [
+      { id: 'filieres', label: 'Mes filières', icon: 'FolderTree' },
+      { id: 'unites-enseignement', label: 'Mes unités', icon: 'BookOpen' },
+      { id: 'etudiants', label: 'Mes étudiants', icon: 'Users' },
     ],
   },
   {
