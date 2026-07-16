@@ -16515,3 +16515,35 @@ Stage Summary:
 - Commit : 83467f8 (main), diff minimal (1 ligne), auteur udevrard7 <ulrichdouh@gmail.com>.
 - Déploiement Render déclenché (auto-deploy on push to main, rootDir backend).
 - Note pour plus tard : le fichier homework_correction_worker.go n'est pas gofmt-clean (alignement struct homeworkData) — c'est préexistant, pourrait faire l'objet d'un nettoyage gofmt séparé si souhaité.
+
+---
+
+Task ID: SECT-ENV-RESETUP-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Rétablissement de l'environnement de développement dans un nouveau bac à sable (session de reprise)
+
+Work Log:
+- Cloné le dépôt GitHub udevrard7/SECT dans /home/z/my-project/sect (branche main, HEAD 9417c05 — OPT-1 à OPT-6)
+- Configuré l'identité Git : udevrard7 <ulrichdouh@gmail.com> (credential.helper store, remote URL sans token)
+- Installé Go 1.24.3 dans /home/z/go (GOROOT=/home/z/go, GOPATH=/home/z/gopath, PATH via ~/.bashrc) — go.mod exige go 1.24
+- Vérifié la compilation du backend : `go build ./...` EXIT 0 (téléchargement initial des dépendances)
+- `go vet ./...` EXIT 0
+- Installé golang-migrate v4.19.1 (go install -tags postgres) pour gérer les migrations
+- Créé backend/.env (NEON_DATABASE_URL pooler + NEON_DIRECT_URL direct + JWT_SECRET 64 hex + CORS localhost+Vercel + APP_BASE_URL) — .env gitignoré (vérifié via git check-ignore)
+  - ⚠️ Fix : valeurs quotées (single quotes) car le `&` de l'URL Neon cassait le `source .env` (le projet n'utilise pas godotenv, .env est chargé via shell)
+- Créé frontend/.env (NEXT_PUBLIC_API_URL=http://localhost:8080) — gitignoré
+- Vérifié la synchronisation DB Neon : `migrate version` → 74/74 (dernière migration 000074_reponse_is_system appliquée, dirty=false)
+- Smoke test backend local :
+  - `./bin/sect-api` démarre, se connecte à Neon ("connected to Neon Postgres")
+  - Tous les workers démarrent (IA, Correction, Document Analyzer, Practice, Homework, Audio, AutoClose 60s, Relance 6h, Expire 1h)
+  - R2 / Resend / GeniusPay non configurés → dégradation gracieuse (LogMailer, storage DB-only, payment 503)
+  - GET /health → HTTP 200 {"service":"sect-api","status":"ok","version":"0.2.0"}
+  - GET /api/health → HTTP 200
+- Backend Render de prod vérifié en ligne : https://sect-s1pb.onrender.com/health → 200 OK
+
+Stage Summary:
+- Environnement pleinement opérationnel : Go 1.24.3 + repo cloné + backend compile (build+vet EXIT 0) + .env créés + DB Neon synchronisée (74/74) + backend local répond 200 sur /health
+- Pipeline CI/CD respecté : GitHub → Vercel (frontend, auto) + Render (backend Docker, auto, rootDir backend)
+- ⚠️ Note gofmt : plusieurs fichiers backend ne sont pas gofmt-clean (cmd/api/main.go, internal/ai/*, internal/cache/memory.go…) — préexistant, hors scope de cette session de setup. Pourrait faire l'objet d'un nettoyage gofmt séparé si souhaité.
+- 🔐 Sécurité : les credentials partagés en clair par l'utilisateur (token GitHub, URL Neon, tokens Vercel/Render) doivent être révoqués/régénérés après cette session.
+- 🔭 Prochaines étapes : `bun install` côté frontend pour `bun run dev` (port 3000), puis reprise du travail fonctionnel selon les priorités de l'utilisateur.
