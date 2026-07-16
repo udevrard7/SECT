@@ -21,8 +21,9 @@
  */
 
 const DB_NAME = 'sect-exam-answers'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE = 'answers'
+const SNAPSHOT_STORE = 'exam-snapshots'
 
 interface CachedAnswer {
   /** Clé composite : `${sessionId}_${questionId}` */
@@ -44,6 +45,10 @@ function openDB(): Promise<IDBDatabase> {
       const db = req.result
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'id' })
+      }
+      // OPT-10: add snapshot store (version 2)
+      if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
+        db.createObjectStore(SNAPSHOT_STORE, { keyPath: 'id' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -167,4 +172,100 @@ export async function getCachedAnswersCount(sessionId: string): Promise<number> 
   } catch {
     return 0
   }
+}
+
+// ─── Exam State Snapshot (OPT-10) ───
+
+interface ExamSnapshot {
+  /** Key: epreuveId */
+  id: string
+  epreuveId: string
+  userId: string
+  epreuve: any
+  questions: any[]
+  session: any
+  reponses: Record<string, string>
+  activeCodeLanguages: Record<string, any>
+  timeRemaining: number
+  fullscreenExitCount: number
+  totalAlertCount: number
+  penalite: number
+  savedAt: number
+}
+
+export async function saveExamSnapshot(snapshot: Omit<ExamSnapshot, 'savedAt' | 'id'>): Promise<void> {
+  try {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_STORE, 'readwrite')
+      const store = tx.objectStore(SNAPSHOT_STORE)
+      const record: ExamSnapshot = {
+        ...snapshot,
+        id: snapshot.epreuveId,
+        savedAt: Date.now(),
+      }
+      store.put(record)
+      tx.oncomplete = () => {
+        db.close()
+        resolve()
+      }
+      tx.onerror = () => {
+        db.close()
+        reject(tx.error)
+      }
+    })
+  } catch {
+    // Silent fail — IndexedDB peut être indisponible
+  }
+}
+
+export async function getExamSnapshot(epreuveId: string): Promise<ExamSnapshot | null> {
+  try {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_STORE, 'readonly')
+      const store = tx.objectStore(SNAPSHOT_STORE)
+      const req = store.get(epreuveId)
+      req.onsuccess = () => {
+        db.close()
+        resolve(req.result || null)
+      }
+      req.onerror = () => {
+        db.close()
+        reject(req.error)
+      }
+    })
+  } catch {
+    return null
+  }
+}
+
+export async function clearExamSnapshot(epreuveId: string): Promise<void> {
+  try {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_STORE, 'readwrite')
+      const store = tx.objectStore(SNAPSHOT_STORE)
+      store.delete(epreuveId)
+      tx.oncomplete = () => {
+        db.close()
+        resolve()
+      }
+      tx.onerror = () => {
+        db.close()
+        reject(tx.error)
+      }
+    })
+  } catch {
+    // Silent fail
+  }
+}
+
+/**
+ * Vérifie si un snapshot est récent (moins de maxAgeMs millisecondes).
+ * Utilisé pour décider si on peut utiliser le cache ou si on doit fetcher.
+ */
+export function isSnapshotFresh(snapshot: ExamSnapshot | null, maxAgeMs: number = 5 * 60 * 1000): boolean {
+  if (!snapshot) return false
+  return Date.now() - snapshot.savedAt < maxAgeMs
 }

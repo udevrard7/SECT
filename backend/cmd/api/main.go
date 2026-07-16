@@ -155,6 +155,11 @@ func main() {
         messagerieHub := httptransport.NewMessagerieHub()
         messagerieUC := usecase.NewMessagerieUseCase(messagerieRepo, aiService, messagerieHub)
 
+        // OPT-7 : hub WebSocket temps réel pour la surveillance.
+        // Remplace le polling TanStack Query (30s) par push immédiat.
+        surveillanceHub := httptransport.NewSurveillanceHub(logger)
+        go surveillanceHub.Run()
+
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
 
@@ -214,7 +219,7 @@ func main() {
         // channel in-memory ne fonctionnait pas de façon fiable sur Render free
         // (cold start tue le worker goroutine avant traitement du job).
 
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
 
         // SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
         // Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.

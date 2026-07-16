@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/stores/auth-store'
@@ -49,7 +49,8 @@ import { toast } from 'sonner'
 import { CodingQuestionStudent } from '@/components/coding/code-editor'
 import { type CodingLanguage, type CodingAnswer, type TestResult, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
 import { useOfflineSubmission } from '@/hooks/use-offline-submission'
-import { cacheAnswer, getCachedAnswers, clearCachedAnswers } from '@/lib/exam-answers-cache'
+import { cacheAnswer, getCachedAnswers, clearCachedAnswers, saveExamSnapshot, getExamSnapshot, isSnapshotFresh, clearExamSnapshot } from '@/lib/exam-answers-cache'
+import { debounce } from '@/lib/debounce'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -316,6 +317,26 @@ export function PassationPage() {
   }>({
     queryKey: ['passation-epreuve', epreuveId, user?.id],
     queryFn: async () => {
+      // OPT-10: Stale-While-Revalidate — check IndexedDB first
+      const cachedSnapshot = await getExamSnapshot(epreuveId)
+      if (cachedSnapshot && isSnapshotFresh(cachedSnapshot, 5 * 60 * 1000)) {
+        // Return cached data immediately for instant UI
+        // The server fetch will happen in the background (staleTime + refetch)
+        return {
+          epreuve: cachedSnapshot.epreuve,
+          securityConfig: DEFAULT_SECURITY, // will be fetched separately
+          session: cachedSnapshot.session,
+          questions: cachedSnapshot.questions,
+          reponses: cachedSnapshot.reponses,
+          activeCodeLanguages: cachedSnapshot.activeCodeLanguages,
+          fullscreenExitCount: cachedSnapshot.fullscreenExitCount,
+          timeRemaining: cachedSnapshot.timeRemaining,
+          phase: cachedSnapshot.session?.statut === 'EN_COURS' ? 'in-exam' : 'pre-exam',
+          totalAlertCount: cachedSnapshot.totalAlertCount,
+          penalite: cachedSnapshot.penalite,
+        }
+      }
+
       // Fetch epreuve info (studentView=true strips correct answers for security)
       const epreuveRes = await fetch(`/api/epreuves/${epreuveId}?studentView=true`)
       if (!epreuveRes.ok) throw new Error('Épreuve introuvable')
@@ -442,6 +463,23 @@ export function PassationPage() {
         }
       }
 
+      // OPT-10: save snapshot for future stale-while-revalidate
+      if (user?.id) {
+        saveExamSnapshot({
+          epreuveId,
+          userId: user.id,
+          epreuve: epreuveInfo,
+          questions: questionsData,
+          session: activeSession,
+          reponses,
+          activeCodeLanguages,
+          timeRemaining,
+          fullscreenExitCount,
+          totalAlertCount,
+          penalite,
+        }).catch(() => {}) // non-blocking
+      }
+
       return {
         epreuve: epreuveInfo,
         securityConfig,
@@ -457,7 +495,7 @@ export function PassationPage() {
       }
     },
     enabled: !!epreuveId,
-    staleTime: 0,
+    staleTime: 30 * 1000, // OPT-10: 30s stale time — allows stale-while-revalidate
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
@@ -628,6 +666,22 @@ export function PassationPage() {
     }
   }, [])
 
+  // OPT-9 : version debouncée de saveAnswers.
+  // Quand l'étudiant navigue rapidement entre les questions, on coalesce
+  // les saves en un seul appel API après 2s d'inactivité.
+  // Le flush immédiat reste disponible pour le submit (debouncedSave.flush()).
+  const debouncedSaveAnswers = useMemo(
+    () => debounce(saveAnswers, 2000),
+    [saveAnswers]
+  )
+
+  // Cleanup du debounce au démontage
+  useEffect(() => {
+    return () => {
+      debouncedSaveAnswers.cancel()
+    }
+  }, [debouncedSaveAnswers])
+
   // ─── Submit exam ───────────────────────────────────────────────────────
   const submitExam = useCallback(async (autoSubmit: boolean = false, reason: AutoSubmitReason = null) => {
     if (!sessionRef.current || isAutoSubmittingRef.current) return
@@ -638,7 +692,10 @@ export function PassationPage() {
 
     try {
       // Save answers first
-      await saveAnswers()
+      // OPT-9 : flush immédiat de tous les saves en attente avant le submit
+      debouncedSaveAnswers.flush()
+      // Small delay to let the flush complete
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       // Offline-first submission: when online, behaves like a normal fetch.
       // When offline, the request is stored in the IndexedDB outbox and
@@ -714,6 +771,9 @@ export function PassationPage() {
         clearCachedAnswers(sessionRef.current.id)
       }
 
+      // OPT-10: nettoyer le snapshot IndexedDB après submit réussi
+      clearExamSnapshot(epreuveId).catch(() => {})
+
       // Exit fullscreen
       try {
         if (document.fullscreenElement) {
@@ -736,7 +796,7 @@ export function PassationPage() {
       setIsSubmitting(false)
       isAutoSubmittingRef.current = false
     }
-  }, [isSubmitting, saveAnswers, submitOffline, epreuve])
+  }, [isSubmitting, debouncedSaveAnswers, submitOffline, epreuve])
 
   // ─── Log alert (enhanced with penalty) ─────────────────────────────────
   const logAlert = useCallback(async (type: string, details?: string, alertPenalite?: number) => {
@@ -861,6 +921,8 @@ export function PassationPage() {
     if (phase !== 'in-exam') return
 
     const handleOnline = () => {
+      // OPT-9 : flush immédiat des saves en attente quand le réseau revient
+      debouncedSaveAnswers.flush()
       saveAnswers().then(() => {
         toast.success('Connexion rétablie', {
           description: 'Vos réponses ont été synchronisées.',
@@ -871,7 +933,7 @@ export function PassationPage() {
 
     window.addEventListener('online', handleOnline)
     return () => window.removeEventListener('online', handleOnline)
-  }, [phase, saveAnswers])
+  }, [phase, saveAnswers, debouncedSaveAnswers])
 
   // ─── Anti-cheat: Fullscreen exit detection (with penalty) ─────────────
   // E2E-TEST-FIX : bypass en mode test pour permettre l'automatisation.
@@ -1178,8 +1240,9 @@ export function PassationPage() {
   // ─── Save on question navigation ───────────────────────────────────────
   const navigateToQuestion = useCallback((index: number) => {
     setCurrentIndex(index)
-    saveAnswers()
-  }, [saveAnswers])
+    // OPT-9 : debounced save — si l'étudiant navigue rapidement, les saves sont coalescés
+    debouncedSaveAnswers()
+  }, [debouncedSaveAnswers])
 
   // ─── Handle answer change ──────────────────────────────────────────────
   // BUGFIX (EXAM-OFFLINE-1) : chaque réponse est persistée en IndexedDB

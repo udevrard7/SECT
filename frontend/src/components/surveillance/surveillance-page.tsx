@@ -38,6 +38,7 @@ import {
   type LogEvent, type SeverityLevel,
   getEventTypeLabel, getSeverityLevel, EVENT_LABELS,
 } from '@/lib/surveillance-types'
+import { useSurveillanceWS } from '@/hooks/use-surveillance-ws'
 
 // ─── Local alerte type ───
 interface AlerteItem {
@@ -177,6 +178,18 @@ export function SurveillancePage() {
   const [flagging, setFlagging] = useState<string | null>(null)
 
   // ═══════════════════════════════════════════════════════════════
+  // OPT-7 : WebSocket temps réel pour surveillance.
+  // Quand le WS est connecté, le polling est désactivé.
+  // Quand il est déconnecté, on retombe sur le polling 30s (fallback).
+  // ═══════════════════════════════════════════════════════════════
+  const { connectionStatus } = useSurveillanceWS({
+    epreuveIds: epreuveId && epreuveId !== 'all' ? [epreuveId] : [],
+    enabled: isLive && !!user?.id,
+    userId: user?.id,
+  })
+  const isWSConnected = connectionStatus === 'connected'
+
+  // ═══════════════════════════════════════════════════════════════
   // DATA FETCHING (BUGFIX QUERY-MIGRATION-1 : TanStack Query)
   // ═══════════════════════════════════════════════════════════════
   //
@@ -213,7 +226,7 @@ export function SurveillancePage() {
     enabled: !!user?.id && !!epreuveId && !!selectedDate,
     staleTime: 5 * 1000, // 5s : la surveillance est temps-réel, on accepte un refetch rapide au retour
     refetchOnWindowFocus: false,
-    refetchInterval: isLive ? 30000 : false,
+    refetchInterval: isWSConnected ? false : (isLive ? 30000 : false),
     refetchIntervalInBackground: false,
   })
 
@@ -252,7 +265,7 @@ export function SurveillancePage() {
     enabled: !!user?.id,
     staleTime: 5 * 1000,
     refetchOnWindowFocus: false,
-    refetchInterval: isLive ? 30000 : false,
+    refetchInterval: isWSConnected ? false : (isLive ? 30000 : false),
     refetchIntervalInBackground: false,
   })
 
@@ -365,9 +378,11 @@ export function SurveillancePage() {
             <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">Surveillance &amp; Alertes</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">Centre de contrôle anti-fraude en temps réel</p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${isLive ? 'bg-success/15 text-success-text' : 'bg-muted text-muted-foreground'}`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${isLive ? (isWSConnected ? 'bg-success/15 text-success-text' : 'bg-warning/15 text-warning') : 'bg-muted text-muted-foreground'}`}>
                 <Radio className="h-3 w-3" />
-                {isLive ? 'Live' : 'Pause'}
+                {isLive ? (isWSConnected ? 'Live WS' : 'Live (polling)') : 'Pause'}
+                {isLive && isWSConnected && <span className="h-1.5 w-1.5 rounded-full bg-success" />}
+                {isLive && !isWSConnected && connectionStatus === 'connecting' && <span className="h-1.5 w-1.5 rounded-full bg-warning animate-pulse" />}
               </span>
               {lastRefresh && <span className="text-muted-foreground">MAJ : {formatTime(lastRefresh.toISOString())}</span>}
               {alertesNonLues > 0 && (

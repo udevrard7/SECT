@@ -164,6 +164,23 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                 }
                 _ = s.sessionUC.AddAlerte(r.Context(), claims, sessionID, alerte.Penalite, alerteInput)
 
+                // OPT-7 : push WebSocket aux surveillants — alerte déclenchée.
+                // On récupère l'epreuveId de la session pour le broadcast ciblé.
+                var alerteEpreuveID string
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        _ = tx.QueryRow(r.Context(),
+                                `SELECT "epreuveId" FROM "SessionPassation" WHERE "id" = $1`,
+                                sessionID).Scan(&alerteEpreuveID)
+                        return nil
+                })
+                s.surveillanceHub.BroadcastEvent("ALERT_TRIGGERED", alerteEpreuveID, map[string]any{
+                        "sessionId":  sessionID,
+                        "epreuveId":  alerteEpreuveID,
+                        "etudiantId": claims.UserID,
+                        "alertType":  alerte.Type,
+                        "penalite":   alerte.Penalite,
+                })
+
                 w.Header().Set("Content-Type", "application/json")
                 json.NewEncoder(w).Encode(map[string]any{
                         "logged": true,
