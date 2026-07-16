@@ -18,8 +18,6 @@ import {
 } from '@/hooks/use-payment'
 import {
   PaymentMethodSelector,
-  getPaymentMethodLabel,
-  type PaymentMethodValue,
 } from '@/components/payment'
 
 // ═══════════════════════════════════════════════════════════════════
@@ -152,8 +150,6 @@ function SouscrireB2CContent() {
   // ─── Wave payment (Premium) ───
   const [wavePhone, setWavePhone] = useState('')
   const [phoneTouched, setPhoneTouched] = useState(false)
-  // ─── Moyen de paiement (Wave / Orange Money / MTN Money) ───
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>('wave_ci')
 
   const selectedPlan = PLANS_B2C.find(p => p.id === selectedPlanId)
   const isPremium = selectedPlan?.paymentRequired === true
@@ -229,19 +225,14 @@ function SouscrireB2CContent() {
       // back if Wave omits the `abo` query param.
       setPendingAbonnement(subscriptionData.abonnementId)
 
-      // On délègue au helper `initiatePayment` du hook use-payment, qui prend
-      // en 4e argument le `paymentMethod` (wave_ci / orange_money_ci / mtn_money_ci)
-      // et l'inclut dans le body de la requête POST.
-      const methodName = getPaymentMethodLabel(paymentMethod)
       const data = await initiatePayment(
         subscriptionData.abonnementId,
         normalized,
         subscriptionData.user?.name,
-        paymentMethod,
       )
 
       if (data?.paymentUrl) {
-        toast.success(`Redirection vers ${methodName}...`, {
+        toast.success('Redirection vers Wave...', {
           description: 'Vous allez être redirigé vers la page de paiement sécurisée.',
         })
         window.location.href = data.paymentUrl
@@ -282,7 +273,7 @@ function SouscrireB2CContent() {
     } finally {
       setPaying(false)
     }
-  }, [subscriptionData, wavePhone, paymentMethod, paying])
+  }, [subscriptionData, wavePhone, paying])
 
   // ═══════════════════════════════════════════════════════════════
   // Render
@@ -303,7 +294,7 @@ function SouscrireB2CContent() {
               >
                 <StepHeader
                   icon={<Wallet className="h-6 w-6" />}
-                  title="Paiement Mobile Money"
+                  title="Paiement Wave"
                   subtitle={<>Finalisez votre paiement pour activer votre abonnement <strong className="text-white">Prof Premium</strong>.</>}
                 />
 
@@ -329,22 +320,22 @@ function SouscrireB2CContent() {
                   </p>
                 </div>
 
-                {/* Moyen de paiement — Wave / Orange Money / MTN Money */}
+                {/* Moyen de paiement — Wave uniquement */}
                 <div className="space-y-2 mb-5">
                   <Label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">
                     Moyen de paiement
                   </Label>
                   <PaymentMethodSelector
-                    value={paymentMethod}
-                    onChange={setPaymentMethod}
+                    value="wave_ci"
+                    onChange={() => {}}
                     variant="dark"
                   />
                 </div>
 
-                {/* Numéro de téléphone Mobile Money (même format pour tous) */}
+                {/* Numéro de téléphone Wave */}
                 <div className="space-y-1.5 mb-5">
                   <Label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">
-                    Numéro {getPaymentMethodLabel(paymentMethod)}
+                    Numéro Wave
                   </Label>
                   <div className="relative group">
                     <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#84CC16] transition-transform group-focus-within:scale-110" />
@@ -381,7 +372,7 @@ function SouscrireB2CContent() {
                         exit={{ opacity: 0 }}
                         className="text-[11px] text-white/40"
                       >
-                        Numéro Mobile Money rattaché à votre compte {getPaymentMethodLabel(paymentMethod)}. Paiement sécurisé via GeniusPay.
+                        Numéro Wave rattaché à votre compte. Paiement sécurisé via GeniusPay.
                       </motion.p>
                     )}
                   </AnimatePresence>
@@ -392,7 +383,7 @@ function SouscrireB2CContent() {
                   <p className="text-xs text-white/80 flex items-start gap-2">
                     <Shield className="h-4 w-4 text-[#84CC16] shrink-0 mt-0.5" />
                     <span>
-                      Vous serez redirigé vers la page sécurisée <strong>{getPaymentMethodLabel(paymentMethod)}</strong> pour valider le
+                      Vous serez redirigé vers la page sécurisée <strong>Wave</strong> pour valider le
                       paiement de <strong>{new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA</strong>. Aucune donnée bancaire n'est stockée par SECT.
                     </span>
                   </p>
@@ -407,12 +398,12 @@ function SouscrireB2CContent() {
                   >
                     {paying ? (
                       <>
-                        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Redirection vers {getPaymentMethodLabel(paymentMethod)}...
+                        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Redirection vers Wave...
                       </>
                     ) : (
                       <>
                         <CreditCard className="h-5 w-5 mr-2" />
-                        Payer {new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA avec {getPaymentMethodLabel(paymentMethod)}
+                        Payer {new Intl.NumberFormat('fr-FR').format(subscriptionData.abonnementMontant)} FCFA avec Wave
                         <ExternalLink className="h-3.5 w-3.5 ml-2 opacity-70" />
                       </>
                     )}

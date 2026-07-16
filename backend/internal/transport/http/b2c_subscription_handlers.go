@@ -12,7 +12,7 @@ package http
 //     confirmation du paiement via /confirm-payment
 //
 // V1 : simulation de paiement (page factice "Payer 4 900 FCFA" → succès simulé).
-// V2 : intégration CinetPay (Mobile Money + cartes).
+// V2 : intégration GeniusPay (paiement Wave).
 
 import (
         "context"

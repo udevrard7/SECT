@@ -97,10 +97,9 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         if req.PaymentMethod == "" {
                 req.PaymentMethod = "wave_ci"
         }
-        // Valider le moyen de paiement
+        // Valider le moyen de paiement (uniquement Wave)
         validMethods := map[string]bool{
-                "wave_ci": true, "orange_money_ci": true, "mtn_money_ci": true,
-                "moov_money_ci": true, "card": true,
+                "wave_ci": true,
         }
         if !validMethods[req.PaymentMethod] {
                 writeJSONError(w, http.StatusBadRequest, "moyen de paiement invalide")
@@ -151,15 +150,12 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         successURL := s.appBaseURL + "/paiement/succes?abo=" + aboID
         errorURL := s.appBaseURL + "/paiement/erreur?abo=" + aboID
 
-        // 4. Créer le paiement chez GeniusPay.
-        // SECT-PAYMENT-MULTI-METHOD : Wave → paiement direct (wave_ci).
-        // Orange/MTN/Moov → mode checkout GeniusPay (pas de payment_method) car
-        // GeniusPay ignore orange_money_ci/mtn_money_ci et redirige vers Wave.
-        // Le mode checkout affiche la page GeniusPay où l'utilisateur choisit.
+        // 4. Créer le paiement Wave chez GeniusPay (redirection directe).
         amount := int(planPrix) // 4900 pour Prof Premium
         gpReq := geniuspay.CreatePaymentRequest{
                 Amount:        amount,
                 Currency:      "XOF",
+                PaymentMethod: "wave_ci",
                 CustomerPhone: req.CustomerPhone,
                 CustomerName:  req.CustomerName,
                 Description:   "SECT Prof Premium - 1 mois",
@@ -170,10 +166,6 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
                         "plan_id":       planID,
                         "etablissement_id": etabID,
                 },
-        }
-        // Wave → paiement direct. Autres → mode checkout (GeniusPay choisit).
-        if req.PaymentMethod == "wave_ci" {
-                gpReq.PaymentMethod = "wave_ci"
         }
 
         gpResp, err := s.geniusPay.CreatePayment(ctx, gpReq)

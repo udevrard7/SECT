@@ -8,11 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { initiatePayment, setPendingAbonnement } from '@/hooks/use-payment'
-import {
-  PaymentMethodSelector,
-  getPaymentMethodLabel,
-  type PaymentMethodValue,
-} from '@/components/payment'
 
 function PaiementRetryContent() {
   const router = useRouter()
@@ -23,11 +18,9 @@ function PaiementRetryContent() {
   const [phoneTouched, setPhoneTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>('wave_ci')
 
   const phoneValid = phone.startsWith('+225') && phone.replace(/\D/g, '').length >= 12
   const showPhoneError = phoneTouched && !phoneValid && phone.length > 0
-  const methodName = getPaymentMethodLabel(paymentMethod)
 
   const handlePayment = useCallback(async () => {
     if (!aboId) {
@@ -43,7 +36,7 @@ function PaiementRetryContent() {
     setError(null)
     try {
       setPendingAbonnement(aboId)
-      const resp = await initiatePayment(aboId, phone, undefined, paymentMethod)
+      const resp = await initiatePayment(aboId, phone)
       window.location.href = resp.paymentUrl
     } catch (err) {
       const msg = err && typeof err === 'object' && 'message' in err
@@ -52,7 +45,7 @@ function PaiementRetryContent() {
       setError(msg)
       setLoading(false)
     }
-  }, [aboId, phone, phoneValid, paymentMethod])
+  }, [aboId, phone, phoneValid])
 
   // ─── Pas d'abo ID ───
   if (!aboId) {
@@ -120,7 +113,7 @@ function PaiementRetryContent() {
                 Finalisez votre paiement
               </h1>
               <p className="text-sm text-white/60">
-                Votre compte est créé. Finalisez votre paiement Mobile Money pour activer
+                Votre compte est créé. Finalisez votre paiement Wave pour activer
                 votre abonnement <span className="text-[#84CC16] font-semibold">Prof Premium</span>.
               </p>
             </motion.div>
@@ -142,7 +135,7 @@ function PaiementRetryContent() {
               </div>
             </motion.div>
 
-            {/* Payment method selector */}
+            {/* Moyen de paiement — Wave uniquement */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -152,11 +145,21 @@ function PaiementRetryContent() {
               <Label className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                 Moyen de paiement
               </Label>
-              <PaymentMethodSelector
-                value={paymentMethod}
-                onChange={setPaymentMethod}
-                variant="dark"
-              />
+              <div className="w-full rounded-xl border-2 border-lime-500/60 bg-lime-500/[0.07] p-3 flex items-center gap-3">
+                <div
+                  className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: '#1DC8FF1A' }}
+                >
+                  <Phone className="h-5 w-5" style={{ color: '#1DC8FF' }} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold leading-tight text-white">Wave</div>
+                  <div className="text-[10px] leading-tight mt-0.5 text-white/50">WaveMoney · Paiement instantané</div>
+                </div>
+                <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-lime-500/20 text-lime-300">
+                  Paiement instantané
+                </span>
+              </div>
             </motion.div>
 
             {/* Phone input */}
@@ -167,7 +170,7 @@ function PaiementRetryContent() {
               className="space-y-2 mb-5"
             >
               <Label className="text-xs font-semibold text-white/40 uppercase tracking-wider">
-                Numéro {methodName}
+                Numéro Wave
               </Label>
               <div className="relative group">
                 <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#84CC16] transition-transform group-focus-within:scale-110" />
@@ -220,7 +223,7 @@ function PaiementRetryContent() {
               <p className="text-xs text-white/70 flex items-start gap-2">
                 <Shield className="h-4 w-4 text-[#84CC16] shrink-0 mt-0.5" />
                 <span>
-                  Redirection sécurisée vers {methodName}. Aucune donnée bancaire n&apos;est
+                  Redirection sécurisée vers <strong>Wave</strong>. Aucune donnée bancaire n&apos;est
                   stockée par SECT.
                 </span>
               </p>
@@ -239,12 +242,12 @@ function PaiementRetryContent() {
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    Redirection vers {methodName}...
+                    Redirection vers Wave...
                   </>
                 ) : (
                   <>
                     <Lock className="h-4 w-4 mr-2" />
-                    Payer 4 900 FCFA avec {methodName}
+                    Payer 4 900 FCFA avec Wave
                   </>
                 )}
               </Button>
@@ -259,7 +262,7 @@ function PaiementRetryContent() {
           transition={{ delay: 0.6 }}
           className="text-center text-xs text-white/30 mt-4"
         >
-          🔒 Paiement sécurisé par GeniusPay · Wave · Orange Money · MTN
+          🔒 Paiement sécurisé par GeniusPay · Wave
         </motion.p>
       </div>
     </div>

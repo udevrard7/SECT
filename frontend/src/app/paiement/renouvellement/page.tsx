@@ -6,11 +6,6 @@ import { Phone, Loader2, Shield, ArrowLeft, AlertCircle, RefreshCw } from 'lucid
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  PaymentMethodSelector,
-  getPaymentMethodLabel,
-  type PaymentMethodValue,
-} from '@/components/payment'
 
 /**
  * /paiement/renouvellement — Page pour renouveler un abonnement B2C Premium
@@ -31,8 +26,6 @@ function PaiementRenouvellementContent() {
   const [phoneTouched, setPhoneTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // ─── Moyen de paiement (Wave / Orange Money / MTN Money) ───
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>('wave_ci')
 
   const phoneValid = phone.startsWith('+225') && phone.replace(/\D/g, '').length >= 12
   const showPhoneError = phoneTouched && !phoneValid && phone.length > 0
@@ -52,12 +45,11 @@ function PaiementRenouvellementContent() {
     setError(null)
 
     try {
-      // Appel direct au backend /renew (pas de hook use-payment car c'est un endpoint différent)
-      // On ajoute `paymentMethod` au body pour sélectionner Wave / Orange / MTN.
+      // Appel direct au backend /renew
       const resp = await fetch(`/api/subscriptions/b2c/${aboId}/renew`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerPhone: phone, paymentMethod }),
+        body: JSON.stringify({ customerPhone: phone, paymentMethod: 'wave_ci' }),
       })
 
       const data = await resp.json()
@@ -69,14 +61,14 @@ function PaiementRenouvellementContent() {
       // Stocker l'aboId pour /paiement/succes
       try { localStorage.setItem('sect_pending_abo', aboId) } catch {}
 
-      // Rediriger vers la page de paiement du provider sélectionné
+      // Rediriger vers la page de paiement Wave
       window.location.href = data.paymentUrl
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors du renouvellement'
       setError(msg)
       setLoading(false)
     }
-  }, [aboId, phone, phoneValid, paymentMethod])
+  }, [aboId, phone, phoneValid])
 
   if (!aboId) {
     return (
@@ -136,20 +128,28 @@ function PaiementRenouvellementContent() {
             </div>
           </div>
 
+          {/* Moyen de paiement — Wave uniquement */}
           <div className="space-y-2 mb-5">
             <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
               Moyen de paiement
             </Label>
-            <PaymentMethodSelector
-              value={paymentMethod}
-              onChange={setPaymentMethod}
-              variant="light"
-            />
+            <div className="w-full rounded-xl border-2 border-lime-500 bg-lime-50 p-3 flex items-center gap-3">
+              <div
+                className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: '#1DC8FF1A' }}
+              >
+                <Phone className="h-5 w-5" style={{ color: '#1DC8FF' }} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold leading-tight text-slate-900">Wave</div>
+                <div className="text-[10px] leading-tight mt-0.5 text-slate-500">WaveMoney · Paiement instantané</div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2 mb-5">
             <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              Numéro {getPaymentMethodLabel(paymentMethod)}
+              Numéro Wave
             </Label>
             <div className="relative group">
               <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-600 transition-transform group-focus-within:scale-110" />
@@ -185,7 +185,7 @@ function PaiementRenouvellementContent() {
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5">
             <p className="text-xs text-slate-700 flex items-start gap-2">
               <Shield className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-              Vous serez redirigé vers la page sécurisée {getPaymentMethodLabel(paymentMethod)} pour valider le
+              Vous serez redirigé vers la page sécurisée <strong>Wave</strong> pour valider le
               paiement. Aucune donnée bancaire n&apos;est stockée par SECT.
             </p>
           </div>
@@ -198,12 +198,12 @@ function PaiementRenouvellementContent() {
             {loading ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                Redirection vers {getPaymentMethodLabel(paymentMethod)}...
+                Redirection vers Wave...
               </>
             ) : (
               <>
                 <RefreshCw className="h-5 w-5 mr-2" />
-                Renouveler — 4 900 FCFA avec {getPaymentMethodLabel(paymentMethod)}
+                Renouveler — 4 900 FCFA avec Wave
               </>
             )}
           </Button>
