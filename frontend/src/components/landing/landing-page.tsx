@@ -1461,13 +1461,14 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
                 <span className="font-medium text-white">Exemple :</span> {planB2B.exemple}
               </p>
             </div>
-            <MagneticButton
-              className="w-full rounded-lg font-semibold text-sm bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_24px_rgba(249,115,22,0.3)]"
-              onClick={openDemoDialog}
-            >
-              {planB2B.cta}
-              <ChevronRight className="ml-1 h-4 w-4" />
-            </MagneticButton>
+            <a href="/souscrire-b2b" className="block">
+              <MagneticButton
+                className="w-full rounded-lg font-semibold text-sm bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_24px_rgba(249,115,22,0.3)]"
+              >
+                {planB2B.cta}
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </MagneticButton>
+            </a>
           </div>
         </Reveal>
       </div>
