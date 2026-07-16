@@ -229,10 +229,11 @@ func main() {
                 logger.Warn("GeniusPay not configured (GENIUSPAY_API_KEY empty) — payment endpoints will return 503")
         }
 
-        // CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
-        // toutes les 30s en une série d'appels SaveReponse (un par question).
-        // Le worker n'a pas de claims HTTP : FlushSessionToNeon construit les
-        // claims RLS depuis l'EtudiantID stocké en cache (RLS = ON, sécurisé).
+        // CACHE-RAM-1 + OPT-3 : worker goroutine — synchronise le cache RAM vers Neon.
+        //
+        // AVANT : FlushSessionToNeon par session → 1 tx par session (5000 tx / 30s).
+        // APRÈS : BatchFlushToNeon → 1 tx pour toutes les sessions (~10 tx / 30s).
+        // Si le batch échoue, un fallback individuel par session est appliqué.
         go func() {
                 ticker := time.NewTicker(30 * time.Second)
                 defer ticker.Stop()
@@ -241,15 +242,39 @@ func main() {
                         if len(dirtySessions) == 0 {
                                 continue
                         }
-                        logger.Info("flushing dirty sessions to Neon", "count", len(dirtySessions))
+                        logger.Info("flushing dirty sessions to Neon (batch)", "count", len(dirtySessions))
                         ctx := context.Background()
-                        for _, ds := range dirtySessions {
-                                if err := server.FlushSessionToNeon(ctx, ds); err != nil {
-                                        logger.Warn("flush session to Neon failed", "sessionId", ds.SessionID, "error", err)
+                        flushed, errs := server.BatchFlushToNeon(ctx, dirtySessions)
+                        if len(errs) > 0 {
+                                for _, err := range errs {
+                                        logger.Warn("batch flush partial failure", "error", err)
                                 }
+                        }
+                        if flushed > 0 {
+                                logger.Info("batch flush completed", "flushed", flushed, "total", len(dirtySessions))
                         }
                 }
         }()
+
+        // OPT-6 : self-ping pour empêcher Render free tier de s'endormir.
+        // Render s'endort après 15 min d'inactivité. Pendant un examen, l'API est
+        // active, mais avant/après, le self-ping maintient l'instance éveillée.
+        // Le ping est sur le localhost (pas de coût réseau externe).
+        if cfg.Environment != "production" || os.Getenv("RENDER") != "" {
+                go func() {
+                        ticker := time.NewTicker(10 * time.Minute)
+                        defer ticker.Stop()
+                        for range ticker.C {
+                                resp, err := http.Get("http://localhost:" + cfg.Port + "/health")
+                                if err != nil {
+                                        logger.Warn("self-ping failed", "error", err)
+                                        continue
+                                }
+                                resp.Body.Close()
+                                logger.Debug("self-ping ok", "port", cfg.Port)
+                        }
+                }()
+        }
 
         httpServer := &http.Server{
                 Addr:         ":" + cfg.Port,

@@ -60,45 +60,57 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                         return
                 }
 
-                // BULK-FLUSH-1 : vérifier ownership + bulk upsert en 2 transactions
-                // au lieu de 21 (1 ownership + N par question).
+                // OPT-1 + OPT-2 : écriture via cache RAM + ownership cache.
                 //
-                // Avant : 1 WithTx ownership + N WithTx par question = 21 transactions.
-                // Maintenant : 1 WithTx ownership + 1 BulkSaveReponses = 2 transactions.
-                // Performance : ~90% de transactions en moins.
+                // AVANT : chaque auto-save (30s) faisait 1 WithTx ownership + 1 BulkSaveReponses
+                // = 2 transactions DB par étudiant par save. Pour 5000 étudiants = 333 tx/s.
+                //
+                // APRÈS : l'auto-save écrit en RAM (< 1ms, 0 tx DB). Le worker goroutine
+                // synchronise vers Neon toutes les 30s (1 tx par session). L'ownership est
+                // vérifiée en cache après la première vérification DB.
+                //
+                // Pour 5000 étudiants : 5000 × 1 tx / 30s = 167 tx/s au lieu de 333 tx/s (-50%).
+                // Avec OPT-3 (batch flush) : ~10 tx/s au lieu de 167 tx/s (-95%).
 
-                // Vérifier ownership (session.etudiantId = claims.UserID)
-                var etudiantID string
-                found := false
-                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                        err := tx.QueryRow(r.Context(),
-                                `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
-                                sessionID).Scan(&etudiantID)
-                        if err == nil {
-                                found = true
+                // OWNERSHIP-CACHE-2 : vérifier ownership via le cache en mémoire d'abord,
+                // puis via DB si pas encore vérifié (même pattern que saveReponse).
+                if s.sessionCache != nil && s.sessionCache.IsOwnershipVerified(sessionID, claims.UserID) {
+                        // Ownership déjà vérifiée en cache → skip DB query (-1 tx par save)
+                } else {
+                        // Première vérification : requêter la DB
+                        var etudiantID string
+                        found := false
+                        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                                err := tx.QueryRow(r.Context(),
+                                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+                                        sessionID).Scan(&etudiantID)
+                                if err == nil {
+                                        found = true
+                                }
+                                return err
+                        })
+                        if !found || etudiantID != claims.UserID {
+                                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+                                return
                         }
-                        return err
-                })
-                if !found || etudiantID != claims.UserID {
-                        writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
-                        return
+                        // Cacher l'ownership vérifiée pour les prochains saves
+                        if s.sessionCache != nil {
+                                s.sessionCache.MarkOwnershipVerified(sessionID, claims.UserID)
+                        }
                 }
 
-                // Bulk upsert : 1 transaction pour toutes les réponses
-                err := s.sessionUC.BulkSaveReponses(r.Context(), claims, sessionID, reponses)
-                saved := 0
-                if err == nil {
-                        saved = len(reponses)
+                // OPT-1 : écrire en RAM au lieu de DB directe.
+                // Le cache merge les réponses (map[string]string) et marque la session dirty.
+                // Le worker goroutine (FlushSessionToNeon toutes les 30s) synchronisera vers Neon.
+                // Le submit force un flush immédiat avant la soumission finale.
+                if s.sessionCache != nil {
+                        s.sessionCache.SaveAnswers(sessionID, "", claims.UserID, reponses)
                 }
-
-                // Note : le cache RAM saveReponse (pattern existant) prend aussi epreuveID/etudiantID.
-                // Ici on a fait le bulk INSERT direct en DB, ce qui est plus fiable. Le cache
-                // n'est pas mis à jour pour éviter une double écriture au flush.
 
                 w.Header().Set("Content-Type", "application/json")
                 json.NewEncoder(w).Encode(map[string]any{
-                        "saved":  true,
-                        "count":  saved,
+                        "saved": true,
+                        "count": len(reponses),
                 })
                 return
         }
@@ -119,21 +131,30 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                         return
                 }
 
-                // Vérifier ownership
-                var etudiantID string
-                found := false
-                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                        err := tx.QueryRow(r.Context(),
-                                `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
-                                sessionID).Scan(&etudiantID)
-                        if err == nil {
-                                found = true
+                // OWNERSHIP-CACHE-2 : vérifier ownership via le cache d'abord (comme reponses).
+                // Les alertes sont moins fréquentes mais pendant un examen avec proctoring,
+                // elles peuvent être nombreuses (changement d'onglet, copier-coller...).
+                if s.sessionCache != nil && s.sessionCache.IsOwnershipVerified(sessionID, claims.UserID) {
+                        // Ownership déjà vérifiée → skip DB
+                } else {
+                        var etudiantID string
+                        found := false
+                        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                                err := tx.QueryRow(r.Context(),
+                                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+                                        sessionID).Scan(&etudiantID)
+                                if err == nil {
+                                        found = true
+                                }
+                                return err
+                        })
+                        if !found || etudiantID != claims.UserID {
+                                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+                                return
                         }
-                        return err
-                })
-                if !found || etudiantID != claims.UserID {
-                        writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
-                        return
+                        if s.sessionCache != nil {
+                                s.sessionCache.MarkOwnershipVerified(sessionID, claims.UserID)
+                        }
                 }
 
                 // AddAlerte (RLS off dans le repo — conforme au pattern existant)
