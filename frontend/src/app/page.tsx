@@ -59,7 +59,13 @@ function HomeContent() {
   return (
     <LandingPage
       onLogin={() => router.push('/login')}
-      onDemo={() => router.push('/login')}
+      onDemo={() => {
+        // Faire défiler vers la section démo interactive du landing page
+        const demoSection = document.getElementById('demo')
+        if (demoSection) {
+          demoSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }}
     />
   )
 }
