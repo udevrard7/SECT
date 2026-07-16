@@ -23,6 +23,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(data, { status: resp.status })
     }
 
+    // SECT-B2C-MULTI-ETAB : si multi-comptes, retourner la liste (pas de tokens)
+    if (data.multiAccounts && data.multiAccounts.length > 0) {
+      return NextResponse.json({
+        multiAccounts: data.multiAccounts,
+        message: 'Plusieurs établissements trouvés. Choisissez-en un.',
+      })
+    }
+
     const response = NextResponse.json({
       user: data.user,
       message: 'Login réussi',
