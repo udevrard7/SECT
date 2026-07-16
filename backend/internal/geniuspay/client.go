@@ -1,5 +1,5 @@
 // Package geniuspay implémente le client HTTP pour l'API GeniusPay
-// (paiements Wave / Orange Money / MTN / cartes en Afrique de l'Ouest).
+// (paiements Wave en Afrique de l'Ouest).
 //
 // SECT-GENIUSPAY-WAVE : intégration du paiement Wave pour le plan B2C
 // Prof Premium (4 900 FCFA/mois).
@@ -66,13 +66,10 @@ var ErrNotConfigured = fmt.Errorf("geniuspay: client non configuré (GENIUSPAY_A
 // --- Requêtes / réponses API ---
 
 // CreatePaymentRequest — body du POST /payments.
-// Doc GeniusPay : amount (min 200 XOF), payment_method (wave_ci, orange_money_ci...),
+// Doc GeniusPay : amount (min 200 XOF), payment_method (wave_ci),
 // customer.phone (requis, format +225...), success_url, error_url, metadata.
 //
-// Si PaymentMethod est vide → mode checkout (GeniusPay affiche sa page de choix).
 // Si PaymentMethod est "wave_ci" → redirection directe vers Wave.
-// NB: orange_money_ci et mtn_money_ci sont ignorés par GeniusPay (retourne Wave).
-// Pour Orange/MTN, on utilise le mode checkout (PaymentMethod vide).
 type CreatePaymentRequest struct {
         Amount        int               `json:"amount"`              // en XOF (entier)
         Currency      string            `json:"currency,omitempty"`  // XOF défaut
