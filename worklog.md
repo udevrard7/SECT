@@ -16495,3 +16495,23 @@ Stage Summary:
 - ⚠️ Note : le header (section 1) de ce worklog est OBSOLÈTE — il mentionne Supabase/Prisma/NextAuth.js, or l'architecture RÉELLE est Go/chi/pgx + Neon + JWT custom + sqlc (confirmé par README, go.mod, render.yaml). À corriger ultérieurement.
 - 🔎 Bug identifié (non bloquant) : internal/worker/homework_correction_worker.go:316 — la requête RecoverInterruptedHomeworkCorrections filtre sur `s."deletedAt" IS NULL` mais `s` alias la table "Soumission" qui n'a PAS de colonne deletedAt (seules Abonnement/Conversation/Devoir/Document/Epreuve/Message/Question en ont une). Erreur SQLSTATE 42703 à chaque démarrage. Fix proposé : retirer le filtre `s."deletedAt" IS NULL` (ou ajouter la colonne via migration si le soft-delete de Soumission est voulu).
 - 🔐 Sécurité : les credentials partagés en clair par l'utilisateur (token GitHub, URL Neon, tokens Vercel/Render) doivent être révoqués/régénérés après cette session.
+
+---
+Task ID: SECT-RECOVER-HOMEWORK-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Corriger le bug RecoverHomework (erreur SQLSTATE 42703 à chaque démarrage backend)
+
+Work Log:
+- Analyse : internal/worker/homework_correction_worker.go:316 — la requête RecoverInterruptedHomeworkCorrections filtrait sur `s."deletedAt" IS NULL` mais `s` alias la table "Soumission" qui n'a PAS de colonne deletedAt (schéma vérifié : Soumission a 18 colonnes, aucune deletedAt ; seules Abonnement/Conversation/Devoir/Document/Epreuve/Message/Question ont deletedAt).
+- Confirmation de l'intent : stub_handlers_real2.go:1530 utilise le même pattern `Soumission s JOIN Devoir d ... WHERE d."deletedAt" IS NULL` avec le commentaire explicite "BUGFIX (DEVOIRS-STATS-FIX-1) : exclure les soumissions des devoirs soft-supprimés". Le bug du worker est un typo (s. au lieu de dv.).
+- Fix appliqué (1 ligne) : `s."deletedAt" IS NULL` → `dv."deletedAt" IS NULL` (soft-delete du Devoir, conformément à la convention du codebase).
+- Aucune migration nécessaire (Soumission ne supporte pas le soft-delete ; c'est le Devoir qui le supporte).
+- Incident de formatage : un premier commit (01e3175) a accidentellement converti tout le fichier de tabs en espaces (258 lignes changées). Corrigé par restauration depuis e5347ed + sed chirurgical + amend. Commit final 83467f8 : 1 file changed, 1 insertion(+), 1 deletion(-). Force-push avec --force-with-lease.
+- Vérifications locales : go build ./... EXIT 0, go vet ./... EXIT 0, gofmt -l inchangé vs original (préexistant non-gofmt-clean, hors scope de ce fix).
+- Smoke test backend local : /health HTTP 200, l'erreur "RecoverHomework: query failed" a disparu des logs, remplacée par "No interrupted homework corrections to recover" + "Homework Correction IA Worker started".
+
+Stage Summary:
+- Bug corrigé : la recovery des corrections de devoirs interrompues (crash backend) fonctionne désormais — auparavant la requête échouait à chaque démarrage, laissant les soumissions en statutIA=EN_COURS à jamais bloquées après un crash.
+- Commit : 83467f8 (main), diff minimal (1 ligne), auteur udevrard7 <ulrichdouh@gmail.com>.
+- Déploiement Render déclenché (auto-deploy on push to main, rootDir backend).
+- Note pour plus tard : le fichier homework_correction_worker.go n'est pas gofmt-clean (alignement struct homeworkData) — c'est préexistant, pourrait faire l'objet d'un nettoyage gofmt séparé si souhaité.
