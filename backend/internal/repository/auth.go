@@ -9,6 +9,7 @@ import (
         "github.com/google/uuid"
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
+        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
 )
 
@@ -302,22 +303,27 @@ func (r *AuthRepository) GetPendingAbonnementByEtablissementID(ctx context.Conte
         if etablissementID == "" {
                 return "", "", nil
         }
-        err = r.pool.QueryRow(ctx, `
-                SELECT "id",
-                  CASE
-                    WHEN "statut" = 'EN_ATTENTE_PAIEMENT' THEN 'pending'
-                    ELSE 'expired'
-                  END AS reason
-                FROM "Abonnement"
-                WHERE "etablissementId" = $1
-                  AND "deletedAt" IS NULL
-                  AND (
-                    "statut" = 'EN_ATTENTE_PAIEMENT'
-                    OR "statut" = 'EXPIRE'
-                    OR ("statut" = 'ACTIF' AND "dateFin" IS NOT NULL AND "dateFin" < NOW())
-                  )
-                ORDER BY "createdAt" DESC LIMIT 1
-        `, etablissementID).Scan(&abonnementID, &reason)
+        // SECT-B2C-EXPIRE FIX : utiliser SystemClaims pour bypass RLS.
+        // Sans claims, sect_app ne voit aucun abonnement (RLS bloque) → le check
+        // passait toujours → login réussissait même pour Premium non payé.
+        err = appdb.WithTx(ctx, r.pool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `
+                        SELECT "id",
+                          CASE
+                            WHEN "statut" = 'EN_ATTENTE_PAIEMENT' THEN 'pending'
+                            ELSE 'expired'
+                          END AS reason
+                        FROM "Abonnement"
+                        WHERE "etablissementId" = $1
+                          AND "deletedAt" IS NULL
+                          AND (
+                            "statut" = 'EN_ATTENTE_PAIEMENT'
+                            OR "statut" = 'EXPIRE'
+                            OR ("statut" = 'ACTIF' AND "dateFin" IS NOT NULL AND "dateFin" < NOW())
+                          )
+                        ORDER BY "createdAt" DESC LIMIT 1
+                `, etablissementID).Scan(&abonnementID, &reason)
+        })
         if err != nil {
                 if err == pgx.ErrNoRows {
                         return "", "", nil // Pas d'abonnement bloquant → login OK
