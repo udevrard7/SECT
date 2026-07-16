@@ -60,12 +60,12 @@ function HomeContent() {
     <LandingPage
       onLogin={() => router.push('/login')}
       onDemo={() => {
-        // Faire défiler vers la section démo interactive du landing page
         const demoSection = document.getElementById('demo')
         if (demoSection) {
           demoSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
       }}
+      onSignUp={() => router.push('/souscrire-b2c')}
     />
   )
 }

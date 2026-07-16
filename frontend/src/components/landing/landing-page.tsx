@@ -81,6 +81,7 @@ gsap.registerPlugin(ScrollTrigger)
 interface LandingPageProps {
   onLogin: () => void
   onDemo: () => void
+  onSignUp: () => void
 }
 
 /* ─── Magnetic Button ─── */
@@ -362,7 +363,7 @@ function Navbar({ onLogin }: { onLogin: () => void }) {
 /* ════════════════════════════════════════════════════════════════════
    1. HERO
    ════════════════════════════════════════════════════════════════════ */
-function HeroSection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => void }) {
+function HeroSection({ onDemo, onLogin, onSignUp }: { onDemo: () => void; onLogin: () => void; onSignUp: () => void }) {
   const headline = ['Vos copies corrigées', 'en 2 minutes.', 'Pas en 2 semaines.']
 
   return (
@@ -423,7 +424,7 @@ function HeroSection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => v
           <MagneticButton
             variant="outline"
             className="w-full sm:w-auto border-white/[0.12] bg-white/[0.02] text-white hover:bg-white/[0.06] px-7 py-3.5 text-base rounded-xl"
-            onClick={onLogin}
+            onClick={onSignUp}
           >
             <Play className="mr-2 h-4 w-4" />
             Essayer gratuitement
@@ -1704,7 +1705,7 @@ function DifferentiatorsStrip() {
 /* ════════════════════════════════════════════════════════════════════
    11. FINAL CTA
    ════════════════════════════════════════════════════════════════════ */
-function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => void }) {
+function CTASection({ onDemo, onLogin, onSignUp }: { onDemo: () => void; onLogin: () => void; onSignUp: () => void }) {
   return (
     <section className="relative py-16 sm:py-20 bg-[#0A1628] overflow-hidden">
       <GlowOrb x="50%" y="50%" color="orange" />
@@ -1730,7 +1731,7 @@ function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => vo
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
             <MagneticButton
               className="w-full sm:w-auto bg-orange-500 hover:bg-orange-400 text-white font-semibold px-8 py-4 text-base shadow-[0_0_40px_rgba(249,115,22,0.45)] hover:shadow-[0_0_60px_rgba(249,115,22,0.65)] transition-shadow duration-300 rounded-xl"
-              onClick={onLogin}
+              onClick={onSignUp}
             >
               Démarrer l&apos;essai gratuit
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -1853,7 +1854,7 @@ function Footer() {
 /* ════════════════════════════════════════════════════════════════════
    STICKY MOBILE CTA BAR
    ════════════════════════════════════════════════════════════════════ */
-function MobileStickyCTA({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => void }) {
+function MobileStickyCTA({ onDemo, onLogin, onSignUp }: { onDemo: () => void; onLogin: () => void; onSignUp: () => void }) {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 600)
@@ -1872,7 +1873,7 @@ function MobileStickyCTA({ onDemo, onLogin }: { onDemo: () => void; onLogin: () 
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           <Button
-            onClick={onLogin}
+            onClick={onSignUp}
             className="flex-1 bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.1] rounded-xl"
           >
             Essai gratuit
@@ -1892,7 +1893,7 @@ function MobileStickyCTA({ onDemo, onLogin }: { onDemo: () => void; onLogin: () 
 /* ════════════════════════════════════════════════════════════════════
    MAIN LANDING PAGE
    ════════════════════════════════════════════════════════════════════ */
-export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
+export function LandingPage({ onLogin, onDemo, onSignUp }: LandingPageProps) {
   const mainRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1906,7 +1907,7 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
     <div ref={mainRef} className="min-h-screen flex flex-col bg-[#0A1628]">
       <Navbar onLogin={onLogin} />
       <main className="flex-1">
-        <HeroSection onDemo={onDemo} onLogin={onLogin} />
+        <HeroSection onDemo={onDemo} onLogin={onLogin} onSignUp={onSignUp} />
         <TrustBar />
         <ProblemSection />
         <SolutionSection />
@@ -1917,10 +1918,10 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         <PricingSection onDemo={onDemo} />
         <DifferentiatorsStrip />
         <FAQSection />
-        <CTASection onDemo={onDemo} onLogin={onLogin} />
+        <CTASection onDemo={onDemo} onLogin={onLogin} onSignUp={onSignUp} />
       </main>
       <Footer />
-      <MobileStickyCTA onDemo={onDemo} onLogin={onLogin} />
+      <MobileStickyCTA onDemo={onDemo} onLogin={onLogin} onSignUp={onSignUp} />
     </div>
   )
 }
