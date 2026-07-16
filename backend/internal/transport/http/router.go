@@ -67,6 +67,11 @@ type Server struct {
         // Peut être nil si GENIUSPAY_API_KEY non configuré (handlers retournent 503).
         geniusPay              *geniuspay.Client
         geniusPayWebhookSecret string
+        // SUBMIT-RATELIMIT-1 (OPT-7) : limite le nombre de submits traités
+        // concurremment. Sous forte charge (pic de fin d'examen), renvoie 202 +
+        // Retry-After au lieu d'attendre et risquer le timeout 30s de Render.
+        // Voir submit_limiter.go.
+        submitLimiter *SubmitLimiter
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -136,6 +141,8 @@ func NewServer(
         }
         // CACHE-RAM-1 : initialiser le cache RAM write-behind.
         s.sessionCache = cache.NewSessionCache()
+        // SUBMIT-RATELIMIT-1 (OPT-7) : initialise le limiteur de submits depuis env.
+        s.submitLimiter = NewSubmitLimiterFromEnv()
         s.setupRouter(corsOrigins, authMiddleware)
         return s
 }
