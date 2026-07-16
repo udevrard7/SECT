@@ -263,7 +263,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   'mes-certificats': 'Mes certificats',
   'exam-prep': 'Préparation examens',
   'aide-etudiants': 'Aide des étudiants',
-  'mes-etudiants': 'Mes étudiants',
+  'mes-etudiants': 'Mes classes',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -308,7 +308,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'mes-certificats': 'Consulter et télécharger vos certificats',
   'exam-prep': "Transformez vos supports de cours en moteur de préparation actif : Q&A IA, entraînement, planning et aide de l'enseignant",
   'aide-etudiants': "Répondez aux questions de vos étudiants sur les documents de cours",
-  'mes-etudiants': "Consultez vos étudiants (UE/filières affectées) et téléchargez leurs relevés de notes détaillés",
+  'mes-etudiants': "Consultez les étudiants de vos classes et téléchargez leurs relevés de notes détaillés",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -500,7 +500,7 @@ const ENSEIGNANT_CATEGORIES: NavCategory[] = [
     icon: 'HelpCircle',
     defaultOpen: true,
     items: [
-      { id: 'mes-etudiants', label: 'Mes étudiants', icon: 'Users' },
+      { id: 'mes-etudiants', label: 'Mes classes', icon: 'Users' },
       { id: 'aide-etudiants', label: 'Aide des étudiants', icon: 'HelpCircle' },
     ],
   },
@@ -516,7 +516,7 @@ const ENSEIGNANT_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'filieres', label: 'Mes filières', icon: 'FolderTree' },
       { id: 'unites-enseignement', label: 'Mes unités', icon: 'BookOpen' },
-      { id: 'etudiants', label: 'Mes étudiants', icon: 'Users' },
+      { id: 'etudiants', label: 'Gestion des étudiants', icon: 'Users' },
     ],
   },
   {

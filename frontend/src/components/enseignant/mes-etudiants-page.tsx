@@ -263,7 +263,7 @@ export function MesEtudiantsPage() {
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
-              Mes étudiants
+              Mes classes
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Étudiants de vos UE affectées — sélectionnez une filière et un niveau pour commencer
