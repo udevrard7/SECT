@@ -152,6 +152,21 @@ const DEFAULT_SECURITY: SecurityConfig = {
   intervalleCaptureEcran: 60,
 }
 
+// SUBMIT-JITTER-1 (OPT-7) : amplitude du jitter appliqué à l'auto-submit de
+// fin de temps. Quand le chronomètre atteint 0, au lieu de soumettre à l'instant
+// (t=0 pour toute la promotion → pic qui sature le backend), on tire un délai
+// aléatoire dans [0, SUBMIT_JITTER_MS] pour étaler les soumissions sur cette
+// fenêtre. 45s étaie 1000 étudiants sur ~6-7 submits/s, juste sous la capacité
+// Render free. Overridable via NEXT_PUBLIC_SUBMIT_JITTER_MS (ex. 60000 en prod).
+const SUBMIT_JITTER_MS = (() => {
+  const raw = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUBMIT_JITTER_MS : undefined
+  const parsed = raw ? parseInt(raw, 10) : NaN
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 120000 ? parsed : 45000
+})()
+// Nombre max de retries si le backend renvoie 202 (file pleine). 10 × 3s = 30s
+// max, reste sous le timeout de session frontend.
+const SUBMIT_MAX_RETRIES = 10
+
 // ─── Utility: format time as HH:MM:SS ──────────────────────────────────────
 
 function formatTime(totalSeconds: number): string {
@@ -225,6 +240,10 @@ export function PassationPage() {
   const [timeRemaining, setTimeRemaining] = useState(0)
   const [autoSubmitted, setAutoSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // SUBMIT-JITTER-1 (OPT-7) : countdown affiché à l'étudiant pendant la
+  // fenêtre de jitter (entre l'expiration du temps et le submit effectif).
+  // null = pas de jitter en cours.
+  const [pendingAutoSubmitIn, setPendingAutoSubmitIn] = useState<number | null>(null)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
@@ -279,6 +298,11 @@ export function PassationPage() {
   const totalAlertCountRef = useRef(totalAlertCount)
   const isAutoSubmittingRef = useRef(false)
   const fullscreenExitCountRef = useRef(fullscreenExitCount)
+  // SUBMIT-JITTER-1 (OPT-7) : quand le temps expire, au lieu de soumettre
+  // immédiatement (tous les étudiants au même t=0 → pic qui fait crasher le
+  // backend Render), on tire un délai aléatoire [0, SUBMIT_JITTER_MS] pour
+  // étaler les soumissions. Voir timer effect + submitExam.
+  const pendingAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const penaliteRef = useRef(penalite)
   // OPT-5 : ref pour détecter les changements et skip l'auto-save quand rien n'a changé.
   // Stocke un hash sérialisé des dernières réponses sauvées.
@@ -683,9 +707,18 @@ export function PassationPage() {
   }, [debouncedSaveAnswers])
 
   // ─── Submit exam ───────────────────────────────────────────────────────
+  // SUBMIT-JITTER-1 + SUBMIT-RATELIMIT-1 (OPT-7) : gère le 202 Accepted du
+  // backend (file de submits pleine) en réessayant après le Retry-After
+  // indiqué. Le submit reste idempotent côté backend (statut session vérifié),
+  // donc un retry est sûr. Max SUBMIT_MAX_RETRIES pour rester sous le timeout
+  // de session frontend.
   const submitExam = useCallback(async (autoSubmit: boolean = false, reason: AutoSubmitReason = null) => {
     if (!sessionRef.current || isAutoSubmittingRef.current) return
     if (isSubmitting && !autoSubmit) return
+
+    // SUBMIT-JITTER-1 : si l'étudiant soumet manuellement pendant la fenêtre
+    // de jitter, annuler le submit jitteré planifié.
+    cancelPendingAutoSubmit()
 
     isAutoSubmittingRef.current = true
     setIsSubmitting(true)
@@ -697,12 +730,6 @@ export function PassationPage() {
       // Small delay to let the flush complete
       await new Promise(resolve => setTimeout(resolve, 100))
 
-      // Offline-first submission: when online, behaves like a normal fetch.
-      // When offline, the request is stored in the IndexedDB outbox and
-      // replayed automatically by the Service Worker (BG Sync) or on the
-      // next `online` event (iOS Safari fallback). In the offline case we
-      // keep the student on the exam page — they can close the app, the SW
-      // will sync as soon as the network is back.
       type SubmitResponse = {
         penalite?: number
         scenario?: 'A' | 'B'
@@ -713,33 +740,109 @@ export function PassationPage() {
         pendingCorrection?: number
       }
 
-      const result = await submitOffline<SubmitResponse>(
-        `/api/sessions/${sessionRef.current.id}/submit`,
-        { autoSubmit, reponses: reponsesRef.current },
-        {
-          type: 'submit-exam',
-          meta: { examTitle: epreuve?.titre ?? 'Épreuve' },
-        }
-      )
+      // SUBMIT-RATELIMIT-1 : on ne peut pas utiliser submitOffline pour le
+      // submit final car le hook traite tout 2xx (dont 202) comme un succès.
+      // Or 202 = "file pleine, réessayez" → il faut retry avec Retry-After.
+      // On fait donc un fetch direct avec boucle de retry, en gardant le
+      // fallback offline (outbox) si le réseau lâche complètement.
+      const submitUrl = `/api/sessions/${sessionRef.current.id}/submit`
+      const submitBody = JSON.stringify({ autoSubmit, reponses: reponsesRef.current })
 
-      // Offline → request queued in outbox, toast already shown by the hook.
-      // Keep the user on the page so they can close the app; the SW will sync.
-      if (!result.synced) {
-        // Hook already toasted. If outbox storage itself failed, surface it.
-        if (result.error) {
-          toast.error('Sauvegarde hors ligne impossible', {
-            description: result.error,
-          })
+      let data: SubmitResponse | undefined
+      let lastError: string | undefined
+      let attempt = 0
+      let queued = false
+
+      while (attempt < SUBMIT_MAX_RETRIES) {
+        attempt += 1
+
+        // Offline → outbox (une seule fois, puis break)
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          const result = await submitOffline<SubmitResponse>(
+            submitUrl,
+            { autoSubmit, reponses: reponsesRef.current },
+            { type: 'submit-exam', meta: { examTitle: epreuve?.titre ?? 'Épreuve' } }
+          )
+          if (!result.synced) {
+            // Hook a déjà toastyé. Si l'outbox échoue aussi, on remonte.
+            if (result.error) {
+              toast.error('Sauvegarde hors ligne impossible', { description: result.error })
+            }
+            return
+          }
+          if (result.error) {
+            throw new Error(result.error)
+          }
+          data = result.data
+          break
         }
+
+        // Online → fetch direct pour pouvoir distinguer 202 des vrais succès
+        let res: Response
+        try {
+          res = await fetch(submitUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: submitBody,
+            credentials: 'same-origin',
+          })
+        } catch (err) {
+          // Erreur réseau inattendue → fallback offline outbox (une fois)
+          const result = await submitOffline<SubmitResponse>(
+            submitUrl,
+            { autoSubmit, reponses: reponsesRef.current },
+            { type: 'submit-exam', meta: { examTitle: epreuve?.titre ?? 'Épreuve' } }
+          )
+          if (!result.synced) {
+            if (result.error) {
+              toast.error('Sauvegarde hors ligne impossible', { description: result.error })
+            }
+            return
+          }
+          if (result.error) throw new Error(result.error)
+          data = result.data
+          break
+        }
+
+        // SUBMIT-RATELIMIT-1 : 202 Accepted = file pleine, retry après Retry-After
+        if (res.status === 202) {
+          const body = await res.json().catch(() => ({} as { retryAfter?: number }))
+          const retryAfter = (body as { retryAfter?: number }).retryAfter ?? 3
+          queued = true
+          // Indicateur visuel pendant l'attente
+          if (attempt === 1) {
+            toast.info('Soumission en file d\'attente…', {
+              description: `Le serveur traite d'autres copies. Nouvelle tentative dans ${retryAfter}s.`,
+              duration: retryAfter * 1000 + 500,
+            })
+          }
+          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+          continue
+        }
+
+        // Vrai succès (200) ou erreur HTTP
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`)
+        }
+
+        data = (await res.json().catch(() => undefined)) as SubmitResponse | undefined
+        break
+      }
+
+      if (queued && !data) {
+        // Épuisé les retries sans succès — l'étudiant garde sa copie en IndexedDB
+        // (déjà sauvée) et le SW retryera. On ne perd rien.
+        toast.warning('Soumission en cours de traitement', {
+          description: 'Le serveur est très sollicité. Votre copie est sauvegardée et sera soumise automatiquement.',
+          duration: 6000,
+        })
         return
       }
 
-      // Online path — handle server errors (HTTP non-2xx) gracefully.
-      if (result.error) {
-        throw new Error(result.error)
+      if (!data) {
+        throw new Error(lastError ?? 'Réponse vide du serveur')
       }
-
-      const data = result.data
 
       if (autoSubmit) {
         setAutoSubmitted(true)
@@ -796,7 +899,7 @@ export function PassationPage() {
       setIsSubmitting(false)
       isAutoSubmittingRef.current = false
     }
-  }, [isSubmitting, debouncedSaveAnswers, submitOffline, epreuve])
+  }, [isSubmitting, debouncedSaveAnswers, submitOffline, epreuve, cancelPendingAutoSubmit])
 
   // ─── Log alert (enhanced with penalty) ─────────────────────────────────
   const logAlert = useCallback(async (type: string, details?: string, alertPenalite?: number) => {
@@ -875,16 +978,83 @@ export function PassationPage() {
     }
   }, [])
 
+  // ─── SUBMIT-JITTER-1 (OPT-7) : planification du submit jitteré ────────
+  // Quand le temps expire, on ne soumet pas immédiatement. On tire un délai
+  // aléatoire dans [0, SUBMIT_JITTER_MS] et on planifie le submit. L'étudiant
+  // voit un compte à rebours pendant cette fenêtre. Si l'étudiant soumet
+  // manuellement avant (bouton « Terminer »), le jitter est annulé.
+  //
+  // Objectif : étaler le pic de soumission. Sans cela, N étudiants soumettent
+  // à t=0 et saturent le backend (timeout 30s Render → 502 → réponses perdues).
+  // Avec 45s de jitter, 1000 étudiants → ~6-7 submits/s en moyenne, sous la
+  // capacité Render free (~6-7 submits/s).
+  const scheduleAutoSubmitWithJitter = useCallback(() => {
+    // Si un submit est déjà en cours (manuel ou jitter précédent), ne rien faire
+    if (isAutoSubmittingRef.current) return
+    if (pendingAutoSubmitTimeoutRef.current) return
+
+    // Jitter = 0 → submit immédiat (comportement d'origine, utile pour tests)
+    const jitterMs = SUBMIT_JITTER_MS > 0 ? Math.floor(Math.random() * SUBMIT_JITTER_MS) : 0
+    const seconds = Math.ceil(jitterMs / 1000)
+    setPendingAutoSubmitIn(seconds)
+
+    // Countdown visible (mise à jour chaque seconde)
+    let remaining = seconds
+    const countdownInterval = setInterval(() => {
+      remaining -= 1
+      if (remaining >= 0) {
+        setPendingAutoSubmitIn(remaining)
+      }
+      if (remaining <= 0) {
+        clearInterval(countdownInterval)
+      }
+    }, 1000)
+
+    pendingAutoSubmitTimeoutRef.current = setTimeout(() => {
+      clearInterval(countdownInterval)
+      pendingAutoSubmitTimeoutRef.current = null
+      setPendingAutoSubmitIn(null)
+      submitExam(true, 'time')
+    }, jitterMs)
+  }, [submitExam])
+
+  // Annule le jitter si l'étudiant soumet manuellement avant la fin du compte
+  // à rebours. Appelé depuis submitExam (via cleanup) et au unmount.
+  const cancelPendingAutoSubmit = useCallback(() => {
+    if (pendingAutoSubmitTimeoutRef.current) {
+      clearTimeout(pendingAutoSubmitTimeoutRef.current)
+      pendingAutoSubmitTimeoutRef.current = null
+    }
+    setPendingAutoSubmitIn(null)
+  }, [])
+
+  // SUBMIT-JITTER-1 : cleanup à l'unmount — évite qu'un submit ne se déclenche
+  // après que le composant ait été démonté (fuite mémoire + state sur composant
+  // non monté).
+  useEffect(() => {
+    return () => {
+      if (pendingAutoSubmitTimeoutRef.current) {
+        clearTimeout(pendingAutoSubmitTimeoutRef.current)
+        pendingAutoSubmitTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   // ─── Timer effect ──────────────────────────────────────────────────────
+  // SUBMIT-JITTER-1 (OPT-7) : quand le temps expire, on ne soumet PAS
+  // immédiatement. À la place, on planifie un submit après un délai aléatoire
+  // [0, SUBMIT_JITTER_MS] pour étaler le pic de soumission sur toute la
+  // promotion. L'étudiant voit un compte à rebours « Soumission dans Xs »
+  // pendant la fenêtre de jitter.
   useEffect(() => {
     if (phase !== 'in-exam') return
 
     timerIntervalRef.current = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
-          // Time's up — auto-submit
+          // Time's up — planifier le submit jitteré au lieu de submit immédiat
           clearInterval(timerIntervalRef.current!)
-          submitExam(true, 'time')
+          scheduleAutoSubmitWithJitter()
           return 0
         }
         return prev - 1
@@ -894,6 +1064,8 @@ export function PassationPage() {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
     }
+    // scheduleAutoSubmitWithJitter est stable (useCallback ci-dessus) et est
+    // capturé via submitExam (dépendance) — pas besoin de l'ajouter aux deps.
   }, [phase, submitExam])
 
   // ─── Auto-save effect (every 45s) ──────────────────────────────────────
@@ -1855,6 +2027,19 @@ export function PassationPage() {
           >
             {formatTime(timeRemaining)}
           </span>
+
+          {/* SUBMIT-JITTER-1 (OPT-7) : compte à rebours du submit jitteré.
+              Affiché quand le temps est expiré et qu'un submit est planifié
+              dans la fenêtre de jitter (étalement du pic de soumission). */}
+          {pendingAutoSubmitIn !== null && pendingAutoSubmitIn > 0 && (
+            <Badge
+              variant="outline"
+              className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/10 animate-pulse"
+            >
+              <Clock className="h-3 w-3 mr-1" />
+              Soumission dans {pendingAutoSubmitIn}s
+            </Badge>
+          )}
 
           {/* Penalty indicator */}
           {penalite > 0 && (

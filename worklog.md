@@ -16547,3 +16547,74 @@ Stage Summary:
 - ⚠️ Note gofmt : plusieurs fichiers backend ne sont pas gofmt-clean (cmd/api/main.go, internal/ai/*, internal/cache/memory.go…) — préexistant, hors scope de cette session de setup. Pourrait faire l'objet d'un nettoyage gofmt séparé si souhaité.
 - 🔐 Sécurité : les credentials partagés en clair par l'utilisateur (token GitHub, URL Neon, tokens Vercel/Render) doivent être révoqués/régénérés après cette session.
 - 🔭 Prochaines étapes : `bun install` côté frontend pour `bun run dev` (port 3000), puis reprise du travail fonctionnel selon les priorités de l'utilisateur.
+
+---
+
+Task ID: SECT-OPT-11-SUBMIT-PROTECT
+Agent: Z.ai Code (tuteur/assistant)
+Task: Protéger le pic de soumission d'examen — jitter frontend + rate limiting 202 async backend (OPT-11)
+
+Contexte : l'analyse de capacité (voir conversation) a montré que le vrai point de rupture du
+système n'est pas la composition (steady-state, ~1000 étudiants OK sur free tier grâce au cache
+RAM OPT-1/3), mais le PIC DE SOUMISSION : quand N étudiants atteignent la fin du temps
+simultanément, tous déclenchent POST /api/sessions/{id}/submit au même t=0. Chaque Submit
+effectue ~8-12 queries DB synchrones. Sur Render free (0,1 vCPU, timeout 30s), la capacité est
+~6-7 submits/s ; au-delà, la queue gonfle, Render tue les connexions → 502 → réessais en
+cascade → risque de perte des réponses (encore en cache RAM) si l'instance redémarre.
+
+Work Log:
+
+Fix 1 — SUBMIT-RATELIMIT-1 (backend, nouveau fichier submit_limiter.go) :
+- SubmitLimiter : semaphore pondéré + compteur atomique (active/queued/max).
+- Configurable : SUBMIT_MAX_CONCURRENT (défaut 5, adapté Render free 0,1 vCPU) +
+  SUBMIT_QUEUE_RETRY_AFTER (défaut 3s).
+- TryAcquire() : si slot dispo → release func ; si file pleine → false.
+- writeSubmitAccepted() : HTTP 202 + header Retry-After + body JSON {status:"queued",retryAfter}.
+- Branché dans submitSession (session_handlers.go) : le check se fait APRÈS le flush du cache
+  (pour garantir que les réponses sont persistées sur Neon même si 202) et APRÈS l'auth (pour ne
+  pas consommer de slot sur des requêtes non authentifiées), mais AVANT sessionUC.Submit (le
+  traitement lourd). defer release() garantit la libération du slot.
+- Idempotence préservée : le usecase Submit détecte (sess.Statut != EN_COURS) les re-submits et
+  renvoie une erreur gérée — pas de double correction.
+
+Fix 2 — SUBMIT-JITTER-1 (frontend, passation-page.tsx) :
+- Constante SUBMIT_JITTER_MS (défaut 45000, overridable via NEXT_PUBLIC_SUBMIT_JITTER_MS).
+- scheduleAutoSubmitWithJitter() : quand le chronomètre atteint 0, tire un délai aléatoire
+  [0, SUBMIT_JITTER_MS] et planifie le submit via setTimeout. Affiche un compte à rebours
+  visible (badge "Soumission dans Xs") pendant la fenêtre de jitter.
+- cancelPendingAutoSubmit() : annule le jitter si l'étudiant soumet manuellement avant. Appelé
+  au début de submitExam + cleanup à l'unmount (évite fuite mémoire).
+- Effet : 1000 étudiants → ~6-7 submits/s en moyenne (uniformément répartis sur 45s), juste
+  sous la capacité Render free. ×5 capacité instantanée sur le pic, sans coût.
+
+Fix 3 — Gestion du 202 côté frontend (submitExam) :
+- Boucle de retry (max SUBMIT_MAX_RETRIES=10 × 3s = 30s max) : si 202, attend retryAfter puis
+  réessaie. Toast informatif "Soumission en file d'attente…" au 1er 202.
+- Si retries épuisés sans succès : toast warning, la copie reste en IndexedDB (déjà sauvée) +
+  le Service Worker retryera. Aucune perte de données.
+- Fallback offline préservé : si le fetch réseau échoue (hors 202), fallback sur submitOffline
+  (outbox IndexedDB + Background Sync).
+- Note : submitOffline ne peut pas être utilisé pour le submit final car le hook traite tout
+  2xx (dont 202) comme un succès — d'où le fetch direct avec retry dédié.
+
+Vérifications locales :
+- backend : go build ./... EXIT 0, go vet ./... EXIT 0
+- frontend : bun run lint EXIT 0 (0 warnings)
+- smoke test backend : /health 200, /api/health 200, POST /api/sessions/x/submit sans auth → 401
+  (correct : le limiter est après l'auth, ne consomme pas de slot sur les requêtes non auth)
+- DB Neon : aucune migration nécessaire (changement purement applicatif, pas de schéma)
+
+Stage Summary:
+- Deux mécanismes gratuits et complémentaires protègent le pic de soumission :
+  1. Jitter frontend (45s) : étale les N submits dans le temps → ×5 capacité instantanée
+  2. Rate limiting 202 backend : sous forte charge résiduelle, étalement doux via retry au lieu
+     de timeout 502 en cascade → préserve le cache RAM (donc les réponses)
+- Capacité estimée sur le pic de soumission : ~700 → ~3000-3500 étudiants (free tier), et
+  ~5000+ avec Render Starter + Neon Pro (comme prévu par OPT-1 à OPT-6).
+- Architecture respectée : nouveau fichier dans internal/transport/http/, branchement minimal
+  dans router.go (struct + init) et session_handlers.go (handler). Frontend : modifications
+  localisées dans passation-page.tsx (state, refs, 1 nouveau useCallback, 1 useEffect cleanup,
+  modification du timer effect + submitExam, 1 badge UI).
+- Aucun breaking change API : le 202 n'est renvoyé que sous forte charge, le 200 (succès
+  synchrone) reste le chemin normal. Le frontend gère les deux.
+- Déploiement : push GitHub → Vercel (frontend) + Render (backend) auto.

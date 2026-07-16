@@ -204,6 +204,15 @@ func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // submitSession — POST /api/sessions/{id}/submit
+//
+// SUBMIT-RATELIMIT-1 (OPT-7) : pour éviter le crash du pic de soumission
+// (tous les étudiants soumettant à t=0 quand le temps expire), un semaphore
+// limite le nombre de submits traités concurremment. Sous forte charge, au
+// lieu d'attendre et de risquer le timeout 30s de Render (→ 502 → réessais
+// en cascade → perte des réponses en cache RAM), on renvoie 202 Accepted +
+// Retry-After. Le frontend réessaie après le délai. Le Submit est idempotent :
+// le usecase détecte (sess.Statut != EN_COURS) les re-submits et renvoie une
+// erreur gérée — pas de double correction.
 func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -223,6 +232,11 @@ func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
         // les sessions dirty (même celles d'autres étudiants). On flush chacune
         // via FlushSessionToNeon qui construit les claims RLS depuis l'EtudiantID
         // stocké en cache (le worker goroutine fait de même en arrière-plan).
+        //
+        // SUBMIT-RATELIMIT-1 : ce flush se fait AVANT l'acquisition du slot, pour
+        // garantir que les réponses sont persistées sur Neon même si le serveur
+        // renvoie 202. Ainsi, en cas de retry, le flush est idempotent (la session
+        // a déjà été retirée du cache → rien à flusher) et les données sont safe.
         if s.sessionCache != nil {
                 dirtySessions := s.sessionCache.FlushAndGetDirty(id)
                 for _, ds := range dirtySessions {
@@ -230,6 +244,17 @@ func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
                 }
                 // Nettoyer le cache pour cette session (les autres restent pour le worker)
                 s.sessionCache.RemoveSession(id)
+        }
+
+        // SUBMIT-RATELIMIT-1 : acquérir un slot de traitement. Si la file est
+        // pleine, renvoyer 202 + Retry-After pour étalement doux du pic.
+        if s.submitLimiter != nil {
+                acquired, release := s.submitLimiter.TryAcquire()
+                if !acquired {
+                        writeSubmitAccepted(w, s.submitLimiter.RetryAfterSeconds())
+                        return
+                }
+                defer release()
         }
 
         result, err := s.sessionUC.Submit(r.Context(), claims, id, input)
