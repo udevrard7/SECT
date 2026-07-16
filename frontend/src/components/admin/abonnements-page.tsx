@@ -41,6 +41,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Lock,
+  Clock,
+  User,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card'
@@ -145,6 +147,7 @@ interface AbonnementItem {
   etablissement?: {
     id: string
     nom: string
+    type?: string | null
     ville: string | null
     actif: boolean
   }
@@ -212,6 +215,13 @@ function getStatutBadge(statut: string) {
       return (
         <Badge className="bg-destructive/10 text-destructive border-destructive/30">
           Résilié
+        </Badge>
+      )
+    case 'EN_ATTENTE_PAIEMENT':
+      return (
+        <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
+          <Clock className="h-3 w-3 mr-1" />
+          En attente
         </Badge>
       )
     default:
@@ -521,6 +531,7 @@ export function AbonnementsPage() {
 
   // ─── Stats ───
   const activeAboCount = abonnements.filter((a) => a.statut === 'ACTIF').length
+  const pendingAboCount = abonnements.filter((a) => a.statut === 'EN_ATTENTE_PAIEMENT').length
   const trialAboCount = abonnements.filter((a) => a.statut === 'ESSAI').length
   // ABONNEMENTS-FIX-A10 : revenu mensuel basé sur plan.prixMensuel (récurrent)
   // au lieu de montantPaye (paiement ponctuel, peut être 0 pour un plan gratuit
@@ -1164,7 +1175,7 @@ export function AbonnementsPage() {
       </div>
 
       {/* ─── Stats Cards ─── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
@@ -1173,6 +1184,17 @@ export function AbonnementsPage() {
             <div>
               <p className="text-xs text-muted-foreground">Abonnements actifs</p>
               <p className="text-xl font-bold font-mono tabular-nums">{activeAboCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-amber-400">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+              <Clock className="h-5 w-5 text-amber-700 dark:text-amber-400" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">En attente de paiement</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{pendingAboCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -1395,6 +1417,7 @@ export function AbonnementsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les statuts</SelectItem>
+                <SelectItem value="EN_ATTENTE_PAIEMENT">En attente</SelectItem>
                 <SelectItem value="ESSAI">Essai</SelectItem>
                 <SelectItem value="ACTIF">Actif</SelectItem>
                 <SelectItem value="SUSPENDU">Suspendu</SelectItem>
@@ -1453,11 +1476,18 @@ export function AbonnementsPage() {
                       <TableRow key={abo.id} className="group">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${abo.etablissement?.type === 'PERSONNEL' ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-success/10'} text-xs font-bold ${abo.etablissement?.type === 'PERSONNEL' ? 'text-amber-700 dark:text-amber-400' : 'text-success-text'}`}>
                               {abo.etablissement?.nom?.charAt(0).toUpperCase() ?? "?"}
                             </div>
                             <div>
-                              <p className="font-medium text-sm">{abo.etablissement?.nom ?? "—"}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-medium text-sm">{abo.etablissement?.nom ?? "—"}</p>
+                                {abo.etablissement?.type === 'PERSONNEL' && (
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 font-medium">
+                                    B2C
+                                  </Badge>
+                                )}
+                              </div>
                               {abo.etablissement?.ville && (
                                 <p className="text-xs text-muted-foreground">{abo.etablissement?.ville}</p>
                               )}
@@ -1476,6 +1506,13 @@ export function AbonnementsPage() {
                                 {responsablesMap[abo.etablissementId].name.charAt(0).toUpperCase()}
                               </div>
                               <span className="text-sm">{responsablesMap[abo.etablissementId].name}</span>
+                            </div>
+                          ) : abo.etablissement?.type === 'PERSONNEL' ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                                <User className="h-3 w-3" />
+                              </div>
+                              <span className="text-xs text-muted-foreground">Self-service</span>
                             </div>
                           ) : (
                             <span className="text-xs text-warning italic">Non assigné</span>
@@ -1518,7 +1555,7 @@ export function AbonnementsPage() {
                                 <PauseCircle className="h-4 w-4" />
                               </Button>
                             )}
-                            {abo.statut !== 'RESILIE' && (
+                            {abo.statut !== 'RESILIE' && abo.statut !== 'EN_ATTENTE_PAIEMENT' && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -2697,11 +2734,18 @@ export function AbonnementsPage() {
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Établissement</h4>
                   <div className="flex items-center gap-3 rounded-lg border p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success-text">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${detailAbo.etablissement?.type === 'PERSONNEL' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-success/10 text-success-text'}`}>
                       {detailAbo.etablissement?.nom?.charAt(0).toUpperCase() ?? "?"}
                     </div>
                     <div>
-                      <p className="font-medium">{detailAbo.etablissement?.nom ?? "—"}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium">{detailAbo.etablissement?.nom ?? "—"}</p>
+                        {detailAbo.etablissement?.type === 'PERSONNEL' && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 font-medium">
+                            B2C
+                          </Badge>
+                        )}
+                      </div>
                       {detailAbo.etablissement?.ville && <p className="text-xs text-muted-foreground">{detailAbo.etablissement?.ville}</p>}
                     </div>
                   </div>
@@ -2734,6 +2778,19 @@ export function AbonnementsPage() {
                       <Badge className="bg-success/10 text-success-text border-success/30 shrink-0">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Assigné
+                      </Badge>
+                    </div>
+                  ) : detailAbo.etablissement?.type === 'PERSONNEL' ? (
+                    <div className="flex items-center gap-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-xs font-bold text-amber-700 dark:text-amber-400">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">Inscription self-service</p>
+                        <p className="text-xs text-muted-foreground">Cet abonnement a été créé par l'enseignant lui-même</p>
+                      </div>
+                      <Badge variant="outline" className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 shrink-0">
+                        B2C
                       </Badge>
                     </div>
                   ) : (
