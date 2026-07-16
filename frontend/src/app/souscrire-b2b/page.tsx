@@ -49,8 +49,6 @@ const ETAB_TYPES: { value: string; label: string }[] = [
   { value: 'UNIVERSITE', label: 'Université' },
   { value: 'INSTITUT', label: 'Institut' },
   { value: 'ECOLE', label: 'École' },
-  { value: 'LYCEE', label: 'Lycée' },
-  { value: 'COLLEGE', label: 'Collège' },
   { value: 'FORMATION_PRO', label: 'Centre de formation pro' },
 ]
 
