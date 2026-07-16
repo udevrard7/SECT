@@ -373,6 +373,7 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     icon: 'Shield',
     defaultOpen: false,
     items: [
+      { id: 'securite', label: 'Sécurité anti-fraude', icon: 'Shield' },
       { id: 'acces-etablissements', label: 'Accès & autorisations', icon: 'KeyRound' },
       { id: 'monitoring', label: 'Monitoring plateforme', icon: 'Activity' },
       { id: 'logs', label: "Journaux d'audit", icon: 'FileText' },
@@ -592,6 +593,7 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // ACCES-ETABLISSEMENTS-FIX-AE2 : page réservée ADMIN (gestion des autorisations).
   // Le responsable approuve les demandes via /parametres onglet 'acces-admin'
   // (responsable-parametres-page.tsx) — pas de doublon ici.
+  securite: ['ADMIN'],
   'acces-etablissements': ['ADMIN'],
   // MONITORING-FIX-M7 : pages supervision réservées ADMIN.
   monitoring: ['ADMIN'],
