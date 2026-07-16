@@ -373,7 +373,7 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     icon: 'Shield',
     defaultOpen: false,
     items: [
-      { id: 'securite', label: 'Sécurité anti-fraude', icon: 'Shield' },
+      { id: 'securite', label: 'Anti-fraude', icon: 'Shield' },
       { id: 'acces-etablissements', label: 'Accès & autorisations', icon: 'KeyRound' },
       { id: 'monitoring', label: 'Monitoring plateforme', icon: 'Activity' },
       { id: 'logs', label: "Journaux d'audit", icon: 'FileText' },
