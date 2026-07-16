@@ -141,10 +141,14 @@ export async function initiatePayment(
   abonnementId: string,
   customerPhone: string,
   customerName?: string,
+  paymentMethod?: string,
 ): Promise<InitiatePaymentResponse> {
   const body: Record<string, string> = { customerPhone }
   if (customerName && customerName.trim()) {
     body.customerName = customerName.trim()
+  }
+  if (paymentMethod) {
+    body.paymentMethod = paymentMethod
   }
 
   const res = await fetch(

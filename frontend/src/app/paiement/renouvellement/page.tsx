@@ -6,6 +6,11 @@ import { Phone, Loader2, Shield, ArrowLeft, AlertCircle, RefreshCw } from 'lucid
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  PaymentMethodSelector,
+  getPaymentMethodLabel,
+  type PaymentMethodValue,
+} from '@/components/payment'
 
 /**
  * /paiement/renouvellement — Page pour renouveler un abonnement B2C Premium
@@ -26,6 +31,8 @@ function PaiementRenouvellementContent() {
   const [phoneTouched, setPhoneTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // ─── Moyen de paiement (Wave / Orange Money / MTN Money) ───
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>('wave_ci')
 
   const phoneValid = phone.startsWith('+225') && phone.replace(/\D/g, '').length >= 12
   const showPhoneError = phoneTouched && !phoneValid && phone.length > 0
@@ -46,10 +53,11 @@ function PaiementRenouvellementContent() {
 
     try {
       // Appel direct au backend /renew (pas de hook use-payment car c'est un endpoint différent)
+      // On ajoute `paymentMethod` au body pour sélectionner Wave / Orange / MTN.
       const resp = await fetch(`/api/subscriptions/b2c/${aboId}/renew`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerPhone: phone }),
+        body: JSON.stringify({ customerPhone: phone, paymentMethod }),
       })
 
       const data = await resp.json()
@@ -61,14 +69,14 @@ function PaiementRenouvellementContent() {
       // Stocker l'aboId pour /paiement/succes
       try { localStorage.setItem('sect_pending_abo', aboId) } catch {}
 
-      // Rediriger vers la page de paiement Wave
+      // Rediriger vers la page de paiement du provider sélectionné
       window.location.href = data.paymentUrl
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors du renouvellement'
       setError(msg)
       setLoading(false)
     }
-  }, [aboId, phone, phoneValid])
+  }, [aboId, phone, phoneValid, paymentMethod])
 
   if (!aboId) {
     return (
@@ -130,7 +138,18 @@ function PaiementRenouvellementContent() {
 
           <div className="space-y-2 mb-5">
             <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              Numéro Wave
+              Moyen de paiement
+            </Label>
+            <PaymentMethodSelector
+              value={paymentMethod}
+              onChange={setPaymentMethod}
+              variant="light"
+            />
+          </div>
+
+          <div className="space-y-2 mb-5">
+            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+              Numéro {getPaymentMethodLabel(paymentMethod)}
             </Label>
             <div className="relative group">
               <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-600 transition-transform group-focus-within:scale-110" />
@@ -166,7 +185,7 @@ function PaiementRenouvellementContent() {
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5">
             <p className="text-xs text-slate-700 flex items-start gap-2">
               <Shield className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-              Vous serez redirigé vers la page sécurisée Wave pour valider le
+              Vous serez redirigé vers la page sécurisée {getPaymentMethodLabel(paymentMethod)} pour valider le
               paiement. Aucune donnée bancaire n&apos;est stockée par SECT.
             </p>
           </div>
@@ -179,12 +198,12 @@ function PaiementRenouvellementContent() {
             {loading ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                Redirection vers Wave...
+                Redirection vers {getPaymentMethodLabel(paymentMethod)}...
               </>
             ) : (
               <>
                 <RefreshCw className="h-5 w-5 mr-2" />
-                Renouveler — 4 900 FCFA
+                Renouveler — 4 900 FCFA avec {getPaymentMethodLabel(paymentMethod)}
               </>
             )}
           </Button>
