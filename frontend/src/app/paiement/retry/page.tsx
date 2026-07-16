@@ -2,7 +2,8 @@
 
 import { useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Phone, Loader2, Shield, ArrowLeft, AlertCircle, Wallet } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Phone, Loader2, Shield, ArrowLeft, AlertCircle, Wallet, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,16 +14,6 @@ import {
   type PaymentMethodValue,
 } from '@/components/payment'
 
-/**
- * /paiement/retry — Page pour re-initier un paiement Wave quand l'utilisateur
- * a déjà un compte B2C Premium créé mais dont l'abonnement est EN_ATTENTE_PAIEMENT.
- *
- * SECT-GENIUSPAY-WAVE-SECURITY : le login est bloqué tant que le paiement n'est
- * pas confirmé. Cette page permet à l'utilisateur de finaliser son paiement
- * sans recréer un compte (juste son numéro Wave + abonnement ID existant).
- *
- * Query params : ?abo=<abonnementId> (requis)
- */
 function PaiementRetryContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -32,11 +23,11 @@ function PaiementRetryContent() {
   const [phoneTouched, setPhoneTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // ─── Moyen de paiement (Wave / Orange Money / MTN Money) ───
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodValue>('wave_ci')
 
   const phoneValid = phone.startsWith('+225') && phone.replace(/\D/g, '').length >= 12
   const showPhoneError = phoneTouched && !phoneValid && phone.length > 0
+  const methodName = getPaymentMethodLabel(paymentMethod)
 
   const handlePayment = useCallback(async () => {
     if (!aboId) {
@@ -45,166 +36,270 @@ function PaiementRetryContent() {
     }
     if (!phoneValid) {
       setPhoneTouched(true)
-      setError('Entrez votre numéro Wave au format +225 suivi de 10 chiffres.')
+      setError('Entrez votre numéro au format +225 suivi de 10 chiffres.')
       return
     }
-
     setLoading(true)
     setError(null)
-
     try {
       setPendingAbonnement(aboId)
-      // `initiatePayment` (hook use-payment) accepte en 4e argument le
-      // `paymentMethod` (wave_ci / orange_money_ci / mtn_money_ci) et l'inclut
-      // automatiquement dans le body de la requête POST.
       const resp = await initiatePayment(aboId, phone, undefined, paymentMethod)
-      // Rediriger vers la page de paiement du provider sélectionné
       window.location.href = resp.paymentUrl
     } catch (err) {
-      const msg =
-        err && typeof err === 'object' && 'message' in err
-          ? String((err as { message: unknown }).message)
-          : err instanceof Error
-            ? err.message
-            : 'Erreur lors de la création du paiement'
+      const msg = err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : err instanceof Error ? err.message : 'Erreur lors de la création du paiement'
       setError(msg)
       setLoading(false)
     }
   }, [aboId, phone, phoneValid, paymentMethod])
 
+  // ─── Pas d'abo ID ───
   if (!aboId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-          <AlertCircle className="h-12 w-12 text-orange-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-slate-900 mb-2">Lien invalide</h1>
-          <p className="text-sm text-slate-600 mb-6">
-            Aucun identifiant d&apos;abonnement fourni. Si vous avez déjà un compte,
-            connectez-vous ou contactez le support.
+      <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0A1931] via-[#0f172a] to-[#1E1B4B] p-4 overflow-hidden">
+        <BackgroundDecor />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10 max-w-md w-full bg-white/[0.06] backdrop-blur-xl border border-white/15 rounded-2xl p-8 text-center"
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-500/15 mb-4">
+            <AlertCircle className="h-8 w-8 text-red-400" />
+          </div>
+          <h1 className="text-xl font-bold text-white mb-2">Lien invalide</h1>
+          <p className="text-sm text-white/60 mb-6">
+            Aucun identifiant d&apos;abonnement fourni. Connectez-vous ou contactez le support.
           </p>
-          <Button onClick={() => router.push('/login')} className="w-full">
+          <Button onClick={() => router.push('/login')} className="w-full bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold">
             Retour à la connexion
           </Button>
-        </div>
+        </motion.div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-lime-50/30 p-4">
-      <div className="max-w-md w-full">
-        <button
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0A1931] via-[#0f172a] to-[#1E1B4B] p-4 sm:p-6 overflow-hidden">
+      <BackgroundDecor />
+
+      <div className="relative z-10 max-w-md w-full">
+        {/* Back button */}
+        <motion.button
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
           onClick={() => router.push('/login')}
-          className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 mb-6 transition-colors"
+          className="flex items-center gap-2 text-sm text-white/50 hover:text-white/80 mb-6 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Retour à la connexion
-        </button>
+        </motion.button>
 
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200/60 p-8">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-50 mb-4">
-              <Wallet className="h-7 w-7 text-amber-600" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">
-              Finalisez votre paiement
-            </h1>
-            <p className="text-sm text-slate-600">
-              Votre compte est créé. Finalisez votre paiement Mobile Money pour activer
-              votre abonnement Prof Premium et accéder à la plateforme.
-            </p>
-          </div>
+        {/* Main card */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          className="relative bg-white/[0.06] backdrop-blur-xl border border-white/15 rounded-2xl overflow-hidden shadow-2xl"
+        >
+          {/* Top kente accent bar */}
+          <div className="h-1.5 bg-gradient-to-r from-[#84CC16] via-[#F59E0B] to-[#C2410C]" />
 
-          <div className="bg-slate-50 rounded-xl p-4 mb-6">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Abonnement</span>
-              <span className="font-mono text-xs text-slate-700">{aboId.slice(0, 20)}...</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-slate-500">Montant</span>
-              <span className="font-bold text-slate-900">4 900 FCFA/mois</span>
-            </div>
-          </div>
+          <div className="p-8">
+            {/* Header */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
+              className="text-center mb-6"
+            >
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#84CC16]/15 border border-[#84CC16]/25 mb-4">
+                <Wallet className="h-8 w-8 text-[#84CC16]" />
+              </div>
+              <h1 className="text-2xl font-bold text-white mb-2">
+                Finalisez votre paiement
+              </h1>
+              <p className="text-sm text-white/60">
+                Votre compte est créé. Finalisez votre paiement Mobile Money pour activer
+                votre abonnement <span className="text-[#84CC16] font-semibold">Prof Premium</span>.
+              </p>
+            </motion.div>
 
-          <div className="space-y-2 mb-5">
-            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              Moyen de paiement
-            </Label>
-            <PaymentMethodSelector
-              value={paymentMethod}
-              onChange={setPaymentMethod}
-              variant="light"
-            />
-          </div>
+            {/* Récap abonnement */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white/[0.04] border border-white/10 rounded-xl p-4 mb-6"
+            >
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-white/40">Abonnement</span>
+                <span className="font-mono text-xs text-white/70">{aboId.slice(0, 20)}...</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-white/40">Montant</span>
+                <span className="text-xl font-bold text-[#84CC16] font-mono">4 900 FCFA<span className="text-xs text-white/40 font-normal">/mois</span></span>
+              </div>
+            </motion.div>
 
-          <div className="space-y-2 mb-5">
-            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              Numéro {getPaymentMethodLabel(paymentMethod)}
-            </Label>
-            <div className="relative group">
-              <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-lime-600 transition-transform group-focus-within:scale-110" />
-              <Input
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel-national"
-                placeholder="+225 07 77 12 34 56"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                onBlur={() => setPhoneTouched(true)}
-                className="pl-10 h-12 rounded-xl font-mono tracking-wide"
-                aria-invalid={showPhoneError}
+            {/* Payment method selector */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="space-y-2 mb-5"
+            >
+              <Label className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                Moyen de paiement
+              </Label>
+              <PaymentMethodSelector
+                value={paymentMethod}
+                onChange={setPaymentMethod}
+                variant="dark"
               />
-            </div>
-            {showPhoneError && (
-              <p className="text-xs text-orange-600 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                Format invalide. Entrez +225 suivi de 10 chiffres.
+            </motion.div>
+
+            {/* Phone input */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="space-y-2 mb-5"
+            >
+              <Label className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                Numéro {methodName}
+              </Label>
+              <div className="relative group">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#84CC16] transition-transform group-focus-within:scale-110" />
+                <Input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel-national"
+                  placeholder="+225 07 77 12 34 56"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onBlur={() => setPhoneTouched(true)}
+                  className="pl-10 h-12 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/25 focus:bg-white/8 transition-all font-mono tracking-wide"
+                  aria-invalid={showPhoneError}
+                />
+              </div>
+              <AnimatePresence>
+                {showPhoneError && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0, x: [0, -6, 6, -3, 3, 0] }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="text-xs text-red-400 flex items-center gap-1"
+                  >
+                    <AlertCircle className="h-3 w-3" />
+                    Format invalide. Entrez +225 suivi de 10 chiffres.
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
+            {/* Error */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4 overflow-hidden"
+                >
+                  <p className="text-xs text-red-400 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    {error}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Security note */}
+            <div className="rounded-lg border border-[#84CC16]/25 bg-[#84CC16]/8 p-3 mb-5">
+              <p className="text-xs text-white/70 flex items-start gap-2">
+                <Shield className="h-4 w-4 text-[#84CC16] shrink-0 mt-0.5" />
+                <span>
+                  Redirection sécurisée vers {methodName}. Aucune donnée bancaire n&apos;est
+                  stockée par SECT.
+                </span>
               </p>
-            )}
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <p className="text-xs text-red-700 flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                {error}
-              </p>
             </div>
-          )}
 
-          <div className="bg-lime-50 border border-lime-200 rounded-lg p-3 mb-5">
-            <p className="text-xs text-slate-700 flex items-start gap-2">
-              <Shield className="h-4 w-4 text-lime-700 shrink-0 mt-0.5" />
-              Vous serez redirigé vers la page sécurisée {getPaymentMethodLabel(paymentMethod)} pour valider le
-              paiement. Aucune donnée bancaire n&apos;est stockée par SECT.
-            </p>
+            {/* Submit button */}
+            <motion.div
+              whileHover={{ scale: loading ? 1 : 1.01 }}
+              whileTap={{ scale: loading ? 1 : 0.98 }}
+            >
+              <Button
+                onClick={handlePayment}
+                disabled={loading || (phone.length > 0 && !phoneValid)}
+                className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    Redirection vers {methodName}...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4 mr-2" />
+                    Payer 4 900 FCFA avec {methodName}
+                  </>
+                )}
+              </Button>
+            </motion.div>
           </div>
+        </motion.div>
 
-          <Button
-            onClick={handlePayment}
-            disabled={loading || (phone.length > 0 && !phoneValid)}
-            className="w-full h-12 rounded-xl bg-lime-500 hover:bg-lime-600 text-slate-900 font-semibold shadow-lg shadow-lime-500/25"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                Redirection vers {getPaymentMethodLabel(paymentMethod)}...
-              </>
-            ) : (
-              <>
-                Payer 4 900 FCFA avec {getPaymentMethodLabel(paymentMethod)}
-              </>
-            )}
-          </Button>
-        </div>
+        {/* Footer hint */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="text-center text-xs text-white/30 mt-4"
+        >
+          🔒 Paiement sécurisé par GeniusPay · Wave · Orange Money · MTN
+        </motion.p>
       </div>
     </div>
   )
 }
 
+// ═══ Background décor (glow orbs + kente motif) ═══
+function BackgroundDecor() {
+  return (
+    <>
+      <motion.div
+        className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full bg-[#84CC16]/15 blur-3xl pointer-events-none"
+        animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.6, 0.4] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-[#F59E0B]/10 blur-3xl pointer-events-none"
+        animate={{ scale: [1.1, 1, 1.1], opacity: [0.3, 0.5, 0.3] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <div
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: `
+            repeating-linear-gradient(90deg, transparent 0, transparent 50px, #84CC16 50px, #84CC16 55px, transparent 55px, transparent 58px, #F59E0B 58px, #F59E0B 61px, transparent 61px, transparent 64px, #C2410C 64px, #C2410C 66px, transparent 66px, transparent 100px),
+            repeating-linear-gradient(45deg, transparent 0, transparent 25px, #F59E0B 25px, #F59E0B 30px, transparent 30px, transparent 50px)
+          `,
+        }}
+      />
+    </>
+  )
+}
+
 export default function PaiementRetryPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-slate-400" /></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0A1931] via-[#0f172a] to-[#1E1B4B]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#84CC16]" />
+      </div>
+    }>
       <PaiementRetryContent />
     </Suspense>
   )
