@@ -354,9 +354,9 @@ func (s *Server) GetDirtySessions() []*cache.CachedSession {
 // FlushSessionToNeon écrit une session cache vers Neon en une seule transaction
 // bulk (BULK-FLUSH-1).
 //
-// Avant : appelait SaveReponse par question → 20 transactions par session.
-// Maintenant : appelle BulkSaveReponses → 1 transaction par session.
-// Performance : 5000 étudiants × 1 tx = 5000 tx au lieu de 100 000 tx (-95%).
+// Utilisé pour le flush d'une session individuelle (submit, ou fallback).
+// Le worker goroutine utilise désormais BatchFlushToNeon (OPT-3) qui groupe
+// plusieurs sessions en 1 transaction.
 //
 // Construit les claims RLS à partir de l'EtudiantID stocké en cache — le worker
 // goroutine n'a pas de claims HTTP, donc on utilise l'ID de l'étudiant propriétaire
@@ -383,4 +383,66 @@ func (s *Server) FlushSessionToNeon(ctx context.Context, sess *cache.CachedSessi
                 Role:   string(domain.RoleEtudiant),
         }
         return s.sessionUC.BulkSaveReponses(ctx, claims, sess.SessionID, filtered)
+}
+
+// BatchFlushToNeon flush toutes les sessions dirty en batch vers Neon (OPT-3).
+//
+// Au lieu de FlushSessionToNeon × N (1 tx par session), cette méthode groupe
+// toutes les sessions en 1-10 transactions selon le nombre de sessions.
+//
+// Pour 5000 étudiants : 10 tx toutes les 30s au lieu de 5000 tx (-99.8%).
+func (s *Server) BatchFlushToNeon(ctx context.Context, dirtySessions []*cache.CachedSession) (int, []error) {
+        if len(dirtySessions) == 0 {
+                return 0, nil
+        }
+
+        // Convertir les CachedSession en BatchFlushItem
+        items := make([]domain.BatchFlushItem, 0, len(dirtySessions))
+        for _, sess := range dirtySessions {
+                if sess == nil {
+                        continue
+                }
+                // Filtrer les réponses vides
+                filtered := make(map[string]string, len(sess.Reponses))
+                for questionID, contenu := range sess.Reponses {
+                        if contenu != "" {
+                                filtered[questionID] = contenu
+                        }
+                }
+                if len(filtered) == 0 {
+                        continue
+                }
+                items = append(items, domain.BatchFlushItem{
+                        SessionID:  sess.SessionID,
+                        EtudiantID: sess.EtudiantID,
+                        Reponses:   filtered,
+                })
+        }
+
+        if len(items) == 0 {
+                return 0, nil
+        }
+
+        // Batch flush : 1 tx pour toutes les sessions
+        err := s.sessionUC.BatchFlushSessions(ctx, items)
+        if err != nil {
+                // Si le batch échoue, fallback : flush individuel par session
+                // pour ne pas perdre toutes les données
+                var errs []error
+                successCount := 0
+                for _, item := range items {
+                        claims := db.SessionClaims{
+                                UserID: item.EtudiantID,
+                                Role:   string(domain.RoleEtudiant),
+                        }
+                        if ferr := s.sessionUC.BulkSaveReponses(ctx, claims, item.SessionID, item.Reponses); ferr != nil {
+                                errs = append(errs, fmt.Errorf("session %s: %w", item.SessionID, ferr))
+                        } else {
+                                successCount++
+                        }
+                }
+                return successCount, errs
+        }
+
+        return len(items), nil
 }

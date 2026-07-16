@@ -346,6 +346,94 @@ func (r *SessionRepository) BulkSaveReponses(ctx context.Context, sessionID stri
         return tx.Commit(ctx)
 }
 
+// BatchFlushSessions persiste les réponses de N sessions en 1 seule transaction (OPT-3).
+//
+// AVANT : FlushSessionToNeon appelait BulkSaveReponses par session → 1 tx par session.
+// Pour 5000 sessions = 5000 tx toutes les 30s.
+//
+// APRÈS : 1 seule transaction pour toutes les sessions. Le batch est découpé en
+// sous-groupes de maxBatchSize (500) pour éviter les requêtes SQL trop grandes.
+// Pour 5000 sessions en 10 batches = 10 tx toutes les 30s (-99.8%).
+//
+// RLS : utilise SystemClaims (is_system()) pour bypasser le filtrage par utilisateur.
+// La sécurité est garantie car l'ownership a déjà été vérifiée lors du save en cache
+// (OWNERSHIP-CACHE-1 + OWNERSHIP-CACHE-2). Les policies RLS SessionPassation_all_system
+// et Reponse_all_system acceptent is_system().
+func (r *SessionRepository) BatchFlushSessions(ctx context.Context, sessions []domain.BatchFlushItem) error {
+        if len(sessions) == 0 {
+                return nil
+        }
+
+        const maxBatchSize = 500 // max sessions per single INSERT statement
+
+        // Découper en sous-batches si nécessaire
+        for batchStart := 0; batchStart < len(sessions); batchStart += maxBatchSize {
+                batchEnd := batchStart + maxBatchSize
+                if batchEnd > len(sessions) {
+                        batchEnd = len(sessions)
+                }
+                batch := sessions[batchStart:batchEnd]
+
+                if err := r.batchFlushChunk(ctx, batch); err != nil {
+                        return fmt.Errorf("batch flush chunk [%d:%d]: %w", batchStart, batchEnd, err)
+                }
+        }
+
+        return nil
+}
+
+// batchFlushChunk persiste un chunk de sessions en 1 transaction.
+func (r *SessionRepository) batchFlushChunk(ctx context.Context, sessions []domain.BatchFlushItem) error {
+        // Utiliser SystemClaims pour bypasser RLS par utilisateur.
+        // L'ownership a déjà été vérifiée lors du save en cache.
+        systemClaims := db.SystemClaims()
+
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        // Poser les claims system-worker une seule fois
+        if err := db.SetClaimsTx(ctx, tx, systemClaims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
+
+        // Construire un mega-batch INSERT avec toutes les réponses de toutes les sessions.
+        i := 1
+        var placeholders []string
+        var args []any
+
+        for _, sess := range sessions {
+                for questionID, contenu := range sess.Reponses {
+                        if contenu == "" {
+                                continue
+                        }
+                        placeholders = append(placeholders, fmt.Sprintf("($%d, $%d, $%d, $%d)", i, i+1, i+2, i+3))
+                        args = append(args, uuid.NewString(), sess.SessionID, questionID, contenu)
+                        i += 4
+                }
+        }
+
+        if len(placeholders) == 0 {
+                return tx.Commit(ctx) // Rien à insérer, mais on commit proprement
+        }
+
+        query := fmt.Sprintf(`
+                INSERT INTO "Reponse" ("id", "sessionId", "questionId", "contenu")
+                VALUES %s
+                ON CONFLICT ("sessionId", "questionId") DO UPDATE SET
+                        "contenu" = EXCLUDED."contenu",
+                        "updatedAt" = CURRENT_TIMESTAMP
+        `, strings.Join(placeholders, ", "))
+
+        if _, err := tx.Exec(ctx, query, args...); err != nil {
+                return fmt.Errorf("batch upsert reponses: %w", err)
+        }
+
+        return tx.Commit(ctx)
+}
+
 // GetReponses récupère les réponses d'une session (RLS actif).
 func (r *SessionRepository) GetReponses(ctx context.Context, sessionID string) ([]domain.Reponse, error) {
         claims, ok := db.ClaimsFromContext(ctx)

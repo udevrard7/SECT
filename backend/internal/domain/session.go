@@ -162,6 +162,14 @@ type AlerteInput struct {
         Penalite float64 `json:"penalite"`
 }
 
+// BatchFlushItem — données nécessaires pour le flush batch (OPT-3).
+// Représente les réponses d'une session à persister en DB.
+type BatchFlushItem struct {
+        SessionID  string
+        EtudiantID string // Pour poser les claims RLS
+        Reponses   map[string]string
+}
+
 // SessionListParams pour filtrer les sessions.
 type SessionListParams struct {
         EtudiantID string
@@ -223,6 +231,11 @@ type SessionRepository interface {
         // seule transaction. Réduit 20 transactions (1 par question) → 1 transaction.
         // Essentiel pour supporter 5000+ étudiants simultanés (capacity planning).
         BulkSaveReponses(ctx context.Context, sessionID string, reponses map[string]string) error
+        // OPT-3 : flush batch — persiste les réponses de N sessions en 1 seule transaction.
+        // Au lieu de 1 tx par session (5000 tx / 30s), on groupe toutes les sessions
+        // dirty en 1 seule tx (~10 tx / 30s pour 10 batches de 500 sessions).
+        // Essentiel pour maximiser la capacité sur Neon free tier.
+        BatchFlushSessions(ctx context.Context, sessions []BatchFlushItem) error
         GetReponses(ctx context.Context, sessionID string) ([]Reponse, error)
         UpdateReponseScore(ctx context.Context, reponseID string, score float64) error
         AddAlerte(ctx context.Context, sessionID string, penalite float64, alerte AlerteInput) error

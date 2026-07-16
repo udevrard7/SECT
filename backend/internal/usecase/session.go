@@ -200,6 +200,21 @@ func (uc *SessionUseCase) BulkSaveReponses(ctx context.Context, claims db.Sessio
         return uc.sessionRepo.BulkSaveReponses(ctx, sessionID, reponses)
 }
 
+// BatchFlushSessions persiste les réponses de N sessions en 1 seule transaction (OPT-3).
+// Utilisé par le worker goroutine pour flusher toutes les sessions dirty en batch.
+//
+// AVANT : 1 tx par session (FlushSessionToNeon → BulkSaveReponses × N).
+// APRÈS : 1 tx pour toutes les sessions (BatchFlushSessions).
+// Performance : 5000 sessions → 10 tx au lieu de 5000 tx (-99.8%).
+//
+// Note : l'ownership a déjà été vérifiée lors du save en cache, on skip la revérification.
+func (uc *SessionUseCase) BatchFlushSessions(ctx context.Context, sessions []domain.BatchFlushItem) error {
+        if len(sessions) == 0 {
+                return nil
+        }
+        return uc.sessionRepo.BatchFlushSessions(ctx, sessions)
+}
+
 // AddAlerte logge une alerte anti-fraude sur une session (B2-MES-EPREUVES).
 // Vérifie l'ownership (session.etudiantId = claims.UserID pour les étudiants).
 func (uc *SessionUseCase) AddAlerte(ctx context.Context, claims db.SessionClaims, sessionID string, penalite float64, alerte domain.AlerteInput) error {
