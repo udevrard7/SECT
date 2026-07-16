@@ -38,6 +38,7 @@ import (
 type initiatePaymentRequest struct {
         CustomerPhone string `json:"customerPhone"` // requis, format +225...
         CustomerName  string `json:"customerName"`  // optionnel
+        PaymentMethod string `json:"paymentMethod"` // optionnel, défaut "wave_ci"
 }
 
 // initiatePaymentResponse — réponse 200.
@@ -92,6 +93,19 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         _ = json.NewDecoder(r.Body).Decode(&req)
         req.CustomerPhone = strings.TrimSpace(req.CustomerPhone)
         req.CustomerName = strings.TrimSpace(req.CustomerName)
+        req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
+        if req.PaymentMethod == "" {
+                req.PaymentMethod = "wave_ci"
+        }
+        // Valider le moyen de paiement
+        validMethods := map[string]bool{
+                "wave_ci": true, "orange_money_ci": true, "mtn_money_ci": true,
+                "moov_money_ci": true, "card": true,
+        }
+        if !validMethods[req.PaymentMethod] {
+                writeJSONError(w, http.StatusBadRequest, "moyen de paiement invalide")
+                return
+        }
 
         if !validateWavePhone(req.CustomerPhone) {
                 writeJSONError(w, http.StatusBadRequest, "téléphone client requis (format international +225...)")
@@ -142,7 +156,7 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         gpReq := geniuspay.CreatePaymentRequest{
                 Amount:        amount,
                 Currency:      "XOF",
-                PaymentMethod: "wave_ci",
+                PaymentMethod: req.PaymentMethod,
                 CustomerPhone: req.CustomerPhone,
                 CustomerName:  req.CustomerName,
                 Description:   "SECT Prof Premium - 1 mois",
@@ -570,6 +584,10 @@ func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
         _ = json.NewDecoder(r.Body).Decode(&req)
         req.CustomerPhone = strings.TrimSpace(req.CustomerPhone)
         req.CustomerName = strings.TrimSpace(req.CustomerName)
+        req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
+        if req.PaymentMethod == "" {
+                req.PaymentMethod = "wave_ci"
+        }
 
         if !validateWavePhone(req.CustomerPhone) {
                 writeJSONError(w, http.StatusBadRequest, "téléphone client requis (format international +225...)")
@@ -617,7 +635,7 @@ func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
         gpReq := geniuspay.CreatePaymentRequest{
                 Amount:        amount,
                 Currency:      "XOF",
-                PaymentMethod: "wave_ci",
+                PaymentMethod: req.PaymentMethod,
                 CustomerPhone: req.CustomerPhone,
                 CustomerName:  req.CustomerName,
                 Description:   "SECT Prof Premium - Renouvellement 1 mois",
