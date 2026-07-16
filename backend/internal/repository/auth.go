@@ -49,6 +49,31 @@ func (r *AuthRepository) FindUserForAuth(ctx context.Context, identifier string)
         return u, nil
 }
 
+// MultiAccountInfo est dans domain (partagé avec le usecase).
+// Voir domain.MultiAccountInfo.
+
+// FindUsersForAuth (SECT-B2C-MULTI-ETAB) récupère TOUS les comptes correspondant
+// à un email (multi-établissements B2C). Retourne une liste pour que le frontend
+// puisse afficher une page de choix si l'utilisateur a des comptes dans plusieurs étab.
+func (r *AuthRepository) FindUsersForAuth(ctx context.Context, identifier string) ([]domain.MultiAccountInfo, error) {
+        rows, err := r.pool.Query(ctx, `SELECT * FROM find_users_for_auth($1)`, identifier)
+        if err != nil {
+                return nil, fmt.Errorf("query users for auth: %w", err)
+        }
+        defer rows.Close()
+
+        var accounts []domain.MultiAccountInfo
+        for rows.Next() {
+                var a domain.MultiAccountInfo
+                if err := rows.Scan(&a.UserID, &a.Email, &a.Name, &a.Role,
+                        &a.EtablissementID, &a.EtablissementNom); err != nil {
+                        continue
+                }
+                accounts = append(accounts, a)
+        }
+        return accounts, nil
+}
+
 // GetUserByID récupère un utilisateur par ID (avec champs auth).
 // Fonction SECURITY DEFINER get_user_by_id_auth — bypass RLS (lookup post-login).
 func (r *AuthRepository) GetUserByID(ctx context.Context, userID string) (*domain.AuthUser, error) {

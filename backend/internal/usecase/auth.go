@@ -63,14 +63,22 @@ func NewAuthUseCase(authRepo domain.AuthRepository, signer *jwt.Signer, ml maile
 type LoginRequest struct {
         Identifier string `json:"identifier"` // email ou matricule
         Password   string `json:"password"`
+        // SECT-B2C-MULTI-ETAB : si l'utilisateur a plusieurs comptes et a sélectionné
+        // un établissement, ce champ contient l'userId du compte choisi. Le login
+        // se fait alors directement sur ce compte (pas de multi-account check).
+        SelectedUserID string `json:"selectedUserId,omitempty"`
 }
 
 // LoginResponse est la réponse de /api/auth/login.
 type LoginResponse struct {
-        User         domain.User `json:"user"`
-        AccessToken  string      `json:"accessToken"`
-        RefreshToken string      `json:"refreshToken"`
-        ExpiresAt    time.Time   `json:"expiresAt"`
+        User         domain.User          `json:"user"`
+        AccessToken  string               `json:"accessToken"`
+        RefreshToken string               `json:"refreshToken"`
+        ExpiresAt    time.Time            `json:"expiresAt"`
+        // SECT-B2C-MULTI-ETAB : si l'utilisateur a plusieurs comptes (multi-étab B2C),
+        // ce champ est rempli et AccessToken/RefreshToken sont vides. Le frontend
+        // affiche une page de choix, puis l'utilisateur sélectionne un établissement.
+        MultiAccounts []domain.MultiAccountInfo `json:"multiAccounts,omitempty"`
 }
 
 // Login authentifie un utilisateur et retourne un token pair (access + refresh).
@@ -86,8 +94,35 @@ func (uc *AuthUseCase) Login(ctx context.Context, req LoginRequest, ip, userAgen
                 return nil, &domain.InvalidCredentialsError{}
         }
 
-        // 1. Récupérer l'utilisateur
-        user, err := uc.authRepo.FindUserForAuth(ctx, req.Identifier)
+        // SECT-B2C-MULTI-ETAB : si l'utilisateur a déjà sélectionné un compte
+        // (selectedUserId), on skippe le multi-account check et on login directement.
+        if req.SelectedUserID == "" {
+                accounts, err := uc.authRepo.FindUsersForAuth(ctx, req.Identifier)
+                if err == nil && len(accounts) > 1 {
+                        // Multi-comptes : vérifier le password sur le premier compte
+                        user, err := uc.authRepo.FindUserForAuth(ctx, req.Identifier)
+                        if err != nil {
+                                return nil, &domain.InvalidCredentialsError{}
+                        }
+                        if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+                                return nil, &domain.InvalidCredentialsError{}
+                        }
+                        // Password OK → retourner MultiAccountResponse
+                        return &LoginResponse{
+                                MultiAccounts: accounts,
+                        }, nil
+                }
+        }
+
+        // 1. Récupérer l'utilisateur (single account ou selectedUserId)
+        var user *domain.AuthUser
+        var err error
+        if req.SelectedUserID != "" {
+                // Login avec le userId sélectionné (bypass multi-account)
+                user, err = uc.authRepo.GetUserByID(ctx, req.SelectedUserID)
+        } else {
+                user, err = uc.authRepo.FindUserForAuth(ctx, req.Identifier)
+        }
         if err != nil {
                 if _, ok := err.(*domain.NotFoundError); ok {
                         return nil, &domain.InvalidCredentialsError{}

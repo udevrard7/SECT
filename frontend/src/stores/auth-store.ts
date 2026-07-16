@@ -39,7 +39,9 @@ interface AuthState {
   // vers /login AVANT que refreshSession n'ait eu le temps de vérifier le
   // cookie → flash /login puis retour dashboard.
   hasCheckedSession: boolean
-  login: (identifier: string, password: string) => Promise<boolean>
+  // SECT-B2C-MULTI-ETAB : comptes multiples (multi-établissements B2C)
+  multiAccounts: any[] | null
+  login: (identifier: string, password: string, selectedUserId?: string) => Promise<boolean>
   loginStudent: (matricule: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   setUser: (user: AuthUser | null) => void
@@ -57,14 +59,15 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   isLoading: true,
   hasCheckedSession: false,
   mustChangePassword: false,
+  multiAccounts: null,
 
-  login: async (identifier: string, password: string) => {
+  login: async (identifier: string, password: string, selectedUserId?: string) => {
     set({ isLoading: true })
     try {
       const resp = await fetch('/api/go-auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier, password, selectedUserId }),
       })
 
       const data = await resp.json()
@@ -74,12 +77,17 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         throw {
           status: resp.status,
           message: data.error || 'Identifiants incorrects',
-          // SECT-GENIUSPAY-WAVE-SECURITY : 402 Payment Required inclut abonnementId + retryUrl
           abonnementId: data.abonnementId,
           retryUrl: data.retryUrl,
-          // SECT-B2C-EXPIRE : reason = "pending" (jamais payé) ou "expired" (expiré)
           reason: data.reason,
         } as LoginError
+      }
+
+      // SECT-B2C-MULTI-ETAB : si multiAccounts, retourner false pour déclencher
+      // la page de choix. Les comptes sont stockés temporairement dans le store.
+      if (data.multiAccounts && data.multiAccounts.length > 0) {
+        set({ isLoading: false, multiAccounts: data.multiAccounts })
+        return false
       }
 
       if (data.user) {

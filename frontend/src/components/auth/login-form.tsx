@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
+  ArrowRight,
   KeyRound,
   Loader2,
   GraduationCap,
@@ -139,6 +140,7 @@ export function LoginForm() {
   const login = useAuthStore((state) => state.login)
   const loginStudent = useAuthStore((state) => state.loginStudent)
   const isLoading = useAuthStore((state) => state.isLoading)
+  const multiAccounts = useAuthStore((state) => state.multiAccounts)
 
   const form = useForm<PersonnelFormValues | EtudiantFormValues>({
     resolver: zodResolver(loginMode === 'personnel' ? personnelSchema : etudiantSchema),
@@ -160,6 +162,13 @@ export function LoginForm() {
         success = await loginStudent(data.identifier, data.password)
       } else {
         success = await login(data.identifier, data.password)
+      }
+      // SECT-B2C-MULTI-ETAB : si multiAccounts est présent, le store a reçu
+      // la liste des établissements. On les affiche pour choix.
+      const { multiAccounts } = useAuthStore.getState()
+      if (multiAccounts && multiAccounts.length > 0) {
+        // L'utilisateur choisira un établissement — ne pas afficher d'erreur
+        return
       }
       if (!success) {
         setLoginError('Identifiants incorrects. Veuillez réessayer.')
@@ -576,6 +585,39 @@ export function LoginForm() {
 
           {/* ── Erreur ── */}
           <AnimatePresence>
+            {/* SECT-B2C-MULTI-ETAB : choix d'établissement si multi-comptes */}
+            {multiAccounts && multiAccounts.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="px-3 py-3 rounded-lg bg-[#84CC16]/8 border border-[#84CC16]/20"
+              >
+                <p className="text-sm font-semibold text-[#1E1B4B] mb-3">
+                  Plusieurs établissements trouvés. Choisissez :
+                </p>
+                <div className="space-y-2">
+                  {multiAccounts.map((acc: any) => (
+                    <button
+                      key={acc.userId}
+                      type="button"
+                      onClick={async () => {
+                        setLoginError(null)
+                        useAuthStore.setState({ multiAccounts: null })
+                        const s = await login(data.identifier, data.password, acc.userId)
+                        if (!s) setLoginError('Connexion échouée. Réessayez.')
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg bg-white border border-[#1E1B4B]/10 hover:border-[#84CC16] hover:bg-[#84CC16]/5 transition-colors text-left"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-[#1E1B4B]">{acc.etablissementNom || 'Établissement'}</p>
+                        <p className="text-xs text-[#1E1B4B]/50">{acc.role} — {acc.email}</p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-[#84CC16]" />
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
             {loginError && (
               <motion.div
                 initial={{ opacity: 0, height: 0, marginBottom: 0 }}

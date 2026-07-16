@@ -83,6 +83,10 @@ type AuthRepository interface {
         // Contourne RLS (appelé avant pose des claims).
         FindUserForAuth(ctx context.Context, identifier string) (*AuthUser, error)
 
+        // FindUsersForAuth (SECT-B2C-MULTI-ETAB) récupère TOUS les comptes
+        // correspondant à un email (multi-établissements B2C).
+        FindUsersForAuth(ctx context.Context, identifier string) ([]MultiAccountInfo, error)
+
         // UpdateLoginSuccess met à jour l'utilisateur après un login réussi :
         // reset loginAttempts=0, lockedUntil=NULL, derniereConnexion=now.
         UpdateLoginSuccess(ctx context.Context, userID string) error
@@ -164,6 +168,18 @@ type AuthUser struct {
         LoginAttempts     int
         LockedUntil       *time.Time
         DerniereConnexion *time.Time
+}
+
+// MultiAccountInfo — compte résumé pour le choix multi-établissement (B2C).
+// SECT-B2C-MULTI-ETAB : quand un étudiant a des comptes dans plusieurs étab B2C,
+// le login retourne cette liste pour que le frontend affiche une page de choix.
+type MultiAccountInfo struct {
+        UserID           string `json:"userId"`
+        Email            string `json:"email"`
+        Name             string `json:"name"`
+        Role             string `json:"role"`
+        EtablissementID  string `json:"etablissementId"`
+        EtablissementNom string `json:"etablissementNom"`
 }
 
 // AuditLogEntry représente une entrée du journal d'audit.
