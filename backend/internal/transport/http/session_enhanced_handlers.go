@@ -60,6 +60,13 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                         return
                 }
 
+                // BULK-FLUSH-1 : vérifier ownership + bulk upsert en 2 transactions
+                // au lieu de 21 (1 ownership + N par question).
+                //
+                // Avant : 1 WithTx ownership + N WithTx par question = 21 transactions.
+                // Maintenant : 1 WithTx ownership + 1 BulkSaveReponses = 2 transactions.
+                // Performance : ~90% de transactions en moins.
+
                 // Vérifier ownership (session.etudiantId = claims.UserID)
                 var etudiantID string
                 found := false
@@ -77,21 +84,11 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                         return
                 }
 
-                // Sauvegarder chaque réponse (RLS off car le worker n'a pas de claims HTTP
-                // — mais ici on a les claims, on utilise WithTx pour RLS on)
+                // Bulk upsert : 1 transaction pour toutes les réponses
+                err := s.sessionUC.BulkSaveReponses(r.Context(), claims, sessionID, reponses)
                 saved := 0
-                for questionID, contenu := range reponses {
-                        err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                                _, err := tx.Exec(r.Context(), `
-                                        INSERT INTO "Reponse" ("id", "sessionId", "questionId", "contenu", "createdAt", "updatedAt")
-                                        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                                        ON CONFLICT ("sessionId", "questionId") DO UPDATE SET "contenu" = $4, "updatedAt" = CURRENT_TIMESTAMP
-                                `, fmt.Sprintf("rep-%s-%s", sessionID[:8], questionID[:8]), sessionID, questionID, contenu)
-                                return err
-                        })
-                        if err == nil {
-                                saved++
-                        }
+                if err == nil {
+                        saved = len(reponses)
                 }
 
                 // Note : le cache RAM saveReponse (pattern existant) prend aussi epreuveID/etudiantID.

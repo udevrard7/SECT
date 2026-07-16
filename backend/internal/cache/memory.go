@@ -9,6 +9,11 @@
 //
 // Le submit examen force un flush immédiat (avant la soumission finale).
 //
+// OWNERSHIP-CACHE-1 : cache d'ownership vérifiée. Après la première vérification
+// DB qu'un étudiant possède bien une session, on stocke ce fait en mémoire.
+// Les saves ultérieurs n'ont plus besoin de requêter la DB pour l'ownership.
+// Invalidation : à la suppression de la session du cache (submit/remove).
+//
 // Render Free : le plan gratuit s'endort après 15 min d'inactivité et
 // l'instance est détruite (perte RAM). Ce n'est pas grave pour un examen :
 // tant qu'un étudiant compose, l'API est active et Render ne s'endort pas.
@@ -34,7 +39,8 @@ type CachedSession struct {
 
 // SessionCache — store en mémoire thread-safe (sync.Map).
 type SessionCache struct {
-	store sync.Map
+	store           sync.Map // sessionID → *CachedSession
+	verifiedOwners  sync.Map // sessionID → ownerEtudiantID (OWNERSHIP-CACHE-1)
 }
 
 // NewSessionCache crée un nouveau cache de sessions vide.
@@ -60,6 +66,23 @@ func (c *SessionCache) SaveAnswers(sessionID, epreuveID, etudiantID string, repo
 	}
 	sess.UpdatedAt = time.Now()
 	sess.Dirty = true
+}
+
+// MarkOwnershipVerified enregistre qu'une session a été vérifiée comme
+// appartenant à un étudiant (OWNERSHIP-CACHE-1). Les saves ultérieurs
+// pourront skip la vérification DB.
+func (c *SessionCache) MarkOwnershipVerified(sessionID, etudiantID string) {
+	c.verifiedOwners.Store(sessionID, etudiantID)
+}
+
+// IsOwnershipVerified vérifie si l'ownership d'une session a déjà été
+// validée pour un étudiant donné. Retourne true si la session a été
+// vérifiée et appartient bien à l'étudiant.
+func (c *SessionCache) IsOwnershipVerified(sessionID, etudiantID string) bool {
+	if owner, ok := c.verifiedOwners.Load(sessionID); ok {
+		return owner.(string) == etudiantID
+	}
+	return false
 }
 
 // GetDirtySessions retourne les sessions modifiées et les marque clean.
@@ -103,8 +126,10 @@ func (c *SessionCache) FlushAndGetDirty(sessionID string) []*CachedSession {
 }
 
 // RemoveSession supprime une session du cache (après submit).
+// Invalide aussi le cache d'ownership (OWNERSHIP-CACHE-1).
 func (c *SessionCache) RemoveSession(sessionID string) {
 	c.store.Delete(sessionID)
+	c.verifiedOwners.Delete(sessionID)
 }
 
 // Count retourne le nombre de sessions en cache.

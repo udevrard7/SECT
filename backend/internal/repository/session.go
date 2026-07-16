@@ -272,6 +272,80 @@ func (r *SessionRepository) SaveReponse(ctx context.Context, sessionID, question
         return tx.Commit(ctx)
 }
 
+// BulkSaveReponses upsert en masse toutes les réponses d'une session en une seule
+// transaction (BULK-FLUSH-1). Réduit 20 transactions → 1 transaction.
+//
+// Avant : FlushSessionToNeon appelait SaveReponse par question → 20 BeginTx + 20×3 SET LOCAL
+// + 20 INSERT + 20 Commit = ~100 DB round-trips par session.
+// Maintenant : 1 BeginTx + 3 SET LOCAL + 1 batch INSERT + 1 Commit = ~5 DB round-trips.
+//
+// Pour 5000 étudiants : 5000 × 5 = 25 000 round-trips au lieu de 500 000 (-95%).
+func (r *SessionRepository) BulkSaveReponses(ctx context.Context, sessionID string, reponses map[string]string) error {
+        if len(reponses) == 0 {
+                return nil
+        }
+
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        // Poser les claims RLS une seule fois pour toute la transaction
+        if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
+                return fmt.Errorf("set claims: %w", err)
+        }
+
+        // Construire la requête batch INSERT ... ON CONFLICT avec VALUES multiples.
+        // On utilise des paramètres bindés ($1, $2, ...) pour la sécurité.
+        //
+        // Pour N réponses, on génère :
+        //   INSERT INTO "Reponse" ("id", "sessionId", "questionId", "contenu")
+        //   VALUES ($1, $2, $3, $4), ($5, $6, $7, $8), ...
+        //   ON CONFLICT ("sessionId", "questionId") DO UPDATE SET "contenu" = EXCLUDED."contenu", "updatedAt" = CURRENT_TIMESTAMP
+        //
+        // C'est nettement plus efficace que N INSERT séparés car :
+        // - 1 seul round-trip réseau au lieu de N
+        // - 1 seul parse/plan de requête
+        // - PostgreSQL optimise le batch en une seule écriture WAL
+
+        i := 1 // param counter (1-based)
+        var placeholders []string
+        var args []any
+
+        for questionID, contenu := range reponses {
+                if contenu == "" {
+                        continue
+                }
+                placeholders = append(placeholders, fmt.Sprintf("($%d, $%d, $%d, $%d)", i, i+1, i+2, i+3))
+                args = append(args, uuid.NewString(), sessionID, questionID, contenu)
+                i += 4
+        }
+
+        if len(placeholders) == 0 {
+                return tx.Commit(ctx) // rien à insérer, mais on commit la tx proprement
+        }
+
+        query := fmt.Sprintf(`
+                INSERT INTO "Reponse" ("id", "sessionId", "questionId", "contenu")
+                VALUES %s
+                ON CONFLICT ("sessionId", "questionId") DO UPDATE SET
+                        "contenu" = EXCLUDED."contenu",
+                        "updatedAt" = CURRENT_TIMESTAMP
+        `, strings.Join(placeholders, ", "))
+
+        if _, err := tx.Exec(ctx, query, args...); err != nil {
+                return fmt.Errorf("bulk upsert reponses: %w", err)
+        }
+
+        return tx.Commit(ctx)
+}
+
 // GetReponses récupère les réponses d'une session (RLS actif).
 func (r *SessionRepository) GetReponses(ctx context.Context, sessionID string) ([]domain.Reponse, error) {
         claims, ok := db.ClaimsFromContext(ctx)
