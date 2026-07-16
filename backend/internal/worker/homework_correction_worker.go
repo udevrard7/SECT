@@ -313,7 +313,7 @@ func (w *HomeworkCorrectionWorker) RecoverInterruptedHomeworkCorrections(ctx con
 		FROM "Soumission" s
 		JOIN "Devoir" dv ON dv."id" = s."devoirId"
 		WHERE s."statutIA"::text = 'EN_COURS'
-		  AND s."deletedAt" IS NULL
+		  AND dv."deletedAt" IS NULL
 	`)
 	if err != nil {
 		w.logger.Error("RecoverHomework: query failed", "error", err)
