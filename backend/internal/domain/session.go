@@ -219,6 +219,10 @@ type SessionRepository interface {
         Create(ctx context.Context, etudiantID, epreuveID string, propositionMappings json.RawMessage) (*SessionPassation, error)
         UpdateStatut(ctx context.Context, id string, statut StatutSession, score *float64, dateFin *time.Time) error
         SaveReponse(ctx context.Context, sessionID, questionID, contenu string) error
+        // BULK-FLUSH-1 : upsert en masse de toutes les réponses d'une session en une
+        // seule transaction. Réduit 20 transactions (1 par question) → 1 transaction.
+        // Essentiel pour supporter 5000+ étudiants simultanés (capacity planning).
+        BulkSaveReponses(ctx context.Context, sessionID string, reponses map[string]string) error
         GetReponses(ctx context.Context, sessionID string) ([]Reponse, error)
         UpdateReponseScore(ctx context.Context, reponseID string, score float64) error
         AddAlerte(ctx context.Context, sessionID string, penalite float64, alerte AlerteInput) error

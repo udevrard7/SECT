@@ -126,12 +126,17 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
 // Le worker goroutine synchronisera vers Neon toutes les 30s, et le
 // handler submitSession force un flush immédiat avant la soumission.
 //
+// OWNERSHIP-CACHE-1 : la vérification d'ownership est maintenant cachée.
+// Après la première vérification DB, le cache retient que l'étudiant
+// possède cette session. Les saves ultérieurs skip la DB query.
+// Avant : 1 transaction DB par save (ownership check).
+// Maintenant : 0 transaction DB après la première vérification.
+// Pour 5000 étudiants × 1 save/30s = 167 tx/s économisées.
+//
 // VULN-6 (CRITICAL, audit 2025) : avant d'écrire dans le cache, on vérifie
 // que la session appartient bien à claims.UserID. Sans ce check, un étudiant
 // malveillant pouvait forger un SessionID arbitraire et écraser les réponses
-// d'un autre étudiant. La vérification se fait via RLS (SessionPassation_select)
-// en lecture simple — si l'étudiant n'est pas le propriétaire, RLS retourne 0
-// ligne → 404.
+// d'un autre étudiant.
 func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -150,24 +155,32 @@ func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // VULN-6 : vérifier ownership (session.etudiantId = claims.UserID).
-        // RLS filtre automatiquement : un étudiant ne peut lire que ses propres
-        // sessions (policy SessionPassation_select). Si found=false, la session
-        // n'existe pas OU n'appartient pas à l'utilisateur → 404.
-        var etudiantID string
-        found := false
-        _ = db.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                err := tx.QueryRow(r.Context(),
-                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
-                        input.SessionID).Scan(&etudiantID)
-                if err == nil {
-                        found = true
+        // OWNERSHIP-CACHE-1 : vérifier l'ownership, d'abord via le cache en mémoire,
+        // puis via DB si pas encore vérifié. Après la première vérification DB,
+        // le cache retient l'ownership → les saves ultérieurs n'ont plus besoin de DB.
+        if s.sessionCache != nil && s.sessionCache.IsOwnershipVerified(input.SessionID, claims.UserID) {
+                // Ownership déjà vérifiée en cache → skip DB query
+        } else {
+                // Première vérification : requêter la DB
+                var etudiantID string
+                found := false
+                _ = db.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        err := tx.QueryRow(r.Context(),
+                                `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+                                input.SessionID).Scan(&etudiantID)
+                        if err == nil {
+                                found = true
+                        }
+                        return err
+                })
+                if !found || etudiantID != claims.UserID {
+                        writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+                        return
                 }
-                return err
-        })
-        if !found || etudiantID != claims.UserID {
-                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
-                return
+                // Cacher l'ownership vérifiée pour les prochains saves
+                if s.sessionCache != nil {
+                        s.sessionCache.MarkOwnershipVerified(input.SessionID, claims.UserID)
+                }
         }
 
         // CACHE-RAM-1 : écrire en RAM (single-question merge).
@@ -338,34 +351,36 @@ func (s *Server) GetDirtySessions() []*cache.CachedSession {
         return s.sessionCache.GetDirtySessions()
 }
 
-// FlushSessionToNeon écrit une session cache vers Neon via le usecase SaveReponse.
+// FlushSessionToNeon écrit une session cache vers Neon en une seule transaction
+// bulk (BULK-FLUSH-1).
+//
+// Avant : appelait SaveReponse par question → 20 transactions par session.
+// Maintenant : appelle BulkSaveReponses → 1 transaction par session.
+// Performance : 5000 étudiants × 1 tx = 5000 tx au lieu de 100 000 tx (-95%).
+//
 // Construit les claims RLS à partir de l'EtudiantID stocké en cache — le worker
 // goroutine n'a pas de claims HTTP, donc on utilise l'ID de l'étudiant propriétaire
-// de la session. SaveReponse appelle WithTx qui pose app.claims.user_id ; le RLS
+// de la session. BulkSaveReponses appelle WithTx qui pose app.claims.user_id ; le RLS
 // filtrera alors correctement (pas besoin de désactiver RLS).
-//
-// Remarque : SaveReponseInput est single-question (QuestionID + Contenu), donc on
-// appelle SaveReponse une fois par entrée du map Reponses.
 func (s *Server) FlushSessionToNeon(ctx context.Context, sess *cache.CachedSession) error {
         if sess == nil {
                 return nil
         }
+
+        // Filtrer les réponses vides (pas besoin de persister du vide)
+        filtered := make(map[string]string, len(sess.Reponses))
+        for questionID, contenu := range sess.Reponses {
+                if contenu != "" {
+                        filtered[questionID] = contenu
+                }
+        }
+        if len(filtered) == 0 {
+                return nil
+        }
+
         claims := db.SessionClaims{
                 UserID: sess.EtudiantID,
                 Role:   string(domain.RoleEtudiant),
         }
-        for questionID, contenu := range sess.Reponses {
-                if contenu == "" {
-                        continue
-                }
-                input := domain.SaveReponseInput{
-                        SessionID:  sess.SessionID,
-                        QuestionID: questionID,
-                        Contenu:    contenu,
-                }
-                if err := s.sessionUC.SaveReponse(ctx, claims, input); err != nil {
-                        return err
-                }
-        }
-        return nil
+        return s.sessionUC.BulkSaveReponses(ctx, claims, sess.SessionID, filtered)
 }

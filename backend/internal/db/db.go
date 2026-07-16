@@ -5,7 +5,10 @@ package db
 import (
         "context"
         "fmt"
+        "os"
+        "strconv"
         "strings"
+        "time"
 
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
@@ -38,9 +41,28 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
                 return nil, fmt.Errorf("parse database URL: %w", err)
         }
 
-        // Configuration du pool — Neon recommande un pool modeste
-        config.MaxConns = 20
-        config.MinConns = 2
+        // Configuration du pool — optimisé pour haute charge (BULK-FLUSH-1).
+        // Avant : MaxConns=20, insuffisant pour 5000+ étudiants simultanés.
+        // Maintenant : MaxConns configurable via DB_MAX_CONNS (défaut 100).
+        // Neon pooler (PgBouncer transaction mode) gère le multiplexage côté serveur.
+        //
+        // Calcul : 5000 sessions / 30s flush = 167 sessions/s × ~20ms/tx = 3.3 connexions
+        // + 585 req/s HTTP × ~10ms = 5.85 connexions + marge = ~20 connexions actives.
+        // MaxConns=100 donne un buffer confortable pour les pics.
+        config.MaxConns = int32(getEnvInt("DB_MAX_CONNS", 100))
+        config.MinConns = int32(getEnvInt("DB_MIN_CONNS", 5))
+
+        // Health check pour détecter les connexions mortes (Neon cold start)
+        config.HealthCheckPeriod = 30 * time.Second
+
+        // Connection max idle time — fermer les connexions inactives après 5 min
+        config.MaxConnIdleTime = 5 * time.Minute
+
+        // Connection max lifetime — renouveler les connexions après 30 min
+        config.MaxConnLifetime = 30 * time.Minute
+
+        // ConnectTimeout — 10s pour se connecter à Neon (sur ConnConfig)
+        config.ConnConfig.ConnectTimeout = 10 * time.Second
 
         // BUGFIX (SCORES-NORM-1): désactiver les prepared statements car le
         // pooler Neon (PgBouncer) ne les supporte pas correctement → erreur
@@ -65,6 +87,16 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
         }
 
         return pool, nil
+}
+
+// getEnvInt retourne la valeur entière d'une variable d'environnement, ou le fallback.
+func getEnvInt(key string, fallback int) int {
+        if v := os.Getenv(key); v != "" {
+                if n, err := strconv.Atoi(v); err == nil {
+                        return n
+                }
+        }
+        return fallback
 }
 
 // SessionClaims représente les claims de session posés pour RLS.
@@ -118,6 +150,7 @@ func SystemClaims() SessionClaims {
 //      db.SetClaimsTx(ctx, tx, claims)
 //      // ... queries ...
 //      tx.Commit(ctx)
+//
 // SetClaimsTx pose les claims RLS (app.claims.*) au début d'une transaction.
 // RLS-POOLER-FIX : utilise SET LOCAL au lieu de SELECT set_config(...) car
 // pgx + QueryExecModeExec peut ne pas appliquer correctement set_config local

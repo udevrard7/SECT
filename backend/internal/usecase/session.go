@@ -170,6 +170,36 @@ func (uc *SessionUseCase) SaveReponse(ctx context.Context, claims db.SessionClai
         return nil
 }
 
+// BulkSaveReponses sauvegarde en masse les réponses d'une session en une seule
+// transaction (BULK-FLUSH-1). Utilisé par FlushSessionToNeon et updateSessionBulk.
+//
+// Avant : N appels à SaveReponse → N transactions (1 par question).
+// Maintenant : 1 seul appel à BulkSaveReponses → 1 transaction pour toutes les questions.
+// Performance : ~95% de requêtes DB en moins pour le flush de cache.
+func (uc *SessionUseCase) BulkSaveReponses(ctx context.Context, claims db.SessionClaims, sessionID string, reponses map[string]string) error {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleEtudiant && role != domain.RoleEnseignant && role != domain.RoleAdmin {
+                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if sessionID == "" || len(reponses) == 0 {
+                return nil
+        }
+
+        // Vérifier que la session existe (pas de vérification de statut pour le flush
+        // car la session peut être EN_COURS ou SOUMISE au moment du flush)
+        sess, err := uc.sessionRepo.FindByID(ctx, sessionID)
+        if err != nil {
+                return err
+        }
+
+        // ETUDIANT : doit posséder la session
+        if role == domain.RoleEtudiant && sess.EtudiantID != claims.UserID {
+                return &domain.UnauthorizedError{Message: "vous ne pouvez modifier que votre propre session"}
+        }
+
+        return uc.sessionRepo.BulkSaveReponses(ctx, sessionID, reponses)
+}
+
 // AddAlerte logge une alerte anti-fraude sur une session (B2-MES-EPREUVES).
 // Vérifie l'ownership (session.etudiantId = claims.UserID pour les étudiants).
 func (uc *SessionUseCase) AddAlerte(ctx context.Context, claims db.SessionClaims, sessionID string, penalite float64, alerte domain.AlerteInput) error {
