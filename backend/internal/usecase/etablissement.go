@@ -495,9 +495,9 @@ func (uc *EtablissementUseCase) Delete(ctx context.Context, claims db.SessionCla
         if claims.Role != string(domain.RoleAdmin) {
                 return &domain.UnauthorizedError{Message: "seul un ADMIN peut supprimer un établissement"}
         }
-        if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, id); err != nil {
-                return err
-        }
+        // ADMIN PaaS peut supprimer n'importe quel établissement (y compris les
+        // établissements PERSONNEL B2C qui n'ont pas d'entrée EtablissementAccess).
+        // La RLS Etablissement_delete restreint déjà au rôle ADMIN.
         return uc.etabRepo.Delete(ctx, id)
 }
 
