@@ -151,12 +151,15 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         successURL := s.appBaseURL + "/paiement/succes?abo=" + aboID
         errorURL := s.appBaseURL + "/paiement/erreur?abo=" + aboID
 
-        // 4. Créer le paiement Wave chez GeniusPay
+        // 4. Créer le paiement chez GeniusPay.
+        // SECT-PAYMENT-MULTI-METHOD : Wave → paiement direct (wave_ci).
+        // Orange/MTN/Moov → mode checkout GeniusPay (pas de payment_method) car
+        // GeniusPay ignore orange_money_ci/mtn_money_ci et redirige vers Wave.
+        // Le mode checkout affiche la page GeniusPay où l'utilisateur choisit.
         amount := int(planPrix) // 4900 pour Prof Premium
         gpReq := geniuspay.CreatePaymentRequest{
                 Amount:        amount,
                 Currency:      "XOF",
-                PaymentMethod: req.PaymentMethod,
                 CustomerPhone: req.CustomerPhone,
                 CustomerName:  req.CustomerName,
                 Description:   "SECT Prof Premium - 1 mois",
@@ -167,6 +170,10 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
                         "plan_id":       planID,
                         "etablissement_id": etabID,
                 },
+        }
+        // Wave → paiement direct. Autres → mode checkout (GeniusPay choisit).
+        if req.PaymentMethod == "wave_ci" {
+                gpReq.PaymentMethod = "wave_ci"
         }
 
         gpResp, err := s.geniusPay.CreatePayment(ctx, gpReq)
@@ -635,7 +642,6 @@ func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
         gpReq := geniuspay.CreatePaymentRequest{
                 Amount:        amount,
                 Currency:      "XOF",
-                PaymentMethod: req.PaymentMethod,
                 CustomerPhone: req.CustomerPhone,
                 CustomerName:  req.CustomerName,
                 Description:   "SECT Prof Premium - Renouvellement 1 mois",
@@ -647,6 +653,10 @@ func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
                         "etablissement_id": etabID,
                         "renewal":          "true",
                 },
+        }
+        // Wave → paiement direct. Autres → mode checkout (GeniusPay choisit).
+        if req.PaymentMethod == "wave_ci" {
+                gpReq.PaymentMethod = "wave_ci"
         }
 
         gpResp, err := s.geniusPay.CreatePayment(ctx, gpReq)

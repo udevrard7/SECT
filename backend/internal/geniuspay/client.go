@@ -68,11 +68,16 @@ var ErrNotConfigured = fmt.Errorf("geniuspay: client non configuré (GENIUSPAY_A
 // CreatePaymentRequest — body du POST /payments.
 // Doc GeniusPay : amount (min 200 XOF), payment_method (wave_ci, orange_money_ci...),
 // customer.phone (requis, format +225...), success_url, error_url, metadata.
+//
+// Si PaymentMethod est vide → mode checkout (GeniusPay affiche sa page de choix).
+// Si PaymentMethod est "wave_ci" → redirection directe vers Wave.
+// NB: orange_money_ci et mtn_money_ci sont ignorés par GeniusPay (retourne Wave).
+// Pour Orange/MTN, on utilise le mode checkout (PaymentMethod vide).
 type CreatePaymentRequest struct {
         Amount        int               `json:"amount"`              // en XOF (entier)
         Currency      string            `json:"currency,omitempty"`  // XOF défaut
-        PaymentMethod string            `json:"payment_method"`      // "wave_ci", "orange_money_ci", "card"...
-        CustomerPhone string            `json:"customer_phone"`      // format +225...
+        PaymentMethod string            `json:"payment_method,omitempty"` // vide = mode checkout
+        CustomerPhone string            `json:"customer_phone,omitempty"` // format +225...
         CustomerName  string            `json:"customer_name,omitempty"`
         CustomerEmail string            `json:"customer_email,omitempty"`
         Description   string            `json:"description,omitempty"`
