@@ -60,6 +60,9 @@ type Server struct {
         // SECT-QUOTA-GUARDS : vérification des quotas IA (génération/correction)
         // dans les handlers AI avant appel au LLM.
         quotaChecker domain.QuotaChecker
+        // OPT-7 : hub WebSocket temps réel pour la surveillance.
+        // Remplace le polling TanStack Query (30s) par push immédiat.
+        surveillanceHub *SurveillanceHub
         // SECT-GENIUSPAY-WAVE : client GeniusPay pour paiement Wave B2C Prof Premium.
         // Peut être nil si GENIUSPAY_API_KEY non configuré (handlers retournent 503).
         geniusPay              *geniuspay.Client
@@ -88,6 +91,7 @@ func NewServer(
         examPrepUC *usecase.ExamPrepUseCase,
         messagerieUC *usecase.MessagerieUseCase,
         messagerieHub *MessagerieHub,
+        surveillanceHub *SurveillanceHub,
         aiService *ai.AIService,
         storage domain.StorageClient,
         dbPool *pgxpool.Pool,
@@ -121,6 +125,7 @@ func NewServer(
                 examPrepUC:       examPrepUC,
                 messagerieUC:     messagerieUC,
                 messagerieHub:    messagerieHub,
+                surveillanceHub: surveillanceHub,
                 aiService:        aiService,
                 storage:          storage,
                 monRecorder:      monRecorder,
@@ -157,6 +162,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         // chimw.RealIP modifie r.RemoteAddr ce qui peut causer des conflits.
         r.Use(chimw.RequestID)
         r.Use(chimw.Recoverer)
+        r.Use(chimw.Compress(5)) // OPT-8: gzip compression (level 5 = good ratio/speed balance)
         // Monitoring middleware : capture erreurs 5xx + panics → MonitoringEvent
         r.Use(monitoring.Middleware(s.monRecorder, nil))
         r.Use(cors.Handler(cors.Options{
@@ -667,6 +673,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/stats", s.surveillanceStatsV2)
                         // SSE-STREAM-1 : Server-Sent Events pour surveillance temps réel
                         r.Get("/stream", s.surveillanceStream) // SSE endpoint
+                        // OPT-7 : WebSocket temps réel pour surveillance (remplace polling).
+                        r.Get("/ws", s.handleSurveillanceWS)
                         // SURVEILLANCE-FIX-2 S2 : route POST /{id}/flag manquante.
                         r.Post("/{id}/flag", s.surveillanceFlagSession)
                 })

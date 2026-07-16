@@ -110,6 +110,14 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
         // mapping de propositions persisté (si melangePropositions: true).
         questions, _ := s.epreuveUC.ListQuestions(r.Context(), claims, sess.EpreuveID)
 
+        // OPT-7 : push WebSocket aux surveillants — session démarrée.
+        s.surveillanceHub.BroadcastEvent("SESSION_STARTED", sess.EpreuveID, map[string]any{
+                "sessionId":  sess.ID,
+                "epreuveId":  sess.EpreuveID,
+                "etudiantId": sess.EtudiantID,
+                "statut":     string(sess.Statut),
+        })
+
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
                 "session": sess,
@@ -228,6 +236,17 @@ func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
+        }
+
+        // OPT-7 : push WebSocket aux surveillants — session soumise.
+        if result.Session != nil {
+                s.surveillanceHub.BroadcastEvent("SESSION_SUBMITTED", result.Session.EpreuveID, map[string]any{
+                        "sessionId":  result.Session.ID,
+                        "epreuveId":  result.Session.EpreuveID,
+                        "etudiantId": result.Session.EtudiantID,
+                        "statut":     string(result.Session.Statut),
+                        "score":      result.Score,
+                })
         }
 
         w.Header().Set("Content-Type", "application/json")
