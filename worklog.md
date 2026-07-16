@@ -16457,3 +16457,41 @@ Stage Summary:
 - Le backend Go compile correctement en local
 - La connexion à la base Neon est fonctionnelle
 - ⚠️ Note : le worklog précédent mentionnait Supabase/Prisma/NextAuth.js — l'architecture RÉELLE utilise Neon/sqlc/JWT custom/Go
+
+---
+Task ID: SECT-ENV-RESETUP
+Agent: Z.ai Code (tuteur/assistant)
+Task: Rétablissement de l'environnement de développement + réconciliation DB Neon (session de reprise)
+
+Work Log:
+- Cloné le dépôt GitHub udevvrard7/SECT dans /home/z/sect (branche main, commit HEAD b5dbaca)
+- Configuré l'identité Git locale : udevvrard7 <ulrichdouh@gmail.com>
+- Installé Go 1.24.4 dans /home/z/.local/go (ajouté au PATH via ~/.bashrc) — go.mod exige go 1.24
+- Vérifié la compilation du backend : `go build ./...` EXIT 0 (aucune erreur)
+- Installé golang-migrate v4.19.1 (go install) pour gérer les migrations
+- Installé les dépendances frontend : `bun install` → 1066 packages, EXIT 0
+- Créé backend/.env (NEON_DATABASE_URL pooler, NEON_DIRECT_URL direct, JWT_SECRET généré, CORS localhost+Vercel) — .env est gitignoré
+- Créé frontend/.env (NEXT_PUBLIC_API_URL=http://localhost:8080) — gitignoré
+- Connecté et vérifié la base Neon : 63 tables, migrations version 72 au départ
+
+Réconciliation DB Neon (IMPORTANT) :
+- État initial : schema_migrations version=72 dirty=false, MAIS migration 000073 (admin_delete_etablissement, commit 229dffa) déjà présente sur main et déployée sur Render
+- Inspection lecture seule via pgx : la policy "Etablissement_delete" EXISTE DÉJÀ et la FK "Facture_etablissementId_fkey" est déjà en ON DELETE SET NULL (confdeltype='n') → les effets de la migration 073 sont déjà appliqués dans la base, mais schema_migrations n'avait pas été incrémenté
+- `migrate up` a échoué (policy déjà existante) et a marqué version=73 dirty=true
+- Correction : `migrate force 73` → schema_migrations version=73 dirty=false
+- La base Neon est désormais synchronisée avec le code (73/73, propre)
+
+Smoke test backend local :
+- `go run ./cmd/api` démarre, se connecte à Neon ("connected to Neon Postgres")
+- Tous les workers démarrent (IA, Correction, Document Analyzer, Practice, Homework, Audio, AutoClose 60s, Relance 6h, Expire 1h)
+- R2 / Resend / GeniusPay non configurés → dégradation gracieuse (LogMailer, storage DB-only, payment 503)
+- GET /health → HTTP 200 {"service":"sect-api","status":"ok","version":"0.2.0"}
+- GET /api/health → HTTP 200
+
+Stage Summary:
+- Environnement pleinement opérationnel : Go 1.24.4 + repo cloné + backend compile + frontend deps installés + .env créés + DB Neon synchronisée
+- Backend démarre localement et répond 200 sur /health
+- Pipeline CI/CD respecté : GitHub → Vercel (frontend, auto) + Render (backend Docker, auto, rootDir backend)
+- ⚠️ Note : le header (section 1) de ce worklog est OBSOLÈTE — il mentionne Supabase/Prisma/NextAuth.js, or l'architecture RÉELLE est Go/chi/pgx + Neon + JWT custom + sqlc (confirmé par README, go.mod, render.yaml). À corriger ultérieurement.
+- 🔎 Bug identifié (non bloquant) : internal/worker/homework_correction_worker.go:316 — la requête RecoverInterruptedHomeworkCorrections filtre sur `s."deletedAt" IS NULL` mais `s` alias la table "Soumission" qui n'a PAS de colonne deletedAt (seules Abonnement/Conversation/Devoir/Document/Epreuve/Message/Question en ont une). Erreur SQLSTATE 42703 à chaque démarrage. Fix proposé : retirer le filtre `s."deletedAt" IS NULL` (ou ajouter la colonne via migration si le soft-delete de Soumission est voulu).
+- 🔐 Sécurité : les credentials partagés en clair par l'utilisateur (token GitHub, URL Neon, tokens Vercel/Render) doivent être révoqués/régénérés après cette session.
