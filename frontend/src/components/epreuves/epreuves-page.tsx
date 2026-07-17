@@ -866,7 +866,7 @@ function ModelesTab() {
  {/* Group by selector (visible en mode grouped) */}
  {viewMode ==='grouped' && (
  <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupByField)}>
- <SelectTrigger className="h-8 w-[160px] text-xs">
+ <SelectTrigger className="h-8 w-full sm:w-[160px] text-xs">
  <SelectValue placeholder="Grouper par" />
  </SelectTrigger>
  <SelectContent>
@@ -2017,7 +2017,7 @@ function SessionsTab() {
  {/* Group by selector (visible when grouped mode) */}
  {viewMode ==='grouped' && (
  <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupByField)}>
- <SelectTrigger className="h-8 w-[160px] text-xs">
+ <SelectTrigger className="h-8 w-full sm:w-[160px] text-xs">
  <SelectValue placeholder="Grouper par" />
  </SelectTrigger>
  <SelectContent>

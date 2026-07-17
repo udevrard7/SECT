@@ -85,7 +85,7 @@ export function CorrectionToolbar({
           value={selectedEpreuveId}
           onValueChange={setSelectedEpreuveId}
         >
-          <SelectTrigger className="w-[200px] h-8 text-sm">
+          <SelectTrigger className="w-full sm:w-[200px] h-8 text-sm">
             <SelectValue placeholder="Sélectionnez une épreuve" />
           </SelectTrigger>
           <SelectContent>

@@ -180,7 +180,7 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden flex flex-col">
+      <DialogContent className="max-h-[85vh] sm:max-w-2xl overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-destructive" />

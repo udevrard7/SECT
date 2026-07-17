@@ -73,7 +73,7 @@ export function ResultsToolbar({
           value={filters.statut}
           onValueChange={(v) => onFiltersChange({ ...filters, statut: v as ResultatFilters['statut'] })}
         >
-          <SelectTrigger className="h-9 w-[140px]" aria-label="Filtrer par statut">
+          <SelectTrigger className="h-9 w-full sm:w-[140px]" aria-label="Filtrer par statut">
             <SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
@@ -89,7 +89,7 @@ export function ResultsToolbar({
           value={filters.scoreRange}
           onValueChange={(v) => onFiltersChange({ ...filters, scoreRange: v as ResultatFilters['scoreRange'] })}
         >
-          <SelectTrigger className="h-9 w-[150px]" aria-label="Filtrer par score">
+          <SelectTrigger className="h-9 w-full sm:w-[150px]" aria-label="Filtrer par score">
             <SelectValue placeholder="Score" />
           </SelectTrigger>
           <SelectContent>

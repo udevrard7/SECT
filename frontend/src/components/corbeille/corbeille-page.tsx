@@ -799,7 +799,7 @@ export function CorbeillePage() {
       </div>
       <div className="flex items-center gap-2">
         <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-          <SelectTrigger className="h-9 w-[200px]">
+          <SelectTrigger className="h-9 w-full sm:w-[200px]">
             <ArrowUpDown className="mr-2 h-4 w-4 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>

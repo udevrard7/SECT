@@ -954,7 +954,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               />
             </div>
             <Select value={filiereFilter} onValueChange={setFiliereFilter}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Filière" />
               </SelectTrigger>
               <SelectContent>
@@ -965,7 +965,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               </SelectContent>
             </Select>
             <Select value={semestreFilter} onValueChange={setSemestreFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-full sm:w-[140px]">
                 <SelectValue placeholder="Semestre" />
               </SelectTrigger>
               <SelectContent>

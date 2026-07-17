@@ -126,7 +126,7 @@ export function MesEpreuvesTab({ sessions, onViewDetail }: MesEpreuvesTabProps) 
                 value={filters.statut}
                 onValueChange={(v) => setFilters({ ...filters, statut: v as Filters['statut'] })}
               >
-                <SelectTrigger className="h-9 w-[140px]">
+                <SelectTrigger className="h-9 w-full sm:w-[140px]">
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>

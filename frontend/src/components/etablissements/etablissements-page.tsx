@@ -412,7 +412,7 @@ export function EtablissementsPage() {
           />
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <Filter className="h-3.5 w-3.5 mr-1" />
             <SelectValue placeholder="Type" />
           </SelectTrigger>

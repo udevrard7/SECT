@@ -298,7 +298,7 @@ export function ExamPrepPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {/* Filtre UE */}
               <Select value={filterUEId} onValueChange={(v) => setFilterUEId(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-9 w-[180px] text-xs">
+                <SelectTrigger className="h-9 w-full sm:w-[180px] text-xs">
                   <SelectValue placeholder="Toutes les UE" />
                 </SelectTrigger>
                 <SelectContent>
@@ -336,7 +336,7 @@ export function ExamPrepPage() {
               {/* Group by selector (visible en mode grouped uniquement) */}
               {viewMode === 'grouped' && (
                 <Select value={groupBy} onValueChange={(v) => setGroupBy(v as 'ue' | 'enseignant' | 'theme')}>
-                  <SelectTrigger className="h-9 w-[150px] text-xs">
+                  <SelectTrigger className="h-9 w-full sm:w-[150px] text-xs">
                     <SelectValue placeholder="Grouper par" />
                   </SelectTrigger>
                   <SelectContent>

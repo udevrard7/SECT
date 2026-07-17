@@ -1218,7 +1218,7 @@ export function EnseignantsPage() {
           />
         </div>
         <Select value={filiereFilter} onValueChange={setFiliereFilter}>
-          <SelectTrigger className="w-[220px]">
+          <SelectTrigger className="w-full sm:w-[220px]">
             <GraduationCap className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
             <SelectValue placeholder="Filière" />
           </SelectTrigger>
@@ -1232,7 +1232,7 @@ export function EnseignantsPage() {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-full sm:w-[140px]">
             <SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
@@ -1452,7 +1452,7 @@ export function EnseignantsPage() {
       {!isLoading && filteredEnseignants.length > 0 && viewMode === 'table' && (
         <Card>
           <CardContent className="p-0">
-            <div className="max-h-[600px] overflow-y-auto">
+            <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1574,7 +1574,7 @@ export function EnseignantsPage() {
           </div>
           <Card>
             <CardContent className="p-0">
-              <div className="max-h-96 overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>

@@ -1097,7 +1097,7 @@ export function UtilisateursPage() {
             Export CSV
           </Button>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full sm:w-[150px]">
               <Filter className="h-3.5 w-3.5 mr-1" />
               <SelectValue placeholder="Rôle" />
             </SelectTrigger>
@@ -1121,7 +1121,7 @@ export function UtilisateursPage() {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger className="w-full sm:w-[130px]">
               <SelectValue placeholder="Statut" />
             </SelectTrigger>
             <SelectContent>

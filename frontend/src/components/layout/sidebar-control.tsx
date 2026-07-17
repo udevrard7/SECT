@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { PanelLeftClose, PanelLeftOpen, PanelLeftDashed } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, PanelLeftDashed, Menu } from 'lucide-react'
 import { useSidebar } from '@/components/ui/sidebar'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useSidebarModeStore, type SidebarMode } from '@/stores/sidebar-store'
 import { cn } from '@/lib/utils'
 
@@ -13,42 +14,44 @@ const MODES: { id: SidebarMode; label: string; icon: typeof PanelLeftClose; desc
 ]
 
 /**
- * SidebarControl — Contrôle de la sidebar avec 3 modes.
+ * SidebarControl — Contrôle de la sidebar.
  *
- * Inspiré de l'image de référence : un menu déroulant permet de choisir
- * entre 3 modes de comportement de la sidebar :
- *   - Étendu : sidebar toujours visible (par défaut)
- *   - Réduit : sidebar toujours masquée (icônes uniquement)
- *   - Survol : sidebar masquée, s'ouvre au survol
+ * Comportement adaptatif mobile/desktop :
+ *   - **Mobile** (<768px) : bouton hamburger (icône Menu) qui appelle
+ *     `toggleSidebar()` → ouvre/ferme la Sheet sidebar native de shadcn.
+ *     La Sheet est gérée par le composant <Sidebar> qui, en mode mobile,
+ *     render un <Sheet> au lieu du <div> fixe desktop.
+ *   - **Desktop** (≥768px) : dropdown avec 3 modes (Étendu/Réduit/Survol)
+ *     comme auparavant.
  *
- * Design Savane EdTech :
- *   - Bouton principal avec icône dynamique selon le mode
- *   - Dropdown avec 3 options (radio-style, comme l'image)
- *   - Couleurs sidebar (bleu nuit + vert lime pour sélection)
- *   - Fermeture au clic extérieur ou Escape
- *
- * Placement : dans le header, à gauche (avant le breadcrumb).
+ * BUGFIX (SIDEBAR-MOBILE) : avant, le SidebarControl utilisait uniquement
+ * `setOpen()` qui ne fonctionne QUE pour le mode desktop (le state `open`
+ * contrôle la sidebar fixe). Sur mobile, c'est `openMobile` + `setOpenMobile()`
+ * qui contrôlent la Sheet. La fonction `toggleSidebar()` gère les deux
+ * correctement. L'ancien code ouvrait un dropdown inutile sur mobile au lieu
+ * d'ouvrir la sidebar Sheet.
  */
 export function SidebarControl({ className }: { className?: string }) {
-  const { state, setOpen } = useSidebar()
+  const { state, setOpen, toggleSidebar } = useSidebar()
+  const isMobile = useIsMobile()
   const mode = useSidebarModeStore((s) => s.mode)
   const setMode = useSidebarModeStore((s) => s.setMode)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Au montage et à chaque changement de mode, on synchronise l'état `open`
-  // de la sidebar avec le mode persisté. Ne dépend volontairement que de
-  // `mode` : les handlers de survol (mode 'hover') appellent `setOpen`
-  // directement sans déclencher cet effet.
+  // de la sidebar avec le mode persisté. Uniquement sur desktop.
   useEffect(() => {
-    setOpen(mode === 'expanded')
-  }, [mode])
+    if (!isMobile) {
+      setOpen(mode === 'expanded')
+    }
+  }, [mode, isMobile, setOpen])
 
   // Sync mode avec l'état réel de la sidebar : en mode 'hover' le radio
   // reste sur 'Survol' même quand la sidebar s'ouvre au survol.
   const currentMode: SidebarMode = mode === 'hover' ? 'hover' : (state === 'expanded' ? 'expanded' : 'collapsed')
 
-  // Fermeture au clic extérieur
+  // Fermeture au clic extérieur (dropdown desktop)
   useEffect(() => {
     if (!dropdownOpen) return
     const handleClick = (e: MouseEvent) => {
@@ -68,8 +71,7 @@ export function SidebarControl({ className }: { className?: string }) {
   }, [dropdownOpen])
 
   // Applique le mode sélectionné : persiste le mode dans le store et bascule
-  // l'état `open` de la sidebar. Le comportement de survol (mode 'hover') est
-  // géré par les handlers onMouseEnter/onMouseLeave d'AppSidebar.
+  // l'état `open` de la sidebar. Uniquement pertinent sur desktop.
   const applyMode = (newMode: SidebarMode) => {
     setMode(newMode)
     setDropdownOpen(false)
@@ -77,14 +79,31 @@ export function SidebarControl({ className }: { className?: string }) {
     if (newMode === 'expanded') {
       setOpen(true)
     } else {
-      // 'collapsed' ET 'hover' démarrent en mode réduit (rail d'icônes).
-      // Pour 'hover', le survol de la sidebar rouvre celle-ci via les
-      // handlers d'AppSidebar.
       setOpen(false)
     }
   }
 
-  // Icône du bouton principal selon le mode
+  // ─── Mobile : bouton hamburger simple ───
+  if (isMobile) {
+    return (
+      <button
+        onClick={toggleSidebar}
+        aria-label="Ouvrir le menu"
+        title="Ouvrir le menu"
+        className={cn(
+          'h-9 w-9 rounded-lg flex items-center justify-center',
+          'text-sidebar-foreground/60 hover:text-sidebar-foreground',
+          'hover:bg-sidebar-accent transition-all duration-200',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar',
+          className
+        )}
+      >
+        <Menu className="h-[18px] w-[18px]" />
+      </button>
+    )
+  }
+
+  // ─── Desktop : dropdown avec 3 modes ───
   const CurrentIcon = MODES.find((m) => m.id === currentMode)?.icon ?? PanelLeftClose
 
   return (
