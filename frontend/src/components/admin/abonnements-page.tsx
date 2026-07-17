@@ -86,8 +86,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
-import { PulseSkeleton } from '@/components/ds'
+import { PulseSkeleton, StatCard, GlassModal, Badge as DSBadge, BadgeStatus, ProgressBar } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 
@@ -236,7 +237,7 @@ function getStatutBadge(statut: string) {
   }
 }
 
-// ─── B2B Validation Tab Component ───
+// ─── B2B Validation Tab Component ─── Refonte Savane EdTech ───
 
 interface PendingB2BItem {
   etablissementId: string
@@ -255,9 +256,29 @@ interface PendingB2BItem {
   nbEtudiants: number | null
 }
 
+/** Pipeline B2B : étapes du workflow d'inscription institutionnelle */
+const B2B_PIPELINE_STEPS = [
+  { key: 'INSCRIPTION', label: 'Inscription', icon: Building2 },
+  { key: 'EMAIL_VERIFY', label: 'Email vérifié', icon: Mail },
+  { key: 'ADMIN_VALIDATE', label: 'Validation admin', icon: Shield },
+  { key: 'ESSAI', label: 'Essai 14j', icon: Clock },
+  { key: 'ACTIF', label: 'Actif', icon: CheckCircle2 },
+] as const
+
+/** Calcule l'étape courante dans le pipeline pour un item */
+function getPipelineStep(item: PendingB2BItem): number {
+  if (item.adminValidated) return 4 // ACTIF (ou au moins ESSAI dépassé)
+  if (item.emailVerified) return 2 // Admin validate en attente
+  return 1 // Email pas encore vérifié
+}
+
 function B2BValidationTab() {
   const queryClient = useQueryClient()
   const [validating, setValidating] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedItem, setSelectedItem] = useState<PendingB2BItem | null>(null)
+  const [filterType, setFilterType] = useState<string>('ALL')
+  const [filterEmail, setFilterEmail] = useState<string>('ALL')
 
   const { data, isLoading, error } = useQuery<{ pending: PendingB2BItem[]; count: number }>({
     queryKey: ['b2b-pending-validation'],
@@ -273,6 +294,44 @@ function B2BValidationTab() {
   const pending = data?.pending ?? []
   const count = data?.count ?? 0
 
+  // Stats dérivées
+  const emailVerifiedCount = pending.filter(i => i.emailVerified).length
+  const emailProCount = pending.filter(i => i.emailProfessionnel).length
+  const totalCapitation = pending.reduce((sum, i) => sum + Math.max(i.nbEtudiants ?? 50, 50) * 900, 0)
+
+  // Filtres
+  const filtered = useMemo(() => {
+    let items = pending
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      items = items.filter(i =>
+        i.etablissementNom.toLowerCase().includes(q) ||
+        i.respName.toLowerCase().includes(q) ||
+        i.respEmail.toLowerCase().includes(q) ||
+        i.ville.toLowerCase().includes(q)
+      )
+    }
+    if (filterType !== 'ALL') {
+      items = items.filter(i => i.etablissementType === filterType)
+    }
+    if (filterEmail === 'VERIFIED') {
+      items = items.filter(i => i.emailVerified)
+    } else if (filterEmail === 'UNVERIFIED') {
+      items = items.filter(i => !i.emailVerified)
+    } else if (filterEmail === 'PRO') {
+      items = items.filter(i => i.emailProfessionnel)
+    } else if (filterEmail === 'PERSO') {
+      items = items.filter(i => !i.emailProfessionnel)
+    }
+    return items
+  }, [pending, searchQuery, filterType, filterEmail])
+
+  // Types d'établissement uniques pour le filtre
+  const etabTypes = useMemo(() => {
+    const types = [...new Set(pending.map(i => i.etablissementType))]
+    return types.sort()
+  }, [pending])
+
   const handleValidate = async (etabId: string) => {
     setValidating(etabId)
     try {
@@ -285,6 +344,7 @@ function B2BValidationTab() {
       toast.success('Établissement validé', {
         description: "L'essai de 14 jours a démarré. Un email a été envoyé au responsable.",
       })
+      setSelectedItem(null)
       queryClient.invalidateQueries({ queryKey: ['b2b-pending-validation'] })
       queryClient.invalidateQueries({ queryKey: ['abonnements'] })
     } catch {
@@ -318,172 +378,574 @@ function B2BValidationTab() {
     return labels[type] || type
   }
 
+  const getEtabTypeIcon = (type: string) => {
+    switch (type) {
+      case 'UNIVERSITE': return Building2
+      case 'INSTITUT': return Building2
+      case 'ECOLE': return Building2
+      case 'FORMATION_PRO': return Building2
+      default: return Building2
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Stat card */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
-              <Building2 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+    <div className="space-y-5">
+      {/* ── En-tête avec pipeline B2B ── */}
+      <div className="relative rounded-lg border border-border bg-card p-5 overflow-hidden ds-kente-top">
+        <div className="ds-kente-pattern absolute inset-0 opacity-40 pointer-events-none" aria-hidden="true" />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="h-9 w-9 shrink-0 rounded-md flex items-center justify-center bg-secondary/10 text-secondary">
+              <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Établissements en attente</p>
-              <p className="text-2xl font-bold">{count}</p>
+              <h3 className="font-display text-base font-bold">Pipeline de validation B2B</h3>
+              <p className="text-xs text-muted-foreground">Workflow d&rsquo;inscription institutionnelle — de l&rsquo;inscription à l&rsquo;activation</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          {/* Pipeline visuel */}
+          <div className="flex items-center gap-0 overflow-x-auto pb-1">
+            {B2B_PIPELINE_STEPS.map((step, idx) => {
+              const StepIcon = step.icon
+              return (
+                <div key={step.key} className="flex items-center shrink-0">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-8 w-8 rounded-full flex items-center justify-center bg-info/10 text-info-foreground">
+                      <StepIcon className="h-4 w-4" />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">{step.label}</span>
+                  </div>
+                  {idx < B2B_PIPELINE_STEPS.length - 1 && (
+                    <div className="w-8 sm:w-12 h-0.5 bg-border mx-0.5" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
 
+      {/* ── Stat Cards DS ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="En attente"
+          value={count}
+          icon={Building2}
+          accent="warning"
+          hint="Établissements à valider"
+          loading={isLoading}
+          index={0}
+        />
+        <StatCard
+          label="Emails vérifiés"
+          value={emailVerifiedCount}
+          icon={Mail}
+          accent="success"
+          hint={`${count - emailVerifiedCount} en attente de vérification`}
+          loading={isLoading}
+          index={1}
+        />
+        <StatCard
+          label="Emails pro"
+          value={emailProCount}
+          icon={Shield}
+          accent="info"
+          hint={`${count - emailProCount} emails personnels`}
+          loading={isLoading}
+          index={2}
+        />
+        <StatCard
+          label="Capitation potentielle"
+          value={totalCapitation.toLocaleString('fr-FR')}
+          icon={DollarSign}
+          accent="gold"
+          suffix="FCFA"
+          hint="Estimation annuelle totale"
+          loading={isLoading}
+          index={3}
+        />
+      </div>
+
+      {/* ── Barre de recherche et filtres ── */}
+      {pending.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="relative flex-1 w-full sm:max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher un établissement..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-9"
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-9 w-[140px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous les types</SelectItem>
+                {etabTypes.map(t => (
+                  <SelectItem key={t} value={t}>{getEtabTypeLabel(t)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterEmail} onValueChange={setFilterEmail}>
+              <SelectTrigger className="h-9 w-[150px]">
+                <SelectValue placeholder="Email" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous les emails</SelectItem>
+                <SelectItem value="VERIFIED">Email vérifié</SelectItem>
+                <SelectItem value="UNVERIFIED">Email non vérifié</SelectItem>
+                <SelectItem value="PRO">Email pro</SelectItem>
+                <SelectItem value="PERSO">Email perso</SelectItem>
+              </SelectContent>
+            </Select>
+            {(searchQuery || filterType !== 'ALL' || filterEmail !== 'ALL') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9"
+                onClick={() => { setSearchQuery(''); setFilterType('ALL'); setFilterEmail('ALL') }}
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Réinitialiser
+              </Button>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground ml-auto shrink-0">
+            {filtered.length} résultat{filtered.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
+
+      {/* ── Contenu principal ── */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6 space-y-3">
-                <div className="h-5 w-40 rounded bg-muted" />
-                <div className="h-4 w-28 rounded bg-muted" />
-                <div className="h-4 w-32 rounded bg-muted" />
-              </CardContent>
-            </Card>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-border p-5 space-y-3">
+              <PulseSkeleton className="h-5 w-40" />
+              <PulseSkeleton className="h-4 w-28" />
+              <div className="flex gap-2">
+                <PulseSkeleton className="h-6 w-20" />
+                <PulseSkeleton className="h-6 w-20" />
+              </div>
+              <PulseSkeleton className="h-16 w-full" />
+              <PulseSkeleton className="h-9 w-full" />
+            </div>
           ))}
         </div>
       ) : error ? (
-        <Card>
-          <CardContent className="p-6 text-center text-destructive">
-            <AlertTriangle className="h-8 w-8 mx-auto mb-2" />
-            <p>Erreur lors du chargement des établissements en attente.</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
+          <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+          <p className="text-destructive font-medium">Erreur lors du chargement des établissements en attente.</p>
+          <p className="text-xs text-muted-foreground mt-1">Vérifiez votre connexion et réessayez.</p>
+        </div>
       ) : pending.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground font-medium">Aucun établissement en attente de validation</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Les nouvelles inscriptions B2B self-service apparaîtront ici pour validation.
+        <div className="ds-kente-watermark rounded-lg border border-border bg-card p-10 text-center">
+          <div className="relative">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full flex items-center justify-center bg-primary/10">
+              <Building2 className="h-8 w-8 text-primary-text" />
+            </div>
+            <p className="font-display text-base font-bold text-foreground">Aucun établissement en attente</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+              Les nouvelles inscriptions B2B self-service apparaîtront ici pour validation par l&rsquo;administrateur.
             </p>
-          </CardContent>
-        </Card>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <DSBadge variant="info" size="sm">
+                <Clock className="h-3 w-3 mr-1" /> En attente
+              </DSBadge>
+              <span className="text-xs text-muted-foreground">→</span>
+              <DSBadge variant="success" size="sm">
+                <CheckCircle2 className="h-3 w-3 mr-1" /> Validé
+              </DSBadge>
+              <span className="text-xs text-muted-foreground">→</span>
+              <DSBadge variant="gold" size="sm">
+                <Sparkles className="h-3 w-3 mr-1" /> Actif
+              </DSBadge>
+            </div>
+          </div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <Search className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-muted-foreground font-medium">Aucun résultat pour ces filtres</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            onClick={() => { setSearchQuery(''); setFilterType('ALL'); setFilterEmail('ALL') }}
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Réinitialiser les filtres
+          </Button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {pending.map((item) => (
-            <Card key={item.etablissementId} className="relative overflow-hidden">
-              {/* Orange top bar for pending status */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-orange-500" />
-              <CardContent className="p-5 pt-6 space-y-4">
-                {/* Header: Etab name + type */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h4 className="font-semibold truncate">{item.etablissementNom}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">
-                        {getEtabTypeLabel(item.etablissementType)}
-                      </Badge>
-                      {item.ville && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                          <MapPin className="h-3 w-3" />
-                          {item.ville}{item.pays ? `, ${item.pays}` : ''}
+          <AnimatePresence mode="popLayout">
+            {filtered.map((item, idx) => {
+              const pipelineStep = getPipelineStep(item)
+              const capitation = Math.max(item.nbEtudiants ?? 50, 50) * 900
+              const EtTypeIcon = getEtabTypeIcon(item.etablissementType)
+              const canValidate = item.emailVerified && !item.adminValidated
+
+              return (
+                <motion.div
+                  key={item.etablissementId}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2, delay: idx * 0.04, ease: 'easeOut' }}
+                  layout
+                >
+                  <div className="group relative rounded-lg border border-border bg-card shadow-sm overflow-hidden ds-lift ds-kente-top">
+                    {/* Header : kente strip */}
+                    <div className="ds-kente-strip" aria-hidden="true" />
+
+                    <div className="p-5 space-y-4">
+                      {/* Ligne 1 : Nom + type + date */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-secondary/10 text-secondary">
+                              <EtTypeIcon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="font-display font-semibold text-sm truncate">{item.etablissementNom}</h4>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <DSBadge variant="info" size="sm">
+                                  {getEtabTypeLabel(item.etablissementType)}
+                                </DSBadge>
+                                {item.ville && (
+                                  <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                                    <MapPin className="h-3 w-3" />
+                                    {item.ville}{item.pays ? `, ${item.pays}` : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0">
+                          {formatRelativeDate(item.createdAt)}
                         </span>
+                      </div>
+
+                      {/* Pipeline progression du candidat */}
+                      <div className="flex items-center gap-0">
+                        {B2B_PIPELINE_STEPS.map((step, stepIdx) => {
+                          const isActive = stepIdx <= pipelineStep
+                          const isCurrent = stepIdx === pipelineStep
+                          const StepIcon = step.icon
+                          return (
+                            <div key={step.key} className="flex items-center">
+                              <div
+                                className={[
+                                  'h-5 w-5 rounded-full flex items-center justify-center transition-colors',
+                                  isActive
+                                    ? isCurrent
+                                      ? 'bg-success text-success-foreground ring-2 ring-success/30'
+                                      : 'bg-success/20 text-success-text'
+                                    : 'bg-muted text-muted-foreground',
+                                ].join(' ')}
+                              >
+                                <StepIcon className="h-2.5 w-2.5" />
+                              </div>
+                              {stepIdx < B2B_PIPELINE_STEPS.length - 1 && (
+                                <div className={[
+                                  'w-3 sm:w-5 h-0.5',
+                                  stepIdx < pipelineStep ? 'bg-success/40' : 'bg-border',
+                                ].join(' ')} />
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Info grid */}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="truncate text-xs">{item.respName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="truncate text-xs">{item.respEmail}</span>
+                        </div>
+                        {item.telephone && (
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs">{item.telephone}</span>
+                          </div>
+                        )}
+                        {item.nbEtudiants && (
+                          <div className="flex items-center gap-1.5">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs">{item.nbEtudiants} étudiants</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Badges de vérification DS */}
+                      <div className="flex flex-wrap gap-2">
+                        {item.emailVerified ? (
+                          <DSBadge variant="success" size="sm">
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Email vérifié
+                          </DSBadge>
+                        ) : (
+                          <DSBadge variant="danger" size="sm">
+                            <X className="h-3 w-3 mr-1" /> Email non vérifié
+                          </DSBadge>
+                        )}
+                        {item.emailProfessionnel ? (
+                          <DSBadge variant="info" size="sm">
+                            <Shield className="h-3 w-3 mr-1" /> Email pro
+                          </DSBadge>
+                        ) : (
+                          <DSBadge variant="warning" size="sm">
+                            <AlertTriangle className="h-3 w-3 mr-1" /> Email perso
+                          </DSBadge>
+                        )}
+                      </div>
+
+                      {/* Capitation — bloc avec or africain */}
+                      <div className="rounded-lg bg-gold/5 dark:bg-gold/10 border border-gold/20 p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Capitation annuelle</p>
+                            <p className="font-mono text-lg font-bold text-gold tabular-nums">
+                              {capitation.toLocaleString('fr-FR')} <span className="text-xs font-normal text-muted-foreground">FCFA</span>
+                            </p>
+                          </div>
+                          <div className="h-10 w-10 rounded-md flex items-center justify-center bg-gold/10">
+                            <DollarSign className="h-5 w-5 text-gold" />
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {Math.max(item.nbEtudiants ?? 50, 50)} étudiants × 900 FCFA · +20% TVA = {Math.round(capitation * 1.2).toLocaleString('fr-FR')} FCFA TTC
+                        </p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+                          onClick={() => handleValidate(item.etablissementId)}
+                          disabled={validating === item.etablissementId || !canValidate}
+                          title={!item.emailVerified ? "L'email doit être vérifié avant la validation" : undefined}
+                        >
+                          {validating === item.etablissementId ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Validation...</>
+                          ) : (
+                            <><CheckCircle2 className="h-4 w-4 mr-2" /> Valider & essai 14j</>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setSelectedItem(item)}
+                          title="Voir les détails"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {!item.emailVerified && (
+                        <div className="flex items-center gap-1.5 text-xs text-warning">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          <span>L&rsquo;email du responsable doit être vérifié avant la validation admin</span>
+                        </div>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatRelativeDate(item.createdAt)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Info grid */}
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="truncate">{item.respName}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="truncate text-xs">{item.respEmail}</span>
-                  </div>
-                  {item.telephone && (
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-xs">{item.telephone}</span>
-                    </div>
-                  )}
-                  {item.nbEtudiants && (
-                    <div className="flex items-center gap-1.5">
-                      <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-xs">{item.nbEtudiants} étudiants</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Verification badges */}
-                <div className="flex flex-wrap gap-2">
-                  <Badge
-                    variant="outline"
-                    className={`text-xs ${
-                      item.emailVerified
-                        ? 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400'
-                        : 'border-red-300 text-red-700 dark:border-red-700 dark:text-red-400'
-                    }`}
-                  >
-                    {item.emailVerified ? (
-                      <><CheckCircle2 className="h-3 w-3 mr-1" /> Email vérifié</>
-                    ) : (
-                      <><X className="h-3 w-3 mr-1" /> Email non vérifié</>
-                    )}
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className={`text-xs ${
-                      item.emailProfessionnel
-                        ? 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400'
-                        : 'border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-400'
-                    }`}
-                  >
-                    {item.emailProfessionnel ? (
-                      <><Shield className="h-3 w-3 mr-1" /> Email pro</>
-                    ) : (
-                      <><AlertTriangle className="h-3 w-3 mr-1" /> Email perso</>
-                    )}
-                  </Badge>
-                </div>
-
-                {/* Capitation estimate */}
-                <div className="rounded-lg bg-muted/50 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Estimation capitation annuelle</p>
-                  <p className="font-bold text-lg">
-                    {((Math.max(item.nbEtudiants ?? 50, 50)) * 900).toLocaleString('fr-FR')} FCFA
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {Math.max(item.nbEtudiants ?? 50, 50)} étudiants × 900 FCFA
-                  </p>
-                </div>
-
-                {/* Validate button */}
-                <Button
-                  className="w-full"
-                  onClick={() => handleValidate(item.etablissementId)}
-                  disabled={validating === item.etablissementId || !item.emailVerified}
-                  title={!item.emailVerified ? "L'email doit être vérifié avant la validation" : undefined}
-                >
-                  {validating === item.etablissementId ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Validation...</>
-                  ) : (
-                    <><CheckCircle2 className="h-4 w-4 mr-2" /> Valider et démarrer l'essai</>
-                  )}
-                </Button>
-                {!item.emailVerified && (
-                  <p className="text-xs text-center text-orange-600 dark:text-orange-400">
-                    ⚠ L&apos;email du responsable doit être vérifié avant la validation
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
         </div>
       )}
+
+      {/* ── Modal détail établissement B2B ── */}
+      <GlassModal
+        open={!!selectedItem}
+        onClose={() => setSelectedItem(null)}
+        title={selectedItem?.etablissementNom ?? ''}
+        description="Détails de la demande d'inscription institutionnelle"
+        size="lg"
+        footer={
+          selectedItem ? (
+            <>
+              <Button variant="outline" onClick={() => setSelectedItem(null)}>
+                Fermer
+              </Button>
+              <Button
+                className="bg-success hover:bg-success/90 text-success-foreground"
+                onClick={() => handleValidate(selectedItem.etablissementId)}
+                disabled={validating === selectedItem.etablissementId || !selectedItem.emailVerified}
+              >
+                {validating === selectedItem.etablissementId ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Validation...</>
+                ) : (
+                  <><CheckCircle2 className="h-4 w-4 mr-2" /> Valider & démarrer l'essai 14j</>
+                )}
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {selectedItem && (
+          <div className="space-y-5">
+            {/* Pipeline dans la modal */}
+            <div className="flex items-center gap-0 overflow-x-auto pb-1">
+              {B2B_PIPELINE_STEPS.map((step, idx) => {
+                const isActive = idx <= getPipelineStep(selectedItem)
+                const isCurrent = idx === getPipelineStep(selectedItem)
+                const StepIcon = step.icon
+                return (
+                  <div key={step.key} className="flex items-center shrink-0">
+                    <div className="flex flex-col items-center gap-1">
+                      <div
+                        className={[
+                          'h-8 w-8 rounded-full flex items-center justify-center transition-colors',
+                          isActive
+                            ? isCurrent
+                              ? 'bg-success text-success-foreground ring-2 ring-success/30'
+                              : 'bg-success/20 text-success-text'
+                            : 'bg-muted text-muted-foreground',
+                        ].join(' ')}
+                      >
+                        <StepIcon className="h-4 w-4" />
+                      </div>
+                      <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">{step.label}</span>
+                    </div>
+                    {idx < B2B_PIPELINE_STEPS.length - 1 && (
+                      <div className={[
+                        'w-6 sm:w-10 h-0.5 mx-0.5',
+                        idx < getPipelineStep(selectedItem) ? 'bg-success/40' : 'bg-border',
+                      ].join(' ')} />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <Separator />
+
+            {/* Informations établissement */}
+            <div>
+              <h4 className="font-display text-sm font-bold mb-3 flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-secondary" /> Établissement
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Nom</p>
+                  <p className="text-sm font-medium">{selectedItem.etablissementNom}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Type</p>
+                  <DSBadge variant="info" size="sm">{getEtabTypeLabel(selectedItem.etablissementType)}</DSBadge>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Localisation</p>
+                  <p className="text-sm flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-muted-foreground" />
+                    {selectedItem.ville}{selectedItem.pays ? `, ${selectedItem.pays}` : ''}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Téléphone</p>
+                  <p className="text-sm flex items-center gap-1">
+                    <Phone className="h-3 w-3 text-muted-foreground" />
+                    {selectedItem.telephone || '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Étudiants déclarés</p>
+                  <p className="text-sm font-medium flex items-center gap-1">
+                    <Users className="h-3 w-3 text-muted-foreground" />
+                    {selectedItem.nbEtudiants ?? 'Non spécifié'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Date d'inscription</p>
+                  <p className="text-sm flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-muted-foreground" />
+                    {new Date(selectedItem.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Responsable */}
+            <div>
+              <h4 className="font-display text-sm font-bold mb-3 flex items-center gap-2">
+                <User className="h-4 w-4 text-info" /> Responsable
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Nom complet</p>
+                  <p className="text-sm font-medium">{selectedItem.respName}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Email</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm">{selectedItem.respEmail}</p>
+                    {selectedItem.emailProfessionnel ? (
+                      <DSBadge variant="info" size="sm">Pro</DSBadge>
+                    ) : (
+                      <DSBadge variant="warning" size="sm">Perso</DSBadge>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Vérification email</p>
+                  {selectedItem.emailVerified ? (
+                    <DSBadge variant="success"><CheckCircle2 className="h-3 w-3 mr-1" /> Email vérifié</DSBadge>
+                  ) : (
+                    <DSBadge variant="danger"><X className="h-3 w-3 mr-1" /> Email non vérifié — bloque la validation</DSBadge>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Capitation détaillée */}
+            <div className="rounded-lg bg-gold/5 dark:bg-gold/10 border border-gold/20 p-4">
+              <h4 className="font-display text-sm font-bold mb-2 flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-gold" /> Estimation capitation B2B
+              </h4>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Nombre d&rsquo;étudiants (plancher 50)</span>
+                  <span className="font-mono tabular-nums">{Math.max(selectedItem.nbEtudiants ?? 50, 50)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tarif unitaire</span>
+                  <span className="font-mono tabular-nums">900 FCFA/an</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm font-semibold">
+                  <span>Capitation HT</span>
+                  <span className="font-mono tabular-nums">{(Math.max(selectedItem.nbEtudiants ?? 50, 50) * 900).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">TVA (20%)</span>
+                  <span className="font-mono tabular-nums">{Math.round(Math.max(selectedItem.nbEtudiants ?? 50, 50) * 900 * 0.2).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-base font-bold text-gold">
+                  <span>Total TTC</span>
+                  <span className="font-mono tabular-nums">{Math.round(Math.max(selectedItem.nbEtudiants ?? 50, 50) * 900 * 1.2).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                La facture sera générée automatiquement lors du passage ESSAI → ACTIF.
+              </p>
+            </div>
+          </div>
+        )}
+      </GlassModal>
     </div>
   )
 }
