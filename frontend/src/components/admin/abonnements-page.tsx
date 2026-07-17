@@ -224,9 +224,268 @@ function getStatutBadge(statut: string) {
           En attente
         </Badge>
       )
+    case 'EN_ATTENTE_VALIDATION':
+      return (
+        <Badge className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700">
+          <Clock className="h-3 w-3 mr-1" />
+          En attente de validation
+        </Badge>
+      )
     default:
       return <Badge variant="outline">{statut}</Badge>
   }
+}
+
+// ─── B2B Validation Tab Component ───
+
+interface PendingB2BItem {
+  etablissementId: string
+  etablissementNom: string
+  etablissementType: string
+  ville: string
+  pays: string
+  telephone: string
+  emailVerified: boolean
+  adminValidated: boolean
+  emailProfessionnel: boolean
+  createdAt: string
+  respEmail: string
+  respName: string
+  abonnementId: string
+  nbEtudiants: number | null
+}
+
+function B2BValidationTab() {
+  const queryClient = useQueryClient()
+  const [validating, setValidating] = useState<string | null>(null)
+
+  const { data, isLoading, error } = useQuery<{ pending: PendingB2BItem[]; count: number }>({
+    queryKey: ['b2b-pending-validation'],
+    queryFn: async () => {
+      const res = await fetch('/api/abonnements/pending-b2b')
+      if (!res.ok) throw new Error('Erreur lors du chargement')
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  })
+
+  const pending = data?.pending ?? []
+  const count = data?.count ?? 0
+
+  const handleValidate = async (etabId: string) => {
+    setValidating(etabId)
+    try {
+      const res = await fetch(`/api/abonnements/b2b/${etabId}/validate`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error('Erreur', { description: (err as { error?: string }).error ?? `HTTP ${res.status}` })
+        return
+      }
+      toast.success('Établissement validé', {
+        description: "L'essai de 14 jours a démarré. Un email a été envoyé au responsable.",
+      })
+      queryClient.invalidateQueries({ queryKey: ['b2b-pending-validation'] })
+      queryClient.invalidateQueries({ queryKey: ['abonnements'] })
+    } catch {
+      toast.error('Erreur réseau', { description: "Impossible de valider l'établissement." })
+    } finally {
+      setValidating(null)
+    }
+  }
+
+  const formatRelativeDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    const diffH = Math.floor(diffMin / 60)
+    const diffD = Math.floor(diffH / 24)
+    if (diffMin < 1) return "À l'instant"
+    if (diffMin < 60) return `Il y a ${diffMin} min`
+    if (diffH < 24) return `Il y a ${diffH}h`
+    if (diffD < 7) return `Il y a ${diffD}j`
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+
+  const getEtabTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      UNIVERSITE: 'Université',
+      INSTITUT: 'Institut',
+      ECOLE: 'École',
+      FORMATION_PRO: 'Formation Pro',
+    }
+    return labels[type] || type
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Stat card */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+              <Building2 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Établissements en attente</p>
+              <p className="text-2xl font-bold">{count}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-6 space-y-3">
+                <div className="h-5 w-40 rounded bg-muted" />
+                <div className="h-4 w-28 rounded bg-muted" />
+                <div className="h-4 w-32 rounded bg-muted" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="p-6 text-center text-destructive">
+            <AlertTriangle className="h-8 w-8 mx-auto mb-2" />
+            <p>Erreur lors du chargement des établissements en attente.</p>
+          </CardContent>
+        </Card>
+      ) : pending.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground font-medium">Aucun établissement en attente de validation</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Les nouvelles inscriptions B2B self-service apparaîtront ici pour validation.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {pending.map((item) => (
+            <Card key={item.etablissementId} className="relative overflow-hidden">
+              {/* Orange top bar for pending status */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-orange-500" />
+              <CardContent className="p-5 pt-6 space-y-4">
+                {/* Header: Etab name + type */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className="font-semibold truncate">{item.etablissementNom}</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-xs">
+                        {getEtabTypeLabel(item.etablissementType)}
+                      </Badge>
+                      {item.ville && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                          <MapPin className="h-3 w-3" />
+                          {item.ville}{item.pays ? `, ${item.pays}` : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatRelativeDate(item.createdAt)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Info grid */}
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate">{item.respName}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate text-xs">{item.respEmail}</span>
+                  </div>
+                  {item.telephone && (
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs">{item.telephone}</span>
+                    </div>
+                  )}
+                  {item.nbEtudiants && (
+                    <div className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs">{item.nbEtudiants} étudiants</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Verification badges */}
+                <div className="flex flex-wrap gap-2">
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${
+                      item.emailVerified
+                        ? 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400'
+                        : 'border-red-300 text-red-700 dark:border-red-700 dark:text-red-400'
+                    }`}
+                  >
+                    {item.emailVerified ? (
+                      <><CheckCircle2 className="h-3 w-3 mr-1" /> Email vérifié</>
+                    ) : (
+                      <><X className="h-3 w-3 mr-1" /> Email non vérifié</>
+                    )}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${
+                      item.emailProfessionnel
+                        ? 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400'
+                        : 'border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-400'
+                    }`}
+                  >
+                    {item.emailProfessionnel ? (
+                      <><Shield className="h-3 w-3 mr-1" /> Email pro</>
+                    ) : (
+                      <><AlertTriangle className="h-3 w-3 mr-1" /> Email perso</>
+                    )}
+                  </Badge>
+                </div>
+
+                {/* Capitation estimate */}
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Estimation capitation annuelle</p>
+                  <p className="font-bold text-lg">
+                    {((Math.max(item.nbEtudiants ?? 50, 50)) * 900).toLocaleString('fr-FR')} FCFA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {Math.max(item.nbEtudiants ?? 50, 50)} étudiants × 900 FCFA
+                  </p>
+                </div>
+
+                {/* Validate button */}
+                <Button
+                  className="w-full"
+                  onClick={() => handleValidate(item.etablissementId)}
+                  disabled={validating === item.etablissementId || !item.emailVerified}
+                  title={!item.emailVerified ? "L'email doit être vérifié avant la validation" : undefined}
+                >
+                  {validating === item.etablissementId ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Validation...</>
+                  ) : (
+                    <><CheckCircle2 className="h-4 w-4 mr-2" /> Valider et démarrer l'essai</>
+                  )}
+                </Button>
+                {!item.emailVerified && (
+                  <p className="text-xs text-center text-orange-600 dark:text-orange-400">
+                    ⚠ L&apos;email du responsable doit être vérifié avant la validation
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function getPlanColor(type: string) {
@@ -1244,6 +1503,10 @@ export function AbonnementsPage() {
             <Users className="h-3.5 w-3.5" />
             Abonnements
           </TabsTrigger>
+          <TabsTrigger value="b2b-validation" className="gap-1.5">
+            <Building2 className="h-3.5 w-3.5" />
+            Validation B2B
+          </TabsTrigger>
         </TabsList>
 
         {/* ─── Plans Section ─── */}
@@ -1586,6 +1849,11 @@ export function AbonnementsPage() {
               </div>
             </div>
           )}
+        </TabsContent>
+
+        {/* ─── B2B Validation Section ─── */}
+        <TabsContent value="b2b-validation">
+          <B2BValidationTab />
         </TabsContent>
       </Tabs>
 
