@@ -1104,6 +1104,24 @@ export function AbonnementsPage() {
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('all')
+  // SECT-ABO-UX-1 : Tabs contrôlés pour permettre la navigation croisée
+  // (ex: cliquer "Valider" sur une ligne EN_ATTENTE_VALIDATION de la table
+  // bascule vers l'onglet "Validation B2B").
+  const [activeTab, setActiveTab] = useState('plans')
+
+  // SECT-ABO-UX-1 : count B2B en attente pour le badge sur le tab trigger.
+  // Même queryKey que B2BValidationTab → TanStack Query déduplique le fetch.
+  const b2bPendingQuery = useQuery<{ pending: PendingB2BItem[]; count: number }>({
+    queryKey: ['b2b-pending-validation'],
+    queryFn: async () => {
+      const res = await fetch('/api/abonnements/pending-b2b')
+      if (!res.ok) throw new Error('Failed to fetch pending B2B')
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  })
+  const b2bPendingCount = b2bPendingQuery.data?.count ?? 0
 
   // ─── Dialog state ───
   const [aboDialogOpen, setAboDialogOpen] = useState(false)
@@ -1222,7 +1240,14 @@ export function AbonnementsPage() {
 
   // ─── Stats ───
   const activeAboCount = abonnements.filter((a) => a.statut === 'ACTIF').length
-  const pendingAboCount = abonnements.filter((a) => a.statut === 'EN_ATTENTE_PAIEMENT').length
+  // SECT-ABO-UX-1 : "En attente" regroupe désormais les 2 statuts en attente :
+  //  - EN_ATTENTE_PAIEMENT (B2C : paiement GeniusPay non confirmé)
+  //  - EN_ATTENTE_VALIDATION (B2B : validation admin requise après vérif email)
+  // Avant : seul EN_ATTENTE_PAIEMENT était compté → la stat card affichait 0
+  // même quand des établissements B2B attendaient en validation (onglet B2B).
+  const pendingPaiementCount = abonnements.filter((a) => a.statut === 'EN_ATTENTE_PAIEMENT').length
+  const pendingValidationCount = abonnements.filter((a) => a.statut === 'EN_ATTENTE_VALIDATION').length
+  const pendingAboCount = pendingPaiementCount + pendingValidationCount
   const trialAboCount = abonnements.filter((a) => a.statut === 'ESSAI').length
   // ABONNEMENTS-FIX-A10 : revenu mensuel basé sur plan.prixMensuel (récurrent)
   // au lieu de montantPaye (paiement ponctuel, peut être 0 pour un plan gratuit
@@ -1901,7 +1926,11 @@ export function AbonnementsPage() {
           value={pendingAboCount}
           icon={Clock}
           accent="warning"
-          hint="Paiement ou validation"
+          hint={
+            pendingAboCount > 0
+              ? `${pendingPaiementCount} paiement · ${pendingValidationCount} validation B2B`
+              : 'Paiements + validations B2B'
+          }
           loading={isLoading}
           index={1}
         />
@@ -1932,7 +1961,7 @@ export function AbonnementsPage() {
       </div>
 
       {/* ─── Main content with Tabs ─── */}
-      <Tabs defaultValue="plans" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="plans" className="gap-1.5">
             <CreditCard className="h-3.5 w-3.5" />
@@ -1941,10 +1970,20 @@ export function AbonnementsPage() {
           <TabsTrigger value="abonnements" className="gap-1.5">
             <Users className="h-3.5 w-3.5" />
             Abonnements
+            {pendingValidationCount > 0 && (
+              <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-[10px] font-bold bg-warning/15 text-warning border-warning/30">
+                {pendingValidationCount}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="b2b-validation" className="gap-1.5">
             <Building2 className="h-3.5 w-3.5" />
             Validation B2B
+            {b2bPendingCount > 0 && (
+              <Badge className="ml-1 h-4 px-1.5 text-[10px] font-bold bg-warning text-warning-foreground animate-pulse">
+                {b2bPendingCount}
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -2119,7 +2158,8 @@ export function AbonnementsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="EN_ATTENTE_PAIEMENT">En attente</SelectItem>
+                <SelectItem value="EN_ATTENTE_VALIDATION">En attente de validation (B2B)</SelectItem>
+                <SelectItem value="EN_ATTENTE_PAIEMENT">En attente de paiement</SelectItem>
                 <SelectItem value="ESSAI">Essai</SelectItem>
                 <SelectItem value="ACTIF">Actif</SelectItem>
                 <SelectItem value="SUSPENDU">Suspendu</SelectItem>
@@ -2128,6 +2168,42 @@ export function AbonnementsPage() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* SECT-ABO-UX-1 : bannière info reliant les 2 onglets quand des
+              abonnements EN_ATTENTE_VALIDATION sont visibles. Explique que la
+              validation se fait dans l'onglet dédié (et non via les actions de la table). */}
+          {!isLoading && pendingValidationCount > 0 && (statutFilter === 'all' || statutFilter === 'EN_ATTENTE_VALIDATION') && (
+            <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/5 p-3">
+              <div className="mt-0.5 shrink-0">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-warning/15 text-warning">
+                  <Info className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {pendingValidationCount} établissement{pendingValidationCount > 1 ? 's' : ''} B2B en attente de validation
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Ces inscriptions self-service ont vérifié leur email et attendent votre validation admin.
+                  La validation démarre l&rsquo;essai de 14 jours. Utilisez l&rsquo;onglet « Validation B2B » pour le pipeline détaillé, ou cliquez « Valider » sur une ligne pour y accéder.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 border-warning/40 text-warning hover:bg-warning/10"
+                onClick={() => setActiveTab('b2b-validation')}
+              >
+                <Building2 className="h-3.5 w-3.5 mr-1" />
+                Onglet B2B
+                {b2bPendingCount > 0 && (
+                  <Badge className="ml-1.5 h-4 px-1.5 text-[10px] font-bold bg-warning text-warning-foreground">
+                    {b2bPendingCount}
+                  </Badge>
+                )}
+              </Button>
+            </div>
+          )}
 
           {isLoading && (
             <div className="space-y-3">
@@ -2237,58 +2313,77 @@ export function AbonnementsPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
-                              onClick={() => handleOpenEditAbo(abo)}
-                              title="Modifier"
-                            >
-                              <Edit3 className="h-4 w-4" />
-                            </Button>
-                            {abo.statut === 'ACTIF' && (
+                            {/* SECT-ABO-UX-1 : sur EN_ATTENTE_VALIDATION, l'action principale
+                                est "Valider" (bascule vers l'onglet B2B dédié). Les actions
+                                Modifier/Suspendre/Résilier n'ont pas de sens sur un abonnement
+                                qui n'a pas encore démarré son essai. */}
+                            {abo.statut === 'EN_ATTENTE_VALIDATION' ? (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-warning hover:text-warning hover:bg-warning/10"
-                                onClick={() => setSuspendTarget(abo)}
-                                title="Suspendre"
+                                className="h-8 px-2 gap-1 text-success-text hover:text-success-text hover:bg-success/10"
+                                onClick={() => setActiveTab('b2b-validation')}
+                                title="Valider cet établissement dans l'onglet Validation B2B"
                               >
-                                <PauseCircle className="h-4 w-4" />
+                                <Shield className="h-4 w-4" />
+                                <span className="text-xs">Valider</span>
                               </Button>
-                            )}
-                            {abo.statut === 'SUSPENDU' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
-                                onClick={() => setReactivateTarget(abo)}
-                                title="Réactiver"
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {abo.statut !== 'RESILIE' && abo.statut !== 'EN_ATTENTE_PAIEMENT' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => setCancelTarget(abo)}
-                                title="Résilier"
-                              >
-                                <Ban className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {abo.statut === 'RESILIE' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => setDeleteTarget(abo)}
-                                title="Supprimer définitivement"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                                  onClick={() => handleOpenEditAbo(abo)}
+                                  title="Modifier"
+                                >
+                                  <Edit3 className="h-4 w-4" />
+                                </Button>
+                                {abo.statut === 'ACTIF' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-warning hover:text-warning hover:bg-warning/10"
+                                    onClick={() => setSuspendTarget(abo)}
+                                    title="Suspendre"
+                                  >
+                                    <PauseCircle className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {abo.statut === 'SUSPENDU' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                                    onClick={() => setReactivateTarget(abo)}
+                                    title="Réactiver"
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {abo.statut !== 'RESILIE' && abo.statut !== 'EN_ATTENTE_PAIEMENT' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => setCancelTarget(abo)}
+                                    title="Résilier"
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {abo.statut === 'RESILIE' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => setDeleteTarget(abo)}
+                                    title="Supprimer définitivement"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
                         </TableCell>
