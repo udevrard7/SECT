@@ -34,11 +34,13 @@ import (
 
 // validStatutsAbonnement — enum StatutAbonnement (vérifié en DB).
 var validStatutsAbonnement = map[string]bool{
-        "ESSAI":    true,
-        "ACTIF":    true,
-        "SUSPENDU": true,
-        "EXPIRE":   true,
-        "RESILIE":  true,
+        "ESSAI":                   true,
+        "ACTIF":                   true,
+        "SUSPENDU":                true,
+        "EXPIRE":                  true,
+        "RESILIE":                 true,
+        "EN_ATTENTE_PAIEMENT":     true,
+        "EN_ATTENTE_VALIDATION":   true,
 }
 
 // validTypesPlan — enum TypePlan.
