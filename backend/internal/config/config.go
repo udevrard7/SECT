@@ -6,6 +6,8 @@ import (
         "fmt"
         "os"
         "strings"
+
+        "github.com/joho/godotenv"
 )
 
 // Config holds all application configuration loaded from environment.
@@ -62,8 +64,11 @@ type Config struct {
 }
 
 // Load reads configuration from environment variables.
+// In development, loads .env file first (if present).
 // Returns an error if a required variable is missing.
 func Load() (*Config, error) {
+        // Charger .env si présent (dev local uniquement)
+        _ = godotenv.Load()
         cfg := &Config{
                 Port:        getEnv("PORT", "8080"),
                 DatabaseURL: getEnv("NEON_DATABASE_URL", ""),
