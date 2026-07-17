@@ -15,7 +15,7 @@ export interface StatCardProps {
   /** Icône Lucide associée à la métrique */
   icon: LucideIcon
   /** Couleur d'accent (semantic) */
-  accent?: 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'info'
+  accent?: 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'info' | 'gold'
   /** Tendance (évolution) — optionnelle */
   trend?: {
     direction: StatTrend
@@ -46,6 +46,7 @@ const ACCENT_MAP = {
   warning: { iconBg: 'bg-warning/10', iconText: 'text-warning', ring: 'ring-warning/20' },
   danger: { iconBg: 'bg-destructive/10', iconText: 'text-destructive', ring: 'ring-destructive/20' },
   info: { iconBg: 'bg-info/10', iconText: 'text-info', ring: 'ring-info/20' },
+  gold: { iconBg: 'bg-gold/10', iconText: 'text-gold', ring: 'ring-gold/20' },
 } as const
 
 const TREND_MAP = {
