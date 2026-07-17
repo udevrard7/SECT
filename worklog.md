@@ -17314,3 +17314,64 @@ Stage Summary :
   login-form.tsx et passation-page.tsx, non liées à ce task)
 - Aucun changement backend (la logique métier était correcte, c'était purement UX)
 - Auteur : udevrard7 <ulrichdouh@gmail.com>
+
+---
+Task ID: SECT-B2B-EMAIL-1
+Agent: Z.ai Code (Tuteur/Assistant)
+Task: Améliorer le template du mail de validation envoyé après une inscription B2B
+
+Investigation :
+- Lecture backend/internal/transport/http/b2b_anti_abus.go (handler validateB2BEstablishment)
+- Lecture backend/internal/emailtpl/base.go (thème Savane : palette africaine + kente)
+- Lecture backend/internal/emailtpl/welcome_b2c.go (template de référence, même pattern)
+- Lecture backend/internal/mailer/mailer.go (struct Email supporte Body + HTML)
+
+Problème identifié :
+- L'email de validation B2B était un TEXTE BRUT minimaliste (5 lignes) :
+  "Bonjour {name}, Votre établissement a été validé. Votre période d'essai
+   de 14 jours a démarré{dateFin}. Vous pouvez vous connecter. {url}/login"
+- N'utilisait AUCUN template HTML alors qu'il existe un riche système emailtpl/
+  (thème Savane : palette lime/terracotta/navy/gold + motif kente CSS inline)
+- Ne récupérait pas le nom ni le type de l'établissement (informations absentes)
+- Ne formatait pas la date de fin d'essai (affichée brute au format RFC3339)
+- Aucune structure visuelle, pas de CTA, pas de guide de démarrage
+
+Corrections implémentées :
+
+1. NOUVEAU FICHIER backend/internal/emailtpl/b2b_validated.go :
+   - Type B2BValidatedData (EtablissementNom, EtablissementType, DateFinEssai,
+     LoginURL, CapitationInfo)
+   - Fonction b2bTypeLabel() : convertit enum (UNIVERSITE/INSTITUT/ECOLE/
+     FORMATION_PRO) en libellé français lisible
+   - B2BValidatedHTML() : template HTML riche avec thème Savane :
+     * Bandeau succès (dégradé vert lime + icône coche ✓ + "Établissement validé !")
+     * Titre "Félicitations {Prénom} ! 🎉" + message de confirmation
+     * Carte essai (fond crème + bordure or) : 14 jours gratuits, nom+type
+       établissement, date de fin, modèle capitation
+     * Guide de démarrage (4 étapes numérotées : connexion, fiche établissement,
+       enseignants+classes, première épreuve IA)
+     * Bouton CTA "Accéder à mon espace" (dégradé lime + shadow)
+     * Boîte info support (fond crème + bordure or)
+     * Wrappé dans baseTemplate() (header logo + kente, footer copyright)
+   - B2BValidatedText() : version texte brut pour fallback clients email
+     ne supportant pas le HTML (multipart/alternative via SMTPMailer)
+
+2. MODIFICATION backend/internal/transport/http/b2b_anti_abus.go :
+   - Ajout imports : "time" + "github.com/udevrard7/sect/backend/internal/emailtpl"
+   - Requête SQL enrichie : JOIN Etablissement pour récupérer nom + type
+     (avant : SELECT email, name FROM User seulement)
+   - Formatage date fin essai : parse RFC3339 → "2 January 2006" (Go months
+     sont déjà en anglais, mais format lisible). Fallback multi-format.
+   - Construction B2BValidatedData avec tous les champs + DefaultData
+   - Envoi via mailer.Email avec Body (texte) + HTML (template Savane)
+   - CapitationInfo : "900 FCFA/étudiant/an, plancher 50 étudiants"
+
+Stage Summary :
+- Email de validation B2B passe de texte brut 5 lignes → template HTML riche
+  (thème Savane, ~100 lignes HTML inline-CSS, compatible tous clients email)
+- Respecte l'architecture existante (même pattern que welcome_b2c.go,
+  b2b_contract.go, facture_paid.go — utilise baseTemplate + buttonHTML + infoBoxHTML)
+- Build Go : OK (go build ./... exit 0)
+- go vet : OK (exit 0 sur internal/emailtpl/ et internal/transport/http/)
+- Aucun changement frontend (c'est un email backend)
+- Auteur : udevrard7 <ulrichdouh@gmail.com>
