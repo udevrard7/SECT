@@ -1215,7 +1215,7 @@ export function AIProvidersPage() {
               )}
 
               {/* ─── Summary Stats ─── */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10">
                   <CheckCircle2 className="h-3.5 w-3.5 text-success-text shrink-0" />
                   <div>
@@ -1556,7 +1556,7 @@ export function AIProvidersPage() {
 
       {/* ─── Create Dialog ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-secondary" />
@@ -1592,7 +1592,7 @@ export function AIProvidersPage() {
 
       {/* ─── Edit Dialog ─── */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5 text-secondary" />
@@ -1651,7 +1651,7 @@ export function AIProvidersPage() {
 
       {/* ─── Model Switcher Dialog ─── */}
       <Dialog open={showModelSwitcher} onOpenChange={setShowModelSwitcher}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Layers className="h-5 w-5 text-secondary" />

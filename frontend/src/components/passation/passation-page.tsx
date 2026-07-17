@@ -1591,7 +1591,7 @@ export function PassationPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Exam info */}
-            <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
               <div className="rounded-lg border border-success/30 bg-success/10 p-3  /50">
                 <Clock className="mx-auto h-5 w-5 text-success-text mb-1" />
                 <p className="text-lg font-bold text-success-text dark:text-success-text">{epreuve.duree} min</p>

@@ -450,7 +450,7 @@ function B2BValidationTab() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="h-9 w-[140px]">
+              <SelectTrigger className="h-9 w-full sm:w-[140px]">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -461,7 +461,7 @@ function B2BValidationTab() {
               </SelectContent>
             </Select>
             <Select value={filterEmail} onValueChange={setFilterEmail}>
-              <SelectTrigger className="h-9 w-[150px]">
+              <SelectTrigger className="h-9 w-full sm:w-[150px]">
                 <SelectValue placeholder="Email" />
               </SelectTrigger>
               <SelectContent>
@@ -2113,7 +2113,7 @@ export function AbonnementsPage() {
               />
             </div>
             <Select value={statutFilter} onValueChange={setStatutFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>

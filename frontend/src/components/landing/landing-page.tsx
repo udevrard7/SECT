@@ -649,7 +649,7 @@ function TrustBar() {
             Ils font confiance à SECT
           </p>
         </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
           {stats.map((s, i) => (
             <Reveal key={s.label} delay={i * 0.1}>
               <div className="text-center">
@@ -704,7 +704,7 @@ function ProblemSection() {
           </h2>
         </Reveal>
 
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {problems.map((p, i) => (
             <Reveal key={p.title} delay={i * 0.12}>
               <div className="group h-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 hover:border-orange-400/25 hover:bg-orange-500/[0.03] transition-all duration-300">
@@ -741,7 +741,7 @@ function SolutionSection() {
           </p>
         </Reveal>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* Before */}
           <Reveal>
             <div className="relative h-full rounded-2xl border border-white/[0.07] bg-[#0A1628] overflow-hidden">
@@ -937,7 +937,7 @@ function HowItWorks() {
           </h2>
         </Reveal>
 
-        <div className="grid md:grid-cols-3 gap-6 relative">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 relative">
           {/* Connector line */}
           <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-px bg-gradient-to-r from-transparent via-violet-400/30 to-transparent" aria-hidden />
 
@@ -1196,7 +1196,7 @@ function Testimonials() {
           </h2>
         </Reveal>
 
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {items.map((t, i) => (
             <Reveal key={t.name} delay={i * 0.12}>
               <div className="h-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 flex flex-col">
@@ -1685,7 +1685,7 @@ function DifferentiatorsStrip() {
             Conçu pour l&apos;Afrique, par des enseignants
           </p>
         </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {items.map((it, i) => (
             <Reveal key={it.title} delay={i * 0.08}>
               <div className="flex flex-col items-center text-center gap-2">
@@ -1780,7 +1780,7 @@ function Footer() {
   return (
     <footer className="bg-[#070F1E] border-t border-white/[0.06] pt-16 pb-28 md:pb-10">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="grid lg:grid-cols-6 gap-10 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6 lg:gap-10 mb-8">
           {/* Brand + newsletter */}
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2.5 mb-4">

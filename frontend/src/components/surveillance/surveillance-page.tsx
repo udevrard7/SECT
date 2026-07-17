@@ -738,7 +738,7 @@ function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot }: {
             <SheetDescription>{(session.etudiant?.name ?? '—')} — {(session.epreuve?.titre ?? '—')}</SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-5">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Alertes</p><p className="text-2xl font-bold font-mono tabular-nums text-warning">{session.alertes}</p></CardContent></Card>
               <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Pénalité</p><p className="text-2xl font-bold font-mono tabular-nums text-secondary">{session.totalPenalite}</p></CardContent></Card>
               <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Risque</p><p className={`text-2xl font-bold font-mono tabular-nums ${riskLevelClasses(session.riskLevel ?? 'safe').text}`}>{session.riskScore ?? 0}</p></CardContent></Card>

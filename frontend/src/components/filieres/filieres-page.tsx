@@ -1078,7 +1078,7 @@ export function FilieresPage() {
       {!isLoading &&
         filieres.length > 0 &&
         viewMode === 'table' && (
-          <div className="rounded-lg border ds-kente-top overflow-hidden">
+          <div className="rounded-lg border ds-kente-top overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

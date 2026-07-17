@@ -473,7 +473,7 @@ export function EvaluationsPage() {
           </div>
           <div className="flex gap-2">
             <Select value={statutFilter} onValueChange={setStatutFilter}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
@@ -1008,7 +1008,7 @@ export function EvaluationsPage() {
 
                     return (
                       <>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
                           <div className="text-center p-3 rounded-lg bg-success/10">
                             <p className="text-xs text-muted-foreground">Moyenne</p>
                             <p className={`text-lg font-bold ${getScoreColor(avg)}`}>{avg}/20</p>

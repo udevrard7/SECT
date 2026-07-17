@@ -648,7 +648,7 @@ export function AlertesPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={severityFilter} onValueChange={setSeverityFilter}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-full sm:w-[140px]">
               <Filter className="h-3.5 w-3.5 mr-1" />
               <SelectValue placeholder="Sévérité" />
             </SelectTrigger>
@@ -660,7 +660,7 @@ export function AlertesPage() {
             </SelectContent>
           </Select>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-full sm:w-[160px]">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -673,7 +673,7 @@ export function AlertesPage() {
             </SelectContent>
           </Select>
           <Select value={lueFilter} onValueChange={setLueFilter}>
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger className="w-full sm:w-[130px]">
               <SelectValue placeholder="Lue" />
             </SelectTrigger>
             <SelectContent>

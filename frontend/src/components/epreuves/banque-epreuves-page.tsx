@@ -421,7 +421,7 @@ export function BanqueEpreuvesPage() {
           )}
         </div>
         <Select value={modeFilter} onValueChange={setModeFilter}>
-          <SelectTrigger className="w-[170px]">
+          <SelectTrigger className="w-full sm:w-[170px]">
             <Filter className="mr-1 h-3 w-3" />
             <SelectValue placeholder="Mode" />
           </SelectTrigger>

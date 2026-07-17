@@ -968,7 +968,7 @@ export function AffectationsPage() {
               />
             </div>
             <Select value={filiereFilter} onValueChange={setFiliereFilter}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <GraduationCap className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                 <SelectValue placeholder="Filière" />
               </SelectTrigger>
@@ -982,7 +982,7 @@ export function AffectationsPage() {
               </SelectContent>
             </Select>
             <Select value={niveauFilter} onValueChange={setNiveauFilter}>
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-full sm:w-[120px]">
                 <SelectValue placeholder="Niveau" />
               </SelectTrigger>
               <SelectContent>
@@ -995,7 +995,7 @@ export function AffectationsPage() {
               </SelectContent>
             </Select>
             <Select value={statutFilter} onValueChange={setStatutFilter}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <Filter className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
@@ -1009,7 +1009,7 @@ export function AffectationsPage() {
             {/* ANNEE-COURANTE-NIVEAU-2 : Select bindé sur les années DB
                 (remplace l'Input texte libre). Default = année courante. */}
             <Select value={anneeFilter} onValueChange={setAnneeFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Année univ." />
               </SelectTrigger>
               <SelectContent>
@@ -1277,7 +1277,7 @@ export function AffectationsPage() {
           {/* ─── Matrix filters ─── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Select value={matrixFiliereFilter} onValueChange={setMatrixFiliereFilter}>
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-full sm:w-[220px]">
                 <GraduationCap className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                 <SelectValue placeholder="Filière" />
               </SelectTrigger>
@@ -1291,7 +1291,7 @@ export function AffectationsPage() {
               </SelectContent>
             </Select>
             <Select value={matrixNiveauFilter} onValueChange={setMatrixNiveauFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-full sm:w-[140px]">
                 <SelectValue placeholder="Niveau" />
               </SelectTrigger>
               <SelectContent>

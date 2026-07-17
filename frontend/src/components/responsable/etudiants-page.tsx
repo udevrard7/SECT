@@ -1097,7 +1097,7 @@ export function EtudiantsPage() {
             />
           </div>
           <Select value={filiereFilter} onValueChange={(v) => { setFiliereFilter(v); setPage(1) }}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <GraduationCap className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
               <SelectValue placeholder="Filière" />
             </SelectTrigger>
@@ -1111,7 +1111,7 @@ export function EtudiantsPage() {
             </SelectContent>
           </Select>
           <Select value={niveauFilter} onValueChange={setNiveauFilter}>
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger className="w-full sm:w-[130px]">
               <SelectValue placeholder="Niveau" />
             </SelectTrigger>
             <SelectContent>
@@ -1122,7 +1122,7 @@ export function EtudiantsPage() {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger className="w-full sm:w-[130px]">
               <SelectValue placeholder="Statut" />
             </SelectTrigger>
             <SelectContent>
