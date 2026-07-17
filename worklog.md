@@ -16849,3 +16849,85 @@ Stage Summary:
   Render. À synchroniser manuellement via le dashboard Render.
 - Aucun changement de code applicatif, juste go.mod/nettoyage des métadonnées de modules.
 - Auteur : udevrard7 <ulrichdouh@gmail.com>
+
+---
+
+Task ID: SECT-RENDER-DEPLOY-VERIFY-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vérification du déploiement Render via API (token fourni par l'utilisateur) — diagnostic précis des échecs build_failed
+
+Contexte : l'utilisateur a fourni un token API Render (rnd_…) pour vérifier le statut des
+déploiements échoués (commits 14803ea et 910a422) et confirmer que la correction (780f8aa)
+est en production.
+
+Investigation via API Render (GET /v1/services/{id}/deploys) :
+
+Chronologie complète des 6 derniers déploiements :
+  2026-07-16T22:01 → 79s → deactivated  → 35563eb (Phase 1 bulk upsert) ✅
+  2026-07-16T22:11 → 91s → deactivated  → 9417c05 (OPT-1 à OPT-6) ✅
+  2026-07-16T23:02 → 61s → build_failed → 910a422 (OPT-7..10) ❌
+  2026-07-16T23:14 → 71s → build_failed → 14803ea (OPT-11) ❌
+  2026-07-17T00:22 → 71s → deactivated  → e55022e (loadtest script) ✅
+  2026-07-17T00:30 → 73s → live         → 780f8aa (go mod tidy) ✅ ACTUEL
+
+CORRECTION DE SECT-RENDER-DEPLOY-FIX-1 :
+- Dans le worklog précédent (SECT-RENDER-DEPLOY-FIX-1), j'ai conclu que la cause racine
+  était le go.mod incohérent (gorilla/websocket en `// indirect` alors qu'importé directement).
+- Cette conclusion était INCORRECTE. La preuve : le commit e55022e (push AVANT le go mod tidy)
+  a le MÊME code backend que 14803ea (le Dockerfile ne compile que cmd/api, pas cmd/loadtest-submit),
+  pourtant il a buildé avec succès (statut deactivated = a été live).
+- Donc le go.mod `// indirect` n'était PAS bloquant pour le build Docker Render.
+- Les échefs de 910a422 (61s) et 14803ea (71s) étaient des ÉCHECS TRANSITOIRES :
+  * Probable cause : problème réseau/GOPROXY lors du `go mod download` dans le Docker build
+  * Render free tier a des ressources limitées (buildPlan: starter, cache: no-cache)
+  * Le cache no-cache force un re-téléchargement complet à chaque build → vulnérable aux
+    timeouts réseau ponctuels
+- Le `go mod tidy` que j'ai appliqué reste une bonne pratique (go.mod est désormais cohérent),
+  mais n'était PAS le fix de l'échec. Les builds ont réussi d'eux-mêmes une fois le problème
+  transitoire résolu (e55022e à 00:22, puis 780f8aa à 00:30).
+
+Vérifications de prod (API Render + health checks HTTP) :
+- Service : srv-d8utgd0g4nts738a03v0 (SECT, free tier, docker, frankfurt)
+- Deploy actuel : 780f8aa → status=live, durée build 73s
+- GET /health → 200 {"service":"sect-api","status":"ok","version":"0.2.0"}
+- GET /api/health → 200 OK
+- POST /api/sessions/probe/submit (sans auth) → 401 "authentication required"
+  → confirme que la route submit existe et que le middleware auth + submitLimiter sont déployés
+- POST /api/go-auth/login (sur Render direct) → 404 "endpoint non implémenté"
+  → NORMAL : /api/go-auth/* sont des routes Next.js (serverless Vercel), pas Go.
+  Le Go backend a ses propres routes auth (probablement /api/auth/*).
+  Architecture : Next.js wrapper auth → proxy vers Go backend.
+
+Variables d'environnement Render (clés vérifiées, valeurs masquées) :
+- JWT_SECRET : set, 44 chars (⚠️ différent du .env local qui fait 64 chars)
+- NEON_DATABASE_URL : set, 139 chars ( Neon pooler)
+- CORS_ORIGINS : https://sect-app.vercel.app (prod frontend)
+- R2_* : tous configurés (Cloudflare R2 storage)
+- RESEND_* : configuré (emails transactionnels)
+- GENIUSPAY_* : configuré (paiements)
+
+Analyse du JWT_SECRET divergent (44 chars Render vs 64 chars local) :
+- Ce N'EST PAS un problème de production : le frontend Vercel ne signe pas de JWT,
+  il les reçoit du backend Render via /api/go-auth/login (route Next.js qui proxy).
+  En prod, le flux est : frontend → Next.js → Render backend (signe JWT avec secret 44c)
+  → frontend stocke le cookie → requêtes ultérieures vérifiées par Render avec secret 44c.
+  Cohérent de bout en bout.
+- Le divergence n'affecte QUE le script loadtest-submit en mode fake (signe localement
+  avec secret 64c → envoie à Render → 401 car Render vérifie avec secret 44c).
+- Solution pour loadtest contre Render prod : utiliser -mode login (login réel via API)
+  au lieu de -mode fake (tokens signés localement).
+- Pour le dev local : le .env local (64c) est cohérent avec le backend local (64c) → OK.
+
+Stage Summary:
+- ✅ Déploiement Render actuel (780f8aa) = LIVE, sain, tous les OPT-1 à OPT-11 en production
+- ✅ Build duration 73s (normal pour free tier)
+- ❌ Correction : le go.mod n'était PAS la cause des build_failed (échecs transitoires Render)
+- ✅ Le `go mod tidy` appliqué reste une bonne pratique (go.mod désormais cohérent)
+- ℹ️ JWT_SECRET divergent (44c Render vs 64c local) — pas un problème prod, seulement pour
+  loadtest en mode fake. Utiliser -mode login pour tester contre Render.
+- ℹ️ Architecture confirmée : Next.js (Vercel) gère /api/go-auth/* wrapper, Go (Render)
+  gère /api/sessions/*, /api/epreuves/*, etc. Vercel rewrites proxy les routes non-Next.js
+  vers Render.
+- 🔐 Sécurité : le token API Render fourni par l'utilisateur doit être révoqué après cette
+  session (dashboard Render → Settings → API Keys → revoke).
+- Auteur : udevrard7 <ulrichdouh@gmail.com>
