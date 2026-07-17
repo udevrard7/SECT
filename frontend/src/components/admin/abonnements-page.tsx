@@ -189,51 +189,21 @@ interface SouscriptionCredentials {
 function getStatutBadge(statut: string) {
   switch (statut) {
     case 'ESSAI':
-      return (
-        <Badge className="bg-warning/10 text-warning border-warning/30">
-          Essai
-        </Badge>
-      )
+      return <DSBadge variant="warning" size="sm"><Clock className="h-3 w-3 mr-1" />Essai</DSBadge>
     case 'ACTIF':
-      return (
-        <Badge className="bg-success/10 text-success-text border-success/30">
-          Actif
-        </Badge>
-      )
+      return <DSBadge variant="success" size="sm"><CheckCircle2 className="h-3 w-3 mr-1" />Actif</DSBadge>
     case 'SUSPENDU':
-      return (
-        <Badge className="bg-warning/10 text-warning border-warning/30">
-          Suspendu
-        </Badge>
-      )
+      return <DSBadge variant="warning" size="sm"><PauseCircle className="h-3 w-3 mr-1" />Suspendu</DSBadge>
     case 'EXPIRE':
-      return (
-        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
-          Expiré
-        </Badge>
-      )
+      return <DSBadge variant="default" size="sm">Expiré</DSBadge>
     case 'RESILIE':
-      return (
-        <Badge className="bg-destructive/10 text-destructive border-destructive/30">
-          Résilié
-        </Badge>
-      )
+      return <DSBadge variant="danger" size="sm"><Ban className="h-3 w-3 mr-1" />Résilié</DSBadge>
     case 'EN_ATTENTE_PAIEMENT':
-      return (
-        <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
-          <Clock className="h-3 w-3 mr-1" />
-          En attente
-        </Badge>
-      )
+      return <DSBadge variant="warning" size="sm"><Clock className="h-3 w-3 mr-1" />En attente</DSBadge>
     case 'EN_ATTENTE_VALIDATION':
-      return (
-        <Badge className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700">
-          <Clock className="h-3 w-3 mr-1" />
-          En attente de validation
-        </Badge>
-      )
+      return <DSBadge variant="info" size="sm"><Clock className="h-3 w-3 mr-1" />En attente de validation</DSBadge>
     default:
-      return <Badge variant="outline">{statut}</Badge>
+      return <DSBadge variant="default" size="sm">{statut}</DSBadge>
   }
 }
 
@@ -954,17 +924,17 @@ function getPlanColor(type: string) {
   switch (type) {
     case 'GRATUIT':
       return {
-        bg: 'bg-gray-50 dark:bg-gray-900/20',
-        border: 'border-gray-200 dark:border-gray-800',
-        header: 'bg-gray-100 dark:bg-gray-800/50',
-        accent: 'text-gray-700 dark:text-gray-300',
-        badge: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
-        icon: 'text-gray-500 dark:text-gray-400',
-        ring: 'ring-gray-300 dark:ring-gray-700',
+        bg: 'bg-muted/30',
+        border: 'border-border',
+        header: 'bg-muted/50',
+        accent: 'text-muted-foreground',
+        badge: 'bg-muted/50 text-muted-foreground border-border',
+        icon: 'text-muted-foreground',
+        ring: 'ring-border',
       }
     case 'ESSENTIEL':
       return {
-        bg: 'bg-success/10',
+        bg: 'bg-success/5',
         border: 'border-success/30',
         header: 'bg-success/10',
         accent: 'text-success-text',
@@ -974,33 +944,33 @@ function getPlanColor(type: string) {
       }
     case 'PROFESSIONNEL':
       return {
-        bg: 'bg-success/10',
-        border: 'border-success/30',
-        header: 'bg-success/10',
-        accent: 'text-success-text',
-        badge: 'bg-success/10 text-success-text border-success/30',
-        icon: 'text-success-text',
-        ring: 'ring-success',
+        bg: 'bg-secondary/5',
+        border: 'border-secondary/30',
+        header: 'bg-secondary/10',
+        accent: 'text-secondary',
+        badge: 'bg-secondary/10 text-secondary border-secondary/30',
+        icon: 'text-secondary',
+        ring: 'ring-secondary',
       }
     case 'ENTREPRISE':
       return {
-        bg: 'bg-info/10',
-        border: 'border-info/30',
-        header: 'bg-info/10',
-        accent: 'text-info',
-        badge: 'bg-info/10 text-info border-info/30',
-        icon: 'text-info',
-        ring: 'ring-info',
+        bg: 'bg-gold/5',
+        border: 'border-gold/30',
+        header: 'bg-gold/10',
+        accent: 'text-gold',
+        badge: 'bg-gold/10 text-gold border-gold/30',
+        icon: 'text-gold',
+        ring: 'ring-gold',
       }
     default:
       return {
-        bg: 'bg-gray-50 dark:bg-gray-900/20',
-        border: 'border-gray-200 dark:border-gray-800',
-        header: 'bg-gray-100 dark:bg-gray-800/50',
-        accent: 'text-gray-700 dark:text-gray-300',
-        badge: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
-        icon: 'text-gray-500 dark:text-gray-400',
-        ring: 'ring-gray-300 dark:ring-gray-700',
+        bg: 'bg-muted/30',
+        border: 'border-border',
+        header: 'bg-muted/50',
+        accent: 'text-muted-foreground',
+        badge: 'bg-muted/50 text-muted-foreground border-border',
+        icon: 'text-muted-foreground',
+        ring: 'ring-border',
       }
   }
 }
@@ -1287,7 +1257,7 @@ export function AbonnementsPage() {
     setMatriculeOpen(false)
     // Reset step 1
     setWizPlanId('')
-    setWizPeriodeFacturation('mensuel')
+    setWizPeriodeFacturation('annuel')
     // Reset step 2
     setWizNom('')
     setWizType('')
@@ -1544,6 +1514,27 @@ export function AbonnementsPage() {
     }
   }
 
+  // ─── Reactivate abonnement (SUSPENDU → ACTIF) ───
+  const [reactivateTarget, setReactivateTarget] = useState<AbonnementItem | null>(null)
+  const handleReactivateAbo = async () => {
+    if (!reactivateTarget) return
+    try {
+      const res = await fetch(`/api/abonnements/${reactivateTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: 'ACTIF' }),
+      })
+      if (!res.ok) throw new Error('Erreur')
+      toast.success('Abonnement réactivé', {
+        description: `L'abonnement de ${reactivateTarget.etablissement?.nom ?? "—"} est de nouveau actif.`,
+      })
+      setReactivateTarget(null)
+      await refreshData()
+    } catch {
+      toast.error('Erreur', { description: 'Impossible de réactiver l\'abonnement.' })
+    }
+  }
+
   // ─── Cancel (resilier) abonnement ───
   const handleCancelAbo = async () => {
     if (!cancelTarget) return
@@ -1641,7 +1632,7 @@ export function AbonnementsPage() {
       const body = {
         nom: formPlanNom,
         type: formPlanType,
-        prixMensuel: formPlanPrixMensuel,
+        prixMensuel: parseFloat(formPlanPrixMensuel) || 0,
         prixAnnuel: formPlanPrixAnnuel || null,
         nbEtablissementsMax: parseInt(formPlanNbEtabMax) || 1,
         nbFilieresMax: parseInt(formPlanNbFilieresMax) || 5,
@@ -1895,63 +1886,49 @@ export function AbonnementsPage() {
         </div>
       </div>
 
-      {/* ─── Stats Cards ─── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success-text" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Abonnements actifs</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{activeAboCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-amber-400">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
-              <Clock className="h-5 w-5 text-amber-700 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">En attente de paiement</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{pendingAboCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-              <Users className="h-5 w-5 text-warning" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">En essai</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{trialAboCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <DollarSign className="h-5 w-5 text-success-text" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Revenus mensuels</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{formatCurrency(monthlyRevenue)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
-              <TrendingUp className="h-5 w-5 text-info" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Taux de rétention</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{retentionRate}%</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ─── Stats Cards DS ─── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard
+          label="Abonnements actifs"
+          value={activeAboCount}
+          icon={CheckCircle2}
+          accent="success"
+          loading={isLoading}
+          index={0}
+        />
+        <StatCard
+          label="En attente"
+          value={pendingAboCount}
+          icon={Clock}
+          accent="warning"
+          hint="Paiement ou validation"
+          loading={isLoading}
+          index={1}
+        />
+        <StatCard
+          label="En essai"
+          value={trialAboCount}
+          icon={Users}
+          accent="primary"
+          loading={isLoading}
+          index={2}
+        />
+        <StatCard
+          label="Revenus mensuels"
+          value={formatCurrency(monthlyRevenue)}
+          icon={DollarSign}
+          accent="gold"
+          loading={isLoading}
+          index={3}
+        />
+        <StatCard
+          label="Taux de rétention"
+          value={`${retentionRate}%`}
+          icon={TrendingUp}
+          accent="info"
+          loading={isLoading}
+          index={4}
+        />
       </div>
 
       {/* ─── Main content with Tabs ─── */}
@@ -2278,6 +2255,17 @@ export function AbonnementsPage() {
                                 title="Suspendre"
                               >
                                 <PauseCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {abo.statut === 'SUSPENDU' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                                onClick={() => setReactivateTarget(abo)}
+                                title="Réactiver"
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
                               </Button>
                             )}
                             {abo.statut !== 'RESILIE' && abo.statut !== 'EN_ATTENTE_PAIEMENT' && (
@@ -3063,14 +3051,16 @@ export function AbonnementsPage() {
                 <Select value={formAboModePaiement} onValueChange={setFormAboModePaiement}>
                   <SelectTrigger id="abo-paiement"><SelectValue placeholder="Sélectionner" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="carte">Carte bancaire</SelectItem>
-                    <SelectItem value="virement">Virement</SelectItem>
+                    <SelectItem value="virement">Virement bancaire</SelectItem>
                     <SelectItem value="cheque">Chèque</SelectItem>
+                    <SelectItem value="especes">Espèces</SelectItem>
+                    <SelectItem value="wave">Wave</SelectItem>
+                    <SelectItem value="mobile_money">Mobile Money</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="abo-montant">Montant payé (€)</Label>
+                <Label htmlFor="abo-montant">Montant payé (FCFA)</Label>
                 <Input id="abo-montant" type="number" step="0.01" placeholder="0.00" value={formAboMontant} onChange={(e) => setFormAboMontant(e.target.value)} />
               </div>
             </div>
@@ -3270,11 +3260,11 @@ export function AbonnementsPage() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="plan-prix-mensuel">Prix mensuel (€) *</Label>
+                  <Label htmlFor="plan-prix-mensuel">Prix mensuel (FCFA) *</Label>
                   <Input id="plan-prix-mensuel" type="number" step="0.01" placeholder="0.00" value={formPlanPrixMensuel} onChange={(e) => setFormPlanPrixMensuel(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="plan-prix-annuel">Prix annuel (€)</Label>
+                  <Label htmlFor="plan-prix-annuel">Prix annuel (FCFA)</Label>
                   <Input id="plan-prix-annuel" type="number" step="0.01" placeholder="Optionnel" value={formPlanPrixAnnuel} onChange={(e) => setFormPlanPrixAnnuel(e.target.value)} />
                 </div>
               </div>
@@ -3399,6 +3389,27 @@ export function AbonnementsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* ─── Reactivate (SUSPENDU → ACTIF) Confirmation Dialog ─── */}
+      <AlertDialog open={!!reactivateTarget} onOpenChange={(open) => { if (!open) setReactivateTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
+              Réactiver l&apos;abonnement
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous réactiver l&apos;abonnement de{' '}
+              <strong>{reactivateTarget?.etablissement?.nom}</strong> ?
+              L&apos;établissement retrouvera immédiatement l&apos;accès à ses fonctionnalités.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-success hover:bg-success/90 text-success-foreground" onClick={handleReactivateAbo}>Réactiver</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ─── Cancel (Résilier) Confirmation Dialog ─── */}
       <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
         <AlertDialogContent>
@@ -3487,7 +3498,7 @@ export function AbonnementsPage() {
                     <div className="flex items-center gap-2">
                       <Badge className={getPlanColor(detailAbo.plan?.type ?? "—").badge}>{detailAbo.plan?.nom ?? "—"}</Badge>
                       <span className="text-sm text-muted-foreground">
-                        {detailAbo.plan?.prixMensuel ?? 0 === 0 ? 'Gratuit' : `${formatCurrency(detailAbo.plan?.prixMensuel ?? 0)}/mois`}
+                        {(detailAbo.plan?.prixMensuel ?? 0) === 0 ? 'Gratuit' : `${formatCurrency(detailAbo.plan?.prixMensuel ?? 0)}/mois`}
                       </span>
                     </div>
                     {getStatutBadge(detailAbo.statut)}
@@ -3553,7 +3564,7 @@ export function AbonnementsPage() {
                     {detailAbo.modePaiement && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Mode de paiement</span>
-                        <span className="font-medium">{detailAbo.modePaiement === 'carte' ? 'Carte bancaire' : detailAbo.modePaiement === 'virement' ? 'Virement' : 'Chèque'}</span>
+                        <span className="font-medium">{detailAbo.modePaiement === 'virement' ? 'Virement bancaire' : detailAbo.modePaiement === 'cheque' ? 'Chèque' : detailAbo.modePaiement === 'especes' ? 'Espèces' : detailAbo.modePaiement === 'wave' ? 'Wave' : detailAbo.modePaiement === 'mobile_money' ? 'Mobile Money' : detailAbo.modePaiement ?? '—'}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">

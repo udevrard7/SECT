@@ -17068,3 +17068,33 @@ Stage Summary:
 - Base Neon accessible (version migration 74)
 - Git configuré avec l'identité udevrard7 <ulrichdouh@gmail.com>
 - Projet prêt pour le développement collaboratif
+
+---
+Task ID: B2B-VALIDATION-REDESIGN
+Agent: Z.ai Code (frontend-styling-expert)
+Task: Refonte complète de l'onglet "Validation B2B" du module /abonnements — Savane EdTech
+
+Work Log:
+- Analyse approfondie du composant B2BValidationTab existant (lignes 239-489)
+- Analyse de tous les endpoints backend B2B (listPendingB2B, validateB2BEstablishment, etc.)
+- Refonte complète du composant avec palette Savane EdTech :
+  * Pipeline visuel B2B (5 étapes : Inscription → Email vérifié → Validation admin → Essai 14j → Actif)
+  * 4 StatCards DS unifiées avec accents sémantiques (warning/success/info/gold)
+  * Barre de recherche + filtres (type établissement, statut email pro/perso/vérifié)
+  * Cards avec kente strip, badges DS (success/danger/warning/info), pipeline mini par item
+  * GlassModal détail avec capitation détaillée HT/TVA/TTC
+  * Animations Framer Motion (stagger, AnimatePresence)
+  * PulseSkeleton pour les états de chargement
+  * Empty state avec watermark kente
+- Ajout de l'accent "gold" au StatCard DS (stat-card.tsx)
+- Commit + push vers GitHub (d925614)
+- Test Agent Browser sur https://sect-app.vercel.app/abonnements (onglet Validation B2B)
+- Vérification en mode clair et sombre : ✅ tout fonctionne
+
+Stage Summary:
+- L'onglet Validation B2B est désormais pleinement aligné avec l'identité "Savane EdTech"
+- Composants DS unifiés (StatCard, GlassModal, DSBadge, PulseSkeleton)
+- Pipeline visuel reflète le workflow backend (EN_ATTENTE_VALIDATION → ESSAI → ACTIF)
+- Calcul capitation TTC avec TVA 20% correspond au backend (calculate_b2b_capitation)
+- Filtres/recherche ajoutés pour faciliter la gestion admin
+- Auteur : udevrard7 <ulrichdouh@gmail.com>
