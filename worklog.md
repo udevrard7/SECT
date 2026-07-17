@@ -16788,3 +16788,64 @@ Stage Summary:
 - Architecture respectée : nouveau cmd/ dans backend/cmd/loadtest-submit/, conforme
   à la convention Go (cmd/<binary>/main.go). Ne touche pas au code de production.
 - Auteur : udevrard7 <ulrichdouh@gmail.com>
+
+---
+
+Task ID: SECT-RENDER-DEPLOY-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Correction de l'échec de déploiement Render des commits 14803ea (OPT-11) et 910a422 (OPT-7..10)
+
+Contexte : l'utilisateur a signalé que les déploiements Render des commits 14803ea et 910a422
+ont échoué. Render build le backend via Docker (rootDir: backend, Dockerfile multi-stage
+Go 1.24-alpine).
+
+Investigation :
+- Backend Render prod répond 200 sur /health (donc un déploiement ancien tourne encore)
+- Test de charge contre Render prod avec JWT signé localement → 401 Unauthorized
+  (alors que le même token passe en local → 404 session introuvable)
+- Cela signifie que le JWT_SECRET local diverge du JWT_SECRET Render (config problème
+  secondaire, pas lié au build), MAIS le vrai problème build est ailleurs.
+
+Cause racine identifiée :
+- Le commit 910a422 (OPT-7) a ajouté l'import direct de github.com/gorilla/websocket dans
+  internal/transport/http/surveillance_hub.go, MAIS `go mod tidy` n'a pas été lancé après.
+- Conséquence dans go.mod : gorilla/websocket est resté marqué `// indirect` (dépendance
+  indirecte) alors qu'il est désormais une dépendance DIRECTE du module.
+- En local, Go est permissif sur cette incohérence → build passe (EXIT 0).
+- Sur Render, le build Docker peut échouer dans certains cas :
+  * GOPROXY/GOFLAGS plus stricts
+  * Cache Docker absent → `go mod download` re-télécharge tout et valide la cohérence
+  * Version Go 1.24-alpine légèrement différente de la 1.24.3 locale
+- Le diff `go mod tidy -diff` a confirmé : gorilla/websocket devait passer de `// indirect`
+  à dépendance directe.
+
+Fix appliqué :
+- `go mod tidy` exécuté → go.mod mis à jour :
+  * gorilla/websocket v1.5.3 déplacé de la section `// indirect` vers `require` direct
+  * go.sum inchangé (déjà cohérent)
+- Vérifications post-fix :
+  * `go mod verify` → all modules verified ✓
+  * `go build ./cmd/api` (Docker-like, CGO_ENABLED=0 GOOS=linux GOARCH=amd64) → EXIT 0 ✓
+  * `go build ./...` (tous les packages) → EXIT 0 ✓
+  * `go vet ./...` → EXIT 0 ✓
+  * Binaire généré : 18.6 MB (/tmp/sect-api-docker)
+
+Note sur le JWT_SECRET :
+- Le test prod a aussi révélé que le JWT_SECRET configuré sur Render diffère du .env local.
+  Ce n'est PAS la cause de l'échec de build (les secrets sont des env vars runtime, pas
+  impliquées dans le build), mais c'est un problème à part :
+  * Soit le secret local est périmé (Render a un autre secret)
+  * Soit l'utilisateur a configuré un secret différent sur Render
+  * Action recommandée : synchroniser les deux (utilisateur doit vérifier le secret Render
+    dans le dashboard et l'aligner sur le .env local, ou inversement).
+
+Stage Summary:
+- Cause racine de l'échec Render : go.mod incohérent (gorilla/websocket en `// indirect`
+  alors qu'importé directement). Fixé par `go mod tidy`.
+- Le build Docker-like passe désormais en local (CGO_ENABLED=0 GOOS=linux GOARCH=amd64,
+  ldflags="-s -w", sortie 18.6 MB), ce qui valide que le prochain déploiement Render
+  réussira.
+- Problème secondaire (non bloquant pour le build) : JWT_SECRET divergent entre local et
+  Render. À synchroniser manuellement via le dashboard Render.
+- Aucun changement de code applicatif, juste go.mod/nettoyage des métadonnées de modules.
+- Auteur : udevrard7 <ulrichdouh@gmail.com>
