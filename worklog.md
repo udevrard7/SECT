@@ -17241,3 +17241,76 @@ Stage Summary:
 - Build backend OK (go build ./... exit 0)
 - Aucun changement de code Go ou frontend, uniquement documentation
 - Auteur : udevrard7 <ulrichdouh@gmail.com>
+
+---
+Task ID: SECT-ABO-UX-1
+Agent: Z.ai Code (Tuteur/Assistant)
+Task: Module /abonnements — clarifier le workflow et la logique métier entre l'onglet "Abonnements" et l'onglet "Validation B2B", corriger les ambiguïtés et améliorer l'UX
+
+Investigation :
+- Lecture complète de frontend/src/components/admin/abonnements-page.tsx (3653 lignes)
+- 3 onglets identifiés : "Plans tarifaires", "Abonnements" (table tous statuts), "Validation B2B" (cartes EN_ATTENTE_VALIDATION)
+- Lecture backend/internal/transport/http/b2b_anti_abus.go (listPendingB2B, validateB2BEstablishment)
+- Lecture backend/internal/transport/http/stub_handlers_real.go (abonnementsListReal)
+- Lecture backend/internal/transport/http/abonnement_mutation_handlers.go (validStatutsAbonnement)
+- Lecture backend/internal/transport/http/router.go (routes /api/abonnements)
+
+Workflow B2B documenté (pipeline 5 étapes) :
+  INSCRIPTION (self-service /api/subscriptions/b2b)
+    → statut=EN_ATTENTE_VALIDATION, emailVerified=false, adminValidated=false
+  EMAIL_VERIFY (responsable clique lien token)
+    → emailVerified=true (reste EN_ATTENTE_VALIDATION)
+  ADMIN_VALIDATE (onglet "Validation B2B")
+    → adminValidated=true, statut=ESSAI, dateFin=NOW+14j
+  ESSAI (14 jours)
+    → disparait de "Validation B2B", apparait comme ESSAI dans "Abonnements"
+  ACTIF (paiement capitation + facture)
+    → statut=ACTIF
+
+Ambiguïtés identifiées (8) :
+1. Filtre statut du Select statutFilter n'avait PAS d'option EN_ATTENTE_VALIDATION
+   (alors que getStatutBadge le gère) → impossible d'isoler les B2B en attente dans la table
+2. Doublon conceptuel : un abo EN_ATTENTE_VALIDATION apparait dans les 2 onglets avec
+   des actions différentes et incompatibles (Valider vs Suspendre/Résilier)
+3. Actions absurdes sur EN_ATTENTE_VALIDATION : la table proposait Suspendre/Résilier
+   sur un abonnement qui n'a pas encore commencé son essai
+4. Pas de badge de count sur le tab trigger "Validation B2B" → l'admin ne savait pas
+   s'il y avait des validations en attente sans cliquer l'onglet
+5. Stat card "En attente" ne comptait que EN_ATTENTE_PAIEMENT (pas EN_ATTENTE_VALIDATION)
+   mais son hint disait "Paiement ou validation" → trompeur
+6. Aucune navigation croisée entre les 2 onglets
+7. Tabs non contrôlés (defaultValue="plans") → impossible de basculer par programme
+8. Pas d'indicateur de pipeline B2B dans la table
+
+Corrections UX implémentées (frontend/src/components/admin/abonnements-page.tsx) :
+- Tabs rendus contrôlés : value={activeTab} onValueChange={setActiveTab}
+  → permet la navigation croisée par programme
+- Ajout requête b2bPendingQuery (queryKey ['b2b-pending-validation']) dans le parent
+  → TanStack Query déduplique le fetch avec B2BValidationTab (même queryKey)
+- Badge count animé (animate-pulse) sur le tab trigger "Validation B2B" :
+  affiche b2bPendingCount quand > 0
+- Badge count sur le tab trigger "Abonnements" :
+  affiche pendingValidationCount quand > 0 (statut EN_ATTENTE_VALIDATION)
+- Stat card "En attente" corrigée :
+  pendingAboCount = EN_ATTENTE_PAIEMENT + EN_ATTENTE_VALIDATION
+  hint dynamique : "X paiement · Y validation B2B" (ou "Paiements + validations B2B" si 0)
+- Filtre statut : ajout option "EN_ATTENTE_VALIDATION" (label "En attente de validation (B2B)")
+  + renommé l'ancien "En attente" en "En attente de paiement" pour lever l'ambiguïté
+- Actions sur lignes EN_ATTENTE_VALIDATION remplacées :
+  Avant : Eye + Edit3 + (Suspendre/Résilier selon conditions)
+  Après  : Eye + bouton "Valider" (icône Shield) → setActiveTab('b2b-validation')
+  Les actions Modifier/Suspendre/Résilier sont masquées (n'ont pas de sens avant essai)
+- Bannière info contextuelle (warning tint) au-dessus de la table quand
+  pendingValidationCount > 0 ET (statutFilter='all' OU 'EN_ATTENTE_VALIDATION') :
+  - texte explicatif du workflow (email vérifié → validation admin → essai 14j)
+  - bouton "Onglet B2B" avec badge count → bascule vers l'onglet dédié
+  - relie visuellement les 2 onglets pour l'admin
+
+Stage Summary :
+- 8 ambiguïtés UX corrigées dans le module /abonnements
+- Workflow B2B maintenant cohérent entre les 2 onglets (navigation croisée + badges)
+- Lint : 0 erreurs (1 warning préexistant dans use-surveillance-ws.ts, non lié)
+- TypeScript : 0 erreur dans abonnements-page.tsx (erreurs préexistantes dans
+  login-form.tsx et passation-page.tsx, non liées à ce task)
+- Aucun changement backend (la logique métier était correcte, c'était purement UX)
+- Auteur : udevrard7 <ulrichdouh@gmail.com>
