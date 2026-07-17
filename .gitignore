@@ -44,6 +44,7 @@ Caddyfile
 backend/bin/
 backend/tmp/
 backend/api
+backend/loadtest-submit
 *.exe
 
 # Frontend
