@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Activity,
   ArrowRight,
+  Clock,
 } from 'lucide-react'
 import {
   Card,
@@ -243,6 +244,20 @@ export function AdminDashboard() {
     },
     staleTime: 30 * 1000, // 30 secondes
     refetchInterval: 30 * 1000, // auto-refresh toutes les 30s
+    enabled: !!user?.id,
+  })
+
+  // B2B-VALIDATION : compteur des établissements en attente de validation
+  const b2bPendingQuery = useQuery<{ count: number }>({
+    queryKey: ['b2b-pending-count'],
+    queryFn: async () => {
+      const res = await fetch('/api/abonnements/pending-b2b')
+      if (!res.ok) throw new Error('Erreur réseau')
+      const data = await res.json()
+      return { count: data.count ?? 0 }
+    },
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
     enabled: !!user?.id,
   })
 
@@ -481,6 +496,15 @@ export function AdminDashboard() {
             loading={loading}
             index={4}
             hint={`${stats?.nbAutorisationsActives ?? 0} actives`}
+          />
+          <StatCard
+            label="B2B en attente"
+            value={b2bPendingQuery.data?.count ?? 0}
+            icon={Clock}
+            accent="warning"
+            loading={b2bPendingQuery.isLoading}
+            index={5}
+            hint="Établissements à valider"
           />
         </div>
 
