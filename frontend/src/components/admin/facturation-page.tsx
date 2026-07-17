@@ -23,9 +23,7 @@ import {
   ChevronRight,
   ArrowUpRight,
   ArrowDownRight,
-  Minus,
   FileText,
-  CreditCard,
   Building2,
   Trash2,
   Info,
@@ -35,21 +33,18 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
-import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  StatCard,
+  GlassModal,
+  Badge as DSBadge,
+  PulseSkeleton,
+  StatCardSkeletonGrid,
+} from '@/components/ds'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,6 +72,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
+import { motion } from 'framer-motion'
 import {
   BarChart,
   Bar,
@@ -92,6 +88,25 @@ import {
   Line,
   Legend,
 } from 'recharts'
+
+// ─── Savane EdTech Palette ───
+
+const SAVANE_COLORS = {
+  vertLime: '#84CC16',  // success/primary
+  terreCuite: '#C2724E', // warm
+  bleuNuit: '#1E3A5F',   // navy
+  or: '#D4A843',         // gold
+  emerald: '#10b981',
+  red: '#ef4444',
+  gray: '#6b7280',
+}
+
+const PIE_COLORS_SAVANE = [
+  SAVANE_COLORS.vertLime,  // Payées
+  SAVANE_COLORS.terreCuite, // En attente
+  SAVANE_COLORS.red,       // En retard
+  SAVANE_COLORS.gray,      // Annulées
+]
 
 // ─── Types ───
 
@@ -195,7 +210,6 @@ function formatDateLong(dateStr: string | null) {
 }
 
 // SECT-FACTURATION-AUDIT-E2E [B4] : formatage d'axe Y pour les graphiques de revenus.
-// Évite les ticks micro ridicules ("0,001k") quand les valeurs sont faibles ou nulles.
 function formatChartTick(v: number) {
   if (v === 0) return '0'
   if (Math.abs(v) < 1000) return Math.round(v).toLocaleString('fr-FR')
@@ -238,38 +252,40 @@ function compareFactures(a: FactureItem, b: FactureItem, key: SortKey, dir: Sort
   return dir === 'asc' ? cmp : -cmp
 }
 
+// ─── Status badge using DS Badge ───
+
 function getStatutBadge(statut: string) {
   switch (statut) {
     case 'EN_ATTENTE':
       return (
-        <Badge className="bg-warning/10 text-warning border-warning/30">
+        <DSBadge variant="warning" size="sm">
           <Clock className="h-3 w-3 mr-1" />
           En attente
-        </Badge>
+        </DSBadge>
       )
     case 'PAYEE':
       return (
-        <Badge className="bg-success/10 text-success-text border-success/30">
+        <DSBadge variant="success" size="sm">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Payée
-        </Badge>
+        </DSBadge>
       )
     case 'EN_RETARD':
       return (
-        <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+        <DSBadge variant="danger" size="sm">
           <AlertTriangle className="h-3 w-3 mr-1" />
           En retard
-        </Badge>
+        </DSBadge>
       )
     case 'ANNULEE':
       return (
-        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+        <DSBadge variant="default" size="sm">
           <XCircle className="h-3 w-3 mr-1" />
           Annulée
-        </Badge>
+        </DSBadge>
       )
     default:
-      return <Badge variant="outline">{statut}</Badge>
+      return <DSBadge variant="default" size="sm">{statut}</DSBadge>
   }
 }
 
@@ -283,28 +299,48 @@ function getStatutLabel(statut: string) {
   }
 }
 
-// ─── Chart colors ───
+// ─── Chart colors (Savane palette) ───
 
 const CHART_COLORS = {
-  emerald: '#10b981',
-  teal: '#14b8a6',
-  cyan: '#06b6d4',
-  amber: '#f59e0b',
-  red: '#ef4444',
-  gray: '#6b7280',
+  vertLime: SAVANE_COLORS.vertLime,
+  terreCuite: SAVANE_COLORS.terreCuite,
+  bleuNuit: SAVANE_COLORS.bleuNuit,
+  or: SAVANE_COLORS.or,
+  emerald: SAVANE_COLORS.emerald,
+  red: SAVANE_COLORS.red,
+  gray: SAVANE_COLORS.gray,
 }
 
-const PIE_COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6b7280']
+const PIE_COLORS = PIE_COLORS_SAVANE
+
+// ─── Animation variants ───
+
+const rowVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.04, duration: 0.25, ease: 'easeOut' as const },
+  }),
+}
+
+const cardVariants = {
+  hidden: { opacity: 0, scale: 0.97, y: 6 },
+  visible: (i: number) => ({
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { delay: i * 0.05, duration: 0.3, ease: 'easeOut' as const },
+  }),
+}
 
 // ─── Main Component ───
 
 export function FacturationPage() {
-  const { user } = useAuthStore()
+  useAuthStore()
   const queryClient = useQueryClient()
 
   // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
-  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
-  // instantanée. Les 3 ressources sont indépendantes → 3 useQuery séparés.
   const facturesQuery = useQuery<{ factures: FactureItem[] }>({
     queryKey: ['factures'],
     queryFn: async () => {
@@ -366,7 +402,6 @@ export function FacturationPage() {
   const isLoading =
     facturesQuery.isLoading || abonnementsQuery.isLoading || etablissementsQuery.isLoading
 
-  // Helper pour invalider le cache après mutation (create/pay/cancel).
   const refreshData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['factures'] }),
@@ -378,7 +413,6 @@ export function FacturationPage() {
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('all')
-  // SECT-FACTURATION-IMPROVEMENTS : filtre par établissement + tri + pagination.
   const [etablissementFilter, setEtablissementFilter] = useState('all')
   const [sortBy, setSortBy] = useState<SortKey>('dateEmission')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -420,7 +454,6 @@ export function FacturationPage() {
     const enRetardCount = enRetard.length
     const enRetardMontant = enRetard.reduce((sum, f) => sum + f.montantTtc, 0)
     // SECT-FACTURATION-AUDIT-E2E [B2] : exclure les factures ANNULEE du montant moyen
-    // (les annulées ne sont pas des transactions réelles ; les inclure à 0 FCFA faussait la moyenne).
     const facturesValides = factures.filter((f) => f.statut !== 'ANNULEE')
     const montantMoyen = facturesValides.length > 0
       ? facturesValides.reduce((sum, f) => sum + f.montantTtc, 0) / facturesValides.length
@@ -454,7 +487,6 @@ export function FacturationPage() {
     return sortedFactures.slice(start, start + PAGE_SIZE)
   }, [sortedFactures, safeCurrentPage])
 
-  // Reset page à 1 quand les filtres changent.
   const handleFilterChange = <T,>(setter: (v: T) => void) => (v: T) => {
     setter(v)
     setCurrentPage(1)
@@ -469,7 +501,7 @@ export function FacturationPage() {
     }
   }
 
-  // SECT-FACTURATION-IMPROVEMENTS : Export CSV des factures filtrées (tri appliqué, pagination ignorée).
+  // SECT-FACTURATION-IMPROVEMENTS : Export CSV
   const handleExportCSV = () => {
     const headers = [
       'Numero',
@@ -511,7 +543,6 @@ export function FacturationPage() {
       f.notes ?? '',
     ].map(escapeCSV).join(','))
     const csv = [headers.join(','), ...rows].join('\n')
-    // BOM UTF-8 pour qu'Excel ouvre correctement les accents.
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -634,11 +665,9 @@ export function FacturationPage() {
       const futureDate = new Date(now.getFullYear(), now.getMonth() + i, 1)
       const monthLabel = `${monthNames[futureDate.getMonth()]} ${futureDate.getFullYear()}`
 
-      // Calculate projected revenue based on active subscriptions
       let projected = 0
       abonnements.forEach((a) => {
         if (a.statut === 'ACTIF') {
-          // Check if subscription would still be active in this future month
           if (a.dateFin) {
             const endDate = new Date(a.dateFin)
             if (endDate >= futureDate) {
@@ -651,7 +680,7 @@ export function FacturationPage() {
       })
 
       const confidence = i <= 2 ? 'Élevée' : i <= 4 ? 'Moyenne' : 'Faible'
-      const color = i <= 2 ? CHART_COLORS.emerald : i <= 4 ? CHART_COLORS.teal : CHART_COLORS.cyan
+      const color = i <= 2 ? CHART_COLORS.vertLime : i <= 4 ? CHART_COLORS.terreCuite : CHART_COLORS.bleuNuit
 
       forecast.push({ month: monthLabel, projected, confidence, color })
     }
@@ -682,7 +711,6 @@ export function FacturationPage() {
   const riskAlerts = useMemo(() => {
     const alerts: { type: 'warning' | 'danger'; icon: typeof AlertTriangle; title: string; description: string }[] = []
 
-    // Overdue invoices
     const overdueInvoices = factures.filter((f) => f.statut === 'EN_RETARD')
     if (overdueInvoices.length > 0) {
       const totalOverdue = overdueInvoices.reduce((sum, f) => sum + f.montantTtc, 0)
@@ -694,7 +722,6 @@ export function FacturationPage() {
       })
     }
 
-    // Subscriptions expiring within 30 days
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
     const expiringSubs = abonnements.filter((a) => {
@@ -710,7 +737,6 @@ export function FacturationPage() {
       })
     }
 
-    // High churn
     if (churnRate > 15) {
       alerts.push({
         type: 'danger',
@@ -720,7 +746,6 @@ export function FacturationPage() {
       })
     }
 
-    // Unpaid invoices waiting
     const pendingInvoices = factures.filter((f) => f.statut === 'EN_ATTENTE')
     if (pendingInvoices.length > 5) {
       alerts.push({
@@ -854,7 +879,6 @@ export function FacturationPage() {
   }
 
   // ─── Open mark as paid dialog ───
-  // SECT-FACTURATION-IMPROVEMENTS : avertir si paiement anticipé (dateEcheance dans le futur).
   const handleOpenPay = (facture: FactureItem) => {
     const echeance = new Date(facture.dateEcheance)
     const now = new Date()
@@ -951,95 +975,92 @@ export function FacturationPage() {
     return null
   }
 
+  // ─── Payment method label helper ───
+  function getPaymentMethodLabel(method: string | null) {
+    switch (method) {
+      case 'wave': return 'Wave'
+      case 'virement': return 'Virement bancaire'
+      case 'cheque': return 'Chèque'
+      case 'especes': return 'Espèces'
+      case 'mobile_money': return 'Mobile Money'
+      default: return method ?? '—'
+    }
+  }
+
   // ─── Render ───
   return (
     <div className="space-y-6">
-      {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <Receipt className="h-7 w-7 text-success-text" />
-            Facturation & Revenus
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Gérez les factures, suivez les revenus et analysez les prévisions
-          </p>
+      {/* ─── Header with kente pattern ─── */}
+      <div className="ds-kente-pattern-strong -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 px-4 py-5 sm:px-6 rounded-lg">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+              <Receipt className="h-7 w-7" style={{ color: SAVANE_COLORS.vertLime }} />
+              Facturation & Revenus
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Gérez les factures, suivez les revenus et analysez les prévisions
+            </p>
+          </div>
+          <Button
+            className="text-white hover:opacity-90"
+            style={{ backgroundColor: SAVANE_COLORS.vertLime }}
+            onClick={handleOpenCreate}
+          >
+            <Plus className="h-4 w-4" />
+            Nouvelle facture
+          </Button>
         </div>
-        <Button className="bg-success hover:bg-success/90" onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4" />
-          Nouvelle facture
-        </Button>
       </div>
+      {/* Kente strip below header */}
+      <div className="ds-kente-strip -mx-4 sm:-mx-6" />
 
-      {/* ─── KPI Stats Cards ─── */}
+      {/* ─── KPI Stats Cards using StatCard DS component ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {/* Revenus totaux */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
-              <DollarSign className="h-5 w-5 text-success-text" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Revenus totaux</p>
-              <p className="text-lg font-bold truncate font-mono tabular-nums">{formatCurrency(stats.totalRevenus)}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* En attente */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/10">
-              <Clock className="h-5 w-5 text-warning" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">En attente</p>
-              <p className="text-lg font-bold font-mono tabular-nums">{stats.enAttenteCount}</p>
-              <p className="text-xs text-muted-foreground truncate">{formatCurrency(stats.enAttenteMontant)}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Payées */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success-text" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Factures payées</p>
-              <p className="text-lg font-bold font-mono tabular-nums">{stats.payeesCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* En retard */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">En retard</p>
-              <p className="text-lg font-bold font-mono tabular-nums">{stats.enRetardCount}</p>
-              <p className="text-xs text-muted-foreground truncate">{formatCurrency(stats.enRetardMontant)}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Montant moyen */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/10">
-              <BarChart3 className="h-5 w-5 text-info" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Montant moyen</p>
-              <p className="text-lg font-bold truncate font-mono tabular-nums">{formatCurrency(stats.montantMoyen)}</p>
-              <p className="text-[10px] text-muted-foreground/70 truncate">Factures non annulées</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Revenus totaux"
+          value={formatCurrency(stats.totalRevenus)}
+          icon={DollarSign}
+          accent="success"
+          hint="Factures payées"
+          loading={isLoading}
+          index={0}
+        />
+        <StatCard
+          label="En attente"
+          value={stats.enAttenteCount}
+          icon={Clock}
+          accent="warning"
+          hint={formatCurrency(stats.enAttenteMontant)}
+          loading={isLoading}
+          index={1}
+        />
+        <StatCard
+          label="Factures payées"
+          value={stats.payeesCount}
+          icon={CheckCircle2}
+          accent="gold"
+          loading={isLoading}
+          index={2}
+        />
+        <StatCard
+          label="En retard"
+          value={stats.enRetardCount}
+          icon={AlertTriangle}
+          accent="danger"
+          hint={formatCurrency(stats.enRetardMontant)}
+          loading={isLoading}
+          index={3}
+        />
+        <StatCard
+          label="Montant moyen"
+          value={formatCurrency(stats.montantMoyen)}
+          icon={BarChart3}
+          accent="info"
+          hint="Factures non annulées"
+          loading={isLoading}
+          index={4}
+        />
       </div>
 
       {/* ─── Main content with Tabs ─── */}
@@ -1058,12 +1079,14 @@ export function FacturationPage() {
             Prévisions
           </TabsTrigger>
         </TabsList>
+        {/* Kente strip below tabs */}
+        <div className="ds-kente-strip" />
 
         {/* ═══════════════════════════════════════════════════════════ */}
         {/* TAB 1: FACTURES                                           */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="factures">
-          {/* Toolbar — SECT-FACTURATION-IMPROVEMENTS : + filtre établissement + export CSV */}
+          {/* Toolbar */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1119,18 +1142,17 @@ export function FacturationPage() {
 
           {/* Loading state */}
           {isLoading && (
-            <div className="space-y-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <PulseSkeleton key={i} className="h-14 w-full animate-pulse" />
-              ))}
-            </div>
+            <StatCardSkeletonGrid count={6} />
           )}
 
-          {/* Empty state */}
+          {/* Empty state with kente watermark */}
           {!isLoading && filteredFactures.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <Receipt className="h-10 w-10 text-success-text" />
+            <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+              <div
+                className="flex h-20 w-20 items-center justify-center rounded-full"
+                style={{ backgroundColor: `${SAVANE_COLORS.vertLime}15` }}
+              >
+                <Receipt className="h-10 w-10" style={{ color: SAVANE_COLORS.vertLime }} />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune facture trouvée</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1139,7 +1161,11 @@ export function FacturationPage() {
                   : 'Commencez par créer votre première facture.'}
               </p>
               {!search && statutFilter === 'all' && (
-                <Button className="mt-6 bg-success hover:bg-success/90" onClick={handleOpenCreate}>
+                <Button
+                  className="mt-6 text-white hover:opacity-90"
+                  style={{ backgroundColor: SAVANE_COLORS.vertLime }}
+                  onClick={handleOpenCreate}
+                >
                   <Plus className="h-4 w-4" />
                   Créer une facture
                 </Button>
@@ -1149,7 +1175,7 @@ export function FacturationPage() {
 
           {/* Factures Table — desktop (≥640px) */}
           {!isLoading && filteredFactures.length > 0 && (
-            <div className="hidden sm:block rounded-lg border overflow-hidden">
+            <div className="hidden sm:block rounded-lg border overflow-hidden ds-kente-top">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -1244,15 +1270,23 @@ export function FacturationPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedFactures.map((facture) => {
+                    {paginatedFactures.map((facture, i) => {
                       const isOverdue = facture.statut === 'EN_ATTENTE' && new Date(facture.dateEcheance) < new Date()
                       return (
-                        <TableRow key={facture.id} className="group">
-                          <TableCell>
+                        <motion.tr
+                          key={facture.id}
+                          custom={i}
+                          variants={rowVariants}
+                          initial="hidden"
+                          animate="visible"
+                          className="group border-b transition-colors hover:bg-muted/50"
+                        >
+                          <TableCell className="py-3">
                             <button
                               type="button"
                               onClick={() => handleViewDetail(facture)}
-                              className="font-mono tabular-nums text-sm font-medium text-success-text hover:underline cursor-pointer"
+                              className="font-mono tabular-nums text-sm font-medium hover:underline cursor-pointer"
+                              style={{ color: SAVANE_COLORS.vertLime }}
                               title="Voir les détails"
                             >
                               {facture.numero}
@@ -1260,7 +1294,10 @@ export function FacturationPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
+                              <div
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                                style={{ backgroundColor: SAVANE_COLORS.bleuNuit }}
+                              >
                                 {facture.etablissement.nom.charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
@@ -1276,10 +1313,10 @@ export function FacturationPage() {
                           <TableCell className="text-right font-medium text-sm font-mono tabular-nums">{formatCurrency(facture.montantTtc)}</TableCell>
                           <TableCell>
                             {isOverdue && facture.statut === 'EN_ATTENTE' ? (
-                              <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+                              <DSBadge variant="danger" size="sm">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                                 En retard
-                              </Badge>
+                              </DSBadge>
                             ) : (
                               getStatutBadge(facture.statut)
                             )}
@@ -1295,21 +1332,21 @@ export function FacturationPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                                className="h-8 w-8 p-0 hover:bg-muted"
                                 onClick={() => handleViewDetail(facture)}
                                 title="Voir les détails"
                               >
-                                <Eye className="h-4 w-4" />
+                                <Eye className="h-4 w-4" style={{ color: SAVANE_COLORS.vertLime }} />
                               </Button>
                               {(facture.statut === 'EN_ATTENTE' || facture.statut === 'EN_RETARD') && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                                  className="h-8 w-8 p-0 hover:bg-muted"
                                   onClick={() => handleOpenPay(facture)}
                                   title="Marquer comme payée"
                                 >
-                                  <CheckCircle2 className="h-4 w-4" />
+                                  <CheckCircle2 className="h-4 w-4" style={{ color: SAVANE_COLORS.vertLime }} />
                                 </Button>
                               )}
                               {facture.statut !== 'ANNULEE' && facture.statut !== 'PAYEE' && (
@@ -1328,7 +1365,7 @@ export function FacturationPage() {
                               )}
                             </div>
                           </TableCell>
-                        </TableRow>
+                        </motion.tr>
                       )
                     })}
                   </TableBody>
@@ -1337,115 +1374,128 @@ export function FacturationPage() {
             </div>
           )}
 
-          {/* Factures Cards — mobile (<640px) — SECT-FACTURATION-AUDIT-E2E [B3] */}
+          {/* Factures Cards — mobile (<640px) */}
           {!isLoading && filteredFactures.length > 0 && (
             <div className="sm:hidden space-y-3">
-              {paginatedFactures.map((facture) => {
+              {paginatedFactures.map((facture, i) => {
                 const isOverdue = facture.statut === 'EN_ATTENTE' && new Date(facture.dateEcheance) < new Date()
                 return (
-                  <Card key={facture.id} className="overflow-hidden">
-                    <CardContent className="p-4 space-y-3">
-                      {/* En-tête : numéro + statut */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-mono tabular-nums text-sm font-semibold text-success-text">{facture.numero}</p>
-                          <div className="mt-1 flex items-center gap-2 min-w-0">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-[10px] font-bold text-success-text">
-                              {facture.etablissement.nom.charAt(0).toUpperCase()}
+                  <motion.div
+                    key={facture.id}
+                    custom={i}
+                    variants={cardVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <Card className="overflow-hidden ds-kente-top">
+                      <CardContent className="p-4 space-y-3">
+                        {/* En-tête : numéro + statut */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-mono tabular-nums text-sm font-semibold" style={{ color: SAVANE_COLORS.vertLime }}>{facture.numero}</p>
+                            <div className="mt-1 flex items-center gap-2 min-w-0">
+                              <div
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                                style={{ backgroundColor: SAVANE_COLORS.bleuNuit }}
+                              >
+                                {facture.etablissement.nom.charAt(0).toUpperCase()}
+                              </div>
+                              <p className="text-sm font-medium truncate">{facture.etablissement.nom}</p>
                             </div>
-                            <p className="text-sm font-medium truncate">{facture.etablissement.nom}</p>
+                            {facture.etablissement.ville && (
+                              <p className="mt-0.5 pl-8 text-xs text-muted-foreground truncate">{facture.etablissement.ville}</p>
+                            )}
                           </div>
-                          {facture.etablissement.ville && (
-                            <p className="mt-0.5 pl-8 text-xs text-muted-foreground truncate">{facture.etablissement.ville}</p>
-                          )}
+                          <div className="shrink-0">
+                            {isOverdue && facture.statut === 'EN_ATTENTE' ? (
+                              <DSBadge variant="danger" size="sm">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                En retard
+                              </DSBadge>
+                            ) : (
+                              getStatutBadge(facture.statut)
+                            )}
+                          </div>
                         </div>
-                        <div className="shrink-0">
-                          {isOverdue && facture.statut === 'EN_ATTENTE' ? (
-                            <Badge className="bg-destructive/10 text-destructive border-destructive/30">
-                              <AlertTriangle className="h-3 w-3 mr-1" />
-                              En retard
-                            </Badge>
-                          ) : (
-                            getStatutBadge(facture.statut)
-                          )}
-                        </div>
-                      </div>
 
-                      {/* Montants */}
-                      <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2.5 text-center">
-                        <div>
-                          <p className="text-[10px] uppercase text-muted-foreground">HT</p>
-                          <p className="text-xs font-medium font-mono tabular-nums">{formatCurrency(facture.montantHt)}</p>
+                        {/* Montants */}
+                        <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2.5 text-center">
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground">HT</p>
+                            <p className="text-xs font-medium font-mono tabular-nums">{formatCurrency(facture.montantHt)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground">TVA</p>
+                            <p className="text-xs font-medium font-mono tabular-nums">{facture.tva}%</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground">TTC</p>
+                            <p className="text-sm font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.vertLime }}>{formatCurrency(facture.montantTtc)}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-[10px] uppercase text-muted-foreground">TVA</p>
-                          <p className="text-xs font-medium font-mono tabular-nums">{facture.tva}%</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase text-muted-foreground">TTC</p>
-                          <p className="text-sm font-bold font-mono tabular-nums text-success-text">{formatCurrency(facture.montantTtc)}</p>
-                        </div>
-                      </div>
 
-                      {/* Dates */}
-                      <div className="flex items-center justify-between text-xs">
-                        <div>
-                          <span className="text-muted-foreground">Émission : </span>
-                          <span className="font-medium">{formatDate(facture.dateEmission)}</span>
+                        {/* Dates */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-muted-foreground">Émission : </span>
+                            <span className="font-medium">{formatDate(facture.dateEmission)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Échéance : </span>
+                            <span className={`font-medium ${isOverdue ? 'text-destructive' : ''}`}>
+                              {formatDate(facture.dateEcheance)}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">Échéance : </span>
-                          <span className={`font-medium ${isOverdue ? 'text-destructive' : ''}`}>
-                            {formatDate(facture.dateEcheance)}
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* Actions */}
-                      <div className="flex items-center justify-end gap-1 border-t pt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 text-success-text border-success/30 hover:bg-success/10"
-                          onClick={() => handleViewDetail(facture)}
-                        >
-                          <Eye className="h-4 w-4" />
-                          Détails
-                        </Button>
-                        {(facture.statut === 'EN_ATTENTE' || facture.statut === 'EN_RETARD') && (
+                        {/* Actions */}
+                        <div className="flex items-center justify-end gap-1 border-t pt-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 gap-1.5 text-success-text border-success/30 hover:bg-success/10"
-                            onClick={() => handleOpenPay(facture)}
+                            className="h-8 gap-1.5"
+                            onClick={() => handleViewDetail(facture)}
+                            style={{ color: SAVANE_COLORS.vertLime, borderColor: `${SAVANE_COLORS.vertLime}40` }}
                           >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Payer
+                            <Eye className="h-4 w-4" />
+                            Détails
                           </Button>
-                        )}
-                        {facture.statut !== 'ANNULEE' && facture.statut !== 'PAYEE' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-destructive border-destructive/30 hover:bg-destructive/10"
-                            onClick={() => {
-                              setCancelTarget(facture)
-                              setCancelDialogOpen(true)
-                            }}
-                            title="Annuler la facture"
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
+                          {(facture.statut === 'EN_ATTENTE' || facture.statut === 'EN_RETARD') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5"
+                              style={{ color: SAVANE_COLORS.vertLime, borderColor: `${SAVANE_COLORS.vertLime}40` }}
+                              onClick={() => handleOpenPay(facture)}
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              Payer
+                            </Button>
+                          )}
+                          {facture.statut !== 'ANNULEE' && facture.statut !== 'PAYEE' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-destructive border-destructive/30 hover:bg-destructive/10"
+                              onClick={() => {
+                                setCancelTarget(facture)
+                                setCancelDialogOpen(true)
+                              }}
+                              title="Annuler la facture"
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
                 )
               })}
             </div>
           )}
 
-          {/* Pagination — SECT-FACTURATION-IMPROVEMENTS */}
+          {/* Pagination */}
           {!isLoading && filteredFactures.length > 0 && totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-3 border-t">
               <p className="text-xs text-muted-foreground order-2 sm:order-1">
@@ -1486,69 +1536,44 @@ export function FacturationPage() {
         {/* TAB 2: ANALYTIQUE                                         */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="analytique">
-          {/* Key Metrics Row */}
+          {/* Key Metrics Row using StatCard */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
-            <Card className="border-success/30 bg-gradient-to-br from-success to-white dark:to-background">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">MRR</p>
-                    <p className="text-2xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(mrr)}</p>
-                    <p className="text-xs text-muted-foreground">Monthly Recurring Revenue</p>
-                  </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-                    <TrendingUp className="h-6 w-6 text-success-text" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-success/30 bg-gradient-to-br from-success to-white dark:to-background">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">ARR</p>
-                    <p className="text-2xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(arr)}</p>
-                    <p className="text-xs text-muted-foreground">Annual Recurring Revenue</p>
-                  </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-                    <DollarSign className="h-6 w-6 text-success-text" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className={`border-${churnRate > 15 ? 'red' : 'cyan'}-200 dark:border-${churnRate > 15 ? 'red' : 'cyan'}-800 bg-gradient-to-br ${churnRate > 15 ? 'from-destructive to-white' : 'from-info to-white'} dark:to-background`}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Taux de résiliation</p>
-                    <div className="flex items-center gap-2">
-                      <p className={`text-2xl font-bold ${churnRate > 15 ? 'text-destructive' : 'text-info'} font-mono tabular-nums`}>{churnRate}%</p>
-                      {churnRate > 15 ? (
-                        <ArrowDownRight className="h-5 w-5 text-destructive" />
-                      ) : (
-                        <ArrowUpRight className="h-5 w-5 text-success-text" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Churn rate</p>
-                  </div>
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-full ${churnRate > 15 ? 'bg-destructive/10' : 'bg-info/10'}`}>
-                    {churnRate > 15 ? (
-                      <TrendingDown className="h-6 w-6 text-destructive" />
-                    ) : (
-                      <TrendingUp className="h-6 w-6 text-info" />
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              label="MRR"
+              value={formatCurrency(mrr)}
+              icon={TrendingUp}
+              accent="success"
+              hint="Monthly Recurring Revenue"
+              loading={isLoading}
+              index={0}
+            />
+            <StatCard
+              label="ARR"
+              value={formatCurrency(arr)}
+              icon={DollarSign}
+              accent="gold"
+              hint="Annual Recurring Revenue"
+              loading={isLoading}
+              index={1}
+            />
+            <StatCard
+              label="Taux de résiliation"
+              value={`${churnRate}%`}
+              icon={churnRate > 15 ? TrendingDown : TrendingUp}
+              accent={churnRate > 15 ? 'danger' : 'info'}
+              hint="Churn rate"
+              trend={churnRate > 15 ? { direction: 'down', value: `${churnRate}%`, label: 'Seuil dépassé' } : { direction: 'up', value: `${churnRate}%`, label: 'Sous le seuil' }}
+              loading={isLoading}
+              index={2}
+            />
           </div>
 
           {/* Charts Row 1: Revenue by month */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
-            <Card>
+            <Card className="ds-kente-top">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <BarChart3 className="h-4 w-4 text-success-text" />
+                  <BarChart3 className="h-4 w-4" style={{ color: SAVANE_COLORS.vertLime }} />
                   Revenus par mois
                 </CardTitle>
                 <CardDescription>Revenus HT et TTC des factures payées</CardDescription>
@@ -1571,18 +1596,18 @@ export function FacturationPage() {
                       <YAxis tick={{ fontSize: 12 }} tickFormatter={formatChartTick} />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend />
-                      <Bar dataKey="ht" name="HT" fill={CHART_COLORS.emerald} radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="ttc" name="TTC" fill={CHART_COLORS.teal} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="ht" name="HT" fill={CHART_COLORS.vertLime} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="ttc" name="TTC" fill={CHART_COLORS.bleuNuit} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="ds-kente-top">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <PieChartIcon className="h-4 w-4 text-success-text" />
+                  <PieChartIcon className="h-4 w-4" style={{ color: SAVANE_COLORS.or }} />
                   Répartition par statut
                 </CardTitle>
                 <CardDescription>Distribution des factures selon leur statut</CardDescription>
@@ -1626,10 +1651,10 @@ export function FacturationPage() {
 
           {/* Charts Row 2: Revenue by establishment & Revenue trend */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
+            <Card className="ds-kente-top">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <Building2 className="h-4 w-4 text-success-text" />
+                  <Building2 className="h-4 w-4" style={{ color: SAVANE_COLORS.terreCuite }} />
                   Revenus par établissement
                 </CardTitle>
                 <CardDescription>Top 8 établissements par revenu (factures payées)</CardDescription>
@@ -1651,17 +1676,17 @@ export function FacturationPage() {
                       <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={formatChartTick} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="revenue" name="Revenu" fill={CHART_COLORS.emerald} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="revenue" name="Revenu" fill={CHART_COLORS.vertLime} radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="ds-kente-top">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <TrendingUp className="h-4 w-4 text-success-text" />
+                  <TrendingUp className="h-4 w-4" style={{ color: SAVANE_COLORS.vertLime }} />
                   Tendance des revenus cumulés
                 </CardTitle>
                 <CardDescription>Évolution du chiffre d'affaires cumulé</CardDescription>
@@ -1687,9 +1712,9 @@ export function FacturationPage() {
                         type="monotone"
                         dataKey="cumulatif"
                         name="CA cumulé"
-                        stroke={CHART_COLORS.emerald}
+                        stroke={CHART_COLORS.vertLime}
                         strokeWidth={3}
-                        dot={{ fill: CHART_COLORS.emerald, r: 4 }}
+                        dot={{ fill: CHART_COLORS.vertLime, r: 4 }}
                         activeDot={{ r: 6 }}
                       />
                     </LineChart>
@@ -1705,10 +1730,10 @@ export function FacturationPage() {
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="previsions">
           {/* Forecast Chart */}
-          <Card className="mb-6">
+          <Card className="mb-6 ds-kente-top ds-kente-watermark">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2 font-display">
-                <TrendingUp className="h-4 w-4 text-success-text" />
+                <TrendingUp className="h-4 w-4" style={{ color: SAVANE_COLORS.vertLime }} />
                 Prévisions de revenus — 6 prochains mois
               </CardTitle>
               <CardDescription>
@@ -1747,17 +1772,17 @@ export function FacturationPage() {
                 </ResponsiveContainer>
               )}
             </CardContent>
-            <CardFooter className="flex items-center gap-6 text-sm text-muted-foreground border-t pt-4">
+            <CardFooter className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-muted-foreground border-t pt-4">
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHART_COLORS.emerald }} />
+                <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHART_COLORS.vertLime }} />
                 Confiance élevée (1-2 mois)
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHART_COLORS.teal }} />
+                <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHART_COLORS.terreCuite }} />
                 Confiance moyenne (3-4 mois)
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHART_COLORS.cyan }} />
+                <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: CHART_COLORS.bleuNuit }} />
                 Confiance faible (5-6 mois)
               </div>
             </CardFooter>
@@ -1765,10 +1790,10 @@ export function FacturationPage() {
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Projected Renewals Timeline */}
-            <Card>
+            <Card className="ds-kente-top">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <CalendarDays className="h-4 w-4 text-success-text" />
+                  <CalendarDays className="h-4 w-4" style={{ color: SAVANE_COLORS.vertLime }} />
                   Renouvellements prévus
                 </CardTitle>
                 <CardDescription>Abonnements arrivant à échéance dans les 3 prochains mois</CardDescription>
@@ -1781,21 +1806,25 @@ export function FacturationPage() {
                     ))}
                   </div>
                 ) : projectedRenewals.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <div className="ds-kente-watermark flex flex-col items-center justify-center py-8 text-muted-foreground">
                     <CalendarDays className="h-10 w-10 mb-2 opacity-30" />
                     <p className="text-sm">Aucun renouvellement prévu dans les 3 prochains mois</p>
                   </div>
                 ) : (
                   <ScrollArea className="max-h-96">
                     <div className="space-y-3">
-                      {projectedRenewals.map((renewal) => {
+                      {projectedRenewals.map((renewal, i) => {
                         const daysUntilEnd = Math.ceil(
                           (new Date(renewal.dateFin).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                         )
                         const isUrgent = daysUntilEnd <= 14
                         return (
-                          <div
+                          <motion.div
                             key={renewal.id}
+                            custom={i}
+                            variants={rowVariants}
+                            initial="hidden"
+                            animate="visible"
                             className={`flex items-center gap-3 p-3 rounded-lg border ${
                               isUrgent
                                 ? 'border-destructive/30 bg-destructive/10'
@@ -1805,13 +1834,13 @@ export function FacturationPage() {
                             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                               isUrgent
                                 ? 'bg-destructive/10'
-                                : 'bg-success/10'
-                            }`}>
+                                : ''
+                            }`} style={!isUrgent ? { backgroundColor: `${SAVANE_COLORS.vertLime}15` } : {}}>
                               <CalendarDays className={`h-4 w-4 ${
                                 isUrgent
                                   ? 'text-destructive'
-                                  : 'text-success-text'
-                              }`} />
+                                  : ''
+                              }`} style={!isUrgent ? { color: SAVANE_COLORS.vertLime } : {}} />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{renewal.etablissement}</p>
@@ -1825,7 +1854,7 @@ export function FacturationPage() {
                                 {daysUntilEnd <= 0 ? 'Expiré' : `J-${daysUntilEnd}`}
                               </p>
                             </div>
-                          </div>
+                          </motion.div>
                         )
                       })}
                     </div>
@@ -1835,10 +1864,10 @@ export function FacturationPage() {
             </Card>
 
             {/* Risk Alerts */}
-            <Card>
+            <Card className="ds-kente-top">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <AlertTriangle className="h-4 w-4" style={{ color: SAVANE_COLORS.terreCuite }} />
                   Alertes & Risques
                 </CardTitle>
                 <CardDescription>Points d'attention nécessitant une action</CardDescription>
@@ -1851,8 +1880,8 @@ export function FacturationPage() {
                     ))}
                   </div>
                 ) : riskAlerts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                    <CheckCircle2 className="h-10 w-10 mb-2 text-success-text" />
+                  <div className="ds-kente-watermark flex flex-col items-center justify-center py-8 text-muted-foreground">
+                    <CheckCircle2 className="h-10 w-10 mb-2" style={{ color: SAVANE_COLORS.vertLime }} />
                     <p className="text-sm font-medium">Tout va bien !</p>
                     <p className="text-xs">Aucune alerte ou risque détecté pour le moment.</p>
                   </div>
@@ -1861,36 +1890,41 @@ export function FacturationPage() {
                     {riskAlerts.map((alert, index) => {
                       const AlertIcon = alert.icon
                       return (
-                        <div
+                        <motion.div
                           key={index}
+                          custom={index}
+                          variants={rowVariants}
+                          initial="hidden"
+                          animate="visible"
                           className={`flex items-start gap-3 p-4 rounded-lg border ${
                             alert.type === 'danger'
                               ? 'border-destructive/30 bg-destructive/10'
-                              : 'border-warning/30 bg-warning/10'
+                              : ''
                           }`}
+                          style={alert.type === 'warning' ? { borderColor: `${SAVANE_COLORS.terreCuite}40`, backgroundColor: `${SAVANE_COLORS.terreCuite}10` } : {}}
                         >
                           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                             alert.type === 'danger'
                               ? 'bg-destructive/10'
-                              : 'bg-warning/10'
-                          }`}>
+                              : ''
+                          }`} style={alert.type === 'warning' ? { backgroundColor: `${SAVANE_COLORS.terreCuite}15` } : {}}>
                             <AlertIcon className={`h-4 w-4 ${
                               alert.type === 'danger'
                                 ? 'text-destructive'
-                                : 'text-warning'
-                            }`} />
+                                : ''
+                            }`} style={alert.type === 'warning' ? { color: SAVANE_COLORS.terreCuite } : {}} />
                           </div>
                           <div>
                             <p className={`text-sm font-semibold ${
                               alert.type === 'danger'
                                 ? 'text-destructive'
-                                : 'text-warning'
-                            }`}>
+                                : ''
+                            }`} style={alert.type === 'warning' ? { color: SAVANE_COLORS.terreCuite } : {}}>
                               {alert.title}
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">{alert.description}</p>
                           </div>
-                        </div>
+                        </motion.div>
                       )
                     })}
                   </div>
@@ -1900,31 +1934,30 @@ export function FacturationPage() {
           </div>
 
           {/* Summary forecast table */}
-          <Card className="mt-6">
+          <Card className="mt-6 ds-kente-top">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2 font-display">
-                <Info className="h-4 w-4 text-info" />
+                <Info className="h-4 w-4" style={{ color: SAVANE_COLORS.bleuNuit }} />
                 Résumé des prévisions
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="p-4 rounded-lg bg-success/10 border border-success/30">
+                <div className="p-4 rounded-lg border" style={{ backgroundColor: `${SAVANE_COLORS.vertLime}10`, borderColor: `${SAVANE_COLORS.vertLime}30` }}>
                   <p className="text-xs text-muted-foreground">MRR actuel</p>
-                  <p className="text-xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(mrr)}</p>
+                  <p className="text-xl font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.vertLime }}>{formatCurrency(mrr)}</p>
                 </div>
-                <div className="p-4 rounded-lg bg-success/10 border border-success/30">
+                <div className="p-4 rounded-lg border" style={{ backgroundColor: `${SAVANE_COLORS.or}10`, borderColor: `${SAVANE_COLORS.or}30` }}>
                   <p className="text-xs text-muted-foreground">ARR projeté</p>
-                  <p className="text-xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(arr)}</p>
+                  <p className="text-xl font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.or }}>{formatCurrency(arr)}</p>
                 </div>
-                <div className="p-4 rounded-lg bg-info/10 border border-info/30">
+                <div className="p-4 rounded-lg border" style={{ backgroundColor: `${SAVANE_COLORS.bleuNuit}10`, borderColor: `${SAVANE_COLORS.bleuNuit}30` }}>
                   <p className="text-xs text-muted-foreground">Abonnements actifs</p>
-                  <p className="text-xl font-bold text-info font-mono tabular-nums">{abonnements.filter((a) => a.statut === 'ACTIF').length}
-                  </p>
+                  <p className="text-xl font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.bleuNuit }}>{abonnements.filter((a) => a.statut === 'ACTIF').length}</p>
                 </div>
-                <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
+                <div className="p-4 rounded-lg border" style={{ backgroundColor: `${SAVANE_COLORS.terreCuite}10`, borderColor: `${SAVANE_COLORS.terreCuite}30` }}>
                   <p className="text-xs text-muted-foreground">Renouvellements à venir</p>
-                  <p className="text-xl font-bold text-warning font-mono tabular-nums">{projectedRenewals.length}</p>
+                  <p className="text-xl font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.terreCuite }}>{projectedRenewals.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -1933,139 +1966,24 @@ export function FacturationPage() {
       </Tabs>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* DIALOGS                                                   */}
+      {/* DIALOGS (GlassModal for non-destructive, AlertDialog for cancel) */}
       {/* ═══════════════════════════════════════════════════════════ */}
 
-      {/* ─── Create Invoice Dialog ─── */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) setCreateDialogOpen(false) }}>
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-success-text" />
-              Nouvelle facture
-            </DialogTitle>
-            <DialogDescription>
-              Créez une facture en sélectionnant un abonnement et en ajoutant des lignes.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto space-y-5 pr-1">
-            {/* Abonnement */}
-            <div className="space-y-2">
-              <Label htmlFor="facture-abonnement">Abonnement *</Label>
-              <Select value={formAbonnementId} onValueChange={handleFormAbonnementChange}>
-                <SelectTrigger id="facture-abonnement">
-                  <SelectValue placeholder="Sélectionner un abonnement" />
-                </SelectTrigger>
-                <SelectContent>
-                  {abonnements
-                    .filter((a) => a.statut === 'ACTIF' || a.statut === 'ESSAI')
-                    .map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.etablissement.nom} — {a.plan.nom} ({formatCurrency(a.plan.prixMensuel)}/mois)
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Date d'échéance */}
-            <div className="space-y-2">
-              <Label htmlFor="facture-echeance">Date d&apos;échéance *</Label>
-              <Input
-                id="facture-echeance"
-                type="date"
-                value={formDateEcheance}
-                onChange={(e) => setFormDateEcheance(e.target.value)}
-              />
-            </div>
-
-            {/* Lignes facture */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Lignes de facturation</Label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs border-success/30 text-success-text hover:bg-success/10"
-                  onClick={handleAddLigne}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Ajouter une ligne
-                </Button>
-              </div>
-
-              {formLignes.map((ligne, index) => (
-                <div key={index} className="flex gap-2 items-start">
-                  <div className="flex-1">
-                    <Input
-                      placeholder="Description"
-                      value={ligne.description}
-                      onChange={(e) => handleUpdateLigne(index, 'description', e.target.value)}
-                      className="text-sm"
-                    />
-                  </div>
-                  <div className="w-28">
-                    <Input
-                      type="number"
-                      placeholder="Montant"
-                      value={ligne.montant || ''}
-                      onChange={(e) => handleUpdateLigne(index, 'montant', parseFloat(e.target.value) || 0)}
-                      className="text-sm"
-                      min={0}
-                      step={0.01}
-                    />
-                  </div>
-                  {formLignes.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemoveLigne(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-
-              {/* Totals */}
-              <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total HT</span>
-                  <span className="font-medium">{formatCurrency(formTotalHt)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">TVA ({formTva}%)</span>
-                  <span className="font-medium">{formatCurrency(formTotalHt * formTva / 100)}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between">
-                  <span className="font-semibold">Total TTC</span>
-                  <span className="font-bold text-success-text font-mono tabular-nums">{formatCurrency(formTotalTtc)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-2">
-              <Label htmlFor="facture-notes">Notes (optionnel)</Label>
-              <Textarea
-                id="facture-notes"
-                placeholder="Notes internes sur cette facture..."
-                value={formNotes}
-                onChange={(e) => setFormNotes(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="pt-4 border-t">
+      {/* ─── Create Invoice GlassModal ─── */}
+      <GlassModal
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        title="Nouvelle facture"
+        description="Créez une facture en sélectionnant un abonnement et en ajoutant des lignes."
+        size="xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
               Annuler
             </Button>
             <Button
-              className="bg-success hover:bg-success/90"
+              className="text-white hover:opacity-90"
+              style={{ backgroundColor: SAVANE_COLORS.vertLime }}
               onClick={handleSubmitCreate}
               disabled={isSubmitting}
             >
@@ -2081,148 +1999,139 @@ export function FacturationPage() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="ds-kente-strip mb-4" />
+        <div className="space-y-5">
+          {/* Abonnement */}
+          <div className="space-y-2">
+            <Label htmlFor="facture-abonnement">Abonnement *</Label>
+            <Select value={formAbonnementId} onValueChange={handleFormAbonnementChange}>
+              <SelectTrigger id="facture-abonnement">
+                <SelectValue placeholder="Sélectionner un abonnement" />
+              </SelectTrigger>
+              <SelectContent>
+                {abonnements
+                  .filter((a) => a.statut === 'ACTIF' || a.statut === 'ESSAI')
+                  .map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.etablissement.nom} — {a.plan.nom} ({formatCurrency(a.plan.prixMensuel)}/mois)
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      {/* ─── View Invoice Detail Dialog ─── */}
-      <Dialog open={detailDialogOpen} onOpenChange={(open) => { if (!open) setDetailDialogOpen(false) }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-success-text" />
-              Détail de la facture
-            </DialogTitle>
-            <DialogDescription>
-              {selectedFacture ? `Facture ${selectedFacture.numero}` : ''}
-            </DialogDescription>
-          </DialogHeader>
+          {/* Date d'échéance */}
+          <div className="space-y-2">
+            <Label htmlFor="facture-echeance">Date d&apos;échéance *</Label>
+            <Input
+              id="facture-echeance"
+              type="date"
+              value={formDateEcheance}
+              onChange={(e) => setFormDateEcheance(e.target.value)}
+            />
+          </div>
 
-          {selectedFacture && (
-            <div className="flex-1 overflow-y-auto space-y-5 pr-1">
-              {/* Header info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Numéro</p>
-                  <p className="font-mono tabular-nums font-medium text-success-text">{selectedFacture.numero}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Statut</p>
-                  {getStatutBadge(selectedFacture.statut)}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Établissement</p>
-                  <p className="text-sm font-medium">{selectedFacture.etablissement.nom}</p>
-                  {selectedFacture.etablissement.ville && (
-                    <p className="text-xs text-muted-foreground">{selectedFacture.etablissement.ville}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Abonnement</p>
-                  <p className="text-sm font-medium">{selectedFacture.abonnement.plan.nom}</p>
-                  <p className="text-xs text-muted-foreground">{formatCurrency(selectedFacture.abonnement.plan.prixMensuel)}/mois</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Date d&apos;émission</p>
-                  <p className="text-sm">{formatDateLong(selectedFacture.dateEmission)}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Date d&apos;échéance</p>
-                  <p className={`text-sm ${selectedFacture.statut !== 'PAYEE' && new Date(selectedFacture.dateEcheance) < new Date() ? 'text-destructive font-medium' : ''}`}>
-                    {formatDateLong(selectedFacture.dateEcheance)}
-                  </p>
-                </div>
-                {selectedFacture.datePaiement && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Date de paiement</p>
-                    <p className="text-sm">{formatDateLong(selectedFacture.datePaiement)}</p>
-                  </div>
-                )}
-                {selectedFacture.modePaiement && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Mode de paiement</p>
-                    <p className="text-sm">{selectedFacture.modePaiement}</p>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Lignes facture */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold">Lignes de facturation</h4>
-                <div className="rounded-lg border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="font-display">Description</TableHead>
-                        <TableHead className="text-right font-display">Montant HT</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedFacture.lignes && selectedFacture.lignes.length > 0 ? (
-                        selectedFacture.lignes.map((ligne, index) => (
-                          <TableRow key={index}>
-                            <TableCell className="text-sm">{ligne.description}</TableCell>
-                            <TableCell className="text-right text-sm font-mono tabular-nums">{formatCurrency(ligne.montant)}</TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={2} className="text-center text-muted-foreground text-sm py-4">
-                            Aucune ligne détaillée
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              {/* Totals breakdown */}
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total HT</span>
-                  <span className="font-medium">{formatCurrency(selectedFacture.montantHt)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">TVA ({selectedFacture.tva}%)</span>
-                  <span className="font-medium">{formatCurrency(selectedFacture.montantHt * selectedFacture.tva / 100)}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-base">
-                  <span className="font-semibold">Total TTC</span>
-                  <span className="font-bold text-success-text font-mono tabular-nums">{formatCurrency(selectedFacture.montantTtc)}</span>
-                </div>
-              </div>
-
-              {/* Reference de paiement */}
-              {selectedFacture.referencePaiement && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Référence de paiement</p>
-                  <p className="text-sm font-mono tabular-nums bg-muted/50 p-2 rounded">{selectedFacture.referencePaiement}</p>
-                </div>
-              )}
-
-              {/* Notes */}
-              {selectedFacture.notes && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Notes</p>
-                  <p className="text-sm bg-muted/50 p-2 rounded whitespace-pre-wrap">{selectedFacture.notes}</p>
-                </div>
-              )}
+          {/* Lignes facture */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Lignes de facturation</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                style={{ color: SAVANE_COLORS.vertLime, borderColor: `${SAVANE_COLORS.vertLime}40` }}
+                onClick={handleAddLigne}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Ajouter une ligne
+              </Button>
             </div>
-          )}
 
-          <DialogFooter className="pt-4 border-t gap-2">
+            {formLignes.map((ligne, index) => (
+              <div key={index} className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Description"
+                    value={ligne.description}
+                    onChange={(e) => handleUpdateLigne(index, 'description', e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="w-28">
+                  <Input
+                    type="number"
+                    placeholder="Montant"
+                    value={ligne.montant || ''}
+                    onChange={(e) => handleUpdateLigne(index, 'montant', parseFloat(e.target.value) || 0)}
+                    className="text-sm"
+                    min={0}
+                    step={0.01}
+                  />
+                </div>
+                {formLignes.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleRemoveLigne(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+
+            {/* Totals */}
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total HT</span>
+                <span className="font-medium">{formatCurrency(formTotalHt)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">TVA ({formTva}%)</span>
+                <span className="font-medium">{formatCurrency(formTotalHt * formTva / 100)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between">
+                <span className="font-semibold">Total TTC</span>
+                <span className="font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.vertLime }}>{formatCurrency(formTotalTtc)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-2">
+            <Label htmlFor="facture-notes">Notes (optionnel)</Label>
+            <Textarea
+              id="facture-notes"
+              placeholder="Notes internes sur cette facture..."
+              value={formNotes}
+              onChange={(e) => setFormNotes(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* ─── View Invoice Detail GlassModal ─── */}
+      <GlassModal
+        open={detailDialogOpen}
+        onClose={() => setDetailDialogOpen(false)}
+        title="Détail de la facture"
+        description={selectedFacture ? `Facture ${selectedFacture.numero}` : ''}
+        size="xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
               Fermer
             </Button>
-            {/* SECT-FACTURATION-IMPROVEMENTS : export PDF individuel */}
             {selectedFacture && (
               <Button
                 variant="outline"
-                className="border-success/30 text-success-text hover:bg-success/10"
+                style={{ color: SAVANE_COLORS.vertLime, borderColor: `${SAVANE_COLORS.vertLime}40` }}
                 onClick={() => {
                   window.open(`/api/factures/${selectedFacture.id}/pdf`, '_blank')
                 }}
@@ -2233,7 +2142,8 @@ export function FacturationPage() {
             )}
             {selectedFacture && (selectedFacture.statut === 'EN_ATTENTE' || selectedFacture.statut === 'EN_RETARD') && (
               <Button
-                className="bg-success hover:bg-success/90"
+                className="text-white hover:opacity-90"
+                style={{ backgroundColor: SAVANE_COLORS.vertLime }}
                 onClick={() => {
                   setDetailDialogOpen(false)
                   handleOpenPay(selectedFacture)
@@ -2243,60 +2153,146 @@ export function FacturationPage() {
                 Marquer payée
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Mark as Paid Dialog ─── */}
-      <Dialog open={payDialogOpen} onOpenChange={(open) => { if (!open) setPayDialogOpen(false) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success-text" />
-              Marquer comme payée
-            </DialogTitle>
-            <DialogDescription>
-              {payTarget
-                ? `Facture ${payTarget.numero} — ${formatCurrency(payTarget.montantTtc)}`
-                : ''}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pay-mode">Mode de paiement *</Label>
-              <Select value={formModePaiement} onValueChange={setFormModePaiement}>
-                <SelectTrigger id="pay-mode">
-                  <SelectValue placeholder="Sélectionner le mode de paiement" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CARTE_BANCAIRE">Carte bancaire</SelectItem>
-                  <SelectItem value="VIREMENT">Virement bancaire</SelectItem>
-                  <SelectItem value="PRELEVEMENT">Prélèvement automatique</SelectItem>
-                  <SelectItem value="CHEQUE">Chèque</SelectItem>
-                  <SelectItem value="ESPECES">Espèces</SelectItem>
-                  <SelectItem value="EN_LIGNE">Paiement en ligne</SelectItem>
-                </SelectContent>
-              </Select>
+          </>
+        }
+      >
+        <div className="ds-kente-strip mb-4" />
+        {selectedFacture && (
+          <div className="space-y-5">
+            {/* Header info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Numéro</p>
+                <p className="font-mono tabular-nums font-medium" style={{ color: SAVANE_COLORS.vertLime }}>{selectedFacture.numero}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Statut</p>
+                {getStatutBadge(selectedFacture.statut)}
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Établissement</p>
+                <p className="text-sm font-medium">{selectedFacture.etablissement.nom}</p>
+                {selectedFacture.etablissement.ville && (
+                  <p className="text-xs text-muted-foreground">{selectedFacture.etablissement.ville}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Abonnement</p>
+                <p className="text-sm font-medium">{selectedFacture.abonnement.plan.nom}</p>
+                <p className="text-xs text-muted-foreground">{formatCurrency(selectedFacture.abonnement.plan.prixMensuel)}/mois</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Date d&apos;émission</p>
+                <p className="text-sm">{formatDateLong(selectedFacture.dateEmission)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Date d&apos;échéance</p>
+                <p className={`text-sm ${selectedFacture.statut !== 'PAYEE' && new Date(selectedFacture.dateEcheance) < new Date() ? 'text-destructive font-medium' : ''}`}>
+                  {formatDateLong(selectedFacture.dateEcheance)}
+                </p>
+              </div>
+              {selectedFacture.datePaiement && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Date de paiement</p>
+                  <p className="text-sm">{formatDateLong(selectedFacture.datePaiement)}</p>
+                </div>
+              )}
+              {selectedFacture.modePaiement && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Mode de paiement</p>
+                  <p className="text-sm">{getPaymentMethodLabel(selectedFacture.modePaiement)}</p>
+                </div>
+              )}
             </div>
 
+            <Separator />
+
+            {/* Lignes facture */}
             <div className="space-y-2">
-              <Label htmlFor="pay-reference">Référence de paiement (optionnel)</Label>
-              <Input
-                id="pay-reference"
-                placeholder="Ex: VIR-2024-001, CB-XXXX-1234..."
-                value={formReferencePaiement}
-                onChange={(e) => setFormReferencePaiement(e.target.value)}
-              />
+              <h4 className="text-sm font-semibold">Lignes de facturation</h4>
+              <div className="rounded-lg border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="font-display">Description</TableHead>
+                      <TableHead className="text-right font-display">Montant HT</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedFacture.lignes && selectedFacture.lignes.length > 0 ? (
+                      selectedFacture.lignes.map((ligne, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="text-sm">{ligne.description}</TableCell>
+                          <TableCell className="text-right text-sm font-mono tabular-nums">{formatCurrency(ligne.montant)}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center text-muted-foreground text-sm py-4">
+                          Aucune ligne détaillée
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
+
+            {/* Totals breakdown */}
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total HT</span>
+                <span className="font-medium">{formatCurrency(selectedFacture.montantHt)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">TVA ({selectedFacture.tva}%)</span>
+                <span className="font-medium">{formatCurrency(selectedFacture.montantHt * selectedFacture.tva / 100)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-base">
+                <span className="font-semibold">Total TTC</span>
+                <span className="font-bold font-mono tabular-nums" style={{ color: SAVANE_COLORS.vertLime }}>{formatCurrency(selectedFacture.montantTtc)}</span>
+              </div>
+            </div>
+
+            {/* Reference de paiement */}
+            {selectedFacture.referencePaiement && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Référence de paiement</p>
+                <p className="text-sm font-mono tabular-nums bg-muted/50 p-2 rounded">{selectedFacture.referencePaiement}</p>
+              </div>
+            )}
+
+            {/* Notes */}
+            {selectedFacture.notes && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Notes</p>
+                <p className="text-sm bg-muted/50 p-2 rounded whitespace-pre-wrap">{selectedFacture.notes}</p>
+              </div>
+            )}
           </div>
+        )}
+      </GlassModal>
 
-          <DialogFooter className="pt-4">
+      {/* ─── Mark as Paid GlassModal (with CRITICAL FIX: backend-compatible payment methods) ─── */}
+      <GlassModal
+        open={payDialogOpen}
+        onClose={() => setPayDialogOpen(false)}
+        title="Marquer comme payée"
+        description={
+          payTarget
+            ? `Facture ${payTarget.numero} — ${formatCurrency(payTarget.montantTtc)}`
+            : ''
+        }
+        size="md"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setPayDialogOpen(false)}>
               Annuler
             </Button>
             <Button
-              className="bg-success hover:bg-success/90"
+              className="text-white hover:opacity-90"
+              style={{ backgroundColor: SAVANE_COLORS.vertLime }}
               onClick={handleSubmitPay}
               disabled={isSubmitting}
             >
@@ -2312,11 +2308,40 @@ export function FacturationPage() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="ds-kente-strip mb-4" />
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pay-mode">Mode de paiement *</Label>
+            <Select value={formModePaiement} onValueChange={setFormModePaiement}>
+              <SelectTrigger id="pay-mode">
+                <SelectValue placeholder="Sélectionner le mode de paiement" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wave">Wave</SelectItem>
+                <SelectItem value="virement">Virement bancaire</SelectItem>
+                <SelectItem value="cheque">Chèque</SelectItem>
+                <SelectItem value="especes">Espèces</SelectItem>
+                <SelectItem value="mobile_money">Mobile Money</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-      {/* ─── Cancel Facture Confirmation Dialog ─── */}
+          <div className="space-y-2">
+            <Label htmlFor="pay-reference">Référence de paiement (optionnel)</Label>
+            <Input
+              id="pay-reference"
+              placeholder="Ex: WAVE-2024-001, VIR-2024-001..."
+              value={formReferencePaiement}
+              onChange={(e) => setFormReferencePaiement(e.target.value)}
+            />
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* ─── Cancel Facture Confirmation Dialog (kept as AlertDialog — destructive action) ─── */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={(open) => { if (!open) setCancelDialogOpen(false) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
