@@ -5,6 +5,9 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
 [![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](https://go.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql)](https://www.postgresql.org)
+[![Migrations](https://img.shields.io/badge/migrations-75-brightgreen)](backend/db/db/migrations)
+[![Vercel](https://img.shields.io/badge/Vercel-Frontend-000?logo=vercel)](https://sect-app.vercel.app)
+[![Render](https://img.shields.io/badge/Render-Backend-46E3B7?logo=render)](https://sect-s1pb.onrender.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Vue d'ensemble
@@ -15,11 +18,15 @@ SECT est une plateforme complète d'évaluation qui permet aux établissements d
 
 - **Multi-rôles** : ADMIN (propriétaire PaaS), RESPONSABLE, ENSEIGNANT, ÉTUDIANT
 - **Gestion académique** : filières, niveaux (L1→Doctorat), unités d'enseignement, années académiques
-- **Évaluations** : création d'épreuves (QCU/QCM/QRC/CODE), sessions de passation, correction automatique
-- **Sécurité** : Row Level Security (143 policies Neon), JWT HMAC-SHA256, bcrypt, lockout
+- **Évaluations** : création d'épreuves (QCU/QCM/QRC/CODE), sessions de passation, correction automatique par IA
+- **Modèle SaaS hybride** : B2C (Prof Solo gratuit / Prof Premium 4 900 FCFA/mois) + B2B (Institutionnel, capitation 900 FCFA/étudiant/an, plancher 50) avec self-service inscription, essai 14 jours, validation admin
+- **Paiement** : GeniusPay (Wave, Côte d'Ivoire) pour B2C ; virement/cartes pour B2B ; factures PDF avec TVA
+- **Sécurité** : Row Level Security (146 policies Neon sur 62 tables), JWT HMAC-SHA256, bcrypt, lockout
 - **Stockage** : Cloudflare R2 (S3-compatible) pour les documents PDF/DOCX
-- **Exam-prep** : révision espacée (SM-2), planning, pratique, aide étudiant↔enseignant
-- **Messagerie** : salons de classe/promo + DM étudiant↔enseignant avec modération et réactions
+- **Exam-prep** : révision espacée (SM-2), flashcards, planning, pratique, aide étudiant↔enseignant, audio TTS
+- **Messagerie** : salons de classe/promo + DM étudiant↔enseignant avec modération, réactions, signalement
+- **Surveillance** : anti-fraude (stats proctoring, WebSocket temps réel, lockout soumission)
+- **Performance** : pic de soumission protégé (202 async + submit_limiter + jitter), ~800-1000 étudiants simultanés sur free tier
 
 ## Architecture
 
@@ -55,14 +62,14 @@ sect/
 │   │   ├── domain/              # Entités métier + interfaces repositories
 │   │   ├── usecase/             # Logique métier (auth, CRUD, grading, messagerie…)
 │   │   ├── repository/          # Implémentations pgx (RLS automatique)
-│   │   ├── transport/http/      # Routeur chi + handlers HTTP (40 domaines)
+│   │   ├── transport/http/      # Routeur chi + handlers HTTP (40 domaines, 200 routes)
 │   │   ├── middleware/          # Auth (cookie+Bearer), logging, CORS
 │   │   ├── jwt/                 # JWT HMAC-SHA256 (access 15min + refresh 7j)
 │   │   ├── monitoring/          # Événements de monitoring applicatif
 │   │   ├── storage/             # Client Cloudflare R2 (S3)
-│   │   └── worker/              # Workers asynchrones
+│   │   └── worker/              # Workers asynchrones (9 : IA, Correction, Document, Practice, Homework, Audio, AutoClose, Relance, Expire)
 │   ├── db/                      # Couche données
-│   │   ├── db/migrations/       # 53 migrations golang-migrate (000001→000053)
+│   │   ├── db/migrations/       # 75 migrations golang-migrate (000001→000075)
 │   │   ├── db/reference/        # Schéma consolidé (schema.sql, pour sqlc)
 │   │   ├── queries/             # Requêtes sqlc (user.sql)
 │   │   ├── MIGRATIONS_RECONCILIATION.md  # Audit doublons + dérive schema_migrations
@@ -95,7 +102,7 @@ sect/
 - **Auth** : JWT HMAC-SHA256 natif Go (access 15min + refresh 7j avec rotation)
 - **Mots de passe** : bcrypt cost 10 (compatible hashes existants)
 - **Lockout** : 5 tentatives → verrouillage 15min
-- **RLS Neon** : 143 policies sur 59 tables activées, claims de session (`app.claims.*`)
+- **RLS Neon** : 146 policies sur 62 tables activées, claims de session (`app.claims.*` via `SET LOCAL app.claims.*`)
 - **Cookies httpOnly** : `access_token` + `refresh_token` (Secure + SameSite=Lax)
 - **CORS** : `AllowCredentials: true`, headers `Cookie` + `Authorization`
 - **IP réelle** : `GetClientIP()` lit `CF-Connecting-IP` → `X-Forwarded-For` → `X-Real-IP`
@@ -152,7 +159,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 
 ## API
 
-Le backend expose **183 enregistrements de routes** répartis sur **40 domaines** (dénombrement vérifié depuis `backend/internal/transport/http/router.go`) :
+Le backend expose **200 routes HTTP** réparties sur **40 domaines** (dénombrement vérifié depuis `backend/internal/transport/http/router.go` : 107 GET + 60 POST + 2 PUT + 15 PATCH + 16 DELETE) :
 
 | Domaine | Endpoints | Description |
 |---------|-----------|-------------|
@@ -202,16 +209,16 @@ Le backend expose **183 enregistrements de routes** répartis sur **40 domaines*
 
 ## Base de données
 
-Statistiques vérifiées sur la base Neon PostgreSQL de production :
+Statistiques vérifiées sur la base Neon PostgreSQL de production (migration version 75) :
 
-- **61 tables** + **1 vue** (schéma `public`, PascalCase)
-- **28 types enum** (118 valeurs au total)
-- **104 contraintes de clés étrangères**
-- **200 index**
-- **143 policies RLS** (Row Level Security) sur **59 tables activées**, claims de session posés via `SET LOCAL`
+- **63 tables** + **1 vue** (schéma `public`, PascalCase)
+- **28 types enum** (120 valeurs au total)
+- **63 contraintes PRIMARY KEY** + **4 UNIQUE** + **106 FOREIGN KEY** + **481 CHECK**
+- **213 index**
+- **146 policies RLS** (Row Level Security) sur **62 tables activées**, claims de session posés via `SET LOCAL app.claims.*`
 - **39 triggers** (essentiellement `updated_at` automatique)
-- **58 fonctions** (helpers RLS, invitations `SECURITY DEFINER`, agrégats stats…)
-- **53 migrations** versionnées dans `backend/db/db/migrations/` (golang-migrate), numérotées `000001`→`000053`, toutes appliquées
+- **76 fonctions** dont **75 `SECURITY DEFINER`** (helpers RLS, invitations, validation B2B, agrégats stats, capitation B2B…)
+- **75 migrations** versionnées dans `backend/db/db/migrations/` (golang-migrate), numérotées `000001`→`000075`, toutes appliquées
 
 ```bash
 # Appliquer les migrations
@@ -222,6 +229,18 @@ migrate -path db/db/migrations -database "$NEON_DATABASE_URL" up
 ```
 
 > ℹ️ Un audit des migrations (doublons historiques 000039/000040 et 000050, réconciliation `schema_migrations`) est documenté dans [`backend/db/MIGRATIONS_RECONCILIATION.md`](backend/db/MIGRATIONS_RECONCILIATION.md).
+>
+> 📋 Migrations récentes notables : `000055` (refonte B2B/B2C + capitation), `000059` (IA usage tracking), `000061` (GeniusPay Wave), `000067`→`000074` (self-service B2B/B2C, facturation, anti-abus, multi-établissements), `000075` (fix `validate_b2b_establishment` — SQLSTATE 42804). Voir `worklog.md` pour le détail des Task IDs `SECT-*`.
+
+## Évolutions récentes
+
+Le journal complet des évolutions (Task IDs `SECT-*`) est dans [`worklog.md`](worklog.md). Points marquants :
+
+- **`SECT-B2B-VALIDATE-FIX-1`** — Correction du bug `SQLSTATE 42804` sur `validate_b2b_establishment()` (la fonction déclarait `o_date_fin timestamp WITHOUT time zone` mais le `RETURN QUERY` final utilisait `NOW() + INTERVAL` qui retourne `timestamptz` → mismatch → impossibilité de valider toute nouvelle inscription B2B éligible). Fix par migration `000075` (cast explicite `(NOW() + INTERVAL '14 days')::timestamp`).
+- **`SECT-CAPACITY-V2` / `OPT-1`→`OPT-11`** — Optimisations performance pour le pic de soumission : `202 async` + `submit_limiter` (5 slots concurrents), jitter 45s, WebSocket push, gzip, debounce saves, SWR IndexedDB. Capacité mesurée free tier : ~800-1000 étudiants en pic sans perte de données.
+- **`SECT-RENDER-DEPLOY-FIX-1`** — Cohérence `go.mod` (gorilla/websocket) pour le déploiement Render.
+- **Refonte "Savane EdTech"** — Identité visuelle des modules `/facturation`, `/abonnements` (Validation B2B, Plans tarifaires) avec palette DS unifiée, kente strip, GlassModal, animations Framer Motion.
+- **B2B self-service** — Inscription établissements sans intervention admin (`000067`→`000074`) : création Etablissement + RESPONSABLE + abonnement `EN_ATTENTE_VALIDATION`, vérification email par token, validation admin → ESSAI 14j, anti-abus (1 essai/nom, 1 essai/téléphone, flag email non-pro).
 
 ## Licence
 
