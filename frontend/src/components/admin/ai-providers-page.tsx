@@ -555,19 +555,21 @@ export function AIProvidersPage() {
     }
   }
 
-  // Activate provider
-  const handleActivate = async (providerId: string) => {
+  // Toggle provider active/inactive
+  const handleActivate = async (providerId: string, forceActive?: boolean) => {
     setActivatingId(providerId)
     try {
+      const body: Record<string, unknown> = { providerId }
+      if (forceActive !== undefined) body.active = forceActive
       const res = await fetch('/api/ai-providers/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error('Erreur lors de l\'activation')
 
       const data = await res.json()
-      toast.success('Fournisseur activé', { description: data.message })
+      toast.success(data.active ? 'Fournisseur activé' : 'Fournisseur désactivé', { description: data.message })
       refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
@@ -576,23 +578,23 @@ export function AIProvidersPage() {
     }
   }
 
-  // Quick switch provider
+  // Quick switch provider — active le fournisseur sans désactiver les autres
   const handleQuickSwitch = async (providerId: string) => {
     if (!providerId) return
     const target = providers.find(p => p.id === providerId)
-    if (!target || target.isActive) return
+    if (!target) return
 
     setIsQuickSwitching(true)
     try {
       const res = await fetch('/api/ai-providers/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId }),
+        body: JSON.stringify({ providerId, active: true }),
       })
       if (!res.ok) throw new Error('Erreur lors du changement')
 
       const data = await res.json()
-      toast.success('Fournisseur changé', { description: `Maintenant utiliser : ${target.name}` })
+      toast.success('Fournisseur activé', { description: `${target.name} ajouté au failover (P${target.priority})` })
       refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
