@@ -805,9 +805,18 @@ export function EtablissementsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer l&apos;établissement</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nom}</strong> ?
-              Cette action est irréversible. Toutes les filières, unités d&apos;enseignement, épreuves, sessions, certificats et données associées seront supprimées en cascade.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nom}</strong> ?
+                  Cette action est irréversible.
+                </p>
+                <ul className="list-disc pl-5 text-sm space-y-1">
+                  <li>Toutes les filières, unités d&apos;enseignement, épreuves, sessions et données associées seront supprimées en cascade.</li>
+                  <li>Le <strong>responsable</strong> rattaché sera rétrogradé et désactivé.</li>
+                  <li>Tous les <strong>enseignants et étudiants</strong> de cet établissement seront désactivés.</li>
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

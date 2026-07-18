@@ -563,28 +563,78 @@ func (r *EtablissementRepository) GetWatermark(ctx context.Context, id string) (
 // BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
 // SetClaimsTx → claims NULL → policy Etablissement_modify (is_admin()) voyait
 // NULL → 0 row → NotFoundError. Fix : db.WithTx avec claims du context.
+//
+// BUGFIX (RESPONSABLE-ORPHELIN) : avant ce fix, la suppression d'un établissement
+// B2B laissait les RESPONSABLES orphelins (etablissementId=NULL, role=RESPONSABLE,
+// actif=true) car le FK ON DELETE SET NULL ne désactive ni ne re-rôle les Users.
+// Fix : avant le DELETE, on désactive (actif=false) et on rétrograde (role=ETUDIANT)
+// tous les utilisateurs de l'établissement. On utilise SystemClaims pour la tx car
+// la policy User_update exige admin_has_etablissement_access() que l'ADMIN PaaS
+// n'a pas forcément (établissements PERSONNEL B2C sans EtablissementAccess).
 func (r *EtablissementRepository) Delete(ctx context.Context, id string) error {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok || claims.UserID == "" {
                 return fmt.Errorf("Delete: claims manquants dans le context")
         }
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // Vérifier existence
-                var exists bool
-                err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "Etablissement" WHERE "id" = $1)`, id).Scan(&exists)
+        // Vérification d'existence AVANT la transaction système (avec claims utilisateur
+        // pour que la RLS Etablissement_delete is_admin() s'applique).
+        var exists bool
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "Etablissement" WHERE "id" = $1)`, id).Scan(&exists)
+        })
+        if err != nil {
+                return fmt.Errorf("check exists: %w", err)
+        }
+        if !exists {
+                return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+        }
+
+        // Transaction système pour la cascade + suppression.
+        // SystemClaims bypass RLS User_update (is_system()=true → policy _all_system).
+        return db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+                // ── Étape 1 : désactiver + rétrograde tous les utilisateurs de l'établissement ──
+                //
+                // Avant le DELETE ON DELETE SET NULL, on marque les users inactifs et on
+                // change leur rôle pour éviter des RESPONSABLES orphelins (actif=true,
+                // etablissementId=NULL, role=RESPONSABLE).
+                //
+                // On distingue RESPONSABLE (rétrogradé → ETUDIANT) des autres rôles
+                // (ENSEIGNANT/ETUDIANT → simplement désactivés). Le RESPONSABLE n'a plus
+                // de raison d'être sans son établissement B2B ; les ENSEIGNANT/ETUDIANT
+                // peuvent éventuellement exister dans d'autres établissements (multi-etab).
+                tag, err := tx.Exec(ctx, `
+                        UPDATE "User"
+                        SET "actif" = false,
+                            "role" = CASE WHEN "role" = 'RESPONSABLE' THEN 'ETUDIANT' ELSE "role" END,
+                            "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "etablissementId" = $1
+                `, id)
                 if err != nil {
-                        return fmt.Errorf("check exists: %w", err)
+                        return fmt.Errorf("deactivate users for etablissement %s: %w", id, err)
                 }
-                if !exists {
-                        return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                deactivatedCount := tag.RowsAffected()
+
+                // ── Étape 2 : nettoyer les filières.responsableId avant le CASCADE ──
+                // Le DELETE CASCADE sur Filiere va supprimer les filières, mais
+                // Filiere.responsableId → User(id) avec ON DELETE SET NULL pourrait
+                // causer des inconsistances si on ne nettoie pas d'abord.
+                _, err = tx.Exec(ctx, `
+                        UPDATE "Filiere" SET "responsableId" = NULL WHERE "etablissementId" = $1
+                `, id)
+                if err != nil {
+                        return fmt.Errorf("null filiere responsables: %w", err)
                 }
 
-                // Delete (cascade selon schéma — EtablissementAccess, etc.)
+                // ── Étape 3 : suppression de l'établissement (CASCADE FK) ──
                 _, err = tx.Exec(ctx, `DELETE FROM "Etablissement" WHERE "id" = $1`, id)
                 if err != nil {
                         return fmt.Errorf("delete etablissement: %w", err)
                 }
+
+                // Log informatif (niveau INFO pour le monitoring)
+                fmt.Printf("[ETAB-DELETE] établissement %s supprimé — %d utilisateur(s) désactivé(s)\n", id, deactivatedCount)
+
                 return nil
         })
 }
