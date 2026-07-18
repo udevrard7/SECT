@@ -571,10 +571,17 @@ func (s *Server) aiProviderDelete(w http.ResponseWriter, r *http.Request) {
 // 5. POST /api/ai-providers/activate — Active un provider
 // ──────────────────────────────────────────────────────────────────────────
 
-// aiProviderActivate désactive les autres providers de la MÊME capability et
-// active celui-ci. Permet d'avoir simultanément un provider chat actif ET un
-// provider tts actif (migration 000035 — index partiel unique par capability).
-// Body : { providerId }
+// aiProviderActivate bascule l'état actif/inactif d'un provider (toggle).
+//
+// Migration 000077 (FAILOVER-BLOCKED fix) :
+// Avant, ce handler désactivait TOUS les providers de la même capability avant
+// d'activer le ciblé — ce qui cassait le failover (1 seul provider actif =
+// pas de bascule possible). Maintenant, l'admin peut activer plusieurs providers
+// chat simultanément, et le failover les essaie par priorité (P1→P2→P3...).
+//
+// Body : { providerId, active? }
+// - Si "active" est fourni (booléen) : force l'état.
+// - Si "active" est absent : toggle (inactif→actif, actif→inactif).
 func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
         claims, ok := s.requireAdminClaims(w, r)
         if !ok {
@@ -582,7 +589,8 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
         }
 
         var body struct {
-                ProviderID string `json:"providerId"`
+                ProviderID string  `json:"providerId"`
+                Active     *bool   `json:"active"` // nil = toggle, true = forcer actif, false = forcer inactif
         }
         if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
@@ -594,29 +602,28 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
         }
 
         var activatedName string
+        var newState bool
         err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                // 1. Lire la capability du provider ciblé (NULL → 'chat', cohérent avec
-                //    la migration 000035 et getActiveProviderShared).
-                var targetCapability string
+                // 1. Lire l'état actuel du provider ciblé.
+                var currentActive bool
                 if err := tx.QueryRow(r.Context(),
-                        `SELECT COALESCE("capability", 'chat') FROM "AIProviderConfig" WHERE "id" = $1`,
+                        `SELECT "isActive" FROM "AIProviderConfig" WHERE "id" = $1`,
                         body.ProviderID,
-                ).Scan(&targetCapability); err != nil {
+                ).Scan(&currentActive); err != nil {
                         return err
                 }
-                // 2. Désactiver UNIQUEMENT les providers de la même capability. Les
-                //    providers d'une autre capability (ex: tts pendant qu'on active un
-                //    chat) restent actifs — c'est le cœur du fix multi-capability.
-                if _, err := tx.Exec(r.Context(),
-                        `UPDATE "AIProviderConfig" SET "isActive" = false, "updatedAt" = NOW()
-                         WHERE COALESCE("capability", 'chat') = $1`, targetCapability,
-                ); err != nil {
-                        return err
+
+                // 2. Déterminer le nouvel état.
+                if body.Active != nil {
+                        newState = *body.Active
+                } else {
+                        newState = !currentActive // toggle
                 }
-                // 3. Active celui-ci et récupère son nom.
+
+                // 3. Appliquer le changement.
                 err := tx.QueryRow(r.Context(),
-                        `UPDATE "AIProviderConfig" SET "isActive" = true, "updatedAt" = NOW()
-                         WHERE "id" = $1 RETURNING "name"`, body.ProviderID,
+                        `UPDATE "AIProviderConfig" SET "isActive" = $1, "updatedAt" = NOW()
+                         WHERE "id" = $2 RETURNING "name"`, newState, body.ProviderID,
                 ).Scan(&activatedName)
                 if err != nil {
                         return err
@@ -632,10 +639,15 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        verb := "désactivé"
+        if newState {
+                verb = "activé"
+        }
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
                 "success": true,
-                "message": fmt.Sprintf("Provider « %s » activé", activatedName),
+                "message": fmt.Sprintf("Provider « %s » %s", activatedName, verb),
+                "active":  newState,
         })
 }
 
