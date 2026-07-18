@@ -17375,3 +17375,29 @@ Stage Summary :
 - go vet : OK (exit 0 sur internal/emailtpl/ et internal/transport/http/)
 - Aucun changement frontend (c'est un email backend)
 - Auteur : udevrard7 <ulrichdouh@gmail.com>
+
+---
+Task ID: ENV-SETUP-SESSION
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Configuration de l'environnement de développement local pour le projet SECT
+
+Work Log:
+- Cloné le dépôt GitHub `udevrard7/SECT` à `/home/z/SECT`
+- Analysé l'architecture complète du projet (backend Go + frontend Next.js)
+- Installé Go 1.24.1 en local (`~/go/go/bin/go`)
+- Configuré l'identité Git : `udevrard7 <ulrichdouh@gmail.com>`
+- Vérifié la compilation du backend Go : OK (`go build ./cmd/api/` succès)
+- Vérifié la connexion à Neon Postgres : OK (pool connecté, workers démarrés)
+- Vérifié le health check backend : `{"service":"sect-api","status":"ok","version":"0.2.0"}`
+- Installé les dépendances frontend : 1066 packages via `bun install`
+- Créé `/home/z/SECT/backend/.env` avec les variables de connexion Neon
+- Créé `/home/z/SECT/frontend/.env.local` avec `NEXT_PUBLIC_API_URL=http://localhost:8080`
+- Ajouté Go au PATH persistant dans `~/.bashrc`
+
+Stage Summary:
+- Environnement de développement local entièrement fonctionnel
+- Backend Go 1.24 : compile + se connecte à Neon DB + tous les workers opérationnels
+- Frontend Next.js 16 : dépendances installées, prêt à démarrer
+- Variables d'environnement configurées (R2/Resend/GeniusPay non configurés - optionnels en dev)
+- Flux de travail établi : modifications locales → git push → GitHub → Vercel (frontend) + Render (backend)
+- Architecture du projet documentée (Clean Architecture Go, Catch-All routing Next.js, RLS Neon)

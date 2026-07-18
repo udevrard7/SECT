@@ -489,8 +489,11 @@ func (uc *EtablissementUseCase) UpdateWatermark(ctx context.Context, claims db.S
         return uc.etabRepo.GetWatermark(ctx, id)
 }
 
-// Delete supprime un établissement (ADMIN only, sous réserve d'autorisation
-// EtablissementAccess valide — bug E1/E6).
+// Delete supprime un établissement (ADMIN only).
+//
+// BUGFIX (RESPONSABLE-ORPHELIN) : la suppression cascade désormais les
+// utilisateurs liés — RESPONSABLE rétrogradé (ETUDIANT) + tous les users
+// désactivés (actif=false) avant le DELETE de l'établissement.
 func (uc *EtablissementUseCase) Delete(ctx context.Context, claims db.SessionClaims, id string) error {
         if claims.Role != string(domain.RoleAdmin) {
                 return &domain.UnauthorizedError{Message: "seul un ADMIN peut supprimer un établissement"}
