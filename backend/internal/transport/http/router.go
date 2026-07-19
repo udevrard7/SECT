@@ -430,13 +430,16 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
                 // SECT-REG-LINK-B2C-MVP-1 : gestion des liens d'inscription direct étudiant.
                 // Le GET / est ouvert à tous les authentifiés (RLS auto-scoping par createdById).
-                // Les mutations (POST/DELETE) requièrent ADMIN, RESPONSABLE, ou ENSEIGNANT
-                // dans un étab PERSONNEL (B2C self-service via RequireRoleOrPersonalEtab).
+                // Les mutations (POST/DELETE) requièrent ADMIN, RESPONSABLE, ou ENSEIGNANT.
+                // SECT-REG-LINK-B2C-MVP-1 (fix RLS) : le check "ENSEIGNANT dans étab PERSONNEL"
+                // est délégué au usecase via la fonction SECURITY DEFINER is_enseignant_in_personal_etab()
+                // (bypass RLS pour son SELECT interne — plus robuste que RequireRoleOrPersonalEtab
+                // qui fait un SELECT direct sur Etablissement filtré par RLS en prod sect_app).
                 r.Route("/api/student-signup-links", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listStudentSignupLinks)
-                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createStudentSignupLink)
-                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.revokeStudentSignupLink)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/", s.createStudentSignupLink)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Delete("/{id}", s.revokeStudentSignupLink)
                 })
 
                 // /api/epreuves

@@ -144,7 +144,7 @@ func main() {
         // - TTL 30 jours (vs 7j invitation — partage manuel WhatsApp/QR).
         // - mailer pour l'email StudentWelcome après acceptation.
         // - quotaRepo injecté pour anticipation Phase 2 (nil-safe côté usecase).
-        studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, mailSvc, cfg.AppBaseURL, quotaRepo)
+        studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, pool, mailSvc, cfg.AppBaseURL, quotaRepo)
         studentSignupLinkUC.SetLogger(func(msg string, args ...any) { logger.Warn(msg, args...) })
         epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo)
         questionUC := usecase.NewQuestionUseCase(questionRepo)
