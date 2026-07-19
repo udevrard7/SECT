@@ -151,6 +151,10 @@ func main() {
         // et fait les appels chat completion vers le provider (Mistral, Groq, etc.).
         aiService := ai.NewAIService(pool)
 
+        // AI-PROVIDERS-1 : AIProviderUseCase — logique métier pour la gestion des AI providers.
+        aiProviderRepo := repository.NewAIProviderRepository(pool)
+        aiProviderUC := usecase.NewAIProviderUseCase(aiProviderRepo)
+
         // Task 6 : Messagerie — hub SSE (temps réel) + UseCase (chat + IA hybride).
         messagerieHub := httptransport.NewMessagerieHub()
         messagerieUC := usecase.NewMessagerieUseCase(messagerieRepo, aiService, messagerieHub)
@@ -219,7 +223,7 @@ func main() {
         // channel in-memory ne fonctionnait pas de façon fiable sur Render free
         // (cold start tue le worker goroutine avant traitement du job).
 
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
 
         // SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
         // Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.

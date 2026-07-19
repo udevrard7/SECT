@@ -49,7 +49,7 @@ func DefaultFailoverConfig() FailoverConfig {
 type FailoverResult struct {
         Content      string
         Model        string
-        ProviderUsed *activeProvider
+        ProviderUsed *ActiveProvider
         FailoverUsed bool // true si un provider de secours a été utilisé
 }
 
@@ -92,7 +92,7 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
         }
 
         var lastErr error
-        var prevProvider *activeProvider // BUG #10 fix: pour tracer fromProvider→toProvider
+        var prevProvider *ActiveProvider // BUG #10 fix: pour tracer fromProvider→toProvider
         for i, p := range providers {
                 // Tenter l'appel avec ce provider.
                 result, err := s.chatWithProvider(ctx, p, messages)
@@ -144,7 +144,7 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 
 // getNextProvider retourne le provider à l'index donné, ou nil si hors limites.
 // Utilisé pour renseigner fromProvider/toProvider dans AIFailoverEvent.
-func getNextProvider(providers []*activeProvider, idx int) *activeProvider {
+func getNextProvider(providers []*ActiveProvider, idx int) *ActiveProvider {
         if idx < len(providers) {
                 return providers[idx]
         }
@@ -155,7 +155,7 @@ func getNextProvider(providers []*activeProvider, idx int) *activeProvider {
 // triés par priorité. MULTI-CAPABILITY : filtre sur capability='chat' pour que le
 // failover ne bascule qu'entre providers chat (jamais vers un provider tts/audio).
 // Utilisé par ChatWithFailover pour avoir une liste de secours.
-func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*activeProvider, error) {
+func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*ActiveProvider, error) {
         tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
@@ -180,9 +180,9 @@ func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*activ
         }
         defer rows.Close()
 
-        var providers []*activeProvider
+        var providers []*ActiveProvider
         for rows.Next() {
-                p := &activeProvider{}
+                p := &ActiveProvider{}
                 // DASHSCOPE-AUDIO-1 : scan aussi la colonne capability (NULL → 'chat').
                 if err := rows.Scan(
                         &p.ID, &p.Name, &p.Provider,
@@ -261,7 +261,7 @@ func (s *AIService) getFailoverConfig(ctx context.Context) FailoverConfig {
 // provider est tracé pour diagnostic post-mortem.
 // BUG #9 fix: utilise FAIL_OVER au lieu de PROVIDER_FAILURE quand un fallback existe.
 // BUG #10 fix: remplit fromProvider et toProvider pour tracer la chaîne de bascule.
-func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *activeProvider, nextProvider *activeProvider, callErr error, hasFallback bool) {
+func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *ActiveProvider, nextProvider *ActiveProvider, callErr error, hasFallback bool) {
         tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return
@@ -307,7 +307,7 @@ func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *active
 
 // logFailoverSuccessEvent insère un événement RECOVERY quand le failover réussit
 // (BUG #9 fix: tracer les bascules réussies, pas seulement les échecs).
-func (s *AIService) logFailoverSuccessEvent(ctx context.Context, fromProvider *activeProvider, toProvider *activeProvider) {
+func (s *AIService) logFailoverSuccessEvent(ctx context.Context, fromProvider *ActiveProvider, toProvider *ActiveProvider) {
         tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return
@@ -333,8 +333,8 @@ func (s *AIService) logFailoverSuccessEvent(ctx context.Context, fromProvider *a
 }
 
 // chatWithProvider fait l'appel LLM avec un provider spécifique.
-// Wrapper autour de ChatCompletion qui utilise un activeProvider explicite.
-func (s *AIService) chatWithProvider(ctx context.Context, p *activeProvider, messages []ChatMessage) (*ChatResult, error) {
+// Wrapper autour de ChatCompletion qui utilise un ActiveProvider explicite.
+func (s *AIService) chatWithProvider(ctx context.Context, p *ActiveProvider, messages []ChatMessage) (*ChatResult, error) {
         // Construire le body OpenAI-compatible.
         body := map[string]interface{}{
                 "model":       p.Model,
