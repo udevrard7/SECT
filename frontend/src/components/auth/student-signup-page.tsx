@@ -45,6 +45,7 @@ import {
   MapPin,
   RefreshCw,
   ArrowRight,
+  ArrowLeft,
   X,
   KeyRound,
   Users,
@@ -120,6 +121,8 @@ declare global {
         selector: string | HTMLElement,
         options: {
           sitekey: string
+          appearance?: 'always' | 'execute' | 'interaction-only'
+          theme?: 'light' | 'dark' | 'auto'
           callback?: (token: string) => void
           'error-callback'?: () => void
           'expired-callback'?: () => void
@@ -129,6 +132,70 @@ declare global {
       remove: (id: string) => void
     }
   }
+}
+
+// ─── Step Indicator (clone adapté depuis accept-invitation-page.tsx) ───
+// SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes pour la page
+// d'inscription étudiante. Step 1 = Vérification du contexte du lien,
+// Step 2 = Création du compte (formulaire + Turnstile).
+
+function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
+  return (
+    <div className="flex items-center justify-center gap-3 mb-6">
+      {/* Step 1 */}
+      <div className="flex items-center gap-2">
+        <div
+          className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+            currentStep >= 1
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          {currentStep > 1 ? <CheckCircle2 className="h-4 w-4" /> : '1'}
+        </div>
+        <span
+          className={`text-sm font-medium transition-colors ${
+            currentStep >= 1
+              ? 'text-success-text'
+              : 'text-muted-foreground'
+          }`}
+        >
+          Vérification
+        </span>
+      </div>
+
+      {/* Connector */}
+      <div
+        className={`h-0.5 w-8 transition-colors ${
+          currentStep >= 2
+            ? 'bg-success'
+            : 'bg-muted'
+        }`}
+      />
+
+      {/* Step 2 */}
+      <div className="flex items-center gap-2">
+        <div
+          className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+            currentStep >= 2
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          2
+        </div>
+        <span
+          className={`text-sm font-medium transition-colors ${
+            currentStep >= 2
+              ? 'text-success-text'
+              : 'text-muted-foreground'
+          }`}
+        >
+          Création du compte
+        </span>
+      </div>
+    </div>
+  )
 }
 
 // ─── Etab type labels ───
@@ -300,6 +367,18 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [turnstileSiteKey, setTurnstileSiteKey] = useState<string>('')
   const [turnstileRendered, setTurnstileRendered] = useState(false)
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : traque l'ID du widget Turnstile
+  // pour pouvoir le reset/remove proprement, + un flag d'échec de chargement
+  // (si l'iframe ne s'injecte pas après 8s, on affiche un bouton Réessayer).
+  const [turnstileWidgetId, setTurnstileWidgetId] = useState<string | null>(null)
+  const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false)
+
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes.
+  // Step 1 = Vérification du contexte du lien (établissement, filière, message,
+  // countdown, places restantes) + bouton "Continuer".
+  // Step 2 = Création du compte (formulaire Nom/Email/Password/CGU + Turnstile).
+  // Le step reste à 2 en cas d'erreur submit (l'utilisateur peut corriger).
+  const [step, setStep] = useState<1 | 2>(1)
 
   // SECT-REG-LINK-PHASE2-FRONTEND-1 : code d'erreur provenant du POST
   // /api/student-signup (DOMAIN_NOT_ALLOWED / TURNSTILE_FAILED / QUOTA_EXCEEDED
@@ -370,25 +449,89 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   // SECT-REG-LINK-PHASE2-FRONTEND-1 : rendu du widget Turnstile une fois le
   // script chargé + la clé récupérée. On attend que `window.turnstile` soit
   // disponible (next/script strategy="afterInteractive" charge de façon async).
+  //
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : améliorations clés pour garantir
+  // l'affichage du widget :
+  //  - `appearance: 'always'` force le rendu même en mode "managed" (Cloudflare
+  //    peut décider de ne pas rendre le widget si l'environnement semble suspect).
+  //  - `theme: 'auto'` s'adapte au dark/light mode de SECT (sinon le widget peut
+  //    être invisible en dark mode si le thème n'est pas forcé).
+  //  - Si après 8s le widget n'est toujours pas rendu, on bascule
+  //    `turnstileLoadFailed = true` pour afficher un bouton "Réessayer".
+  //  - On sauvegarde le widget ID pour pouvoir le reset/remove proprement.
   useEffect(() => {
     if (!turnstileSiteKey || turnstileRendered) return
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
     const tryRender = () => {
       if (typeof window === 'undefined') return
       if (window.turnstile) {
-        window.turnstile.render('#cf-turnstile', {
-          sitekey: turnstileSiteKey,
-          callback: (t) => setTurnstileToken(t),
-          'error-callback': () => setTurnstileToken(null),
-          'expired-callback': () => setTurnstileToken(null),
-        })
-        setTurnstileRendered(true)
+        try {
+          const widgetId = window.turnstile.render('#cf-turnstile', {
+            sitekey: turnstileSiteKey,
+            appearance: 'always',
+            theme: 'auto',
+            callback: (t) => {
+              setTurnstileToken(t)
+              setTurnstileLoadFailed(false)
+            },
+            'error-callback': () => {
+              setTurnstileToken(null)
+              setTurnstileLoadFailed(true)
+            },
+            'expired-callback': () => setTurnstileToken(null),
+          })
+          setTurnstileWidgetId(widgetId)
+          setTurnstileRendered(true)
+          // Timeout de sécurité : si après 8s aucun token n'a été obtenu ET
+          // qu'aucune erreur n'a été signalée, on considère que le widget a
+          // échoué à se charger (ex: environnement headless, network bloqué).
+          timeoutId = setTimeout(() => {
+            setTurnstileToken((current) => {
+              if (!current) {
+                setTurnstileLoadFailed(true)
+              }
+              return current
+            })
+          }, 8000)
+        } catch {
+          setTurnstileLoadFailed(true)
+        }
       } else {
         // Le script n'est pas encore chargé — retry dans 200ms.
-        setTimeout(tryRender, 200)
+        retryTimer = setTimeout(tryRender, 200)
       }
     }
     tryRender()
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      if (retryTimer) clearTimeout(retryTimer)
+    }
   }, [turnstileSiteKey, turnstileRendered])
+
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : retry du widget Turnstile.
+  // Réinitialise les états + retire l'ancien widget + re-render.
+  const retryTurnstile = () => {
+    if (typeof window === 'undefined' || !window.turnstile) return
+    // Retire l'ancien widget si présent (sinon render() duplique).
+    if (turnstileWidgetId) {
+      try {
+        window.turnstile.remove(turnstileWidgetId)
+      } catch {
+        /* ignore — widget déjà retiré */
+      }
+    }
+    // Vide le conteneur au cas où un résidu soit resté.
+    const container = document.getElementById('cf-turnstile')
+    if (container) container.innerHTML = ''
+    setTurnstileWidgetId(null)
+    setTurnstileRendered(false)
+    setTurnstileLoadFailed(false)
+    setTurnstileToken(null)
+  }
 
   // ─── Form (react-hook-form + zod) ───
   const form = useForm<SignupFormValues>({
@@ -741,8 +884,135 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
     </div>
   )
 
-  // ─── Render: Signup form ───
-  const renderForm = () => {
+  // ─── Render: Step 1 - Vérification du contexte du lien ───
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes. Le step 1 affiche
+  // le contexte (établissement, filière, message, countdown, places restantes)
+  // + un bouton "Continuer" qui passe au step 2 (formulaire). Aucun champ de
+  // formulaire ici — l'utilisateur confirme juste qu'il est sur le bon lien.
+  const renderStep1 = () => {
+    if (!linkData) return null
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 20 }}
+        transition={{ duration: 0.3 }}
+        className="space-y-4"
+      >
+        <div className="text-center space-y-1 mb-2">
+          <h2 className="text-lg font-semibold font-display">Confirmez votre inscription</h2>
+          <p className="text-sm text-muted-foreground">
+            Vérifiez les informations ci-dessous avant de créer votre compte.
+          </p>
+        </div>
+
+        {/* Contexte établissement */}
+        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">Vous rejoignez</p>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-success-text flex-shrink-0" />
+            <p className="text-sm font-semibold font-display">{linkData.etablissementNom}</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <DSBadge variant="primary" size="sm">
+              {ETAB_TYPE_LABELS[linkData.etablissementType] || linkData.etablissementType}
+            </DSBadge>
+            {linkData.filiereNom && (
+              <DSBadge variant="success" size="sm">
+                <BookOpen className="h-3 w-3 mr-1" />
+                {linkData.filiereNom}
+                {linkData.filiereCode ? ` (${linkData.filiereCode})` : ''}
+              </DSBadge>
+            )}
+            {linkData.etablissementVille && (
+              <DSBadge variant="info" size="sm">
+                <MapPin className="h-3 w-3 mr-1" />
+                {linkData.etablissementVille}
+              </DSBadge>
+            )}
+            {linkData.niveau && (
+              <DSBadge variant="warning" size="sm">
+                {linkData.niveau}
+              </DSBadge>
+            )}
+          </div>
+          {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : banner contexte domaine email */}
+          {linkData.emailDomainRestriction && (
+            <DSBadge variant="warning" size="sm" className="w-full justify-start">
+              <AtSign className="h-3 w-3 mr-1" />
+              Email institutionnel requis : @{linkData.emailDomainRestriction}
+            </DSBadge>
+          )}
+          {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
+              de l'enseignant (affiché si non vide côté backend). */}
+          {linkData.customWelcomeMessage && (
+            <div className="mt-2 p-3 rounded-md bg-info/10 border border-info/20">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-info mb-1">
+                <MessageSquare className="h-3 w-3" />
+                Message de votre enseignant
+              </div>
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {linkData.customWelcomeMessage}
+              </p>
+            </div>
+          )}
+          {linkData.creatorName && (
+            <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
+              Invité par <span className="font-medium text-foreground">{linkData.creatorName}</span>
+            </p>
+          )}
+        </div>
+
+        {/* Compte à rebours expiration (toujours visible au step 1) */}
+        {countdown && countdown !== 'Expirée' && (
+          <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
+            <Clock className="h-4 w-4 text-warning flex-shrink-0" />
+            <p className="text-xs text-warning-foreground">
+              <span className="font-semibold">Expire dans :</span> {countdown}
+            </p>
+          </div>
+        )}
+
+        {/* Places restantes */}
+        {placesRestantes != null && (
+          <div className="rounded-lg border border-info/20 bg-info/5 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-info-foreground">
+                <Users className="h-3.5 w-3.5" />
+                Places restantes
+              </span>
+              <span className="font-mono font-semibold tabular-nums">
+                {placesRestantes} / {linkData.maxUses}
+              </span>
+            </div>
+            <ProgressBar
+              value={placesPourcentage}
+              accent={placesRestantes === 0 ? 'destructive' : 'info'}
+              size="sm"
+              showLabel={false}
+              showValue={false}
+            />
+          </div>
+        )}
+
+        {/* Bouton Continuer */}
+        <Button
+          onClick={() => setStep(2)}
+          className="w-full bg-success hover:bg-success/90 text-success-foreground shadow-md shadow-success/20"
+        >
+          Continuer
+          <ArrowRight className="h-4 w-4 ml-2" />
+        </Button>
+      </motion.div>
+    )
+  }
+
+  // ─── Render: Step 2 - Création du compte (formulaire) ───
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : le formulaire de création de compte
+  // (Nom, Email, Password + meter, Confirm, CGU, Turnstile, Submit) avec un
+  // bouton "Retour" en haut pour revenir au step 1.
+  const renderStep2 = () => {
     if (!linkData) return null
 
     const strength = getPasswordStrength(password)
@@ -755,101 +1025,21 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
     return (
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
         transition={{ duration: 0.3 }}
       >
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          {/* Contexte établissement */}
-          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-            <p className="text-xs text-muted-foreground">Vous rejoignez</p>
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-success-text flex-shrink-0" />
-              <p className="text-sm font-semibold font-display">{linkData.etablissementNom}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <DSBadge variant="primary" size="sm">
-                {ETAB_TYPE_LABELS[linkData.etablissementType] || linkData.etablissementType}
-              </DSBadge>
-              {linkData.filiereNom && (
-                <DSBadge variant="success" size="sm">
-                  <BookOpen className="h-3 w-3 mr-1" />
-                  {linkData.filiereNom}
-                  {linkData.filiereCode ? ` (${linkData.filiereCode})` : ''}
-                </DSBadge>
-              )}
-              {linkData.etablissementVille && (
-                <DSBadge variant="info" size="sm">
-                  <MapPin className="h-3 w-3 mr-1" />
-                  {linkData.etablissementVille}
-                </DSBadge>
-              )}
-              {linkData.niveau && (
-                <DSBadge variant="warning" size="sm">
-                  {linkData.niveau}
-                </DSBadge>
-              )}
-            </div>
-            {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : banner contexte domaine email */}
-            {linkData.emailDomainRestriction && (
-              <DSBadge variant="warning" size="sm" className="w-full justify-start">
-                <AtSign className="h-3 w-3 mr-1" />
-                Email institutionnel requis : @{linkData.emailDomainRestriction}
-              </DSBadge>
-            )}
-            {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
-                de l'enseignant (affiché si non vide côté backend). */}
-            {linkData.customWelcomeMessage && (
-              <div className="mt-2 p-3 rounded-md bg-info/10 border border-info/20">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-info mb-1">
-                  <MessageSquare className="h-3 w-3" />
-                  Message de votre enseignant
-                </div>
-                <p className="text-sm text-foreground whitespace-pre-wrap">
-                  {linkData.customWelcomeMessage}
-                </p>
-              </div>
-            )}
-            {linkData.creatorName && (
-              <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
-                Invité par <span className="font-medium text-foreground">{linkData.creatorName}</span>
-              </p>
-            )}
-          </div>
-
-          {/* Compte à rebours expiration (si < 24h) */}
-          {countdown && countdown !== 'Expirée' && (
-            <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
-              <Clock className="h-4 w-4 text-warning flex-shrink-0" />
-              <p className="text-xs text-warning-foreground">
-                <span className="font-semibold">Expire dans :</span> {countdown}
-              </p>
-            </div>
-          )}
-
-          {/* Places restantes */}
-          {placesRestantes != null && (
-            <div className="rounded-lg border border-info/20 bg-info/5 p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-info-foreground">
-                  <Users className="h-3.5 w-3.5" />
-                  Places restantes
-                </span>
-                <span className="font-mono font-semibold tabular-nums">
-                  {placesRestantes} / {linkData.maxUses}
-                </span>
-              </div>
-              <ProgressBar
-                value={placesPourcentage}
-                accent={placesRestantes === 0 ? 'destructive' : 'info'}
-                size="sm"
-                showLabel={false}
-                showValue={false}
-              />
-            </div>
-          )}
-
-          <Separator />
+          {/* Bouton Retour */}
+          <button
+            type="button"
+            onClick={() => setStep(1)}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Retour
+          </button>
 
           {/* Name field */}
           <div className="space-y-2">
@@ -1038,18 +1228,56 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : widget Cloudflare Turnstile */}
           {/* Rendu conditionnel — uniquement si siteKey non vide (prod). En dev */}
           {/* (clé vide), le bloc n'est pas rendu et le formulaire marche comme avant. */}
+          {/* SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : conteneur visible (border + */}
+          {/* bg) + placeholder de chargement + état d'échec avec bouton Réessayer. */}
           {turnstileSiteKey && (
             <div className="space-y-2">
               <Label htmlFor="cf-turnstile">Vérification de sécurité</Label>
               <div
                 id="cf-turnstile"
-                className="min-h-[65px]"
+                className="min-h-[70px] flex items-center justify-center rounded-md border border-border/60 bg-muted/20 p-2 relative"
                 aria-label="Vérification anti-robot Cloudflare"
                 role="group"
-              />
-              {!turnstileToken && (
-                <p className="text-xs text-muted-foreground">
-                  Complétez le défi anti-robot pour activer le bouton de création.
+              >
+                {/* Placeholder de chargement : visible tant que le widget n'est
+                    pas rendu ET qu'aucune erreur n'a été signalée. Une fois
+                    l'iframe Turnstile injectée, elle remplace visuellement ce
+                    placeholder (positionné en absolu pour ne pas interferer). */}
+                {!turnstileRendered && !turnstileLoadFailed && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Chargement du défi de sécurité…
+                  </div>
+                )}
+                {/* État d'échec : si après 8s le widget n'est pas rendu, on
+                    affiche un bouton Réessayer pour relancer le rendu. */}
+                {turnstileLoadFailed && (
+                  <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground py-2">
+                    <ShieldAlert className="h-4 w-4 text-warning" />
+                    <span>Le défi de sécurité n&apos;a pas pu se charger.</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={retryTurnstile}
+                      className="h-7 text-xs"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                      Réessayer
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {!turnstileToken && !turnstileLoadFailed && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <ShieldCheck className="h-3 w-3 flex-shrink-0" />
+                  Vérification anti-robot requise pour activer le bouton de création.
+                </p>
+              )}
+              {turnstileToken && (
+                <p className="text-xs text-success-text flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                  Vérification réussie. Vous pouvez créer votre compte.
                 </p>
               )}
             </div>
@@ -1084,6 +1312,11 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   // capitation), puis les erreurs verify (NOT_FOUND / INACTIVE / EXPIRED /
   // QUOTA_EXCEEDED lien / NETWORK_ERROR). Le Script Turnstile est chargé via
   // next/script strategy="afterInteractive" (uniquement si siteKey non vide).
+  //
+  // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : la StepIndicator n'est visible que
+  // dans le flow normal (pas sur loading/error/success/userExists). Le contenu
+  // bascule entre renderStep1 (contexte) et renderStep2 (formulaire) selon
+  // l'état `step`. En cas d'erreur submit, on reste à step=2.
   const activeError: VerifyErrorCode = submitErrorCode ?? verifyError
 
   return (
@@ -1100,7 +1333,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       )}
 
       {/* Floating particles (palette africaine) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-70" aria-hidden="true">
         <FloatingParticle delay={0} duration={4} x="10%" y="25%" size={4} color="#F59E0B" />
         <FloatingParticle delay={0.8} duration={5} x="85%" y="15%" size={3} color="#84CC16" />
         <FloatingParticle delay={1.5} duration={3.5} x="20%" y="65%" size={5} color="#F59E0B" />
@@ -1121,10 +1354,12 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           className="text-center mb-8"
         >
           <div className="flex items-center justify-center gap-3 mb-3">
-            <img
+            <motion.img
               src="/logo.svg"
               alt="SECT"
               className="w-14 h-14 rounded-xl shadow-lg"
+              whileHover={{ scale: 1.05 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
             />
             <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-success-text to-info bg-clip-text text-transparent font-display">
               SECT
@@ -1143,7 +1378,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
-          className="w-full max-w-lg"
+          className="w-full max-w-xl"
         >
           <Card className="ds-kente-top overflow-hidden shadow-xl shadow-success/5">
             <CardContent className="pt-6">
@@ -1188,14 +1423,18 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                     {renderUserExists()}
                   </motion.div>
                 )}
+                {/* SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes avec
+                    StepIndicator visible uniquement dans le flow normal. */}
                 {!isVerifying && !activeError && !isSuccess && !userExistsEmail && linkData && (
                   <motion.div
-                    key="form"
+                    key={`step-${step}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                   >
-                    {renderForm()}
+                    <StepIndicator currentStep={step} />
+                    {step === 1 && renderStep1()}
+                    {step === 2 && renderStep2()}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1205,7 +1444,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center relative z-10">
+      <footer className="py-4 text-center relative z-10 mt-auto">
         <Separator className="mx-auto max-w-md mb-4 bg-border/50" />
         <p className="text-xs text-muted-foreground">
           &copy; 2026 SECT — Tous droits réservés
