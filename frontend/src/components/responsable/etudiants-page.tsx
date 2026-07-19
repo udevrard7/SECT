@@ -33,6 +33,9 @@ import {
   Link2,
   MessageCircle,
   AtSign,
+  MessageSquare,
+  ArrowLeft,
+  BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -84,6 +87,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   Tooltip,
   TooltipContent,
@@ -127,6 +132,8 @@ interface ImportResult {
 // l'URL complète n'est disponible qu'à la création (POST), une seule fois.
 // SECT-REG-LINK-PHASE2-FRONTEND-1 : champ emailDomainRestriction ajouté
 // (B2B — restriction du domaine email autorisé sur le lien).
+// SECT-REG-LINK-PHASE3-FRONTEND-1 : champ customWelcomeMessage ajouté
+// (message de bienvenue personnalisé optionnel, max 500 caractères).
 interface StudentSignupLink {
   id: string
   etablissementId: string
@@ -143,6 +150,7 @@ interface StudentSignupLink {
   etablissementNom: string
   filiereNom: string | null
   emailDomainRestriction?: string | null
+  customWelcomeMessage?: string | null
 }
 
 interface CreateLinkResponse {
@@ -156,6 +164,30 @@ interface CreateLinkResponse {
   filiereId: string | null
   createdAt: string
   emailDomainRestriction?: string | null
+  customWelcomeMessage?: string | null
+}
+
+// SECT-REG-LINK-PHASE3-FRONTEND-1 : agrégats stats retournés par
+// GET /api/student-signup-links/stats (RLS-scoped côté backend).
+interface StudentSignupLinkStats {
+  total: number
+  active: number
+  expired: number
+  revoked: number
+  totalUses: number
+  expiringSoon: number
+  successCount: number
+  failureCount: number
+  topLinks: Array<{
+    id: string
+    label: string
+    useCount: number
+    maxUses?: number | null
+    expiresAt: string
+    actif: boolean
+  }>
+  dailyCreations: Array<{ day: string; count: number }>
+  failureBreakdown: Record<string, number>
 }
 
 interface InvitationItem {
@@ -387,10 +419,15 @@ export function EtudiantsPage() {
   const [linkMaxUses, setLinkMaxUses] = useState('')
   // SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B)
   const [linkEmailDomain, setLinkEmailDomain] = useState('')
+  // SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
+  // (max 500 caractères, optionnel, affiché dans l'email de bienvenue).
+  const [linkCustomMessage, setLinkCustomMessage] = useState('')
   const [createdLink, setCreatedLink] = useState<CreateLinkResponse | null>(null)
   const [isCreatingLink, setIsCreatingLink] = useState(false)
   const [revokeLinkTarget, setRevokeLinkTarget] = useState<StudentSignupLink | null>(null)
   const [isRevokingLink, setIsRevokingLink] = useState(false)
+  // SECT-REG-LINK-PHASE3-FRONTEND-1 : toggle de la vue statistiques (lazy fetch)
+  const [showStats, setShowStats] = useState(false)
 
   // ETUDIANTS-FIX-E10 : query dependencies pour preview suppression.
   // Se déclenche quand l'utilisateur ouvre l'AlertDialog de suppression.
@@ -1064,6 +1101,35 @@ export function EtudiantsPage() {
   const signupLinks = signupLinksQuery.data?.links ?? []
   const isLoadingSignupLinks = signupLinksQuery.isFetching && !signupLinksQuery.data
 
+  // SECT-REG-LINK-PHASE3-FRONTEND-1 : regroupement des liens existants par
+  // filière (clé '__none__' pour les liens B2C sans filière). Pure présentation
+  // (useMemo — aucune DB change). L'ordre d'insertion est préservé dans chaque
+  // groupe (sortie côté backend par createdAt DESC).
+  const groupedLinks = useMemo(() => {
+    const groups: Record<string, StudentSignupLink[]> = {}
+    for (const link of signupLinks) {
+      const key = link.filiereId || '__none__'
+      if (!groups[key]) groups[key] = []
+      groups[key].push(link)
+    }
+    return groups
+  }, [signupLinks])
+
+  // SECT-REG-LINK-PHASE3-FRONTEND-1 : agrégats stats (lazy fetch).
+  // Le fetch n'est déclenché QUE si l'utilisateur clique sur « Statistiques »
+  // (enabled: showStats) — évite une requête systématique à l'ouverture de la modal.
+  const statsQuery = useQuery<StudentSignupLinkStats>({
+    queryKey: ['student-signup-links-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/student-signup-links/stats', { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch stats')
+      return res.json()
+    },
+    enabled: showStats,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
   // Ouvrir la modal — reset les champs et l'écran de succès
   const handleOpenLinkDialog = () => {
     setLinkLabel('')
@@ -1071,8 +1137,10 @@ export function EtudiantsPage() {
     setLinkNiveau('')
     setLinkMaxUses('')
     setLinkEmailDomain('')
+    setLinkCustomMessage('')
     setCreatedLink(null)
     setIsCreatingLink(false)
+    setShowStats(false)
     setShowLinkDialog(true)
   }
 
@@ -1085,6 +1153,8 @@ export function EtudiantsPage() {
     setLinkNiveau('')
     setLinkMaxUses('')
     setLinkEmailDomain('')
+    setLinkCustomMessage('')
+    setShowStats(false)
   }
 
   // Créer un nouveau lien d'inscription (POST /api/student-signup-links)
@@ -1112,6 +1182,17 @@ export function EtudiantsPage() {
           return
         }
         body.emailDomainRestriction = d
+      }
+      // SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé.
+      // Trim côté frontend + max 500 chars (le backend refait la même validation).
+      if (linkCustomMessage.trim()) {
+        const msg = linkCustomMessage.trim()
+        if (msg.length > 500) {
+          toast.error('Message trop long', { description: 'Maximum 500 caractères.' })
+          setIsCreatingLink(false)
+          return
+        }
+        body.customWelcomeMessage = msg
       }
       const res = await fetch('/api/student-signup-links', {
         method: 'POST',
@@ -2411,15 +2492,183 @@ export function EtudiantsPage() {
       <GlassModal
         open={showLinkDialog}
         onClose={handleCloseLinkDialog}
-        title={createdLink ? 'Lien créé !' : 'Générer un lien d\'inscription'}
+        title={
+          showStats
+            ? 'Statistiques des liens'
+            : createdLink
+              ? 'Lien créé !'
+              : 'Générer un lien d\'inscription'
+        }
         description={
-          createdLink
-            ? undefined
-            : 'Partagez ce lien aux étudiants. Ils s\'inscriront eux-mêmes, la base de données se remplit automatiquement.'
+          showStats
+            ? 'Aperçu de l\'utilisation de vos liens d\'inscription.'
+            : createdLink
+              ? undefined
+              : 'Partagez ce lien aux étudiants. Ils s\'inscriront eux-mêmes, la base de données se remplit automatiquement.'
         }
         size="lg"
       >
-        {createdLink ? (
+        {showStats ? (
+          /* ─── Écran statistiques (SECT-REG-LINK-PHASE3-FRONTEND-1) ─── */
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold font-display">Statistiques des liens</h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowStats(false)}
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Retour
+              </Button>
+            </div>
+
+            {statsQuery.isLoading ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <PulseSkeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+                <PulseSkeleton className="h-40 w-full" />
+              </div>
+            ) : statsQuery.isError ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
+                <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Impossible de charger les statistiques. Veuillez réessayer.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => statsQuery.refetch()}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Réessayer
+                </Button>
+              </div>
+            ) : statsQuery.data ? (
+              <>
+                {/* KPIs grid — 2 cols mobile, 4 cols desktop */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <StatCard
+                    label="Liens actifs"
+                    value={statsQuery.data.active}
+                    accent="success"
+                    icon={<Link2 className="h-4 w-4" />}
+                  />
+                  <StatCard
+                    label="Inscriptions"
+                    value={statsQuery.data.totalUses}
+                    accent="info"
+                    icon={<Users className="h-4 w-4" />}
+                  />
+                  <StatCard
+                    label="Expirent bientôt"
+                    value={statsQuery.data.expiringSoon}
+                    accent="warning"
+                    icon={<Clock className="h-4 w-4" />}
+                  />
+                  <StatCard
+                    label="Taux succès"
+                    value={`${Math.round(
+                      (statsQuery.data.successCount /
+                        Math.max(
+                          1,
+                          statsQuery.data.successCount +
+                            statsQuery.data.failureCount,
+                        )) *
+                        100,
+                    )}%`}
+                    accent="info"
+                    icon={<CheckCircle2 className="h-4 w-4" />}
+                  />
+                </div>
+
+                {/* Top links */}
+                {statsQuery.data.topLinks.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold font-display">
+                      Top liens par inscriptions
+                    </h4>
+                    <div className="space-y-1">
+                      {statsQuery.data.topLinks.slice(0, 5).map((link) => (
+                        <div
+                          key={link.id}
+                          className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                        >
+                          <span className="text-sm truncate pr-2">
+                            {link.label || 'Sans libellé'}
+                          </span>
+                          <DSBadge variant="info" size="sm">
+                            {link.useCount}
+                            {link.maxUses ? `/${link.maxUses}` : ''}
+                          </DSBadge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Failure breakdown */}
+                {Object.keys(statsQuery.data.failureBreakdown).length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold font-display">
+                      Échecs par cause
+                    </h4>
+                    <div className="space-y-1">
+                      {Object.entries(statsQuery.data.failureBreakdown).map(
+                        ([code, count]) => (
+                          <div
+                            key={code}
+                            className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                          >
+                            <span className="text-sm font-mono">{code}</span>
+                            <DSBadge variant="danger" size="sm">{count}</DSBadge>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Daily creations trend — simple bar chart */}
+                {statsQuery.data.dailyCreations.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold font-display">
+                      Créations (30 derniers jours)
+                    </h4>
+                    <div className="flex items-end gap-1 h-20">
+                      {statsQuery.data.dailyCreations
+                        .slice()
+                        .reverse()
+                        .map((d) => {
+                          const max = Math.max(
+                            ...statsQuery.data!.dailyCreations.map(
+                              (x) => x.count,
+                            ),
+                            1,
+                          )
+                          const h = Math.max(2, (d.count / max) * 100)
+                          return (
+                            <div
+                              key={d.day}
+                              className="flex-1 bg-info/70 hover:bg-info rounded-sm transition-colors"
+                              style={{ height: `${h}%` }}
+                              title={`${d.day}: ${d.count}`}
+                            />
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        ) : createdLink ? (
           /* ─── Écran de succès (après création) ─── */
           <div className="space-y-4">
             <div className="flex flex-col items-center text-center py-2">
@@ -2476,7 +2725,48 @@ export function EtudiantsPage() {
                   @{createdLink.emailDomainRestriction}
                 </DSBadge>
               )}
+              {createdLink.customWelcomeMessage && (
+                <DSBadge variant="info" size="sm">
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  Message personnalisé
+                </DSBadge>
+              )}
             </div>
+
+            {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : QR code pour projection
+                en amphi / partage WhatsApp / affichage en salle. */}
+            {createdLink.url && (
+              <div className="flex flex-col items-center gap-2 py-3 border-t border-border/50">
+                <p className="text-xs text-muted-foreground">
+                  Scannez pour vous inscrire
+                </p>
+                <div className="p-3 bg-white rounded-lg border">
+                  <QRCodeSVG
+                    value={createdLink.url}
+                    size={160}
+                    level="M"
+                    marginSize={0}
+                    aria-label="QR code d inscription"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground text-center max-w-xs">
+                  Idéal pour projection en amphi ou affichage en salle.
+                </p>
+              </div>
+            )}
+
+            {/* Message personnalisé (preview si défini) */}
+            {createdLink.customWelcomeMessage && (
+              <div className="rounded-md bg-info/10 border border-info/20 p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-info">
+                  <MessageSquare className="h-3 w-3" />
+                  Message de bienvenue
+                </div>
+                <p className="text-sm text-foreground whitespace-pre-wrap">
+                  {createdLink.customWelcomeMessage}
+                </p>
+              </div>
+            )}
 
             {/* Actions partage */}
             <div className="flex flex-wrap gap-2 pt-2">
@@ -2505,6 +2795,7 @@ export function EtudiantsPage() {
                   setLinkNiveau('')
                   setLinkMaxUses('')
                   setLinkEmailDomain('')
+                  setLinkCustomMessage('')
                 }}
               >
                 <Plus className="h-4 w-4 mr-1.5" />
@@ -2596,6 +2887,28 @@ export function EtudiantsPage() {
                 </div>
               )}
 
+              {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé.
+                  Visible pour TOUS les rôles (B2B + B2C) — optionnel, max 500 chars. */}
+              <div className="space-y-2">
+                <Label htmlFor="link-custom-message" className="flex items-center gap-1.5">
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                  Message de bienvenue (optionnel)
+                </Label>
+                <Textarea
+                  id="link-custom-message"
+                  placeholder="Ex : Bienvenue en L1 Info ! Pensez à apporter votre laptop le premier jour."
+                  value={linkCustomMessage}
+                  onChange={(e) => setLinkCustomMessage(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  className="resize-none"
+                  aria-describedby="link-custom-message-hint"
+                />
+                <p id="link-custom-message-hint" className="text-xs text-muted-foreground">
+                  {linkCustomMessage.length}/500 — affiché dans l&apos;email de bienvenue des étudiants.
+                </p>
+              </div>
+
               <div className="rounded-lg border border-info/20 bg-info/5 p-3 flex items-start gap-2">
                 <Clock className="h-4 w-4 text-info flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-info-foreground">
@@ -2629,9 +2942,22 @@ export function EtudiantsPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold font-display">Liens existants</h4>
-                <span className="text-xs text-muted-foreground">
-                  {signupLinks.length} lien(s)
-                </span>
+                <div className="flex items-center gap-2">
+                  {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : toggle vers la vue stats (lazy fetch). */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setShowStats(true)}
+                  >
+                    <BarChart3 className="h-3.5 w-3.5 mr-1" />
+                    Statistiques
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {signupLinks.length} lien(s)
+                  </span>
+                </div>
               </div>
 
               {isLoadingSignupLinks ? (
@@ -2646,83 +2972,100 @@ export function EtudiantsPage() {
                   <p className="text-sm text-muted-foreground">Aucun lien créé pour le moment.</p>
                 </div>
               ) : (
-                <div className="max-h-60 overflow-y-auto space-y-2 scrollbar-thin">
-                  {signupLinks.map((link) => {
-                    const expired = isExpired(link.expiresAt)
-                    const placesRestantes =
-                      link.maxUses != null ? Math.max(0, link.maxUses - link.useCount) : null
-                    return (
-                      <div
-                        key={link.id}
-                        className={`rounded-lg border p-3 space-y-2 ${
-                          expired || !link.actif
-                            ? 'border-destructive/30 bg-destructive/5 opacity-75'
-                            : 'border-border'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">
-                              {link.label || <span className="text-muted-foreground italic">Sans libellé</span>}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Créé le {formatDateFR(link.createdAt)}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            {!link.actif && (
-                              <DSBadge variant="danger" size="sm">Révoqué</DSBadge>
-                            )}
-                            {link.actif && expired && (
-                              <DSBadge variant="warning" size="sm">Expiré</DSBadge>
-                            )}
-                            {link.actif && !expired && (
-                              <DSBadge variant="success" size="sm">Actif</DSBadge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                          {link.filiereNom && (
-                            <DSBadge variant="primary" size="sm">{link.filiereNom}</DSBadge>
-                          )}
-                          {link.niveau && (
-                            <DSBadge variant="info" size="sm">{link.niveau}</DSBadge>
-                          )}
-                          {link.emailDomainRestriction && (
-                            <DSBadge variant="info" size="sm">
-                              <AtSign className="h-3 w-3 mr-0.5" />
-                              @{link.emailDomainRestriction}
-                            </DSBadge>
-                          )}
-                          <span className="text-muted-foreground">
-                            <Users className="h-3 w-3 inline mr-0.5" />
-                            {link.useCount}
-                            {link.maxUses != null ? ` / ${link.maxUses}` : ' inscriptions'}
-                            {placesRestantes != null && placesRestantes === 0 && ' (complet)'}
-                          </span>
-                          <span className="text-muted-foreground">
-                            <Clock className="h-3 w-3 inline mr-0.5" />
-                            {getExpiryCountdown(link.expiresAt)}
-                          </span>
-                        </div>
-                        {link.actif && !expired && (
-                          <div className="flex justify-end pt-1">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
-                              onClick={() => setRevokeLinkTarget(link)}
-                              aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 mr-1" />
-                              Révoquer
-                            </Button>
-                          </div>
-                        )}
+                /* SECT-REG-LINK-PHASE3-FRONTEND-1 : liens regroupés par filière
+                   (clé '__none__' pour les liens B2C sans filière). */
+                <div className="max-h-60 overflow-y-auto space-y-3 scrollbar-thin">
+                  {Object.entries(groupedLinks).map(([filiereKey, links]) => (
+                    <div key={filiereKey} className="space-y-2">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        {filiereKey === '__none__'
+                          ? 'Sans filière'
+                          : (filieres.find((f) => f.id === filiereKey)?.nom ?? 'Filière inconnue')}
                       </div>
-                    )
-                  })}
+                      {links.map((link) => {
+                        const expired = isExpired(link.expiresAt)
+                        const placesRestantes =
+                          link.maxUses != null ? Math.max(0, link.maxUses - link.useCount) : null
+                        return (
+                          <div
+                            key={link.id}
+                            className={`rounded-lg border p-3 space-y-2 ${
+                              expired || !link.actif
+                                ? 'border-destructive/30 bg-destructive/5 opacity-75'
+                                : 'border-border'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">
+                                  {link.label || <span className="text-muted-foreground italic">Sans libellé</span>}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Créé le {formatDateFR(link.createdAt)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {!link.actif && (
+                                  <DSBadge variant="danger" size="sm">Révoqué</DSBadge>
+                                )}
+                                {link.actif && expired && (
+                                  <DSBadge variant="warning" size="sm">Expiré</DSBadge>
+                                )}
+                                {link.actif && !expired && (
+                                  <DSBadge variant="success" size="sm">Actif</DSBadge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                              {link.filiereNom && (
+                                <DSBadge variant="primary" size="sm">{link.filiereNom}</DSBadge>
+                              )}
+                              {link.niveau && (
+                                <DSBadge variant="info" size="sm">{link.niveau}</DSBadge>
+                              )}
+                              {link.emailDomainRestriction && (
+                                <DSBadge variant="info" size="sm">
+                                  <AtSign className="h-3 w-3 mr-0.5" />
+                                  @{link.emailDomainRestriction}
+                                </DSBadge>
+                              )}
+                              {link.customWelcomeMessage && (
+                                <DSBadge variant="info" size="sm">
+                                  <MessageSquare className="h-3 w-3 mr-0.5" />
+                                  Message perso
+                                </DSBadge>
+                              )}
+                              <span className="text-muted-foreground">
+                                <Users className="h-3 w-3 inline mr-0.5" />
+                                {link.useCount}
+                                {link.maxUses != null ? ` / ${link.maxUses}` : ' inscriptions'}
+                                {placesRestantes != null && placesRestantes === 0 && ' (complet)'}
+                              </span>
+                              <span className="text-muted-foreground">
+                                <Clock className="h-3 w-3 inline mr-0.5" />
+                                {getExpiryCountdown(link.expiresAt)}
+                              </span>
+                            </div>
+                            {link.actif && !expired && (
+                              <div className="flex justify-end pt-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
+                                  onClick={() => setRevokeLinkTarget(link)}
+                                  aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                  Révoquer
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2761,6 +3104,38 @@ export function EtudiantsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECT-REG-LINK-PHASE3-FRONTEND-1 : StatCard helper pour la vue statistiques.
+// Petit carte KPI compacte avec icône accentuée + valeur + libellé.
+// ═══════════════════════════════════════════════════════════════════════════
+function StatCard({
+  label,
+  value,
+  accent,
+  icon,
+}: {
+  label: string
+  value: number | string
+  accent: 'success' | 'warning' | 'info' | 'danger'
+  icon: React.ReactNode
+}) {
+  const accentClass = {
+    success: 'text-success-text bg-success/10',
+    warning: 'text-warning bg-warning/10',
+    info: 'text-info bg-info/10',
+    danger: 'text-destructive bg-destructive/10',
+  }[accent]
+  return (
+    <div className="p-3 rounded-lg border bg-card">
+      <div className={`inline-flex p-1.5 rounded-md ${accentClass} mb-2`}>
+        {icon}
+      </div>
+      <div className="text-2xl font-bold font-mono tabular-nums">{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   )
 }
