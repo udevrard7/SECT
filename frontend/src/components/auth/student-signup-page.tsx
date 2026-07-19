@@ -9,6 +9,14 @@
 // /api/student-signup/verify, puis l'inscription est finalisée via
 // /api/student-signup.
 //
+// SECT-REG-LINK-PHASE2-FRONTEND-1 : Phase 2
+//  - Widget Cloudflare Turnstile (chargé via next/script, rendu conditionnel
+//    si GET /api/turnstile/site-key renvoie un siteKey non vide).
+//  - Codes d'erreur DOMAIN_NOT_ALLOWED + TURNSTILE_FAILED + QUOTA_EXCEEDED
+//    capitation (message amélioré + bouton « Contacter le support »).
+//  - Banner contextuel « Email institutionnel requis » si le lien impose un
+//    domaine (@univ-ci.edu).
+//
 // Identité visuelle : "Savane EdTech" (palette africaine, motif kente,
 // particules flottantes, font-display). Aucune dépendance à accept-invitation
 // (les helpers getPasswordStrength / getPasswordChecks / useCountdown /
@@ -16,6 +24,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react'
+import Script from 'next/script'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -40,6 +49,9 @@ import {
   KeyRound,
   Users,
   ShieldCheck,
+  AtSign,
+  ShieldAlert,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -71,6 +83,8 @@ interface VerifyLinkResponse {
   maxUses: number | null
   niveau: string | null
   label: string | null
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B)
+  emailDomainRestriction?: string | null
 }
 
 type VerifyErrorCode =
@@ -79,6 +93,8 @@ type VerifyErrorCode =
   | 'EXPIRED'
   | 'QUOTA_EXCEEDED'
   | 'USER_EXISTS'
+  | 'DOMAIN_NOT_ALLOWED'
+  | 'TURNSTILE_FAILED'
   | 'NETWORK_ERROR'
   | 'SERVER_ERROR'
   | null
@@ -87,6 +103,28 @@ interface StudentSignupPageProps {
   token: string
   initialEmail?: string
   onComplete: () => void
+}
+
+// ─── Cloudflare Turnstile typing (window global) ───
+// Le script Turnstile expose `window.turnstile` une fois chargé depuis
+// https://challenges.cloudflare.com/turnstile/v0/api.js (via next/script).
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        selector: string | HTMLElement,
+        options: {
+          sitekey: string
+          callback?: (token: string) => void
+          'error-callback'?: () => void
+          'expired-callback'?: () => void
+        },
+      ) => string
+      reset: (id?: string) => void
+      remove: (id: string) => void
+    }
+  }
 }
 
 // ─── Etab type labels ───
@@ -251,6 +289,20 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   const [matricule, setMatricule] = useState<string | null>(null)
   const [userExistsEmail, setUserExistsEmail] = useState<string | null>(null)
 
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : Cloudflare Turnstile captcha
+  // `turnstileSiteKey` est vide par défaut (= dev mode, widget désactivé).
+  // Une fois le fetch /api/turnstile/site-key terminé, il contient la clé
+  // publique Cloudflare (non sensible) et le widget est rendu.
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string>('')
+  const [turnstileRendered, setTurnstileRendered] = useState(false)
+
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : code d'erreur provenant du POST
+  // /api/student-signup (DOMAIN_NOT_ALLOWED / TURNSTILE_FAILED / QUOTA_EXCEEDED
+  // capitation). Quand non-null, on affiche l'écran d'erreur dédié (au lieu
+  // du simple toast) pour une meilleure visibilité et des actions dédiées.
+  const [submitErrorCode, setSubmitErrorCode] = useState<VerifyErrorCode>(null)
+
   // ─── Verify token (TanStack Query, one-shot) ───
   // On ne logue JAMAIS le token dans la console (sécurité frontend).
   const verifyQuery = useQuery<{
@@ -292,6 +344,48 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       ? (verifyQuery.data.message ?? '')
       : ''
 
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : fetch de la clé publique Turnstile.
+  // Endpoint PUBLIC (Cache-Control: public, max-age=60). Si la clé est vide
+  // (= dev mode ou Turnstile non configuré côté backend), le widget n'est pas
+  // rendu et le formulaire fonctionne comme avant (rétro-compatible Phase 1).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/turnstile/site-key')
+      .then((r) => r.json())
+      .then((data: { siteKey?: string }) => {
+        if (!cancelled && data.siteKey) setTurnstileSiteKey(data.siteKey)
+      })
+      .catch(() => {
+        /* silent — dev mode (widget désactivé) */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : rendu du widget Turnstile une fois le
+  // script chargé + la clé récupérée. On attend que `window.turnstile` soit
+  // disponible (next/script strategy="afterInteractive" charge de façon async).
+  useEffect(() => {
+    if (!turnstileSiteKey || turnstileRendered) return
+    const tryRender = () => {
+      if (typeof window === 'undefined') return
+      if (window.turnstile) {
+        window.turnstile.render('#cf-turnstile', {
+          sitekey: turnstileSiteKey,
+          callback: (t) => setTurnstileToken(t),
+          'error-callback': () => setTurnstileToken(null),
+          'expired-callback': () => setTurnstileToken(null),
+        })
+        setTurnstileRendered(true)
+      } else {
+        // Le script n'est pas encore chargé — retry dans 200ms.
+        setTimeout(tryRender, 200)
+      }
+    }
+    tryRender()
+  }, [turnstileSiteKey, turnstileRendered])
+
   // ─── Form (react-hook-form + zod) ───
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -321,7 +415,18 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       : 0
 
   // ─── Submit handler ───
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : si Turnstile est activé (siteKey non vide)
+  // mais qu'aucun token n'a été obtenu (widget non complété/expiré/erreur),
+  // on bloque la soumission côté client (defense in depth — le backend refait
+  // la vérification via siteverify). En cas d'échec, on reset le widget pour
+  // permettre à l'utilisateur de réessayer.
   const onSubmit = async (values: SignupFormValues) => {
+    if (turnstileSiteKey && !turnstileToken) {
+      toast.error('Vérification anti-robot requise', {
+        description: 'Veuillez compléter la vérification anti-robot pour continuer.',
+      })
+      return
+    }
     setIsSubmitting(true)
     setUserExistsEmail(null)
     try {
@@ -333,12 +438,29 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           email: values.email.trim().toLowerCase(),
           name: values.name.trim(),
           password: values.password,
+          // SECT-REG-LINK-PHASE2-FRONTEND-1 : token Turnstile (vide en dev mode).
+          cfTurnstileToken: turnstileToken ?? '',
         }),
       })
       const data = await res.json()
 
       if (!res.ok) {
-        if (data.code === 'USER_EXISTS') {
+        // Reset Turnstile pour permettre une nouvelle tentative — le token
+        // est à usage unique et ne peut être réutilisé après un échec.
+        if (turnstileSiteKey && typeof window !== 'undefined' && window.turnstile) {
+          window.turnstile.reset()
+          setTurnstileToken(null)
+        }
+        // SECT-REG-LINK-PHASE2-FRONTEND-1 : on bascule vers un écran d'erreur
+        // dédié pour les nouveaux codes (DOMAIN_NOT_ALLOWED / TURNSTILE_FAILED
+        // / QUOTA_EXCEEDED capitation). Les autres erreurs (USER_EXISTS, etc.)
+        // conservent leur traitement existant (écran dédié ou toast).
+        if (data.code === 'DOMAIN_NOT_ALLOWED' || data.code === 'TURNSTILE_FAILED' || data.code === 'QUOTA_EXCEEDED') {
+          setSubmitErrorCode(data.code as VerifyErrorCode)
+          toast.error('Inscription échouée', {
+            description: data.error || 'Veuillez corriger et réessayer.',
+          })
+        } else if (data.code === 'USER_EXISTS') {
           setUserExistsEmail(values.email.trim().toLowerCase())
           toast.error('Compte existant', {
             description:
@@ -356,6 +478,11 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         description: 'Vous pouvez maintenant vous connecter.',
       })
     } catch {
+      // Reset Turnstile aussi sur erreur réseau (token potentiellement consommé).
+      if (turnstileSiteKey && typeof window !== 'undefined' && window.turnstile) {
+        window.turnstile.reset()
+        setTurnstileToken(null)
+      }
       toast.error('Erreur réseau', {
         description: 'Impossible de créer votre compte. Veuillez réessayer.',
       })
@@ -373,9 +500,13 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   )
 
   // ─── Render: Error state ───
-  const renderError = () => {
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : la fonction accepte désormais un code
+  // d'erreur explicite pour gérer à la fois les erreurs verify (NOT_FOUND,
+  // INACTIVE, EXPIRED, QUOTA_EXCEEDED lien, NETWORK_ERROR) et les erreurs
+  // submit (DOMAIN_NOT_ALLOWED, TURNSTILE_FAILED, QUOTA_EXCEEDED capitation).
+  const renderError = (errorCode: VerifyErrorCode) => {
     const getErrorContent = () => {
-      switch (verifyError) {
+      switch (errorCode) {
         case 'NOT_FOUND':
           return {
             icon: <X className="h-8 w-8" />,
@@ -383,6 +514,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             description:
               "Ce lien d'inscription n'est pas valide. Il a peut-être été modifié, révoqué, ou n'existe plus.",
             showRetry: false,
+            showSupport: true,
+            showReload: false,
           }
         case 'INACTIVE':
           return {
@@ -391,6 +524,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             description:
               "Ce lien d'inscription a été désactivé par l'établissement. Contactez votre établissement pour obtenir un nouveau lien.",
             showRetry: false,
+            showSupport: true,
+            showReload: false,
           }
         case 'EXPIRED':
           return {
@@ -400,14 +535,43 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               verifyErrorMessage ||
               "Ce lien d'inscription a expiré. Les liens sont valables 30 jours. Demandez un nouveau lien à votre établissement.",
             showRetry: false,
+            showSupport: true,
+            showReload: false,
           }
         case 'QUOTA_EXCEEDED':
+          // SECT-REG-LINK-PHASE2-FRONTEND-1 : message amélioré pour le quota
+          // capitation (distinct du quota maxUses du lien). Si submitErrorCode
+          // est QUOTA_EXCEEDED, c'est le quota capitation qui a été atteint ;
+          // sinon, c'est le quota maxUses du lien (verify-time).
           return {
             icon: <Users className="h-8 w-8" />,
             title: 'Quota atteint',
-            description:
-              "Ce lien a atteint son nombre maximum d'inscriptions. Contactez votre établissement pour obtenir un nouveau lien.",
+            description: submitErrorCode === 'QUOTA_EXCEEDED'
+              ? 'Votre établissement a atteint son quota d\'étudiants. Contactez votre responsable ou le support SECT pour régulariser.'
+              : "Ce lien a atteint son nombre maximum d'inscriptions. Contactez votre établissement pour obtenir un nouveau lien.",
             showRetry: false,
+            showSupport: true,
+            showReload: false,
+          }
+        case 'DOMAIN_NOT_ALLOWED':
+          // SECT-REG-LINK-PHASE2-FRONTEND-1 : email hors domaine autorisé.
+          return {
+            icon: <ShieldAlert className="h-8 w-8" />,
+            title: 'Domaine email non autorisé',
+            description: 'Cet email n\'appartient pas au domaine autorisé par votre établissement. Utilisez votre email institutionnel.',
+            showRetry: true,
+            showSupport: true,
+            showReload: false,
+          }
+        case 'TURNSTILE_FAILED':
+          // SECT-REG-LINK-PHASE2-FRONTEND-1 : vérification anti-robot échouée.
+          return {
+            icon: <AlertTriangle className="h-8 w-8" />,
+            title: 'Vérification anti-robot échouée',
+            description: 'Veuillez rafraîchir la page et réessayer. Si le problème persiste, contactez le support.',
+            showRetry: false,
+            showSupport: true,
+            showReload: true,
           }
         case 'NETWORK_ERROR':
           return {
@@ -416,6 +580,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             description:
               'Impossible de vérifier votre lien. Veuillez vérifier votre connexion internet.',
             showRetry: true,
+            showSupport: false,
+            showReload: false,
           }
         default:
           return {
@@ -423,6 +589,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             title: 'Erreur',
             description: verifyErrorMessage || "Une erreur inattendue s'est produite.",
             showRetry: true,
+            showSupport: true,
+            showReload: false,
           }
       }
     }
@@ -442,18 +610,37 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           {errorContent.showRetry && (
             <Button
               variant="outline"
-              onClick={() => verifyQuery.refetch()}
+              onClick={() => {
+                // Réinitialise l'erreur submit + permet de re-soumettre.
+                // Pour une erreur verify, on tente un refetch.
+                setSubmitErrorCode(null)
+                if (verifyError) verifyQuery.refetch()
+              }}
               className="border-success/30 text-success-text hover:bg-success/10"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Réessayer
             </Button>
           )}
-          <a href="mailto:contact@sect.app?subject=Probl%C3%A8me%20lien%20d%27inscription">
-            <Button className="bg-success hover:bg-success/90 text-success-foreground">
-              Contacter le support
+          {errorContent.showReload && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (typeof window !== 'undefined') window.location.reload()
+              }}
+              className="border-info/30 text-info-foreground hover:bg-info/10"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Recharger
             </Button>
-          </a>
+          )}
+          {errorContent.showSupport && (
+            <a href="mailto:contact@sect.app?subject=Probl%C3%A8me%20lien%20d%27inscription">
+              <Button className="bg-success hover:bg-success/90 text-success-foreground">
+                Contacter le support
+              </Button>
+            </a>
+          )}
         </div>
       </div>
     )
@@ -558,6 +745,9 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
     const checks = getPasswordChecks(password)
     const passwordsMatch = password === confirmPassword && confirmPassword.length > 0
     const isFormValid = form.formState.isValid
+    // SECT-REG-LINK-PHASE2-FRONTEND-1 : Turnstile doit être complété si activé.
+    const turnstileRequired = !!turnstileSiteKey
+    const turnstileSatisfied = !turnstileRequired || !!turnstileToken
 
     return (
       <motion.div
@@ -596,6 +786,13 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                 </DSBadge>
               )}
             </div>
+            {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : banner contexte domaine email */}
+            {linkData.emailDomainRestriction && (
+              <DSBadge variant="warning" size="sm" className="w-full justify-start">
+                <AtSign className="h-3 w-3 mr-1" />
+                Email institutionnel requis : @{linkData.emailDomainRestriction}
+              </DSBadge>
+            )}
             {linkData.creatorName && (
               <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
                 Invité par <span className="font-medium text-foreground">{linkData.creatorName}</span>
@@ -821,10 +1018,30 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             )}
           </div>
 
+          {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : widget Cloudflare Turnstile */}
+          {/* Rendu conditionnel — uniquement si siteKey non vide (prod). En dev */}
+          {/* (clé vide), le bloc n'est pas rendu et le formulaire marche comme avant. */}
+          {turnstileSiteKey && (
+            <div className="space-y-2">
+              <Label htmlFor="cf-turnstile">Vérification de sécurité</Label>
+              <div
+                id="cf-turnstile"
+                className="min-h-[65px]"
+                aria-label="Vérification anti-robot Cloudflare"
+                role="group"
+              />
+              {!turnstileToken && (
+                <p className="text-xs text-muted-foreground">
+                  Complétez le défi anti-robot pour activer le bouton de création.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Submit button */}
           <Button
             type="submit"
-            disabled={!isFormValid || isSubmitting}
+            disabled={!isFormValid || isSubmitting || !turnstileSatisfied}
             className="w-full bg-success hover:bg-success/90 text-success-foreground shadow-md shadow-success/20 mt-2"
           >
             {isSubmitting ? (
@@ -845,8 +1062,26 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   }
 
   // ─── Main render ───
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : l'erreur active prend en priorité les
+  // erreurs submit (DOMAIN_NOT_ALLOWED / TURNSTILE_FAILED / QUOTA_EXCEEDED
+  // capitation), puis les erreurs verify (NOT_FOUND / INACTIVE / EXPIRED /
+  // QUOTA_EXCEEDED lien / NETWORK_ERROR). Le Script Turnstile est chargé via
+  // next/script strategy="afterInteractive" (uniquement si siteKey non vide).
+  const activeError: VerifyErrorCode = submitErrorCode ?? verifyError
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-success/5 via-background to-info/5 relative overflow-hidden">
+      {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : script Cloudflare Turnstile */}
+      {/* Chargé uniquement si siteKey non vide (dev mode = pas de widget). */}
+      {turnstileSiteKey && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+          async
+          defer
+        />
+      )}
+
       {/* Floating particles (palette africaine) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
         <FloatingParticle delay={0} duration={4} x="10%" y="25%" size={4} color="#F59E0B" />
@@ -906,17 +1141,17 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                     {renderLoading()}
                   </motion.div>
                 )}
-                {!isVerifying && verifyError && (
+                {!isVerifying && activeError && (
                   <motion.div
                     key="error"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                   >
-                    {renderError()}
+                    {renderError(activeError)}
                   </motion.div>
                 )}
-                {!isVerifying && !verifyError && isSuccess && (
+                {!isVerifying && !activeError && isSuccess && (
                   <motion.div
                     key="success"
                     initial={{ opacity: 0 }}
@@ -926,7 +1161,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                     {renderSuccess()}
                   </motion.div>
                 )}
-                {!isVerifying && !verifyError && !isSuccess && userExistsEmail && (
+                {!isVerifying && !activeError && !isSuccess && userExistsEmail && (
                   <motion.div
                     key="user-exists"
                     initial={{ opacity: 0 }}
@@ -936,7 +1171,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                     {renderUserExists()}
                   </motion.div>
                 )}
-                {!isVerifying && !verifyError && !isSuccess && !userExistsEmail && linkData && (
+                {!isVerifying && !activeError && !isSuccess && !userExistsEmail && linkData && (
                   <motion.div
                     key="form"
                     initial={{ opacity: 0 }}
