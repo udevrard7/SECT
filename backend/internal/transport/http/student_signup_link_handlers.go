@@ -34,6 +34,7 @@ import (
 // etablissementId + createdById sont ignorés (toujours forcés = claims côté usecase).
 // Phase 2 : ajout emailDomainRestriction (optionnel — B2B only).
 // Phase 3 : ajout customWelcomeMessage (optionnel — message perso dans welcome email).
+// VALIDITY-1 : ajout expiresInHours (optionnel — TTL personnalisé en heures, 1..8760).
 type createStudentSignupLinkRequest struct {
         FiliereID              *string `json:"filiereId,omitempty"`
         Niveau                 *string `json:"niveau,omitempty"`
@@ -41,6 +42,7 @@ type createStudentSignupLinkRequest struct {
         Label                  *string `json:"label,omitempty"`
         EmailDomainRestriction *string `json:"emailDomainRestriction,omitempty"` // PHASE 2 — B2B
         CustomWelcomeMessage   *string `json:"customWelcomeMessage,omitempty"`   // PHASE 3 — message perso welcome email
+        ExpiresInHours         *int    `json:"expiresInHours,omitempty"`         // VALIDITY-1 — TTL personnalisé (1..8760 h)
         // Champs ignorés (sécurité) :
         EtablissementID string `json:"etablissementId,omitempty"`
         CreatedByID     string `json:"createdById,omitempty"`
@@ -71,6 +73,7 @@ func (s *Server) createStudentSignupLink(w http.ResponseWriter, r *http.Request)
                 Label:                  req.Label,
                 EmailDomainRestriction: req.EmailDomainRestriction,
                 CustomWelcomeMessage:   req.CustomWelcomeMessage, // PHASE 3
+                ExpiresInHours:         req.ExpiresInHours,       // VALIDITY-1
         }
 
         link, publicURL, err := s.studentSignupLinkUC.Create(r.Context(), claims, input)

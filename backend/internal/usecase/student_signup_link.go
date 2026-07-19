@@ -44,6 +44,18 @@ import (
 // dans un groupe WhatsApp, l'imprimer en QR code, etc.
 const signupLinkTTL = 30 * 24 * time.Hour
 
+// SECT-REG-LINK-VALIDITY-1 : bornes de la durée de validité personnalisée
+// demandée par le créateur (en heures). Le créateur peut ajuster la TTL du lien
+// via POST /api/student-signup-links { expiresInHours: N }.
+//   - min 1h : évite les liens jetables quasi-instantanément expirés (bug user
+//     qui saisit 0 ou une valeur absurde), garde un minimum opérationnel.
+//   - max 8760h (365j) : évite les liens quasi-permanents qui contourneraient
+//     la rotation de sécurité ; un an est amplement suffisant pour une promo.
+const (
+        signupLinkMinTTLHours = 1
+        signupLinkMaxTTLHours = 24 * 365
+)
+
 // signupBcryptCost — identique à invitationBcryptCost (10). Cohérent avec le
 // usecase auth pour permettre une rotation uniforme des coûts si besoin.
 const signupBcryptCost = 10
@@ -219,7 +231,24 @@ func (uc *StudentSignupLinkUseCase) Create(ctx context.Context, claims db.Sessio
         if err != nil {
                 return nil, "", err
         }
-        input.ExpiresAt = time.Now().Add(signupLinkTTL)
+
+        // SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée.
+        // Si input.ExpiresInHours est nil → on garde le TTL par défaut (30 jours).
+        // Sinon on valide la plage [1h, 8760h] puis on calcule ExpiresAt = now + N*h.
+        // Defense in depth : le handler valide déjà, mais le usecase est l'autorité
+        // finale (le handler pourrait être bypass par un autre caller interne).
+        ttl := signupLinkTTL
+        if input.ExpiresInHours != nil {
+                h := *input.ExpiresInHours
+                if h < signupLinkMinTTLHours || h > signupLinkMaxTTLHours {
+                        return nil, "", &domain.ValidationError{
+                                Field:   "expiresInHours",
+                                Message: fmt.Sprintf("la durée de validité doit être comprise entre %d h et %d h", signupLinkMinTTLHours, signupLinkMaxTTLHours),
+                        }
+                }
+                ttl = time.Duration(h) * time.Hour
+        }
+        input.ExpiresAt = time.Now().Add(ttl)
 
         link, err := uc.repo.Create(ctx, input, token)
         if err != nil {
