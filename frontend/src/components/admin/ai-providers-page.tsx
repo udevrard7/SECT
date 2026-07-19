@@ -387,6 +387,7 @@ export function AIProvidersPage() {
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [showModelSwitcher, setShowModelSwitcher] = useState(false)
   const [switchingModel, setSwitchingModel] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const hasAutoSeeded = useRef(false)
   const [activeTab, setActiveTab] = useState<string>('providers')
 
@@ -621,20 +622,61 @@ export function AIProvidersPage() {
   }
 
   // ─── Delete provider ───
-  const handleDelete = async () => {
+  // Règle backend (ai_provider_usecase.go → Delete) : impossible de supprimer
+  // un provider ACTIF — retourne 409 Conflict "cannot delete active provider".
+  // On désactive donc d'abord le provider si nécessaire, puis on le supprime.
+  // L'AlertDialogAction de Radix ferme le dialog par défaut au click ; on appelle
+  // e.preventDefault() pour garder le dialog ouvert pendant l'async et pouvoir
+  // afficher l'état de chargement + les erreurs inline.
+  const handleDelete = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault()
     if (!selectedProvider) return
+    setIsDeleting(true)
     try {
+      // 1. Si le provider est actif, le désactiver d'abord (sinon 409 backend).
+      if (selectedProvider.isActive) {
+        const deactivateRes = await fetch('/api/ai-providers/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerId: selectedProvider.id, active: false }),
+        })
+        if (!deactivateRes.ok) {
+          let msg = 'Erreur lors de la désactivation'
+          try {
+            const errBody = await deactivateRes.json()
+            msg = errBody.error || errBody.message || msg
+          } catch { /* réponse non-JSON, on garde le message par défaut */ }
+          throw new Error(msg)
+        }
+      }
+
+      // 2. Supprimer le provider.
       const res = await fetch(`/api/ai-providers/${selectedProvider.id}`, {
         method: 'DELETE',
       })
-      if (!res.ok) throw new Error('Erreur lors de la suppression')
+      if (!res.ok) {
+        let msg = 'Erreur lors de la suppression'
+        try {
+          const errBody = await res.json()
+          msg = errBody.error || errBody.message || msg
+        } catch { /* réponse non-JSON, on garde le message par défaut */ }
+        throw new Error(msg)
+      }
 
-      toast.success('Fournisseur supprimé', { description: `"${selectedProvider.name}" a été retiré` })
+      toast.success('Fournisseur supprimé', {
+        description: `« ${selectedProvider.name} » a été retiré${selectedProvider.isActive ? ' (désactivé puis supprimé)' : ''}`,
+      })
       setShowDeleteDialog(false)
       setSelectedProvider(null)
       refreshProviders()
+      // La désactivation/suppression modifie aussi l'état du failover.
+      refreshFailoverStatus()
     } catch (err) {
-      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
+      toast.error('Suppression impossible', {
+        description: err instanceof Error ? err.message : 'Erreur inconnue',
+      })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -1336,9 +1378,8 @@ export function AIProvidersPage() {
                                 setSelectedProvider(provider)
                                 setShowDeleteDialog(true)
                               }}
-                              disabled={provider.isActive}
                               aria-label={`Supprimer ${provider.name}`}
-                              title="Supprimer"
+                              title={provider.isActive ? 'Supprimer (désactivera d’abord)' : 'Supprimer'}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -2076,23 +2117,55 @@ export function AIProvidersPage() {
           />
         </GlassModal>
 
-        {/* ─── Delete Confirmation (AlertDialog — destructive) ─── */}
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        {/* ─── Delete Confirmation (AlertDialog — destructive) ───
+            Context-aware : si le provider est ACTIF, on explique qu'il sera
+            désactivé d'abord puis supprimé (règle backend 409 Conflict). */}
+        <AlertDialog
+          open={showDeleteDialog}
+          onOpenChange={(open) => { if (!isDeleting) setShowDeleteDialog(open) }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Supprimer le fournisseur ?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Êtes-vous sûr de vouloir supprimer « {selectedProvider?.name} » ?
-                Cette action est irréversible.
+              <AlertDialogTitle>
+                {selectedProvider?.isActive
+                  ? 'Désactiver puis supprimer le fournisseur ?'
+                  : 'Supprimer le fournisseur ?'}
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <span>
+                  {selectedProvider?.isActive ? (
+                    <>
+                      Le fournisseur « <strong className="text-foreground">{selectedProvider?.name}</strong> » est
+                      actuellement <strong className="text-foreground">actif</strong>. Pour le supprimer, il sera
+                      d'abord <strong className="text-foreground">désactivé</strong> (bascule du failover sur le
+                      provider suivant), puis supprimé définitivement. Cette action est irréversible.
+                    </>
+                  ) : (
+                    <>
+                      Êtes-vous sûr de vouloir supprimer « <strong className="text-foreground">{selectedProvider?.name}</strong> » ?
+                      Cette action est irréversible.
+                    </>
+                  )}
+                </span>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={handleDelete}
+                disabled={isDeleting}
               >
-                Supprimer
+                {isDeleting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Suppression…
+                  </span>
+                ) : selectedProvider?.isActive ? (
+                  'Désactiver puis supprimer'
+                ) : (
+                  'Supprimer'
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
