@@ -178,7 +178,13 @@ export function LoginForm() {
       }
     } catch (err) {
       const loginErr = err as LoginError
-      if (loginErr?.status === 500) {
+      if (loginErr?.status === 504) {
+        // SECT-LOGIN-500-FIX-1 : timeout backend (Render cold start prolongé)
+        setLoginError(loginErr.message || "Le serveur d'authentification met trop de temps. Veuillez réessayer.")
+      } else if (loginErr?.status === 502) {
+        // SECT-LOGIN-500-FIX-1 : backend injoignable (réseau/DNS)
+        setLoginError(loginErr.message || "Serveur d'authentification injoignable. Veuillez réessayer dans un instant.")
+      } else if (loginErr?.status === 500) {
         setLoginError('Erreur serveur. Veuillez réessayer plus tard.')
       } else if (loginErr?.status === 403) {
         setLoginError(loginErr.message || 'Votre compte a été désactivé.')

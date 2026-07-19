@@ -17453,3 +17453,64 @@ Stage Summary:
 - Commit: 4efb113 — poussé vers origin/main
 - Déploiement auto déclenché: Vercel (frontend) + Render (backend)
 - Tous les bugs critiques et high sont corrigés
+
+---
+Task ID: SETUP-SESSION-3
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Reconfiguration de l'environnement de développement local — reprise du tutorat
+
+Work Log:
+- Cloné le dépôt GitHub `udevrard7/SECT` à `/home/z/my-project/SECT` (branche main, commit a8ecc93)
+- Configuré l'identité Git globale : `udevrard7 <ulrichdouh@gmail.com>` (user.name + user.email)
+- Installé Go 1.23.4 dans `/home/z/.local/go`, puis toolchain auto a téléchargé Go 1.24.0 (requis par go.mod)
+- Ajouté Go au PATH persistant dans `~/.bashrc` (GOROOT + GOPATH/bin)
+- Installé `golang-migrate` CLI (v4, tag postgres) dans `~/go/bin/migrate` pour la sync DB Neon
+- Build backend : `go build -o bin/sect-api ./cmd/api` → OK (binaire 26M, 0 erreurs)
+- `go vet ./...` → OK (0 warnings)
+- Créé `backend/.env` avec valeurs quotées (compatible shell + godotenv) :
+  * NEON_DATABASE_URL (pooler, runtime) + NEON_DIRECT_URL (direct, migrations)
+  * JWT_SECRET (dev), CORS_ORIGINS, APP_BASE_URL
+- Test connexion Neon : `migrate version` → 75 (toutes les migrations appliquées, dirty=false)
+- Test boot backend : connexion Neon OK, 9 workers démarrés, HTTP :8080 OK
+- Services optionnels désactivés en dev (attendu) : R2, Resend/SMTP (LogMailer), GeniusPay
+- Remote GitHub configuré avec token d'authentification (ghp_***)
+
+Stage Summary:
+- Environnement de développement SECT entièrement opérationnel :
+  * Backend Go 1.24 : compile ✓, vet ✓, boot ✓, Neon connecté ✓, workers OK ✓
+  * Base Neon : migration v75, synchronisée avec le code
+  * Outils : golang-migrate installé (sqlc non installé — installable si besoin)
+- Flux de déploiement respecté : modifications locales → git push → GitHub → Vercel (frontend) + Render (backend)
+- Convention worklog respectée (format SECT-*, append-only)
+- Aucune modification du code source — configuration environnement uniquement
+
+---
+Task ID: SECT-LOGIN-500-FIX-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Correction du bug "Erreur serveur. Veuillez réessayer plus tard." sur la page de login (production Vercel)
+
+Work Log:
+- Diagnostic production : backend Render OK (health 200, /api/auth/login 401 avec bad creds en 0.25s)
+- Diagnostic proxy Vercel : /api/go-auth/login renvoyait 500 {"error":"Erreur lors de la connexion"} même pour bad creds
+- Comparaison avec routes sœurs : /session (200 OK, pas de fetch sans cookies), /refresh (401 OK, pas de fetch sans cookie), /logout (200 OK, fetch avec .catch(()=>{}) silencieux)
+- Identification cause racine : /login est la SEULE route go-auth qui fait un fetch SYSTÉMATIQUE vers le backend Render, SANS fetchWithTimeout, SANS cache:'no-store', et avec un catch{} qui avalait l'erreur sans logger → 500 générique impossible à diagnostiquer
+- Reproduction locale (script Node reproduisant la logique) : tous les cas passent en Node.js natif → problème spécifique à l'environnement Vercel (fetch instrumenté / cache fetch par défaut Next.js 16)
+- Correction frontend/src/app/api/go-auth/login/route.ts :
+  * Ajout fetchWithTimeout (AbortController 12s) — consistance avec /session
+  * Ajout cache:'no-store' sur le fetch POST (évite tout caching fetch Vercel/Next.js)
+  * catch(err) avec console.error détaillé (name + message + API_URL, sans secrets) → logs Vercel Functions
+  * Gestion granulaire : 504 (AbortError/timeout) vs 502 (TypeError fetch failed/réseau) vs 500 (autre)
+  * Propagation du status réel du backend (401/403/402) inchangée
+- Correction frontend/src/components/auth/login-form.tsx :
+  * Ajout gestion status 504 → "Le serveur d'authentification met trop de temps..."
+  * Ajout gestion status 502 → "Serveur d'authentification injoignable..."
+  * Conservation status 500 → "Erreur serveur. Veuillez réessayer plus tard."
+- Vérification : tsc --noEmit OK, eslint OK sur les 2 fichiers
+- Commit + push vers GitHub (auteur udevrard7 <ulrichdouh@gmail.com>) → déclenchement auto Vercel + Render
+
+Stage Summary:
+- 2 fichiers modifiés (route login + login-form), respect de l'architecture existante
+- La route /login est désormais alignée avec /session (même pattern fetchWithTimeout + gestion transitoire)
+- Codes HTTP sémantiques (502/504/500) au lieu d'un 500 fourre-tout
+- Logging serveur détaillé pour diagnostic futur via dashboard Vercel → Logs
+- En attente de vérification post-déploiement Vercel (auto-deploy depuis GitHub main)
