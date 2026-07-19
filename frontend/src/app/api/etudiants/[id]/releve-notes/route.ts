@@ -14,7 +14,7 @@ import jsPDF from 'jspdf'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const BACKEND_URL = 'https://sect-s1pb.onrender.com'
+const BACKEND_URL = 'https://sect-zead.onrender.com'
 
 export async function GET(
   req: NextRequest,

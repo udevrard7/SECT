@@ -19,7 +19,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-s1pb.onrender.com'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-zead.onrender.com'
 
 // Timeout pour les appels backend : 12s (le cold start Render free peut
 // prendre jusqu'à ~30-50s, mais on ne veut pas bloquer la requête trop

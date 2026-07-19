@@ -16,7 +16,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://sect-s1pb.onrender.com/api/:path*"
+      "destination": "https://sect-zead.onrender.com/api/:path*"
     }
   ],
   "headers": [

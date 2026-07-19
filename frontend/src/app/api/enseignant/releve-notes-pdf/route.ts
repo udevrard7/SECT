@@ -22,7 +22,7 @@ import { renderReleveNotesPDF, type ReleveNotesPDFData, type UERelevé, type Epr
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const BACKEND_URL = 'https://sect-s1pb.onrender.com'
+const BACKEND_URL = 'https://sect-zead.onrender.com'
 
 interface SessionResultat {
   id: string

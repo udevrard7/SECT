@@ -9,7 +9,7 @@
  *
  * Flow :
  *   1. Lit le cookie access_token (auth httpOnly posé par /api/go-auth/login)
- *   2. GET https://sect-s1pb.onrender.com/api/factures/{id} (Bearer token)
+ *   2. GET https://sect-zead.onrender.com/api/factures/{id} (Bearer token)
  *      → retourne la facture avec abonnement{plan} + etablissement nested (fix B1)
  *   3. Mappe la Facture Go → FacturePDFData
  *   4. renderFacturePDF(data) → Buffer PDF
@@ -24,7 +24,7 @@ import { renderFacturePDF, type FacturePDFData } from '@/lib/pdf/facture-pdf'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const BACKEND_URL = 'https://sect-s1pb.onrender.com'
+const BACKEND_URL = 'https://sect-zead.onrender.com'
 
 export async function GET(
   req: NextRequest,

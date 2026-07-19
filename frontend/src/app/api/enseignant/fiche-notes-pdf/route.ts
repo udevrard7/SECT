@@ -24,7 +24,7 @@ import { renderFicheNotesPDF, type FicheNotesPDFData } from '@/lib/pdf/fiche-not
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const BACKEND_URL = 'https://sect-s1pb.onrender.com'
+const BACKEND_URL = 'https://sect-zead.onrender.com'
 
 interface EpreuveCol {
   id: string

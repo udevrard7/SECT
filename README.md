@@ -7,7 +7,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql)](https://www.postgresql.org)
 [![Migrations](https://img.shields.io/badge/migrations-75-brightgreen)](backend/db/db/migrations)
 [![Vercel](https://img.shields.io/badge/Vercel-Frontend-000?logo=vercel)](https://sect-app.vercel.app)
-[![Render](https://img.shields.io/badge/Render-Backend-46E3B7?logo=render)](https://sect-s1pb.onrender.com)
+[![Render](https://img.shields.io/badge/Render-Backend-46E3B7?logo=render)](https://sect-zead.onrender.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Vue d'ensemble
@@ -90,7 +90,7 @@ sect/
 | Composant | Technologie | Hébergement | URL |
 |-----------|-------------|-------------|-----|
 | **Frontend** | Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui | Vercel | [sect-app.vercel.app](https://sect-app.vercel.app) |
-| **Backend** | Go 1.24 + chi/v5 + pgx/v5 | Render (Docker) | [sect-s1pb.onrender.com](https://sect-s1pb.onrender.com) |
+| **Backend** | Go 1.24 + chi/v5 + pgx/v5 | Render (Docker) | [sect-zead.onrender.com](https://sect-zead.onrender.com) |
 | **Base de données** | PostgreSQL 18 + RLS | Neon | endpoint `ep-muddy-river-asz862wj` (region `eu-central-1`) |
 | **Stockage fichiers** | Cloudflare R2 (S3-compatible) | Cloudflare | bucket `sect-documents` |
 | **CI/CD** | GitHub → Vercel (auto) + Render (auto) | GitHub | `udevrard7/SECT` |
