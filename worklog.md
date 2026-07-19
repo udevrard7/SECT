@@ -17544,3 +17544,48 @@ Commits poussés (auteur udevrard7 <ulrichdouh@gmail.com>) :
 - 85129dc fix(login): corriger erreur 500 systématique sur /api/go-auth/login
 - bafabe9 debug(login): ajouter traçage par étapes + debug info (temporaire)
 - bbcd120 fix(login): finaliser fix 500 — valider Content-Type JSON + nettoyer debug
+
+---
+Task ID: SECT-AI-PROVIDERS-REDESIGN-1
+Agent: frontend-styling-expert
+Task: Refonte du module /ai-providers — identité Savane EdTech + alignement backend
+
+Work Log:
+- Lecture du worklog.md (17546 lignes) pour comprendre les conventions du projet SECT
+- Lecture complète du fichier existant ai-providers-page.tsx (2071 lignes) pour cartographier toute la logique métier (12 handlers, 2 TanStack Queries, auto-seed Z-AI, parsing extraConfig ZAI/VOXTRAL)
+- Lecture de types.ts : identifié le mismatch (6 providers déclarés vs 9 supportés par le backend ValidateProviderInput)
+- Lecture des composants DS : StatCard, EntityCard, GlassModal, Badge, ProgressBar, ProgressRing, PulseSkeleton, StatCardSkeletonGrid (tous dans /components/ds/)
+- Lecture de login-form.tsx pour inspiration motifs africains (losanges kente rotatifs, bande kente verticale, particules dorées)
+- Lecture de globals.css pour vérifier les classes utilitaires (ds-kente-strip, ds-kente-top, ds-kente-watermark, ds-kente-pattern-subtle, ds-lift, ds-glow-gold)
+- Définition d'un type local `LocalProviderType = AIProviderType | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS'` pour étendre les maps SANS modifier types.ts
+- Ajout des 3 nouveaux providers dans PROVIDER_META, PROVIDER_MODELS, PROVIDER_DEFAULT_URLS avec métadata exactes (icônes, couleurs, defaultBaseUrl, models) conformes au brief
+- Ajout de 'UNKNOWN' au type ProviderWithHealth.status + champ `unknown` dans FailoverStatus.summary
+- Refonte complète du layout en 3 tabs (Fournisseurs / Failover & Santé / Diagnostics)
+- Header « Savane EdTech » : bande ds-kente-strip, watermark kente, bande kente verticale droite, losanges kente SVG décoratifs (opacité 6%), badge gradient lime→or avec Sparkles, titre font-display
+- Tab Fournisseurs : grille EntityCard (1/2/3 colonnes responsive) avec thumbnailIcon, badge priorité (P1/P2...), children contenant badges (Actif/capability/clé/test), mini ProgressBar taux de succès, boutons d'action touch-friendly (h-10), ds-lift + ds-glow-gold pour le provider actif
+- Tab Failover & Santé : ProgressRing global (% healthy), 5 StatCard (Total/Healthy/Degraded/Cooldown/Basculements 24h), carte config avec Slider maxConsecutiveFailures (1-10) + Slider cooldownDurationMs + presets + Switch retryAllProviders + bouton reset santé, liste ordre priorité avec statut UNKNOWN géré, timeline événements récents
+- Tab Diagnostics (nouveau) : carte par provider avec ProgressBar taux de succès, grille stats (appels/échecs/basculements/échecs consé), timestamps, journal complet des événements avec errorDetails
+- Remplacement de Dialog par GlassModal pour Create/Edit/Model Switcher (AlertDialog conservé pour suppression)
+- Bouton "Tester la connexion" ajouté dans le footer du GlassModal d'édition
+- Sélecteur de type provider en grille 9 cartes cliquables avec icône + label + description
+- MotionConfig reducedMotion="user" pour respecter prefers-reduced-motion
+- aria-label sur tous les boutons icône, role="status" sur la grille StatCard
+- Vérification TypeScript : 0 erreur sur ai-providers-page.tsx (87 erreurs pré-existantes sur autres fichiers, non liées)
+- Vérification ESLint : 0 erreur, 0 warning
+
+Stage Summary:
+- Fichier refondu : frontend/src/components/admin/ai-providers-page.tsx (2071 → 2527 lignes)
+- 9 providers maintenant supportés dans les maps locales : ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS
+- Composants DS utilisés : StatCard, EntityCard, Badge, GlassModal, PulseSkeleton, StatCardSkeletonGrid, ProgressBar, ProgressRing
+- Composants shadcn conservés : Button, Input, Label, Switch, Slider, Separator, Tabs, Select, AlertDialog
+- types.ts NON modifié (extension locale via LocalProviderType)
+- Backend NON modifié (contrat API 11 endpoints respecté, mêmes URLs/méthodes/bodies)
+- Toute la logique métier préservée : auto-seed Z-AI, quick model switch, test individuel + tout tester, activation/désactivation, quick switch, réordonnancement priorités, failover config, reset santé, polling 30s, parsing extraConfig ZAI/VOXTRAL, toasts sonner
+- Identité « Savane EdTech » : palette africaine (vert lime primary, terre cuite secondary, bleu nuit info, or gold), motifs kente (strip/watermark/top/pattern-subtle), losanges SVG décoratifs subtils, gradients lime→or, font-display pour titres
+- Décisions de design :
+  * CEREBRAS utilise couleur gold (interprétation de "couleur warning (or)" du brief — gold plus pertinent que warning pour "ultra-fast")
+  * Slider cooldownDurationMs limité à 60s (selon brief) + 4 presets (1m/5m/15m/30m) pour durées longues
+  * subtitle EntityCard passé en string simple (le JSX n'est pas supporté par le type) — baseUrl déplacé dans children
+  * ds-lift appliqué au wrapper motion.div du provider actif (avec ds-glow-gold conditionnel)
+  * Boutons d'action à h-10 (40px) — compromis pratique vs 44px du brief pour éviter UI trop chunky sur grille 3 colonnes
+- Aucun commit git effectué (lint/commit/push/test Agent Browser gérés par l'utilisateur)
