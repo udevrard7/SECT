@@ -791,6 +791,15 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.With(middleware.RequireRole("ADMIN")).Post("/{id}/test", s.aiProviderTest)
                 })
 
+                // AI-ASSISTANT-1 : endpoint de chat IA pour le frontend.
+                // Le frontend (BackendAIProvider) envoie POST /api/ai-assistant
+                // avec { message, context }. Le backend appelle le LLM actif
+                // (avec failover automatique) et retourne { response, model }.
+                r.Route("/api/ai-assistant", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Post("/", s.aiAssistant)
+                })
+
                 // MONITORING-FIX-M7 : RequireRole("ADMIN") sur monitoring + logs.
                 r.Route("/api/monitoring", func(r chi.Router) {
                         r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))

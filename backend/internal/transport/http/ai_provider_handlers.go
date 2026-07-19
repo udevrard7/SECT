@@ -242,10 +242,11 @@ func validateProviderInput(name, provider, baseURL, apiKey, model string) error 
         }
         upper := strings.ToUpper(strings.TrimSpace(provider))
         switch upper {
-        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL":
-                // OK (VOXTRAL : Mistral Voxtral TTS — voix FR native via API Mistral)
+        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL", "DASHSCOPE", "DEEPSEEK", "CEREBRAS":
+                // OK — BUG #5 fix: ajout de DASHSCOPE (Alibaba), DEEPSEEK, CEREBRAS
+                // qui existent en DB mais étaient rejetés par la validation.
         default:
-                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL)", provider)
+                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS)", provider)
         }
         if baseURL != "" {
                 if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
@@ -877,6 +878,7 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
                 TotalProviders  int  `json:"totalProviders"`
                 Healthy         int  `json:"healthy"`
                 Degraded        int  `json:"degraded"`
+                Unknown         int  `json:"unknown"` // BUG #6 fix: providers jamais testés
                 CoolingDown     int  `json:"coolingDown"`
                 FailoverEnabled bool `json:"failoverEnabled"`
                 TotalCalls      int  `json:"totalCalls"`
@@ -924,9 +926,12 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
                         }
 
                         // Détermine le status.
+                        // BUG #6 fix: un provider jamais testé n'est ni healthy ni degraded → UNKNOWN.
                         healthy := p.LastTestOk != nil && *p.LastTestOk
                         coolingDown := false // pas de cooldown implémenté pour l'instant
                         switch {
+                        case p.LastTestOk == nil:
+                                p.Status = "UNKNOWN" // jamais testé
                         case coolingDown:
                                 p.Status = "COOLING_DOWN"
                         case healthy:
@@ -1004,6 +1009,8 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
                         summary.Healthy++
                 case "DEGRADED":
                         summary.Degraded++
+                case "UNKNOWN":
+                        summary.Unknown++
                 case "COOLING_DOWN":
                         summary.CoolingDown++
                 }
@@ -1211,8 +1218,10 @@ func (s *Server) aiProviderFailoverHealth(w http.ResponseWriter, r *http.Request
                         if err := rows.Scan(&p.ID, &p.Name, &lastTestOk); err != nil {
                                 return err
                         }
-                        // Healthy si pas encore testé OU dernier test OK.
-                        p.Healthy = lastTestOk == nil || *lastTestOk
+                        // BUG #6 fix: "jamais testé" n'est pas "healthy".
+                        // Un provider est healthy UNIQUEMENT si son dernier test a réussi.
+                        // Un provider jamais testé (lastTestOk == nil) est "unknown" → pas healthy.
+                        p.Healthy = lastTestOk != nil && *lastTestOk
                         if !p.Healthy {
                                 allHealthy = false
                         }

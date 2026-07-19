@@ -30,6 +30,7 @@ import (
         "github.com/google/uuid"
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
+        "github.com/udevrard7/sect/backend/internal/ai"
         "github.com/udevrard7/sect/backend/internal/domain"
 )
 
@@ -54,13 +55,14 @@ var PracticeQueue = make(chan PracticeJob, 100)
 
 // PracticeWorker est le worker qui consomme la queue.
 type PracticeWorker struct {
-        dbPool *pgxpool.Pool
-        logger *slog.Logger
+        dbPool    *pgxpool.Pool
+        logger    *slog.Logger
+        aiService *ai.AIService // failover support
 }
 
 // NewPracticeWorker crée un nouveau worker Practice.
-func NewPracticeWorker(dbPool *pgxpool.Pool, logger *slog.Logger) *PracticeWorker {
-        return &PracticeWorker{dbPool: dbPool, logger: logger}
+func NewPracticeWorker(dbPool *pgxpool.Pool, logger *slog.Logger, aiService *ai.AIService) *PracticeWorker {
+        return &PracticeWorker{dbPool: dbPool, logger: logger, aiService: aiService}
 }
 
 // Start lance le worker en goroutine (non-bloquant).
@@ -114,23 +116,18 @@ func (w *PracticeWorker) processJob(ctx context.Context, job PracticeJob) {
                 return
         }
 
-        // 2. Lire le provider IA actif depuis la DB.
-        provider, err := getActiveProviderShared(ctx, w.dbPool)
-        if err != nil {
-                w.logger.Error("Failed to get active AI provider", "error", err)
-                return
-        }
-        w.logger.Info("Using AI provider", "name", provider.Name, "model", provider.Model)
-
-        // 3. Construire le prompt.
+        // 2. Construire le prompt.
         messages := w.buildPracticePrompt(docContent, job.Config)
 
-        // 4. Appeler l'API du provider IA.
-        result, err := callAIProviderShared(ctx, provider, messages, w.logger)
+        // 3. Convert worker.ChatMessage → ai.ChatMessage and call AI with failover
+        aiMessages := make([]ai.ChatMessage, len(messages))
+        for i, m := range messages {
+                aiMessages[i] = ai.ChatMessage{Role: m.Role, Content: m.Content}
+        }
+        result, err := w.aiService.ChatCompletion(ctx, aiMessages)
         if err != nil {
-                w.logger.Error("AI provider call failed",
+                w.logger.Error("AI call failed (all providers exhausted)",
                         "error", err,
-                        "provider", provider.Name,
                         "documentId", job.DocumentID,
                 )
                 return
@@ -138,11 +135,12 @@ func (w *PracticeWorker) processJob(ctx context.Context, job PracticeJob) {
 
         w.logger.Info("AI practice generation completed",
                 "documentId", job.DocumentID,
-                "responseLength", len(result),
+                "responseLength", len(result.Content),
+                "model", result.Model,
         )
 
-        // 5. Parser le JSON retourné (questions).
-        questions := parsePracticeResponse(result)
+        // 4. Parser le JSON retourné (questions).
+        questions := parsePracticeResponse(result.Content)
         if len(questions) == 0 {
                 w.logger.Warn("AI returned no parseable questions",
                         "documentId", job.DocumentID,
@@ -150,7 +148,7 @@ func (w *PracticeWorker) processJob(ctx context.Context, job PracticeJob) {
                 return
         }
 
-        // 6. Insérer les questions en DB.
+        // 5. Insérer les questions en DB.
         inserted, err := w.insertQuestions(ctx, job, questions)
         if err != nil {
                 w.logger.Error("Failed to insert generated questions",
