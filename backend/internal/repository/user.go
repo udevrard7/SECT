@@ -443,8 +443,17 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
                 }
 
                 for _, step := range steps {
-                        if _, err := tx.Exec(ctx, step.sql, id); err != nil {
+                        ct, err := tx.Exec(ctx, step.sql, id)
+                        if err != nil {
                                 return fmt.Errorf("%s: %w", step.desc, err)
+                        }
+                        // RESPONSABLE-DELETE-BUG : si l'étape finale "delete user" affecte
+                        // 0 lignes, c'est qu'une policy RLS a silencieusement bloqué la
+                        // suppression (ex: policy TO neondb_owner mais rôle courant = sect_app).
+                        // Sans ce check, le handler retourne 200 "utilisateur supprimé" mais
+                        // l'utilisateur reste en DB → faux succès + confusion utilisateur.
+                        if step.desc == "delete user" && ct.RowsAffected() == 0 {
+                                return fmt.Errorf("suppression refusée par RLS (0 ligne affectée) — vérifiez les policies User_delete pour le rôle courant")
                         }
                 }
                 return nil
