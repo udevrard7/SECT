@@ -1,7 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECT — Page d'administration des Fournisseurs IA
+// Refonte « Savane EdTech » — palette africaine + motif kente + Design System unifié
+// Task: SECT-AI-PROVIDERS-REDESIGN-1
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Sparkles,
   Plus,
@@ -39,18 +47,17 @@ import {
   TrendingUp,
   HeartPulse,
   ShieldCheck,
-  AudioLines, // KOKORO-TTS-1 : icône TTS pour HuggingFace
-  Mic,        // DASHSCOPE-AUDIO-1 : icône audio pour DashScope
+  AudioLines, // icône TTS (Voxtral, Kokoro)
+  Mic,        // icône audio (DashScope)
+  HelpCircle, // statut UNKNOWN
+  Cpu,        // icône diagnostics
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
-import { PulseSkeleton } from '@/components/ds'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
@@ -59,14 +66,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,13 +76,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+// Design System unifié « Savane EdTech »
+import {
+  StatCard,
+  EntityCard,
+  Badge,
+  GlassModal,
+  PulseSkeleton,
+  StatCardSkeletonGrid,
+  ProgressBar,
+  ProgressRing,
+} from '@/components/ds'
 import type { AIProviderInfo, AIProviderType } from '@/lib/ai-providers/types'
-import { PROVIDER_TYPES } from '@/lib/ai-providers/types'
 
-// ─── Provider type config ───
-const PROVIDER_META: Record<AIProviderType, {
+// ─── Type local étendu ───
+// Le backend supporte 9 providers (ValidateProviderInput) mais types.ts n'en
+// déclare que 6. On étend localement SANS modifier types.ts.
+type LocalProviderType = AIProviderType | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS'
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROVIDER METADATA — 9 providers (alignement backend exact)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ProviderMeta {
   label: string
   description: string
   icon: any
@@ -92,7 +107,10 @@ const PROVIDER_META: Record<AIProviderType, {
   textClass: string
   borderClass: string
   gradientClass: string
-}> = {
+  defaultCapability: 'chat' | 'tts' | 'audio' | 'transcription'
+}
+
+const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
   ZAI: {
     label: 'Z-AI',
     description: 'Z.ai Intelligence Artificielle',
@@ -102,6 +120,7 @@ const PROVIDER_META: Record<AIProviderType, {
     textClass: 'text-secondary',
     borderClass: 'border-secondary/30',
     gradientClass: 'from-secondary via-secondary to-secondary',
+    defaultCapability: 'chat',
   },
   OPENAI: {
     label: 'OpenAI',
@@ -112,6 +131,7 @@ const PROVIDER_META: Record<AIProviderType, {
     textClass: 'text-success-text',
     borderClass: 'border-success/30',
     gradientClass: 'from-success via-success to-success',
+    defaultCapability: 'chat',
   },
   OPENAI_COMPATIBLE: {
     label: 'OpenAI-Compatible',
@@ -122,6 +142,7 @@ const PROVIDER_META: Record<AIProviderType, {
     textClass: 'text-warning',
     borderClass: 'border-warning/30',
     gradientClass: 'from-warning via-warning to-warning',
+    defaultCapability: 'chat',
   },
   ANTHROPIC: {
     label: 'Anthropic',
@@ -132,6 +153,7 @@ const PROVIDER_META: Record<AIProviderType, {
     textClass: 'text-destructive',
     borderClass: 'border-destructive/30',
     gradientClass: 'from-destructive via-destructive to-pink-500/10',
+    defaultCapability: 'chat',
   },
   GOOGLE: {
     label: 'Google AI',
@@ -142,8 +164,9 @@ const PROVIDER_META: Record<AIProviderType, {
     textClass: 'text-info',
     borderClass: 'border-info/30',
     gradientClass: 'from-info via-info to-success',
+    defaultCapability: 'chat',
   },
-  // VOXTRAL-TTS-1 : Mistral Voxtral TTS — voix FR native via API Mistral (voice cloning)
+  // VOXTRAL : Mistral Voxtral TTS — voix FR native via API Mistral (voice cloning)
   VOXTRAL: {
     label: 'Voxtral',
     description: 'Mistral Voxtral TTS — voix FR native',
@@ -153,10 +176,45 @@ const PROVIDER_META: Record<AIProviderType, {
     textClass: 'text-cyan-600 dark:text-cyan-400',
     borderClass: 'border-cyan-500/30',
     gradientClass: 'from-cyan-500 via-cyan-500 to-teal-500',
+    defaultCapability: 'tts',
+  },
+  // ─── Nouveaux providers (alignement backend ValidateProviderInput) ───
+  DASHSCOPE: {
+    label: 'DashScope (Alibaba)',
+    description: 'Qwen, Model Studio — chat & TTS',
+    icon: Mic,
+    color: '#06b6d4',
+    bgClass: 'bg-cyan-500/10',
+    textClass: 'text-cyan-600 dark:text-cyan-400',
+    borderClass: 'border-cyan-500/30',
+    gradientClass: 'from-cyan-500 via-teal-500 to-cyan-600',
+    defaultCapability: 'chat',
+  },
+  DEEPSEEK: {
+    label: 'DeepSeek',
+    description: 'DeepSeek-V3, DeepSeek-R1 — reasoning',
+    icon: Brain,
+    color: '#84CC16',
+    bgClass: 'bg-primary/10',
+    textClass: 'text-primary-text',
+    borderClass: 'border-primary/30',
+    gradientClass: 'from-primary via-primary to-lime-600',
+    defaultCapability: 'chat',
+  },
+  CEREBRAS: {
+    label: 'Cerebras',
+    description: 'Llama — inférence ultra-rapide',
+    icon: Zap,
+    color: '#D4A017',
+    bgClass: 'bg-gold/10',
+    textClass: 'text-gold',
+    borderClass: 'border-gold/30',
+    gradientClass: 'from-gold via-amber-500 to-gold',
+    defaultCapability: 'chat',
   },
 }
 
-const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
+const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
   ZAI: ['default'],
   OPENAI: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'],
   OPENAI_COMPATIBLE: [
@@ -173,21 +231,28 @@ const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
   ],
   ANTHROPIC: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307', 'claude-3-5-haiku-20241022'],
   GOOGLE: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-lite'],
-  // VOXTRAL-TTS-1 : Mistral Voxtral TTS (voix FR native via API Mistral)
   VOXTRAL: ['voxtral-mini-tts-latest', 'voxtral-mini-tts-2603'],
+  DASHSCOPE: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-coder-plus', 'qwen3-omni-flash'],
+  DEEPSEEK: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'],
+  CEREBRAS: ['llama-4-scout-17b-16e-instruct', 'llama3.1-8b', 'llama3.1-70b'],
 }
 
-const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
+const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
   ZAI: 'https://z.ai/api/v1',
   OPENAI: 'https://api.openai.com/v1',
   OPENAI_COMPATIBLE: 'https://api.groq.com/openai/v1',
   ANTHROPIC: 'https://api.anthropic.com/v1',
   GOOGLE: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  // VOXTRAL-TTS-1 : API Mistral (même base que le chat)
   VOXTRAL: 'https://api.mistral.ai/v1',
+  DASHSCOPE: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  DEEPSEEK: 'https://api.deepseek.com/v1',
+  CEREBRAS: 'https://api.cerebras.ai/v1',
 }
 
-// ─── Failover types ───
+// ═══════════════════════════════════════════════════════════════════════════════
+// FAILOVER TYPES (locaux — étendus avec 'UNKNOWN' pour le status)
+// ═══════════════════════════════════════════════════════════════════════════════
+
 interface FailoverConfig {
   enabled: boolean
   maxConsecutiveFailures: number
@@ -204,7 +269,8 @@ interface ProviderWithHealth {
   priority: number
   lastTestAt: string | null
   lastTestOk: boolean | null
-  status: 'HEALTHY' | 'DEGRADED' | 'COOLING_DOWN'
+  // ⚠️ 'UNKNOWN' ajouté : le backend renvoie cette valeur quand health est nil
+  status: 'HEALTHY' | 'DEGRADED' | 'COOLING_DOWN' | 'UNKNOWN'
   health: {
     providerId: string
     providerName: string
@@ -235,6 +301,7 @@ interface FailoverStatus {
     totalProviders: number
     healthy: number
     degraded: number
+    unknown: number // ⚠️ ajouté : compteur des providers sans health
     coolingDown: number
     failoverEnabled: boolean
     totalCalls: number
@@ -245,10 +312,13 @@ interface FailoverStatus {
   recentEvents: FailoverEvent[]
 }
 
-// ─── Form data type ───
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORM DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
 interface ProviderFormData {
   name: string
-  provider: AIProviderType
+  provider: LocalProviderType
   baseUrl: string
   apiKey: string
   model: string
@@ -257,9 +327,9 @@ interface ProviderFormData {
   chatId: string
   userId: string
   token: string
-  // KOKORO-TTS-1 : capability du provider (chat / tts / audio)
+  // capability : chat / tts / audio / transcription
   capability: 'chat' | 'tts' | 'audio' | 'transcription'
-  // VOXTRAL-TTS-2 : URLs des audios de référence pour le multi-voix
+  // VOXTRAL : URLs des audios de référence pour le multi-voix
   refAudioPresenter: string
   refAudioExpert: string
 }
@@ -280,7 +350,26 @@ const EMPTY_FORM: ProviderFormData = {
   refAudioExpert: '',
 }
 
-// ─── Main Component ───
+// ═══════════════════════════════════════════════════════════════════════════════
+// DECORATIVE COMPONENTS — Motifs africains subtils (inspiration login-form)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Losange kente décoratif — motif géométrique africain traditionnel */
+function KenteDiamond({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" fill="none" className={className} aria-hidden="true">
+      <polygon points="50,5 95,50 50,95 5,50" stroke="currentColor" strokeWidth="2" fill="none" />
+      <polygon points="50,20 80,50 50,80 20,50" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <polygon points="50,35 65,50 50,65 35,50" stroke="currentColor" strokeWidth="1" fill="none" />
+      <circle cx="50" cy="50" r="3" fill="currentColor" />
+    </svg>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export function AIProvidersPage() {
   const queryClient = useQueryClient()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -299,6 +388,7 @@ export function AIProvidersPage() {
   const [showModelSwitcher, setShowModelSwitcher] = useState(false)
   const [switchingModel, setSwitchingModel] = useState<string | null>(null)
   const hasAutoSeeded = useRef(false)
+  const [activeTab, setActiveTab] = useState<string>('providers')
 
   // Failover state
   const [isUpdatingFailoverConfig, setIsUpdatingFailoverConfig] = useState(false)
@@ -306,10 +396,7 @@ export function AIProvidersPage() {
   const [isReordering, setIsReordering] = useState<string | null>(null)
   const [isEventsExpanded, setIsEventsExpanded] = useState(true)
 
-  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
-  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
-  // instantanée. Le polling du failover status est géré par refetchInterval
-  // (auto-cleanup au démontage, plus de fuite mémoire).
+  // ─── TanStack Query : providers ───
   const providersQuery = useQuery<{ providers: AIProviderInfo[] }>({
     queryKey: ['ai-providers'],
     queryFn: async () => {
@@ -324,9 +411,7 @@ export function AIProvidersPage() {
   const providers = providersQuery.data?.providers ?? []
   const isLoading = providersQuery.isLoading
 
-  // Auto-seed default provider if list is empty (one-shot via ref).
-  // Garde la logique métier d'origine : si aucun fournisseur n'existe, on crée
-  // automatiquement le Z-AI par défaut.
+  // ─── Auto-seed Z-AI par défaut si la liste est vide (one-shot via ref) ───
   useEffect(() => {
     if (providersQuery.data && providers.length === 0 && !hasAutoSeeded.current) {
       hasAutoSeeded.current = true
@@ -356,13 +441,14 @@ export function AIProvidersPage() {
     }
   }, [providersQuery.data, providers.length, queryClient])
 
-  // Toast sur erreur de chargement (équivalent du catch du fetch original).
+  // Toast sur erreur de chargement
   useEffect(() => {
     if (providersQuery.error) {
       toast.error('Erreur', { description: 'Impossible de charger les fournisseurs IA' })
     }
   }, [providersQuery.error])
 
+  // ─── TanStack Query : failover status (polling 30s) ───
   const failoverQuery = useQuery<FailoverStatus>({
     queryKey: ['ai-providers-failover'],
     queryFn: async () => {
@@ -372,8 +458,6 @@ export function AIProvidersPage() {
     },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
-    // Polling 30s du failover status (auto-cleanup au démontage, plus de
-    // setInterval à nettoyer manuellement).
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   })
@@ -381,12 +465,17 @@ export function AIProvidersPage() {
   const failoverStatus = failoverQuery.data ?? null
   const isFailoverLoading = failoverQuery.isLoading
 
-  // Helpers pour invalider le cache après mutation.
+  // Helpers d'invalidation du cache
   const refreshProviders = () => queryClient.invalidateQueries({ queryKey: ['ai-providers'] })
   const refreshFailoverStatus = () =>
     queryClient.invalidateQueries({ queryKey: ['ai-providers-failover'] })
 
-  // Fetch dynamic models from a provider's API
+  // ─── Derived state : active providers (multi-capability) ───
+  const activeChatProvider = providers.find(p => p.isActive && (p.capability === 'chat' || !p.capability))
+  const activeTtsProvider = providers.find(p => p.isActive && p.capability === 'tts')
+  const activeProvider = activeChatProvider
+
+  // ─── Fetch dynamic models from a provider's API ───
   const fetchDynamicModels = useCallback(async (providerId: string) => {
     setIsLoadingModels(true)
     try {
@@ -404,7 +493,7 @@ export function AIProvidersPage() {
     }
   }, [])
 
-  // Quick model switch for the active provider
+  // ─── Quick model switch for the active provider ───
   const handleQuickModelSwitch = async (model: string) => {
     if (!activeProvider || model === activeProvider.model) return
     setSwitchingModel(model)
@@ -416,9 +505,7 @@ export function AIProvidersPage() {
       })
       if (!res.ok) throw new Error('Erreur lors du changement de modèle')
 
-      toast.success('Modèle changé', {
-        description: `Maintenant utiliser : ${model}`,
-      })
+      toast.success('Modèle changé', { description: `Maintenant utiliser : ${model}` })
       refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
@@ -434,7 +521,7 @@ export function AIProvidersPage() {
     fetchDynamicModels(activeProvider.id)
   }
 
-  // Create provider
+  // ─── Create provider ───
   const handleCreate = async () => {
     setIsSaving(true)
     try {
@@ -446,7 +533,6 @@ export function AIProvidersPage() {
         if (formData.baseUrl) extraConfig.baseUrl = formData.baseUrl
         if (formData.apiKey) extraConfig.apiKey = formData.apiKey
       }
-      // VOXTRAL-TTS-2 : config multi-voix (URLs des audios de référence)
       if (formData.provider === 'VOXTRAL') {
         if (formData.refAudioPresenter) extraConfig.refAudioPresenter = formData.refAudioPresenter
         if (formData.refAudioExpert) extraConfig.refAudioExpert = formData.refAudioExpert
@@ -464,7 +550,6 @@ export function AIProvidersPage() {
           temperature: formData.temperature,
           maxTokens: formData.maxTokens,
           extraConfig: Object.keys(extraConfig).length > 0 ? extraConfig : undefined,
-          // KOKORO-TTS-1 : envoyer la capability (chat / tts / audio)
           capability: formData.capability,
         }),
       })
@@ -485,7 +570,7 @@ export function AIProvidersPage() {
     }
   }
 
-  // Update provider
+  // ─── Update provider ───
   const handleUpdate = async () => {
     if (!selectedProvider) return
     setIsSaving(true)
@@ -498,7 +583,6 @@ export function AIProvidersPage() {
         if (formData.baseUrl) extraConfig.baseUrl = formData.baseUrl
         if (formData.apiKey) extraConfig.apiKey = formData.apiKey
       }
-      // VOXTRAL-TTS-2 : config multi-voix (URLs des audios de référence)
       if (formData.provider === 'VOXTRAL') {
         if (formData.refAudioPresenter) extraConfig.refAudioPresenter = formData.refAudioPresenter
         if (formData.refAudioExpert) extraConfig.refAudioExpert = formData.refAudioExpert
@@ -516,7 +600,6 @@ export function AIProvidersPage() {
           temperature: formData.temperature,
           maxTokens: formData.maxTokens,
           extraConfig: Object.keys(extraConfig).length > 0 ? extraConfig : undefined,
-          // KOKORO-TTS-1 : envoyer la capability (chat / tts / audio)
           capability: formData.capability,
         }),
       })
@@ -537,7 +620,7 @@ export function AIProvidersPage() {
     }
   }
 
-  // Delete provider
+  // ─── Delete provider ───
   const handleDelete = async () => {
     if (!selectedProvider) return
     try {
@@ -555,7 +638,7 @@ export function AIProvidersPage() {
     }
   }
 
-  // Toggle provider active/inactive
+  // ─── Toggle provider active/inactive ───
   const handleActivate = async (providerId: string, forceActive?: boolean) => {
     setActivatingId(providerId)
     try {
@@ -578,7 +661,7 @@ export function AIProvidersPage() {
     }
   }
 
-  // Quick switch provider — active le fournisseur sans désactiver les autres
+  // ─── Quick switch provider (active sans désactiver les autres) ───
   const handleQuickSwitch = async (providerId: string) => {
     if (!providerId) return
     const target = providers.find(p => p.id === providerId)
@@ -603,7 +686,7 @@ export function AIProvidersPage() {
     }
   }
 
-  // Test provider
+  // ─── Test provider ───
   const handleTest = async (providerId: string) => {
     setTestingId(providerId)
     try {
@@ -618,14 +701,14 @@ export function AIProvidersPage() {
         toast.error('Échec du test', { description: data.message })
       }
       refreshProviders()
-    } catch (err) {
+    } catch {
       toast.error('Erreur', { description: 'Impossible de tester le fournisseur' })
     } finally {
       setTestingId(null)
     }
   }
 
-  // Test all providers
+  // ─── Test all providers (séquentiel) ───
   const handleTestAll = async () => {
     if (providers.length === 0) return
     setIsTestingAll(true)
@@ -663,7 +746,7 @@ export function AIProvidersPage() {
     }
   }
 
-  // Open edit dialog
+  // ─── Open edit dialog (récupère la version complète avec apiKey) ───
   const openEdit = async (provider: AIProviderInfo) => {
     setSelectedProvider(provider)
     try {
@@ -671,7 +754,7 @@ export function AIProvidersPage() {
       const data = await res.json()
       const full = data.provider
 
-      // VOXTRAL-TTS-2 : parser extraConfig pour récupérer les URLs des voix
+      // Parser extraConfig pour VOXTRAL (URLs des voix)
       let refAudioPresenter = ''
       let refAudioExpert = ''
       if (full.extraConfig) {
@@ -686,25 +769,23 @@ export function AIProvidersPage() {
 
       setFormData({
         name: full.name,
-        provider: full.provider as AIProviderType,
-        baseUrl: full.baseUrl || PROVIDER_DEFAULT_URLS[full.provider as AIProviderType] || '',
+        provider: full.provider as LocalProviderType,
+        baseUrl: full.baseUrl || PROVIDER_DEFAULT_URLS[full.provider as LocalProviderType] || '',
         apiKey: '',
-        model: full.model || PROVIDER_MODELS[full.provider as AIProviderType]?.[0] || '',
+        model: full.model || PROVIDER_MODELS[full.provider as LocalProviderType]?.[0] || '',
         temperature: full.temperature ?? 0.7,
         maxTokens: full.maxTokens ?? 4096,
         chatId: '',
         userId: '',
         token: '',
-        // KOKORO-TTS-1 : charger la capability existante (défaut 'chat')
         capability: (full.capability as ProviderFormData['capability']) || 'chat',
-        // VOXTRAL-TTS-2 : charger les URLs des voix
         refAudioPresenter,
         refAudioExpert,
       })
     } catch {
       setFormData({
         name: provider.name,
-        provider: provider.provider as AIProviderType,
+        provider: provider.provider as LocalProviderType,
         baseUrl: provider.baseUrl || '',
         apiKey: '',
         model: provider.model || '',
@@ -721,13 +802,14 @@ export function AIProvidersPage() {
     setShowEditDialog(true)
   }
 
-  const openCreate = (type?: AIProviderType) => {
+  const openCreate = (type?: LocalProviderType) => {
     const pType = type || 'OPENAI'
     setFormData({
       ...EMPTY_FORM,
       provider: pType,
       baseUrl: PROVIDER_DEFAULT_URLS[pType],
       model: PROVIDER_MODELS[pType]?.[0] || '',
+      capability: PROVIDER_META[pType]?.defaultCapability || 'chat',
     })
     setShowCreateDialog(true)
   }
@@ -838,7 +920,7 @@ export function AIProvidersPage() {
   }
 
   // ─── Failover helpers ───
-  const formatTime = (ts: number | string | null) => {
+  const formatTime = (ts: number | string | null | undefined) => {
     if (!ts) return '—'
     const date = typeof ts === 'string' ? new Date(ts) : new Date(ts)
     const now = new Date()
@@ -854,577 +936,579 @@ export function AIProvidersPage() {
 
   const formatEventType = (type: string) => {
     switch (type) {
-      case 'FAIL_OVER': return { label: 'Basculement', color: 'text-warning bg-warning/10', icon: ArrowRightLeft }
-      case 'RECOVERY': return { label: 'Récupération', color: 'text-success-text bg-success/10', icon: CheckCircle2 }
-      case 'MANUAL_SWITCH': return { label: 'Manuel', color: 'text-secondary bg-secondary/10', icon: Settings2 }
-      case 'COOLDOWN_EXPIRED': return { label: 'Cooldown', color: 'text-info bg-info/10', icon: Timer }
-      case 'ALL_FAILED': return { label: 'Échec total', color: 'text-destructive bg-destructive/10', icon: X }
-      default: return { label: type, color: 'text-gray-600 bg-gray-50 dark:bg-gray-950/30', icon: Activity }
+      case 'FAIL_OVER': return { label: 'Basculement', color: 'text-warning bg-warning/10', icon: ArrowRightLeft, badge: 'warning' as const }
+      case 'RECOVERY': return { label: 'Récupération', color: 'text-success-text bg-success/10', icon: CheckCircle2, badge: 'success' as const }
+      case 'MANUAL_SWITCH': return { label: 'Manuel', color: 'text-secondary bg-secondary/10', icon: Settings2, badge: 'secondary' as const }
+      case 'COOLDOWN_EXPIRED': return { label: 'Cooldown', color: 'text-info bg-info/10', icon: Timer, badge: 'info' as const }
+      case 'ALL_FAILED': return { label: 'Échec total', color: 'text-destructive bg-destructive/10', icon: AlertTriangle, badge: 'danger' as const }
+      default: return { label: type, color: 'text-muted-foreground bg-muted', icon: Activity, badge: 'default' as const }
     }
   }
 
-  // Derived state — MULTI-CAPABILITY : un provider chat actif ET un provider
-  // tts actif peuvent coexister (migration 000035). On distingue les deux pour
-  // la barre de stats. `activeProvider` reste un alias sur le chat pour les
-  // autres usages (statut lastTestOk, etc.).
-  const activeChatProvider = providers.find(p => p.isActive && (p.capability === 'chat' || !p.capability))
-  const activeTtsProvider = providers.find(p => p.isActive && p.capability === 'tts')
-  const activeProvider = activeChatProvider
+  // Helper : carte statut health → variant Badge
+  const healthStatusVariant = (status: ProviderWithHealth['status']) => {
+    switch (status) {
+      case 'HEALTHY': return 'success' as const
+      case 'DEGRADED': return 'warning' as const
+      case 'COOLING_DOWN': return 'danger' as const
+      case 'UNKNOWN': return 'info' as const
+      default: return 'default' as const
+    }
+  }
+
+  const healthStatusLabel = (status: ProviderWithHealth['status']) => {
+    switch (status) {
+      case 'HEALTHY': return 'Sain'
+      case 'DEGRADED': return 'Dégradé'
+      case 'COOLING_DOWN': return 'Cooldown'
+      case 'UNKNOWN': return 'Inconnu'
+      default: return status
+    }
+  }
+
+  // Helper pour récupérer le meta d'un provider (avec fallback)
+  const getProviderMeta = (providerType: string): ProviderMeta => {
+    return PROVIDER_META[providerType as LocalProviderType] || PROVIDER_META.OPENAI_COMPATIBLE
+  }
 
   // ─── Loading state ───
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
+        <div className="ds-kente-strip rounded-t-lg" />
         <div className="flex items-center justify-between">
           <div>
-            <PulseSkeleton className="h-7 w-48 mb-1" />
-            <PulseSkeleton className="h-4 w-72" />
+            <PulseSkeleton className="h-8 w-56 mb-2" />
+            <PulseSkeleton className="h-4 w-80" />
           </div>
-          <PulseSkeleton className="h-9 w-28" />
+          <PulseSkeleton className="h-11 w-32" />
         </div>
-        <PulseSkeleton className="h-10 w-full" />
-        <PulseSkeleton className="h-64 w-full" />
+        <StatCardSkeletonGrid count={4} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <PulseSkeleton key={i} className="h-64 w-full" variant="card" />
+          ))}
+        </div>
       </div>
     )
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════════════════
+
   return (
-    <div className="space-y-4">
-      {/* ─── Compact Header ─── */}
-      <div className="flex items-center justify-between gap-4 ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 font-display">
-            <Sparkles className="h-5 w-5 text-secondary" />
-            Fournisseurs IA
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Gérez vos fournisseurs d&apos;intelligence artificielle et le basculement automatique
-          </p>
-        </div>
-        <Button
-          className="bg-secondary hover:bg-secondary/90 text-white shrink-0"
-          onClick={() => openCreate()}
-        >
-          <Plus className="h-4 w-4 mr-1.5" />
-          Ajouter
-        </Button>
-      </div>
+    <MotionConfig reducedMotion="user">
+      <div className="relative space-y-5">
+        {/* ─── Bande kente supérieure (signature africaine) ─── */}
+        <div className="ds-kente-strip rounded-t-lg" aria-hidden="true" />
 
-      {/* ─── Inline Stats Bar ─── */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 rounded-lg bg-muted/50 border border-border/50 text-sm">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Layers className="h-3.5 w-3.5" />
-          <span className="text-xs">{providers.length} fournisseur{providers.length !== 1 ? 's' : ''}</span>
-        </div>
-        <Separator orientation="vertical" className="h-4" />
-        <div className="flex items-center gap-1.5">
-          {activeChatProvider ? (
-            <>
-              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span className="text-xs font-medium">Chat&nbsp;: {activeChatProvider.name}</span>
-            </>
-          ) : (
-            <>
-              <span className="h-2 w-2 rounded-full bg-warning" />
-              <span className="text-xs text-warning">Aucun chat actif</span>
-            </>
-          )}
-        </div>
-        {activeTtsProvider && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1.5">
-              <AudioLines className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-              <span className="text-xs font-medium">Voix&nbsp;: {activeTtsProvider.name}</span>
-            </div>
-          </>
-        )}
-        <Separator orientation="vertical" className="h-4" />
-        <div className="flex items-center gap-1.5">
-          {activeProvider?.lastTestOk === true ? (
-            <><Wifi className="h-3.5 w-3.5 text-success-text" /><span className="text-xs text-success-text">Test OK</span></>
-          ) : activeProvider?.lastTestOk === false ? (
-            <><WifiOff className="h-3.5 w-3.5 text-destructive" /><span className="text-xs text-destructive">Test échoué</span></>
-          ) : (
-            <><Activity className="h-3.5 w-3.5 text-gray-400" /><span className="text-xs text-muted-foreground">Non testé</span></>
-          )}
-        </div>
-        <div className="ml-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={handleTestAll}
-            disabled={isTestingAll || providers.length === 0}
-          >
-            {isTestingAll ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-            Tout tester
-          </Button>
-        </div>
-      </div>
+        {/* ═══════════ Header « Savane EdTech » ═══════════ */}
+        <header className="relative overflow-hidden rounded-xl border border-border bg-card ds-kente-watermark">
+          {/* Bande kente verticale (bord droit) */}
+          <div
+            className="absolute top-0 bottom-0 right-0 w-2 z-10 pointer-events-none"
+            aria-hidden="true"
+            style={{
+              backgroundImage: `repeating-linear-gradient(
+                0deg,
+                #84CC16 0px, #84CC16 40px,
+                #C2410C 40px, #C2410C 80px,
+                #F59E0B 80px, #F59E0B 120px,
+                #2C3E50 120px, #2C3E50 160px
+              )`,
+            }}
+          />
 
-      {/* ─── Tabs ─── */}
-      <Tabs defaultValue="providers" className="w-full">
-        <TabsList>
-          <TabsTrigger value="providers" className="gap-1.5">
-            <Zap className="h-3.5 w-3.5" />
-            Fournisseurs
-          </TabsTrigger>
-          <TabsTrigger value="failover" className="gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Failover
-            {failoverStatus?.config.enabled && (
-              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-            )}
-          </TabsTrigger>
-        </TabsList>
+          {/* Losanges kente décoratifs (très subtils) */}
+          <KenteDiamond className="absolute top-3 right-8 w-20 h-20 text-gold opacity-[0.06] pointer-events-none" />
+          <KenteDiamond className="absolute bottom-2 right-16 w-14 h-14 text-primary opacity-[0.04] pointer-events-none" />
 
-        {/* ═══════════════════════ Tab 1: Fournisseurs ═══════════════════════ */}
-        <TabsContent value="providers" className="mt-4">
-          {providers.length === 0 ? (
-            /* ─── Empty State ─── */
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center py-16 px-4"
-            >
-              <div className="p-4 rounded-full bg-secondary/10 mb-4">
-                <Server className="h-8 w-8 text-secondary" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 pr-6">
+            <div className="flex items-center gap-4">
+              {/* Icône dans un badge gradient lime → or */}
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-gold flex items-center justify-center shadow-md shrink-0">
+                <Sparkles className="h-6 w-6 text-white" />
               </div>
-              <h3 className="text-lg font-semibold mb-1 font-display tracking-tight">Aucun fournisseur IA configuré</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-                Le système utilise <strong>Z-AI par défaut</strong>. Ajoutez un fournisseur pour personnaliser le comportement de l&apos;IA.
-              </p>
-              <Button
-                className="bg-secondary hover:bg-secondary/90 text-white"
-                onClick={() => openCreate()}
-              >
-                <Plus className="h-4 w-4 mr-1.5" />
-                Ajouter un fournisseur
-              </Button>
-            </motion.div>
-          ) : (
-            /* ─── Provider List ─── */
-            <div className="rounded-lg border overflow-hidden">
-              <AnimatePresence>
-                {providers.map((provider, index) => {
-                  const meta = PROVIDER_META[provider.provider as AIProviderType] || PROVIDER_META.OPENAI_COMPATIBLE
-                  const Icon = meta.icon
-                  const isTesting = testingId === provider.id
-                  const isActivating = activatingId === provider.id
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight font-display flex items-center gap-2">
+                  Fournisseurs IA
+                  {failoverStatus?.config.enabled && (
+                    <span className="h-2 w-2 rounded-full bg-success animate-pulse" title="Failover actif" />
+                  )}
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                  Gérez vos fournisseurs d&apos;intelligence artificielle et le basculement automatique
+                </p>
+              </div>
+            </div>
+            <Button
+              className="bg-gradient-to-r from-primary to-lime-600 hover:from-primary/90 hover:to-lime-600/90 text-white shrink-0 ds-press"
+              onClick={() => openCreate()}
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              Ajouter
+            </Button>
+          </div>
+        </header>
 
-                  return (
-                    <motion.div
-                      key={provider.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ delay: index * 0.03 }}
-                      className={`relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 py-3 transition-colors ${
-                        provider.isActive
-                          ? 'bg-secondary/10 border-l-[3px] border-l-primary'
-                          : 'border-l-[3px] border-l-transparent hover:bg-muted/30'
-                      } ${index < providers.length - 1 ? 'border-b border-border/50' : ''}`}
-                    >
-                      {/* Left: Icon + Name + Badges */}
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`p-1.5 rounded-md shrink-0 ${meta.bgClass}`}>
-                          <Icon className="h-4 w-4" style={{ color: meta.color }} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium truncate">{provider.name}</span>
-                            <Badge variant="outline" className="text-[10px] shrink-0">
-                              {meta.label}
-                            </Badge>
-                            {/* KOKORO-TTS-1 : badge capability (chat / tts / audio) */}
+        {/* ═══════════ Stats bar compacte ═══════════ */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 rounded-lg bg-muted/50 border border-border/50 text-sm ds-kente-pattern-subtle">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Layers className="h-3.5 w-3.5" />
+            <span className="text-xs">{providers.length} fournisseur{providers.length !== 1 ? 's' : ''}</span>
+          </div>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-1.5">
+            {activeChatProvider ? (
+              <>
+                <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                <span className="text-xs font-medium">Chat&nbsp;: {activeChatProvider.name}</span>
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 rounded-full bg-warning" />
+                <span className="text-xs text-warning">Aucun chat actif</span>
+              </>
+            )}
+          </div>
+          {activeTtsProvider && (
+            <>
+              <Separator orientation="vertical" className="h-4" />
+              <div className="flex items-center gap-1.5">
+                <AudioLines className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-medium">Voix&nbsp;: {activeTtsProvider.name}</span>
+              </div>
+            </>
+          )}
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-1.5">
+            {activeProvider?.lastTestOk === true ? (
+              <><Wifi className="h-3.5 w-3.5 text-success-text" /><span className="text-xs text-success-text">Test OK</span></>
+            ) : activeProvider?.lastTestOk === false ? (
+              <><WifiOff className="h-3.5 w-3.5 text-destructive" /><span className="text-xs text-destructive">Test échoué</span></>
+            ) : (
+              <><Activity className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs text-muted-foreground">Non testé</span></>
+            )}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {activeProvider && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                onClick={openModelSwitcher}
+              >
+                <Layers className="h-3 w-3" />
+                <span className="hidden sm:inline">Changer modèle</span>
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={handleTestAll}
+              disabled={isTestingAll || providers.length === 0}
+            >
+              {isTestingAll ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              Tout tester
+            </Button>
+          </div>
+        </div>
+
+        {/* ═══════════ Tabs (3 sections) ═══════════ */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="flex-wrap h-auto">
+            <TabsTrigger value="providers" className="gap-1.5">
+              <Zap className="h-3.5 w-3.5" />
+              Fournisseurs
+            </TabsTrigger>
+            <TabsTrigger value="failover" className="gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Failover &amp; Santé
+              {failoverStatus?.config.enabled && (
+                <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="diagnostics" className="gap-1.5">
+              <Cpu className="h-3.5 w-3.5" />
+              Diagnostics
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ═══════════════════════ Tab 1: Fournisseurs ═══════════════════════ */}
+          <TabsContent value="providers" className="mt-4">
+            {providers.length === 0 ? (
+              /* ─── Empty State ─── */
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center justify-center py-16 px-4"
+              >
+                <div className="p-4 rounded-full bg-secondary/10 mb-4 relative">
+                  <Server className="h-8 w-8 text-secondary" />
+                  <KenteDiamond className="absolute -top-2 -right-2 w-8 h-8 text-gold opacity-30" />
+                </div>
+                <h3 className="text-lg font-semibold mb-1 font-display tracking-tight">Aucun fournisseur IA configuré</h3>
+                <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+                  Le système utilise <strong>Z-AI par défaut</strong>. Ajoutez un fournisseur pour personnaliser le comportement de l&apos;IA.
+                </p>
+                <Button
+                  className="bg-gradient-to-r from-primary to-lime-600 hover:from-primary/90 hover:to-lime-600/90 text-white"
+                  onClick={() => openCreate()}
+                >
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Ajouter un fournisseur
+                </Button>
+              </motion.div>
+            ) : (
+              /* ─── Provider Grid (EntityCard) ─── */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <AnimatePresence mode="popLayout">
+                  {providers.map((provider, index) => {
+                    const meta = getProviderMeta(provider.provider)
+                    const Icon = meta.icon
+                    const isTesting = testingId === provider.id
+                    const isActivating = activatingId === provider.id
+                    const isActive = provider.isActive
+
+                    // Health depuis le failover status (si disponible)
+                    const healthInfo = failoverStatus?.providers.find(p => p.id === provider.id)
+                    const successRate = healthInfo?.health && healthInfo.health.totalCalls > 0
+                      ? ((healthInfo.health.totalCalls - healthInfo.health.totalFailures) / healthInfo.health.totalCalls) * 100
+                      : null
+
+                    return (
+                      <motion.div
+                        key={provider.id}
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.2, delay: index * 0.04 }}
+                        className={`rounded-lg ds-lift ${isActive ? 'ds-glow-gold' : ''}`}
+                      >
+                        <EntityCard
+                          title={provider.name}
+                          subtitle={provider.model || '—'}
+                          thumbnailIcon={Icon}
+                          badge={{
+                            label: `P${provider.priority}`,
+                            variant: isActive ? 'success' : 'primary',
+                          }}
+                          meta={`T: ${provider.temperature ?? 0.7} · Max: ${provider.maxTokens ?? 4096} · Dernier test: ${formatTime(provider.lastTestAt)}`}
+                          index={index}
+                        >
+                          {/* ─── Base URL (info technique) ─── */}
+                          {provider.baseUrl && (
+                            <p className="mt-2 text-[10px] text-muted-foreground truncate font-mono" title={provider.baseUrl}>
+                              {provider.baseUrl}
+                            </p>
+                          )}
+
+                          {/* ─── Badges row (Actif + capability + test status) ─── */}
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {isActive ? (
+                              <Badge variant="success" size="sm" className="gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                                Actif
+                              </Badge>
+                            ) : (
+                              <Badge variant="default" size="sm">Inactif</Badge>
+                            )}
                             {provider.capability && (
                               <Badge
-                                className={`text-[10px] shrink-0 gap-1 ${
-                                  provider.capability === 'tts'
-                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                    : provider.capability === 'audio'
-                                      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                                      : 'bg-muted text-muted-foreground'
-                                }`}
+                                variant={provider.capability === 'tts' ? 'gold' : provider.capability === 'audio' ? 'danger' : 'info'}
+                                size="sm"
+                                className="gap-1"
                               >
                                 {provider.capability === 'tts' && <AudioLines className="h-2.5 w-2.5" />}
                                 {provider.capability === 'audio' && <Mic className="h-2.5 w-2.5" />}
                                 {provider.capability.toUpperCase()}
                               </Badge>
                             )}
-                            <Badge variant="secondary" className="text-[10px] font-mono tabular-nums shrink-0">
-                              {provider.model || '—'}
-                            </Badge>
-                            {provider.isActive && (
-                              <Badge className="bg-success/10 text-success-text text-[10px] shrink-0 gap-1">
-                                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-                                Actif
+                            {provider.hasApiKey && (
+                              <Badge variant="success" size="sm" className="gap-1">
+                                <Shield className="h-2.5 w-2.5" />
+                                Clé
                               </Badge>
                             )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                            <span>T: {provider.temperature ?? 0.7}</span>
-                            <span className="text-muted-foreground/40">·</span>
-                            <span>Max: {provider.maxTokens ?? 4096}</span>
-                            {provider.hasApiKey && (
-                              <>
-                                <span className="text-muted-foreground/40">·</span>
-                                <Shield className="h-3 w-3 text-success-text" />
-                              </>
+                            {provider.lastTestOk === true && (
+                              <span className="flex items-center justify-center h-5 w-5 rounded-full bg-success/10 text-success-text" title="Test OK">
+                                <Check className="h-3 w-3" />
+                              </span>
+                            )}
+                            {provider.lastTestOk === false && (
+                              <span className="flex items-center justify-center h-5 w-5 rounded-full bg-destructive/10 text-destructive" title="Test échoué">
+                                <X className="h-3 w-3" />
+                              </span>
+                            )}
+                            {provider.lastTestOk == null && (
+                              <span className="flex items-center justify-center h-5 w-5 rounded-full bg-warning/10 text-warning" title="Non testé">
+                                <AlertCircle className="h-3 w-3" />
+                              </span>
                             )}
                           </div>
-                        </div>
-                      </div>
 
-                      {/* Right: Status + Actions */}
-                      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                        {/* Connection status */}
-                        {provider.lastTestOk === true && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-success/10 text-success-text">
-                            <Check className="h-3.5 w-3.5" />
-                          </span>
-                        )}
-                        {provider.lastTestOk === false && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-destructive/10 text-destructive">
-                            <X className="h-3.5 w-3.5" />
-                          </span>
-                        )}
-                        {provider.lastTestOk == null && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-warning/10 text-warning">
-                            <AlertCircle className="h-3.5 w-3.5" />
-                          </span>
-                        )}
-
-                        {/* Activate */}
-                        {!provider.isActive && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs gap-1"
-                            onClick={() => handleActivate(provider.id)}
-                            disabled={isActivating}
-                          >
-                            {isActivating ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Power className="h-3 w-3" />
-                            )}
-                            <span className="hidden sm:inline">Activer</span>
-                          </Button>
-                        )}
-
-                        {/* Test */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => handleTest(provider.id)}
-                          disabled={isTesting}
-                          title="Tester"
-                        >
-                          {isTesting ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3.5 w-3.5" />
+                          {/* ─── Mini health bar (si failover status disponible) ─── */}
+                          {successRate !== null && (
+                            <div className="mt-3">
+                              <ProgressBar
+                                value={successRate}
+                                accent={successRate >= 80 ? 'success' : successRate >= 50 ? 'warning' : 'destructive'}
+                                size="sm"
+                                label="Taux de succès"
+                                index={index}
+                              />
+                            </div>
                           )}
-                        </Button>
 
-                        {/* Edit */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => openEdit(provider)}
-                          title="Modifier"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                          {/* ─── Action buttons (touch-friendly ≥ 40px) ─── */}
+                          <div className="mt-4 flex items-center gap-1.5">
+                            {!isActive && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-10 gap-1 text-xs flex-1"
+                                onClick={() => handleActivate(provider.id)}
+                                disabled={isActivating}
+                                aria-label={`Activer ${provider.name}`}
+                              >
+                                {isActivating ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Power className="h-3.5 w-3.5" />
+                                )}
+                                <span>Activer</span>
+                              </Button>
+                            )}
+                            {isActive && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-10 gap-1 text-xs flex-1"
+                                onClick={() => handleActivate(provider.id, false)}
+                                disabled={isActivating}
+                                aria-label={`Désactiver ${provider.name}`}
+                              >
+                                {isActivating ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Power className="h-3.5 w-3.5" />
+                                )}
+                                <span>Désactiver</span>
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-10 w-10 p-0"
+                              onClick={() => handleTest(provider.id)}
+                              disabled={isTesting}
+                              aria-label={`Tester ${provider.name}`}
+                              title="Tester la connexion"
+                            >
+                              {isTesting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-10 w-10 p-0"
+                              onClick={() => openEdit(provider)}
+                              aria-label={`Modifier ${provider.name}`}
+                              title="Modifier"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-10 w-10 p-0 text-destructive hover:text-destructive"
+                              onClick={() => {
+                                setSelectedProvider(provider)
+                                setShowDeleteDialog(true)
+                              }}
+                              disabled={provider.isActive}
+                              aria-label={`Supprimer ${provider.name}`}
+                              title="Supprimer"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </EntityCard>
+                      </motion.div>
+                    )
+                  })}
+                </AnimatePresence>
+              </div>
+            )}
+          </TabsContent>
 
-                        {/* Delete */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                          onClick={() => {
-                            setSelectedProvider(provider)
-                            setShowDeleteDialog(true)
-                          }}
-                          disabled={provider.isActive}
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+          {/* ═══════════════════════ Tab 2: Failover & Santé ═══════════════════════ */}
+          <TabsContent value="failover" className="mt-4">
+            {isFailoverLoading ? (
+              <div className="space-y-4">
+                <StatCardSkeletonGrid count={5} />
+                <PulseSkeleton className="h-48 w-full" variant="card" />
+                <PulseSkeleton className="h-32 w-full" variant="card" />
+              </div>
+            ) : failoverStatus ? (
+              <div className="space-y-5">
+                {/* ─── Enable/Disable Toggle + ProgressRing global ─── */}
+                <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 ds-kente-top">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-success/10">
+                        <ShieldCheck className="h-5 w-5 text-success-text" />
                       </div>
-                    </motion.div>
-                  )
-                })}
-              </AnimatePresence>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* ═══════════════════════ Tab 2: Failover ═══════════════════════ */}
-        <TabsContent value="failover" className="mt-4">
-          {isFailoverLoading ? (
-            <div className="space-y-4">
-              <PulseSkeleton className="h-10 w-full" />
-              <PulseSkeleton className="h-48 w-full" />
-              <PulseSkeleton className="h-32 w-full" />
-            </div>
-          ) : failoverStatus ? (
-            <div className="space-y-4">
-              {/* ─── Enable/Disable Toggle ─── */}
-              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-md bg-success/10">
-                    <ShieldCheck className="h-4 w-4 text-success-text" />
+                      <div>
+                        <p className="text-sm font-semibold font-display flex items-center gap-2">
+                          Basculement automatique (Failover)
+                          {failoverStatus.config.enabled && (
+                            <Badge variant="success" size="sm" className="gap-1">
+                              <HeartPulse className="h-3 w-3 animate-pulse" />
+                              Actif
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Bascule vers un autre fournisseur si l&apos;actif échoue
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {/* ProgressRing : % healthy */}
+                      {failoverStatus.summary.totalProviders > 0 && (
+                        <ProgressRing
+                          value={(failoverStatus.summary.healthy / failoverStatus.summary.totalProviders) * 100}
+                          size={64}
+                          strokeWidth={6}
+                          accent={failoverStatus.summary.healthy === failoverStatus.summary.totalProviders ? 'success' : 'warning'}
+                          sublabel="Sains"
+                          index={0}
+                        />
+                      )}
+                      <Switch
+                        checked={failoverStatus.config.enabled}
+                        onCheckedChange={handleToggleFailover}
+                        disabled={isUpdatingFailoverConfig || failoverStatus.summary.totalProviders < 2}
+                        aria-label="Activer le failover"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Basculement automatique (Failover)</p>
-                    <p className="text-xs text-muted-foreground">
-                      Bascule vers un autre fournisseur si l&apos;actif échoue
+                </div>
+
+                {/* Warning si < 2 providers */}
+                {failoverStatus.summary.totalProviders < 2 && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30">
+                    <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                    <p className="text-xs text-warning">
+                      <strong>Minimum 2 fournisseurs requis.</strong> Ajoutez au moins un fournisseur de secours pour que le failover fonctionne.
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {failoverStatus.config.enabled && (
-                    <Badge className="bg-success/10 text-success-text text-[10px] gap-1">
-                      <HeartPulse className="h-3 w-3 animate-pulse" />
-                      Actif
-                    </Badge>
-                  )}
-                  <Switch
-                    checked={failoverStatus.config.enabled}
-                    onCheckedChange={handleToggleFailover}
-                    disabled={isUpdatingFailoverConfig || failoverStatus.summary.totalProviders < 2}
+                )}
+
+                {/* ─── StatCards grid (5 métriques) ─── */}
+                <div role="status" aria-label="Métriques du failover" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  <StatCard
+                    label="Total providers"
+                    value={failoverStatus.summary.totalProviders}
+                    icon={Layers}
+                    accent="primary"
+                    index={0}
+                  />
+                  <StatCard
+                    label="Sains"
+                    value={failoverStatus.summary.healthy}
+                    icon={CheckCircle2}
+                    accent="success"
+                    index={1}
+                  />
+                  <StatCard
+                    label="Dégradés"
+                    value={failoverStatus.summary.degraded}
+                    icon={AlertTriangle}
+                    accent="warning"
+                    index={2}
+                  />
+                  <StatCard
+                    label="Cooldown"
+                    value={failoverStatus.summary.coolingDown}
+                    icon={Clock}
+                    accent="info"
+                    index={3}
+                  />
+                  <StatCard
+                    label="Basculements 24h"
+                    value={failoverStatus.summary.last24hEvents}
+                    icon={TrendingUp}
+                    accent="gold"
+                    hint={`Total cumulé : ${failoverStatus.summary.totalFailovers}`}
+                    index={4}
                   />
                 </div>
-              </div>
 
-              {/* Warning if < 2 providers */}
-              {failoverStatus.summary.totalProviders < 2 && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30">
-                  <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                  <p className="text-xs text-warning">
-                    <strong>Minimum 2 fournisseurs requis.</strong> Ajoutez au moins un fournisseur de secours pour que le failover fonctionne.
-                  </p>
-                </div>
-              )}
-
-              {/* ─── Summary Stats ─── */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success-text shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Sains</p>
-                    <p className="text-sm font-bold text-success-text font-mono tabular-nums">{failoverStatus.summary.healthy}</p>
+                {/* ─── Configuration failover ─── */}
+                <div className="rounded-xl border border-border bg-card overflow-hidden ds-kente-top">
+                  <div className="p-4 border-b border-border/50">
+                    <h3 className="text-sm font-semibold font-display flex items-center gap-1.5">
+                      <Settings2 className="h-4 w-4" />
+                      Configuration
+                    </h3>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10">
-                  <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Dégradés</p>
-                    <p className="text-sm font-bold text-warning font-mono tabular-nums">{failoverStatus.summary.degraded}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10">
-                  <Clock className="h-3.5 w-3.5 text-destructive shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Cooldown</p>
-                    <p className="text-sm font-bold text-destructive font-mono tabular-nums">{failoverStatus.summary.coolingDown}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-secondary/10">
-                  <TrendingUp className="h-3.5 w-3.5 text-secondary shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Basculements</p>
-                    <p className="text-sm font-bold text-secondary font-mono tabular-nums">{failoverStatus.summary.totalFailovers}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ─── Priority Order ─── */}
-              {failoverStatus.providers.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3 pt-4 px-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm flex items-center gap-1.5 font-display">
-                        <ArrowUpDown className="h-3.5 w-3.5" />
-                        Ordre de failover
-                      </CardTitle>
-                      <span className="text-[10px] text-muted-foreground">
-                        Utilisez les flèches pour réordonner
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4">
-                    <div className="space-y-1.5">
-                      <AnimatePresence mode="popLayout">
-                        {failoverStatus.providers.map((p, idx) => (
-                          <motion.div
-                            key={p.id}
-                            layout
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 10 }}
-                            transition={{ duration: 0.15, delay: idx * 0.02 }}
-                            className={`flex items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
-                              p.status === 'COOLING_DOWN'
-                                ? 'border-destructive/30 bg-destructive/10'
-                                : p.status === 'DEGRADED'
-                                  ? 'border-warning/30 bg-warning/10'
-                                  : p.isActive
-                                    ? 'border-secondary/30 bg-secondary/10'
-                                    : 'border-border'
-                            }`}
-                          >
-                            {/* Priority number */}
-                            <div className={`flex items-center justify-center h-6 w-6 rounded-full text-[11px] font-bold shrink-0 ${
-                              idx === 0
-                                ? 'bg-secondary text-white'
-                                : 'bg-muted text-muted-foreground'
-                            }`}>
-                              {idx + 1}
-                            </div>
-
-                            {/* Provider info */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium truncate">{p.name}</span>
-                                {p.isActive && (
-                                  <Badge className="bg-secondary/10 text-secondary text-[9px] h-4 px-1">
-                                    PRINCIPAL
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[11px] text-muted-foreground font-mono tabular-nums">{p.model || '—'}</span>
-                                {p.health && p.health.totalCalls > 0 && (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {p.health.totalCalls} appels · {(p.health.totalFailures / p.health.totalCalls * 100).toFixed(0)}% échec
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Status indicator */}
-                            <div className="hidden sm:flex items-center shrink-0">
-                              {p.status === 'HEALTHY' && (
-                                <span className="flex items-center gap-1 text-[10px] text-success-text bg-success/10 px-2 py-0.5 rounded-full">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  Sain
-                                </span>
-                              )}
-                              {p.status === 'DEGRADED' && (
-                                <span className="flex items-center gap-1 text-[10px] text-warning bg-warning/10 px-2 py-0.5 rounded-full">
-                                  <AlertTriangle className="h-3 w-3" />
-                                  Dégradé
-                                  {p.health?.consecutiveFailures && (
-                                    <span>({p.health.consecutiveFailures}/{failoverStatus.config.maxConsecutiveFailures})</span>
-                                  )}
-                                </span>
-                              )}
-                              {p.status === 'COOLING_DOWN' && (
-                                <span className="flex items-center gap-1 text-[10px] text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
-                                  <Clock className="h-3 w-3" />
-                                  Cooldown
-                                </span>
-                              )}
-                            </div>
-
-                            {/* ALWAYS VISIBLE reorder buttons */}
-                            <div className="flex flex-col gap-0.5 shrink-0">
-                              <button
-                                onClick={() => handleMoveProvider(p.id, 'up')}
-                                disabled={idx === 0 || isReordering !== null}
-                                className={`h-6 w-6 rounded-md flex items-center justify-center border transition-colors ${
-                                  idx === 0
-                                    ? 'border-border/30 text-muted-foreground/20 cursor-not-allowed'
-                                    : 'border-border/60 text-muted-foreground hover:bg-secondary/10 hover:text-secondary hover:border-secondary/30'
-                                }`}
-                                title="Monter en priorité"
-                              >
-                                {isReordering === p.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <ChevronUp className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => handleMoveProvider(p.id, 'down')}
-                                disabled={idx === failoverStatus.providers.length - 1 || isReordering !== null}
-                                className={`h-6 w-6 rounded-md flex items-center justify-center border transition-colors ${
-                                  idx === failoverStatus.providers.length - 1
-                                    ? 'border-border/30 text-muted-foreground/20 cursor-not-allowed'
-                                    : 'border-border/60 text-muted-foreground hover:bg-secondary/10 hover:text-secondary hover:border-secondary/30'
-                                }`}
-                                title="Descendre en priorité"
-                              >
-                                {isReordering === p.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <ChevronDown className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* ─── Configuration ─── */}
-              <Card>
-                <CardHeader className="pb-3 pt-4 px-4">
-                  <CardTitle className="text-sm flex items-center gap-1.5 font-display">
-                    <Settings2 className="h-3.5 w-3.5" />
-                    Configuration
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Max consecutive failures */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="text-xs font-medium">Échecs avant cooldown</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Nombre d&apos;échecs consécutifs
-                        </p>
+                  <div className="p-4 space-y-4">
+                    {/* maxConsecutiveFailures slider */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-xs font-medium">Échecs avant cooldown</Label>
+                          <p className="text-[10px] text-muted-foreground">Nombre d&apos;échecs consécutifs avant mise en cooldown</p>
+                        </div>
+                        <Badge variant="secondary" size="md" className="font-mono tabular-nums">
+                          {failoverStatus.config.maxConsecutiveFailures}
+                        </Badge>
                       </div>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 5].map(n => (
-                          <button
-                            key={n}
-                            onClick={() => handleUpdateFailoverConfig({ maxConsecutiveFailures: n })}
-                            disabled={isUpdatingFailoverConfig}
-                            className={`h-7 w-7 rounded-md text-xs font-bold transition-all ${
-                              failoverStatus.config.maxConsecutiveFailures === n
-                                ? 'bg-secondary text-white'
-                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                            }`}
-                          >
-                            {n}
-                          </button>
-                        ))}
-                      </div>
+                      <Slider
+                        value={[failoverStatus.config.maxConsecutiveFailures]}
+                        min={1}
+                        max={10}
+                        step={1}
+                        onValueChange={([v]) => handleUpdateFailoverConfig({ maxConsecutiveFailures: v })}
+                        disabled={isUpdatingFailoverConfig}
+                      />
                     </div>
 
-                    {/* Cooldown duration */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="text-xs font-medium">Durée de cooldown</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Temps d&apos;attente avant réessai
-                        </p>
+                    <Separator />
+
+                    {/* cooldownDurationMs slider + presets */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-xs font-medium">Durée de cooldown</Label>
+                          <p className="text-[10px] text-muted-foreground">Temps d&apos;attente avant réessai du provider</p>
+                        </div>
+                        <Badge variant="info" size="md" className="font-mono tabular-nums">
+                          {Math.round(failoverStatus.config.cooldownDurationMs / 1000)}s
+                        </Badge>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <Slider
+                        value={[Math.min(failoverStatus.config.cooldownDurationMs, 60000)]}
+                        min={1000}
+                        max={60000}
+                        step={1000}
+                        onValueChange={([v]) => handleUpdateFailoverConfig({ cooldownDurationMs: v })}
+                        disabled={isUpdatingFailoverConfig}
+                      />
+                      {/* Presets pour durées longues */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
                         {[
                           { label: '1m', value: 60_000 },
                           { label: '5m', value: 300_000 },
@@ -1435,9 +1519,9 @@ export function AIProvidersPage() {
                             key={opt.value}
                             onClick={() => handleUpdateFailoverConfig({ cooldownDurationMs: opt.value })}
                             disabled={isUpdatingFailoverConfig}
-                            className={`h-7 px-2 rounded-md text-[11px] font-bold transition-all ${
+                            className={`h-7 px-2.5 rounded-md text-[11px] font-bold transition-all ${
                               failoverStatus.config.cooldownDurationMs === opt.value
-                                ? 'bg-secondary text-white'
+                                ? 'bg-primary text-primary-text'
                                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
                             }`}
                           >
@@ -1446,165 +1530,543 @@ export function AIProvidersPage() {
                         ))}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Reset health button */}
-                  <div className="flex justify-end mt-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs"
-                      onClick={handleResetHealth}
-                      disabled={isResettingHealth}
-                    >
-                      {isResettingHealth ? (
-                        <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
-                      ) : (
-                        <RotateCcw className="h-3 w-3 mr-1.5" />
-                      )}
-                      Réinitialiser la santé
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                    <Separator />
 
-              {/* ─── Recent Events (Collapsible) ─── */}
-              {failoverStatus.recentEvents.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3 pt-4 px-4">
-                    <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsEventsExpanded(!isEventsExpanded)}>
-                      <CardTitle className="text-sm flex items-center gap-1.5 font-display">
-                        <Activity className="h-3.5 w-3.5" />
-                        Événements récents
-                        <Badge variant="outline" className="text-[10px] ml-1">
-                          24 dernières heures
-                        </Badge>
-                      </CardTitle>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        {isEventsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    {/* retryAllProviders switch */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-xs font-medium">Réessayer tous les fournisseurs</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          Si activé, le système réessaie tous les fournisseurs même après un cooldown
+                        </p>
+                      </div>
+                      <Switch
+                        checked={failoverStatus.config.retryAllProviders}
+                        onCheckedChange={(v) => handleUpdateFailoverConfig({ retryAllProviders: v })}
+                        disabled={isUpdatingFailoverConfig}
+                        aria-label="Réessayer tous les fournisseurs"
+                      />
+                    </div>
+
+                    {/* Reset health */}
+                    <Separator />
+                    <div className="flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1.5"
+                        onClick={handleResetHealth}
+                        disabled={isResettingHealth}
+                      >
+                        {isResettingHealth ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        )}
+                        Réinitialiser la santé
                       </Button>
                     </div>
-                  </CardHeader>
-                  <AnimatePresence>
-                    {isEventsExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                        <CardContent className="px-4 pb-4">
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                            {failoverStatus.recentEvents.map((event) => {
-                              const typeInfo = formatEventType(event.eventType)
-                              const TypeIcon = typeInfo.icon
-                              return (
-                                <div
-                                  key={event.id}
-                                  className="flex items-start gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border/50"
-                                >
-                                  <div className={`p-1 rounded shrink-0 ${typeInfo.color}`}>
-                                    <TypeIcon className="h-3.5 w-3.5" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className="text-xs font-medium">{typeInfo.label}</span>
-                                      {event.fromProvider && (
-                                        <span className="text-[10px] text-muted-foreground">
-                                          {event.fromProvider}
-                                          {event.toProvider && (
-                                            <> → <span className="font-medium">{event.toProvider}</span></>
-                                          )}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                                      {event.reason}
-                                    </p>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground shrink-0">
-                                    {formatTime(event.createdAt)}
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </CardContent>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </Card>
-              )}
+                  </div>
+                </div>
 
-              {/* ─── How it works ─── */}
-              <div className="p-3 rounded-lg bg-muted/30 border border-dashed">
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <strong className="text-foreground">Comment ça marche ?</strong> Lorsqu&apos;un fournisseur IA échoue {failoverStatus.config.maxConsecutiveFailures} fois
-                  consécutivement, il est mis en cooldown pendant {Math.ceil(failoverStatus.config.cooldownDurationMs / 60000)} min.
-                  Le système bascule automatiquement vers le fournisseur suivant dans l&apos;ordre de priorité.
-                  Après le cooldown, le fournisseur est automatiquement réessayé.
-                </p>
+                {/* ─── Ordre de priorité ─── */}
+                {failoverStatus.providers.length > 0 && (
+                  <div className="rounded-xl border border-border bg-card overflow-hidden ds-kente-top">
+                    <div className="p-4 border-b border-border/50">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold font-display flex items-center gap-1.5">
+                          <ArrowUpDown className="h-4 w-4" />
+                          Ordre de failover
+                        </h3>
+                        <span className="text-[10px] text-muted-foreground">
+                          Utilisez les flèches pour réordonner
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-2">
+                      <AnimatePresence mode="popLayout">
+                        {failoverStatus.providers.map((p, idx) => {
+                          const meta = getProviderMeta(p.provider)
+                          const PIcon = meta.icon
+                          return (
+                            <motion.div
+                              key={p.id}
+                              layout
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 10 }}
+                              transition={{ duration: 0.15, delay: idx * 0.02 }}
+                              className={`flex items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                                p.status === 'COOLING_DOWN'
+                                  ? 'border-destructive/30 bg-destructive/10'
+                                  : p.status === 'DEGRADED'
+                                    ? 'border-warning/30 bg-warning/10'
+                                    : p.status === 'UNKNOWN'
+                                      ? 'border-muted-foreground/20 bg-muted/20'
+                                      : p.isActive
+                                        ? 'border-secondary/30 bg-secondary/10'
+                                        : 'border-border'
+                              }`}
+                            >
+                              {/* Priority number */}
+                              <div className={`flex items-center justify-center h-7 w-7 rounded-full text-[11px] font-bold shrink-0 ${
+                                idx === 0
+                                  ? 'bg-gradient-to-br from-primary to-lime-600 text-white'
+                                  : 'bg-muted text-muted-foreground'
+                              }`}>
+                                {idx + 1}
+                              </div>
+
+                              {/* Provider icon */}
+                              <div className={`p-1.5 rounded-md shrink-0 ${meta.bgClass}`}>
+                                <PIcon className="h-3.5 w-3.5" style={{ color: meta.color }} />
+                              </div>
+
+                              {/* Provider info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium truncate">{p.name}</span>
+                                  {p.isActive && (
+                                    <Badge variant="secondary" size="sm" className="shrink-0">PRINCIPAL</Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[11px] text-muted-foreground font-mono tabular-nums">{p.model || '—'}</span>
+                                  {p.health && p.health.totalCalls > 0 && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {p.health.totalCalls} appels · {(p.health.totalFailures / p.health.totalCalls * 100).toFixed(0)}% échec
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Status indicator (gère UNKNOWN) */}
+                              <div className="hidden sm:flex items-center shrink-0">
+                                <Badge variant={healthStatusVariant(p.status)} size="sm" className="gap-1">
+                                  {p.status === 'HEALTHY' && <CheckCircle2 className="h-3 w-3" />}
+                                  {p.status === 'DEGRADED' && <AlertTriangle className="h-3 w-3" />}
+                                  {p.status === 'COOLING_DOWN' && <Clock className="h-3 w-3" />}
+                                  {p.status === 'UNKNOWN' && <HelpCircle className="h-3 w-3" />}
+                                  {healthStatusLabel(p.status)}
+                                  {p.status === 'DEGRADED' && p.health?.consecutiveFailures && (
+                                    <span className="ml-0.5">({p.health.consecutiveFailures}/{failoverStatus.config.maxConsecutiveFailures})</span>
+                                  )}
+                                </Badge>
+                              </div>
+
+                              {/* Reorder buttons */}
+                              <div className="flex flex-col gap-0.5 shrink-0">
+                                <button
+                                  onClick={() => handleMoveProvider(p.id, 'up')}
+                                  disabled={idx === 0 || isReordering !== null}
+                                  className={`h-7 w-7 rounded-md flex items-center justify-center border transition-colors ${
+                                    idx === 0
+                                      ? 'border-border/30 text-muted-foreground/20 cursor-not-allowed'
+                                      : 'border-border/60 text-muted-foreground hover:bg-primary/10 hover:text-primary-text hover:border-primary/30'
+                                  }`}
+                                  aria-label={`Monter ${p.name} en priorité`}
+                                >
+                                  {isReordering === p.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleMoveProvider(p.id, 'down')}
+                                  disabled={idx === failoverStatus.providers.length - 1 || isReordering !== null}
+                                  className={`h-7 w-7 rounded-md flex items-center justify-center border transition-colors ${
+                                    idx === failoverStatus.providers.length - 1
+                                      ? 'border-border/30 text-muted-foreground/20 cursor-not-allowed'
+                                      : 'border-border/60 text-muted-foreground hover:bg-primary/10 hover:text-primary-text hover:border-primary/30'
+                                  }`}
+                                  aria-label={`Descendre ${p.name} en priorité`}
+                                >
+                                  {isReordering === p.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── Timeline des événements récents ─── */}
+                {failoverStatus.recentEvents.length > 0 && (
+                  <div className="rounded-xl border border-border bg-card overflow-hidden ds-kente-top">
+                    <div className="p-4 border-b border-border/50">
+                      <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setIsEventsExpanded(!isEventsExpanded)}
+                      >
+                        <h3 className="text-sm font-semibold font-display flex items-center gap-1.5">
+                          <Activity className="h-4 w-4" />
+                          Événements récents
+                          <Badge variant="default" size="sm" className="ml-1">
+                            24 dernières heures
+                          </Badge>
+                        </h3>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={isEventsExpanded ? 'Réduire' : 'Développer'}>
+                          {isEventsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <AnimatePresence>
+                      {isEventsExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-4">
+                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                              {failoverStatus.recentEvents.map((event) => {
+                                const typeInfo = formatEventType(event.eventType)
+                                const TypeIcon = typeInfo.icon
+                                return (
+                                  <div
+                                    key={event.id}
+                                    className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-muted/30 border border-border/50"
+                                  >
+                                    <div className={`p-1.5 rounded shrink-0 ${typeInfo.color}`}>
+                                      <TypeIcon className="h-3.5 w-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-medium">{typeInfo.label}</span>
+                                        {event.fromProvider && (
+                                          <span className="text-[10px] text-muted-foreground">
+                                            {event.fromProvider}
+                                            {event.toProvider && (
+                                              <> → <span className="font-medium">{event.toProvider}</span></>
+                                            )}
+                                          </span>
+                                        )}
+                                        {event.resolved && (
+                                          <Badge variant="success" size="sm" className="gap-0.5">
+                                            <CheckCircle2 className="h-2.5 w-2.5" />
+                                            Résolu
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                                        {event.reason}
+                                      </p>
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground shrink-0">
+                                      {formatTime(event.createdAt)}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* ─── How it works ─── */}
+                <div className="p-3 rounded-lg bg-muted/30 border border-dashed border-border/50">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    <strong className="text-foreground">Comment ça marche ?</strong> Lorsqu&apos;un fournisseur IA échoue {failoverStatus.config.maxConsecutiveFailures} fois
+                    consécutivement, il est mis en cooldown pendant {Math.ceil(failoverStatus.config.cooldownDurationMs / 60000)} min.
+                    Le système bascule automatiquement vers le fournisseur suivant dans l&apos;ordre de priorité.
+                    Après le cooldown, le fournisseur est automatiquement réessayé.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <ShieldCheck className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Impossible de charger le statut du failover</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ═══════════════════════ Tab 3: Diagnostics ═══════════════════════ */}
+          <TabsContent value="diagnostics" className="mt-4">
+            {isFailoverLoading ? (
+              <div className="space-y-4">
+                <PulseSkeleton className="h-48 w-full" variant="card" />
+                <PulseSkeleton className="h-32 w-full" variant="card" />
+              </div>
+            ) : failoverStatus ? (
+              <div className="space-y-5">
+                {/* ─── Per-provider diagnostics ─── */}
+                <div className="rounded-xl border border-border bg-card overflow-hidden ds-kente-top">
+                  <div className="p-4 border-b border-border/50">
+                    <h3 className="text-sm font-semibold font-display flex items-center gap-1.5">
+                      <Cpu className="h-4 w-4" />
+                      Diagnostics par fournisseur
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Taux de succès, appels et échecs pour chaque provider
+                    </p>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {failoverStatus.providers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Aucun fournisseur à diagnostiquer</p>
+                    ) : (
+                      failoverStatus.providers.map((p, idx) => {
+                        const meta = getProviderMeta(p.provider)
+                        const PIcon = meta.icon
+                        const h = p.health
+                        const successRate = h && h.totalCalls > 0
+                          ? ((h.totalCalls - h.totalFailures) / h.totalCalls) * 100
+                          : null
+                        const failureRate = h && h.totalCalls > 0
+                          ? (h.totalFailures / h.totalCalls) * 100
+                          : 0
+
+                        return (
+                          <motion.div
+                            key={p.id}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.03 }}
+                            className="p-3 rounded-lg border border-border/50 bg-muted/20"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className={`p-1.5 rounded-md shrink-0 ${meta.bgClass}`}>
+                                <PIcon className="h-4 w-4" style={{ color: meta.color }} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium truncate">{p.name}</span>
+                                  <Badge variant={healthStatusVariant(p.status)} size="sm">
+                                    {healthStatusLabel(p.status)}
+                                  </Badge>
+                                  {p.isActive && <Badge variant="success" size="sm">Actif</Badge>}
+                                </div>
+                                <span className="text-[11px] text-muted-foreground font-mono">{p.model || '—'}</span>
+                              </div>
+                            </div>
+
+                            {h ? (
+                              <>
+                                {/* Success rate */}
+                                {successRate !== null && (
+                                  <div className="mb-2">
+                                    <ProgressBar
+                                      value={successRate}
+                                      accent={successRate >= 80 ? 'success' : successRate >= 50 ? 'warning' : 'destructive'}
+                                      size="sm"
+                                      label="Taux de succès"
+                                      index={idx}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Stats grid */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                                  <div className="p-1.5 rounded bg-muted/50">
+                                    <p className="text-muted-foreground">Appels</p>
+                                    <p className="font-mono font-bold tabular-nums">{h.totalCalls}</p>
+                                  </div>
+                                  <div className="p-1.5 rounded bg-muted/50">
+                                    <p className="text-muted-foreground">Échecs</p>
+                                    <p className="font-mono font-bold tabular-nums text-destructive">{h.totalFailures}</p>
+                                  </div>
+                                  <div className="p-1.5 rounded bg-muted/50">
+                                    <p className="text-muted-foreground">Basculements</p>
+                                    <p className="font-mono font-bold tabular-nums text-warning">{h.totalFailovers}</p>
+                                  </div>
+                                  <div className="p-1.5 rounded bg-muted/50">
+                                    <p className="text-muted-foreground">Échecs cons.</p>
+                                    <p className="font-mono font-bold tabular-nums">{h.consecutiveFailures}</p>
+                                  </div>
+                                </div>
+
+                                {/* Timestamps */}
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-muted-foreground">
+                                  <span>Dernier succès : {formatTime(h.lastSuccessAt)}</span>
+                                  <span>Dernier échec : {formatTime(h.lastFailureAt)}</span>
+                                  {h.isCoolingDown && (
+                                    <Badge variant="danger" size="sm" className="gap-0.5">
+                                      <Clock className="h-2.5 w-2.5" />
+                                      En cooldown
+                                    </Badge>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground italic">
+                                Aucune donnée de santé — le provider n&apos;a pas encore été sollicité.
+                              </p>
+                            )}
+                          </motion.div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* ─── Event log complet ─── */}
+                <div className="rounded-xl border border-border bg-card overflow-hidden ds-kente-top">
+                  <div className="p-4 border-b border-border/50">
+                    <h3 className="text-sm font-semibold font-display flex items-center gap-1.5">
+                      <Activity className="h-4 w-4" />
+                      Journal des événements
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {failoverStatus.recentEvents.length} événement(s) sur les dernières 24h
+                    </p>
+                  </div>
+                  <div className="p-4">
+                    {failoverStatus.recentEvents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Aucun événement récent</p>
+                    ) : (
+                      <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                        {failoverStatus.recentEvents.map((event) => {
+                          const typeInfo = formatEventType(event.eventType)
+                          const TypeIcon = typeInfo.icon
+                          return (
+                            <div
+                              key={event.id}
+                              className="px-3 py-2 rounded-lg bg-muted/30 border border-border/50"
+                            >
+                              <div className="flex items-start gap-2.5">
+                                <div className={`p-1.5 rounded shrink-0 ${typeInfo.color}`}>
+                                  <TypeIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-medium">{typeInfo.label}</span>
+                                    {event.fromProvider && (
+                                      <span className="text-[10px] text-muted-foreground">
+                                        {event.fromProvider}
+                                        {event.toProvider && (
+                                          <> → <span className="font-medium">{event.toProvider}</span></>
+                                        )}
+                                      </span>
+                                    )}
+                                    {event.resolved && (
+                                      <Badge variant="success" size="sm" className="gap-0.5">
+                                        <CheckCircle2 className="h-2.5 w-2.5" />
+                                        Résolu
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    {event.reason}
+                                  </p>
+                                  {event.errorDetails && (
+                                    <p className="text-[10px] text-destructive/80 mt-1 font-mono break-all">
+                                      {event.errorDetails}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                  {formatTime(event.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Cpu className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Impossible de charger les diagnostics</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* ═══════════════════════ Dialogues ═══════════════════════ */}
+
+        {/* ─── Create Dialog (GlassModal) ─── */}
+        <GlassModal
+          open={showCreateDialog}
+          onClose={() => setShowCreateDialog(false)}
+          title="Ajouter un fournisseur IA"
+          description="Configurez un nouveau fournisseur d'intelligence artificielle"
+          size="lg"
+          footer={
+            <div className="flex items-center justify-between gap-2 w-full">
+              <div />
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  className="bg-gradient-to-r from-primary to-lime-600 hover:from-primary/90 hover:to-lime-600/90 text-white"
+                  onClick={handleCreate}
+                  disabled={isSaving || !formData.name}
+                >
+                  {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Créer le fournisseur
+                </Button>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-12">
-              <ShieldCheck className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Impossible de charger le statut du failover</p>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* ─── Create Dialog ─── */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-secondary" />
-              Ajouter un fournisseur IA
-            </DialogTitle>
-            <DialogDescription>
-              Configurez un nouveau fournisseur d&apos;intelligence artificielle
-            </DialogDescription>
-          </DialogHeader>
-
+          }
+        >
           <ProviderForm
             formData={formData}
             setFormData={setFormData}
             showApiKey={showApiKey}
             setShowApiKey={setShowApiKey}
           />
+        </GlassModal>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Annuler
-            </Button>
-            <Button
-              className="bg-secondary hover:bg-secondary/90 text-white"
-              onClick={handleCreate}
-              disabled={isSaving || !formData.name}
-            >
-              {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Créer le fournisseur
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Edit Dialog ─── */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-secondary" />
-              Modifier le fournisseur
-            </DialogTitle>
-            <DialogDescription>
-              Modifier la configuration de &quot;{selectedProvider?.name}&quot;
-            </DialogDescription>
-          </DialogHeader>
-
+        {/* ─── Edit Dialog (GlassModal) ─── */}
+        <GlassModal
+          open={showEditDialog}
+          onClose={() => setShowEditDialog(false)}
+          title="Modifier le fournisseur"
+          description={`Modifier la configuration de « ${selectedProvider?.name ?? ''} »`}
+          size="lg"
+          footer={
+            <div className="flex items-center justify-between gap-2 w-full">
+              <div>
+                {selectedProvider && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => handleTest(selectedProvider.id)}
+                    disabled={testingId === selectedProvider.id}
+                  >
+                    {testingId === selectedProvider.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plug className="h-3.5 w-3.5" />
+                    )}
+                    Tester la connexion
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  className="bg-gradient-to-r from-primary to-lime-600 hover:from-primary/90 hover:to-lime-600/90 text-white"
+                  onClick={handleUpdate}
+                  disabled={isSaving || !formData.name}
+                >
+                  {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Enregistrer
+                </Button>
+              </div>
+            </div>
+          }
+        >
           <ProviderForm
             formData={formData}
             setFormData={setFormData}
@@ -1612,66 +2074,50 @@ export function AIProvidersPage() {
             setShowApiKey={setShowApiKey}
             isEdit
           />
+        </GlassModal>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-              Annuler
-            </Button>
-            <Button
-              className="bg-secondary hover:bg-secondary/90 text-white"
-              onClick={handleUpdate}
-              disabled={isSaving || !formData.name}
-            >
-              {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Enregistrer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* ─── Delete Confirmation (AlertDialog — destructive) ─── */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer le fournisseur ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir supprimer « {selectedProvider?.name} » ?
+                Cette action est irréversible.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleDelete}
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* ─── Delete Confirmation ─── */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer le fournisseur ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer &quot;{selectedProvider?.name}&quot; ?
-              Cette action est irréversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleDelete}
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* ─── Model Switcher Dialog ─── */}
-      <Dialog open={showModelSwitcher} onOpenChange={setShowModelSwitcher}>
-        <DialogContent className="sm:sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-secondary" />
-              Changer de modèle
-            </DialogTitle>
-            <DialogDescription>
-              Sélectionnez un modèle pour le fournisseur actif <strong>{activeProvider?.name}</strong>.
-              Modèle actuel : <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{activeProvider?.model}</code>
-            </DialogDescription>
-          </DialogHeader>
+        {/* ─── Model Switcher (GlassModal) ─── */}
+        <GlassModal
+          open={showModelSwitcher}
+          onClose={() => setShowModelSwitcher(false)}
+          title="Changer de modèle"
+          description={
+            activeProvider
+              ? `Sélectionnez un modèle pour ${activeProvider.name}. Modèle actuel : ${activeProvider.model ?? '—'}`
+              : 'Sélectionnez un modèle'
+          }
+          size="md"
+        >
           <div className="space-y-3">
             {isLoadingModels ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-secondary" />
+                <Loader2 className="h-6 w-6 animate-spin text-primary-text" />
                 <span className="ml-2 text-sm text-muted-foreground">Chargement des modèles...</span>
               </div>
             ) : dynamicModels.length > 0 ? (
-              <div className="max-h-80 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+              <div className="max-h-80 overflow-y-auto space-y-1 pr-1">
                 {dynamicModels.map((model) => (
                   <button
                     key={model}
@@ -1679,22 +2125,22 @@ export function AIProvidersPage() {
                     disabled={switchingModel !== null}
                     className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-all flex items-center justify-between group ${
                       model === activeProvider?.model
-                        ? 'border-secondary/30 bg-secondary/10'
-                        : 'border-transparent hover:border-secondary/30 hover:bg-secondary/10'
+                        ? 'border-primary/30 bg-primary/10'
+                        : 'border-transparent hover:border-primary/30 hover:bg-primary/10'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       {model === activeProvider?.model ? (
-                        <Check className="h-4 w-4 text-secondary shrink-0" />
+                        <Check className="h-4 w-4 text-primary-text shrink-0" />
                       ) : (
-                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0 group-hover:border-secondary" />
+                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0 group-hover:border-primary-text" />
                       )}
-                      <span className={`font-mono text-xs ${model === activeProvider?.model ? 'font-bold text-secondary' : ''}`}>
+                      <span className={`font-mono text-xs ${model === activeProvider?.model ? 'font-bold text-primary-text' : ''}`}>
                         {model}
                       </span>
                     </div>
                     {switchingModel === model && (
-                      <Loader2 className="h-4 w-4 animate-spin text-secondary" />
+                      <Loader2 className="h-4 w-4 animate-spin text-primary-text" />
                     )}
                   </button>
                 ))}
@@ -1722,7 +2168,7 @@ export function AIProvidersPage() {
                 />
                 <Button
                   size="sm"
-                  className="bg-secondary hover:bg-secondary/90 text-white"
+                  className="bg-gradient-to-r from-primary to-lime-600 hover:from-primary/90 hover:to-lime-600/90 text-white"
                   onClick={() => {
                     const input = document.getElementById('manual-model-input') as HTMLInputElement
                     if (input?.value.trim()) handleQuickModelSwitch(input.value.trim())
@@ -1734,13 +2180,16 @@ export function AIProvidersPage() {
               </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+        </GlassModal>
+      </div>
+    </MotionConfig>
   )
 }
 
-// ─── Provider Form Component ───
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROVIDER FORM — Formulaire de création/édition
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function ProviderForm({
   formData,
   setFormData,
@@ -1749,16 +2198,16 @@ function ProviderForm({
   isEdit = false,
 }: {
   formData: ProviderFormData
-  setFormData: React.Dispatch<React.SetStateAction<ProviderFormData>>
+  setFormData: Dispatch<SetStateAction<ProviderFormData>>
   showApiKey: boolean
-  setShowApiKey: React.Dispatch<React.SetStateAction<boolean>>
+  setShowApiKey: Dispatch<SetStateAction<boolean>>
   isEdit?: boolean
 }) {
   const meta = PROVIDER_META[formData.provider]
   const Icon = meta.icon
   const models = PROVIDER_MODELS[formData.provider]
 
-  const handleProviderChange = (provider: AIProviderType) => {
+  const handleProviderChange = (provider: LocalProviderType) => {
     setFormData({
       ...formData,
       provider,
@@ -1768,16 +2217,17 @@ function ProviderForm({
       chatId: '',
       userId: '',
       token: '',
+      capability: PROVIDER_META[provider]?.defaultCapability || 'chat',
     })
   }
 
   return (
     <div className="space-y-5">
-      {/* Provider type selector */}
+      {/* ─── Provider type selector (grille 9 cartes cliquables) ─── */}
       <div className="space-y-2">
         <Label>Type de fournisseur</Label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {(Object.entries(PROVIDER_META) as [AIProviderType, typeof PROVIDER_META.ZAI][]).map(([type, m]) => {
+          {(Object.entries(PROVIDER_META) as [LocalProviderType, ProviderMeta][]).map(([type, m]) => {
             const TypeIcon = m.icon
             const isSelected = formData.provider === type
             return (
@@ -1785,11 +2235,12 @@ function ProviderForm({
                 key={type}
                 type="button"
                 onClick={() => handleProviderChange(type)}
-                className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${
+                className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ds-press ${
                   isSelected
                     ? `${m.borderClass} ${m.bgClass} ${m.textClass} font-semibold`
                     : 'border-border hover:border-muted-foreground/30'
                 }`}
+                aria-pressed={isSelected}
               >
                 <TypeIcon className="h-4 w-4 shrink-0" style={{ color: m.color }} />
                 <span className="text-xs truncate">{m.label}</span>
@@ -1797,9 +2248,13 @@ function ProviderForm({
             )
           })}
         </div>
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+          <Icon className="h-3 w-3 shrink-0" style={{ color: meta.color }} />
+          {meta.description}
+        </p>
       </div>
 
-      {/* Name */}
+      {/* ─── Nom ─── */}
       <div className="space-y-2">
         <Label htmlFor="provider-name">Nom du fournisseur</Label>
         <Input
@@ -1810,7 +2265,7 @@ function ProviderForm({
         />
       </div>
 
-      {/* Base URL - not for ZAI */}
+      {/* ─── Base URL (sauf ZAI) ─── */}
       {formData.provider !== 'ZAI' && (
         <div className="space-y-2">
           <Label htmlFor="provider-baseurl">URL de base de l&apos;API</Label>
@@ -1826,7 +2281,7 @@ function ProviderForm({
         </div>
       )}
 
-      {/* API Key - not for ZAI */}
+      {/* ─── API Key (sauf ZAI → extraConfig) ─── */}
       {formData.provider !== 'ZAI' && (
         <div className="space-y-2">
           <Label htmlFor="provider-apikey">Clé API</Label>
@@ -1843,6 +2298,7 @@ function ProviderForm({
               type="button"
               onClick={() => setShowApiKey(!showApiKey)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label={showApiKey ? 'Masquer la clé' : 'Afficher la clé'}
             >
               {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -1850,7 +2306,7 @@ function ProviderForm({
         </div>
       )}
 
-      {/* ZAI-specific fields */}
+      {/* ─── Section ZAI spécifique (chatId, userId, token, baseUrl, apiKey dans extraConfig) ─── */}
       {formData.provider === 'ZAI' && (
         <div className="space-y-4 rounded-lg border border-secondary/30 bg-secondary/10 p-4">
           <p className="text-xs text-secondary font-medium">
@@ -1907,7 +2363,7 @@ function ProviderForm({
         </div>
       )}
 
-      {/* VOXTRAL-TTS-2 : Configuration des voix pour le multi-voix */}
+      {/* ─── Section VOXTRAL spécifique (refAudioPresenter, refAudioExpert) ─── */}
       {formData.provider === 'VOXTRAL' && (
         <div className="space-y-4 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4">
           <p className="text-xs text-cyan-700 dark:text-cyan-300 font-medium flex items-center gap-1.5">
@@ -1943,7 +2399,7 @@ function ProviderForm({
             </p>
           </div>
           {formData.refAudioPresenter && formData.refAudioExpert ? (
-            <p className="text-[11px] text-success flex items-center gap-1">
+            <p className="text-[11px] text-success-text flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3" />
               Mode multi-voix activé : le script sera parsé par speaker et chaque segment utilisera sa voix.
             </p>
@@ -1961,7 +2417,7 @@ function ProviderForm({
         </div>
       )}
 
-      {/* Model */}
+      {/* ─── Modèle ─── */}
       <div className="space-y-2">
         <Label htmlFor="provider-model">Modèle</Label>
         <div className="flex gap-2">
@@ -1987,7 +2443,7 @@ function ProviderForm({
         </div>
       </div>
 
-      {/* KOKORO-TTS-1 : Capability (chat / tts / audio / transcription) */}
+      {/* ─── Capability ─── */}
       <div className="space-y-2">
         <Label htmlFor="provider-capability">Capacité</Label>
         <Select
@@ -2026,11 +2482,11 @@ function ProviderForm({
         </Select>
         <p className="text-xs text-muted-foreground">
           Détermine l&apos;usage du provider : <strong>chat</strong> pour les scripts/évaluations,{' '}
-          <strong>tts</strong> pour la synthèse audio des podcasts /exam-prep.
+          <strong>tts</strong> pour la synthèse audio des podcasts / exam-prep.
         </p>
       </div>
 
-      {/* Temperature */}
+      {/* ─── Température ─── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>Température</Label>
@@ -2050,7 +2506,7 @@ function ProviderForm({
         </div>
       </div>
 
-      {/* Max Tokens */}
+      {/* ─── Max Tokens ─── */}
       <div className="space-y-2">
         <Label htmlFor="provider-maxtokens">Max tokens</Label>
         <Input
@@ -2063,7 +2519,7 @@ function ProviderForm({
           onChange={(e) => setFormData({ ...formData, maxTokens: parseInt(e.target.value) || 4096 })}
         />
         <p className="text-xs text-muted-foreground">
-          Nombre maximum de tokens par défaut dans la réponse. La génération d'épreuves ajuste automatiquement cette valeur (8192-16384) selon le nombre de questions. Pour les autres usages, 4096 est recommandé.
+          Nombre maximum de tokens par défaut dans la réponse. La génération d&apos;épreuves ajuste automatiquement cette valeur (8192-16384) selon le nombre de questions. Pour les autres usages, 4096 est recommandé.
         </p>
       </div>
     </div>
