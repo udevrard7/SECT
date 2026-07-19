@@ -116,7 +116,7 @@ func (s *Server) createB2BSubscription(w http.ResponseWriter, r *http.Request) {
                 case strings.Contains(errMsg, "PHONE_ALREADY_USED"):
                         writeJSONError(w, http.StatusConflict, "ce numéro de téléphone est déjà utilisé par un autre établissement")
                 default:
-                        writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+errMsg)
+                        writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 }
                 return
         }

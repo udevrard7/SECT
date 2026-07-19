@@ -364,7 +364,8 @@ func fetchAudioAsBase64(ctx context.Context, audioURL string, logger *slog.Logge
                 return "", fmt.Errorf("ref_audio HTTP %d", resp.StatusCode)
         }
 
-        audioBytes, err := io.ReadAll(resp.Body)
+        // FIX (audit 2025): limiter la lecture à 50 MiB pour empêcher OOM si l'URL est compromise
+        audioBytes, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
         if err != nil {
                 return "", fmt.Errorf("read ref_audio: %w", err)
         }

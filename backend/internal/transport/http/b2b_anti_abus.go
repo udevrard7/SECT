@@ -40,7 +40,8 @@ func (s *Server) verifyB2BEmail(w http.ResponseWriter, r *http.Request) {
                 `, token).Scan(&success, &etabID, &etabNom, &message)
         })
         if err != nil {
-                writeJSONError(w, http.StatusInternalServerError, "erreur: "+err.Error())
+                slog.Error("verify_b2b_email SQL failed", "error", err.Error(), "token", token)
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 return
         }
 
@@ -105,7 +106,8 @@ func (s *Server) validateB2BEstablishment(w http.ResponseWriter, r *http.Request
                 `, etabID).Scan(&success, &aboID, &statut, &dateFin, &message)
         })
         if err != nil {
-                writeJSONError(w, http.StatusInternalServerError, "erreur: "+err.Error())
+                slog.Error("validate_b2b_establishment SQL failed", "error", err.Error(), "etabId", etabID)
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 return
         }
 
@@ -231,7 +233,8 @@ func (s *Server) listPendingB2B(w http.ResponseWriter, r *http.Request) {
                 return nil
         })
         if err != nil {
-                writeJSONError(w, http.StatusInternalServerError, "erreur: "+err.Error())
+                slog.Error("listPendingB2B SQL failed", "error", err.Error())
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 return
         }
 

@@ -151,10 +151,12 @@ func (s *Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeJSONError écrit une erreur JSON.
+// FIX (audit 2025): utilisation de json.Marshal au lieu de concaténation brute
+// pour empêcher l'injection JSON si msg contient des guillemets ou backslashes.
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(status)
-        _, _ = w.Write([]byte(`{"error":"` + msg + `"}`))
+        json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 // clientIP utilise la fonction partagée GetClientIP du middleware pour

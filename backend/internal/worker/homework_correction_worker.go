@@ -116,9 +116,19 @@ func (w *HomeworkCorrectionWorker) processJob(ctx context.Context, job HomeworkJ
         // 5. Parser la réponse JSON { noteIA, justificationIA }
         noteIA, justification, err := w.parseHomeworkResponse(result.Content)
         if err != nil {
-                w.logger.Error("Failed to parse AI response", "error", err, "raw", result.Content[:200])
+                // FIX (audit 2025): utiliser truncate au lieu de result.Content[:200] qui panique si < 200 chars
+                w.logger.Error("Failed to parse AI response", "error", err, "raw", truncate(result.Content, 200))
                 w.markSoumissionError(ctx, job.SoumissionID, "réponse IA illisible")
                 return
+        }
+
+        // FIX (audit 2025): clamper noteIA au bareme maximum (l'IA peut halluciner)
+        if noteIA > data.NoteMax {
+                w.logger.Warn("noteIA exceeds NoteMax, clamping", "noteIA", noteIA, "noteMax", data.NoteMax, "soumissionId", job.SoumissionID)
+                noteIA = data.NoteMax
+        }
+        if noteIA < 0 {
+                noteIA = 0
         }
 
         // 6. Écrire noteIA + justificationIA + statutIA=TERMINE en DB
@@ -269,7 +279,10 @@ func (w *HomeworkCorrectionWorker) updateSoumissionStatusIA(ctx context.Context,
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                w.logger.Error("Failed to set system claims", "error", err)
+                return
+        }
 
         _, err = tx.Exec(ctx, `
                 UPDATE "Soumission"
@@ -286,7 +299,9 @@ func (w *HomeworkCorrectionWorker) updateSoumissionStatusIA(ctx context.Context,
                 return
         }
 
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                w.logger.Error("Failed to commit soumission IA update", "error", err, "soumissionId", soumissionID)
+        }
 }
 
 // markSoumissionError marque la soumission en erreur (statutIA = ERREUR).

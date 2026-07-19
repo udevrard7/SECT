@@ -142,7 +142,7 @@ func (s *Server) createB2CSubscription(w http.ResponseWriter, r *http.Request) {
                 case strings.Contains(errMsg, "EMAIL_EXISTS"):
                         writeJSONError(w, http.StatusConflict, "un compte existe déjà avec cet email. Connectez-vous ou utilisez 'mot de passe oublié'.")
                 default:
-                        writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+err.Error())
+                        writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 }
                 return
         }
@@ -277,7 +277,7 @@ func (s *Server) confirmB2CPayment(w http.ResponseWriter, r *http.Request) {
 
         if err := row.Scan(&success, &resp.AbonnementID, &resp.Statut, &dateFin); err != nil {
                 slog.Error("confirm_b2c_payment SQL failed", "error", err.Error(), "aboId", aboID)
-                writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+err.Error())
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 return
         }
 

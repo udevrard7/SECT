@@ -103,12 +103,24 @@ func (w *CorrectionWorker) processCorrectionJob(ctx context.Context, job Correct
         // 6. Parser la réponse JSON { noteIA, justificationIA }
         noteIA, justification, err := w.parseCorrectionResponse(rawContent)
         if err != nil {
-                w.logger.Error("Failed to parse AI response", "error", err, "raw", rawContent[:200])
+                // FIX (audit 2025): utiliser truncate au lieu de rawContent[:200] qui panique si < 200 chars
+                w.logger.Error("Failed to parse AI response", "error", err, "raw", truncate(rawContent, 200))
                 w.markReponseError(ctx, job.ReponseID, "réponse IA illisible")
                 return
         }
 
-        // 7. Écrire noteIA + justificationIA en DB
+        // 7. FIX (audit 2025): clamper noteIA au bareme maximum pour empêcher les notes impossibles
+        // (l'IA peut halluciner une note supérieure au barème).
+        maxNote := question.Bareme
+        if noteIA > maxNote {
+                w.logger.Warn("noteIA exceeds bareme, clamping", "noteIA", noteIA, "bareme", maxNote, "reponseId", job.ReponseID)
+                noteIA = maxNote
+        }
+        if noteIA < 0 {
+                noteIA = 0
+        }
+
+        // 8. Écrire noteIA + justificationIA en DB
         w.updateReponseStatusIA(ctx, job.ReponseID, "TERMINE", &noteIA, &justification)
         w.logger.Info("Correction completed", "reponseId", job.ReponseID, "noteIA", noteIA)
 }
@@ -224,6 +236,8 @@ func (w *CorrectionWorker) parseCorrectionResponse(raw string) (float64, string,
 }
 
 // updateReponseStatusIA met à jour le statut IA + noteIA + justification en DB.
+// FIX (audit 2025): la colonne "statusIA" est maintenant mise à jour (avant, le
+// paramètre statusIA était ignoré → le frontend ne voyait jamais EN_COURS/TERMINE).
 func (w *CorrectionWorker) updateReponseStatusIA(ctx context.Context, reponseID, statusIA string, noteIA *float64, justification *string) {
         tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
@@ -232,22 +246,28 @@ func (w *CorrectionWorker) updateReponseStatusIA(ctx context.Context, reponseID,
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                w.logger.Error("Failed to set system claims", "error", err)
+                return
+        }
 
         _, err = tx.Exec(ctx, `
                 UPDATE "Reponse"
-                SET "noteIA" = $1,
-                    "justificationIA" = $2,
+                SET "statusIA" = $1,
+                    "noteIA" = $2,
+                    "justificationIA" = $3,
                     "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $3
-        `, noteIA, justification, reponseID)
+                WHERE "id" = $4
+        `, statusIA, noteIA, justification, reponseID)
 
         if err != nil {
                 w.logger.Error("Failed to update reponse IA", "error", err, "reponseId", reponseID)
                 return
         }
 
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                w.logger.Error("Failed to commit reponse IA update", "error", err, "reponseId", reponseID)
+        }
 }
 
 // markReponseError marque la réponse en erreur (noteIA = 0, justification = erreur).
