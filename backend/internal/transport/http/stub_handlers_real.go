@@ -177,63 +177,16 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        type provider struct {
-                ID          string  `json:"id"`
-                Name        string  `json:"name"`
-                Provider    string  `json:"provider"`
-                BaseURL     *string `json:"baseUrl,omitempty"`
-                HasAPIKey   bool    `json:"hasApiKey"`
-                Model       *string `json:"model,omitempty"`
-                Temperature float64 `json:"temperature"`
-                MaxTokens   int     `json:"maxTokens"`
-                IsActive    bool    `json:"isActive"`
-                Priority    int     `json:"priority"`
-                ExtraConfig *string `json:"extraConfig,omitempty"`
-                Capability  *string `json:"capability,omitempty"` // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1
-                LastTestAt  *string `json:"lastTestAt,omitempty"`
-                LastTestOk  *bool   `json:"lastTestOk,omitempty"`
-                CreatedAt   string  `json:"createdAt"`
-                UpdatedAt   string  `json:"updatedAt"`
+        providers, err := s.aiProviderUC.List(r.Context(), claims)
+        if err != nil {
+                writeJSONError(w, http.StatusInternalServerError, "erreur DB: "+err.Error())
+                return
         }
 
-        result := []provider{}
-        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "name", "provider", "baseUrl", "apiKey", "model",
-                               "temperature", "maxTokens", "isActive", "priority",
-                               "extraConfig", "capability",
-                               "lastTestAt", "lastTestOk", "createdAt", "updatedAt"
-                        FROM "AIProviderConfig"
-                        ORDER BY "priority" ASC
-                `)
-                if err != nil {
-                        return err
-                }
-                defer rows.Close()
-                for rows.Next() {
-                        p := provider{}
-                        var apiKey *string
-                        var lastTestAt *time.Time
-                        var createdAt, updatedAt time.Time
-                        if err := rows.Scan(&p.ID, &p.Name, &p.Provider, &p.BaseURL, &apiKey, &p.Model,
-                                &p.Temperature, &p.MaxTokens, &p.IsActive, &p.Priority,
-                                &p.ExtraConfig, &p.Capability,
-                                &lastTestAt, &p.LastTestOk, &createdAt, &updatedAt); err != nil {
-                                return err
-                        }
-                        // Sécurité : ne jamais retourner l'apiKey brut dans la liste.
-                        // On expose uniquement le flag hasApiKey pour l'UI.
-                        p.HasAPIKey = apiKey != nil && *apiKey != ""
-                        if lastTestAt != nil {
-                                ts := lastTestAt.UTC().Format(time.RFC3339)
-                                p.LastTestAt = &ts
-                        }
-                        p.CreatedAt = createdAt.UTC().Format(time.RFC3339)
-                        p.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
-                        result = append(result, p)
-                }
-                return rows.Err()
-        })
+        result := make([]aiProviderJSON, 0, len(providers))
+        for i := range providers {
+                result = append(result, providerToJSON(&providers[i], false))
+        }
 
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{

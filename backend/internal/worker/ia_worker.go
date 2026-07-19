@@ -243,20 +243,11 @@ func truncate(s string, maxLen int) string {
         return s[:maxLen] + "…"
 }
 
-// aiProviderConfig représente la config d'un provider lu depuis la DB.
-// Ce type est partagé entre IAWorker et CorrectionWorker (helpers.go).
-type aiProviderConfig struct {
-        ID          string
-        Name        string
-        Provider    string
-        BaseURL     string
-        APIKey      string
-        Model       string
-        Temperature float64
-        MaxTokens   int
-        Capability  string // DASHSCOPE-AUDIO-1 : 'chat' (défaut), 'tts', 'audio'
-        ExtraConfig string // VOXTRAL-TTS-2 : JSON brut (refAudioPresenter, refAudioExpert)
-}
+// BUG #8 fix: aiProviderConfig doublon supprimé. Le type canonique est
+// ai.ActiveProvider (défini dans internal/ai/service.go), utilisé par
+// tous les workers via aiService.ChatCompletion (failover inclus).
+// Les workers TTS (audio_worker) utilisent ai.ActiveProvider via
+// getActiveProviderByCapabilityShared.
 
 // Bug #9 (audit ai-providers MEDIUM) : les anciennes méthodes doublons de
 // IAWorker ont été supprimées. `processJob` ci-dessus appelle directement

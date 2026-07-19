@@ -48,13 +48,17 @@ type ChatResult struct {
         Model   string // modèle effectivement utilisé (renvoyé par le provider)
 }
 
-// activeProvider est la projection d'une ligne AIProviderConfig lue depuis la
+// ActiveProvider est la projection d'une ligne AIProviderConfig lue depuis la
 // DB. Seuls les champs nécessaires à l'appel API sont conservés.
 //
+// BUG #8 fix: type unifié (avant : activeProvider privé + ActiveProvider public
+// dans provider_extra.go + aiProviderConfig dans worker — 3 structs identiques).
+// Maintenant un seul type canonique partagé entre les packages ai et worker.
+//
 // Bug #2 (CRITICAL, audit ai-providers 2025) : extraConfig est maintenant lu
-// et fusionné via ApplyExtraConfig. Pour ZAI, l'apiKey est souvent dans
+// et fusionné via ParseExtraConfig. Pour ZAI, l'apiKey est souvent dans
 // extraConfig.apiKey (pas dans le champ apiKey de AIProviderConfig).
-type activeProvider struct {
+type ActiveProvider struct {
         ID          string
         Name        string
         Provider    string
@@ -119,6 +123,9 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
 
         return &ChatResult{Content: result.Content, Model: result.Model}, nil
 }
+
+// Compile-time check: FailoverResult.ProviderUsed must match.
+var _ *ActiveProvider = (*ActiveProvider)(nil)
 
 // ChatCompletionStream fait un appel streaming vers le provider actif.
 // MESSAGERIE-STREAMING : pour chaque token reçu du provider, onChunk est
@@ -199,7 +206,7 @@ func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMes
 // (permettant le failover vers le provider suivant).
 // Si le provider échoue APRÈS avoir commencé le stream, on retourne
 // le contenu partiel accumulé (pas de failover mid-stream).
-func (s *AIService) tryStreamProvider(ctx context.Context, p *activeProvider, messages []ChatMessage, onChunk func(accumulatedContent string)) (*ChatResult, error) {
+func (s *AIService) tryStreamProvider(ctx context.Context, p *ActiveProvider, messages []ChatMessage, onChunk func(accumulatedContent string)) (*ChatResult, error) {
         body := map[string]interface{}{
                 "model":       p.Model,
                 "messages":    messages,
@@ -305,7 +312,7 @@ func (s *AIService) tryStreamProvider(ctx context.Context, p *activeProvider, me
 // Claims system-worker posés via set_config('app.claims.*') au début de la
 // transaction : le worker de fond (goroutine sans claims HTTP) peut ainsi
 // lire la config système.
-func (s *AIService) getActiveProvider(ctx context.Context) (*activeProvider, error) {
+func (s *AIService) getActiveProvider(ctx context.Context) (*ActiveProvider, error) {
         tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
@@ -326,7 +333,7 @@ func (s *AIService) getActiveProvider(ctx context.Context) (*activeProvider, err
                 ORDER BY "priority" ASC, "createdAt" ASC
                 LIMIT 1`
 
-        p := &activeProvider{}
+        p := &ActiveProvider{}
         err = tx.QueryRow(ctx, query).Scan(
                 &p.ID, &p.Name, &p.Provider,
                 &p.BaseURL, &p.APIKey, &p.Model,

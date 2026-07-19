@@ -45,6 +45,7 @@ type Server struct {
         messagerieUC  *usecase.MessagerieUseCase
         messagerieHub *MessagerieHub
         aiService     *ai.AIService
+        aiProviderUC   *usecase.AIProviderUseCase // BUG #7 fix: usecase pour logique métier AI providers
         storage       domain.StorageClient
         // CACHE-RAM-1 : cache en mémoire write-behind pour les sessions d'examen actives.
         // Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
@@ -98,6 +99,7 @@ func NewServer(
         messagerieHub *MessagerieHub,
         surveillanceHub *SurveillanceHub,
         aiService *ai.AIService,
+        aiProviderUC *usecase.AIProviderUseCase,
         storage domain.StorageClient,
         dbPool *pgxpool.Pool,
         corsOrigins []string,
@@ -132,6 +134,7 @@ func NewServer(
                 messagerieHub:    messagerieHub,
                 surveillanceHub: surveillanceHub,
                 aiService:        aiService,
+                aiProviderUC:      aiProviderUC,
                 storage:          storage,
                 monRecorder:      monRecorder,
                 monHealthChecker: monHealthChecker,

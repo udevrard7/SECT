@@ -17426,3 +17426,30 @@ Stage Summary:
 - Frontend Next.js 16 : dépendances installées, prêt à démarrer
 - Flux de déploiement : modifications → git push → GitHub → Vercel (auto) + Render (auto)
 - Services optionnels non configurés en dev : R2 (stockage), Resend (emails), GeniusPay (paiement)
+
+---
+Task ID: AI-PROVIDERS-BUGFIX-1
+Agent: Main (Z.ai Code)
+Task: Correction de 9 bugs identifiés dans le module /ai-providers
+
+Work Log:
+- Analysé l'architecture complète du module ai-providers (backend + frontend + DB)
+- Identifié 11 bugs (2 critiques, 2 high, 4 medium, 3 low)
+- BUG #1 (CRITIQUE): Créé endpoint POST /api/ai-assistant dans ai_assistant_handler.go + route dans router.go
+- BUG #2 (CRITIQUE): Injecté aiService dans 5 workers (Correction, DocAnalyzer, Practice, Homework, Audio) pour failover automatique
+- BUG #3 (HIGH): Ajouté vérification config.Enabled dans ChatWithFailover + ChatCompletionStream
+- BUG #4 (HIGH): Ajouté failover pré-stream dans ChatCompletionStream via tryStreamProvider()
+- BUG #5 (MEDIUM): Ajouté DASHSCOPE/DEEPSEEK/CEREBRAS à validateProviderInput()
+- BUG #6 (MEDIUM): Corrigé logique santé (nil=UNKNOWN, pas healthy) dans failover status + health endpoint
+- BUG #9 (LOW): Ajouté types FAIL_OVER + RECOVERY dans AIFailoverEvent via logFailoverSuccessEvent()
+- BUG #10 (LOW): Rempli fromProvider/toProvider dans AIFailoverEvent pour traçabilité
+- BUG #11 (LOW): Supprimé ai-failover-panel.tsx déprécié (code mort)
+- Compilé backend Go avec succès (0 erreurs)
+- Compilé frontend Next.js avec succès
+- Commit + push vers GitHub: fix(ai-providers): correct 9 bugs
+
+Stage Summary:
+- 13 fichiers modifiés, 833 insertions, 595 suppressions
+- Commit: 4efb113 — poussé vers origin/main
+- Déploiement auto déclenché: Vercel (frontend) + Render (backend)
+- Tous les bugs critiques et high sont corrigés
