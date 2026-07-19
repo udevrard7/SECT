@@ -71,6 +71,9 @@ func main() {
         anneeRepo := repository.NewAnneeAcademiqueRepository(pool)
         // E1-INVITATIONS : module invitations (6 endpoints, table "Invitation" déjà en DB).
         invitationRepo := repository.NewInvitationRepository(pool)
+        // SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (migration 000079).
+        // 2 fonctions SECURITY DEFINER (find_student_signup_link_by_token + accept_student_signup).
+        studentSignupLinkRepo := repository.NewStudentSignupLinkRepository(pool)
         epreuveRepo := repository.NewEpreuveRepository(pool)
         questionRepo := repository.NewQuestionRepository(pool)
         sessionRepo := repository.NewSessionRepository(pool)
@@ -137,6 +140,12 @@ func main() {
         // mailer passé pour l'envoi de l'email d'invitation (template "Savane EdTech"
         // via ResendMailer en production).
         invitationUC := usecase.NewInvitationUseCase(invitationRepo, mailSvc, cfg.AppBaseURL, quotaRepo)
+        // SECT-REG-LINK-B2C-MVP-1 : usecase liens d'inscription direct étudiant.
+        // - TTL 30 jours (vs 7j invitation — partage manuel WhatsApp/QR).
+        // - mailer pour l'email StudentWelcome après acceptation.
+        // - quotaRepo injecté pour anticipation Phase 2 (nil-safe côté usecase).
+        studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, mailSvc, cfg.AppBaseURL, quotaRepo)
+        studentSignupLinkUC.SetLogger(func(msg string, args ...any) { logger.Warn(msg, args...) })
         epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo)
         questionUC := usecase.NewQuestionUseCase(questionRepo)
         sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
@@ -223,7 +232,7 @@ func main() {
         // channel in-memory ne fonctionnait pas de façon fiable sur Render free
         // (cold start tue le worker goroutine avant traitement du job).
 
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC)
 
         // SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
         // Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.

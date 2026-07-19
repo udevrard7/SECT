@@ -30,6 +30,8 @@ import {
   AlertTriangle,
   X,
   Loader2,
+  Link2,
+  MessageCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -63,7 +65,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { PulseSkeleton } from '@/components/ds'
+import { PulseSkeleton, GlassModal, Badge as DSBadge, ProgressBar } from '@/components/ds'
 import {
   Table,
   TableBody,
@@ -117,6 +119,38 @@ interface ImportResult {
   imported: number
   errors: Array<{ row: number; email: string; error: string }>
   users: Array<{ id: string; name: string; email: string; password: string; role: string }>
+}
+
+// SECT-REG-LINK-B2C-MVP-1 : types pour les liens d'inscription direct étudiant.
+// Le token n'est JAMAIS retourné par GET /api/student-signup-links (sécurité) —
+// l'URL complète n'est disponible qu'à la création (POST), une seule fois.
+interface StudentSignupLink {
+  id: string
+  etablissementId: string
+  filiereId: string | null
+  niveau: string | null
+  createdById: string
+  creatorName: string
+  expiresAt: string
+  maxUses: number | null
+  useCount: number
+  actif: boolean
+  label: string | null
+  createdAt: string
+  etablissementNom: string
+  filiereNom: string | null
+}
+
+interface CreateLinkResponse {
+  id: string
+  token: string
+  url: string
+  expiresAt: string
+  maxUses: number | null
+  label: string | null
+  etablissementId: string
+  filiereId: string | null
+  createdAt: string
 }
 
 interface InvitationItem {
@@ -338,6 +372,18 @@ export function EtudiantsPage() {
   const [cancelInvitationTarget, setCancelInvitationTarget] = useState<InvitationItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<EtudiantItem | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // SECT-REG-LINK-B2C-MVP-1 : state pour la modal "Générer un lien d'inscription"
+  // (B2C self-service). Le bouton est dans le header à côté de "Importer CSV".
+  const [showLinkDialog, setShowLinkDialog] = useState(false)
+  const [linkLabel, setLinkLabel] = useState('')
+  const [linkFiliereId, setLinkFiliereId] = useState('')
+  const [linkNiveau, setLinkNiveau] = useState('')
+  const [linkMaxUses, setLinkMaxUses] = useState('')
+  const [createdLink, setCreatedLink] = useState<CreateLinkResponse | null>(null)
+  const [isCreatingLink, setIsCreatingLink] = useState(false)
+  const [revokeLinkTarget, setRevokeLinkTarget] = useState<StudentSignupLink | null>(null)
+  const [isRevokingLink, setIsRevokingLink] = useState(false)
 
   // ETUDIANTS-FIX-E10 : query dependencies pour preview suppression.
   // Se déclenche quand l'utilisateur ouvre l'AlertDialog de suppression.
@@ -992,6 +1038,112 @@ export function EtudiantsPage() {
   // ─── Niveau options ───
   const niveauOptions = ['L1', 'L2', 'L3', 'M1', 'M2', 'DOCTORAT']
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SECT-REG-LINK-B2C-MVP-1 : Liens d'inscription direct étudiant (B2C)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Query TanStack : lister les liens existants (sans token — sécurité backend).
+  // Le fetch n'est déclenché que lorsque la modal est ouverte (enabled: showLinkDialog).
+  const signupLinksQuery = useQuery<{ links: StudentSignupLink[] }>({
+    queryKey: ['student-signup-links'],
+    queryFn: async () => {
+      const res = await fetch('/api/student-signup-links', { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch student signup links')
+      return res.json()
+    },
+    enabled: showLinkDialog,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const signupLinks = signupLinksQuery.data?.links ?? []
+  const isLoadingSignupLinks = signupLinksQuery.isFetching && !signupLinksQuery.data
+
+  // Ouvrir la modal — reset les champs et l'écran de succès
+  const handleOpenLinkDialog = () => {
+    setLinkLabel('')
+    setLinkFiliereId('')
+    setLinkNiveau('')
+    setLinkMaxUses('')
+    setCreatedLink(null)
+    setIsCreatingLink(false)
+    setShowLinkDialog(true)
+  }
+
+  // Fermer la modal — invalide le cache pour re-sync à la prochaine ouverture
+  const handleCloseLinkDialog = () => {
+    setShowLinkDialog(false)
+    setCreatedLink(null)
+    setLinkLabel('')
+    setLinkFiliereId('')
+    setLinkNiveau('')
+    setLinkMaxUses('')
+  }
+
+  // Créer un nouveau lien d'inscription (POST /api/student-signup-links)
+  // Ne logue JAMAIS le token dans la console (sécurité frontend).
+  const handleCreateLink = async () => {
+    setIsCreatingLink(true)
+    try {
+      const body: Record<string, string | number> = {}
+      if (linkLabel.trim()) body.label = linkLabel.trim()
+      if (linkFiliereId && linkFiliereId !== '__none__') body.filiereId = linkFiliereId
+      if (linkNiveau && linkNiveau !== '__none__') body.niveau = linkNiveau
+      if (linkMaxUses) {
+        const n = parseInt(linkMaxUses, 10)
+        if (!Number.isNaN(n) && n > 0) body.maxUses = n
+      }
+      const res = await fetch('/api/student-signup-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de la création du lien')
+      }
+      setCreatedLink(data as CreateLinkResponse)
+      queryClient.invalidateQueries({ queryKey: ['student-signup-links'] })
+      toast.success('Lien généré', {
+        description: 'Partagez-le aux étudiants concernés.',
+      })
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de créer le lien.',
+      })
+    } finally {
+      setIsCreatingLink(false)
+    }
+  }
+
+  // Révoquer un lien (DELETE /api/student-signup-links/{id}) — soft delete
+  const handleRevokeLink = async () => {
+    if (!revokeLinkTarget) return
+    setIsRevokingLink(true)
+    try {
+      const res = await fetch(`/api/student-signup-links/${revokeLinkTarget.id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Erreur lors de la révocation')
+      }
+      queryClient.invalidateQueries({ queryKey: ['student-signup-links'] })
+      toast.success('Lien révoqué')
+      setRevokeLinkTarget(null)
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de révoquer le lien.',
+      })
+    } finally {
+      setIsRevokingLink(false)
+    }
+  }
+
+  // L'utilisateur peut-il choisir une filière ? Uniquement RESPONSABLE/ADMIN
+  // (les ENSEIGNANT B2C n'ont pas de filière propre — filiereId forcé à nil côté backend).
+  const canSelectFiliere = user?.role === 'RESPONSABLE' || user?.role === 'ADMIN'
+
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
@@ -1017,6 +1169,10 @@ export function EtudiantsPage() {
           <Button variant="outline" size="sm" className="border-warning/30 text-warning hover:bg-warning/10" onClick={handleOpenImport}>
             <Upload className="h-4 w-4" />
             Importer CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleOpenLinkDialog}>
+            <Link2 className="h-4 w-4" />
+            Lien d&apos;inscription
           </Button>
           <Button className="bg-success hover:bg-success/90" size="sm" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
@@ -2213,6 +2369,333 @@ export function EtudiantsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction onClick={handleCancelInvitation}>Confirmer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          SECT-REG-LINK-B2C-MVP-1 : Modal "Générer un lien d'inscription"
+          ═══════════════════════════════════════════════════════════════════
+          GlassModal DS, 2 écrans : (1) formulaire de génération + liste des
+          liens existants, (2) écran de succès avec URL copiable + partage
+          WhatsApp. La liste ne contient PAS le token (sécurité backend) —
+          seules les stats + bouton "Révoquer" sont affichées.
+          ═══════════════════════════════════════════════════════════════════ */}
+      <GlassModal
+        open={showLinkDialog}
+        onClose={handleCloseLinkDialog}
+        title={createdLink ? 'Lien créé !' : 'Générer un lien d\'inscription'}
+        description={
+          createdLink
+            ? undefined
+            : 'Partagez ce lien aux étudiants. Ils s\'inscriront eux-mêmes, la base de données se remplit automatiquement.'
+        }
+        size="lg"
+      >
+        {createdLink ? (
+          /* ─── Écran de succès (après création) ─── */
+          <div className="space-y-4">
+            <div className="flex flex-col items-center text-center py-2">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10 mb-3">
+                <CheckCircle2 className="h-7 w-7 text-success-text" />
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Voici votre lien d&apos;inscription. Copiez-le et partagez-le aux étudiants concernés.
+              </p>
+            </div>
+
+            {/* URL copiable */}
+            <div className="space-y-2">
+              <Label htmlFor="created-link-url">Lien d&apos;inscription</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="created-link-url"
+                  readOnly
+                  value={createdLink.url}
+                  className="font-mono text-xs"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleCopyToClipboard(createdLink.url, 'Lien')}
+                  aria-label="Copier le lien"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Métadadonnées du lien créé */}
+            <div className="flex flex-wrap gap-1.5">
+              <DSBadge variant="info" size="sm">
+                <Clock className="h-3 w-3 mr-1" />
+                Expire le {formatDateFR(createdLink.expiresAt)}
+              </DSBadge>
+              {createdLink.maxUses != null ? (
+                <DSBadge variant="warning" size="sm">
+                  {createdLink.maxUses} places
+                </DSBadge>
+              ) : (
+                <DSBadge variant="success" size="sm">Illimité</DSBadge>
+              )}
+              {createdLink.label && (
+                <DSBadge variant="primary" size="sm">{createdLink.label}</DSBadge>
+              )}
+            </div>
+
+            {/* Actions partage */}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent('Inscrivez-vous sur SECT : ' + createdLink.url)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex"
+              >
+                <Button type="button" variant="outline" size="sm">
+                  <MessageCircle className="h-4 w-4 mr-1.5" />
+                  Partager via WhatsApp
+                </Button>
+              </a>
+              <Button type="button" variant="ghost" size="sm" onClick={handleCloseLinkDialog}>
+                Fermer
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setCreatedLink(null)
+                  setLinkLabel('')
+                  setLinkFiliereId('')
+                  setLinkNiveau('')
+                  setLinkMaxUses('')
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                Créer un autre lien
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* ─── Écran formulaire + liste ─── */
+          <div className="space-y-5">
+            {/* Formulaire de génération */}
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="link-label">Libellé (optionnel)</Label>
+                <Input
+                  id="link-label"
+                  placeholder="ex: Promo L1 2026"
+                  value={linkLabel}
+                  onChange={(e) => setLinkLabel(e.target.value)}
+                />
+              </div>
+
+              {canSelectFiliere && (
+                <div className="space-y-2">
+                  <Label htmlFor="link-filiere">Filière (optionnel)</Label>
+                  <Select value={linkFiliereId || '__none__'} onValueChange={setLinkFiliereId}>
+                    <SelectTrigger id="link-filiere">
+                      <SelectValue placeholder="Toutes les filières" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Toutes les filières</SelectItem>
+                      {filieres.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.nom}{f.code ? ` (${f.code})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="link-niveau">Niveau (optionnel)</Label>
+                  <Select value={linkNiveau || '__none__'} onValueChange={setLinkNiveau}>
+                    <SelectTrigger id="link-niveau">
+                      <SelectValue placeholder="Tous niveaux" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Tous niveaux</SelectItem>
+                      {niveauOptions.map((n) => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="link-max-uses">Max inscriptions (optionnel)</Label>
+                  <Input
+                    id="link-max-uses"
+                    type="number"
+                    min={1}
+                    placeholder="Vide = illimité"
+                    value={linkMaxUses}
+                    onChange={(e) => setLinkMaxUses(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-info/20 bg-info/5 p-3 flex items-start gap-2">
+                <Clock className="h-4 w-4 text-info flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-info-foreground">
+                  Le lien expire dans 30 jours. Vous pouvez le révoquer à tout moment.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                onClick={handleCreateLink}
+                disabled={isCreatingLink}
+                className="w-full bg-success hover:bg-success/90 text-success-foreground"
+              >
+                {isCreatingLink ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="h-4 w-4" />
+                    Générer le lien
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <Separator />
+
+            {/* Liste des liens existants */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold font-display">Liens existants</h4>
+                <span className="text-xs text-muted-foreground">
+                  {signupLinks.length} lien(s)
+                </span>
+              </div>
+
+              {isLoadingSignupLinks ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <PulseSkeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : signupLinks.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                  <Link2 className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Aucun lien créé pour le moment.</p>
+                </div>
+              ) : (
+                <div className="max-h-60 overflow-y-auto space-y-2 scrollbar-thin">
+                  {signupLinks.map((link) => {
+                    const expired = isExpired(link.expiresAt)
+                    const placesRestantes =
+                      link.maxUses != null ? Math.max(0, link.maxUses - link.useCount) : null
+                    return (
+                      <div
+                        key={link.id}
+                        className={`rounded-lg border p-3 space-y-2 ${
+                          expired || !link.actif
+                            ? 'border-destructive/30 bg-destructive/5 opacity-75'
+                            : 'border-border'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate">
+                              {link.label || <span className="text-muted-foreground italic">Sans libellé</span>}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Créé le {formatDateFR(link.createdAt)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {!link.actif && (
+                              <DSBadge variant="danger" size="sm">Révoqué</DSBadge>
+                            )}
+                            {link.actif && expired && (
+                              <DSBadge variant="warning" size="sm">Expiré</DSBadge>
+                            )}
+                            {link.actif && !expired && (
+                              <DSBadge variant="success" size="sm">Actif</DSBadge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                          {link.filiereNom && (
+                            <DSBadge variant="primary" size="sm">{link.filiereNom}</DSBadge>
+                          )}
+                          {link.niveau && (
+                            <DSBadge variant="info" size="sm">{link.niveau}</DSBadge>
+                          )}
+                          <span className="text-muted-foreground">
+                            <Users className="h-3 w-3 inline mr-0.5" />
+                            {link.useCount}
+                            {link.maxUses != null ? ` / ${link.maxUses}` : ' inscriptions'}
+                            {placesRestantes != null && placesRestantes === 0 && ' (complet)'}
+                          </span>
+                          <span className="text-muted-foreground">
+                            <Clock className="h-3 w-3 inline mr-0.5" />
+                            {getExpiryCountdown(link.expiresAt)}
+                          </span>
+                        </div>
+                        {link.actif && !expired && (
+                          <div className="flex justify-end pt-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
+                              onClick={() => setRevokeLinkTarget(link)}
+                              aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                              Révoquer
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </GlassModal>
+
+      {/* ─── Revoke Signup Link Confirmation ─── */}
+      <AlertDialog
+        open={!!revokeLinkTarget}
+        onOpenChange={(open) => !open && setRevokeLinkTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Révoquer le lien d&apos;inscription
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous révoquer le lien{' '}
+              <span className="font-medium">{revokeLinkTarget?.label || 'sans libellé'}</span> ? Les
+              étudiants qui ont déjà commencé leur inscription peuvent la terminer, mais aucun nouvel
+              étudiant ne pourra utiliser ce lien. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRevokingLink}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={handleRevokeLink}
+              disabled={isRevokingLink}
+            >
+              {isRevokingLink && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Révoquer le lien
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
