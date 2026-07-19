@@ -21,6 +21,12 @@ func NewStudentSignupLinkRepository(pool *pgxpool.Pool) *StudentSignupLinkReposi
         return &StudentSignupLinkRepository{pool: pool}
 }
 
+// Pool expose le pool sous-jacent pour permettre au usecase d'exécuter des
+// queries RLS-aware (ex: is_enseignant_in_personal_etab) sans réinventer WithTx.
+func (r *StudentSignupLinkRepository) Pool() *pgxpool.Pool {
+        return r.pool
+}
+
 // Create insère un nouveau lien d'inscription (RLS via claims — StudentSignupLink_insert).
 // Le token + expiresAt sont fournis par le usecase (crypto/rand + now+30j).
 // L'ID est généré côté DB via gen_random_uuid()::text.
