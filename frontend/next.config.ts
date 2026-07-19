@@ -28,21 +28,16 @@ const nextConfig: NextConfig = {
   // routes) puis fallback sur le proxy. Aucun impact en production (gated par
   // NODE_ENV === 'development').
   async rewrites() {
-    // Production + development : proxy /api/* → Render backend.
-    // Les routes Next.js existantes (go-auth/*, certificats, etc.) ont priorité
-    // car afterFiles vérifie d'abord les fichiers réels avant le rewrite.
-    // En production, le vercel.json rewrite CDN est la route principale (0 CPU),
-    // ce rewrite Next.js sert de fallback si vercel.json n'est pas encore déployé.
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 
-      (process.env.NODE_ENV === 'development' 
-        ? 'http://localhost:8080' 
-        : 'https://sect-zead.onrender.com')
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${backendUrl}/api/:path*`,
-      },
-    ]
+    if (process.env.NODE_ENV === 'development') {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+      return [
+        {
+          source: '/api/:path*',
+          destination: `${backendUrl}/api/:path*`,
+        },
+      ]
+    }
+    return []
   },
 };
 
