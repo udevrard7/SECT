@@ -33,6 +33,8 @@ type Server struct {
         efUC         *usecase.EnseignantFiliereUseCase
         anneeUC      *usecase.AnneeUseCase
         invitationUC *usecase.InvitationUseCase
+        // SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (B2C/B2B).
+        studentSignupLinkUC *usecase.StudentSignupLinkUseCase
         epreuveUC    *usecase.EpreuveUseCase
         questionUC   *usecase.QuestionUseCase
         sessionUC    *usecase.SessionUseCase
@@ -109,6 +111,9 @@ func NewServer(
         mailSvc mailer.Mailer,
         appBaseURL string,
         quotaChecker domain.QuotaChecker,
+        // SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (ajouté en fin
+        // de signature pour minimiser le diff avec les callers existants).
+        studentSignupLinkUC *usecase.StudentSignupLinkUseCase,
 ) *Server {
         s := &Server{
                 dbPool:           dbPool,
@@ -122,6 +127,7 @@ func NewServer(
                 efUC:             efUC,
                 anneeUC:          anneeUC,
                 invitationUC:     invitationUC,
+                studentSignupLinkUC: studentSignupLinkUC,
                 epreuveUC:        epreuveUC,
                 questionUC:       questionUC,
                 sessionUC:        sessionUC,
@@ -241,6 +247,15 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         // "/api/invitations/{id}/..." ne les intercepte pas).
         r.Get("/api/invitations/verify", s.verifyInvitation)
         r.Post("/api/invitations/accept", s.acceptInvitation)
+
+        // SECT-REG-LINK-B2C-MVP-1 : inscription self-service étudiant via lien direct.
+        // Endpoints PUBLICS (pas de RequireAuth — le token du lien est l'auth).
+        // /verify retourne le contexte (étab, filière, créateur) pour pré-remplir
+        //   le formulaire public /inscription?token=xxx.
+        // POST /api/student-signup crée le User ETUDIANT + incrémente useCount
+        //   atomiquement via la fonction SQL accept_student_signup (SECURITY DEFINER).
+        r.Get("/api/student-signup/verify", s.verifyStudentSignupLink)
+        r.Post("/api/student-signup", s.acceptStudentSignup)
 
         // Certificats verify (public — no auth required for verification)
         r.Get("/api/certificats/verify/{code}", s.verifyCertificat)
@@ -411,6 +426,17 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Post("/", s.createInvitation)
                         r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Patch("/{id}/renvoyer", s.resendInvitation)
                         r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Delete("/{id}", s.cancelInvitation)
+                })
+
+                // SECT-REG-LINK-B2C-MVP-1 : gestion des liens d'inscription direct étudiant.
+                // Le GET / est ouvert à tous les authentifiés (RLS auto-scoping par createdById).
+                // Les mutations (POST/DELETE) requièrent ADMIN, RESPONSABLE, ou ENSEIGNANT
+                // dans un étab PERSONNEL (B2C self-service via RequireRoleOrPersonalEtab).
+                r.Route("/api/student-signup-links", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listStudentSignupLinks)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createStudentSignupLink)
+                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.revokeStudentSignupLink)
                 })
 
                 // /api/epreuves
