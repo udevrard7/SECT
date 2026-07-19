@@ -17514,3 +17514,33 @@ Stage Summary:
 - Codes HTTP sémantiques (502/504/500) au lieu d'un 500 fourre-tout
 - Logging serveur détaillé pour diagnostic futur via dashboard Vercel → Logs
 - En attente de vérification post-déploiement Vercel (auto-deploy depuis GitHub main)
+
+Résolution vérifiée en production (sect-app.vercel.app) :
+- AVANT : POST /api/go-auth/login → HTTP 500 {"error":"Erreur lors de la connexion"}
+  → page de login affichait "Erreur serveur. Veuillez réessayer plus tard."
+- APRÈS : POST /api/go-auth/login → HTTP 401 {"error":"identifiants incorrects"}
+  → page de login affiche "Email ou mot de passe incorrect." (message attendu)
+
+Vérification Agent Browser (page /login, mauvais identifiants test@test.test) :
+- Page se charge correctement (formulaire, champs, bouton)
+- Soumission du formulaire → message "Email ou mot de passe incorrect." ✓
+- Plus aucune erreur 500
+
+Cause racine définitive (confirmée par debug step-by-step) :
+  La variable NEXT_PUBLIC_API_URL sur Vercel pointait vers l'ancien service
+  Render `sect-s1pb.onrender.com` (mort, 404 Not Found en texte brut), au lieu
+  de `sect-zead.onrender.com` (service actif). Le commit 9facb53 avait renommé
+  l'URL dans le code, mais la variable d'environnement Vercel n'avait pas été
+  mise à jour. Corrigée via l'API Vercel (PATCH /v9/projects/.../env/...).
+
+Actions Vercel (via API REST, token vcp_***) :
+- PATCH NEXT_PUBLIC_API_URL → https://sect-zead.onrender.com (production+preview+dev)
+- DELETE projet parasite "frontend" (prj_EhVDzeA9WBHWSRdwakSLAo3l8DMi, créé par
+  un vercel link accidentel lors du diagnostic — supprimé pour respecter la
+  consigne "ne crée aucun nouveau projet")
+- Redéploiement automatique via push GitHub (commit bbcd120, READY)
+
+Commits poussés (auteur udevrard7 <ulrichdouh@gmail.com>) :
+- 85129dc fix(login): corriger erreur 500 systématique sur /api/go-auth/login
+- bafabe9 debug(login): ajouter traçage par étapes + debug info (temporaire)
+- bbcd120 fix(login): finaliser fix 500 — valider Content-Type JSON + nettoyer debug
