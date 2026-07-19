@@ -22,6 +22,7 @@ import {
   Copy,
   LayoutGrid,
   List,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   KeyRound,
@@ -35,6 +36,7 @@ import {
   AtSign,
   MessageSquare,
   ArrowLeft,
+  ArrowUpDown,
   BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
@@ -1261,18 +1263,52 @@ export function EtudiantsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportStudents}>
-            <Download className="h-4 w-4" />
-            Exporter
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
-            <FileText className="h-4 w-4" />
-            Template CSV
-          </Button>
-          <Button variant="outline" size="sm" className="border-warning/30 text-warning hover:bg-warning/10" onClick={handleOpenImport}>
-            <Upload className="h-4 w-4" />
-            Importer CSV
-          </Button>
+          {/* SECT-ETUDIANTS-MERGE-CSV-BUTTONS-1 : les 3 actions CSV (Importer / Exporter / Template)
+              sont fusionnées dans un DropdownMenu unifié pour désencombrer le header.
+              Ordre des items : Importer CSV (warning, action principale) > Exporter > Template CSV.
+              Les boutons "Lien d'inscription" et "Ajouter un étudiant" restent inchangés à droite. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="Actions d'import et export CSV">
+                <ArrowUpDown className="h-4 w-4" />
+                Importer / Exporter
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64" sideOffset={4}>
+              <DropdownMenuItem
+                onClick={handleOpenImport}
+                className="items-start gap-2.5 focus:bg-warning/10 focus:text-accent-foreground hover:bg-warning/10"
+              >
+                <Upload className="h-4 w-4 text-warning" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-warning">Importer CSV</span>
+                  <span className="text-xs text-muted-foreground">Ajouter des étudiants en masse</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleExportStudents}
+                className="items-start gap-2.5"
+              >
+                <Download className="h-4 w-4 text-muted-foreground" />
+                <div className="flex flex-col gap-0.5">
+                  <span>Exporter</span>
+                  <span className="text-xs text-muted-foreground">Télécharger la liste au format CSV</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleDownloadTemplate}
+                className="items-start gap-2.5"
+              >
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <div className="flex flex-col gap-0.5">
+                  <span>Template CSV</span>
+                  <span className="text-xs text-muted-foreground">Modèle vierge à remplir</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {/* SECT-REG-LINK-B2C-MVP-1 : lien d'inscription direct étudiant.
               Masqué pour l'ADMIN (pas d'établissement rattaché → usecase refuse).
               Visible pour RESPONSABLE (B2B) et ENSEIGNANT (B2C étab PERSONNEL). */}
