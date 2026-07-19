@@ -459,6 +459,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   //  - Si après 8s le widget n'est toujours pas rendu, on bascule
   //    `turnstileLoadFailed = true` pour afficher un bouton "Réessayer".
   //  - On sauvegarde le widget ID pour pouvoir le reset/remove proprement.
+  //  - Avant chaque render(), on vide le conteneur #cf-turnstile au cas où un
+  //    résidu d'un widget précédent empêche Cloudflare de re-render.
   useEffect(() => {
     if (!turnstileSiteKey || turnstileRendered) return
 
@@ -469,6 +471,12 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       if (typeof window === 'undefined') return
       if (window.turnstile) {
         try {
+          // Nettoie le conteneur avant render (au cas où un widget précédent
+          // ait laissé des résidus — hidden input, etc.).
+          const container = document.getElementById('cf-turnstile')
+          if (container && container.innerHTML) {
+            container.innerHTML = ''
+          }
           const widgetId = window.turnstile.render('#cf-turnstile', {
             sitekey: turnstileSiteKey,
             appearance: 'always',
@@ -483,19 +491,26 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             },
             'expired-callback': () => setTurnstileToken(null),
           })
-          setTurnstileWidgetId(widgetId)
-          setTurnstileRendered(true)
-          // Timeout de sécurité : si après 8s aucun token n'a été obtenu ET
-          // qu'aucune erreur n'a été signalée, on considère que le widget a
-          // échoué à se charger (ex: environnement headless, network bloqué).
-          timeoutId = setTimeout(() => {
-            setTurnstileToken((current) => {
-              if (!current) {
-                setTurnstileLoadFailed(true)
-              }
-              return current
-            })
-          }, 8000)
+          // Si render() retourne un ID valide, on marque comme rendu.
+          // Sinon (undefined/null), on considère que le rendu a échoué.
+          if (widgetId) {
+            setTurnstileWidgetId(widgetId)
+            setTurnstileRendered(true)
+            // Timeout de sécurité : si après 8s aucun token n'a été obtenu ET
+            // qu'aucune erreur n'a été signalée, on considère que le widget a
+            // échoué à se charger (ex: environnement headless, network bloqué).
+            timeoutId = setTimeout(() => {
+              setTurnstileToken((current) => {
+                if (!current) {
+                  setTurnstileLoadFailed(true)
+                }
+                return current
+              })
+            }, 8000)
+          } else {
+            // render() a retourné undefined/null → échec silencieux.
+            setTurnstileLoadFailed(true)
+          }
         } catch {
           setTurnstileLoadFailed(true)
         }
