@@ -17639,3 +17639,71 @@ Stage Summary:
 - Cause racine : `disabled={provider.isActive}` sur le bouton Supprimer désactivait le bouton pour TOUS les providers actifs (or en production, tous les providers sont actifs en permanence)
 - Solution : délégation de la désactivation au handler frontend (handleDelete désactive puis supprime en séquence) + UI context-aware qui explique l'opération à l'utilisateur
 - Bug vérifié résolu en production via Agent Browser (compte admin, flux create→activate→delete complet)
+
+---
+Task ID: SECT-RESPONSABLE-DELETE-RLS-FIX-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Correction du bug « impossible de supprimer un responsable qui n'a aucune donnée dans le système — la confirmation s'affiche mais le responsable n'est pas supprimé »
+
+Work Log:
+- Reproduction Agent Browser (compte admin ulrichdouh@gmail.com sur sect-app.vercel.app) :
+  * Page /utilisateurs → onglet Responsables → 2 responsables affichés (Dr. Aya Cissé inactif sans étab, Mme Keita Safiya active avec étab)
+  * Clic Supprimer sur Dr. Aya Cissé → AlertDialog de confirmation → clic Confirmer
+  * Toast succès « Utilisateur supprimé » affiché → MAIS le responsable reste dans la liste
+  * Réactualisation : utilisateur toujours présent en DB
+- Diagnostic réseau (agent-browser network requests) :
+  * DELETE /api/users/b12e48a9-... → HTTP 200 {"message":"utilisateur supprimé","deletedDependencies":{...all zeros}}
+  * GET /api/users?page=1&limit=20 → HTTP 200 (user still present)
+  * → Le backend retourne 200 mais le DELETE n'affecte aucune ligne (silent RLS failure)
+- Diagnostic base de données (script Go cmd/diag connecting to Neon) :
+  * Test 1 (connexion neondb_owner, le rôle DB OWNER) : DELETE rowsAffected=1 ✓
+    → neondb_owner a BYPASSRLS → RLS non évaluée → delete fonctionne (trompeur)
+  * Test 2 (connexion sect_app, le rôle production Render) : DELETE rowsAffected=0 ✗
+    → sect_app n'a PAS BYPASSRLS → RLS évaluée → policy ne matche pas → 0 ligne silencieux
+- Cause racine identifiée (migration 000062_b2c_self_service) :
+  * Bug #1 : policies User_insert/update/delete recréées « TO neondb_owner » au lieu de « TO PUBLIC »
+    - sect_app (rôle production Render) n'est PAS membre de neondb_owner (vérifié pg_auth_members)
+    - → aucune policy DELETE ne s'applique à sect_app → RLS deny by default → 0 ligne, aucune erreur
+  * Bug #2 : clause (is_admin() AND role = 'RESPONSABLE') ajoutée par 000052 B-complète (PaaS) SUPPRIMÉE par 000062
+    - Même avec TO PUBLIC, un ADMIN ne pouvait pas supprimer un RESPONSABLE sans etablissementId
+  * Bug #3 : fonction is_enseignant_in_personal_etab() (000062) avait REVOKE FROM PUBLIC + GRANT TO neondb_owner
+    - En passant les policies à TO PUBLIC, sect_app aurait eu « permission denied for function »
+- Correction — migration 000078_fix_user_rls_sect_app (up + down) :
+  * GRANT EXECUTE sur is_enseignant_in_personal_etab() TO PUBLIC
+  * User_insert : TO PUBLIC + clause RESPONSABLE (000052) + clause B2C is_enseignant_in_personal_etab (000062) conservée
+  * User_update : TO PUBLIC + clause RESPONSABLE + clause B2C (USING + WITH CHECK)
+  * User_delete : TO PUBLIC + clause RESPONSABLE + clause B2C
+  * down.sql : rollback vers l'état 000062 (cassé) pour traçabilité
+- Correction défensive — backend/internal/repository/user.go (Delete) :
+  * Check rowsAffected sur l'étape finale « delete user » du cascade
+  * Si 0 lignes affectées → retourne erreur « suppression refusée par RLS » au lieu d'un faux succès 200
+  * Empêche toute future régression RLS silencieuse de tromper l'utilisateur (toast erreur au lieu de toast succès)
+- Migration appliquée à Neon (golang-migrate, connexion directe neondb_owner) :
+  * up 76, 77, 78 → version courante 78 ✓
+- Vérification locale post-migration (script Go cmd/diag, connexion sect_app) :
+  * AVANT 000078 : DELETE rowsAffected=0 (silencieux)
+  * APRÈS 000078 : DELETE rowsAffected=1 (suppression effective) ✓
+- Build backend : go build ./cmd/api → OK, go vet ./internal/repository/ → OK
+- Script diagnostic cmd/diag/ supprimé (non commité)
+- Commit + push GitHub (auteur udevrard7 <ulrichdouh@gmail.com>) : commit fc976f6
+
+Vérification Agent Browser (production sect-app.vercel.app, post-migration Neon) :
+- Page /utilisateurs → Responsables → Dr. Aya Cissé (aya.cisse@ipb-bouake.org, inactif, sans étab)
+- Clic Supprimer → confirmer → toast succès
+- Liste APRÈS : Dr. Aya Cissé DISPARU ✓ (seule Mme Keita Safiya reste)
+- Vérification API : GET /api/users → ayaStillPresent=false, totalUsers=1 ✓
+- Aucune erreur console ✓
+
+Stage Summary:
+- 3 fichiers modifiés/créés :
+  * backend/db/db/migrations/000078_fix_user_rls_sect_app.up.sql (créé, 67 lignes)
+  * backend/db/db/migrations/000078_fix_user_rls_sect_app.down.sql (créé, rollback)
+  * backend/internal/repository/user.go (modifié, +8 lignes — check rowsAffected défensif)
+- Migration 000078 appliquée à Neon (DB production synchronisée)
+- Bug vérifié résolu en production via Agent Browser (compte admin, suppression Dr. Aya Cissé réussie)
+- Impact : la correction restore la capacité de l'ADMIN PaaS à supprimer tout RESPONSABLE
+  (avec ou sans etablissementId, avec ou sans données) — fonctionnalité 000052 B-complète
+  qui avait été régressée par 000062. Les ajouts B2C de 000062 (ENSEIGNANT dans étab
+  PERSONNEL gère ses ÉTUDIANTS) sont préservés.
+- Le check rowsAffected défensif protège contre toute future régression RLS silencieuse
+  sur la suppression utilisateur (meilleure observabilité : toast erreur au lieu de 200 faux)
