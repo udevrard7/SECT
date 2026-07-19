@@ -14,10 +14,21 @@ services:
         value: "8080"
       - key: ENVIRONMENT
         value: production
+      # ── Base de données Neon ──
       - key: NEON_DATABASE_URL
         sync: false
-      - key: JWT_SECRET
+      - key: NEON_DIRECT_URL
         sync: false
+      # ── Authentification ──
+      - key: JWT_SECRET
+        generateValue: true
+      # ── CORS (frontends autorisés) ──
+      - key: CORS_ORIGINS
+        value: "https://sect-app.vercel.app,https://sect-app-git-*.vercel.app"
+      # ── URL publique du frontend (pour liens reset password, etc.) ──
+      - key: APP_BASE_URL
+        value: "https://sect-app.vercel.app"
+      # ── Cloudflare R2 (stockage documents) ──
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
@@ -28,9 +39,29 @@ services:
         value: sect-documents
       - key: R2_ENDPOINT
         sync: false
-      # Resend (emails transactionnels — mot de passe oublié, etc.)
+      # ── Resend (emails transactionnels) ──
       # Priorité Resend > SMTP > LogMailer. Voir backend/internal/mailer.
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM_EMAIL
+        sync: false
+      # ── SMTP (fallback si Resend non configuré) ──
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # ── GeniusPay (paiement Wave B2C) ──
+      - key: GENIUSPAY_API_KEY
+        sync: false
+      - key: GENIUSPAY_API_SECRET
+        sync: false
+      - key: GENIUSPAY_WEBHOOK_SECRET
+        sync: false
+      - key: GENIUSPAY_BASE_URL
         sync: false

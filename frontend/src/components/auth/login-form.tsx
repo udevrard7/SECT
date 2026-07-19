@@ -137,6 +137,8 @@ export function LoginForm() {
   const [resetSending, setResetSending] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
+  const [lastCredentials, setLastCredentials] = useState<{identifier: string; password: string} | null>(null)
+
   const login = useAuthStore((state) => state.login)
   const loginStudent = useAuthStore((state) => state.loginStudent)
   const isLoading = useAuthStore((state) => state.isLoading)
@@ -156,6 +158,7 @@ export function LoginForm() {
 
   const onSubmit = useCallback(async (data: PersonnelFormValues | EtudiantFormValues) => {
     setLoginError(null)
+    setLastCredentials({ identifier: data.identifier, password: data.password })
     try {
       let success = false
       if (loginMode === 'etudiant') {
@@ -206,7 +209,7 @@ export function LoginForm() {
         setLoginError(errorMsg)
       }
     }
-  }, [loginMode, login, loginStudent])
+  }, [loginMode, login, loginStudent, setLastCredentials])
 
   // Password reset handlers
   const handleResetRequest = useCallback(async () => {
@@ -603,7 +606,7 @@ export function LoginForm() {
                       onClick={async () => {
                         setLoginError(null)
                         useAuthStore.setState({ multiAccounts: null })
-                        const s = await login(data.identifier, data.password, acc.userId)
+                        const s = await login(lastCredentials?.identifier || form.getValues('identifier'), lastCredentials?.password || form.getValues('password'), acc.userId)
                         if (!s) setLoginError('Connexion échouée. Réessayez.')
                       }}
                       className="w-full flex items-center gap-3 p-3 rounded-lg bg-white border border-[#1E1B4B]/10 hover:border-[#84CC16] hover:bg-[#84CC16]/5 transition-colors text-left"

@@ -706,6 +706,16 @@ export function PassationPage() {
     }
   }, [debouncedSaveAnswers])
 
+  // Annule le jitter si l'étudiant soumet manuellement avant la fin du compte
+  // à rebours. Appelé depuis submitExam (via cleanup) et au unmount.
+  const cancelPendingAutoSubmit = useCallback(() => {
+    if (pendingAutoSubmitTimeoutRef.current) {
+      clearTimeout(pendingAutoSubmitTimeoutRef.current)
+      pendingAutoSubmitTimeoutRef.current = null
+    }
+    setPendingAutoSubmitIn(null)
+  }, [])
+
   // ─── Submit exam ───────────────────────────────────────────────────────
   // SUBMIT-JITTER-1 + SUBMIT-RATELIMIT-1 (OPT-7) : gère le 202 Accepted du
   // backend (file de submits pleine) en réessayant après le Retry-After
@@ -1017,16 +1027,6 @@ export function PassationPage() {
       submitExam(true, 'time')
     }, jitterMs)
   }, [submitExam])
-
-  // Annule le jitter si l'étudiant soumet manuellement avant la fin du compte
-  // à rebours. Appelé depuis submitExam (via cleanup) et au unmount.
-  const cancelPendingAutoSubmit = useCallback(() => {
-    if (pendingAutoSubmitTimeoutRef.current) {
-      clearTimeout(pendingAutoSubmitTimeoutRef.current)
-      pendingAutoSubmitTimeoutRef.current = null
-    }
-    setPendingAutoSubmitIn(null)
-  }, [])
 
   // SUBMIT-JITTER-1 : cleanup à l'unmount — évite qu'un submit ne se déclenche
   // après que le composant ait été démonté (fuite mémoire + state sur composant
