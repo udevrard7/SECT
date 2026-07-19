@@ -30,6 +30,9 @@ func (r *StudentSignupLinkRepository) Pool() *pgxpool.Pool {
 // Create insère un nouveau lien d'inscription (RLS via claims — StudentSignupLink_insert).
 // Le token + expiresAt sont fournis par le usecase (crypto/rand + now+30j).
 // L'ID est généré côté DB via gen_random_uuid()::text.
+//
+// SECT-REG-LINK-PHASE3-BACKEND-1 : ajout colonne "customWelcomeMessage" (text,
+// nullable). expiryReminderSent a un DEFAULT false côté DB — non inséré ici.
 func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.CreateStudentSignupLinkInput, token string) (*domain.StudentSignupLink, error) {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok {
@@ -42,13 +45,15 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
                         INSERT INTO "StudentSignupLink" (
                                 "id", "token", "etablissementId", "filiereId", "niveau",
                                 "createdById", "expiresAt", "maxUses", "useCount", "actif",
-                                "label", "emailDomainRestriction", "createdAt", "updatedAt"
+                                "label", "emailDomainRestriction", "customWelcomeMessage",
+                                "createdAt", "updatedAt"
                         )
-                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, true, $8, $9,
+                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, true, $8, $9, $10,
                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "id", "token", "etablissementId", "filiereId", "niveau",
                                   "createdById", "expiresAt", "maxUses", "useCount", "actif",
-                                  "label", "emailDomainRestriction", "createdAt", "updatedAt"`
+                                  "label", "emailDomainRestriction", "customWelcomeMessage",
+                                  "createdAt", "updatedAt"`
                 row := tx.QueryRow(ctx, query,
                         token,
                         input.EtablissementID,
@@ -59,12 +64,14 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
                         nullableIntPtr(input.MaxUses),
                         nullableStrPtr(input.Label),
                         nullableStrPtr(input.EmailDomainRestriction),
+                        nullableStrPtr(input.CustomWelcomeMessage),
                 )
                 l := &domain.StudentSignupLink{}
                 if err := row.Scan(
                         &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                         &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
-                        &l.Label, &l.EmailDomainRestriction, &l.CreatedAt, &l.UpdatedAt,
+                        &l.Label, &l.EmailDomainRestriction, &l.CustomWelcomeMessage,
+                        &l.CreatedAt, &l.UpdatedAt,
                 ); err != nil {
                         if isUniqueViolation(err) {
                                 return &domain.ConflictError{Message: "token déjà utilisé"}
@@ -88,14 +95,17 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
 // pour rester compatible avec le rôle prod sect_app (NOBYPASSRLS). Le token EST
 // l'authentification — pas de claims JWT requises.
 //
-// 19 colonnes retournées par la fonction SQL (Phase 2 étendue — 1 colonne ajoutée :
-// link_email_domain_restriction, en 13e position, avant les colonnes de jointure) :
+// 21 colonnes retournées par la fonction SQL (Phase 3 étendue — 2 colonnes ajoutées :
+// link_custom_welcome_message + link_expiry_reminder_sent, en 14e et 15e position,
+// avant les colonnes de jointure) :
 //  1. link_id, 2. link_token, 3. link_etablissement_id, 4. link_filiere_id,
 //  5. link_niveau, 6. link_created_by_id, 7. link_expires_at, 8. link_max_uses,
 //  9. link_use_count, 10. link_actif, 11. link_label, 12. link_created_at,
 //  13. link_email_domain_restriction (PHASE 2),
-//  14. etab_nom, 15. etab_type, 16. etab_ville, 17. fil_nom, 18. fil_code,
-//  19. creator_name
+//  14. link_custom_welcome_message (PHASE 3),
+//  15. link_expiry_reminder_sent (PHASE 3),
+//  16. etab_nom, 17. etab_type, 18. etab_ville, 19. fil_nom, 20. fil_code,
+//  21. creator_name
 func (r *StudentSignupLinkRepository) FindByToken(ctx context.Context, token string) (*domain.StudentSignupLink, error) {
         row := r.pool.QueryRow(ctx, `SELECT * FROM find_student_signup_link_by_token($1)`, token)
         l := &domain.StudentSignupLink{}
@@ -108,6 +118,7 @@ func (r *StudentSignupLinkRepository) FindByToken(ctx context.Context, token str
                 &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                 &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
                 &l.Label, &l.CreatedAt, &l.EmailDomainRestriction,
+                &l.CustomWelcomeMessage, &l.ExpiryReminderSent,
                 &etabNom, &etabType, &etabVille,
                 &filNom, &filCode,
                 &creatorName,
@@ -164,10 +175,15 @@ func (r *StudentSignupLinkRepository) ListByCreator(ctx context.Context, creator
                 // par le usecase Create ; pour les liens existants, le frontend dispose déjà
                 // de l'URL (stockée côté client à la création) ou peut la régénérer via
                 // un endpoint dédié si nécessaire.
+                //
+                // SECT-REG-LINK-PHASE3-BACKEND-1 : ajout colonnes expiryReminderSent +
+                // customWelcomeMessage (utiles pour l'affichage du message perso côté
+                // frontend + suivi du flag reminder).
                 query := `
                         SELECT "id", "token", "etablissementId", "filiereId", "niveau",
                                "createdById", "expiresAt", "maxUses", "useCount", "actif",
-                               "label", "emailDomainRestriction", "createdAt", "updatedAt"
+                               "label", "emailDomainRestriction", "customWelcomeMessage",
+                               "expiryReminderSent", "createdAt", "updatedAt"
                         FROM "StudentSignupLink"
                         WHERE "createdById" = $1 AND "deletedAt" IS NULL
                         ORDER BY "createdAt" DESC`
@@ -181,7 +197,8 @@ func (r *StudentSignupLinkRepository) ListByCreator(ctx context.Context, creator
                         if err := rows.Scan(
                                 &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                                 &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
-                                &l.Label, &l.EmailDomainRestriction, &l.CreatedAt, &l.UpdatedAt,
+                                &l.Label, &l.EmailDomainRestriction, &l.CustomWelcomeMessage,
+                                &l.ExpiryReminderSent, &l.CreatedAt, &l.UpdatedAt,
                         ); err != nil {
                                 return fmt.Errorf("scan student signup link: %w", err)
                         }
@@ -296,6 +313,26 @@ func (r *StudentSignupLinkRepository) LogRegistrationEvent(
         )
         if err != nil {
                 return fmt.Errorf("log_registration_event: %w", err)
+        }
+        return nil
+}
+
+// MarkReminderSent — SECT-REG-LINK-PHASE3-BACKEND-1
+//
+// Marque le flag "expiryReminderSent"=true sur un StudentSignupLink après envoi
+// de l'email de reminder 24h par le worker. Idempotent : si appelé plusieurs fois
+// (ex: retry worker), l'UPDATE est juste un no-op (valeur déjà true).
+//
+// Bypass RLS via pool.Exec direct (le worker tourne en system-worker — pas de
+// claims utilisateur). La colonne expiryReminderSent n'est pas sensible (un flag
+// booléen de dédoublonnage — pas une donnée métier). L'UPDATE ne peut pas être
+// utilisé pour élever des privilèges.
+func (r *StudentSignupLinkRepository) MarkReminderSent(ctx context.Context, linkID string) error {
+        _, err := r.pool.Exec(ctx,
+                `UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+                linkID)
+        if err != nil {
+                return fmt.Errorf("mark reminder sent: %w", err)
         }
         return nil
 }

@@ -21,6 +21,7 @@ package usecase
 import (
         "context"
         "crypto/rand"
+        "database/sql"
         "encoding/hex"
         "fmt"
         "regexp"
@@ -57,6 +58,13 @@ var signupEmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a
 // labels alphanumériques + points + tirets (ex: "univ-ci.edu", "u-bourgogne.fr").
 // Pas de '@' initial (le usecase le strippe si présent). Pas d'espaces.
 var signupDomainRegex = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
+// signupCustomMsgMaxLen — SECT-REG-LINK-PHASE3-BACKEND-1
+// Limite de longueur du customWelcomeMessage (500 chars). Suffisant pour un
+// paragraphe court (ex: "Bienvenue en L1 Info ! Pensez à apporter votre laptop
+// le premier jour. Le syllabus sera distribué en amphi."). Évite le DB bloat +
+// les abus (un créateur ne peut pas injecter un roman de 10ko dans chaque email).
+const signupCustomMsgMaxLen = 500
 
 // StudentSignupLinkUseCase implémente les cas d'usage des liens d'inscription
 // direct étudiant.
@@ -184,6 +192,25 @@ func (uc *StudentSignupLinkUseCase) Create(ctx context.Context, claims db.Sessio
                         }
                 } else {
                         input.EmailDomainRestriction = &d
+                }
+        }
+
+        // SECT-REG-LINK-PHASE3-BACKEND-1 : validation du customWelcomeMessage.
+        // Trim + max 500 chars. Si vide après trim → nil (pas de message). Si > 500
+        // chars → ValidationError (le créateur doit raccourcir — on ne truncate pas
+        // silencieusement pour éviter une surpré au frontend qui afficherait un
+        // message tronqué sans indication).
+        if input.CustomWelcomeMessage != nil {
+                msg := strings.TrimSpace(*input.CustomWelcomeMessage)
+                if msg == "" {
+                        input.CustomWelcomeMessage = nil
+                } else if len(msg) > signupCustomMsgMaxLen {
+                        return nil, "", &domain.ValidationError{
+                                Field:   "customWelcomeMessage",
+                                Message: fmt.Sprintf("le message personnalisé ne peut pas dépasser %d caractères", signupCustomMsgMaxLen),
+                        }
+                } else {
+                        input.CustomWelcomeMessage = &msg
                 }
         }
 
@@ -444,15 +471,22 @@ func fallbackMsg(message, fallback string) string {
 // Récupère le contexte (étab, filière, créateur) via le token pour personnaliser
 // l'email. Si FindByToken échoue (token déjà utilisé etc.), on utilise les
 // données renvoyées par accept_student_signup.
+//
+// SECT-REG-LINK-PHASE3-BACKEND-1 : récupère aussi customWelcomeMessage +
+// etab.Type via FindByToken pour personnaliser l'email (variant B2B vs B2C +
+// message optionnel du créateur). Le template HTML-échappe le customMessage
+// pour prévenir XSS (un créateur ne peut pas injecter du HTML dans l'email).
 func (uc *StudentSignupLinkUseCase) sendStudentWelcomeEmail(ctx context.Context, token string, res *domain.AcceptSignupResult) {
         // Context avec timeout de 30s (évite fuite si DB ou Resend est lent).
         ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
 
         var (
-                etabNom        string
-                filiereNom     string
-                enseignantNom  string
+                etabNom       string
+                filiereNom    string
+                enseignantNom string
+                etabType      string
+                customMsg     string
         )
         if res.EtablissementNom != nil {
                 etabNom = *res.EtablissementNom
@@ -462,10 +496,19 @@ func (uc *StudentSignupLinkUseCase) sendStudentWelcomeEmail(ctx context.Context,
         } else {
                 filiereNom = "—"
         }
-        // Récupérer le nom du créateur via FindByToken (le résultat AcceptSignup
-        // ne retourne pas le créateur — seulement l'étab et la filière).
-        if link, err := uc.repo.FindByToken(ctx, token); err == nil && link != nil && link.Creator != nil {
-                enseignantNom = link.Creator.Name
+        // Récupérer le nom du créateur + le type d'étab + le customWelcomeMessage
+        // via FindByToken (le résultat AcceptSignup ne retourne pas le créateur
+        // — seulement l'étab et la filière).
+        if link, err := uc.repo.FindByToken(ctx, token); err == nil && link != nil {
+                if link.Creator != nil {
+                        enseignantNom = link.Creator.Name
+                }
+                if link.Etablissement != nil {
+                        etabType = link.Etablissement.Type
+                }
+                if link.CustomWelcomeMessage != nil {
+                        customMsg = *link.CustomWelcomeMessage
+                }
         }
 
         // Matricule pour l'email (peut être nil si pas de filière).
@@ -485,12 +528,14 @@ func (uc *StudentSignupLinkUseCase) sendStudentWelcomeEmail(ctx context.Context,
         }
 
         tplData := emailtpl.StudentWelcomeData{
-                EmailData:        emailtpl.DefaultData(recipientName, uc.appBaseURL),
-                EtablissementNom: etabNom,
-                FiliereNom:       filiereNom,
-                EnseignantNom:    enseignantNom,
-                LoginURL:         uc.appBaseURL + "/login",
-                Matricule:        matricule,
+                EmailData:         emailtpl.DefaultData(recipientName, uc.appBaseURL),
+                EtablissementNom:  etabNom,
+                EtablissementType: etabType,
+                FiliereNom:        filiereNom,
+                EnseignantNom:     enseignantNom,
+                LoginURL:          uc.appBaseURL + "/login",
+                Matricule:         matricule,
+                CustomMessage:     customMsg,
         }
 
         if err := uc.mailer.Send(mailer.Email{
@@ -514,4 +559,174 @@ func (uc *StudentSignupLinkUseCase) sendStudentWelcomeEmail(ctx context.Context,
 // à *slog.Logger.
 func (uc *StudentSignupLinkUseCase) SetLogger(fn func(msg string, args ...any)) {
         uc.appLogger = fn
+}
+
+// Stats — SECT-REG-LINK-PHASE3-BACKEND-1
+//
+// Retourne les statistiques agrégées sur les StudentSignupLinks du créateur
+// (ENSEIGNANT) ou de l'établissement (RESPONSABLE) ou globales (ADMIN).
+//
+// Scoping RLS :
+//   - ENSEIGNANT : la policy StudentSignupLink_select filtre automatiquement
+//     createdById = current_user_id() → l'enseignant ne voit que ses propres liens.
+//   - RESPONSABLE : la policy laisse passer tous les liens de son étab (via
+//     is_responsable() AND s."etablissementId" = current_etablissement_id()).
+//   - ADMIN : la policy laisse passer is_admin() → tous les liens visibles.
+//
+// Toutes les queries sont exécutées dans la même transaction RLS-aware (db.WithTx)
+// pour garantir une vue cohérente (pas de mutation entre queries). Le scoping
+// est entièrement délégué à la RLS — pas de clause WHERE applicative (sécurité
+// by construction, pas d'injection SQL possible).
+//
+// Queries exécutées :
+//  1. COUNT(total)     — tous les liens (deletedAt inclus pour le total brut)
+//  2. COUNT(active)    — actif=true AND expiresAt > now AND deletedAt IS NULL
+//  3. COUNT(expired)   — actif=false AND deletedAt IS NULL (auto-expire)
+//  4. COUNT(revoked)   — deletedAt IS NOT NULL (soft-delete manuel)
+//  5. SUM(useCount)    — somme des useCount (tous les liens non purgés)
+//  6. COUNT(expiring_soon) — expiresAt < now + 24h AND actif=true AND deletedAt IS NULL
+//  7. COUNT(success), COUNT(failure) — depuis RegistrationEvent (via JOIN StudentSignupLink)
+//  8. Top 5 liens by useCount (avec label, maxUses, expiresAt, actif)
+//  9. Daily creations (30 derniers jours) — GROUP BY date_trunc('day', createdAt)
+// 10. Failure breakdown by code (GROUP BY code WHERE success=false)
+//
+// Les erreurs de query non critiques (ex: RegistrationEvent si la table n'existe
+// pas encore en dev) sont ignorées — les compteurs restent à 0 (déjà initialisés).
+func (uc *StudentSignupLinkUseCase) Stats(ctx context.Context, claims db.SessionClaims) (*domain.StudentSignupLinkStats, error) {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if claims.UserID == "" {
+                return nil, &domain.UnauthorizedError{Message: "session invalide"}
+        }
+        // RESPONSABLE doit avoir un étab (sinon la RLS ne retourne rien — on
+        // retourne une erreur explicite pour aider au debug).
+        if role == domain.RoleResponsable && claims.EtablissementID == "" {
+                return nil, &domain.UnauthorizedError{Message: "établissement requis dans la session"}
+        }
+
+        stats := &domain.StudentSignupLinkStats{
+                TopLinks:         []domain.TopLinkStat{},
+                DailyCreations:   []domain.DailyCreationStat{},
+                FailureBreakdown: map[string]int{},
+        }
+
+        err := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
+                // 1-6. Compteurs globaux en une seule query (FILTER pour perf).
+                // Le scoping est appliqué par la RLS automatiquement (pas de WHERE explicite).
+                var total, active, expired, revoked, expiringSoon int
+                var totalUses sql.NullInt64
+                q := `
+                        SELECT
+                                count(*) AS total,
+                                count(*) FILTER (WHERE "actif" = true AND "expiresAt" > NOW() AND "deletedAt" IS NULL) AS active,
+                                count(*) FILTER (WHERE "actif" = false AND "deletedAt" IS NULL) AS expired,
+                                count(*) FILTER (WHERE "deletedAt" IS NOT NULL) AS revoked,
+                                count(*) FILTER (WHERE "expiresAt" < NOW() + INTERVAL '24 hours' AND "actif" = true AND "deletedAt" IS NULL) AS expiring_soon,
+                                COALESCE(sum("useCount"), 0) AS total_uses
+                        FROM "StudentSignupLink"
+                `
+                if err := tx.QueryRow(ctx, q).Scan(&total, &active, &expired, &revoked, &expiringSoon, &totalUses); err == nil {
+                        stats.Total = total
+                        stats.Active = active
+                        stats.Expired = expired
+                        stats.Revoked = revoked
+                        stats.ExpiringSoon = expiringSoon
+                        if totalUses.Valid {
+                                stats.TotalUses = int(totalUses.Int64)
+                        }
+                }
+
+                // 7. Compteurs succès/échec depuis RegistrationEvent (via JOIN).
+                // NB : si la table RegistrationEvent n'existe pas en dev (migration
+                // 000080 pas appliquée), la query échoue silencieusement — on garde 0.
+                // La RLS sur StudentSignupLink filtre automatiquement la JOIN.
+                regQ := `
+                        SELECT
+                                count(*) FILTER (WHERE r."success" = true) AS success,
+                                count(*) FILTER (WHERE r."success" = false) AS failure
+                        FROM "RegistrationEvent" r
+                        JOIN "StudentSignupLink" s ON s."id" = r."linkId"
+                `
+                var successCount, failureCount int
+                if err := tx.QueryRow(ctx, regQ).Scan(&successCount, &failureCount); err == nil {
+                        stats.SuccessCount = successCount
+                        stats.FailureCount = failureCount
+                }
+
+                // 8. Top 5 liens par useCount.
+                topQ := `
+                        SELECT "id", COALESCE("label", 'Sans libellé'), "useCount", "maxUses", "expiresAt", "actif"
+                        FROM "StudentSignupLink"
+                        WHERE "deletedAt" IS NULL
+                        ORDER BY "useCount" DESC, "createdAt" DESC
+                        LIMIT 5
+                `
+                rows, qerr := tx.Query(ctx, topQ)
+                if qerr == nil {
+                        defer rows.Close()
+                        for rows.Next() {
+                                var tl domain.TopLinkStat
+                                var label string
+                                var maxUses *int
+                                var expiresAt time.Time
+                                var actif bool
+                                if err := rows.Scan(&tl.ID, &label, &tl.UseCount, &maxUses, &expiresAt, &actif); err == nil {
+                                        tl.Label = label
+                                        tl.MaxUses = maxUses
+                                        tl.ExpiresAt = expiresAt.Format("2006-01-02T15:04:05Z07:00")
+                                        tl.Actif = actif
+                                        stats.TopLinks = append(stats.TopLinks, tl)
+                                }
+                        }
+                }
+
+                // 9. Daily creations (30 derniers jours).
+                dailyQ := `
+                        SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
+                               count(*) AS count
+                        FROM "StudentSignupLink"
+                        WHERE "createdAt" > NOW() - INTERVAL '30 days'
+                        GROUP BY day
+                        ORDER BY day ASC
+                `
+                rows2, qerr2 := tx.Query(ctx, dailyQ)
+                if qerr2 == nil {
+                        defer rows2.Close()
+                        for rows2.Next() {
+                                var dc domain.DailyCreationStat
+                                if err := rows2.Scan(&dc.Day, &dc.Count); err == nil {
+                                        stats.DailyCreations = append(stats.DailyCreations, dc)
+                                }
+                        }
+                }
+
+                // 10. Failure breakdown by code.
+                fbQ := `
+                        SELECT r."code", count(*) AS count
+                        FROM "RegistrationEvent" r
+                        JOIN "StudentSignupLink" s ON s."id" = r."linkId"
+                        WHERE r."success" = false
+                        GROUP BY r."code"
+                        ORDER BY count DESC
+                `
+                rows3, qerr3 := tx.Query(ctx, fbQ)
+                if qerr3 == nil {
+                        defer rows3.Close()
+                        for rows3.Next() {
+                                var code string
+                                var count int
+                                if err := rows3.Scan(&code, &count); err == nil {
+                                        stats.FailureBreakdown[code] = count
+                                }
+                        }
+                }
+
+                return nil
+        })
+        if err != nil {
+                return nil, err
+        }
+        return stats, nil
 }

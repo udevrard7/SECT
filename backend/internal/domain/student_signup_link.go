@@ -60,6 +60,16 @@ type StudentSignupLink struct {
         // (B2B — ex: "univ-ci.edu" pour n'accepter que les emails @univ-ci.edu).
         // nil/empty = pas de restriction. Normalisé lower + trim + sans '@' initial côté usecase.
         EmailDomainRestriction *string `json:"emailDomainRestriction,omitempty"`
+        // SECT-REG-LINK-PHASE3-BACKEND-1 : flag anti-spam pour le worker de reminder 24h.
+        // Mis à true après envoi de l'email de relance "expire dans 24h" (une seule
+        // relance par lien — évite le spam si le worker tourne plusieurs fois dans
+        // la fenêtre 24h). Reset implicite à la création (DEFAULT false côté DB).
+        ExpiryReminderSent bool `json:"-"`
+        // SECT-REG-LINK-PHASE3-BACKEND-1 : message personnalisé du créateur injecté
+        // dans l'email de bienvenue envoyé à l'étudiant (ex: "Bienvenue en L1 Info,
+        // pensez à apporter votre laptop le premier jour"). nil/empty = pas de message.
+        // Max 500 chars (validé côté usecase). HTML-échappé dans le template.
+        CustomWelcomeMessage *string `json:"customWelcomeMessage,omitempty"`
         CreatedAt              time.Time `json:"createdAt"`
         UpdatedAt              time.Time `json:"updatedAt"`
         // Relations (peuplées par FindByToken / ListByCreator pour le frontend).
@@ -89,6 +99,10 @@ type CreateStudentSignupLinkInput struct {
         // nil/empty = pas de restriction. Sinon doit matcher ^[a-zA-Z0-9.-]+$
         // (validé/normalisé côté usecase). Stocké tel quel en DB (text).
         EmailDomainRestriction *string
+        // SECT-REG-LINK-PHASE3-BACKEND-1 : message personnalisé du créateur
+        // injecté dans l'email de bienvenue étudiant. Optionnel (nil = pas de message).
+        // Trim + max 500 chars côté usecase. HTML-échappé dans le template.
+        CustomWelcomeMessage *string
 }
 
 // AcceptSignupResult — résultat de la fonction SQL accept_student_signup.
@@ -139,6 +153,11 @@ type StudentSignupLinkRepository interface {
         // pour bypass RLS sur INSERT dans "RegistrationEvent" (les clients ne peuvent
         // pas écrire directement dans cette table). Non bloquant côté usecase.
         LogRegistrationEvent(ctx context.Context, linkID, userID, email, ip, userAgent string, success bool, code string) error
+
+        // SECT-REG-LINK-PHASE3-BACKEND-1 : marque le flag expiryReminderSent=true
+        // après envoi de l'email de reminder 24h. Idempotent — si l'update échoue,
+        // le worker réessaie au prochain tick (acceptable).
+        MarkReminderSent(ctx context.Context, linkID string) error
 }
 
 // SignupLinkStateError indique qu'un lien ne peut pas être utilisé (introuvable,
@@ -151,3 +170,46 @@ type SignupLinkStateError struct {
 }
 
 func (e *SignupLinkStateError) Error() string { return e.Message }
+
+// ──────────────────────────────────────────────────────────────────────────
+// SECT-REG-LINK-PHASE3-BACKEND-1 — types pour le endpoint de stats agrégées.
+// ──────────────────────────────────────────────────────────────────────────
+
+// StudentSignupLinkStats — agrégats retournés par GET /api/student-signup-links/stats.
+//
+// Scoping RLS :
+//   - ENSEIGNANT : uniquement ses propres liens (createdById = claims.UserID).
+//   - RESPONSABLE : tous les liens de son établissement (etablissementId = claims.EtablissementID).
+//   - ADMIN : tous les liens (pas de filtre).
+//
+// Les compteurs sont calculés via une transaction RLS-aware (db.WithTx) — les
+// queries COUNT(*) sont automatiquement filtrées par la policy StudentSignupLink_select.
+type StudentSignupLinkStats struct {
+        Total            int            `json:"total"`
+        Active           int            `json:"active"`           // actif=true AND expiresAt > now AND deletedAt IS NULL
+        Expired          int            `json:"expired"`          // actif=false (auto-expire) OR expiresAt < now
+        Revoked          int            `json:"revoked"`          // deletedAt != NULL (soft-delete manuel)
+        TotalUses        int            `json:"totalUses"`        // somme des useCount
+        ExpiringSoon     int            `json:"expiringSoon"`     // expiresAt < now + 24h AND actif=true
+        SuccessCount     int            `json:"successCount"`     // RegistrationEvent success=true
+        FailureCount     int            `json:"failureCount"`     // RegistrationEvent success=false
+        TopLinks         []TopLinkStat  `json:"topLinks"`         // top 5 by useCount
+        DailyCreations   []DailyCreationStat `json:"dailyCreations"` // last 30 days
+        FailureBreakdown map[string]int `json:"failureBreakdown"` // count by code (DOMAIN_NOT_ALLOWED, QUOTA_EXCEEDED, ...)
+}
+
+// TopLinkStat — un des top 5 liens par useCount.
+type TopLinkStat struct {
+        ID        string `json:"id"`
+        Label     string `json:"label"`     // "Sans libellé" si NULL
+        UseCount  int    `json:"useCount"`
+        MaxUses   *int   `json:"maxUses,omitempty"`
+        ExpiresAt string `json:"expiresAt"` // ISO 8601
+        Actif     bool   `json:"actif"`
+}
+
+// DailyCreationStat — nombre de liens créés par jour (YYYY-MM-DD).
+type DailyCreationStat struct {
+        Day   string `json:"day"`   // YYYY-MM-DD
+        Count int    `json:"count"`
+}

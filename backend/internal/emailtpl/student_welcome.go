@@ -2,6 +2,7 @@ package emailtpl
 
 import (
 	"fmt"
+	"html"
 	"strings"
 )
 
@@ -12,10 +13,22 @@ import (
 // dédié aux étudiants B2C : il est plus court, met en avant le matricule (si
 // filière assignée), et rappelle le nom de l'enseignant/établissement qui a
 // partagé le lien (effet "bouche-à-oreille" / confiance).
+//
+// SECT-REG-LINK-PHASE3-BACKEND-1 : ajout de 2 champs pour personnaliser l'email :
+//   - EtablissementType : "PERSONNEL" (B2C) vs "UNIVERSITE"/"INSTITUT"/"ECOLE" (B2B).
+//     Permet de varier le ton de l'intro ("Bienvenue chez votre enseignant X"
+//     vs "Bienvenue dans votre établissement Y").
+//   - CustomMessage : message optionnel du créateur (max 500 chars côté usecase).
+//     Affiché dans une infoBoxHTML "Message de votre enseignant" SI non vide.
+//     Le HTML est échappé via html.EscapeString pour prévenir XSS (un créateur
+//     ne peut pas injecter du HTML arbitraire dans l'email).
 type StudentWelcomeData struct {
 	EmailData
 	// EtablissementNom : nom de l'établissement (étab B2B ou étab PERSONNEL B2C).
 	EtablissementNom string
+	// EtablissementType : type de l'établissement ("PERSONNEL" pour B2C, sinon
+	// "UNIVERSITE" / "INSTITUT" / "ECOLE" / "AUTRE" pour B2B). Phase 3.
+	EtablissementType string
 	// FiliereNom : nom de la filière ("—" si non assignée — cas prof B2C global).
 	FiliereNom string
 	// EnseignantNom : nom du créateur du lien (optionnel — peut être vide si
@@ -26,6 +39,9 @@ type StudentWelcomeData struct {
 	// Matricule : matricule SECT généré (ex: "INF/LJ/26/001"). Vide si pas de
 	// filière assignée (cas prof B2C global).
 	Matricule string
+	// CustomMessage : message optionnel du créateur injecté dans l'email (Phase 3).
+	// Vide = pas de message. HTML-échappé dans le template via html.EscapeString.
+	CustomMessage string
 }
 
 // StudentWelcomeHTML génère le HTML de l'email de bienvenue étudiant.
@@ -33,6 +49,10 @@ type StudentWelcomeData struct {
 // Structure :
 //   - Header DS unifié (logo + bande kente) via baseTemplate
 //   - Titre "Bienvenue sur SECT !" + carte établissement/filière
+//   - Variant B2C vs B2B dans l'intro (Phase 3) :
+//     * B2C (EtablissementType == "PERSONNEL") : "Bienvenue chez votre enseignant {EnseignantNom}"
+//     * B2B (sinon) : "Bienvenue dans votre établissement {EtablissementNom}"
+//   - Bloc message personnalisé du créateur (Phase 3) si CustomMessage != ""
 //   - Bloc matricule (si présent)
 //   - Bouton "Se connecter" (vert lime)
 //   - Footer DS unifié
@@ -44,27 +64,48 @@ func StudentWelcomeHTML(d StudentWelcomeData) string {
 		d.FiliereNom = "—"
 	}
 
+	// Variant d'intro B2C vs B2B (Phase 3).
+	// B2C : EtablissementType == "PERSONNEL" → ton plus chaleureux, centré enseignant.
+	// B2B : sinon → ton institutionnel, centré établissement.
+	intro := "Votre compte étudiant a été créé avec succès. Vous pouvez dès maintenant accéder à vos épreuves, examens en ligne et ressources pédagogiques."
+	if d.EtablissementType == "PERSONNEL" && d.EnseignantNom != "" {
+		intro = fmt.Sprintf("Bienvenue chez votre enseignant <strong style=\"color:%s;\">%s</strong>. %s",
+			ColorNavy, html.EscapeString(d.EnseignantNom), intro)
+	} else if d.EtablissementNom != "" {
+		intro = fmt.Sprintf("Bienvenue dans votre établissement <strong style=\"color:%s;\">%s</strong>. %s",
+			ColorNavy, html.EscapeString(d.EtablissementNom), intro)
+	}
+
 	// Carte contexte (étab + filière + enseignant + matricule)
 	contextParts := []string{
-		fmt.Sprintf(`<strong style="color:%s;">Établissement :</strong> %s`, ColorNavy, d.EtablissementNom),
-		fmt.Sprintf(`<strong style="color:%s;">Filière :</strong> %s`, ColorNavy, d.FiliereNom),
+		fmt.Sprintf(`<strong style="color:%s;">Établissement :</strong> %s`, ColorNavy, html.EscapeString(d.EtablissementNom)),
+		fmt.Sprintf(`<strong style="color:%s;">Filière :</strong> %s`, ColorNavy, html.EscapeString(d.FiliereNom)),
 	}
 	if d.EnseignantNom != "" {
 		contextParts = append(contextParts,
-			fmt.Sprintf(`<strong style="color:%s;">Invité par :</strong> %s`, ColorNavy, d.EnseignantNom))
+			fmt.Sprintf(`<strong style="color:%s;">Invité par :</strong> %s`, ColorNavy, html.EscapeString(d.EnseignantNom)))
 	}
 	if d.Matricule != "" {
 		contextParts = append(contextParts,
 			fmt.Sprintf(`<strong style="color:%s;">Votre matricule :</strong> <code style="background-color:%s;color:%s;padding:2px 8px;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;">%s</code>`,
-				ColorNavy, ColorCream, ColorTerracotta, d.Matricule))
+				ColorNavy, ColorCream, ColorTerracotta, html.EscapeString(d.Matricule)))
 	}
 	contextHTML := strings.Join(contextParts, "<br>\n  ")
+
+	// Bloc message personnalisé (Phase 3) — uniquement si non vide.
+	// HTML-échappé pour prévenir XSS (un créateur ne peut pas injecter du HTML).
+	customMsgHTML := ""
+	if d.CustomMessage != "" {
+		customMsgHTML = infoBoxHTML(fmt.Sprintf(
+			`<strong style="color:%s;display:block;margin-bottom:6px;">✉️ Message de votre enseignant</strong>%s`,
+			ColorNavy, html.EscapeString(d.CustomMessage)))
+	}
 
 	body := `<h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:` + ColorNavy + `;letter-spacing:-0.3px;">Bienvenue sur SECT ! 🎓</h2>
 <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#4B5563;">
   ` + d.greeting() + `
   <br><br>
-  Votre compte étudiant a été créé avec succès. Vous pouvez dès maintenant accéder à vos épreuves, examens en ligne et ressources pédagogiques.
+  ` + intro + `
 </p>
 
 <!-- Carte contexte -->
@@ -75,6 +116,8 @@ func StudentWelcomeHTML(d StudentWelcomeData) string {
     </td>
   </tr>
 </table>
+
+` + customMsgHTML + `
 
 <!-- Avantages étudiant -->
 <div style="margin:20px 0;">
@@ -93,7 +136,7 @@ func StudentWelcomeHTML(d StudentWelcomeData) string {
 <div style="margin:20px 0;padding:16px 20px;background-color:#F4F4F5;border-radius:8px;">
   <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:` + ColorNavy + `;">🚀 Pour commencer :</p>
   <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.9;color:` + ColorNavy + `;">
-    <li>Connectez-vous avec votre email : <strong>` + d.RecipientName + `</strong></li>
+    <li>Connectez-vous avec votre email : <strong>` + html.EscapeString(d.RecipientName) + `</strong></li>
     <li>Complétez votre profil si demandé</li>
     <li>Explorez vos épreuves à venir dans le tableau de bord</li>
     <li>Participez à vos évaluations aux dates prévues</li>
@@ -121,7 +164,15 @@ func StudentWelcomeText(d StudentWelcomeData) string {
 	} else {
 		b.WriteString("Bonjour,\n\n")
 	}
-	b.WriteString("Bienvenue sur SECT ! Votre compte étudiant a été créé avec succès.\n\n")
+
+	// Variant B2C vs B2B (Phase 3) — texte brut.
+	if d.EtablissementType == "PERSONNEL" && d.EnseignantNom != "" {
+		fmt.Fprintf(&b, "Bienvenue chez votre enseignant %s. ", d.EnseignantNom)
+	} else if d.EtablissementNom != "" {
+		fmt.Fprintf(&b, "Bienvenue dans votre établissement %s. ", d.EtablissementNom)
+	}
+	b.WriteString("Votre compte étudiant a été créé avec succès.\n\n")
+
 	b.WriteString("Vos accès :\n")
 	fmt.Fprintf(&b, "  - Établissement : %s\n", d.EtablissementNom)
 	fmt.Fprintf(&b, "  - Filière : %s\n", d.FiliereNom)
@@ -131,6 +182,16 @@ func StudentWelcomeText(d StudentWelcomeData) string {
 	if d.Matricule != "" {
 		fmt.Fprintf(&b, "  - Matricule : %s\n", d.Matricule)
 	}
+
+	// Message personnalisé (Phase 3).
+	if d.CustomMessage != "" {
+		b.WriteString("\nMessage de votre enseignant :\n")
+		// Indent each line of the custom message for readability.
+		for _, line := range strings.Split(d.CustomMessage, "\n") {
+			fmt.Fprintf(&b, "  %s\n", line)
+		}
+	}
+
 	b.WriteString("\nCe que vous pouvez faire sur SECT :\n")
 	b.WriteString("  - Accéder à vos épreuves et examens en ligne\n")
 	b.WriteString("  - Passer vos évaluations avec surveillance anti-fraude\n")

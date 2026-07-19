@@ -457,9 +457,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // est délégué au usecase via la fonction SECURITY DEFINER is_enseignant_in_personal_etab()
                 // (bypass RLS pour son SELECT interne — plus robuste que RequireRoleOrPersonalEtab
                 // qui fait un SELECT direct sur Etablissement filtré par RLS en prod sect_app).
+                //
+                // SECT-REG-LINK-PHASE3-BACKEND-1 : ajout GET /stats (agrégats pour dashboard).
+                // NB : /stats DOIT être déclaré AVANT /{id} pour éviter le conflit de routage
+                // chi (sinon "stats" serait interprété comme un {id} par DELETE /{id}).
                 r.Route("/api/student-signup-links", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listStudentSignupLinks)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Get("/stats", s.studentSignupLinkStats)
                         r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/", s.createStudentSignupLink)
                         r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Delete("/{id}", s.revokeStudentSignupLink)
                 })
