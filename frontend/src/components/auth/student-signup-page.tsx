@@ -513,20 +513,22 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   }, [turnstileSiteKey, turnstileRendered])
 
   // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : retry du widget Turnstile.
-  // Réinitialise les états + retire l'ancien widget + re-render.
+  // On retire l'ancien widget (si présent) puis on reset les états pour
+  // re-déclencher le useEffect qui rappellera render() + resettera le
+  // timeout de 8s. Toutes les opérations sont wrappées en try/catch pour
+  // éviter qu'une erreur côté Cloudflare ne crash l'app React.
   const retryTurnstile = () => {
-    if (typeof window === 'undefined' || !window.turnstile) return
-    // Retire l'ancien widget si présent (sinon render() duplique).
-    if (turnstileWidgetId) {
+    // Retire proprement l'ancien widget si présent.
+    if (typeof window !== 'undefined' && window.turnstile && turnstileWidgetId) {
       try {
         window.turnstile.remove(turnstileWidgetId)
       } catch {
-        /* ignore — widget déjà retiré */
+        /* ignore — widget déjà retiré ou ID invalide */
       }
     }
-    // Vide le conteneur au cas où un résidu soit resté.
-    const container = document.getElementById('cf-turnstile')
-    if (container) container.innerHTML = ''
+    // Note : on ne vide PAS manuellement innerHTML du div #cf-turnstile car
+    // ce div est vide côté React (géré par Turnstile). Le remove() ci-dessus
+    // a déjà nettoyé le contenu injecté par Cloudflare.
     setTurnstileWidgetId(null)
     setTurnstileRendered(false)
     setTurnstileLoadFailed(false)
@@ -1228,31 +1230,35 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : widget Cloudflare Turnstile */}
           {/* Rendu conditionnel — uniquement si siteKey non vide (prod). En dev */}
           {/* (clé vide), le bloc n'est pas rendu et le formulaire marche comme avant. */}
-          {/* SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : conteneur visible (border + */}
-          {/* bg) + placeholder de chargement + état d'échec avec bouton Réessayer. */}
+          {/* SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : le conteneur #cf-turnstile est */}
+          {/* VIDE (géré entièrement par Turnstile — pas d'enfants React dedans pour */}
+          {/* éviter les conflits de réconciliation DOM React vs Turnstile). Les */}
+          {/* placeholders de chargement/erreur sont des siblings positionnés en */}
+          {/* absolu au-dessus du conteneur, visibles seulement quand Turnstile n'a */}
+          {/* pas encore injecté son iframe. */}
           {turnstileSiteKey && (
             <div className="space-y-2">
               <Label htmlFor="cf-turnstile">Vérification de sécurité</Label>
-              <div
-                id="cf-turnstile"
-                className="min-h-[70px] flex items-center justify-center rounded-md border border-border/60 bg-muted/20 p-2 relative"
-                aria-label="Vérification anti-robot Cloudflare"
-                role="group"
-              >
-                {/* Placeholder de chargement : visible tant que le widget n'est
-                    pas rendu ET qu'aucune erreur n'a été signalée. Une fois
-                    l'iframe Turnstile injectée, elle remplace visuellement ce
-                    placeholder (positionné en absolu pour ne pas interferer). */}
+              <div className="relative min-h-[70px] rounded-md border border-border/60 bg-muted/20 p-2">
+                {/* Conteneur Turnstile — VIDE, géré par Cloudflare. Ne PAS
+                    mettre d'enfants React ici (conflit DOM). */}
+                <div
+                  id="cf-turnstile"
+                  className="min-h-[66px] flex items-center justify-center"
+                  aria-label="Vérification anti-robot Cloudflare"
+                  role="group"
+                />
+                {/* Placeholder de chargement : overlay absolu au-dessus du
+                    conteneur Turnstile. Caché une fois le widget rendu. */}
                 {!turnstileRendered && !turnstileLoadFailed && (
-                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/20 rounded-md pointer-events-none">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Chargement du défi de sécurité…
                   </div>
                 )}
-                {/* État d'échec : si après 8s le widget n'est pas rendu, on
-                    affiche un bouton Réessayer pour relancer le rendu. */}
+                {/* État d'échec : overlay absolu avec bouton Réessayer. */}
                 {turnstileLoadFailed && (
-                  <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground py-2">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-xs text-muted-foreground bg-background/95 rounded-md">
                     <ShieldAlert className="h-4 w-4 text-warning" />
                     <span>Le défi de sécurité n&apos;a pas pu se charger.</span>
                     <Button
@@ -1260,7 +1266,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                       variant="outline"
                       size="sm"
                       onClick={retryTurnstile}
-                      className="h-7 text-xs"
+                      className="h-7 text-xs mt-1"
                     >
                       <RefreshCw className="h-3.5 w-3.5 mr-1" />
                       Réessayer
