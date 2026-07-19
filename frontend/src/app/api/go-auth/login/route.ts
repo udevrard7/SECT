@@ -51,9 +51,14 @@ async function fetchWithTimeout(
 }
 
 export async function POST(request: NextRequest) {
+  // DEBUG (SECT-LOGIN-500-FIX-1) : traçage par étapes pour identifier
+  // précisément où l'exception se produit. Sera retiré après diagnostic.
+  let step = 'init'
   try {
+    step = 'parse-body'
     const body = await request.json()
 
+    step = 'fetch-backend'
     const resp = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,8 +66,10 @@ export async function POST(request: NextRequest) {
       cache: 'no-store', // POST dynamique — ne jamais cacher
     })
 
+    step = 'parse-json'
     const data = await resp.json()
 
+    step = 'check-ok'
     if (!resp.ok) {
       // Propager le status réel du backend (401 identifiants incorrects,
       // 403 compte désactivé, 402 paiement requis, etc.)
@@ -102,16 +109,21 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     // LOGGING DÉTAILLÉ (SECT-LOGIN-500-FIX-1) : le catch précédent `catch {}`
     // avalait l'erreur sans variable ni log → 500 impossible à diagnostiquer.
-    // On logge désormais name + message + API_URL (sans secrets) dans les
+    // On logge désormais name + message + step + API_URL (sans secrets) dans les
     // logs Vercel Functions (visibles via le dashboard Vercel → Logs).
     const errName = err instanceof Error ? err.name : 'Unknown'
     const errMsg = err instanceof Error ? err.message : String(err)
-    console.error('[go-auth/login] EXCEPTION:', JSON.stringify({ name: errName, message: errMsg, apiUrl: API_URL }))
+    console.error('[go-auth/login] EXCEPTION:', JSON.stringify({ name: errName, message: errMsg, step, apiUrl: API_URL }))
+
+    // DEBUG (temporaire) : inclure les infos de diagnostic dans la réponse
+    // pour identifier la cause sans accès aux logs Vercel.
+    // Aucune donnée sensible (pas de tokens, pas de密码).
+    const debug = { name: errName, message: errMsg, step, apiUrl: API_URL }
 
     // Timeout réseau (AbortError via fetchWithTimeout) → 504 Gateway Timeout
     if (errName === 'AbortError') {
       return NextResponse.json(
-        { error: "Le serveur d'authentification met trop de temps à répondre. Veuillez réessayer." },
+        { error: "Le serveur d'authentification met trop de temps à répondre. Veuillez réessayer.", debug },
         { status: 504 },
       )
     }
@@ -120,14 +132,14 @@ export async function POST(request: NextRequest) {
     // Sur Node.js 18+, les erreurs réseau fetch sont des TypeError("fetch failed").
     if (errName === 'TypeError' && /fetch failed/i.test(errMsg)) {
       return NextResponse.json(
-        { error: "Serveur d'authentification injoignable. Veuillez réessayer dans un instant." },
+        { error: "Serveur d'authentification injoignable. Veuillez réessayer dans un instant.", debug },
         { status: 502 },
       )
     }
 
     // Autre erreur inattendue (parsing JSON, etc.) → 500
     return NextResponse.json(
-      { error: 'Erreur lors de la connexion. Veuillez réessayer.' },
+      { error: 'Erreur lors de la connexion. Veuillez réessayer.', debug },
       { status: 500 },
     )
   }
