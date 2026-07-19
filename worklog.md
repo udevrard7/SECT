@@ -17589,3 +17589,53 @@ Stage Summary:
   * ds-lift appliqué au wrapper motion.div du provider actif (avec ds-glow-gold conditionnel)
   * Boutons d'action à h-10 (40px) — compromis pratique vs 44px du brief pour éviter UI trop chunky sur grille 3 colonnes
 - Aucun commit git effectué (lint/commit/push/test Agent Browser gérés par l'utilisateur)
+
+---
+Task ID: SECT-AI-PROVIDER-DELETE-FIX-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Correction du bug « impossible de supprimer un fournisseur IA depuis le frontend, le bouton est inactif »
+
+Work Log:
+- Lecture du worklog.md (contexte SECT-AI-PROVIDERS-REDESIGN-1 déjà déployé, commit 7bb3a96)
+- Exploration backend : confirmé endpoint DELETE /api/ai-providers/{id} (router.go:792, handler aiProviderDelete ai_provider_handlers.go:276)
+- Identification règle métier backend : ai_provider_usecase.go → Delete refuse de supprimer un provider ACTIF (retourne 409 Conflict « cannot delete active provider — deactivate or activate another first »)
+- Exploration frontend : trouvé bouton Supprimer (ai-providers-page.tsx:1331) avec `disabled={provider.isActive}` (ligne 1339) — cause racine du bug
+- Diagnostic cause racine : TOUS les providers en production sont ACTIFS (8/8 sur le compte admin), donc TOUS les boutons Supprimer étaient désactivés sans explication utilisateur
+- Correction frontend (ai-providers-page.tsx, 4 edits coordonnés) :
+  1. Ajout état `isDeleting` (ligne 390) pour gérer le chargement
+  2. Refonte `handleDelete` (lignes 624-681) :
+     - Si provider actif : désactive d'abord (POST /api/ai-providers/activate {active:false}) puis supprime (DELETE /{id}) — respecte la règle backend en 1 clic
+     - e.preventDefault() sur AlertDialogAction pour garder le dialog ouvert pendant l'async
+     - Parsing du body JSON d'erreur backend ({error, message}) pour messages toast explicites
+     - État isDeleting + finally block + refreshFailoverStatus() (la désactivation impacte le failover)
+  3. Bouton poubelle (ligne 1373) : suppression de `disabled={provider.isActive}`, tooltip contextuel « Supprimer (désactivera d'abord) » si actif
+  4. AlertDialog context-aware (lignes 2120-2172) :
+     - Titre : « Désactiver puis supprimer le fournisseur ? » si actif, sinon « Supprimer le fournisseur ? »
+     - Description explicite : explique la désactivation + bascule failover + caractère irréversible
+     - Bouton : « Désactiver puis supprimer » (si actif) avec spinner Loader2 pendant l'opération
+     - Bouton Annuler + Action désactivés pendant isDeleting
+     - onOpenChange garde le dialog ouvert si isDeleting (empêche fermeture Escape/overlay)
+- Vérification TypeScript : tsc --noEmit → 0 erreur sur ai-providers-page.tsx
+- Vérification ESLint : npx eslint → 0 erreur, 0 warning
+- Commit + push vers GitHub (auteur udevrard7 <ulrichdouh@gmail.com>) : commit 5d05ce4 → déclenchement auto Vercel
+
+Vérification Agent Browser (production sect-app.vercel.app, compte admin ulrichdouh@gmail.com) :
+- Login admin réussi → /dashboard
+- Navigation /ai-providers : 8 providers actifs affichés (Mistral AI, Mistral Voxtral TTS, Groq AI, MuleRouter AI, OpenRouter AI, DeepSeek AI, Cerebras AI, Z-AI principal)
+- `is enabled` sur bouton « Supprimer Mistral AI » → true (AVANT le fix ce bouton était disabled)
+- Clic « Supprimer Mistral AI » → AlertDialog avec titre « Désactiver puis supprimer le fournisseur ? » + description contextuelle + bouton « Désactiver puis supprimer » ✓
+- Clic « Annuler » → dialog se ferme proprement ✓
+- Test complet end-to-end (flux non-destructif) :
+  * Création provider de test « TEST-DELETE-PROVIDER » (dialog Ajouter, type OpenAI, clé dummy) → 9 providers ✓
+  * Activation du provider de test → toast « Fournisseur activé » ✓
+  * Clic « Supprimer TEST-DELETE-PROVIDER » → dialog « Désactiver puis supprimer » ✓
+  * Clic « Désactiver puis supprimer » → provider supprimé (retour à 8 providers) ✓
+  * Aucune erreur console ✓
+
+Stage Summary:
+- 1 fichier modifié : frontend/src/components/admin/ai-providers-page.tsx (+87, -14)
+- Aucune modification du backend (contrat API DELETE /api/ai-providers/{id} + POST /activate respecté)
+- Aucune modification de types.ts
+- Cause racine : `disabled={provider.isActive}` sur le bouton Supprimer désactivait le bouton pour TOUS les providers actifs (or en production, tous les providers sont actifs en permanence)
+- Solution : délégation de la désactivation au handler frontend (handleDelete désactive puis supprime en séquence) + UI context-aware qui explique l'opération à l'utilisateur
+- Bug vérifié résolu en production via Agent Browser (compte admin, flux create→activate→delete complet)
