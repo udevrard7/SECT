@@ -1170,10 +1170,15 @@ export function EtudiantsPage() {
             <Upload className="h-4 w-4" />
             Importer CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={handleOpenLinkDialog}>
-            <Link2 className="h-4 w-4" />
-            Lien d&apos;inscription
-          </Button>
+          {/* SECT-REG-LINK-B2C-MVP-1 : lien d'inscription direct étudiant.
+              Masqué pour l'ADMIN (pas d'établissement rattaché → usecase refuse).
+              Visible pour RESPONSABLE (B2B) et ENSEIGNANT (B2C étab PERSONNEL). */}
+          {user?.role !== 'ADMIN' && (
+            <Button variant="outline" size="sm" onClick={handleOpenLinkDialog}>
+              <Link2 className="h-4 w-4" />
+              Lien d&apos;inscription
+            </Button>
+          )}
           <Button className="bg-success hover:bg-success/90" size="sm" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
             Ajouter un étudiant
