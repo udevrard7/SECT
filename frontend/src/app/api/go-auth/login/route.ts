@@ -7,24 +7,26 @@
  * ("Erreur lors de la connexion") en production Vercel, même pour de mauvais
  * identifiants — alors que le backend Go répondait correctement (401).
  *
- * Cause racine : le catch() précédent était `catch {}` (sans variable ni log),
- * donc toute exception dans le fetch() ou le parsing était avalée silencieusement
- * → 500 générique impossible à diagnostiquer. De plus, contrairement aux routes
- * /session et /refresh qui n'effectuent un fetch QUE si des cookies existent,
- * /login fait TOUJOURS un fetch → c'est la seule route qui révèle le problème.
+ * Cause racine : la variable NEXT_PUBLIC_API_URL sur Vercel pointait vers
+ * un ancien service Render (sect-s1pb.onrender.com, 404 Not Found). Le fetch
+ * recevait du texte brut "Not Found" → resp.json() levait SyntaxError → le
+ * catch{} muet avalait l'erreur → 500 générique. Corrigé en mettant à jour
+ * la variable Vercel → https://sect-zead.onrender.com (service actif).
  *
- * Correctifs :
+ * Robustesse ajoutée (pour éviter tout retour silencieux à l'avenir) :
  *  1. fetchWithTimeout (AbortController 12s) — consistance avec /session,
  *     évite les hangs infinis si Render est en cold start prolongé.
  *  2. cache: 'no-store' — les POST dynamiques ne doivent JAMAIS être mis en
  *     cache par le fetch instrumenté de Next.js/Vercel.
- *  3. console.error détaillé — l'erreur exacte (name + message + API_URL)
- *     est désormais visible dans les logs Vercel Functions.
+ *  3. console.error détaillé — l'erreur exacte (name + message + step + API_URL)
+ *     est loggée dans les logs Vercel Functions (dashboard Vercel → Logs).
  *  4. Gestion granulaire des codes HTTP :
  *       - 504 Gateway Timeout (AbortError) → serveur auth lent
- *       - 502 Bad Gateway (TypeError fetch failed) → backend injoignable
+ *       - 502 Bad Gateway (réseau / non-JSON / fetch failed) → backend injoignable
  *       - 500 (autre) → erreur inattendue
  *     Le frontend login-form.tsx a été mis à jour pour gérer 502/504.
+ *  5. Validation : si la réponse backend n'est pas du JSON valide, on retourne
+ *     502 (au lieu d'un SyntaxError → 500 muet).
  */
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -51,14 +53,9 @@ async function fetchWithTimeout(
 }
 
 export async function POST(request: NextRequest) {
-  // DEBUG (SECT-LOGIN-500-FIX-1) : traçage par étapes pour identifier
-  // précisément où l'exception se produit. Sera retiré après diagnostic.
-  let step = 'init'
   try {
-    step = 'parse-body'
     const body = await request.json()
 
-    step = 'fetch-backend'
     const resp = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -66,10 +63,27 @@ export async function POST(request: NextRequest) {
       cache: 'no-store', // POST dynamique — ne jamais cacher
     })
 
-    step = 'parse-json'
+    // Robustesse : si la réponse n'est pas du JSON valide (ex: 404 HTML d'un
+    // service Render mort), resp.json() lèverait SyntaxError. On détecte le
+    // Content-Type pour retourner un 502 propre au lieu d'un 500 muet.
+    const contentType = resp.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      // Le backend a répondu mais pas en JSON → URL incorrecte ou service down
+      const text = await resp.text().catch(() => '')
+      console.error('[go-auth/login] Non-JSON response:', JSON.stringify({
+        status: resp.status,
+        contentType,
+        bodyPreview: text.slice(0, 200),
+        apiUrl: API_URL,
+      }))
+      return NextResponse.json(
+        { error: "Serveur d'authentification injoignable (réponse invalide). Veuillez réessayer." },
+        { status: 502 },
+      )
+    }
+
     const data = await resp.json()
 
-    step = 'check-ok'
     if (!resp.ok) {
       // Propager le status réel du backend (401 identifiants incorrects,
       // 403 compte désactivé, 402 paiement requis, etc.)
@@ -109,21 +123,14 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     // LOGGING DÉTAILLÉ (SECT-LOGIN-500-FIX-1) : le catch précédent `catch {}`
     // avalait l'erreur sans variable ni log → 500 impossible à diagnostiquer.
-    // On logge désormais name + message + step + API_URL (sans secrets) dans les
-    // logs Vercel Functions (visibles via le dashboard Vercel → Logs).
     const errName = err instanceof Error ? err.name : 'Unknown'
     const errMsg = err instanceof Error ? err.message : String(err)
-    console.error('[go-auth/login] EXCEPTION:', JSON.stringify({ name: errName, message: errMsg, step, apiUrl: API_URL }))
-
-    // DEBUG (temporaire) : inclure les infos de diagnostic dans la réponse
-    // pour identifier la cause sans accès aux logs Vercel.
-    // Aucune donnée sensible (pas de tokens, pas de密码).
-    const debug = { name: errName, message: errMsg, step, apiUrl: API_URL }
+    console.error('[go-auth/login] EXCEPTION:', JSON.stringify({ name: errName, message: errMsg, apiUrl: API_URL }))
 
     // Timeout réseau (AbortError via fetchWithTimeout) → 504 Gateway Timeout
     if (errName === 'AbortError') {
       return NextResponse.json(
-        { error: "Le serveur d'authentification met trop de temps à répondre. Veuillez réessayer.", debug },
+        { error: "Le serveur d'authentification met trop de temps à répondre. Veuillez réessayer." },
         { status: 504 },
       )
     }
@@ -132,14 +139,14 @@ export async function POST(request: NextRequest) {
     // Sur Node.js 18+, les erreurs réseau fetch sont des TypeError("fetch failed").
     if (errName === 'TypeError' && /fetch failed/i.test(errMsg)) {
       return NextResponse.json(
-        { error: "Serveur d'authentification injoignable. Veuillez réessayer dans un instant.", debug },
+        { error: "Serveur d'authentification injoignable. Veuillez réessayer dans un instant." },
         { status: 502 },
       )
     }
 
     // Autre erreur inattendue (parsing JSON, etc.) → 500
     return NextResponse.json(
-      { error: 'Erreur lors de la connexion. Veuillez réessayer.', debug },
+      { error: 'Erreur lors de la connexion. Veuillez réessayer.' },
       { status: 500 },
     )
   }
