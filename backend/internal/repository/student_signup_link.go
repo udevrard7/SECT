@@ -42,13 +42,13 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
                         INSERT INTO "StudentSignupLink" (
                                 "id", "token", "etablissementId", "filiereId", "niveau",
                                 "createdById", "expiresAt", "maxUses", "useCount", "actif",
-                                "label", "createdAt", "updatedAt"
+                                "label", "emailDomainRestriction", "createdAt", "updatedAt"
                         )
-                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, true, $8,
+                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, true, $8, $9,
                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "id", "token", "etablissementId", "filiereId", "niveau",
                                   "createdById", "expiresAt", "maxUses", "useCount", "actif",
-                                  "label", "createdAt", "updatedAt"`
+                                  "label", "emailDomainRestriction", "createdAt", "updatedAt"`
                 row := tx.QueryRow(ctx, query,
                         token,
                         input.EtablissementID,
@@ -58,12 +58,13 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
                         input.ExpiresAt,
                         nullableIntPtr(input.MaxUses),
                         nullableStrPtr(input.Label),
+                        nullableStrPtr(input.EmailDomainRestriction),
                 )
                 l := &domain.StudentSignupLink{}
                 if err := row.Scan(
                         &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                         &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
-                        &l.Label, &l.CreatedAt, &l.UpdatedAt,
+                        &l.Label, &l.EmailDomainRestriction, &l.CreatedAt, &l.UpdatedAt,
                 ); err != nil {
                         if isUniqueViolation(err) {
                                 return &domain.ConflictError{Message: "token déjà utilisé"}
@@ -87,12 +88,14 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
 // pour rester compatible avec le rôle prod sect_app (NOBYPASSRLS). Le token EST
 // l'authentification — pas de claims JWT requises.
 //
-// 18 colonnes retournées par la fonction SQL :
+// 19 colonnes retournées par la fonction SQL (Phase 2 étendue — 1 colonne ajoutée :
+// link_email_domain_restriction, en 13e position, avant les colonnes de jointure) :
 //  1. link_id, 2. link_token, 3. link_etablissement_id, 4. link_filiere_id,
 //  5. link_niveau, 6. link_created_by_id, 7. link_expires_at, 8. link_max_uses,
 //  9. link_use_count, 10. link_actif, 11. link_label, 12. link_created_at,
-//  13. etab_nom, 14. etab_type, 15. etab_ville, 16. fil_nom, 17. fil_code,
-//  18. creator_name
+//  13. link_email_domain_restriction (PHASE 2),
+//  14. etab_nom, 15. etab_type, 16. etab_ville, 17. fil_nom, 18. fil_code,
+//  19. creator_name
 func (r *StudentSignupLinkRepository) FindByToken(ctx context.Context, token string) (*domain.StudentSignupLink, error) {
         row := r.pool.QueryRow(ctx, `SELECT * FROM find_student_signup_link_by_token($1)`, token)
         l := &domain.StudentSignupLink{}
@@ -104,7 +107,7 @@ func (r *StudentSignupLinkRepository) FindByToken(ctx context.Context, token str
         if err := row.Scan(
                 &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                 &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
-                &l.Label, &l.CreatedAt,
+                &l.Label, &l.CreatedAt, &l.EmailDomainRestriction,
                 &etabNom, &etabType, &etabVille,
                 &filNom, &filCode,
                 &creatorName,
@@ -164,7 +167,7 @@ func (r *StudentSignupLinkRepository) ListByCreator(ctx context.Context, creator
                 query := `
                         SELECT "id", "token", "etablissementId", "filiereId", "niveau",
                                "createdById", "expiresAt", "maxUses", "useCount", "actif",
-                               "label", "createdAt", "updatedAt"
+                               "label", "emailDomainRestriction", "createdAt", "updatedAt"
                         FROM "StudentSignupLink"
                         WHERE "createdById" = $1 AND "deletedAt" IS NULL
                         ORDER BY "createdAt" DESC`
@@ -178,7 +181,7 @@ func (r *StudentSignupLinkRepository) ListByCreator(ctx context.Context, creator
                         if err := rows.Scan(
                                 &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                                 &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
-                                &l.Label, &l.CreatedAt, &l.UpdatedAt,
+                                &l.Label, &l.EmailDomainRestriction, &l.CreatedAt, &l.UpdatedAt,
                         ); err != nil {
                                 return fmt.Errorf("scan student signup link: %w", err)
                         }
@@ -227,12 +230,13 @@ func (r *StudentSignupLinkRepository) Revoke(ctx context.Context, id string) err
 // incrémente useCount atomiquement.
 //
 // Codes de retour (o_code) :
-//   - "OK"             — inscription réussie (les autres champs sont peuplés)
-//   - "NOT_FOUND"      — token inconnu ou supprimé
-//   - "INACTIVE"       — lien révoqué (actif=false)
-//   - "EXPIRED"        — lien expiré (expiresAt < now)
-//   - "QUOTA_EXCEEDED" — maxUses atteint
-//   - "USER_EXISTS"    — email déjà utilisé (unique_violation catchée côté SQL)
+//   - "OK"                — inscription réussie (les autres champs sont peuplés)
+//   - "NOT_FOUND"         — token inconnu ou supprimé
+//   - "INACTIVE"          — lien révoqué (actif=false)
+//   - "EXPIRED"           — lien expiré (expiresAt < now)
+//   - "QUOTA_EXCEEDED"    — maxUses atteint
+//   - "DOMAIN_NOT_ALLOWED" — (PHASE 2) email ne match pas emailDomainRestriction
+//   - "USER_EXISTS"       — email déjà utilisé (unique_violation catchée côté SQL)
 //
 // La fonction retourne 8 colonnes : o_code, o_user_id, o_user_email, o_user_name,
 // o_user_matricule, o_etablissement_nom, o_filiere_nom, o_message.
@@ -260,4 +264,47 @@ func (r *StudentSignupLinkRepository) AcceptSignup(ctx context.Context, token, e
                 return nil, fmt.Errorf("accept student signup: %w", err)
         }
         return res, nil
+}
+
+// LogRegistrationEvent — SECT-REG-LINK-PHASE2-BACKEND-1
+//
+// Appelle la fonction SECURITY DEFINER log_registration_event pour insérer une
+// ligne d'audit dans "RegistrationEvent". Bypass RLS car la table est INSERT-locked
+// (seule la fonction peut écrire, les clients ne le peuvent pas directement).
+//
+// Non bloquant côté usecase : si l'appel échoue (DB indisponible, etc.), l'erreur
+// est retournée mais le usecase la logge sans échec de l'inscription.
+//
+// Arguments :
+//   - linkID    : ID du StudentSignupLink concerné (toujours non vide si on a pu
+//                 charger le link via FindByToken)
+//   - userID    : ID du User créé si succès, sinon "" (vide)
+//   - email     : email saisi par l'étudiant (lower-casé côté SQL)
+//   - ip        : IP client (middleware.GetClientIP)
+//   - userAgent : User-Agent HTTP
+//   - success   : true si inscription OK, false sinon
+//   - code      : code métier (OK, NOT_FOUND, INACTIVE, EXPIRED, QUOTA_EXCEEDED,
+//                 DOMAIN_NOT_ALLOWED, USER_EXISTS, TURNSTILE_FAILED)
+func (r *StudentSignupLinkRepository) LogRegistrationEvent(
+        ctx context.Context,
+        linkID, userID, email, ip, userAgent string,
+        success bool,
+        code string,
+) error {
+        _, err := r.pool.Exec(ctx, `SELECT log_registration_event($1, $2, $3, $4, $5, $6, $7)`,
+                linkID, nullableStrPtr(strPtrOrNil(userID)), email, ip, userAgent, success, code,
+        )
+        if err != nil {
+                return fmt.Errorf("log_registration_event: %w", err)
+        }
+        return nil
+}
+
+// strPtrOrNil retourne un *string nil si s est vide, sinon &s.
+// Utilisé pour passer userID optionnel (vide si échec inscription) à la fonction SQL.
+func strPtrOrNil(s string) *string {
+        if s == "" {
+                return nil
+        }
+        return &s
 }

@@ -61,6 +61,13 @@ type Config struct {
         // Base URL de l'API GeniusPay (sandbox = https://api.geniuspay.ci/sandbox,
         // production = https://api.geniuspay.ci/v1/merchant).
         GeniusPayBaseURL string
+
+        // SECT-REG-LINK-PHASE2-BACKEND-1 : Cloudflare Turnstile (captcha pour
+        // /api/student-signup endpoint public). Si TURNSTILE_SECRET_KEY est vide,
+        // la vérification est skipée côté backend (dev mode). Le site key est exposé
+        // au frontend via GET /api/turnstile/site-key pour rendre le widget.
+        TurnstileSecretKey string
+        TurnstileSiteKey   string
 }
 
 // Load reads configuration from environment variables.
@@ -93,6 +100,12 @@ func Load() (*Config, error) {
                 GeniusPayWebhookSecret: getEnv("GENIUSPAY_WEBHOOK_SECRET", ""),
                 // Base URL : défaut sandbox (dev). En prod, set GENIUSPAY_BASE_URL=https://api.geniuspay.ci/v1/merchant
                 GeniusPayBaseURL: getEnv("GENIUSPAY_BASE_URL", "https://api.geniuspay.ci"),
+
+                // SECT-REG-LINK-PHASE2-BACKEND-1 : Cloudflare Turnstile.
+                // Secrets vides en dev → vérification skipée (TurnstileVerifier.Verify
+                // retourne true, nil). En prod, set TURNSTILE_SECRET_KEY + TURNSTILE_SITE_KEY.
+                TurnstileSecretKey: getEnv("TURNSTILE_SECRET_KEY", ""),
+                TurnstileSiteKey:   getEnv("TURNSTILE_SITE_KEY", ""),
         }
 
         // Parse CORS origins (comma-separated)
