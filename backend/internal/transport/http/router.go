@@ -75,6 +75,11 @@ type Server struct {
         // Retry-After au lieu d'attendre et risquer le timeout 30s de Render.
         // Voir submit_limiter.go.
         submitLimiter *SubmitLimiter
+        // SECT-REG-LINK-PHASE2-BACKEND-1 : Cloudflare Turnstile pour /api/student-signup.
+        // Peut être nil (vérification désactivée — dev mode). Configuré côté main.go
+        // via WithTurnstile() si TURNSTILE_SECRET_KEY est présent.
+        turnstileVerifier *TurnstileVerifier
+        turnstileSiteKey  string
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -162,6 +167,16 @@ func NewServer(
 func (s *Server) WithGeniusPay(client *geniuspay.Client, webhookSecret string) *Server {
         s.geniusPay = client
         s.geniusPayWebhookSecret = webhookSecret
+        return s
+}
+
+// WithTurnstile injecte le TurnstileVerifier + la site key publique dans le Server.
+// Appelé depuis main.go après NewServer. Si verifier est nil ou non Enabled(),
+// la vérification Turnstile est skipée côté handler (dev mode).
+// SECT-REG-LINK-PHASE2-BACKEND-1.
+func (s *Server) WithTurnstile(verifier *TurnstileVerifier, siteKey string) *Server {
+        s.turnstileVerifier = verifier
+        s.turnstileSiteKey = siteKey
         return s
 }
 
@@ -254,8 +269,15 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         //   le formulaire public /inscription?token=xxx.
         // POST /api/student-signup crée le User ETUDIANT + incrémente useCount
         //   atomiquement via la fonction SQL accept_student_signup (SECURITY DEFINER).
+        // Phase 2 (SECT-REG-LINK-PHASE2-BACKEND-1) : rate-limit + Turnstile + audit.
         r.Get("/api/student-signup/verify", s.verifyStudentSignupLink)
         r.Post("/api/student-signup", s.acceptStudentSignup)
+
+        // SECT-REG-LINK-PHASE2-BACKEND-1 : site key publique Cloudflare Turnstile.
+        // Endpoint public (le frontend doit pouvoir récupérer la key avant de rendre
+        // le widget, sans auth). Retourne {"siteKey": "..."} ou {"siteKey": ""} si
+        // Turnstile n'est pas configuré (le frontend skip le widget dans ce cas).
+        r.Get("/api/turnstile/site-key", s.getTurnstileSiteKey)
 
         // Certificats verify (public — no auth required for verification)
         r.Get("/api/certificats/verify/{code}", s.verifyCertificat)

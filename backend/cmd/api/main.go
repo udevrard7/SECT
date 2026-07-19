@@ -247,6 +247,20 @@ func main() {
                 logger.Warn("GeniusPay not configured (GENIUSPAY_API_KEY empty) — payment endpoints will return 503")
         }
 
+        // SECT-REG-LINK-PHASE2-BACKEND-1 : injecte le TurnstileVerifier si configuré.
+        // Si TURNSTILE_SECRET_KEY est vide, la vérification est skipée (dev mode).
+        // Le frontend détecte l'absence de site key via GET /api/turnstile/site-key
+        // et skip le widget côté UI.
+        if cfg.TurnstileSecretKey != "" {
+                turnstileVerifier := httptransport.NewTurnstileVerifier(cfg.TurnstileSecretKey)
+                server.WithTurnstile(turnstileVerifier, cfg.TurnstileSiteKey)
+                logger.Info("Cloudflare Turnstile configured",
+                        "siteKeySet", cfg.TurnstileSiteKey != "",
+                )
+        } else {
+                logger.Warn("Cloudflare Turnstile not configured (TURNSTILE_SECRET_KEY empty) — /api/student-signup will skip captcha verification (dev mode)")
+        }
+
         // CACHE-RAM-1 + OPT-3 : worker goroutine — synchronise le cache RAM vers Neon.
         //
         // AVANT : FlushSessionToNeon par session → 1 tx par session (5000 tx / 30s).

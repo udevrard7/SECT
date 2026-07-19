@@ -53,6 +53,11 @@ const signupBcryptCost = 10
 // s'appuie sur le unique constraint de "User"."email".
 var signupEmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
+// signupDomainRegex — validation d'un domaine email (Phase 2). Autorise les
+// labels alphanumériques + points + tirets (ex: "univ-ci.edu", "u-bourgogne.fr").
+// Pas de '@' initial (le usecase le strippe si présent). Pas d'espaces.
+var signupDomainRegex = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
 // StudentSignupLinkUseCase implémente les cas d'usage des liens d'inscription
 // direct étudiant.
 type StudentSignupLinkUseCase struct {
@@ -163,6 +168,25 @@ func (uc *StudentSignupLinkUseCase) Create(ctx context.Context, claims db.Sessio
                 input.FiliereID = nil
         }
 
+        // SECT-REG-LINK-PHASE2-BACKEND-1 : validation/normalisation du domaine email.
+        // On lower + trim + strip '@' initial si présent. Si vide après trim → nil (pas
+        // de restriction). Si invalide (caractères non autorisés) → ValidationError.
+        if input.EmailDomainRestriction != nil {
+                d := strings.TrimSpace(*input.EmailDomainRestriction)
+                d = strings.TrimPrefix(d, "@")
+                d = strings.ToLower(d)
+                if d == "" {
+                        input.EmailDomainRestriction = nil
+                } else if !signupDomainRegex.MatchString(d) {
+                        return nil, "", &domain.ValidationError{
+                                Field:   "emailDomainRestriction",
+                                Message: "format de domaine invalide (ex: univ-ci.edu)",
+                        }
+                } else {
+                        input.EmailDomainRestriction = &d
+                }
+        }
+
         // Génération token + expiration.
         token, err := generateSignupToken()
         if err != nil {
@@ -241,18 +265,34 @@ func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*
 //
 // Étapes :
 //  1. Valide name non vide, password ≥ 8 chars, email format valide (regex simple).
-//  2. Hash password : bcrypt.GenerateFromPassword(cost 10).
-//  3. Appelle repo.AcceptSignup (fonction SQL accept_student_signup SECURITY DEFINER).
-//  4. Mappe le code retour :
-//     - OK → envoie email de bienvenue StudentWelcomeHTML/Text (non bloquant,
-//       log si erreur), retourne le résultat.
-//     - NOT_FOUND / INACTIVE / EXPIRED / QUOTA_EXCEEDED / USER_EXISTS →
-//       SignupLinkStateError correspondant.
+//  2. Phase 2 — charge le lien via FindByToken (SECURITY DEFINER) pour :
+//     - vérifier le quota capitation B2B via quotaRepo.CheckStudentsQuota,
+//     - vérifier la restriction de domaine email (defense in depth côté usecase,
+//       le SQL le vérifie aussi atomiquement),
+//     - logger l'audit RegistrationEvent en cas de succès/échec (lien connu).
+//  3. Hash password : bcrypt.GenerateFromPassword(cost 10).
+//  4. Appelle repo.AcceptSignup (fonction SQL accept_student_signup SECURITY DEFINER).
+//  5. Mappe le code retour :
+//     - OK → envoie email de bienvenue + log audit success.
+//     - NOT_FOUND / INACTIVE / EXPIRED / QUOTA_EXCEEDED / DOMAIN_NOT_ALLOWED /
+//       USER_EXISTS → SignupLinkStateError correspondant + log audit failure.
 //
-// Note : on NE vérifie pas l'état du lien côté usecase avant d'appeler AcceptSignup.
-// La fonction SQL fait ces checks atomiquement (defense in depth) — c'est plus
-// sûr car il n'y a pas de fenêtre de race entre Verify et Accept.
-func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, name, password string) (*domain.AcceptSignupResult, error) {
+// Note : on NE vérifie pas l'état du lien côté usecase AVANT d'appeler AcceptSignup
+// pour les checks basiques (actif/expiresAt/maxUses) — la fonction SQL fait ces
+// checks atomiquement (defense in depth, pas de fenêtre de race). En revanche, la
+// restriction de domaine ET le quota capitation B2B sont vérifiés côté usecase
+// AVANT l'appel SQL pour :
+//   - pouvoir logguer l'audit précisément (lien connu, code DOMAIN_NOT_ALLOWED /
+//     QUOTA_EXCEEDED),
+//   - éviter un appel SQL inutile (le check quota capitation nécessite de toute
+//     façon une lecture préalable côté QuotaRepository),
+//   - retourner une réponse rapide (4xx) à l'utilisateur sans attendre la tx SQL.
+// Le check SQL (DOMAIN_NOT_ALLOWED côté accept_student_signup) reste authoritative
+// en cas de race (modification du link entre le FindByToken et le AcceptSignup).
+//
+// Phase 2 — la signature Accept gagne 2 nouveaux params ip + userAgent pour
+// l'audit RegistrationEvent.
+func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, name, password, ip, userAgent string) (*domain.AcceptSignupResult, error) {
         // Validation input.
         if strings.TrimSpace(token) == "" {
                 return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: "Lien d'inscription introuvable"}
@@ -266,6 +306,47 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
         }
         if len(password) < 8 {
                 return nil, &domain.ValidationError{Field: "password", Message: "minimum 8 caractères"}
+        }
+
+        // Phase 2 — charger le lien pour : (1) check quota capitation B2B,
+        // (2) check restriction domaine (defense in depth), (3) audit RegistrationEvent.
+        // Si le token n'existe pas, on laisse AcceptSignup retourner NOT_FOUND
+        // atomiquement. Pas d'audit possible (pas de linkID).
+        var link *domain.StudentSignupLink
+        if l, ferr := uc.repo.FindByToken(ctx, token); ferr == nil && l != nil {
+                link = l
+        }
+
+        // Phase 2 — check quota capitation (B2B). Non bloquant si erreur DB (on log
+        // et on continue) — seul QuotaExceededError bloque.
+        if link != nil && uc.quotaRepo != nil {
+                if qerr := uc.quotaRepo.CheckStudentsQuota(ctx, link.EtablissementID); qerr != nil {
+                        if domain.IsQuotaExceeded(qerr) {
+                                uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "QUOTA_EXCEEDED")
+                                return nil, &domain.SignupLinkStateError{
+                                        Code:    "QUOTA_EXCEEDED",
+                                        Message: "Le quota d'étudiants de cet établissement est atteint. Contactez votre responsable ou le support SECT.",
+                                }
+                        }
+                        // Erreur non-quota (DB, etc.) : on logge mais on ne bloque pas.
+                        if uc.appLogger != nil {
+                                uc.appLogger("quota check failed (non-blocking)", "etablissement_id", link.EtablissementID, "error", qerr)
+                        }
+                }
+        }
+
+        // Phase 2 — check restriction domaine (defense in depth). Le SQL le vérifie
+        // aussi atomiquement, mais on le fait ici pour :
+        //   - logguer l'audit précisément (DOMAIN_NOT_ALLOWED côté usecase),
+        //   - retourner 4xx avant l'appel SQL (économie DB + UX rapide).
+        if link != nil && link.EmailDomainRestriction != nil && *link.EmailDomainRestriction != "" {
+                if !strings.HasSuffix(email, "@"+strings.ToLower(*link.EmailDomainRestriction)) {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "DOMAIN_NOT_ALLOWED")
+                        return nil, &domain.SignupLinkStateError{
+                                Code:    "DOMAIN_NOT_ALLOWED",
+                                Message: fmt.Sprintf("Cet email n'appartient pas au domaine autorisé : @%s", *link.EmailDomainRestriction),
+                        }
+                }
         }
 
         // Hasher le password (bcrypt cost 10, cohérent avec invitationBcryptCost).
@@ -283,23 +364,68 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
         // Mapper le code métier.
         switch res.Code {
         case "OK":
-                // Succès → envoyer l'email de bienvenue (non bloquant).
+                // Succès → log audit + envoyer email de bienvenue (non bloquant).
+                if link != nil {
+                        userID := ""
+                        if res.UserID != nil {
+                                userID = *res.UserID
+                        }
+                        uc.logAudit(ctx, link.ID, userID, email, ip, userAgent, true, "OK")
+                }
                 if uc.mailer != nil {
                         uc.sendStudentWelcomeEmail(ctx, token, res)
                 }
                 return res, nil
         case "NOT_FOUND":
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "NOT_FOUND")
+                }
                 return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: fallbackMsg(res.Message, "Lien d'inscription introuvable")}
         case "INACTIVE":
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "INACTIVE")
+                }
                 return nil, &domain.SignupLinkStateError{Code: "INACTIVE", Message: fallbackMsg(res.Message, "Ce lien d'inscription a été révoqué")}
         case "EXPIRED":
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "EXPIRED")
+                }
                 return nil, &domain.SignupLinkStateError{Code: "EXPIRED", Message: fallbackMsg(res.Message, "Ce lien d'inscription a expiré")}
         case "QUOTA_EXCEEDED":
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "QUOTA_EXCEEDED")
+                }
                 return nil, &domain.SignupLinkStateError{Code: "QUOTA_EXCEEDED", Message: fallbackMsg(res.Message, "Quota d'inscriptions atteint pour ce lien")}
+        case "DOMAIN_NOT_ALLOWED":
+                // Cas théorique : race entre usecase check et SQL check (ex: link modifié
+                // entre les deux). Le SQL est authoritative.
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "DOMAIN_NOT_ALLOWED")
+                }
+                return nil, &domain.SignupLinkStateError{Code: "DOMAIN_NOT_ALLOWED", Message: fallbackMsg(res.Message, "Domaine email non autorisé")}
         case "USER_EXISTS":
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "USER_EXISTS")
+                }
                 return nil, &domain.SignupLinkStateError{Code: "USER_EXISTS", Message: fallbackMsg(res.Message, "Un compte existe déjà avec cet email")}
         default:
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, res.Code)
+                }
                 return nil, fmt.Errorf("unknown accept_student_signup code: %s (%s)", res.Code, res.Message)
+        }
+}
+
+// logAudit logge un événement d'inscription dans "RegistrationEvent" via la
+// fonction SQL log_registration_event (SECURITY DEFINER, bypass RLS pour INSERT).
+// Non bloquant : si l'audit échoue (DB indisponible, etc.), on log l'erreur sans
+// faire échouer l'inscription.
+func (uc *StudentSignupLinkUseCase) logAudit(ctx context.Context, linkID, userID, email, ip, userAgent string, success bool, code string) {
+        if linkID == "" {
+                return // rien à logger sans linkID
+        }
+        if err := uc.repo.LogRegistrationEvent(ctx, linkID, userID, email, ip, userAgent, success, code); err != nil && uc.appLogger != nil {
+                uc.appLogger("registration event log failed", "link_id", linkID, "code", code, "error", err)
         }
 }
 
