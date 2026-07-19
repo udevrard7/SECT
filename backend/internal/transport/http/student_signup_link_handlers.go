@@ -33,12 +33,14 @@ import (
 // createStudentSignupLinkRequest — body du POST /api/student-signup-links.
 // etablissementId + createdById sont ignorés (toujours forcés = claims côté usecase).
 // Phase 2 : ajout emailDomainRestriction (optionnel — B2B only).
+// Phase 3 : ajout customWelcomeMessage (optionnel — message perso dans welcome email).
 type createStudentSignupLinkRequest struct {
         FiliereID              *string `json:"filiereId,omitempty"`
         Niveau                 *string `json:"niveau,omitempty"`
         MaxUses                *int    `json:"maxUses,omitempty"`
         Label                  *string `json:"label,omitempty"`
         EmailDomainRestriction *string `json:"emailDomainRestriction,omitempty"` // PHASE 2 — B2B
+        CustomWelcomeMessage   *string `json:"customWelcomeMessage,omitempty"`   // PHASE 3 — message perso welcome email
         // Champs ignorés (sécurité) :
         EtablissementID string `json:"etablissementId,omitempty"`
         CreatedByID     string `json:"createdById,omitempty"`
@@ -68,6 +70,7 @@ func (s *Server) createStudentSignupLink(w http.ResponseWriter, r *http.Request)
                 MaxUses:                req.MaxUses,
                 Label:                  req.Label,
                 EmailDomainRestriction: req.EmailDomainRestriction,
+                CustomWelcomeMessage:   req.CustomWelcomeMessage, // PHASE 3
         }
 
         link, publicURL, err := s.studentSignupLinkUC.Create(r.Context(), claims, input)
@@ -86,7 +89,8 @@ func (s *Server) createStudentSignupLink(w http.ResponseWriter, r *http.Request)
                 "expiresAt":              link.ExpiresAt,
                 "maxUses":                link.MaxUses,
                 "label":                  link.Label,
-                "emailDomainRestriction": link.EmailDomainRestriction, // PHASE 2 — peut être nil
+                "emailDomainRestriction": link.EmailDomainRestriction,            // PHASE 2 — peut être nil
+                "customWelcomeMessage":   link.CustomWelcomeMessage,             // PHASE 3 — peut être nil
                 "useCount":               link.UseCount,
                 "actif":                  link.Actif,
         })
@@ -126,6 +130,7 @@ func (s *Server) listStudentSignupLinks(w http.ResponseWriter, r *http.Request) 
                 Actif                  bool       `json:"actif"`
                 Label                  *string    `json:"label,omitempty"`
                 EmailDomainRestriction *string    `json:"emailDomainRestriction,omitempty"` // PHASE 2
+                CustomWelcomeMessage   *string    `json:"customWelcomeMessage,omitempty"`   // PHASE 3
                 CreatedAt              string     `json:"createdAt"`
         }
         safe := make([]safeLink, 0, len(links))
@@ -142,6 +147,7 @@ func (s *Server) listStudentSignupLinks(w http.ResponseWriter, r *http.Request) 
                         Actif:                  l.Actif,
                         Label:                  l.Label,
                         EmailDomainRestriction: l.EmailDomainRestriction,
+                        CustomWelcomeMessage:   l.CustomWelcomeMessage,
                         CreatedAt:              l.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
                 })
         }
@@ -324,9 +330,50 @@ func (s *Server) verifyStudentSignupLink(w http.ResponseWriter, r *http.Request)
         if link.EmailDomainRestriction != nil && *link.EmailDomainRestriction != "" {
                 resp["emailDomainRestriction"] = *link.EmailDomainRestriction
         }
+        // Phase 3 — exposer customWelcomeMessage au frontend pour qu'il puisse
+        // prévisualiser le message personnalisé avant que l'étudiant ne soumette
+        // le form. nil/absent = pas de message (le frontend ne l'affiche pas).
+        // NB : ce message sera aussi injecté dans l'email de bienvenue post-accept
+        // (côté usecase.sendStudentWelcomeEmail). L'exposer côté verify permet au
+        // frontend de l'afficher en preview (optionnel — non bloquant).
+        if link.CustomWelcomeMessage != nil && *link.CustomWelcomeMessage != "" {
+                resp["customWelcomeMessage"] = *link.CustomWelcomeMessage
+        }
 
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(resp)
+}
+
+// studentSignupLinkStats — GET /api/student-signup-links/stats (Phase 3)
+//
+// Auth : ADMIN, RESPONSABLE, ENSEIGNANT.
+// Retourne des agrégats sur les StudentSignupLinks (total/active/expired/revoked,
+// totalUses, expiringSoon<24h, success/failure RegistrationEvent, top 5 liens,
+// créations par jour sur 30 jours, breakdown des échecs par code).
+//
+// Le scoping est appliqué par la RLS (ENSEIGNANT = ses liens, RESPONSABLE = liens
+// de son étab, ADMIN = tous). Cf. usecase.StudentSignupLinkUseCase.Stats.
+//
+// Réponse 200 : cf. domain.StudentSignupLinkStats.
+// Réponse 401 : pas authentifié.
+// Réponse 403 : rôle non autorisé (ETUDIANT).
+func (s *Server) studentSignupLinkStats(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        if claims.Role != "ADMIN" && claims.Role != "RESPONSABLE" && claims.Role != "ENSEIGNANT" {
+                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                return
+        }
+        stats, err := s.studentSignupLinkUC.Stats(r.Context(), claims)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(stats)
 }
 
 // acceptStudentSignupRequest — body du POST /api/student-signup (PUBLIC).
