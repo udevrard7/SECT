@@ -32,6 +32,7 @@ import {
   Loader2,
   Link2,
   MessageCircle,
+  AtSign,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -124,6 +125,8 @@ interface ImportResult {
 // SECT-REG-LINK-B2C-MVP-1 : types pour les liens d'inscription direct étudiant.
 // Le token n'est JAMAIS retourné par GET /api/student-signup-links (sécurité) —
 // l'URL complète n'est disponible qu'à la création (POST), une seule fois.
+// SECT-REG-LINK-PHASE2-FRONTEND-1 : champ emailDomainRestriction ajouté
+// (B2B — restriction du domaine email autorisé sur le lien).
 interface StudentSignupLink {
   id: string
   etablissementId: string
@@ -139,6 +142,7 @@ interface StudentSignupLink {
   createdAt: string
   etablissementNom: string
   filiereNom: string | null
+  emailDomainRestriction?: string | null
 }
 
 interface CreateLinkResponse {
@@ -151,6 +155,7 @@ interface CreateLinkResponse {
   etablissementId: string
   filiereId: string | null
   createdAt: string
+  emailDomainRestriction?: string | null
 }
 
 interface InvitationItem {
@@ -380,6 +385,8 @@ export function EtudiantsPage() {
   const [linkFiliereId, setLinkFiliereId] = useState('')
   const [linkNiveau, setLinkNiveau] = useState('')
   const [linkMaxUses, setLinkMaxUses] = useState('')
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B)
+  const [linkEmailDomain, setLinkEmailDomain] = useState('')
   const [createdLink, setCreatedLink] = useState<CreateLinkResponse | null>(null)
   const [isCreatingLink, setIsCreatingLink] = useState(false)
   const [revokeLinkTarget, setRevokeLinkTarget] = useState<StudentSignupLink | null>(null)
@@ -1063,6 +1070,7 @@ export function EtudiantsPage() {
     setLinkFiliereId('')
     setLinkNiveau('')
     setLinkMaxUses('')
+    setLinkEmailDomain('')
     setCreatedLink(null)
     setIsCreatingLink(false)
     setShowLinkDialog(true)
@@ -1076,10 +1084,12 @@ export function EtudiantsPage() {
     setLinkFiliereId('')
     setLinkNiveau('')
     setLinkMaxUses('')
+    setLinkEmailDomain('')
   }
 
   // Créer un nouveau lien d'inscription (POST /api/student-signup-links)
   // Ne logue JAMAIS le token dans la console (sécurité frontend).
+  // SECT-REG-LINK-PHASE2-FRONTEND-1 : ajoute emailDomainRestriction si saisi.
   const handleCreateLink = async () => {
     setIsCreatingLink(true)
     try {
@@ -1090,6 +1100,18 @@ export function EtudiantsPage() {
       if (linkMaxUses) {
         const n = parseInt(linkMaxUses, 10)
         if (!Number.isNaN(n) && n > 0) body.maxUses = n
+      }
+      // SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B).
+      // Normalisation : trim + strip '@' initial + lower. Validation regex
+      // côté frontend (le backend refait la même validation en defense in depth).
+      if (linkEmailDomain.trim()) {
+        const d = linkEmailDomain.trim().replace(/^@/, '').toLowerCase()
+        if (!/^[a-z0-9.-]+$/.test(d)) {
+          toast.error('Domaine invalide', { description: 'Exemple : univ-ci.edu' })
+          setIsCreatingLink(false)
+          return
+        }
+        body.emailDomainRestriction = d
       }
       const res = await fetch('/api/student-signup-links', {
         method: 'POST',
@@ -2448,6 +2470,12 @@ export function EtudiantsPage() {
               {createdLink.label && (
                 <DSBadge variant="primary" size="sm">{createdLink.label}</DSBadge>
               )}
+              {createdLink.emailDomainRestriction && (
+                <DSBadge variant="info" size="sm">
+                  <AtSign className="h-3 w-3 mr-1" />
+                  @{createdLink.emailDomainRestriction}
+                </DSBadge>
+              )}
             </div>
 
             {/* Actions partage */}
@@ -2476,6 +2504,7 @@ export function EtudiantsPage() {
                   setLinkFiliereId('')
                   setLinkNiveau('')
                   setLinkMaxUses('')
+                  setLinkEmailDomain('')
                 }}
               >
                 <Plus className="h-4 w-4 mr-1.5" />
@@ -2544,6 +2573,28 @@ export function EtudiantsPage() {
                   />
                 </div>
               </div>
+
+              {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B). */}
+              {/* Masqué pour ENSEIGNANT (B2C) — un prof B2C n'a pas de domaine propre. */}
+              {canSelectFiliere && (
+                <div className="space-y-2">
+                  <Label htmlFor="link-email-domain" className="flex items-center gap-1.5">
+                    <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+                    Domaine email autorisé (optionnel)
+                  </Label>
+                  <Input
+                    id="link-email-domain"
+                    type="text"
+                    placeholder="ex: univ-ci.edu"
+                    value={linkEmailDomain}
+                    onChange={(e) => setLinkEmailDomain(e.target.value)}
+                    aria-describedby="link-email-domain-hint"
+                  />
+                  <p id="link-email-domain-hint" className="text-xs text-muted-foreground">
+                    Seuls les emails se terminant par @ce-domaine pourront s&apos;inscrire. Laissez vide pour autoriser tous les domaines.
+                  </p>
+                </div>
+              )}
 
               <div className="rounded-lg border border-info/20 bg-info/5 p-3 flex items-start gap-2">
                 <Clock className="h-4 w-4 text-info flex-shrink-0 mt-0.5" />
@@ -2636,6 +2687,12 @@ export function EtudiantsPage() {
                           )}
                           {link.niveau && (
                             <DSBadge variant="info" size="sm">{link.niveau}</DSBadge>
+                          )}
+                          {link.emailDomainRestriction && (
+                            <DSBadge variant="info" size="sm">
+                              <AtSign className="h-3 w-3 mr-0.5" />
+                              @{link.emailDomainRestriction}
+                            </DSBadge>
                           )}
                           <span className="text-muted-foreground">
                             <Users className="h-3 w-3 inline mr-0.5" />
