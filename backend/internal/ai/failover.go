@@ -29,14 +29,16 @@ import (
 
 // FailoverConfig est la configuration du failover lue depuis PlatformSettings.
 type FailoverConfig struct {
-        MaxConsecutiveFailures int `json:"maxConsecutiveFailures"` // défaut 3
-        CooldownDurationMs     int `json:"cooldownDurationMs"`     // défaut 60000 (60s)
-        RetryAllProviders      bool `json:"retryAllProviders"`     // défaut false
+        Enabled                bool `json:"enabled"`                  // défaut true — BUG #3 fix: maintenant vérifié
+        MaxConsecutiveFailures int  `json:"maxConsecutiveFailures"`   // défaut 3
+        CooldownDurationMs     int  `json:"cooldownDurationMs"`       // défaut 60000 (60s)
+        RetryAllProviders      bool `json:"retryAllProviders"`        // défaut false
 }
 
 // DefaultFailoverConfig retourne la config par défaut si PlatformSettings est vide.
 func DefaultFailoverConfig() FailoverConfig {
         return FailoverConfig{
+                Enabled:                true,
                 MaxConsecutiveFailures: 3,
                 CooldownDurationMs:     60000,
                 RetryAllProviders:      false,
@@ -75,7 +77,22 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 
         config := s.getFailoverConfig(ctx)
 
+        // BUG #3 fix : si le failover est désactivé, essayer uniquement le provider principal.
+        if !config.Enabled {
+                result, err := s.chatWithProvider(ctx, providers[0], messages)
+                if err != nil {
+                        return nil, fmt.Errorf("provider principal %s échoué (failover désactivé): %w", providers[0].Name, err)
+                }
+                return &FailoverResult{
+                        Content:      result.Content,
+                        Model:        result.Model,
+                        ProviderUsed: providers[0],
+                        FailoverUsed: false,
+                }, nil
+        }
+
         var lastErr error
+        var prevProvider *activeProvider // BUG #10 fix: pour tracer fromProvider→toProvider
         for i, p := range providers {
                 // Tenter l'appel avec ce provider.
                 result, err := s.chatWithProvider(ctx, p, messages)
@@ -87,6 +104,10 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
                                         "fallback_provider", p.Name,
                                 )
                         }
+                        // BUG #9 fix: logger un événement FAIL_OVER si on a basculé
+                        if i > 0 && prevProvider != nil {
+                                s.logFailoverSuccessEvent(ctx, prevProvider, p)
+                        }
                         return &FailoverResult{
                                 Content:      result.Content,
                                 Model:        result.Model,
@@ -97,6 +118,7 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 
                 // Échec : logger et passer au suivant.
                 lastErr = err
+                prevProvider = p
                 if logger != nil {
                         logger.Warn("AI provider échec, bascule vers le suivant",
                                 "provider", p.Name,
@@ -107,7 +129,9 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
                 }
 
                 // Bug #5 : logger dans AIFailoverEvent (best-effort, ne bloque pas).
-                s.logFailoverEvent(ctx, p, err, i+1 < len(providers))
+                // BUG #10 fix: passer le provider suivant pour fromProvider/toProvider.
+                nextProvider := getNextProvider(providers, i+1)
+                s.logFailoverEvent(ctx, p, nextProvider, err, i+1 < len(providers))
 
                 // Si pas de retryAllProviders et qu'on a essayé tous les providers, sortir.
                 if !config.RetryAllProviders && i+1 >= len(providers) {
@@ -116,6 +140,15 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
         }
 
         return nil, fmt.Errorf("tous les providers IA ont échoué, dernière erreur: %w", lastErr)
+}
+
+// getNextProvider retourne le provider à l'index donné, ou nil si hors limites.
+// Utilisé pour renseigner fromProvider/toProvider dans AIFailoverEvent.
+func getNextProvider(providers []*activeProvider, idx int) *activeProvider {
+        if idx < len(providers) {
+                return providers[idx]
+        }
+        return nil
 }
 
 // getActiveProvidersForFailover lit TOUS les providers actifs de capability='chat'
@@ -226,7 +259,9 @@ func (s *AIService) getFailoverConfig(ctx context.Context) FailoverConfig {
 // logFailoverEvent insère une entrée dans AIFailoverEvent (best-effort).
 // Bug #5 : la table d'audit était toujours vide. Maintenant chaque échec
 // provider est tracé pour diagnostic post-mortem.
-func (s *AIService) logFailoverEvent(ctx context.Context, provider *activeProvider, callErr error, hasFallback bool) {
+// BUG #9 fix: utilise FAIL_OVER au lieu de PROVIDER_FAILURE quand un fallback existe.
+// BUG #10 fix: remplit fromProvider et toProvider pour tracer la chaîne de bascule.
+func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *activeProvider, nextProvider *activeProvider, callErr error, hasFallback bool) {
         tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return
@@ -235,7 +270,8 @@ func (s *AIService) logFailoverEvent(ctx context.Context, provider *activeProvid
 
         tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
-        eventType := "PROVIDER_FAILURE"
+        // BUG #9 fix: utiliser FAIL_OVER quand il y a un provider de secours.
+        eventType := "FAIL_OVER"
         if !hasFallback {
                 eventType = "ALL_PROVIDERS_FAILED"
         }
@@ -246,14 +282,51 @@ func (s *AIService) logFailoverEvent(ctx context.Context, provider *activeProvid
                 errMsg = errMsg[:500] + "…"
         }
 
+        // BUG #10 fix: remplir fromProvider et toProvider.
+        var fromProvider, toProvider *string
+        from := failedProvider.Name
+        fromProvider = &from
+        if nextProvider != nil {
+                to := nextProvider.Name
+                toProvider = &to
+        }
+
         _, _ = tx.Exec(ctx, `
-                INSERT INTO "AIFailoverEvent" ("id", "providerId", "providerName", "eventType", "reason", "errorDetails", "resolved", "createdAt")
-                VALUES ($1, $2, $3, $4, $5, $6, false, CURRENT_TIMESTAMP)
+                INSERT INTO "AIFailoverEvent" ("id", "providerId", "providerName", "eventType", "fromProvider", "toProvider", "reason", "errorDetails", "resolved", "createdAt")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, CURRENT_TIMESTAMP)
         `,
-                "failover-"+provider.ID+"-"+fmt.Sprintf("%d", time.Now().UnixNano()),
-                provider.ID, provider.Name, eventType,
+                "failover-"+failedProvider.ID+"-"+fmt.Sprintf("%d", time.Now().UnixNano()),
+                failedProvider.ID, failedProvider.Name, eventType,
+                fromProvider, toProvider,
                 "HTTP error or timeout during chat completion",
                 errMsg,
+        )
+
+        _ = tx.Commit(ctx)
+}
+
+// logFailoverSuccessEvent insère un événement RECOVERY quand le failover réussit
+// (BUG #9 fix: tracer les bascules réussies, pas seulement les échecs).
+func (s *AIService) logFailoverSuccessEvent(ctx context.Context, fromProvider *activeProvider, toProvider *activeProvider) {
+        tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return
+        }
+        defer tx.Rollback(ctx)
+
+        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+
+        fromName := fromProvider.Name
+        toName := toProvider.Name
+
+        _, _ = tx.Exec(ctx, `
+                INSERT INTO "AIFailoverEvent" ("id", "providerId", "providerName", "eventType", "fromProvider", "toProvider", "reason", "errorDetails", "resolved", "createdAt")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, '', true, CURRENT_TIMESTAMP)
+        `,
+                "recovery-"+toProvider.ID+"-"+fmt.Sprintf("%d", time.Now().UnixNano()),
+                toProvider.ID, toProvider.Name, "RECOVERY",
+                fromName, toName,
+                fmt.Sprintf("Failover réussi: %s → %s", fromProvider.Name, toProvider.Name),
         )
 
         _ = tx.Commit(ctx)

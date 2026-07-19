@@ -23,6 +23,7 @@ import (
         "encoding/json"
         "fmt"
         "io"
+        "log/slog"
         "net/http"
         "strings"
         "time"
@@ -128,10 +129,10 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
 // lit les lignes SSE `data: {...}` et extrait `choices[0].delta.content`.
 // La ligne `data: [DONE]` termine le stream.
 //
-// Pas de failover en cours de streaming (si le provider échoue après le
-// premier token, on remonte l'erreur). Le failover au démarrage est géré
-// en lisant le provider actif principal (pas ChatWithFailover pour éviter
-// la complexité de bascule en cours de streaming).
+// BUG #4 fix: failover au démarrage — si le provider principal échoue
+// avant le premier token (connexion refusée, 401, 429, etc.), on bascule
+// vers le provider suivant. Une fois le stream commencé, pas de bascule
+// (trop complexe de reprendre un stream en cours).
 //
 // Retourne le contenu complet accumulé + le modèle utilisé.
 func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMessage, onChunk func(accumulatedContent string)) (*ChatResult, error) {
@@ -142,11 +143,63 @@ func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMes
                 return nil, fmt.Errorf("messages vides")
         }
 
-        p, err := s.getActiveProvider(ctx)
+        // BUG #4 fix: essayer plusieurs providers avec failover au démarrage.
+        providers, err := s.getActiveProvidersForFailover(ctx)
         if err != nil {
                 return nil, err
         }
+        if len(providers) == 0 {
+                return nil, fmt.Errorf("aucun provider IA actif")
+        }
 
+        config := s.getFailoverConfig(ctx)
+
+        var lastErr error
+        for i, p := range providers {
+                // Si failover désactivé, ne tester que le premier provider.
+                if !config.Enabled && i > 0 {
+                        break
+                }
+
+                result, streamErr := s.tryStreamProvider(ctx, p, messages, onChunk)
+                if streamErr == nil {
+                        // Succès du stream
+                        if i > 0 {
+                                slog.Info("ChatCompletionStream failover réussi",
+                                        "failed_provider", providers[0].Name,
+                                        "fallback_provider", p.Name,
+                                )
+                        }
+                        return result, nil
+                }
+
+                // Échec avant le premier token → essayer le provider suivant.
+                lastErr = streamErr
+                slog.Warn("ChatCompletionStream provider échec, bascule",
+                        "provider", p.Name,
+                        "error", streamErr.Error(),
+                        "attempt", i+1,
+                        "total_providers", len(providers),
+                )
+
+                // Si on a déjà reçu des données partielles (accumulated > 0),
+                // on ne peut pas basculer → on a déjà retourné le résultat partiel
+                // dans tryStreamProvider. Si on arrive ici, c'est que l'échec était
+                // avant le premier token (connexion, auth, etc.).
+                if !config.RetryAllProviders && i+1 >= len(providers) {
+                        break
+                }
+        }
+
+        return nil, fmt.Errorf("tous les providers IA ont échoué pour le stream, dernière erreur: %w", lastErr)
+}
+
+// tryStreamProvider tente un appel streaming avec un provider spécifique.
+// Retourne une erreur si le provider échoue AVANT le premier token
+// (permettant le failover vers le provider suivant).
+// Si le provider échoue APRÈS avoir commencé le stream, on retourne
+// le contenu partiel accumulé (pas de failover mid-stream).
+func (s *AIService) tryStreamProvider(ctx context.Context, p *activeProvider, messages []ChatMessage, onChunk func(accumulatedContent string)) (*ChatResult, error) {
         body := map[string]interface{}{
                 "model":       p.Model,
                 "messages":    messages,

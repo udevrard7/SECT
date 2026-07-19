@@ -31,6 +31,7 @@ import (
 
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
+        "github.com/udevrard7/sect/backend/internal/ai"
         "github.com/udevrard7/sect/backend/internal/domain"
 )
 
@@ -49,16 +50,17 @@ var AudioGenerationQueue = make(chan AudioGenerationJob, 25)
 
 // AudioGenerationWorker est le worker qui consomme la queue.
 type AudioGenerationWorker struct {
-        dbPool  *pgxpool.Pool
-        storage domain.StorageClient // R2 client (peut être nil si désactivé)
-        logger  *slog.Logger
+        dbPool    *pgxpool.Pool
+        storage   domain.StorageClient // R2 client (peut être nil si désactivé)
+        logger    *slog.Logger
+        aiService *ai.AIService // failover support for chat completion
 }
 
 // NewAudioGenerationWorker crée un nouveau worker Audio.
 // storageClient peut être nil si R2 est désactivé (le worker marquera
 // l'audio PRET avec script seul, sans upload MP3).
-func NewAudioGenerationWorker(dbPool *pgxpool.Pool, storageClient domain.StorageClient, logger *slog.Logger) *AudioGenerationWorker {
-        return &AudioGenerationWorker{dbPool: dbPool, storage: storageClient, logger: logger}
+func NewAudioGenerationWorker(dbPool *pgxpool.Pool, storageClient domain.StorageClient, logger *slog.Logger, aiService *ai.AIService) *AudioGenerationWorker {
+        return &AudioGenerationWorker{dbPool: dbPool, storage: storageClient, logger: logger, aiService: aiService}
 }
 
 // Start lance le worker en goroutine (non-bloquant).
@@ -123,31 +125,25 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 docContent = docContent[:12_000] + "\n... [contenu tronqué]"
         }
 
-        // 3. Lire le provider IA actif depuis la DB.
-        provider, err := getActiveProviderShared(ctx, w.dbPool)
-        if err != nil {
-                w.logger.Error("Failed to get active AI provider", "error", err)
-                errMsg := "aucun provider IA actif"
-                _ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
-                return
-        }
-        w.logger.Info("Using AI provider for podcast", "name", provider.Name, "model", provider.Model)
-
-        // 4. Construire le prompt podcast.
+        // 3. Construire le prompt podcast.
         messages := w.buildPodcastPrompt(docContent)
 
-        // 5. Appeler l'IA pour générer le script.
-        script, err := callAIProviderShared(ctx, provider, messages, w.logger)
+        // 4. Convert worker.ChatMessage → ai.ChatMessage and call AI with failover
+        aiMessages := make([]ai.ChatMessage, len(messages))
+        for i, m := range messages {
+                aiMessages[i] = ai.ChatMessage{Role: m.Role, Content: m.Content}
+        }
+        result, err := w.aiService.ChatCompletion(ctx, aiMessages)
         if err != nil {
-                w.logger.Error("AI podcast script generation failed",
+                w.logger.Error("AI podcast script generation failed (all providers exhausted)",
                         "error", err,
-                        "provider", provider.Name,
                         "documentId", job.DocumentID,
                 )
                 errMsg := fmt.Sprintf("échec IA: %v", err)
                 _ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
                 return
         }
+        script := result.Content
 
         if strings.TrimSpace(script) == "" {
                 w.logger.Warn("AI returned empty podcast script", "documentId", job.DocumentID)
@@ -160,9 +156,10 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 "audioId", job.AudioID,
                 "documentId", job.DocumentID,
                 "scriptLength", len(script),
+                "model", result.Model,
         )
 
-        // 6. Sauvegarder le script dans la ligne DocumentAudio.
+        // 5. Sauvegarder le script dans la ligne DocumentAudio.
         if err := w.updateScript(ctx, job.AudioID, script); err != nil {
                 w.logger.Error("Failed to save podcast script",
                         "error", err,
@@ -173,7 +170,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 return
         }
 
-        // 7. Tenter la synthèse TTS (optionnelle — dégradation gracieuse).
+        // 6. Tenter la synthèse TTS (optionnelle — dégradation gracieuse).
         // DASHSCOPE-AUDIO-1 : utiliser un provider TTS dédié si configuré
         // (capability='tts'), sinon fallback sur le provider chat (rétro-compatible).
         ttsProvider, ttsProvErr := getActiveProviderByCapabilityShared(ctx, w.dbPool, "tts")
@@ -203,7 +200,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 return
         }
 
-        // 8. TTS succès → upload audio sur R2.
+        // 7. TTS succès → upload audio sur R2.
         // KOKORO-TTS-1 : le format dépend du provider (WAV pour HuggingFace/Kokoro,
         // MP3 pour DashScope/OpenAI). ttsAudioFormat() retourne l'extension + content-type.
         if w.storage == nil {
@@ -231,7 +228,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 return
         }
 
-        // 9. Marquer PRET avec la clé R2.
+        // 8. Marquer PRET avec la clé R2.
         if err := w.updateStatus(ctx, job.AudioID, "PRET", &r2Key, nil); err != nil {
                 w.logger.Error("Failed to mark audio as PRET (with R2 key)",
                         "error", err, "audioId", job.AudioID, "r2Key", r2Key)

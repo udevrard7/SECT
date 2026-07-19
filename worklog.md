@@ -17401,3 +17401,28 @@ Stage Summary:
 - Variables d'environnement configurées (R2/Resend/GeniusPay non configurés - optionnels en dev)
 - Flux de travail établi : modifications locales → git push → GitHub → Vercel (frontend) + Render (backend)
 - Architecture du projet documentée (Clean Architecture Go, Catch-All routing Next.js, RLS Neon)
+
+---
+Task ID: SETUP-SESSION-2
+Agent: Main (Z.ai Code)
+Task: Configuration de l'environnement de développement pour la session de tutorat
+
+Work Log:
+- Cloné le dépôt SECT depuis GitHub (déjà présent, pull up-to-date)
+- Installé Go 1.24.1 dans ~/go (GOROOT) avec GOPATH=~/gopath
+- Configuré les variables d'environnement persistantes dans ~/.bashrc
+- Créé backend/.env avec : NEON_DATABASE_URL, JWT_SECRET (dev), CORS_ORIGINS, APP_BASE_URL
+- Créé frontend/.env avec : NEXT_PUBLIC_API_URL=http://localhost:8080
+- Vérifié la compilation backend : `go build ./cmd/api` ✅
+- Vérifié la connexion Neon : PostgreSQL 18.4, migration v75, 63 tables, dirty=false ✅
+- Testé le démarrage backend : tous les workers opérationnels, health check OK ✅
+- Installé les dépendances frontend : 1066 packages via bun ✅
+- Configuré Git identity : udevrard7 <ulrichdouh@gmail.com> ✅
+- Vérifié le remote GitHub avec authentification par token ✅
+
+Stage Summary:
+- Environnement de développement SECT entièrement opérationnel
+- Backend Go : compile, se connecte à Neon, 9 workers démarrés
+- Frontend Next.js 16 : dépendances installées, prêt à démarrer
+- Flux de déploiement : modifications → git push → GitHub → Vercel (auto) + Render (auto)
+- Services optionnels non configurés en dev : R2 (stockage), Resend (emails), GeniusPay (paiement)

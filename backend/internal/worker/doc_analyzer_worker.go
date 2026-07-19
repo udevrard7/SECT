@@ -10,6 +10,8 @@ import (
         "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
         "github.com/google/uuid"
+
+        "github.com/udevrard7/sect/backend/internal/ai"
 )
 
 // DOC-ANALYZER-1 : Worker d'analyse automatique des documents.
@@ -31,12 +33,13 @@ type DocumentAnalysisJob struct {
 var DocumentAnalysisQueue = make(chan DocumentAnalysisJob, 50)
 
 type DocumentAnalyzerWorker struct {
-        dbPool *pgxpool.Pool
-        logger *slog.Logger
+        dbPool    *pgxpool.Pool
+        logger    *slog.Logger
+        aiService *ai.AIService // failover support
 }
 
-func NewDocumentAnalyzerWorker(dbPool *pgxpool.Pool, logger *slog.Logger) *DocumentAnalyzerWorker {
-        return &DocumentAnalyzerWorker{dbPool: dbPool, logger: logger}
+func NewDocumentAnalyzerWorker(dbPool *pgxpool.Pool, logger *slog.Logger, aiService *ai.AIService) *DocumentAnalyzerWorker {
+        return &DocumentAnalyzerWorker{dbPool: dbPool, logger: logger, aiService: aiService}
 }
 
 func (w *DocumentAnalyzerWorker) Start(ctx context.Context) {
@@ -86,33 +89,30 @@ func (w *DocumentAnalyzerWorker) processAnalysisJob(ctx context.Context, job Doc
                 content = content[:15000] + "\n... [contenu tronqué]"
         }
 
-        // 4. Get active AI provider
-        provider, err := getActiveProviderShared(ctx, w.dbPool)
-        if err != nil {
-                w.logger.Error("Failed to get active AI provider", "error", err)
-                return
-        }
-
-        // 5. Build prompt
+        // 4. Build prompt
         messages := w.buildAnalysisPrompt(content)
 
-        // 6. Call AI
-        result, err := callAIProviderShared(ctx, provider, messages, w.logger)
+        // 5. Convert worker.ChatMessage → ai.ChatMessage and call AI with failover
+        aiMessages := make([]ai.ChatMessage, len(messages))
+        for i, m := range messages {
+                aiMessages[i] = ai.ChatMessage{Role: m.Role, Content: m.Content}
+        }
+        result, err := w.aiService.ChatCompletion(ctx, aiMessages)
         if err != nil {
-                w.logger.Error("AI analysis failed", "error", err, "documentId", job.DocumentID)
+                w.logger.Error("AI call failed (all providers exhausted)", "error", err, "documentId", job.DocumentID)
                 w.markAnalysisError(ctx, job.DocumentID, fmt.Sprintf("erreur API IA: %v", err))
                 return
         }
 
-        // 7. Parse chapters
-        chapters, err := w.parseChapters(result)
+        // 6. Parse chapters
+        chapters, err := w.parseChapters(result.Content)
         if err != nil {
                 w.logger.Error("Failed to parse chapters", "error", err, "documentId", job.DocumentID)
                 w.markAnalysisError(ctx, job.DocumentID, "réponse IA illisible")
                 return
         }
 
-        // 8. Insert chapters
+        // 7. Insert chapters
         inserted := w.insertChapters(ctx, job.DocumentID, chapters)
 
         // P1-D1 : mettre à jour le statut du document à ANALYSE + remplir

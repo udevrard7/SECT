@@ -176,22 +176,22 @@ func main() {
         iaWorker.RecoverInterruptedJobs(context.Background())
         iaWorker.Start(context.Background())
 
-        correctionWorker := worker.NewCorrectionWorker(pool, logger)
+        correctionWorker := worker.NewCorrectionWorker(pool, logger, aiService)
         correctionWorker.RecoverInterruptedCorrections(context.Background())
         correctionWorker.Start(context.Background())
 
-        docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
+        docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger, aiService)
         docAnalyzer.RecoverInterruptedAnalyses(context.Background())
         docAnalyzer.Start(context.Background())
 
-        practiceWorker := worker.NewPracticeWorker(pool, logger)
+        practiceWorker := worker.NewPracticeWorker(pool, logger, aiService)
         practiceWorker.Start(context.Background())
 
-        homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
+        homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger, aiService)
         homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
         homeworkWorker.Start(context.Background())
 
-        audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
+        audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger, aiService)
         audioWorker.RecoverInterruptedAudioJobs(context.Background())
         audioWorker.Start(context.Background())
 
