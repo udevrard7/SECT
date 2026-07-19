@@ -52,6 +52,7 @@ import {
   AtSign,
   ShieldAlert,
   AlertTriangle,
+  MessageSquare,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -85,6 +86,9 @@ interface VerifyLinkResponse {
   label: string | null
   // SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B)
   emailDomainRestriction?: string | null
+  // SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
+  // (présent seulement si non vide côté backend — preview dans l'encart contexte).
+  customWelcomeMessage?: string | null
 }
 
 type VerifyErrorCode =
@@ -792,6 +796,19 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                 <AtSign className="h-3 w-3 mr-1" />
                 Email institutionnel requis : @{linkData.emailDomainRestriction}
               </DSBadge>
+            )}
+            {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
+                de l'enseignant (affiché si non vide côté backend). */}
+            {linkData.customWelcomeMessage && (
+              <div className="mt-2 p-3 rounded-md bg-info/10 border border-info/20">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-info mb-1">
+                  <MessageSquare className="h-3 w-3" />
+                  Message de votre enseignant
+                </div>
+                <p className="text-sm text-foreground whitespace-pre-wrap">
+                  {linkData.customWelcomeMessage}
+                </p>
+              </div>
             )}
             {linkData.creatorName && (
               <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
