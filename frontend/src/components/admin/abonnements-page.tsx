@@ -249,6 +249,9 @@ function B2BValidationTab() {
   const [selectedItem, setSelectedItem] = useState<PendingB2BItem | null>(null)
   const [filterType, setFilterType] = useState<string>('ALL')
   const [filterEmail, setFilterEmail] = useState<string>('ALL')
+  // Raccourci "Validables" : filtre les établissements dont l'email est vérifié
+  // (action prioritaire de l'admin). Toggle indépendant du Select filterEmail.
+  const [onlyValidable, setOnlyValidable] = useState(false)
 
   const { data, isLoading, error } = useQuery<{ pending: PendingB2BItem[]; count: number }>({
     queryKey: ['b2b-pending-validation'],
@@ -264,12 +267,11 @@ function B2BValidationTab() {
   const pending = data?.pending ?? []
   const count = data?.count ?? 0
 
-  // Stats dérivées
+  // ── Stats dérivées (KPIs compacts : seulement 2 métriques business) ──
   const emailVerifiedCount = pending.filter(i => i.emailVerified).length
-  const emailProCount = pending.filter(i => i.emailProfessionnel).length
   const totalCapitation = pending.reduce((sum, i) => sum + Math.max(i.nbEtudiants ?? 50, 50) * 900, 0)
 
-  // Filtres
+  // ── Filtres (recherche, type, email, validables) ──
   const filtered = useMemo(() => {
     let items = pending
     if (searchQuery.trim()) {
@@ -284,6 +286,9 @@ function B2BValidationTab() {
     if (filterType !== 'ALL') {
       items = items.filter(i => i.etablissementType === filterType)
     }
+    if (onlyValidable) {
+      items = items.filter(i => i.emailVerified)
+    }
     if (filterEmail === 'VERIFIED') {
       items = items.filter(i => i.emailVerified)
     } else if (filterEmail === 'UNVERIFIED') {
@@ -294,13 +299,33 @@ function B2BValidationTab() {
       items = items.filter(i => !i.emailProfessionnel)
     }
     return items
-  }, [pending, searchQuery, filterType, filterEmail])
+  }, [pending, searchQuery, filterType, filterEmail, onlyValidable])
+
+  // ── Tri intelligent : validables d'abord, puis plus récents ──
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const aValidable = a.emailVerified ? 1 : 0
+      const bValidable = b.emailVerified ? 1 : 0
+      if (aValidable !== bValidable) return bValidable - aValidable
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  }, [filtered])
 
   // Types d'établissement uniques pour le filtre
   const etabTypes = useMemo(() => {
     const types = [...new Set(pending.map(i => i.etablissementType))]
     return types.sort()
   }, [pending])
+
+  const hasActiveFilters =
+    searchQuery.trim() !== '' || filterType !== 'ALL' || filterEmail !== 'ALL' || onlyValidable
+
+  const resetFilters = () => {
+    setSearchQuery('')
+    setFilterType('ALL')
+    setFilterEmail('ALL')
+    setOnlyValidable(false)
+  }
 
   const handleValidate = async (etabId: string) => {
     setValidating(etabId)
@@ -348,45 +373,80 @@ function B2BValidationTab() {
     return labels[type] || type
   }
 
-  const getEtabTypeIcon = (type: string) => {
-    switch (type) {
-      case 'UNIVERSITE': return Building2
-      case 'INSTITUT': return Building2
-      case 'ECOLE': return Building2
-      case 'FORMATION_PRO': return Building2
-      default: return Building2
-    }
-  }
+  // Indice de l'étape "Validation admin" dans B2B_PIPELINE_STEPS (étape courante
+  // moyenne du pipeline, mise en évidence dans l'en-tête compact).
+  const ADMIN_VALIDATE_STEP_IDX = 2
 
   return (
-    <div className="space-y-5">
-      {/* ── En-tête avec pipeline B2B ── */}
-      <div className="relative rounded-lg border border-border bg-card p-5 overflow-hidden ds-kente-top">
-        <div className="ds-kente-pattern absolute inset-0 opacity-40 pointer-events-none" aria-hidden="true" />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="h-9 w-9 shrink-0 rounded-md flex items-center justify-center bg-secondary/10 text-secondary">
-              <Building2 className="h-5 w-5" />
+    <div className="space-y-4">
+      {/* ── En-tête unifié compact : Hero + 2 KPIs + Pipeline compact ── */}
+      <div className="relative rounded-lg border border-border bg-card p-4 sm:p-5 overflow-hidden ds-kente-top">
+        <div className="ds-kente-pattern absolute inset-0 opacity-30 pointer-events-none" aria-hidden="true" />
+        <div className="relative space-y-4">
+          {/* Ligne 1 — Titre + KPIs compacts */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 shrink-0 rounded-md flex items-center justify-center bg-secondary/10 text-secondary">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-display text-base font-bold truncate">Validation B2B</h3>
+                <p className="text-xs text-muted-foreground truncate">
+                  Inscriptions institutionnelles en attente d&rsquo;approbation
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-display text-base font-bold">Pipeline de validation B2B</h3>
-              <p className="text-xs text-muted-foreground">Workflow d&rsquo;inscription institutionnelle — de l&rsquo;inscription à l&rsquo;activation</p>
+            <div className="flex items-center gap-5 shrink-0">
+              <div className="flex flex-col">
+                <span className="font-mono text-2xl font-bold text-warning leading-tight tabular-nums">
+                  {isLoading ? '–' : count}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {isLoading ? 'Chargement…' : `En attente · ${emailVerifiedCount} validable${emailVerifiedCount !== 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <div className="h-8 w-px bg-border" aria-hidden="true" />
+              <div className="flex flex-col">
+                <span className="font-mono text-2xl font-bold text-gold leading-tight tabular-nums">
+                  {isLoading ? '–' : totalCapitation.toLocaleString('fr-FR')}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  Capitation potentielle · FCFA/an
+                </span>
+              </div>
             </div>
           </div>
-          {/* Pipeline visuel */}
+
+          {/* Ligne 2 — Pipeline compact (5 étapes) */}
           <div className="flex items-center gap-0 overflow-x-auto pb-1">
             {B2B_PIPELINE_STEPS.map((step, idx) => {
               const StepIcon = step.icon
+              const isCurrent = idx === ADMIN_VALIDATE_STEP_IDX
               return (
                 <div key={step.key} className="flex items-center shrink-0">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-8 w-8 rounded-full flex items-center justify-center bg-info/10 text-info-foreground">
-                      <StepIcon className="h-4 w-4" />
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div
+                      className={[
+                        'h-6 w-6 rounded-full flex items-center justify-center transition-colors',
+                        isCurrent
+                          ? 'bg-warning/15 text-warning ring-2 ring-warning/30'
+                          : 'bg-info/10 text-info-foreground',
+                      ].join(' ')}
+                      aria-current={isCurrent ? 'step' : undefined}
+                    >
+                      <StepIcon className="h-3.5 w-3.5" />
                     </div>
-                    <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">{step.label}</span>
+                    <span
+                      className={[
+                        'text-[10px] font-medium whitespace-nowrap',
+                        isCurrent ? 'text-warning' : 'text-muted-foreground',
+                      ].join(' ')}
+                    >
+                      {step.label}
+                    </span>
                   </div>
                   {idx < B2B_PIPELINE_STEPS.length - 1 && (
-                    <div className="w-8 sm:w-12 h-0.5 bg-border mx-0.5" />
+                    <div className="w-6 sm:w-10 h-0.5 bg-border mx-0.5" />
                   )}
                 </div>
               )
@@ -395,48 +455,7 @@ function B2BValidationTab() {
         </div>
       </div>
 
-      {/* ── Stat Cards DS ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          label="En attente"
-          value={count}
-          icon={Building2}
-          accent="warning"
-          hint="Établissements à valider"
-          loading={isLoading}
-          index={0}
-        />
-        <StatCard
-          label="Emails vérifiés"
-          value={emailVerifiedCount}
-          icon={Mail}
-          accent="success"
-          hint={`${count - emailVerifiedCount} en attente de vérification`}
-          loading={isLoading}
-          index={1}
-        />
-        <StatCard
-          label="Emails pro"
-          value={emailProCount}
-          icon={Shield}
-          accent="info"
-          hint={`${count - emailProCount} emails personnels`}
-          loading={isLoading}
-          index={2}
-        />
-        <StatCard
-          label="Capitation potentielle"
-          value={totalCapitation.toLocaleString('fr-FR')}
-          icon={DollarSign}
-          accent="gold"
-          suffix="FCFA"
-          hint="Estimation annuelle totale"
-          loading={isLoading}
-          index={3}
-        />
-      </div>
-
-      {/* ── Barre de recherche et filtres ── */}
+      {/* ── Barre de filtres raffinée ── */}
       {pending.length > 0 && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <div className="relative flex-1 w-full sm:max-w-xs">
@@ -446,11 +465,12 @@ function B2BValidationTab() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 h-9"
+              aria-label="Rechercher un établissement"
             />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="h-9 w-full sm:w-[140px]">
+              <SelectTrigger className="h-9 w-full sm:w-[140px]" aria-label="Filtrer par type d'établissement">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -461,7 +481,7 @@ function B2BValidationTab() {
               </SelectContent>
             </Select>
             <Select value={filterEmail} onValueChange={setFilterEmail}>
-              <SelectTrigger className="h-9 w-full sm:w-[150px]">
+              <SelectTrigger className="h-9 w-full sm:w-[150px]" aria-label="Filtrer par statut email">
                 <SelectValue placeholder="Email" />
               </SelectTrigger>
               <SelectContent>
@@ -472,36 +492,73 @@ function B2BValidationTab() {
                 <SelectItem value="PERSO">Email perso</SelectItem>
               </SelectContent>
             </Select>
-            {(searchQuery || filterType !== 'ALL' || filterEmail !== 'ALL') && (
+            {/* Badge "Validables" — raccourci cliquable pour filtrer emailVerified === true */}
+            <button
+              type="button"
+              onClick={() => setOnlyValidable(v => !v)}
+              aria-pressed={onlyValidable}
+              title="Filtrer les établissements validables (email vérifié)"
+              className={[
+                'h-9 inline-flex items-center gap-1 px-3 rounded-md text-xs font-medium border transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                onlyValidable
+                  ? 'bg-success/15 text-success-text border-success/30'
+                  : 'bg-card text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground',
+              ].join(' ')}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Validables
+              {emailVerifiedCount > 0 && (
+                <span className="ml-0.5 font-mono font-bold tabular-nums">{emailVerifiedCount}</span>
+              )}
+            </button>
+            {hasActiveFilters && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-9"
-                onClick={() => { setSearchQuery(''); setFilterType('ALL'); setFilterEmail('ALL') }}
+                onClick={resetFilters}
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Réinitialiser
               </Button>
             )}
           </div>
           <span className="text-xs text-muted-foreground ml-auto shrink-0">
-            {filtered.length} résultat{filtered.length !== 1 ? 's' : ''}
+            {sorted.length} résultat{sorted.length !== 1 ? 's' : ''}
           </span>
         </div>
       )}
 
       {/* ── Contenu principal ── */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        // 4 skeletons compacts (même forme que la carte compacte)
+        <div className="flex flex-col gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-lg border border-border p-5 space-y-3">
-              <PulseSkeleton className="h-5 w-40" />
-              <PulseSkeleton className="h-4 w-28" />
-              <div className="flex gap-2">
-                <PulseSkeleton className="h-6 w-20" />
-                <PulseSkeleton className="h-6 w-20" />
+            <div key={i} className="rounded-lg border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <PulseSkeleton className="h-9 w-9 rounded-md" />
+                  <div className="space-y-1">
+                    <PulseSkeleton className="h-4 w-40" />
+                    <PulseSkeleton className="h-3 w-28" />
+                  </div>
+                </div>
+                <PulseSkeleton className="h-3 w-16" />
               </div>
-              <PulseSkeleton className="h-16 w-full" />
-              <PulseSkeleton className="h-9 w-full" />
+              <div className="flex items-center justify-between">
+                <PulseSkeleton className="h-3 w-52" />
+                <div className="flex gap-1.5">
+                  <PulseSkeleton className="h-5 w-5 rounded-full" />
+                  <PulseSkeleton className="h-5 w-5 rounded-full" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <PulseSkeleton className="h-4 w-24" />
+                <div className="flex gap-2">
+                  <PulseSkeleton className="h-8 w-20" />
+                  <PulseSkeleton className="h-8 w-32" />
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -510,6 +567,14 @@ function B2BValidationTab() {
           <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
           <p className="text-destructive font-medium">Erreur lors du chargement des établissements en attente.</p>
           <p className="text-xs text-muted-foreground mt-1">Vérifiez votre connexion et réessayez.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['b2b-pending-validation'] })}
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Réessayer
+          </Button>
         </div>
       ) : pending.length === 0 ? (
         <div className="ds-kente-watermark rounded-lg border border-border bg-card p-10 text-center">
@@ -525,18 +590,18 @@ function B2BValidationTab() {
               <DSBadge variant="info" size="sm">
                 <Clock className="h-3 w-3 mr-1" /> En attente
               </DSBadge>
-              <span className="text-xs text-muted-foreground">→</span>
+              <span className="text-xs text-muted-foreground" aria-hidden="true">→</span>
               <DSBadge variant="success" size="sm">
                 <CheckCircle2 className="h-3 w-3 mr-1" /> Validé
               </DSBadge>
-              <span className="text-xs text-muted-foreground">→</span>
+              <span className="text-xs text-muted-foreground" aria-hidden="true">→</span>
               <DSBadge variant="gold" size="sm">
                 <Sparkles className="h-3 w-3 mr-1" /> Actif
               </DSBadge>
             </div>
           </div>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <Search className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
           <p className="text-muted-foreground font-medium">Aucun résultat pour ces filtres</p>
@@ -544,186 +609,150 @@ function B2BValidationTab() {
             variant="ghost"
             size="sm"
             className="mt-2"
-            onClick={() => { setSearchQuery(''); setFilterType('ALL'); setFilterEmail('ALL') }}
+            onClick={resetFilters}
           >
             <RotateCcw className="h-3.5 w-3.5 mr-1" /> Réinitialiser les filtres
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        // Liste verticale de cartes compactes (1 colonne pour lisibilité optimale)
+        <div className="flex flex-col gap-3">
           <AnimatePresence mode="popLayout">
-            {filtered.map((item, idx) => {
-              const pipelineStep = getPipelineStep(item)
+            {sorted.map((item, idx) => {
               const capitation = Math.max(item.nbEtudiants ?? 50, 50) * 900
-              const EtTypeIcon = getEtabTypeIcon(item.etablissementType)
               const canValidate = item.emailVerified && !item.adminValidated
+              const isValidating = validating === item.etablissementId
 
               return (
                 <motion.div
                   key={item.etablissementId}
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2, delay: idx * 0.04, ease: 'easeOut' }}
+                  transition={{ duration: 0.2, delay: idx * 0.03 }}
                   layout
                 >
                   <div className="group relative rounded-lg border border-border bg-card shadow-sm overflow-hidden ds-lift ds-kente-top">
-                    {/* Header : kente strip */}
+                    {/* Signature kente */}
                     <div className="ds-kente-strip" aria-hidden="true" />
 
-                    <div className="p-5 space-y-4">
-                      {/* Ligne 1 : Nom + type + date */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-secondary/10 text-secondary">
-                              <EtTypeIcon className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="font-display font-semibold text-sm truncate">{item.etablissementNom}</h4>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <DSBadge variant="info" size="sm">
-                                  {getEtabTypeLabel(item.etablissementType)}
-                                </DSBadge>
-                                {item.ville && (
-                                  <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                                    <MapPin className="h-3 w-3" />
+                    <div className="p-4 space-y-3">
+                      {/* Ligne 1 — Header : nom + type + localisation + date */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="h-9 w-9 shrink-0 rounded-md flex items-center justify-center bg-secondary/10 text-secondary">
+                            <Building2 className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-display font-semibold text-sm truncate">{item.etablissementNom}</h4>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <DSBadge variant="info" size="sm">
+                                {getEtabTypeLabel(item.etablissementType)}
+                              </DSBadge>
+                              {item.ville && (
+                                <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 min-w-0">
+                                  <MapPin className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">
                                     {item.ville}{item.pays ? `, ${item.pays}` : ''}
                                   </span>
-                                )}
-                              </div>
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
-                        <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0">
+                        <span
+                          className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0"
+                          title={new Date(item.createdAt).toLocaleString('fr-FR')}
+                        >
                           {formatRelativeDate(item.createdAt)}
                         </span>
                       </div>
 
-                      {/* Pipeline progression du candidat */}
-                      <div className="flex items-center gap-0">
-                        {B2B_PIPELINE_STEPS.map((step, stepIdx) => {
-                          const isActive = stepIdx <= pipelineStep
-                          const isCurrent = stepIdx === pipelineStep
-                          const StepIcon = step.icon
-                          return (
-                            <div key={step.key} className="flex items-center">
-                              <div
-                                className={[
-                                  'h-5 w-5 rounded-full flex items-center justify-center transition-colors',
-                                  isActive
-                                    ? isCurrent
-                                      ? 'bg-success text-success-foreground ring-2 ring-success/30'
-                                      : 'bg-success/20 text-success-text'
-                                    : 'bg-muted text-muted-foreground',
-                                ].join(' ')}
-                              >
-                                <StepIcon className="h-2.5 w-2.5" />
-                              </div>
-                              {stepIdx < B2B_PIPELINE_STEPS.length - 1 && (
-                                <div className={[
-                                  'w-3 sm:w-5 h-0.5',
-                                  stepIdx < pipelineStep ? 'bg-success/40' : 'bg-border',
-                                ].join(' ')} />
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Info grid */}
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
-                        <div className="flex items-center gap-1.5">
-                          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="truncate text-xs">{item.respName}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="truncate text-xs">{item.respEmail}</span>
-                        </div>
-                        {item.telephone && (
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="text-xs">{item.telephone}</span>
+                      {/* Ligne 2 — Responsable + badges vérification */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs truncate">{item.respName}</span>
                           </div>
-                        )}
-                        {item.nbEtudiants && (
-                          <div className="flex items-center gap-1.5">
-                            <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="text-xs">{item.nbEtudiants} étudiants</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Badges de vérification DS */}
-                      <div className="flex flex-wrap gap-2">
-                        {item.emailVerified ? (
-                          <DSBadge variant="success" size="sm">
-                            <CheckCircle2 className="h-3 w-3 mr-1" /> Email vérifié
-                          </DSBadge>
-                        ) : (
-                          <DSBadge variant="danger" size="sm">
-                            <X className="h-3 w-3 mr-1" /> Email non vérifié
-                          </DSBadge>
-                        )}
-                        {item.emailProfessionnel ? (
-                          <DSBadge variant="info" size="sm">
-                            <Shield className="h-3 w-3 mr-1" /> Email pro
-                          </DSBadge>
-                        ) : (
-                          <DSBadge variant="warning" size="sm">
-                            <AlertTriangle className="h-3 w-3 mr-1" /> Email perso
-                          </DSBadge>
-                        )}
-                      </div>
-
-                      {/* Capitation — bloc avec or africain */}
-                      <div className="rounded-lg bg-gold/5 dark:bg-gold/10 border border-gold/20 p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Capitation annuelle</p>
-                            <p className="font-mono text-lg font-bold text-gold tabular-nums">
-                              {capitation.toLocaleString('fr-FR')} <span className="text-xs font-normal text-muted-foreground">FCFA</span>
-                            </p>
-                          </div>
-                          <div className="h-10 w-10 rounded-md flex items-center justify-center bg-gold/10">
-                            <DollarSign className="h-5 w-5 text-gold" />
+                          <span className="text-muted-foreground/40 text-xs shrink-0" aria-hidden="true">·</span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs truncate">{item.respEmail}</span>
                           </div>
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {Math.max(item.nbEtudiants ?? 50, 50)} étudiants × 900 FCFA · +20% TVA = {Math.round(capitation * 1.2).toLocaleString('fr-FR')} FCFA TTC
-                        </p>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2">
-                        <Button
-                          className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
-                          onClick={() => handleValidate(item.etablissementId)}
-                          disabled={validating === item.etablissementId || !canValidate}
-                          title={!item.emailVerified ? "L'email doit être vérifié avant la validation" : undefined}
-                        >
-                          {validating === item.etablissementId ? (
-                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Validation...</>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {item.emailVerified ? (
+                            <DSBadge variant="success" size="sm" title="Email vérifié">
+                              <CheckCircle2 className="h-3 w-3" />
+                            </DSBadge>
                           ) : (
-                            <><CheckCircle2 className="h-4 w-4 mr-2" /> Valider & essai 14j</>
+                            <DSBadge variant="danger" size="sm" title="Email non vérifié">
+                              <X className="h-3 w-3" />
+                            </DSBadge>
                           )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => setSelectedItem(item)}
-                          title="Voir les détails"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {!item.emailVerified && (
-                        <div className="flex items-center gap-1.5 text-xs text-warning">
-                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                          <span>L&rsquo;email du responsable doit être vérifié avant la validation admin</span>
+                          {item.emailProfessionnel ? (
+                            <DSBadge variant="info" size="sm" title="Email professionnel">
+                              <Shield className="h-3 w-3" />
+                            </DSBadge>
+                          ) : (
+                            <DSBadge variant="warning" size="sm" title="Email personnel">
+                              <AlertTriangle className="h-3 w-3" />
+                            </DSBadge>
+                          )}
                         </div>
-                      )}
+                      </div>
+
+                      {/* Ligne 3 — Footer : capitation + actions */}
+                      <div className="flex items-center justify-between gap-3 pt-0.5">
+                        <div className="flex items-baseline gap-1 min-w-0" title={`Capitation : ${Math.max(item.nbEtudiants ?? 50, 50)} étudiants × 900 FCFA = ${capitation.toLocaleString('fr-FR')} FCFA HT/an`}>
+                          <DollarSign className="h-3.5 w-3.5 text-gold shrink-0 self-center" />
+                          <span className="font-mono text-sm font-bold text-gold tabular-nums">
+                            {capitation.toLocaleString('fr-FR')}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">FCFA/an</span>
+                          {item.nbEtudiants != null && (
+                            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                              · {item.nbEtudiants} étud.
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => setSelectedItem(item)}
+                            aria-label={`Voir les détails de ${item.etablissementNom}`}
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Détails
+                          </Button>
+                          {canValidate ? (
+                            <Button
+                              size="sm"
+                              className="h-8 bg-success hover:bg-success/90 text-success-foreground"
+                              onClick={() => handleValidate(item.etablissementId)}
+                              disabled={isValidating}
+                              aria-label={`Valider ${item.etablissementNom} et démarrer l'essai de 14 jours`}
+                            >
+                              {isValidating ? (
+                                <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Validation...</>
+                              ) : (
+                                <><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Valider & essai 14j</>
+                              )}
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-8"
+                              disabled
+                              title="L'email du responsable doit être vérifié avant la validation admin"
+                            >
+                              <Lock className="h-3.5 w-3.5 mr-1" /> Email à vérifier
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -879,6 +908,17 @@ function B2BValidationTab() {
             </div>
 
             <Separator />
+
+            {/* Encart "Prochaines étapes" — workflow après validation admin */}
+            <div className="rounded-lg bg-secondary/5 dark:bg-secondary/10 border border-secondary/20 p-4">
+              <h4 className="font-display text-sm font-bold mb-2 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-secondary" /> Prochaines étapes
+              </h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Après validation : essai de 14 jours démarré automatiquement, email envoyé au responsable,
+                facture capitation générée au passage ESSAI → ACTIF.
+              </p>
+            </div>
 
             {/* Capitation détaillée */}
             <div className="rounded-lg bg-gold/5 dark:bg-gold/10 border border-gold/20 p-4">
