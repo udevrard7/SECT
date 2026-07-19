@@ -223,6 +223,7 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                         FiliereID:           &body.Config.FiliereID,
                         UniteEnseignementID: &body.Config.UniteEnseignementID,
                         Niveau:              &niveauStr,
+                        SessionExamen:       domain.SessionNormale, // FIX (audit 2025): champ obligatoire, défaut NORMALE
                         GenerationMode:      genMode,
                         NoteTotal:           &noteTotal,
                         DocumentIDs:         body.DocumentIDs,
@@ -240,6 +241,11 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                         workerMessages[i] = worker.ChatMessage{Role: m.Role, Content: m.Content}
                 }
 
+                // FIX (audit 2025): calculer NombreQuestions (avant = 0 → prompt IA sans info du nombre demandé)
+                totalRequested := body.Config.TypesQuestions.QCU + body.Config.TypesQuestions.QCM +
+                        body.Config.TypesQuestions.QRC + body.Config.TypesQuestions.Reflexion +
+                        body.Config.TypesQuestions.Code
+
                 // Pousser le job dans GeneratorQueue (non-blocking)
                 job := worker.IAJob{
                         EpreuveID:    epreuve.ID,
@@ -248,6 +254,7 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                         Config: worker.GenerateConfig{
                                 Titre:           body.Config.Titre,
                                 Difficulte:      body.Config.Difficulte,
+                                NombreQuestions: totalRequested, // FIX (audit 2025): champ obligatoire
                                 TypesQuestions: map[string]int{
                                         "qcu":       body.Config.TypesQuestions.QCU,
                                         "qcm":       body.Config.TypesQuestions.QCM,
@@ -261,6 +268,11 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                 select {
                 case worker.GeneratorQueue <- job:
                         // OK
+                        // FIX (audit 2025): incrémenter le quota IA aussi pour le path async
+                        // (avant : seul le path sync/preview incrémentait → bypass quota en mode async)
+                        if s.quotaChecker != nil && claims.EtablissementID != "" {
+                                _ = s.quotaChecker.IncrementIAGeneration(r.Context(), claims.EtablissementID)
+                        }
                 default:
                         // Queue pleine — retourner 503
                         writeJSONError(w, http.StatusServiceUnavailable, "file de génération IA pleine, réessayez")

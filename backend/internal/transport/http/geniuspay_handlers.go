@@ -172,7 +172,7 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         if err != nil {
                 slog.Error("initiateB2CPayment: GeniusPay CreatePayment failed",
                         "aboId", aboID, "phone", req.CustomerPhone, "error", err.Error())
-                writeJSONError(w, http.StatusBadGateway, "GeniusPay indisponible: "+err.Error())
+                writeJSONError(w, http.StatusBadGateway, "GeniusPay indisponible")
                 return
         }
 
@@ -528,7 +528,7 @@ func (s *Server) downgradeB2CToSolo(w http.ResponseWriter, r *http.Request) {
         `, aboID).Scan(&success, &aboID, &newPlanID, &newPlanNom, &message)
         if err != nil {
                 slog.Error("downgradeB2CToSolo: SQL failed", "aboId", aboID, "error", err.Error())
-                writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+err.Error())
+                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
                 return
         }
 
@@ -655,7 +655,7 @@ func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
         if err != nil {
                 slog.Error("renewB2CPayment: GeniusPay CreatePayment failed",
                         "aboId", aboID, "error", err.Error())
-                writeJSONError(w, http.StatusBadGateway, "GeniusPay indisponible: "+err.Error())
+                writeJSONError(w, http.StatusBadGateway, "GeniusPay indisponible")
                 return
         }
 

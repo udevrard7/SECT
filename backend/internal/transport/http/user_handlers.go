@@ -3,6 +3,7 @@ package http
 import (
         "crypto/rand"
         "encoding/json"
+        "fmt"
         "math/big"
         "net/http"
         "strconv"
@@ -468,7 +469,12 @@ func (s *Server) resetUserPassword(w http.ResponseWriter, r *http.Request) {
         // Si password vide, générer un mot de passe temporaire aléatoire (8 chars).
         password := req.Password
         if password == "" {
-                password = generateRandomPassword(8)
+                var pwdErr error
+                password, pwdErr = generateRandomPassword(8)
+                if pwdErr != nil {
+                        writeJSONError(w, http.StatusInternalServerError, "erreur de génération de mot de passe")
+                        return
+                }
         }
 
         tempPassword, err := s.userUC.ResetPassword(r.Context(), claims, id, password)
@@ -525,17 +531,17 @@ func (s *Server) unlockUserAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateRandomPassword génère un mot de passe aléatoire alphanumérique (crypto/rand).
-func generateRandomPassword(length int) string {
+// FIX (audit 2025): en cas d'erreur crypto, on retourne une erreur au lieu d'un mot de passe
+// déterministe (le fallback précédent charset[i%len(charset)] était prédictible).
+func generateRandomPassword(length int) (string, error) {
         const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
         b := make([]byte, length)
         for i := range b {
                 n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
                 if err != nil {
-                        // fallback déterministe en cas d'erreur crypto (très improbable)
-                        b[i] = charset[i%len(charset)]
-                        continue
+                        return "", fmt.Errorf("crypto/rand error: %w", err)
                 }
                 b[i] = charset[n.Int64()]
         }
-        return string(b)
+        return string(b), nil
 }

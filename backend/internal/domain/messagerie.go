@@ -7,6 +7,7 @@ package domain
 import (
         "context"
         "encoding/json"
+        "strings"
         "time"
 )
 
@@ -246,36 +247,33 @@ type MarkAsReadInput struct {
 
 // HasAssistantMention détecte si un message mentionne @assistant.
 // Utilisé par le usecase pour déclencher l'IA dans un salon collectif.
+// FIX (audit 2025): utilisation de strings.ToLower + strings.Index au lieu de
+// l'itération par byte index (qui pouvait couper des caractères multi-octets UTF-8).
 func HasAssistantMention(contenu string) bool {
-        // Recherche case-insensitive de "@assistant" (mot entier).
-        // BUGFIX (MESSAGERIE-GROUP-IA) : avant, le code utilisait i+11 au lieu de
-        // i+10 (len("@assistant") == 10), donc la comparaison contenait 1 caractère
-        // de trop et ne matchait JAMAIS → l'IA en salon collectif n'était jamais
-        // déclenchée. Corrigé : on utilise la constante len("@assistant") = 10.
         const mention = "@assistant"
         const mlen = len(mention) // 10
-        contenuLower := ""
-        for _, r := range contenu {
-                if r >= 'A' && r <= 'Z' {
-                        contenuLower += string(r + 32)
-                } else {
-                        contenuLower += string(r)
+        contenuLower := strings.ToLower(contenu)
+
+        idx := 0
+        for {
+                pos := strings.Index(contenuLower[idx:], mention)
+                if pos < 0 {
+                        return false
                 }
-        }
-        for i := 0; i+mlen <= len(contenuLower); i++ {
-                if contenuLower[i:i+mlen] == mention {
-                        // Vérifier que ce n'est pas un préfixe (ex: @assistante).
-                        if i+mlen == len(contenuLower) {
-                                return true
-                        }
-                        next := contenuLower[i+mlen]
-                        if next == ' ' || next == '\t' || next == '\n' || next == ',' ||
-                                next == '.' || next == '!' || next == '?' || next == ':' || next == ';' {
-                                return true
-                        }
+                // Ajuster la position absolue
+                i := idx + pos
+                // Vérifier que ce n'est pas un préfixe (ex: @assistante).
+                if i+mlen == len(contenuLower) {
+                        return true
                 }
+                next := contenuLower[i+mlen]
+                if next == ' ' || next == '\t' || next == '\n' || next == ',' ||
+                        next == '.' || next == '!' || next == '?' || next == ':' || next == ';' {
+                        return true
+                }
+                // Continuer la recherche après cette occurrence
+                idx = i + 1
         }
-        return false
 }
 
 // ============================================================
