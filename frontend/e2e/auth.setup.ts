@@ -16,7 +16,7 @@ import { test as setup, expect } from '@playwright/test'
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ulrichdouh@gmail.com'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin2025!'
-const BACKEND_URL = process.env.BACKEND_URL || 'https://sect-s1pb.onrender.com'
+const BACKEND_URL = process.env.BACKEND_URL || 'https://sect-zead.onrender.com'
 
 setup('authenticate as admin', async ({ page, request }) => {
   // 1. Login direct sur le backend Go — retourne les tokens dans le body.

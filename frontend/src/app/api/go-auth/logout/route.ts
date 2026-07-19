@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-s1pb.onrender.com'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-zead.onrender.com'
 
 export async function POST(request: NextRequest) {
   try {

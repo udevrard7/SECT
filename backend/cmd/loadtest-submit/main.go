@@ -41,7 +41,7 @@
 //	    -session test-session-id -secret $JWT_SECRET -jitter 45000
 //
 //	# Test end-to-end contre Render prod
-//	go run ./cmd/loadtest-submit -n 200 -url https://sect-s1pb.onrender.com \
+//	go run ./cmd/loadtest-submit -n 200 -url https://sect-zead.onrender.com \
 //	    -session <real-session-id> -secret $JWT_SECRET -mode login \
 //	    -login-email-base etudiant -login-password Test1234!
 //
