@@ -10,18 +10,38 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
+# Diagnostic: print Go version and system info
+RUN echo "=== Go Build Environment ===" && \
+    go version && \
+    uname -a && \
+    cat /etc/os-release | head -5 && \
+    echo "============================"
+
 # Copier les fichiers de dépendances en premier (cache Docker)
 COPY go.mod go.sum ./
-RUN go mod download
+RUN echo "=== Downloading Go modules ===" && \
+    go mod download && \
+    echo "=== Modules downloaded successfully ===" && \
+    go list -m all | head -20
 
 # Copier le reste du code source
 COPY . .
 
+# Diagnostic: verify source files are present
+RUN echo "=== Source files ===" && \
+    ls -la cmd/api/ && \
+    ls -la internal/ && \
+    echo "=== File count ===" && \
+    find . -name "*.go" | wc -l
+
 # Compiler le binaire statique (CGO_DISABLED pour Alpine)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN echo "=== Building sect-api ===" && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w" \
     -o /app/bin/sect-api \
-    ./cmd/api
+    ./cmd/api && \
+    echo "=== Build successful ===" && \
+    ls -lh /app/bin/sect-api
 
 # --- Stage 2: Runtime ---
 FROM alpine:3.20
