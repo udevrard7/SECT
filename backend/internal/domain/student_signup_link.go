@@ -82,7 +82,7 @@ type StudentSignupLink struct {
 
 // CreateStudentSignupLinkInput — body du POST /api/student-signup-links.
 //
-// Token + ExpiresAt sont générés par le usecase (crypto/rand + now+30j) et
+// Token + ExpiresAt sont générés par le usecase (crypto/rand + now+TTL) et
 // passés au repo séparément (paramètre `token`). CreatedByID + EtablissementID
 // sont TOUJOURS forcés depuis les claims JWT côté usecase (le body du client est
 // ignoré pour sécurité — on ne fait jamais confiance au client pour l'identité
@@ -103,6 +103,12 @@ type CreateStudentSignupLinkInput struct {
         // injecté dans l'email de bienvenue étudiant. Optionnel (nil = pas de message).
         // Trim + max 500 chars côté usecase. HTML-échappé dans le template.
         CustomWelcomeMessage *string
+        // SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée demandée par le
+        // créateur (en heures). nil = utiliser le TTL par défaut (30 jours). Le usecase
+        // valide la plage [signupLinkMinTTLHours, signupLinkMaxTTLHours] puis calcule
+        // ExpiresAt = now + ExpiresInHours. Permet au créateur d'ajuster la validité
+        // du lien selon le contexte (promo courte, cours d'été, lien permanent, etc.).
+        ExpiresInHours *int
 }
 
 // AcceptSignupResult — résultat de la fonction SQL accept_student_signup.

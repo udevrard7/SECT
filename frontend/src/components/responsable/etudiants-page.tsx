@@ -253,6 +253,44 @@ function isExpired(expiresAt: string): boolean {
   return new Date(expiresAt).getTime() <= Date.now()
 }
 
+// SECT-REG-LINK-VALIDITY-1 : presets de durée de validité du lien d'inscription.
+// Affichés sous forme de toggles rapides dans le formulaire de création.
+// Les valeurs sont en heures (cohérent avec le champ backend expiresInHours).
+// Le default (30 jours) est marqué isDefault pour mettre en évidence le preset
+// actif à l'ouverture de la modal.
+const LINK_VALIDITY_PRESETS: Array<{ hours: number; label: string; hint: string }> = [
+  { hours: 24, label: '24 h', hint: '1 jour' },
+  { hours: 24 * 7, label: '7 j', hint: '1 semaine' },
+  { hours: 24 * 14, label: '14 j', hint: '2 semaines' },
+  { hours: 24 * 30, label: '30 j', hint: '1 mois' },
+  { hours: 24 * 90, label: '90 j', hint: '3 mois' },
+]
+
+// SECT-REG-LINK-VALIDITY-1 : formate un nombre d'heures en libellé lisible
+// (ex: 720 → "30 jours", 24 → "24 heures", 168 → "7 jours"). Utilisé pour
+// afficher la durée sélectionnée et l'expiration calculée dans le formulaire.
+function formatValidityLabel(hours: number): string {
+  if (hours < 24) return `${hours} heure${hours > 1 ? 's' : ''}`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days} jour${days > 1 ? 's' : ''}`
+  const months = Math.round(days / 30)
+  return `${months} mois`
+}
+
+// SECT-REG-LINK-VALIDITY-1 : calcule la date d'expiration affichée dans le
+// formulaire à partir de la durée sélectionnée (now + hours). Retourne une
+// chaîne formatée "JJ/MM/AAAA à HH:mm" pour feedback immédiat au créateur.
+function computeExpiryDate(hours: number): string {
+  const d = new Date(Date.now() + hours * 60 * 60 * 1000)
+  return d.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function parseCSV(text: string): Array<{ name: string; email: string }> {
   const lines = text.trim().split('\n')
   const header = lines[0].toLowerCase()
@@ -424,6 +462,13 @@ export function EtudiantsPage() {
   // SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
   // (max 500 caractères, optionnel, affiché dans l'email de bienvenue).
   const [linkCustomMessage, setLinkCustomMessage] = useState('')
+  // SECT-REG-LINK-VALIDITY-1 : durée de validité du lien en heures.
+  // Le créateur peut ajuster la TTL du lien via des presets rapides (24h, 7j,
+  // 14j, 30j, 90j) ou une valeur custom. Défaut = 30 jours (720 h) pour rester
+  // cohérent avec le TTL backend par défaut. Le backend valide la plage
+  // [1 h, 8760 h] et recalcule expiresAt = now + N*h.
+  const [linkValidityHours, setLinkValidityHours] = useState<number>(30 * 24)
+  const [linkValidityCustom, setLinkValidityCustom] = useState('')
   const [createdLink, setCreatedLink] = useState<CreateLinkResponse | null>(null)
   const [isCreatingLink, setIsCreatingLink] = useState(false)
   const [revokeLinkTarget, setRevokeLinkTarget] = useState<StudentSignupLink | null>(null)
@@ -1140,6 +1185,9 @@ export function EtudiantsPage() {
     setLinkMaxUses('')
     setLinkEmailDomain('')
     setLinkCustomMessage('')
+    // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
+    setLinkValidityHours(30 * 24)
+    setLinkValidityCustom('')
     setCreatedLink(null)
     setIsCreatingLink(false)
     setShowStats(false)
@@ -1156,6 +1204,9 @@ export function EtudiantsPage() {
     setLinkMaxUses('')
     setLinkEmailDomain('')
     setLinkCustomMessage('')
+    // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
+    setLinkValidityHours(30 * 24)
+    setLinkValidityCustom('')
     setShowStats(false)
   }
 
@@ -1195,6 +1246,21 @@ export function EtudiantsPage() {
           return
         }
         body.customWelcomeMessage = msg
+      }
+      // SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée.
+      // On envoie expiresInHours uniquement si != 720 (30j, valeur par défaut
+      // du backend). Cela évite d'envoyer un champ redondant dans le cas nominal
+      // et garde la rétro-compatibilité (le backend traite nil = 30j).
+      // Validation frontend : plage [1, 8760] h (le backend refait la même validation).
+      if (linkValidityHours !== 30 * 24) {
+        if (linkValidityHours < 1 || linkValidityHours > 24 * 365) {
+          toast.error('Durée invalide', {
+            description: 'La validité doit être comprise entre 1 heure et 365 jours.',
+          })
+          setIsCreatingLink(false)
+          return
+        }
+        body.expiresInHours = linkValidityHours
       }
       const res = await fetch('/api/student-signup-links', {
         method: 'POST',
@@ -2832,6 +2898,9 @@ export function EtudiantsPage() {
                   setLinkMaxUses('')
                   setLinkEmailDomain('')
                   setLinkCustomMessage('')
+                  // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
+                  setLinkValidityHours(30 * 24)
+                  setLinkValidityCustom('')
                 }}
               >
                 <Plus className="h-4 w-4 mr-1.5" />
@@ -2842,121 +2911,260 @@ export function EtudiantsPage() {
         ) : (
           /* ─── Écran formulaire + liste ─── */
           <div className="space-y-5">
-            {/* Formulaire de génération */}
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="link-label">Libellé (optionnel)</Label>
-                <Input
-                  id="link-label"
-                  placeholder="ex: Promo L1 2026"
-                  value={linkLabel}
-                  onChange={(e) => setLinkLabel(e.target.value)}
-                />
-              </div>
-
-              {canSelectFiliere && (
-                <div className="space-y-2">
-                  <Label htmlFor="link-filiere">Filière (optionnel)</Label>
-                  <Select value={linkFiliereId || '__none__'} onValueChange={setLinkFiliereId}>
-                    <SelectTrigger id="link-filiere">
-                      <SelectValue placeholder="Toutes les filières" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Toutes les filières</SelectItem>
-                      {filieres.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.nom}{f.code ? ` (${f.code})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {/* SECT-REG-LINK-VALIDITY-1 : refonte du formulaire de génération.
+                Structure en 3 sections visuelles (Informations / Restrictions &
+                message / Durée de validité) avec en-tête kente, hiérarchie claire,
+                labels entièrement visibles (text-sm, no truncate) et palette
+                Savane EdTech (success/warning/info/gold). La section "Durée de
+                validité" est mise en avant (border-warning) car c'est le nouveau
+                contrôle demandé par l'utilisateur. */}
+            <div className="space-y-5">
+              {/* ── Hero kente : titre + sous-titre ── */}
+              <div className="ds-kente-top -mx-1 rounded-lg bg-gradient-to-br from-success/8 via-transparent to-gold/8 px-4 py-4 flex items-start gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/25">
+                  <Link2 className="h-5 w-5 text-success-text" />
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="link-niveau">Niveau (optionnel)</Label>
-                  <Select value={linkNiveau || '__none__'} onValueChange={setLinkNiveau}>
-                    <SelectTrigger id="link-niveau">
-                      <SelectValue placeholder="Tous niveaux" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Tous niveaux</SelectItem>
-                      {niveauOptions.map((n) => (
-                        <SelectItem key={n} value={n}>{n}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="link-max-uses">Max inscriptions (optionnel)</Label>
-                  <Input
-                    id="link-max-uses"
-                    type="number"
-                    min={1}
-                    placeholder="Vide = illimité"
-                    value={linkMaxUses}
-                    onChange={(e) => setLinkMaxUses(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B). */}
-              {/* Masqué pour ENSEIGNANT (B2C) — un prof B2C n'a pas de domaine propre. */}
-              {canSelectFiliere && (
-                <div className="space-y-2">
-                  <Label htmlFor="link-email-domain" className="flex items-center gap-1.5">
-                    <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
-                    Domaine email autorisé (optionnel)
-                  </Label>
-                  <Input
-                    id="link-email-domain"
-                    type="text"
-                    placeholder="ex: univ-ci.edu"
-                    value={linkEmailDomain}
-                    onChange={(e) => setLinkEmailDomain(e.target.value)}
-                    aria-describedby="link-email-domain-hint"
-                  />
-                  <p id="link-email-domain-hint" className="text-xs text-muted-foreground">
-                    Seuls les emails se terminant par @ce-domaine pourront s&apos;inscrire. Laissez vide pour autoriser tous les domaines.
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold font-display text-foreground leading-tight">
+                    Nouveau lien d&apos;inscription
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                    Les étudiants s&apos;inscrivent eux-mêmes via ce lien. La base de données se remplit automatiquement.
                   </p>
                 </div>
-              )}
-
-              {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé.
-                  Visible pour TOUS les rôles (B2B + B2C) — optionnel, max 500 chars. */}
-              <div className="space-y-2">
-                <Label htmlFor="link-custom-message" className="flex items-center gap-1.5">
-                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  Message de bienvenue (optionnel)
-                </Label>
-                <Textarea
-                  id="link-custom-message"
-                  placeholder="Ex : Bienvenue en L1 Info ! Pensez à apporter votre laptop le premier jour."
-                  value={linkCustomMessage}
-                  onChange={(e) => setLinkCustomMessage(e.target.value)}
-                  maxLength={500}
-                  rows={3}
-                  className="resize-none"
-                  aria-describedby="link-custom-message-hint"
-                />
-                <p id="link-custom-message-hint" className="text-xs text-muted-foreground">
-                  {linkCustomMessage.length}/500 — affiché dans l&apos;email de bienvenue des étudiants.
-                </p>
               </div>
 
-              <div className="rounded-lg border border-info/20 bg-info/5 p-3 flex items-start gap-2">
-                <Clock className="h-4 w-4 text-info flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-info-foreground">
-                  Le lien expire dans 30 jours. Vous pouvez le révoquer à tout moment.
-                </p>
+              {/* ── Section 1 : Informations du lien ── */}
+              <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                <div className="flex items-center gap-1.5 pb-1">
+                  <GraduationCap className="h-4 w-4 text-info" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-info">
+                    Informations du lien
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="link-label" className="text-sm">
+                    Libellé <span className="text-muted-foreground font-normal">(optionnel)</span>
+                  </Label>
+                  <Input
+                    id="link-label"
+                    placeholder="ex: Promo L1 2026"
+                    value={linkLabel}
+                    onChange={(e) => setLinkLabel(e.target.value)}
+                    className="h-10"
+                  />
+                </div>
+
+                {canSelectFiliere && (
+                  <div className="space-y-2">
+                    <Label htmlFor="link-filiere" className="text-sm">
+                      Filière <span className="text-muted-foreground font-normal">(optionnel)</span>
+                    </Label>
+                    <Select value={linkFiliereId || '__none__'} onValueChange={setLinkFiliereId}>
+                      <SelectTrigger id="link-filiere" className="h-10">
+                        <SelectValue placeholder="Toutes les filières" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Toutes les filières</SelectItem>
+                        {filieres.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.nom}{f.code ? ` (${f.code})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="link-niveau" className="text-sm">
+                      Niveau <span className="text-muted-foreground font-normal">(optionnel)</span>
+                    </Label>
+                    <Select value={linkNiveau || '__none__'} onValueChange={setLinkNiveau}>
+                      <SelectTrigger id="link-niveau" className="h-10">
+                        <SelectValue placeholder="Tous niveaux" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Tous niveaux</SelectItem>
+                        {niveauOptions.map((n) => (
+                          <SelectItem key={n} value={n}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="link-max-uses" className="text-sm">
+                      Max inscriptions <span className="text-muted-foreground font-normal">(optionnel)</span>
+                    </Label>
+                    <Input
+                      id="link-max-uses"
+                      type="number"
+                      min={1}
+                      placeholder="Vide = illimité"
+                      value={linkMaxUses}
+                      onChange={(e) => setLinkMaxUses(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
               </div>
 
+              {/* ── Section 2 : Restrictions & message de bienvenue ── */}
+              <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                <div className="flex items-center gap-1.5 pb-1">
+                  <MessageSquare className="h-4 w-4 text-gold" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gold">
+                    Restrictions &amp; message
+                  </span>
+                </div>
+
+                {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B). */}
+                {/* Masqué pour ENSEIGNANT (B2C) — un prof B2C n'a pas de domaine propre. */}
+                {canSelectFiliere && (
+                  <div className="space-y-2">
+                    <Label htmlFor="link-email-domain" className="flex items-center gap-1.5 text-sm">
+                      <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+                      Domaine email autorisé <span className="text-muted-foreground font-normal">(optionnel)</span>
+                    </Label>
+                    <Input
+                      id="link-email-domain"
+                      type="text"
+                      placeholder="ex: univ-ci.edu"
+                      value={linkEmailDomain}
+                      onChange={(e) => setLinkEmailDomain(e.target.value)}
+                      className="h-10"
+                      aria-describedby="link-email-domain-hint"
+                    />
+                    <p id="link-email-domain-hint" className="text-xs text-muted-foreground leading-relaxed">
+                      Seuls les emails se terminant par @ce-domaine pourront s&apos;inscrire. Laissez vide pour autoriser tous les domaines.
+                    </p>
+                  </div>
+                )}
+
+                {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé.
+                    Visible pour TOUS les rôles (B2B + B2C) — optionnel, max 500 chars. */}
+                <div className="space-y-2">
+                  <Label htmlFor="link-custom-message" className="flex items-center gap-1.5 text-sm">
+                    <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                    Message de bienvenue <span className="text-muted-foreground font-normal">(optionnel)</span>
+                  </Label>
+                  <Textarea
+                    id="link-custom-message"
+                    placeholder="Ex : Bienvenue en L1 Info ! Pensez à apporter votre laptop le premier jour."
+                    value={linkCustomMessage}
+                    onChange={(e) => setLinkCustomMessage(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    className="resize-none"
+                    aria-describedby="link-custom-message-hint"
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <p id="link-custom-message-hint" className="text-xs text-muted-foreground leading-relaxed">
+                      Affiché dans l&apos;email de bienvenue des étudiants.
+                    </p>
+                    <span className={`text-xs font-mono tabular-nums ${linkCustomMessage.length >= 480 ? 'text-warning' : 'text-muted-foreground'}`}>
+                      {linkCustomMessage.length}/500
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Section 3 : Durée de validité (SECT-REG-LINK-VALIDITY-1) ──
+                  Mise en avant (border-warning) car c'est le nouveau contrôle.
+                  Presets rapides + champ custom + affichage de l'expiration calculée. */}
+              <div className="space-y-3 rounded-lg border-2 border-warning/30 bg-warning/5 p-4">
+                <div className="flex items-center gap-1.5 pb-1">
+                  <Clock className="h-4 w-4 text-warning" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-warning">
+                    Durée de validité du lien
+                  </span>
+                </div>
+
+                {/* Presets : 5 durées rapides */}
+                <div className="flex flex-wrap gap-2">
+                  {LINK_VALIDITY_PRESETS.map((preset) => {
+                    const isActive = linkValidityCustom === '' && linkValidityHours === preset.hours
+                    return (
+                      <button
+                        key={preset.hours}
+                        type="button"
+                        onClick={() => {
+                          setLinkValidityHours(preset.hours)
+                          setLinkValidityCustom('')
+                        }}
+                        aria-pressed={isActive}
+                        className={`group flex min-w-[64px] flex-col items-center rounded-md border px-3 py-2 transition-all ${
+                          isActive
+                            ? 'border-success bg-success/15 text-success-text shadow-sm'
+                            : 'border-border bg-background hover:border-warning/40 hover:bg-warning/10 text-foreground'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold leading-none">{preset.label}</span>
+                        <span className={`mt-1 text-[10px] leading-none ${isActive ? 'text-success-text/80' : 'text-muted-foreground'}`}>
+                          {preset.hint}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Champ custom : nombre de jours */}
+                <div className="flex items-end gap-2 pt-1">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="link-validity-custom" className="text-xs text-muted-foreground">
+                      Ou durée personnalisée (en jours)
+                    </Label>
+                    <Input
+                      id="link-validity-custom"
+                      type="number"
+                      min={1}
+                      max={365}
+                      placeholder="ex: 45"
+                      value={linkValidityCustom}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setLinkValidityCustom(v)
+                        const days = parseInt(v, 10)
+                        if (!Number.isNaN(days) && days >= 1 && days <= 365) {
+                          setLinkValidityHours(days * 24)
+                        }
+                      }}
+                      className="h-10"
+                      aria-describedby="link-validity-custom-hint"
+                    />
+                  </div>
+                  <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3">
+                    <span className="text-sm font-medium text-muted-foreground">jours</span>
+                  </div>
+                </div>
+                <p id="link-validity-custom-hint" className="text-xs text-muted-foreground leading-relaxed">
+                  Entre 1 et 365 jours. Au-delà, créez un nouveau lien.
+                </p>
+
+                {/* Affichage de l'expiration calculée */}
+                <div className="flex items-center gap-2 rounded-md border border-info/20 bg-info/5 px-3 py-2">
+                  <Clock className="h-4 w-4 flex-shrink-0 text-info" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs leading-tight text-info-foreground">
+                      <span className="font-semibold">{formatValidityLabel(linkValidityHours)}</span>
+                      {' '}— expire le{' '}
+                      <span className="font-mono font-semibold">{computeExpiryDate(linkValidityHours)}</span>
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+                      Vous pourrez révoquer ce lien à tout moment.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Bouton de génération ── */}
               <Button
                 type="button"
                 onClick={handleCreateLink}
                 disabled={isCreatingLink}
-                className="w-full bg-success hover:bg-success/90 text-success-foreground"
+                className="w-full h-11 bg-success hover:bg-success/90 text-success-foreground font-semibold"
               >
                 {isCreatingLink ? (
                   <>
