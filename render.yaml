@@ -65,3 +65,15 @@ services:
         sync: false
       - key: GENIUSPAY_BASE_URL
         sync: false
+      # ── Cloudflare Turnstile (anti-bot endpoints publics : /api/student-signup,
+      # /api/landing-demo). Phase 2 SECT-REG-LINK-PHASE2-BACKEND-1.
+      # Si vide → vérification désactivée (dev mode). Pour activer :
+      # 1. https://dash.cloudflare.com/?to=/:account/turnstile → Add site
+      #    (widget mode "Managed", domain: sect-app.vercel.app)
+      # 2. Copier Site Key + Secret Key → poser dans Render dashboard
+      # 3. Trigger manual deploy (Render auto-deploys on push, mais env vars
+      #    nécessitent un redeploy explicite pour être prises en compte).
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
