@@ -55,10 +55,17 @@ type User struct {
 // EtablissementRef est une référence légère à un établissement (pour les réponses API).
 // SECT-B2C-SELF-SERVICE : Type exposé pour que le frontend puisse conditionner
 // l'affichage du menu de gestion (filieres/UE/etudiants) aux profs B2C (PERSONNEL).
+//
+// SECT-STUDENT-SIGNUP-MATRICULE-1 : ajout des 3 champs matricule (regex/format/
+// example) peuplés par FindByToken pour permettre au frontend d'afficher un
+// placeholder + helper + validation côté étudiant lors du signup B2B.
 type EtablissementRef struct {
-        ID   string `json:"id"`
-        Nom  string `json:"nom"`
-        Type string `json:"type,omitempty"` // "PERSONNEL" pour B2C, sinon type étab B2B
+        ID              string  `json:"id"`
+        Nom             string  `json:"nom"`
+        Type            string  `json:"type,omitempty"` // "PERSONNEL" pour B2C, sinon type étab B2B
+        MatriculeRegex  *string `json:"matriculeRegex,omitempty"`  // B2B — regex de validation du matricule
+        MatriculeFormat *string `json:"matriculeFormat,omitempty"` // B2B — format humain (ex: "ABC-123-XY")
+        MatriculeExample *string `json:"matriculeExample,omitempty"` // B2B — exemple valide (placeholder)
 }
 
 // FiliereRef est une référence légère à une filière.

@@ -331,7 +331,8 @@ func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*
 //  5. Mappe le code retour :
 //     - OK → envoie email de bienvenue + log audit success.
 //     - NOT_FOUND / INACTIVE / EXPIRED / QUOTA_EXCEEDED / DOMAIN_NOT_ALLOWED /
-//       USER_EXISTS → SignupLinkStateError correspondant + log audit failure.
+//       USER_EXISTS / MATRICULE_REQUIRED / MATRICULE_INVALID → SignupLinkStateError
+//       correspondant + log audit failure.
 //
 // Note : on NE vérifie pas l'état du lien côté usecase AVANT d'appeler AcceptSignup
 // pour les checks basiques (actif/expiresAt/maxUses) — la fonction SQL fait ces
@@ -348,7 +349,13 @@ func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*
 //
 // Phase 2 — la signature Accept gagne 2 nouveaux params ip + userAgent pour
 // l'audit RegistrationEvent.
-func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, name, password, ip, userAgent string) (*domain.AcceptSignupResult, error) {
+//
+// SECT-STUDENT-SIGNUP-MATRICULE-1 : la signature Accept gagne un nouveau param
+// `matricule`. Si link.RequireMatricule = true, le matricule saisi par l'étudiant
+// est validé (non-vide) côté usecase puis passé à la fonction SQL qui le valide
+// (regex de l'étab) et le stocke dans User.matricule. Si false, le matricule est
+// ignoré (comportement inchangé). Defense in depth : le check SQL reste authoritative.
+func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, name, password, matricule, ip, userAgent string) (*domain.AcceptSignupResult, error) {
         // Validation input.
         if strings.TrimSpace(token) == "" {
                 return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: "Lien d'inscription introuvable"}
@@ -405,6 +412,23 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
                 }
         }
 
+        // SECT-STUDENT-SIGNUP-MATRICULE-1 — check matricule requis (defense in depth).
+        // Le SQL le vérifie aussi atomiquement (MATRICULE_REQUIRED + MATRICULE_INVALID),
+        // mais on le fait ici pour :
+        //   - logguer l'audit précisément (lien connu, code MATRICULE_REQUIRED),
+        //   - retourner 4xx avant l'appel SQL (économie DB + UX rapide).
+        // La validation regex n'est PAS faite côté usecase (elle l'est côté SQL avec
+        // catch d'exception si regex invalide — on évite de dupliquer cette logique).
+        if link != nil && link.RequireMatricule {
+                if strings.TrimSpace(matricule) == "" {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_REQUIRED")
+                        return nil, &domain.SignupLinkStateError{
+                                Code:    "MATRICULE_REQUIRED",
+                                Message: "Un matricule est requis pour cette inscription",
+                        }
+                }
+        }
+
         // Hasher le password (bcrypt cost 10, cohérent avec invitationBcryptCost).
         hash, err := bcrypt.GenerateFromPassword([]byte(password), signupBcryptCost)
         if err != nil {
@@ -412,7 +436,9 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
         }
 
         // Appeler la fonction SQL atomique (crée User + incrémente useCount).
-        res, err := uc.repo.AcceptSignup(ctx, token, email, string(hash), strings.TrimSpace(name))
+        // SECT-STUDENT-SIGNUP-MATRICULE-1 : passe le matricule saisi à la fonction SQL
+        // (sera ignoré si requireMatricule = false, sinon valide + override l'auto-généré).
+        res, err := uc.repo.AcceptSignup(ctx, token, email, string(hash), strings.TrimSpace(name), strings.TrimSpace(matricule))
         if err != nil {
                 return nil, err
         }
@@ -464,6 +490,18 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
                         uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "USER_EXISTS")
                 }
                 return nil, &domain.SignupLinkStateError{Code: "USER_EXISTS", Message: fallbackMsg(res.Message, "Un compte existe déjà avec cet email")}
+        case "MATRICULE_REQUIRED":
+                // Cas théorique : race entre usecase check et SQL check (ex: link modifié
+                // entre les deux — requireMatricule passé à true). Le SQL est authoritative.
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_REQUIRED")
+                }
+                return nil, &domain.SignupLinkStateError{Code: "MATRICULE_REQUIRED", Message: fallbackMsg(res.Message, "Un matricule est requis pour cette inscription")}
+        case "MATRICULE_INVALID":
+                if link != nil {
+                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_INVALID")
+                }
+                return nil, &domain.SignupLinkStateError{Code: "MATRICULE_INVALID", Message: fallbackMsg(res.Message, "Le format du matricule est invalide")}
         default:
                 if link != nil {
                         uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, res.Code)

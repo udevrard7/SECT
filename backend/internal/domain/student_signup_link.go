@@ -70,6 +70,12 @@ type StudentSignupLink struct {
         // pensez à apporter votre laptop le premier jour"). nil/empty = pas de message.
         // Max 500 chars (validé côté usecase). HTML-échappé dans le template.
         CustomWelcomeMessage *string `json:"customWelcomeMessage,omitempty"`
+        // SECT-STUDENT-SIGNUP-MATRICULE-1 : si true, l'étudiant DOIT saisir un
+        // matricule à l'inscription (B2B). La validation utilise
+        // Etablissement.MatriculeRegex (si non vide) ou accepte tout non-vide.
+        // Le matricule saisi override l'auto-génération FIL/LJ/YY/NNN et est stocké
+        // dans User.matricule. nil/false (default) = comportement inchangé.
+        RequireMatricule bool `json:"requireMatricule"`
         CreatedAt              time.Time `json:"createdAt"`
         UpdatedAt              time.Time `json:"updatedAt"`
         // Relations (peuplées par FindByToken / ListByCreator pour le frontend).
@@ -103,6 +109,9 @@ type CreateStudentSignupLinkInput struct {
         // injecté dans l'email de bienvenue étudiant. Optionnel (nil = pas de message).
         // Trim + max 500 chars côté usecase. HTML-échappé dans le template.
         CustomWelcomeMessage *string
+        // SECT-STUDENT-SIGNUP-MATRICULE-1 : si non-nil et true, l'étudiant doit saisir
+        // un matricule à l'inscription (B2B). nil/false = comportement inchangé.
+        RequireMatricule *bool
         // SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée demandée par le
         // créateur (en heures). nil = utiliser le TTL par défaut (30 jours). Le usecase
         // valide la plage [signupLinkMinTTLHours, signupLinkMaxTTLHours] puis calcule
@@ -152,7 +161,13 @@ type StudentSignupLinkRepository interface {
 
         // AcceptSignup appelle la fonction SQL accept_student_signup (bypass RLS —
         // endpoint public). Crée le User ETUDIANT + incrémente useCount atomiquement.
-        AcceptSignup(ctx context.Context, token, email, hashedPassword, name string) (*AcceptSignupResult, error)
+        //
+        // SECT-STUDENT-SIGNUP-MATRICULE-1 : ajout du paramètre `matricule`. Si le
+        // link.requireMatricule = true, le matricule saisi par l'étudiant est passé
+        // à la fonction SQL qui le valide (regex de l'étab) et le stocke dans
+        // User.matricule (override de l'auto-généré). Si requireMatricule = false,
+        // le matricule est ignoré côté SQL (auto-génération FIL/LJ/YY/NNN).
+        AcceptSignup(ctx context.Context, token, email, hashedPassword, name, matricule string) (*AcceptSignupResult, error)
 
         // SECT-REG-LINK-PHASE2-BACKEND-1 : log d'audit des tentatives d'inscription
         // (succès + échec). Appelle la fonction SECURITY DEFINER log_registration_event
@@ -171,7 +186,7 @@ type StudentSignupLinkRepository interface {
 // Le handler /verify et /accept l'utilise pour retourner le code métier attendu
 // par le frontend.
 type SignupLinkStateError struct {
-        Code    string // "NOT_FOUND"|"INACTIVE"|"EXPIRED"|"QUOTA_EXCEEDED"|"DOMAIN_NOT_ALLOWED"|"USER_EXISTS"|"TURNSTILE_FAILED"
+        Code    string // "NOT_FOUND"|"INACTIVE"|"EXPIRED"|"QUOTA_EXCEEDED"|"DOMAIN_NOT_ALLOWED"|"USER_EXISTS"|"TURNSTILE_FAILED"|"MATRICULE_REQUIRED"|"MATRICULE_INVALID"
         Message string
 }
 
