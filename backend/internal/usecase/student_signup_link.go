@@ -95,6 +95,13 @@ type StudentSignupLinkUseCase struct {
 	// l'audit log (non bloquant). Le détails JSON est construit via
 	// MarshalDetails (helper usecase/auth.go).
 	authRepo *repository.AuthRepository
+
+	// SECT-INSCRIPTION-SIGNUP-HOOK-1 — InscriptionRepository injecté pour créer
+	// automatiquement une Inscription EN_COURS pour l'étudiant venant de
+	// s'inscrire, pour l'année courante de son établissement. Non bloquant
+	// (si échec, l'inscription réussit quand même — l'erreur est loggée).
+	// Peut être nil (tests unitaires) — le hook est alors skipé.
+	inscriptionRepo domain.InscriptionRepository
 }
 
 // NewStudentSignupLinkUseCase crée un nouveau StudentSignupLinkUseCase.
@@ -114,14 +121,16 @@ func NewStudentSignupLinkUseCase(
 	appBaseURL string,
 	quotaRepo domain.QuotaChecker,
 	authRepo *repository.AuthRepository,
+	inscriptionRepo domain.InscriptionRepository, // SECT-INSCRIPTION-SIGNUP-HOOK-1
 ) *StudentSignupLinkUseCase {
 	return &StudentSignupLinkUseCase{
-		repo:       repo,
-		pool:       pool,
-		mailer:     mailSvc,
-		appBaseURL: strings.TrimRight(appBaseURL, "/"),
-		quotaRepo:  quotaRepo,
-		authRepo:   authRepo,
+		repo:            repo,
+		pool:            pool,
+		mailer:          mailSvc,
+		appBaseURL:      strings.TrimRight(appBaseURL, "/"),
+		quotaRepo:       quotaRepo,
+		authRepo:        authRepo,
+		inscriptionRepo: inscriptionRepo,
 	}
 }
 
@@ -553,6 +562,12 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
 		if uc.mailer != nil {
 			uc.sendStudentWelcomeEmail(ctx, token, res)
 		}
+		// SECT-INSCRIPTION-SIGNUP-HOOK-1 — créer une Inscription EN_COURS pour
+		// l'année courante de l'établissement. Non bloquant : si échec
+		// (NO_CURRENT_YEAR, erreur DB), l'inscription réussit quand même (le
+		// User est créé, l'étudiant peut se connecter). Un backfill ultérieur
+		// pourra créer les Inscriptions manquantes.
+		uc.createInscriptionForSignup(ctx, link, res, ip)
 		return res, nil
 	case "NOT_FOUND":
 		if link != nil {
@@ -893,4 +908,38 @@ func (uc *StudentSignupLinkUseCase) Stats(ctx context.Context, claims db.Session
 		return nil, err
 	}
 	return stats, nil
+}
+
+// createInscriptionForSignup crée une Inscription EN_COURS pour l'étudiant venant
+// de s'inscrire, pour l'année courante de son établissement.
+//
+// SECT-INSCRIPTION-SIGNUP-HOOK-1 : appelé après accept_student_signup OK (User
+// créé). Non bloquant — si échec, l'inscription étudiante réussit quand même.
+// L'erreur est loggée via appLogger (si non nil).
+//
+// Récupère etablissementId + filiereId + niveau depuis le link (chargé au début
+// de Accept) et userID depuis res. Si link est nil (FindByToken a échoué plus
+// tôt), on skippe — l'Inscription sera créée par un backfill ultérieur.
+func (uc *StudentSignupLinkUseCase) createInscriptionForSignup(ctx context.Context, link *domain.StudentSignupLink, res *domain.AcceptSignupResult, ip string) {
+	if uc.inscriptionRepo == nil || link == nil || res == nil || res.UserID == nil {
+		return
+	}
+
+	inscRes, err := uc.inscriptionRepo.CreateForSignup(ctx, *res.UserID, link.EtablissementID, link.FiliereID, link.Niveau)
+	if err != nil {
+		if uc.appLogger != nil {
+			uc.appLogger("createInscriptionForSignup failed (DB error)", "etudiant_id", *res.UserID, "etablissement_id", link.EtablissementID, "error", err)
+		}
+		return
+	}
+
+	// Loguer les codes non-OK pour diagnostic (NO_CURRENT_YEAR, NO_NIVEAU, ERROR).
+	// OK et EXISTS sont silencieux (succès normal).
+	if inscRes.Code != "OK" && inscRes.Code != "EXISTS" && uc.appLogger != nil {
+		msg := ""
+		if inscRes.Message != nil {
+			msg = *inscRes.Message
+		}
+		uc.appLogger("createInscriptionForSignup non-OK (non-blocking)", "etudiant_id", *res.UserID, "etablissement_id", link.EtablissementID, "code", inscRes.Code, "message", msg)
+	}
 }

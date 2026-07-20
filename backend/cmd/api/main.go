@@ -74,6 +74,9 @@ func main() {
 	// SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (migration 000079).
 	// 2 fonctions SECURITY DEFINER (find_student_signup_link_by_token + accept_student_signup).
 	studentSignupLinkRepo := repository.NewStudentSignupLinkRepository(pool)
+	// SECT-INSCRIPTION-SIGNUP-HOOK-1 : InscriptionRepository pour le hook de
+	// création automatique d'Inscription à l'inscription étudiante (migration 000088).
+	inscriptionRepo := repository.NewInscriptionRepository(pool)
 	epreuveRepo := repository.NewEpreuveRepository(pool)
 	questionRepo := repository.NewQuestionRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
@@ -146,7 +149,7 @@ func main() {
 	// - quotaRepo injecté pour anticipation Phase 2 (nil-safe côté usecase).
 	// SECT-ETABLISSEMENT-AUDIT-1 : authRepo injecté pour journaliser la
 	// révocation d'un lien dans AuditLog (avec etablissementId + reason).
-	studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, pool, mailSvc, cfg.AppBaseURL, quotaRepo, authRepo)
+	studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, pool, mailSvc, cfg.AppBaseURL, quotaRepo, authRepo, inscriptionRepo)
 	studentSignupLinkUC.SetLogger(func(msg string, args ...any) { logger.Warn(msg, args...) })
 	epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo)
 	questionUC := usecase.NewQuestionUseCase(questionRepo)
