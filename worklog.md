@@ -17799,3 +17799,53 @@ Stage Summary:
   * Journalisation : chaque révocation de lien est tracée dans AuditLog avec acteur + raison + IP + timestamp
   * Consultation : le RESPONSABLE a un onglet Audit complet dans Paramètres Établissement (filtres + KPIs + table + pagination)
   * Rétrocompatibilité : le handler revoke accepte un body vide (anciens clients frontend continuent de marcher)
+
+---
+Task ID: SECT-ANNEE-RLS-FIX-2
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Fix RLS AnneeAcademique — les RESPONSABLE ne pouvaient pas créer/modifier d'année académique en production (écritures silencieusement perdues). Ajout du helper Go NextNiveau() pour la feature de promotion à venir.
+
+Work Log:
+- Diagnostic : policies AnneeAcademique_select (000007) et _modify_responsable (recréée par 000062) étaient TO neondb_owner. sect_app (rôle production Render) n'est pas membre de neondb_owner → RLS deny by default → 0 row affected, 200 OK silencieux. Même bug que RESPONSABLE-DELETE-BUG corrigé par 000078 sur User, mais jamais étendu à AnneeAcademique.
+- Migration 000085_fix_annee_academique_rls (up + down) : passe les 2 policies à TO PUBLIC. Clauses USING/WITH CHECK inchangées (mêmes droits métier : RESPONSABLE own etab + ENSEIGNANT B2C personal etab pour modify ; ADMIN avec admin_has_etablissement_access + non-admin own etab pour select). is_enseignant_in_personal_etab() a déjà GRANT EXECUTE TO PUBLIC (000078) — pas besoin de re-grant.
+- Helper Go dans domain/academique.go : OrdreNiveaux (slice ordonné L1→DOCTORAT) + NextNiveau(n) retournant (next, isTerminal). Prérequis pour SECT-PROMOTION-* (calcul du niveau suivant lors de la promotion). Documenté : pas de table FiliereNiveau, l'enum NiveauEtude est global.
+- go build ./... OK, go vet ./internal/domain/... OK. gofmt respecté (espaces, pas tabs — convention du dépôt).
+- Migration appliquée à Neon (endpoint direct) : v84 → v85, 1.97s, aucune erreur.
+- Vérification post-migration (script Go pgx) : AnneeAcademique_modify_responsable roles={0} (=PUBLIC, oid 0) ✓, AnneeAcademique_select roles={0} ✓.
+- Commit 20ec6798 + push GitHub (auteur udevrard7 <ulrichdouh@gmail.com>).
+
+Stage Summary:
+- 3 fichiers modifiés/créés :
+  * backend/db/db/migrations/000085_fix_annee_academique_rls.up.sql (créé, 87 lignes)
+  * backend/db/db/migrations/000085_fix_annee_academique_rls.down.sql (créé, rollback)
+  * backend/internal/domain/academique.go (modifié, +46 lignes — OrdreNiveaux + NextNiveau)
+- Migration 000085 appliquée à Neon DB production (version 85)
+- Backend compile (go build + go vet clean)
+- Impact : les RESPONSABLE et ENSEIGNANT B2C peuvent maintenant créer/modifier/supprimer des années académiques via l'API en production. Prérequis critique pour la feature de clôture d'année (SECT-PROMOTION-*) qui dépend d'écritures AnneeAcademique.
+- Helper NextNiveau() disponible pour la logique de promotion (L1→L2→L3→M1→M2→DOCTORAT, DOCTORAT=terminal).
+
+---
+Task ID: SECT-VALIDATIONUE-NOTNULL-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Rendre ValidationUE.anneeAcademiqueId NOT NULL — la colonne est la clé des agrégations par année (moyenne, crédits) pour la feature de promotion. Nullable, elle autorisait les doublons et faussait les calculs.
+
+Work Log:
+- Diagnostic : ValidationUE.anneeAcademiqueId était nullable (migration 000002). L'index unique (etudiantId, uniteEnseignementId, anneeAcademiqueId) autorisait les doublons avec NULL (PostgreSQL NULL ≠ NULL). Les requêtes SUM(credits WHERE annee=X) ignoraient les lignes NULL → calculs faux pour la décision de promotion.
+- Migration 000086_validation_ue_annee_not_null (up + down) :
+  * Étape 1 : déduplication des lignes annee=NULL pour le même (etudiant, UE) — garde la plus récente (MAX(updatedAt), tiebreak id), supprime les autres. Prévient les violations de contrainte unique après backfill.
+  * Étape 2 : backfill — annee = Etablissement.anneeAcademiqueCouranteId de l'étudiant (JOIN User → Etablissement).
+  * Étape 3 : purge des orphelins résiduels (étudiant sans étab / étab sans année courante) — lignes sans sens business, non réversibles.
+  * Étape 4 : FK ON DELETE SET NULL → CASCADE (incompatible avec NOT NULL sinon). Cohérent : supprimer une année supprime ses validations.
+  * Étape 5 : SET NOT NULL sur anneeAcademiqueId.
+- Down : DROP NOT NULL + restaure FK SET NULL (déduplication/purge/backfill non réversibles — documenté).
+- Migration appliquée à Neon (endpoint direct) : v85 → v86, 3.96s, aucune erreur.
+- Vérification post-migration (script Go pgx) : ValidationUE.anneeAcademiqueId is_nullable = NO ✓.
+- Commit 764cf70b + push GitHub (auteur udevrard7 <ulrichdouh@gmail.com>).
+
+Stage Summary:
+- 2 fichiers créés :
+  * backend/db/db/migrations/000086_validation_ue_annee_not_null.up.sql (créé, 75 lignes)
+  * backend/db/db/migrations/000086_validation_ue_annee_not_null.down.sql (créé, rollback)
+- Migration 000086 appliquée à Neon DB production (version 86)
+- Impact : ValidationUE.anneeAcademiqueId est maintenant NOT NULL. L'index unique (etudiantId, uniteEnseignementId, anneeAcademiqueId) est une vraie contrainte (plus de doublons NULL). Les futures agrégations par année (moyenne annuelle, crédits validés) pour la feature de promotion seront exactes.
+- Prérequis critique pour SECT-PROMOTION-* (feature de clôture d'année) : sans NOT NULL, le calcul des crédits/moyenne par étudiant-par-année serait faussé par les lignes NULL.
