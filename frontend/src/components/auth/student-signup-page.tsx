@@ -157,22 +157,28 @@ declare global {
 // d'inscription étudiante. Step 1 = Vérification du contexte du lien,
 // Step 2 = Création du compte (formulaire + Turnstile).
 
+// SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : StepIndicator responsive + glassmorphism,
+// aligné sur le style du wizard B2C responsable (h-7 w-7 sm:h-8 sm:w-8, aria-label).
 function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
   return (
-    <div className="flex items-center justify-center gap-3 mb-6">
+    <div
+      className="flex items-center justify-center gap-2 sm:gap-3 mb-6"
+      role="navigation"
+      aria-label="Étapes d'inscription étudiante"
+    >
       {/* Step 1 */}
       <div className="flex items-center gap-2">
         <div
-          className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${
             currentStep >= 1
-              ? 'bg-success text-success-foreground'
+              ? 'bg-success text-success-foreground shadow-md shadow-success/30'
               : 'bg-muted text-muted-foreground'
           }`}
         >
           {currentStep > 1 ? <CheckCircle2 className="h-4 w-4" /> : '1'}
         </div>
         <span
-          className={`text-sm font-medium transition-colors ${
+          className={`text-xs sm:text-sm font-medium transition-colors ${
             currentStep >= 1
               ? 'text-success-text'
               : 'text-muted-foreground'
@@ -184,7 +190,7 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
 
       {/* Connector */}
       <div
-        className={`h-0.5 w-8 transition-colors ${
+        className={`h-0.5 w-4 sm:w-8 transition-colors duration-300 ${
           currentStep >= 2
             ? 'bg-success'
             : 'bg-muted'
@@ -194,16 +200,16 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
       {/* Step 2 */}
       <div className="flex items-center gap-2">
         <div
-          className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${
             currentStep >= 2
-              ? 'bg-success text-success-foreground'
+              ? 'bg-success text-success-foreground shadow-md shadow-success/30'
               : 'bg-muted text-muted-foreground'
           }`}
         >
           2
         </div>
         <span
-          className={`text-sm font-medium transition-colors ${
+          className={`text-xs sm:text-sm font-medium transition-colors ${
             currentStep >= 2
               ? 'text-success-text'
               : 'text-muted-foreground'
@@ -994,6 +1000,14 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         transition={{ duration: 0.3 }}
         className="space-y-4"
       >
+        {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : chip de section colorée (alignée wizard B2C). */}
+        <div className="flex items-center gap-1.5 mb-2">
+          <Building2 className="h-4 w-4 text-info" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-info">
+            Étape 1 — Vérification du contexte
+          </span>
+        </div>
+
         <div className="text-center space-y-1 mb-2">
           <h2 className="text-lg font-semibold font-display">Confirmez votre inscription</h2>
           <p className="text-sm text-muted-foreground">
@@ -1001,8 +1015,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           </p>
         </div>
 
-        {/* Contexte établissement */}
-        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        {/* Contexte établissement — glassmorphism interne (bg-card/40 + border/60) */}
+        <div className="rounded-lg border border-border/60 bg-card/40 backdrop-blur-sm p-4 space-y-3">
           <p className="text-xs text-muted-foreground">Vous rejoignez</p>
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-success-text flex-shrink-0" />
@@ -1130,11 +1144,19 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         transition={{ duration: 0.3 }}
       >
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : chip de section colorée (alignée wizard B2C). */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <User className="h-4 w-4 text-gold" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-gold">
+              Étape 2 — Création du compte
+            </span>
+          </div>
+
           {/* Bouton Retour */}
           <button
             type="button"
             onClick={() => setStep(1)}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Retour
@@ -1462,7 +1484,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   const activeError: VerifyErrorCode = submitErrorCode ?? verifyError
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-success/5 via-background to-info/5 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-success/10 via-background to-info/10 relative overflow-hidden">
       {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : script Cloudflare Turnstile */}
       {/* Chargé uniquement si siteKey non vide (dev mode = pas de widget). */}
       {turnstileSiteKey && (
@@ -1474,8 +1496,21 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         />
       )}
 
-      {/* Floating particles (palette africaine) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-70" aria-hidden="true">
+      {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : arrière-plan multi-couches pour effet wahou.
+          Couche 1 : gradient radial doré (haut gauche) + vert (bas droite) pour ambiance Savane.
+          Couche 2 : 12 particules flottantes (palette africaine or/vert/terre cuite).
+          Couche 3 : motif kente subtil en overlay (opacity 3%). */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        aria-hidden="true"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08), transparent 40%), radial-gradient(circle at 85% 80%, rgba(132, 204, 22, 0.08), transparent 40%), radial-gradient(circle at 50% 50%, rgba(194, 65, 12, 0.04), transparent 60%)',
+        }}
+      />
+
+      {/* Floating particles (palette africaine) — 12 particules pour densité wahou */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-80" aria-hidden="true">
         <FloatingParticle delay={0} duration={4} x="10%" y="25%" size={4} color="#F59E0B" />
         <FloatingParticle delay={0.8} duration={5} x="85%" y="15%" size={3} color="#84CC16" />
         <FloatingParticle delay={1.5} duration={3.5} x="20%" y="65%" size={5} color="#F59E0B" />
@@ -1484,6 +1519,10 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         <FloatingParticle delay={2} duration={4} x="90%" y="75%" size={3} color="#F59E0B" />
         <FloatingParticle delay={0.6} duration={5.5} x="15%" y="85%" size={4} color="#84CC16" />
         <FloatingParticle delay={1.8} duration={3.8} x="60%" y="40%" size={3} color="#F59E0B" />
+        <FloatingParticle delay={2.5} duration={4.2} x="35%" y="35%" size={2} color="#C2410C" />
+        <FloatingParticle delay={3} duration={5} x="70%" y="90%" size={3} color="#84CC16" />
+        <FloatingParticle delay={0.4} duration={3.5} x="5%" y="50%" size={4} color="#F59E0B" />
+        <FloatingParticle delay={2.2} duration={4.8} x="95%" y="45%" size={2} color="#C2410C" />
       </div>
 
       {/* Main content */}
@@ -1522,7 +1561,10 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
           className="w-full max-w-xl"
         >
-          <Card className="ds-kente-top overflow-hidden shadow-xl shadow-success/5">
+          {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : glassmorphism renforcé — backdrop-blur-xl
+              + bg-card/80 (translucide) + ring-1 ring-white/10 + shadow-2xl pour effet
+              glass profond. La barre kente (ds-kente-top) reste sur le dessus. */}
+          <Card className="ds-kente-top overflow-hidden shadow-2xl shadow-success/10 backdrop-blur-xl bg-card/80 ring-1 ring-white/10">
             <CardContent className="pt-6">
               <AnimatePresence mode="wait">
                 {isVerifying && (
