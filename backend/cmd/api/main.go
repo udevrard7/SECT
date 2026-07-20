@@ -77,6 +77,12 @@ func main() {
 	// SECT-INSCRIPTION-SIGNUP-HOOK-1 : InscriptionRepository pour le hook de
 	// création automatique d'Inscription à l'inscription étudiante (migration 000088).
 	inscriptionRepo := repository.NewInscriptionRepository(pool)
+	// SECT-PROMOTION-BACKEND-1 : PromotionRepository pour la clôture d'année
+	// académique (migration 000087). Implémente CreateBatch, GetBatch,
+	// ListBatchesByEtablissement, UpdateBatchStatut, GetReglesPassage,
+	// ListEtudiantsForPromotion + l'appel à la fonction SECURITY DEFINER
+	// cloturer_annee_etudiant.
+	promotionRepo := repository.NewPromotionRepository(pool)
 	epreuveRepo := repository.NewEpreuveRepository(pool)
 	questionRepo := repository.NewQuestionRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
@@ -151,6 +157,15 @@ func main() {
 	// révocation d'un lien dans AuditLog (avec etablissementId + reason).
 	studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, pool, mailSvc, cfg.AppBaseURL, quotaRepo, authRepo, inscriptionRepo)
 	studentSignupLinkUC.SetLogger(func(msg string, args ...any) { logger.Warn(msg, args...) })
+	// SECT-PROMOTION-BACKEND-1 : usecase de clôture d'année académique.
+	// - promoRepo : port d'accès PromotionBatch + ReglesPassage + cloturer_annee_etudiant.
+	// - authRepo  : journalisation AuditLog (PROMOTION_BATCH_STARTED — pattern
+	//   SECT-ETABLISSEMENT-AUDIT-1, le spec permet explicitement authRepo.CreateAuditLog).
+	// - pool      : SELECT direct du filiereId+niveau d'un étudiant pour l'override
+	//   manuel (PromoteStudentManual) — pas de méthode dédiée dans PromotionRepository,
+	//   on évite de polluer l'interface pour un cas isolé.
+	// - logger    : journalisation structurée (slog).
+	promotionUC := usecase.NewPromotionUseCase(promotionRepo, authRepo, pool, logger)
 	epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo)
 	questionUC := usecase.NewQuestionUseCase(questionRepo)
 	sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
@@ -240,13 +255,26 @@ func main() {
 	cleanupWorker := worker.NewCleanupWorker(pool, logger)
 	cleanupWorker.Start(context.Background())
 
+	// SECT-PROMOTION-BACKEND-1 : worker de clôture d'année académique.
+	// Vérifie toutes les 10s les batches PENDING créés par POST
+	// /api/etablissements/{id}/cloture-annee, les passe en RUNNING, traitent
+	// chaque étudiant via cloturer_annee_etudiant (best-effort), puis marque
+	// le batch COMPLETED. Le frontend poll /status pour suivre la progression.
+	// Pattern identique à cleanup_worker.go (struct + ticker 10s + first run).
+	// Toutes les opérations DB utilisent SystemClaims() (is_system() dans les
+	// policies PromotionBatch_modify + User_select permet le bypass worker).
+	// Concurrency safety : SELECT ... FOR UPDATE SKIP LOCKED + UPDATE statut=
+	// RUNNING dans la même tx → claim atomique multi-instance safe.
+	promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo)
+	promotionWorker.Start(context.Background())
+
 	// MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
 	// utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
 	// avec message d'erreur gracieux si timeout. L'approche worker async avec
 	// channel in-memory ne fonctionnait pas de façon fiable sur Render free
 	// (cold start tue le worker goroutine avant traitement du job).
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, authRepo)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, authRepo, promotionUC)
 
 	// SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
 	// Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.
