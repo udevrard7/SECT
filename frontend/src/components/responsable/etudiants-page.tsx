@@ -136,8 +136,11 @@ interface ImportResult {
 }
 
 // SECT-REG-LINK-B2C-MVP-1 : types pour les liens d'inscription direct étudiant.
-// Le token n'est JAMAIS retourné par GET /api/student-signup-links (sécurité) —
-// l'URL complète n'est disponible qu'à la création (POST), une seule fois.
+// Le token + url sont retournés par GET /api/student-signup-links depuis
+// SECT-LINK-COPY-LIST-1 (pour permettre au créateur de copier le lien à nouveau
+// tant qu'il n'est pas révoqué ou expiré). Avant, le token était retiré de la
+// liste pour sécurité, mais cela empêchait le créateur de récupérer l'URL s'il
+// avait fermé le dialog de succès. La RLS filtre déjà par createdById.
 // SECT-REG-LINK-PHASE2-FRONTEND-1 : champ emailDomainRestriction ajouté
 // (B2B — restriction du domaine email autorisé sur le lien).
 // SECT-REG-LINK-PHASE3-FRONTEND-1 : champ customWelcomeMessage ajouté
@@ -147,6 +150,8 @@ interface ImportResult {
 // l'inscription, validé via le format défini dans la config de l'établissement).
 interface StudentSignupLink {
   id: string
+  token?: string  // SECT-LINK-COPY-LIST-1 — présent dans la liste (pas à la création uniquement)
+  url?: string    // SECT-LINK-COPY-LIST-1 — URL complète prête à copier
   etablissementId: string
   filiereId: string | null
   niveau: string | null
@@ -3688,7 +3693,23 @@ export function EtudiantsPage() {
                             </span>
                           </div>
                           {link.actif && !expired && (
-                            <div className="flex justify-end pt-1">
+                            <div className="flex justify-end gap-1.5 pt-1">
+                              {/* SECT-LINK-COPY-LIST-1 : bouton copier le lien — visible
+                                  tant que le lien est actif + non expiré. Le token + url
+                                  sont retournés par le backend dans la liste. */}
+                              {link.url && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-success-text border-success/30 hover:bg-success/10"
+                                  onClick={() => handleCopyToClipboard(link.url!, 'Lien d\'inscription')}
+                                  aria-label={`Copier le lien ${link.label || 'sans libellé'}`}
+                                >
+                                  <Copy className="h-3.5 w-3.5 mr-1" />
+                                  Copier
+                                </Button>
+                              )}
                               <Button
                                 type="button"
                                 size="sm"
