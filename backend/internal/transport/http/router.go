@@ -308,9 +308,27 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		// ETUDIANTS-FIX-E2 : route /import déclarée AVANT /{id} pour éviter
 		// que chi matche "import" comme un paramètre id. E6 : RequireRole
 		// sur mutations (POST/PATCH/DELETE) pour defense-in-depth.
+		//
+		// SECT-USER-CLEANUP-INFRA-1 : routes /orphans + /cleanup-orphans déclarées
+		// AVANT /{id} pour éviter que chi matche "orphans" comme un id. Les 3
+		// nouvelles routes (orphans, soft-delete, cleanup-orphans) sont ADMIN-only
+		// via RequireRole("ADMIN").
 		r.Route("/api/users", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listUsers)
+
+			// SECT-USER-CLEANUP-INFRA-1 : routes admin pour la gestion des orphelins.
+			// Déclarées AVANT /{id} pour éviter le conflit de routing chi.
+			// - GET /orphans : liste les users orphelins (actif=false, sans étab)
+			// - POST /cleanup-orphans : purge manuelle des soft-deleted > 90j
+			// - DELETE /{id}/soft : soft-delete un user (corbeille 90j)
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequireRole("ADMIN"))
+				r.Get("/orphans", s.listOrphanUsers)
+				r.Post("/cleanup-orphans", s.hardDeleteOrphans)
+				r.Delete("/{id}/soft", s.softDeleteUser)
+			})
+
 			r.Get("/{id}", s.getUser)
 			r.Group(func(r chi.Router) {
 				// SECT-B2C-SELF-SERVICE : ENSEIGNANT dans étab PERSONNEL peut créer

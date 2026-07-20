@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import {
   Users,
   Plus,
@@ -134,6 +134,19 @@ interface InvitationItem {
   Etablissement: { id: string; nom: string } | null
   Filiere: { id: string; nom: string } | null
   User: { id: string; name: string; email: string } | null
+}
+
+// Comptes orphelins = users avec actif=false AND etablissementId IS NULL.
+// Liste retournée par GET /api/users/orphans (ADMIN only).
+interface OrphanUser {
+  id: string
+  email: string
+  name: string
+  role: string
+  actif: boolean
+  etablissementId: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 interface ImportResultUser {
@@ -377,6 +390,16 @@ export function UtilisateursPage() {
   const [renvoyerTarget, setRenvoyerTarget] = useState<InvitationItem | null>(null)
   const [isRenvoying, setIsRenvoying] = useState(false)
 
+  // ─── Orphan cleanup state (ADMIN only) ───
+  // 'orphelins' est une 4e valeur du statusFilter. Quand actif, la liste
+  // des users orphelins (actif=false AND etablissementId IS NULL) est chargée
+  // via /api/users/orphans, et l'admin peut les nettoyer un par un (soft
+  // delete = actif=false + deletedAt=NOW) ou en masse (hard delete cascade).
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false)
+  const [isCleaningUp, setIsCleaningUp] = useState(false)
+  const [softDeleteTarget, setSoftDeleteTarget] = useState<OrphanUser | null>(null)
+  const [isSoftDeleting, setIsSoftDeleting] = useState(false)
+
   // ─── Import state ───
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importCsvData, setImportCsvData] = useState('')
@@ -398,7 +421,12 @@ export function UtilisateursPage() {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (roleFilter && roleFilter !== 'all') params.set('role', roleFilter)
-      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+      // 'orphelins' est un filtre frontend dédié (orphansQuery) — on n'envoie
+      // pas actif=false au backend dans ce cas. La liste users n'est de toute
+      // façon pas affichée quand statusFilter === 'orphelins' (usersQuery disabled).
+      if (statusFilter && statusFilter !== 'all' && statusFilter !== 'orphelins') {
+        params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+      }
       params.set('page', page.toString())
       params.set('limit', limit.toString())
 
@@ -406,6 +434,8 @@ export function UtilisateursPage() {
       if (!res.ok) throw new Error('Failed to fetch users')
       return res.json()
     },
+    // Désactivée quand on est en mode 'orphelins' — orphansQuery prend le relais.
+    enabled: statusFilter !== 'orphelins',
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   })
@@ -413,6 +443,39 @@ export function UtilisateursPage() {
   const users = usersQuery.data?.users ?? []
   const total = usersQuery.data?.total ?? 0
   const isLoading = usersQuery.isLoading
+
+  // ─── Fetch orphan users (TanStack Query) ───
+  // Comptes orphelins = users avec actif=false AND etablissementId IS NULL.
+  // Endpoint dédié /api/users/orphans (ADMIN only). Activée uniquement
+  // quand statusFilter === 'orphelins' pour éviter un appel superflu sur la
+  // vue standard. Le KPI orphelinCount utilise une approximation locale
+  // (users.filter) en mode standard, et la vraie valeur API en mode orphelins.
+  const orphansQuery = useQuery<{ users: OrphanUser[]; count: number }>({
+    queryKey: ['users-orphans'],
+    queryFn: async () => {
+      const res = await fetch('/api/users/orphans')
+      if (!res.ok) throw new Error('Failed to fetch orphans')
+      return res.json()
+    },
+    enabled: statusFilter === 'orphelins',
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const orphans = orphansQuery.data?.users ?? []
+  const orphansCount = orphansQuery.data?.count ?? 0
+  const orphansLoading = orphansQuery.isLoading
+
+  // Filtrage client-side des orphelins par search (email/nom) — l'API /orphans
+  // ne supporte pas de query param search, donc on filtre côté frontend pour
+  // garder la barre de recherche fonctionnelle en mode orphelins.
+  const filteredOrphans = useMemo(() => {
+    if (!search) return orphans
+    const q = search.toLowerCase()
+    return orphans.filter(
+      (u) => u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q),
+    )
+  }, [orphans, search])
 
   // UX-3 : users triés côté client (la queryKey serveur gère search + filtres + page)
   const sortedUsers = useMemo(
@@ -522,6 +585,72 @@ export function UtilisateursPage() {
   // Helper pour invalider le cache des invitations après mutation (create/cancel/renvoyer)
   const refreshInvitations = () => queryClient.invalidateQueries({ queryKey: ['utilisateurs-invitations'] })
 
+  // Helper pour invalider le cache des orphelins après mutation (cleanup/soft-delete)
+  const refreshOrphans = () => {
+    queryClient.invalidateQueries({ queryKey: ['users-orphans'] })
+    // Les orphelins sont aussi des users (inactifs) — on invalidate la liste
+    // users pour que les KPI actifCount/inactifCount restent cohérents.
+    queryClient.invalidateQueries({ queryKey: ['utilisateurs'] })
+  }
+
+  // ─── Orphan cleanup mutation (ADMIN only) ───
+  // Hard delete en masse de TOUS les orphelins. Action irréversible →
+  // confirmation AlertDialog obligatoire. Toast success avec deletedCount.
+  const cleanupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/users/cleanup-orphans', { method: 'POST' })
+      if (!res.ok) throw new Error('Cleanup failed')
+      return res.json() as Promise<{ deletedCount: number }>
+    },
+    onSuccess: (data) => {
+      toast.success(`${data.deletedCount} comptes orphelins supprimés définitivement`)
+      setShowCleanupConfirm(false)
+      setIsCleaningUp(false)
+      refreshOrphans()
+    },
+    onError: () => {
+      toast.error('Erreur lors du nettoyage')
+      setIsCleaningUp(false)
+    },
+  })
+
+  // Appelé par l'AlertDialog de confirmation (action irréversible).
+  const handleCleanupConfirm = () => {
+    setIsCleaningUp(true)
+    cleanupMutation.mutate()
+  }
+
+  // ─── Soft-delete a single orphan (ADMIN only) ───
+  // Marque actif=false + deletedAt=NOW (les données sont conservées en base,
+  // l'user ne peut plus se connecter). Moins destructeur que le cleanup masse
+  // qui hard-delete en cascade. Mutation manuelle (pas de useMutation) pour
+  // coller au pattern des autres handlers du fichier (handleDelete, etc.).
+  const handleSoftDeleteOrphan = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault()
+    if (!softDeleteTarget || isSoftDeleting) return
+    setIsSoftDeleting(true)
+    try {
+      const res = await fetch(`/api/users/${softDeleteTarget.id}/soft`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
+      toast.success('Utilisateur archivé', {
+        description: `${softDeleteTarget.name} a été marqué comme supprimé (soft delete).`,
+      })
+      setSoftDeleteTarget(null)
+      refreshOrphans()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de supprimer cet utilisateur.',
+      })
+    } finally {
+      setIsSoftDeleting(false)
+    }
+  }
+
   // ─── Filtered filieres based on selected etablissement ───
   const filteredFilieres = formEtablissementId
     ? filieres.filter((f) => f.etablissementId === formEtablissementId)
@@ -536,6 +665,12 @@ export function UtilisateursPage() {
   const ensCount = users.filter((u) => u.role === 'ENSEIGNANT').length
   const etuCount = users.filter((u) => u.role === 'ETUDIANT').length
   const avecEtablissementCount = users.filter((u) => u.etablissementId !== null).length
+  // KPI orphelins : en mode 'orphelins' on a la vraie valeur API (orphansCount),
+  // sinon on approxime avec users.filter (cohérent avec les autres KPI qui
+  // sont calculés sur la page courante).
+  const orphelinCount = statusFilter === 'orphelins'
+    ? orphansCount
+    : users.filter((u) => u.etablissementId === null).length
 
   const totalPages = Math.ceil(total / limit)
 
@@ -1014,7 +1149,12 @@ export function UtilisateursPage() {
       </div>
 
       {/* ─── Stats bar ─── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* ADMIN : 5 cartes (Total, Actifs, Inactifs, Avec établissement, Orphelins) → grid 5 cols en lg.
+          RESPONSABLE : 4 cartes → grid 4 cols en lg (layout inchangé). */}
+      <div className={isAdmin
+        ? "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        : "grid grid-cols-2 gap-3 sm:grid-cols-4"
+      }>
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
@@ -1078,6 +1218,36 @@ export function UtilisateursPage() {
             </CardContent>
           </Card>
         )}
+        {/* ─── KPI Orphelins (ADMIN only) ─── */}
+        {/* Comptes orphelins = users inactifs sans établissement. Accent destructif
+            pour signaler une action de cleanup requise. Le bouton "Nettoyer"
+            bascule le statusFilter vers 'orphelins' → charge orphansQuery + la
+            table dédiée avec bouton de suppression en masse. */}
+        {isAdmin && (
+          <Card className="border-l-4 border-l-destructive">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/15 shrink-0">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">Comptes orphelins</p>
+                <p className="text-xl font-bold text-destructive">{orphelinCount}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  setStatusFilter('orphelins')
+                  setPage(1)
+                }}
+              >
+                Nettoyer
+                <ArrowUpRight className="h-3 w-3 ml-1" />
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ─── Toolbar ─── */}
@@ -1128,13 +1298,14 @@ export function UtilisateursPage() {
               <SelectItem value="all">Tous</SelectItem>
               <SelectItem value="actif">Actif</SelectItem>
               <SelectItem value="inactif">Inactif</SelectItem>
+              {isAdmin && <SelectItem value="orphelins">Orphelins</SelectItem>}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* ─── Loading state ─── */}
-      {isLoading && (
+      {/* ─── Loading state (regular users, hidden in 'orphelins' mode) ─── */}
+      {statusFilter !== 'orphelins' && isLoading && (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4 p-4">
@@ -1153,15 +1324,15 @@ export function UtilisateursPage() {
       {/* ─── UF9 (HIGH): ErrorState si la query échoue (403/500/network). */}
       {/* Avant ce fix, usersQuery.error n'était jamais lu → l'utilisateur voyait */}
       {/* l'empty state "Aucun utilisateur trouvé" même en cas d'erreur réelle. */}
-      {!isLoading && usersQuery.isError && (
+      {statusFilter !== 'orphelins' && !isLoading && usersQuery.isError && (
         <ErrorState
           message="Impossible de charger la liste des utilisateurs. Vérifiez vos permissions ou réessayez."
           onRetry={() => usersQuery.refetch()}
         />
       )}
 
-      {/* ─── Empty state ─── */}
-      {!isLoading && !usersQuery.isError && users.length === 0 && (
+      {/* ─── Empty state (regular users, hidden in 'orphelins' mode) ─── */}
+      {statusFilter !== 'orphelins' && !isLoading && !usersQuery.isError && users.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <Users className="h-10 w-10 text-success-text" />
@@ -1191,8 +1362,8 @@ export function UtilisateursPage() {
         </div>
       )}
 
-      {/* ─── Users table ─── */}
-      {!isLoading && users.length > 0 && (
+      {/* ─── Users table (regular users, hidden in 'orphelins' mode) ─── */}
+      {statusFilter !== 'orphelins' && !isLoading && users.length > 0 && (
         <div className="rounded-lg border overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
@@ -1408,8 +1579,140 @@ export function UtilisateursPage() {
         </div>
       )}
 
-      {/* ─── Invitations Section ─── */}
-      {!isLoading && invitations.length > 0 && (
+      {/* ─── Orphan users view (statusFilter === 'orphelins', ADMIN only) ─── */}
+      {/* Affiche la liste des comptes orphelins (actif=false AND etablissementId
+          IS NULL) + le bouton de cleanup en masse. Remplace la table users
+          standard quand l'admin sélectionne le filtre 'Orphelins'. */}
+      {statusFilter === 'orphelins' && isAdmin && (
+        <div className="space-y-4">
+          {/* ─── Cleanup banner + bulk action ─── */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/15 shrink-0">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-destructive">
+                  {orphansCount} compte{orphansCount > 1 ? 's' : ''} orphelin{orphansCount > 1 ? 's' : ''} détecté{orphansCount > 1 ? 's' : ''}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Utilisateurs inactifs sans rattachement à un établissement. Vous pouvez les supprimer un par un (soft delete) ou nettoyer en masse (hard delete irréversible).
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => setShowCleanupConfirm(true)}
+              disabled={orphansCount === 0 || isCleaningUp}
+              className="shrink-0"
+            >
+              {isCleaningUp ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Nettoyage...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Nettoyer en masse
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* ─── Orphan loading state ─── */}
+          {orphansLoading && (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 p-4">
+                  <PulseSkeleton className="h-10 w-10" variant="circle" />
+                  <div className="flex-1 space-y-2">
+                    <PulseSkeleton className="h-4 w-48" />
+                    <PulseSkeleton className="h-3 w-32" />
+                  </div>
+                  <PulseSkeleton className="h-6 w-20" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ─── Orphan error state ─── */}
+          {!orphansLoading && orphansQuery.isError && (
+            <ErrorState
+              message="Impossible de charger la liste des comptes orphelins. Vérifiez vos permissions ou réessayez."
+              onRetry={() => orphansQuery.refetch()}
+            />
+          )}
+
+          {/* ─── Orphan empty state ─── */}
+          {!orphansLoading && !orphansQuery.isError && orphans.length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <CheckCircle2 className="h-10 w-10 text-success-text" />
+              </div>
+              <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun compte orphelin</h3>
+              <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+                {search
+                  ? 'Aucun orphelin ne correspond à votre recherche.'
+                  : 'Tous les utilisateurs inactifs sont rattachés à un établissement. Aucun nettoyage nécessaire.'}
+              </p>
+            </div>
+          )}
+
+          {/* ─── Orphan users table ─── */}
+          {!orphansLoading && !orphansQuery.isError && filteredOrphans.length > 0 && (
+            <div className="rounded-lg border overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Nom</TableHead>
+                      <TableHead>Rôle</TableHead>
+                      <TableHead className="hidden md:table-cell">Créé le</TableHead>
+                      <TableHead className="hidden md:table-cell">Désactivé le</TableHead>
+                      <TableHead className="w-32">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredOrphans.map((u) => (
+                      <TableRow key={u.id} className="opacity-80">
+                        <TableCell className="font-mono text-xs">
+                          {u.email}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {u.name || '—'}
+                        </TableCell>
+                        <TableCell>{getRoleBadge(u.role)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                          {formatDate(u.createdAt)}
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                          {formatDate(u.updatedAt)}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setSoftDeleteTarget(u)}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Supprimer
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Invitations Section (hidden in 'orphelins' mode to keep the cleanup view focused) ─── */}
+      {statusFilter !== 'orphelins' && !isLoading && invitations.length > 0 && (
         <div className="space-y-4">
           <Separator />
           <div>
@@ -2457,6 +2760,79 @@ export function UtilisateursPage() {
                   Renvoyer
                 </>
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Orphan Cleanup Confirmation Dialog (ADMIN only) ─── */}
+      {/* Hard delete irréversible de TOUS les orphelins. L'AlertDialog reste
+          ouverte pendant la mutation (isCleaningUp) — boutons disabled. */}
+      <AlertDialog
+        open={showCleanupConfirm}
+        onOpenChange={(open) => { if (!open && !isCleaningUp) setShowCleanupConfirm(false) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Nettoyer en masse les comptes orphelins
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer définitivement tous les <strong>{orphansCount} comptes orphelins</strong> ?
+              Cette action est <strong>irréversible</strong> et supprimera en cascade toutes les données associées
+              à ces utilisateurs (épreuves, sessions, soumissions, devoirs, affectations).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCleaningUp}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                handleCleanupConfirm()
+              }}
+              disabled={isCleaningUp}
+            >
+              {isCleaningUp && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Supprimer définitivement {orphansCount} compte{orphansCount > 1 ? 's' : ''}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Orphan Soft-Delete Confirmation Dialog (ADMIN only) ─── */}
+      {/* Soft delete d'un seul orphelin : actif=false + deletedAt=NOW. Les
+          données sont conservées en base. Moins destructeur que le cleanup. */}
+      <AlertDialog
+        open={!!softDeleteTarget}
+        onOpenChange={(open) => { if (!open && !isSoftDeleting) setSoftDeleteTarget(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Supprimer l&apos;utilisateur orphelin
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer <strong>{softDeleteTarget?.name}</strong> ({softDeleteTarget?.email}) ?
+              Cette action effectue un <strong>soft delete</strong> : l&apos;utilisateur sera marqué comme supprimé
+              (<code className="bg-muted px-1 py-0.5 rounded text-xs">deletedAt = NOW</code>) et ne pourra plus se
+              connecter, mais ses données seront conservées en base pour audit.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSoftDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                void handleSoftDeleteOrphan(e)
+              }}
+              disabled={isSoftDeleting}
+            >
+              {isSoftDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
