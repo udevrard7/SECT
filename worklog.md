@@ -17745,3 +17745,57 @@ Stage Summary:
   * Dropdown "Inscription" (3 options) au lieu d'un bouton unique — séparation création/liste/stats
   * Bugs white-on-white corrigés (4 occurrences) — texte lisible en light mode
   * Matricule B2B : les établissements institutionnels peuvent cocher "Exiger un matricule" → l'étudiant saisit son matricule, validé contre la regex de l'établissement (Etablissement.regexMatricule)
+
+---
+Task ID: SECT-ETABLISSEMENT-AUDIT-1
+Agent: Z.ai Code (Tutor/Assistant) + 2 subagents (general-purpose backend + full-stack-developer frontend)
+Task: Audit au niveau établissement — journaliser les révocations de liens d'inscription + onglet Audit consultable par le RESPONSABLE dans Paramètres Établissement
+
+Work Log:
+- Découverte infrastructure existante : table AuditLog (migration 000002) avec champs userId/userEmail/action/entite/entiteId/details/adresseIp. Déjà utilisée pour auth + etablissement_access.
+- Exploration approfondie (subagent Explore) : cartographie complète de AuditLog (domain/repository/usecase/handler), page Paramètres Établissement (5 tabs), flow de révocation (etudiants-page.tsx lignes 3370-3587).
+- Découverte fuite RLS : policy AuditLog_select (migration 000024) avait clause "userId IS NULL" qui laissait tout RESPONSABLE voir TOUS les événements système de TOUS les établissements.
+- Décision architecture : étendre AuditLog existante (pas de nouvelle table) avec 2 colonnes etablissementId + reason + corriger la fuite RLS.
+- Task B backend (subagent general-purpose) :
+  * Migration 000083 (up + down) : ADD COLUMN etablissementId + reason + index partiel + backfill depuis User join + RLS policy tightening
+  * domain/auth.go : AuditLogEntry +2 champs + 2 constantes (SIGNUP_LINK_CREATED/REVOKED)
+  * repository/auth.go : CreateAuditLog étendu + nouvelle méthode ListByEtablissement avec filtres (action/entite/dates/search) + pagination
+  * usecase/student_signup_link.go : injection authRepo + Revoke étendu (reason + ip) + journalisation non-bloquante
+  * transport/http : revokeStudentSignupLink parse body optionnel {reason} + nouveau handler listEtablissementAuditLogs (GET /api/etablissements/{id}/audit-logs) + route RequireRole ADMIN/RESPONSABLE
+  * main.go : wiring authRepo dans NewStudentSignupLinkUseCase + NewServer
+  * go build + go vet + gofmt clean
+- Task F frontend (subagent full-stack-developer) :
+  * lib/audit-helpers.tsx : extraction helpers partagés (AuditLogItem, getActionBadge, getActionIcon, getEntityLabel, formatLogDate, parseJsonSafe) + support nouveaux actions/entités
+  * logs-page.tsx : refactored pour importer depuis lib/audit-helpers (-206 lignes dupliquées)
+  * components/responsable/audit-tab.tsx (nouveau, 767 lignes) : TanStack Query + 4 KPI cards + filtres (action/entite/search/dates/auto-refresh) + table responsive desktop + timeline mobile + collapsible JSON details + pagination
+  * responsable-parametres-page.tsx : 6e tab "Audit" (FileSearch icon) + TabsList grid-cols-6
+  * etudiants-page.tsx : revoke dialog étendu avec Textarea raison optionnelle (maxLength 500) + body JSON {reason} sur DELETE + invalidate ['responsable-audit-logs'] + toast mentionne journalisation
+  * bun run lint + tsc clean
+- Build final : go build ./cmd/api OK (26M), go vet ./internal/... OK, bun run lint OK (0 errors), tsc --noEmit OK
+- Migration 000083 appliquée à Neon : v82 → v83, durée 2.1s, aucune erreur
+- Commit + push GitHub (auteur udevrard7 <ulrichdouh@gmail.com>)
+
+Stage Summary:
+- 14 fichiers modifiés/créés :
+  * backend/db/db/migrations/000083_auditlog_etablissement_id.up.sql (créé, 6147 bytes)
+  * backend/db/db/migrations/000083_auditlog_etablissement_id.down.sql (créé, 1913 bytes)
+  * backend/internal/transport/http/audit_handlers.go (créé, 6013 bytes — listEtablissementAuditLogs)
+  * backend/internal/domain/auth.go (modifié, +2 champs AuditLogEntry + 2 constantes)
+  * backend/internal/repository/auth.go (modifié, +ListByEtablissement + filtres)
+  * backend/internal/usecase/student_signup_link.go (modifié, +authRepo injection + Revoke étendu)
+  * backend/internal/transport/http/student_signup_link_handlers.go (modifié, +body reason + audited response)
+  * backend/internal/transport/http/router.go (modifié, +route audit-logs + authRepo field)
+  * backend/cmd/api/main.go (modifié, wiring authRepo)
+  * frontend/src/lib/audit-helpers.tsx (créé, 11344 bytes — helpers partagés)
+  * frontend/src/components/responsable/audit-tab.tsx (créé, 32211 bytes — onglet Audit complet)
+  * frontend/src/components/responsable/responsable-parametres-page.tsx (modifié, +6e tab Audit)
+  * frontend/src/components/responsable/etudiants-page.tsx (modifié, +Textarea raison + body reason + invalidate audit query)
+  * frontend/src/components/logs/logs-page.tsx (modifié, import depuis lib/audit-helpers)
+- Migration 000083 appliquée à Neon DB production (version 83)
+- Backend compile (go build + go vet + gofmt clean)
+- Frontend compile (lint + tsc clean)
+- Impact :
+  * Fuite RLS corrigée : un RESPONSABLE ne peut plus voir les événements système des autres établissements
+  * Journalisation : chaque révocation de lien est tracée dans AuditLog avec acteur + raison + IP + timestamp
+  * Consultation : le RESPONSABLE a un onglet Audit complet dans Paramètres Établissement (filtres + KPIs + table + pagination)
+  * Rétrocompatibilité : le handler revoke accepte un body vide (anciens clients frontend continuent de marcher)

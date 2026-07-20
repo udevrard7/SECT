@@ -11,14 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  User,
   Activity,
-  PlusCircle,
-  Edit3,
-  Trash2,
-  LogIn,
-  LogOut,
-  AlertTriangle,
   Loader2,
   Download,
   ShieldAlert,
@@ -27,7 +20,6 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -41,216 +33,21 @@ import { PulseSkeleton } from '@/components/ds'
 import { Separator } from '@/components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { toast } from 'sonner'
-
-// ─── Types ───
-
-interface AuditLogItem {
-  id: string
-  userId: string | null
-  userEmail: string | null
-  action: string
-  entite: string
-  entiteId: string | null
-  details: string | null
-  adresseIp: string | null
-  createdAt: string
-}
-
-// ─── Utility functions ───
-
-// LOGS-FIX-L5 : étendu à toutes les actions réelles en DB (24 au total).
-function getActionBadge(action: string) {
-  switch (action) {
-    case 'CREATE':
-    case 'CREATE_EPREUVE':
-    case 'CREATE_USER_DIRECT':
-    case 'CREATE_RESPONSABLE_AUTO':
-    case 'CREATE_ETABLISSEMENT_WITH_ABO':
-      return (
-        <Badge className="bg-success/15 text-success-text border-success/30 gap-1">
-          <PlusCircle className="h-3 w-3" />
-          Création
-        </Badge>
-      )
-    case 'UPDATE':
-    case 'UPDATE_EPREUVE':
-    case 'UPDATE_LOGO':
-      return (
-        <Badge className="bg-info/15 text-info border-info/30 gap-1">
-          <Edit3 className="h-3 w-3" />
-          Modification
-        </Badge>
-      )
-    case 'DELETE':
-    case 'SOFT_DELETE_EPREUVE':
-    case 'PURGE_CORBEILLE':
-      return (
-        <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
-          <Trash2 className="h-3 w-3" />
-          Suppression
-        </Badge>
-      )
-    case 'LOGIN':
-    case 'LOGIN_MATRICULE':
-      return (
-        <Badge className="bg-warning/15 text-warning border-warning/30 gap-1">
-          <LogIn className="h-3 w-3" />
-          Connexion
-        </Badge>
-      )
-    case 'LOGOUT':
-      return (
-        <Badge className="bg-muted text-muted-foreground border-border gap-1">
-          <LogOut className="h-3 w-3" />
-          Déconnexion
-        </Badge>
-      )
-    case 'LOGIN_FAILED':
-    case 'LOGIN_LOCKED':
-      return (
-        <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
-          <AlertTriangle className="h-3 w-3" />
-          {action === 'LOGIN_LOCKED' ? 'Verrouillé' : 'Échec connexion'}
-        </Badge>
-      )
-    case 'TOKEN_REFRESHED':
-      return (
-        <Badge className="bg-muted text-muted-foreground border-border gap-1">
-          <Clock className="h-3 w-3" />
-          Refresh token
-        </Badge>
-      )
-    case 'CHANGE_PASSWORD':
-    case 'PASSWORD_RESET':
-      return (
-        <Badge className="bg-info/15 text-info border-info/30 gap-1">
-          <Edit3 className="h-3 w-3" />
-          {action === 'PASSWORD_RESET' ? 'Reset password' : 'Chgmt password'}
-        </Badge>
-      )
-    case 'AI_GRADE_RESPONSE':
-    case 'AI_BATCH_GRADE':
-      return (
-        <Badge className="bg-info/15 text-info border-info/30 gap-1">
-          <Activity className="h-3 w-3" />
-          Correction IA
-        </Badge>
-      )
-    case 'FINALIZE_AND_RETURN_CORRECTION':
-      return (
-        <Badge className="bg-info/15 text-info border-info/30 gap-1">
-          <Edit3 className="h-3 w-3" />
-          Retour correction
-        </Badge>
-      )
-    case 'FORCE_SUBMIT_SESSION':
-    case 'AUTO_CLOSE_EPREUVE':
-      return (
-        <Badge className="bg-warning/15 text-warning border-warning/30 gap-1">
-          <AlertTriangle className="h-3 w-3" />
-          Auto/Forcé
-        </Badge>
-      )
-    default:
-      return <Badge variant="outline">{action}</Badge>
-  }
-}
-
-// LOGS-FIX-L5 : étendu pour matcher getActionBadge.
-function getActionIcon(action: string) {
-  switch (action) {
-    case 'CREATE':
-    case 'CREATE_EPREUVE':
-    case 'CREATE_USER_DIRECT':
-    case 'CREATE_RESPONSABLE_AUTO':
-    case 'CREATE_ETABLISSEMENT_WITH_ABO':
-      return <PlusCircle className="h-5 w-5 text-success-text" />
-    case 'UPDATE':
-    case 'UPDATE_EPREUVE':
-    case 'UPDATE_LOGO':
-    case 'CHANGE_PASSWORD':
-    case 'PASSWORD_RESET':
-    case 'FINALIZE_AND_RETURN_CORRECTION':
-      return <Edit3 className="h-5 w-5 text-info" />
-    case 'DELETE':
-    case 'SOFT_DELETE_EPREUVE':
-    case 'PURGE_CORBEILLE':
-      return <Trash2 className="h-5 w-5 text-destructive" />
-    case 'LOGIN':
-    case 'LOGIN_MATRICULE':
-      return <LogIn className="h-5 w-5 text-warning" />
-    case 'LOGOUT':
-      return <LogOut className="h-5 w-5 text-muted-foreground" />
-    case 'LOGIN_FAILED':
-    case 'LOGIN_LOCKED':
-      return <AlertTriangle className="h-5 w-5 text-destructive" />
-    case 'TOKEN_REFRESHED':
-      return <Clock className="h-5 w-5 text-muted-foreground" />
-    case 'AI_GRADE_RESPONSE':
-    case 'AI_BATCH_GRADE':
-      return <Activity className="h-5 w-5 text-info" />
-    case 'FORCE_SUBMIT_SESSION':
-    case 'AUTO_CLOSE_EPREUVE':
-      return <AlertTriangle className="h-5 w-5 text-warning" />
-    default: return <Activity className="h-5 w-5 text-muted-foreground" />
-  }
-}
-
-// LOGS-FIX-L6 : étendu à toutes les entités réelles en DB (10 au total).
-function getEntityLabel(entite: string): string {
-  switch (entite) {
-    case 'User': return 'Utilisateur'
-    case 'Etablissement': return 'Établissement'
-    case 'Filiere': return 'Filière'
-    case 'Epreuve': return 'Épreuve'
-    case 'Question': return 'Question'
-    case 'Document': return 'Document'
-    case 'Session': return 'Session'
-    case 'Reponse': return 'Réponse'
-    case 'SessionPassation': return 'Session de passation'
-    case 'Affectation': return 'Affectation'
-    case 'Corbeille': return 'Corbeille'
-    case 'UniteEnseignement': return 'Unité d\'enseignement'
-    case 'SecuritySettings': return 'Paramètres sécurité'
-    default: return entite
-  }
-}
-
-function formatLogDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-function formatRelativeDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  const diffH = Math.floor(diffMin / 60)
-  const diffD = Math.floor(diffH / 24)
-
-  if (diffMin < 1) return 'À l\'instant'
-  if (diffMin < 60) return `Il y a ${diffMin} min`
-  if (diffH < 24) return `Il y a ${diffH}h`
-  if (diffD < 7) return `Il y a ${diffD}j`
-  return formatLogDate(dateStr)
-}
-
-function parseJsonSafe(str: string | null): unknown {
-  if (!str) return null
-  try {
-    return JSON.parse(str)
-  } catch {
-    return str
-  }
-}
+// SECT-ETABLISSEMENT-AUDIT-1 : helpers (AuditLogItem, getActionBadge,
+// getActionIcon, getEntityLabel, formatLogDate, formatRelativeDate, parseJsonSafe)
+// extraits vers @/lib/audit-helpers pour partage entre admin LogsPage et
+// Responsable AuditTab. Les nouvelles actions SIGNUP_LINK_CREATED/REVOKED et
+// entités StudentSignupLink / EtablissementAccess / RegistrationEvent y sont
+// désormais centralisées.
+import {
+  type AuditLogItem,
+  getActionBadge,
+  getActionIcon,
+  getEntityLabel,
+  formatLogDate,
+  formatRelativeDate,
+  parseJsonSafe,
+} from '@/lib/audit-helpers'
 
 // ─── Main Component ───
 
