@@ -228,6 +228,15 @@ func main() {
 	expireWorker := worker.NewExpireWorker(pool, logger, mailSvc, cfg.AppBaseURL)
 	expireWorker.Start(context.Background())
 
+	// SECT-USER-CLEANUP-INFRA-1 : worker de cleanup des users soft-deleted > 90 jours.
+	// Vérifie toutes les 24h les users dont deletedAt < NOW() - 90 jours, journalise
+	// chaque suppression dans AuditLog (action=USER_HARD_DELETED_AUTO) AVANT le DELETE
+	// (pour traçabilité même si le DELETE échoue), puis hard-delete via cascade manuel
+	// sur les tables enfants (FK RESTRICT) + final DELETE FROM "User".
+	// Pattern identique à expire_worker.go (struct + ticker 24h + first run on startup).
+	cleanupWorker := worker.NewCleanupWorker(pool, logger)
+	cleanupWorker.Start(context.Background())
+
 	// MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
 	// utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
 	// avec message d'erreur gracieux si timeout. L'approche worker async avec

@@ -229,6 +229,19 @@ const (
 	// confirmation côté frontend.
 	AuditActionSignupLinkCreated = "SIGNUP_LINK_CREATED"
 	AuditActionSignupLinkRevoked = "SIGNUP_LINK_REVOKED"
+
+	// SECT-USER-CLEANUP-INFRA-1 — actions de soft/hard-delete des users.
+	// USER_SOFT_DELETED : admin a soft-deleted un user (actif=false +
+	// deletedAt=NOW()). Le user reste en DB pour audit, sera hard-deleted
+	// après 90 jours par le CleanupWorker.
+	// USER_HARD_DELETED_AUTO : le CleanupWorker a hard-deleted un user
+	// soft-deleted plus ancien que 90 jours (purge automatique).
+	// USER_HARD_DELETED_MANUAL : admin a déclenché manuellement la purge via
+	// POST /api/users/cleanup-orphans (defense-in-depth — le worker tourne
+	// déjà toutes les 24h, mais l'admin peut forcer la purge).
+	AuditActionUserSoftDeleted       = "USER_SOFT_DELETED"
+	AuditActionUserHardDeletedAuto   = "USER_HARD_DELETED_AUTO"
+	AuditActionUserHardDeletedManual = "USER_HARD_DELETED_MANUAL"
 )
 
 // Erreurs spécifiques à l'auth
