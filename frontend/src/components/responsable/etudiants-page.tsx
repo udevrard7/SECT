@@ -481,6 +481,10 @@ export function EtudiantsPage() {
   const [isCreatingLink, setIsCreatingLink] = useState(false)
   const [revokeLinkTarget, setRevokeLinkTarget] = useState<StudentSignupLink | null>(null)
   const [isRevokingLink, setIsRevokingLink] = useState(false)
+  // SECT-ETABLISSEMENT-AUDIT-1 : raison optionnelle de révocation, envoyée au
+  // backend dans le body du DELETE et journalisée dans l'AuditLog de
+  // l'établissement (colonne `reason` + details JSON).
+  const [revokeReason, setRevokeReason] = useState('')
   // SECT-REG-LINK-PHASE3-FRONTEND-1 : toggle de la vue statistiques (lazy fetch)
   // SECT-REG-LINK-WIZARD-UX-1 : refactor — la modal GlassModal unique est
   // remplacée par 3 Dialogs shadcn séparés (wizard / liens existants / stats).
@@ -1325,7 +1329,11 @@ export function EtudiantsPage() {
     }
   }
 
-  // Révoquer un lien (DELETE /api/student-signup-links/{id}) — soft delete
+  // Révoquer un lien (DELETE /api/student-signup-links/{id}) — soft delete.
+  // SECT-ETABLISSEMENT-AUDIT-1 : le body porte désormais une raison optionnelle
+  // qui sera journalisée dans l'AuditLog de l'établissement. On invalide aussi
+  // le query ['responsable-audit-logs'] pour que l'onglet Audit se rafraîchisse
+  // si le RESPONSABLE l'a ouvert en parallèle.
   const handleRevokeLink = async () => {
     if (!revokeLinkTarget) return
     setIsRevokingLink(true)
@@ -1333,14 +1341,24 @@ export function EtudiantsPage() {
       const res = await fetch(`/api/student-signup-links/${revokeLinkTarget.id}`, {
         method: 'DELETE',
         credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: revokeReason.trim() }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.error ?? 'Erreur lors de la révocation')
       }
       queryClient.invalidateQueries({ queryKey: ['student-signup-links'] })
-      toast.success('Lien révoqué')
+      // SECT-ETABLISSEMENT-AUDIT-1 : invalidation du journal d'audit pour
+      // refléter immédiatement la nouvelle entrée SIGNUP_LINK_REVOKED.
+      queryClient.invalidateQueries({ queryKey: ['responsable-audit-logs'] })
+      toast.success('Lien révoqué', {
+        description: revokeReason.trim()
+          ? 'Le lien a été révoqué et journalisé dans l\'audit de l\'établissement.'
+          : 'Le lien a été révoqué et journalisé dans l\'audit.',
+      })
       setRevokeLinkTarget(null)
+      setRevokeReason('')
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de révoquer le lien.',
@@ -3374,7 +3392,14 @@ export function EtudiantsPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
-                                onClick={() => setRevokeLinkTarget(link)}
+                                onClick={() => {
+                                  setRevokeLinkTarget(link)
+                                  // SECT-ETABLISSEMENT-AUDIT-1 : reset de la
+                                  // raison à chaque ouverture du dialog (évite
+                                  // de conserver la raison d'une révocation
+                                  // précédente).
+                                  setRevokeReason('')
+                                }}
                                 aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
                               >
                                 <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -3572,6 +3597,25 @@ export function EtudiantsPage() {
               étudiant ne pourra utiliser ce lien. Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* SECT-ETABLISSEMENT-AUDIT-1 : raison optionnelle de révocation. */}
+          {/* Sera journalisée dans l'AuditLog (colonne `reason` + details JSON). */}
+          <div className="space-y-2 py-2">
+            <Label htmlFor="revoke-reason" className="text-sm font-medium">
+              Raison de la révocation <span className="text-muted-foreground">(optionnel)</span>
+            </Label>
+            <Textarea
+              id="revoke-reason"
+              placeholder="Ex: Fin du semestre, lien partagé par erreur, etc."
+              value={revokeReason}
+              onChange={(e) => setRevokeReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cette raison sera journalisée dans l&apos;audit de l&apos;établissement.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRevokingLink}>Annuler</AlertDialogCancel>
             <AlertDialogAction

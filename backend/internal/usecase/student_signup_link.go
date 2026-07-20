@@ -19,23 +19,24 @@
 package usecase
 
 import (
-        "context"
-        "crypto/rand"
-        "database/sql"
-        "encoding/hex"
-        "fmt"
-        "regexp"
-        "strings"
-        "time"
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
 
-        "golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/bcrypt"
 
-        "github.com/jackc/pgx/v5"
-        "github.com/jackc/pgx/v5/pgxpool"
-        "github.com/udevrard7/sect/backend/internal/db"
-        "github.com/udevrard7/sect/backend/internal/domain"
-        "github.com/udevrard7/sect/backend/internal/emailtpl"
-        "github.com/udevrard7/sect/backend/internal/mailer"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udevrard7/sect/backend/internal/db"
+	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/emailtpl"
+	"github.com/udevrard7/sect/backend/internal/mailer"
+	"github.com/udevrard7/sect/backend/internal/repository"
 )
 
 // Durée de validité d'un lien d'inscription direct (30 jours).
@@ -52,8 +53,8 @@ const signupLinkTTL = 30 * 24 * time.Hour
 //   - max 8760h (365j) : évite les liens quasi-permanents qui contourneraient
 //     la rotation de sécurité ; un an est amplement suffisant pour une promo.
 const (
-        signupLinkMinTTLHours = 1
-        signupLinkMaxTTLHours = 24 * 365
+	signupLinkMinTTLHours = 1
+	signupLinkMaxTTLHours = 24 * 365
 )
 
 // signupBcryptCost — identique à invitationBcryptCost (10). Cohérent avec le
@@ -81,12 +82,19 @@ const signupCustomMsgMaxLen = 500
 // StudentSignupLinkUseCase implémente les cas d'usage des liens d'inscription
 // direct étudiant.
 type StudentSignupLinkUseCase struct {
-        repo        domain.StudentSignupLinkRepository
-        pool        *pgxpool.Pool // SECT-REG-LINK-B2C-MVP-1 (fix RLS) : pour check is_enseignant_in_personal_etab via WithTx
-        mailer      mailer.Mailer
-        appBaseURL  string
-        quotaRepo   domain.QuotaChecker // SECT-REG-LINK-B2C-MVP-1 Phase 2 ; nil = pas de check
-        appLogger   func(msg string, args ...any)
+	repo       domain.StudentSignupLinkRepository
+	pool       *pgxpool.Pool // SECT-REG-LINK-B2C-MVP-1 (fix RLS) : pour check is_enseignant_in_personal_etab via WithTx
+	mailer     mailer.Mailer
+	appBaseURL string
+	quotaRepo  domain.QuotaChecker // SECT-REG-LINK-B2C-MVP-1 Phase 2 ; nil = pas de check
+	appLogger  func(msg string, args ...any)
+
+	// SECT-ETABLISSEMENT-AUDIT-1 — AuthRepository injecté pour journaliser
+	// la révocation d'un lien dans AuditLog (avec etablissementId + reason).
+	// Peut être nil (tests unitaires sans accès DB) — Revoke skippe alors
+	// l'audit log (non bloquant). Le détails JSON est construit via
+	// MarshalDetails (helper usecase/auth.go).
+	authRepo *repository.AuthRepository
 }
 
 // NewStudentSignupLinkUseCase crée un nouveau StudentSignupLinkUseCase.
@@ -94,37 +102,44 @@ type StudentSignupLinkUseCase struct {
 // quotaRepo est optionnel (nil = pas de vérification de quota — MVP Phase 1).
 // mailer est optionnel (nil = pas d'email de bienvenue — utile en tests).
 // appBaseURL sert à construire l'URL publique /inscription?token=xxx.
+//
+// SECT-ETABLISSEMENT-AUDIT-1 : authRepo est optionnel (nil = pas d'audit log
+// sur Revoke — utile en tests unitaires). En production, main.go passe le
+// AuthRepository partagé pour que les révocations soient journalisées dans
+// AuditLog avec l'établissement + la raison optionnelle.
 func NewStudentSignupLinkUseCase(
-        repo domain.StudentSignupLinkRepository,
-        pool *pgxpool.Pool,
-        mailSvc mailer.Mailer,
-        appBaseURL string,
-        quotaRepo domain.QuotaChecker,
+	repo domain.StudentSignupLinkRepository,
+	pool *pgxpool.Pool,
+	mailSvc mailer.Mailer,
+	appBaseURL string,
+	quotaRepo domain.QuotaChecker,
+	authRepo *repository.AuthRepository,
 ) *StudentSignupLinkUseCase {
-        return &StudentSignupLinkUseCase{
-                repo:       repo,
-                pool:       pool,
-                mailer:     mailSvc,
-                appBaseURL: strings.TrimRight(appBaseURL, "/"),
-                quotaRepo:  quotaRepo,
-        }
+	return &StudentSignupLinkUseCase{
+		repo:       repo,
+		pool:       pool,
+		mailer:     mailSvc,
+		appBaseURL: strings.TrimRight(appBaseURL, "/"),
+		quotaRepo:  quotaRepo,
+		authRepo:   authRepo,
+	}
 }
 
 // generateSignupToken génère un token aléatoire de 32 chars hex (16 octets).
 // Clone de generateInvitationToken — crypto/rand offre une entropie suffisante
 // pour des tokens d'authentification (16 octets = 128 bits > 80 bits NIST).
 func generateSignupToken() (string, error) {
-        b := make([]byte, 16) // 16 octets → 32 chars hex
-        if _, err := rand.Read(b); err != nil {
-                return "", fmt.Errorf("generate signup token: %w", err)
-        }
-        return hex.EncodeToString(b), nil
+	b := make([]byte, 16) // 16 octets → 32 chars hex
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate signup token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // PublicURL construit l'URL publique d'inscription à partir du token.
 // Format : {appBaseURL}/inscription?token={token}
 func (uc *StudentSignupLinkUseCase) PublicURL(token string) string {
-        return uc.appBaseURL + "/inscription?token=" + token
+	return uc.appBaseURL + "/inscription?token=" + token
 }
 
 // Create crée un nouveau lien d'inscription direct étudiant.
@@ -148,139 +163,219 @@ func (uc *StudentSignupLinkUseCase) PublicURL(token string) string {
 // manuellement — WhatsApp, QR code, etc.). C'est la principale différence UX
 // avec Invitation qui envoie un email automatiquement.
 func (uc *StudentSignupLinkUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateStudentSignupLinkInput) (*domain.StudentSignupLink, string, error) {
-        role := domain.Role(claims.Role)
-        // Defense in depth : le middleware RequireRoleOrPersonalEtab applique déjà
-        // ce filtrage, mais on vérifie côté usecase aussi pour ne pas dépendre
-        // uniquement du wiring router.
-        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
-                return nil, "", &domain.UnauthorizedError{Message: "rôle non autorisé"}
-        }
+	role := domain.Role(claims.Role)
+	// Defense in depth : le middleware RequireRoleOrPersonalEtab applique déjà
+	// ce filtrage, mais on vérifie côté usecase aussi pour ne pas dépendre
+	// uniquement du wiring router.
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+		return nil, "", &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
 
-        // Forçage sécurisé : on n'utilise JAMAIS les valeurs du body client pour
-        // ces deux champs.
-        if claims.EtablissementID == "" {
-                return nil, "", &domain.UnauthorizedError{Message: "établissement requis dans la session"}
-        }
-        input.EtablissementID = claims.EtablissementID
-        input.CreatedByID = claims.UserID
+	// Forçage sécurisé : on n'utilise JAMAIS les valeurs du body client pour
+	// ces deux champs.
+	if claims.EtablissementID == "" {
+		return nil, "", &domain.UnauthorizedError{Message: "établissement requis dans la session"}
+	}
+	input.EtablissementID = claims.EtablissementID
+	input.CreatedByID = claims.UserID
 
-        // SECT-REG-LINK-B2C-MVP-1 (fix RLS) : pour les ENSEIGNANTS, vérifier via la
-        // fonction SECURITY DEFINER is_enseignant_in_personal_etab() que l'étab est
-        // bien de type PERSONNEL. Cette fonction bypass RLS pour son SELECT interne
-        // (contrairement à un SELECT direct sur Etablissement qui serait filtré par
-        // la policy Etablissement_select pour sect_app en prod). Elle utilise
-        // current_user_id() qui lit les claims posés par db.WithTx ci-dessous.
-        // Pour ADMIN/RESPONSABLE, on fait confiance au middleware + RLS.
-        if role == domain.RoleEnseignant {
-                var isPersonal bool
-                checkErr := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
-                        return tx.QueryRow(ctx, `SELECT is_enseignant_in_personal_etab()`).Scan(&isPersonal)
-                })
-                if checkErr != nil || !isPersonal {
-                        return nil, "", &domain.UnauthorizedError{Message: "réservé aux enseignants B2C (établissement personnel)"}
-                }
-        }
+	// SECT-REG-LINK-B2C-MVP-1 (fix RLS) : pour les ENSEIGNANTS, vérifier via la
+	// fonction SECURITY DEFINER is_enseignant_in_personal_etab() que l'étab est
+	// bien de type PERSONNEL. Cette fonction bypass RLS pour son SELECT interne
+	// (contrairement à un SELECT direct sur Etablissement qui serait filtré par
+	// la policy Etablissement_select pour sect_app en prod). Elle utilise
+	// current_user_id() qui lit les claims posés par db.WithTx ci-dessous.
+	// Pour ADMIN/RESPONSABLE, on fait confiance au middleware + RLS.
+	if role == domain.RoleEnseignant {
+		var isPersonal bool
+		checkErr := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT is_enseignant_in_personal_etab()`).Scan(&isPersonal)
+		})
+		if checkErr != nil || !isPersonal {
+			return nil, "", &domain.UnauthorizedError{Message: "réservé aux enseignants B2C (établissement personnel)"}
+		}
+	}
 
-        // Un prof B2C (ENSEIGNANT dans étab PERSONNEL) n'a pas de filière — son étab
-        // est global. Les étudiants rejoignent l'établissement sans filière ; le prof
-        // les répartira manuellement via /api/users/{id} PATCH si besoin.
-        if role == domain.RoleEnseignant {
-                input.FiliereID = nil
-        }
+	// Un prof B2C (ENSEIGNANT dans étab PERSONNEL) n'a pas de filière — son étab
+	// est global. Les étudiants rejoignent l'établissement sans filière ; le prof
+	// les répartira manuellement via /api/users/{id} PATCH si besoin.
+	if role == domain.RoleEnseignant {
+		input.FiliereID = nil
+	}
 
-        // SECT-REG-LINK-PHASE2-BACKEND-1 : validation/normalisation du domaine email.
-        // On lower + trim + strip '@' initial si présent. Si vide après trim → nil (pas
-        // de restriction). Si invalide (caractères non autorisés) → ValidationError.
-        if input.EmailDomainRestriction != nil {
-                d := strings.TrimSpace(*input.EmailDomainRestriction)
-                d = strings.TrimPrefix(d, "@")
-                d = strings.ToLower(d)
-                if d == "" {
-                        input.EmailDomainRestriction = nil
-                } else if !signupDomainRegex.MatchString(d) {
-                        return nil, "", &domain.ValidationError{
-                                Field:   "emailDomainRestriction",
-                                Message: "format de domaine invalide (ex: univ-ci.edu)",
-                        }
-                } else {
-                        input.EmailDomainRestriction = &d
-                }
-        }
+	// SECT-REG-LINK-PHASE2-BACKEND-1 : validation/normalisation du domaine email.
+	// On lower + trim + strip '@' initial si présent. Si vide après trim → nil (pas
+	// de restriction). Si invalide (caractères non autorisés) → ValidationError.
+	if input.EmailDomainRestriction != nil {
+		d := strings.TrimSpace(*input.EmailDomainRestriction)
+		d = strings.TrimPrefix(d, "@")
+		d = strings.ToLower(d)
+		if d == "" {
+			input.EmailDomainRestriction = nil
+		} else if !signupDomainRegex.MatchString(d) {
+			return nil, "", &domain.ValidationError{
+				Field:   "emailDomainRestriction",
+				Message: "format de domaine invalide (ex: univ-ci.edu)",
+			}
+		} else {
+			input.EmailDomainRestriction = &d
+		}
+	}
 
-        // SECT-REG-LINK-PHASE3-BACKEND-1 : validation du customWelcomeMessage.
-        // Trim + max 500 chars. Si vide après trim → nil (pas de message). Si > 500
-        // chars → ValidationError (le créateur doit raccourcir — on ne truncate pas
-        // silencieusement pour éviter une surpré au frontend qui afficherait un
-        // message tronqué sans indication).
-        if input.CustomWelcomeMessage != nil {
-                msg := strings.TrimSpace(*input.CustomWelcomeMessage)
-                if msg == "" {
-                        input.CustomWelcomeMessage = nil
-                } else if len(msg) > signupCustomMsgMaxLen {
-                        return nil, "", &domain.ValidationError{
-                                Field:   "customWelcomeMessage",
-                                Message: fmt.Sprintf("le message personnalisé ne peut pas dépasser %d caractères", signupCustomMsgMaxLen),
-                        }
-                } else {
-                        input.CustomWelcomeMessage = &msg
-                }
-        }
+	// SECT-REG-LINK-PHASE3-BACKEND-1 : validation du customWelcomeMessage.
+	// Trim + max 500 chars. Si vide après trim → nil (pas de message). Si > 500
+	// chars → ValidationError (le créateur doit raccourcir — on ne truncate pas
+	// silencieusement pour éviter une surpré au frontend qui afficherait un
+	// message tronqué sans indication).
+	if input.CustomWelcomeMessage != nil {
+		msg := strings.TrimSpace(*input.CustomWelcomeMessage)
+		if msg == "" {
+			input.CustomWelcomeMessage = nil
+		} else if len(msg) > signupCustomMsgMaxLen {
+			return nil, "", &domain.ValidationError{
+				Field:   "customWelcomeMessage",
+				Message: fmt.Sprintf("le message personnalisé ne peut pas dépasser %d caractères", signupCustomMsgMaxLen),
+			}
+		} else {
+			input.CustomWelcomeMessage = &msg
+		}
+	}
 
-        // Génération token + expiration.
-        token, err := generateSignupToken()
-        if err != nil {
-                return nil, "", err
-        }
+	// Génération token + expiration.
+	token, err := generateSignupToken()
+	if err != nil {
+		return nil, "", err
+	}
 
-        // SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée.
-        // Si input.ExpiresInHours est nil → on garde le TTL par défaut (30 jours).
-        // Sinon on valide la plage [1h, 8760h] puis on calcule ExpiresAt = now + N*h.
-        // Defense in depth : le handler valide déjà, mais le usecase est l'autorité
-        // finale (le handler pourrait être bypass par un autre caller interne).
-        ttl := signupLinkTTL
-        if input.ExpiresInHours != nil {
-                h := *input.ExpiresInHours
-                if h < signupLinkMinTTLHours || h > signupLinkMaxTTLHours {
-                        return nil, "", &domain.ValidationError{
-                                Field:   "expiresInHours",
-                                Message: fmt.Sprintf("la durée de validité doit être comprise entre %d h et %d h", signupLinkMinTTLHours, signupLinkMaxTTLHours),
-                        }
-                }
-                ttl = time.Duration(h) * time.Hour
-        }
-        input.ExpiresAt = time.Now().Add(ttl)
+	// SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée.
+	// Si input.ExpiresInHours est nil → on garde le TTL par défaut (30 jours).
+	// Sinon on valide la plage [1h, 8760h] puis on calcule ExpiresAt = now + N*h.
+	// Defense in depth : le handler valide déjà, mais le usecase est l'autorité
+	// finale (le handler pourrait être bypass par un autre caller interne).
+	ttl := signupLinkTTL
+	if input.ExpiresInHours != nil {
+		h := *input.ExpiresInHours
+		if h < signupLinkMinTTLHours || h > signupLinkMaxTTLHours {
+			return nil, "", &domain.ValidationError{
+				Field:   "expiresInHours",
+				Message: fmt.Sprintf("la durée de validité doit être comprise entre %d h et %d h", signupLinkMinTTLHours, signupLinkMaxTTLHours),
+			}
+		}
+		ttl = time.Duration(h) * time.Hour
+	}
+	input.ExpiresAt = time.Now().Add(ttl)
 
-        link, err := uc.repo.Create(ctx, input, token)
-        if err != nil {
-                return nil, "", err
-        }
-        return link, uc.PublicURL(token), nil
+	link, err := uc.repo.Create(ctx, input, token)
+	if err != nil {
+		return nil, "", err
+	}
+	return link, uc.PublicURL(token), nil
 }
 
 // ListByCreator liste les liens non supprimés d'un créateur.
 // Le créateur est déterminé par claims.UserID (RLS applique le filtrage).
 func (uc *StudentSignupLinkUseCase) ListByCreator(ctx context.Context, claims db.SessionClaims) ([]domain.StudentSignupLink, error) {
-        role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
-                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
-        }
-        if claims.UserID == "" {
-                return nil, &domain.UnauthorizedError{Message: "session invalide"}
-        }
-        return uc.repo.ListByCreator(ctx, claims.UserID)
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if claims.UserID == "" {
+		return nil, &domain.UnauthorizedError{Message: "session invalide"}
+	}
+	return uc.repo.ListByCreator(ctx, claims.UserID)
 }
 
 // Revoke révoque un lien (soft-delete : actif=false + deletedAt=now).
 // Le créateur (ou un admin / responsable de l'étab) peut révoquer.
-func (uc *StudentSignupLinkUseCase) Revoke(ctx context.Context, claims db.SessionClaims, id string) error {
-        role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
-                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
-        }
-        if id == "" {
-                return &domain.ValidationError{Field: "id", Message: "requis"}
-        }
-        return uc.repo.Revoke(ctx, id)
+//
+// SECT-ETABLISSEMENT-AUDIT-1 : la signature gagne 2 nouveaux paramètres
+// `reason` + `ip`. La raison est optionnelle ("" = pas de raison saisie —
+// compat backward avec les clients qui ne l'envoient pas). L'IP est extraite
+// du handler via middleware.GetClientIP et stockée dans AuditLog.adresseIp.
+//
+// Après le soft-delete (réussi), on journalise l'action dans AuditLog avec :
+//   - Action = AuditActionSignupLinkRevoked ("SIGNUP_LINK_REVOKED")
+//   - Entite = "StudentSignupLink"
+//   - EntiteID = id du lien révoqué
+//   - UserID = claims.UserID (l'acteur)
+//   - EtablissementID = claims.EtablissementID (pour scoping RLS)
+//   - Reason = reason (saisie optionnelle du dialog frontend)
+//   - AdresseIP = ip
+//   - Details = JSON {linkId, revokedBy, revokedAt}
+//
+// L'audit log est NON BLOQUANT : si authRepo est nil (tests) ou si l'INSERT
+// échoue (DB unavailable, RLS bloque), on log l'erreur via appLogger sans
+// propager. La révocation reste valide (le soft-delete est déjà fait).
+func (uc *StudentSignupLinkUseCase) Revoke(ctx context.Context, claims db.SessionClaims, id, reason, ip string) error {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+		return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if id == "" {
+		return &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	if err := uc.repo.Revoke(ctx, id); err != nil {
+		return err
+	}
+
+	// SECT-ETABLISSEMENT-AUDIT-1 — journaliser la révocation dans AuditLog.
+	// Non bloquant : si l'audit échoue, la révocation reste valide (le
+	// soft-delete est déjà fait côté repo.Revoke). On log l'erreur sans
+	// propager.
+	if uc.authRepo == nil {
+		return nil
+	}
+
+	etabID := claims.EtablissementID
+	userID := claims.UserID
+	// Details JSON : on inclut linkId + revokedBy + revokedAt. La reason est
+	// stockée dans la colonne dédiée AuditLog.reason (pas dans le JSON) pour
+	// permettre une interrogation SQL directe (ex: WHERE reason ILIKE '%...%').
+	detailsJSON := MarshalDetails(map[string]any{
+		"linkId":    id,
+		"revokedBy": userID,
+		"revokedAt": time.Now().UTC().Format(time.RFC3339),
+	})
+
+	// On construit les pointeurs seulement si les valeurs sont non-vides
+	// (sinon on passe nil pour stocker NULL en DB).
+	var (
+		userIDPtr  *string
+		userEmailP *string
+		etabIDPtr  *string
+		idPtr      = id // ID du lien révoqué (string non-nulle)
+	)
+	if userID != "" {
+		userIDPtr = &userID
+	}
+	if etabID != "" {
+		etabIDPtr = &etabID
+	}
+	// userEmail : on utilise claims.Email (posé par ACCESS-ASSISTANCE pour le
+	// mode assistance). Peut être vide pour une session normale sans email
+	// dans le JWT — dans ce cas on stocke NULL.
+	if claims.Email != "" {
+		userEmailP = &claims.Email
+	}
+
+	auditEntry := &domain.AuditLogEntry{
+		UserID:          userIDPtr,
+		UserEmail:       userEmailP,
+		Action:          domain.AuditActionSignupLinkRevoked,
+		Entite:          "StudentSignupLink",
+		EntiteID:        &idPtr,
+		Details:         detailsJSON,
+		AdresseIP:       ip,
+		EtablissementID: etabIDPtr,
+		Reason:          reason,
+	}
+	if err := uc.authRepo.CreateAuditLog(ctx, auditEntry); err != nil {
+		if uc.appLogger != nil {
+			uc.appLogger("audit log failed for signup link revoke",
+				"link_id", id, "revoked_by", userID, "error", err)
+		}
+	}
+	return nil
 }
 
 // Verify vérifie un token d'inscription (PUBLIC — pas d'auth).
@@ -298,23 +393,23 @@ func (uc *StudentSignupLinkUseCase) Revoke(ctx context.Context, claims db.Sessio
 // à l'inscription — on ne peut pas pré-vérifier. La fonction SQL accept_student_signup
 // catche le unique_violation atomiquement → code USER_EXISTS.
 func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*domain.StudentSignupLink, error) {
-        link, err := uc.repo.FindByToken(ctx, token)
-        if err != nil {
-                if nf, ok := err.(*domain.NotFoundError); ok && nf.Entity == "StudentSignupLink" {
-                        return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: "Lien d'inscription introuvable"}
-                }
-                return nil, err
-        }
-        if !link.Actif {
-                return nil, &domain.SignupLinkStateError{Code: "INACTIVE", Message: "Ce lien d'inscription a été révoqué"}
-        }
-        if time.Now().After(link.ExpiresAt) {
-                return nil, &domain.SignupLinkStateError{Code: "EXPIRED", Message: "Ce lien d'inscription a expiré"}
-        }
-        if link.MaxUses != nil && link.UseCount >= *link.MaxUses {
-                return nil, &domain.SignupLinkStateError{Code: "QUOTA_EXCEEDED", Message: "Le nombre maximum d'inscriptions pour ce lien a été atteint"}
-        }
-        return link, nil
+	link, err := uc.repo.FindByToken(ctx, token)
+	if err != nil {
+		if nf, ok := err.(*domain.NotFoundError); ok && nf.Entity == "StudentSignupLink" {
+			return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: "Lien d'inscription introuvable"}
+		}
+		return nil, err
+	}
+	if !link.Actif {
+		return nil, &domain.SignupLinkStateError{Code: "INACTIVE", Message: "Ce lien d'inscription a été révoqué"}
+	}
+	if time.Now().After(link.ExpiresAt) {
+		return nil, &domain.SignupLinkStateError{Code: "EXPIRED", Message: "Ce lien d'inscription a expiré"}
+	}
+	if link.MaxUses != nil && link.UseCount >= *link.MaxUses {
+		return nil, &domain.SignupLinkStateError{Code: "QUOTA_EXCEEDED", Message: "Le nombre maximum d'inscriptions pour ce lien a été atteint"}
+	}
+	return link, nil
 }
 
 // Accept finalise l'inscription d'un étudiant via un lien direct (PUBLIC).
@@ -324,15 +419,15 @@ func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*
 //  2. Phase 2 — charge le lien via FindByToken (SECURITY DEFINER) pour :
 //     - vérifier le quota capitation B2B via quotaRepo.CheckStudentsQuota,
 //     - vérifier la restriction de domaine email (defense in depth côté usecase,
-//       le SQL le vérifie aussi atomiquement),
+//     le SQL le vérifie aussi atomiquement),
 //     - logger l'audit RegistrationEvent en cas de succès/échec (lien connu).
 //  3. Hash password : bcrypt.GenerateFromPassword(cost 10).
 //  4. Appelle repo.AcceptSignup (fonction SQL accept_student_signup SECURITY DEFINER).
 //  5. Mappe le code retour :
 //     - OK → envoie email de bienvenue + log audit success.
 //     - NOT_FOUND / INACTIVE / EXPIRED / QUOTA_EXCEEDED / DOMAIN_NOT_ALLOWED /
-//       USER_EXISTS / MATRICULE_REQUIRED / MATRICULE_INVALID → SignupLinkStateError
-//       correspondant + log audit failure.
+//     USER_EXISTS / MATRICULE_REQUIRED / MATRICULE_INVALID → SignupLinkStateError
+//     correspondant + log audit failure.
 //
 // Note : on NE vérifie pas l'état du lien côté usecase AVANT d'appeler AcceptSignup
 // pour les checks basiques (actif/expiresAt/maxUses) — la fonction SQL fait ces
@@ -344,6 +439,7 @@ func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*
 //   - éviter un appel SQL inutile (le check quota capitation nécessite de toute
 //     façon une lecture préalable côté QuotaRepository),
 //   - retourner une réponse rapide (4xx) à l'utilisateur sans attendre la tx SQL.
+//
 // Le check SQL (DOMAIN_NOT_ALLOWED côté accept_student_signup) reste authoritative
 // en cas de race (modification du link entre le FindByToken et le AcceptSignup).
 //
@@ -356,158 +452,158 @@ func (uc *StudentSignupLinkUseCase) Verify(ctx context.Context, token string) (*
 // (regex de l'étab) et le stocke dans User.matricule. Si false, le matricule est
 // ignoré (comportement inchangé). Defense in depth : le check SQL reste authoritative.
 func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, name, password, matricule, ip, userAgent string) (*domain.AcceptSignupResult, error) {
-        // Validation input.
-        if strings.TrimSpace(token) == "" {
-                return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: "Lien d'inscription introuvable"}
-        }
-        if strings.TrimSpace(name) == "" {
-                return nil, &domain.ValidationError{Field: "name", Message: "requis"}
-        }
-        email = strings.TrimSpace(strings.ToLower(email))
-        if !signupEmailRegex.MatchString(email) {
-                return nil, &domain.ValidationError{Field: "email", Message: "email invalide"}
-        }
-        if len(password) < 8 {
-                return nil, &domain.ValidationError{Field: "password", Message: "minimum 8 caractères"}
-        }
+	// Validation input.
+	if strings.TrimSpace(token) == "" {
+		return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: "Lien d'inscription introuvable"}
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, &domain.ValidationError{Field: "name", Message: "requis"}
+	}
+	email = strings.TrimSpace(strings.ToLower(email))
+	if !signupEmailRegex.MatchString(email) {
+		return nil, &domain.ValidationError{Field: "email", Message: "email invalide"}
+	}
+	if len(password) < 8 {
+		return nil, &domain.ValidationError{Field: "password", Message: "minimum 8 caractères"}
+	}
 
-        // Phase 2 — charger le lien pour : (1) check quota capitation B2B,
-        // (2) check restriction domaine (defense in depth), (3) audit RegistrationEvent.
-        // Si le token n'existe pas, on laisse AcceptSignup retourner NOT_FOUND
-        // atomiquement. Pas d'audit possible (pas de linkID).
-        var link *domain.StudentSignupLink
-        if l, ferr := uc.repo.FindByToken(ctx, token); ferr == nil && l != nil {
-                link = l
-        }
+	// Phase 2 — charger le lien pour : (1) check quota capitation B2B,
+	// (2) check restriction domaine (defense in depth), (3) audit RegistrationEvent.
+	// Si le token n'existe pas, on laisse AcceptSignup retourner NOT_FOUND
+	// atomiquement. Pas d'audit possible (pas de linkID).
+	var link *domain.StudentSignupLink
+	if l, ferr := uc.repo.FindByToken(ctx, token); ferr == nil && l != nil {
+		link = l
+	}
 
-        // Phase 2 — check quota capitation (B2B). Non bloquant si erreur DB (on log
-        // et on continue) — seul QuotaExceededError bloque.
-        if link != nil && uc.quotaRepo != nil {
-                if qerr := uc.quotaRepo.CheckStudentsQuota(ctx, link.EtablissementID); qerr != nil {
-                        if domain.IsQuotaExceeded(qerr) {
-                                uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "QUOTA_EXCEEDED")
-                                return nil, &domain.SignupLinkStateError{
-                                        Code:    "QUOTA_EXCEEDED",
-                                        Message: "Le quota d'étudiants de cet établissement est atteint. Contactez votre responsable ou le support SECT.",
-                                }
-                        }
-                        // Erreur non-quota (DB, etc.) : on logge mais on ne bloque pas.
-                        if uc.appLogger != nil {
-                                uc.appLogger("quota check failed (non-blocking)", "etablissement_id", link.EtablissementID, "error", qerr)
-                        }
-                }
-        }
+	// Phase 2 — check quota capitation (B2B). Non bloquant si erreur DB (on log
+	// et on continue) — seul QuotaExceededError bloque.
+	if link != nil && uc.quotaRepo != nil {
+		if qerr := uc.quotaRepo.CheckStudentsQuota(ctx, link.EtablissementID); qerr != nil {
+			if domain.IsQuotaExceeded(qerr) {
+				uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "QUOTA_EXCEEDED")
+				return nil, &domain.SignupLinkStateError{
+					Code:    "QUOTA_EXCEEDED",
+					Message: "Le quota d'étudiants de cet établissement est atteint. Contactez votre responsable ou le support SECT.",
+				}
+			}
+			// Erreur non-quota (DB, etc.) : on logge mais on ne bloque pas.
+			if uc.appLogger != nil {
+				uc.appLogger("quota check failed (non-blocking)", "etablissement_id", link.EtablissementID, "error", qerr)
+			}
+		}
+	}
 
-        // Phase 2 — check restriction domaine (defense in depth). Le SQL le vérifie
-        // aussi atomiquement, mais on le fait ici pour :
-        //   - logguer l'audit précisément (DOMAIN_NOT_ALLOWED côté usecase),
-        //   - retourner 4xx avant l'appel SQL (économie DB + UX rapide).
-        if link != nil && link.EmailDomainRestriction != nil && *link.EmailDomainRestriction != "" {
-                if !strings.HasSuffix(email, "@"+strings.ToLower(*link.EmailDomainRestriction)) {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "DOMAIN_NOT_ALLOWED")
-                        return nil, &domain.SignupLinkStateError{
-                                Code:    "DOMAIN_NOT_ALLOWED",
-                                Message: fmt.Sprintf("Cet email n'appartient pas au domaine autorisé : @%s", *link.EmailDomainRestriction),
-                        }
-                }
-        }
+	// Phase 2 — check restriction domaine (defense in depth). Le SQL le vérifie
+	// aussi atomiquement, mais on le fait ici pour :
+	//   - logguer l'audit précisément (DOMAIN_NOT_ALLOWED côté usecase),
+	//   - retourner 4xx avant l'appel SQL (économie DB + UX rapide).
+	if link != nil && link.EmailDomainRestriction != nil && *link.EmailDomainRestriction != "" {
+		if !strings.HasSuffix(email, "@"+strings.ToLower(*link.EmailDomainRestriction)) {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "DOMAIN_NOT_ALLOWED")
+			return nil, &domain.SignupLinkStateError{
+				Code:    "DOMAIN_NOT_ALLOWED",
+				Message: fmt.Sprintf("Cet email n'appartient pas au domaine autorisé : @%s", *link.EmailDomainRestriction),
+			}
+		}
+	}
 
-        // SECT-STUDENT-SIGNUP-MATRICULE-1 — check matricule requis (defense in depth).
-        // Le SQL le vérifie aussi atomiquement (MATRICULE_REQUIRED + MATRICULE_INVALID),
-        // mais on le fait ici pour :
-        //   - logguer l'audit précisément (lien connu, code MATRICULE_REQUIRED),
-        //   - retourner 4xx avant l'appel SQL (économie DB + UX rapide).
-        // La validation regex n'est PAS faite côté usecase (elle l'est côté SQL avec
-        // catch d'exception si regex invalide — on évite de dupliquer cette logique).
-        if link != nil && link.RequireMatricule {
-                if strings.TrimSpace(matricule) == "" {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_REQUIRED")
-                        return nil, &domain.SignupLinkStateError{
-                                Code:    "MATRICULE_REQUIRED",
-                                Message: "Un matricule est requis pour cette inscription",
-                        }
-                }
-        }
+	// SECT-STUDENT-SIGNUP-MATRICULE-1 — check matricule requis (defense in depth).
+	// Le SQL le vérifie aussi atomiquement (MATRICULE_REQUIRED + MATRICULE_INVALID),
+	// mais on le fait ici pour :
+	//   - logguer l'audit précisément (lien connu, code MATRICULE_REQUIRED),
+	//   - retourner 4xx avant l'appel SQL (économie DB + UX rapide).
+	// La validation regex n'est PAS faite côté usecase (elle l'est côté SQL avec
+	// catch d'exception si regex invalide — on évite de dupliquer cette logique).
+	if link != nil && link.RequireMatricule {
+		if strings.TrimSpace(matricule) == "" {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_REQUIRED")
+			return nil, &domain.SignupLinkStateError{
+				Code:    "MATRICULE_REQUIRED",
+				Message: "Un matricule est requis pour cette inscription",
+			}
+		}
+	}
 
-        // Hasher le password (bcrypt cost 10, cohérent avec invitationBcryptCost).
-        hash, err := bcrypt.GenerateFromPassword([]byte(password), signupBcryptCost)
-        if err != nil {
-                return nil, fmt.Errorf("hash password: %w", err)
-        }
+	// Hasher le password (bcrypt cost 10, cohérent avec invitationBcryptCost).
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), signupBcryptCost)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
 
-        // Appeler la fonction SQL atomique (crée User + incrémente useCount).
-        // SECT-STUDENT-SIGNUP-MATRICULE-1 : passe le matricule saisi à la fonction SQL
-        // (sera ignoré si requireMatricule = false, sinon valide + override l'auto-généré).
-        res, err := uc.repo.AcceptSignup(ctx, token, email, string(hash), strings.TrimSpace(name), strings.TrimSpace(matricule))
-        if err != nil {
-                return nil, err
-        }
+	// Appeler la fonction SQL atomique (crée User + incrémente useCount).
+	// SECT-STUDENT-SIGNUP-MATRICULE-1 : passe le matricule saisi à la fonction SQL
+	// (sera ignoré si requireMatricule = false, sinon valide + override l'auto-généré).
+	res, err := uc.repo.AcceptSignup(ctx, token, email, string(hash), strings.TrimSpace(name), strings.TrimSpace(matricule))
+	if err != nil {
+		return nil, err
+	}
 
-        // Mapper le code métier.
-        switch res.Code {
-        case "OK":
-                // Succès → log audit + envoyer email de bienvenue (non bloquant).
-                if link != nil {
-                        userID := ""
-                        if res.UserID != nil {
-                                userID = *res.UserID
-                        }
-                        uc.logAudit(ctx, link.ID, userID, email, ip, userAgent, true, "OK")
-                }
-                if uc.mailer != nil {
-                        uc.sendStudentWelcomeEmail(ctx, token, res)
-                }
-                return res, nil
-        case "NOT_FOUND":
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "NOT_FOUND")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: fallbackMsg(res.Message, "Lien d'inscription introuvable")}
-        case "INACTIVE":
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "INACTIVE")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "INACTIVE", Message: fallbackMsg(res.Message, "Ce lien d'inscription a été révoqué")}
-        case "EXPIRED":
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "EXPIRED")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "EXPIRED", Message: fallbackMsg(res.Message, "Ce lien d'inscription a expiré")}
-        case "QUOTA_EXCEEDED":
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "QUOTA_EXCEEDED")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "QUOTA_EXCEEDED", Message: fallbackMsg(res.Message, "Quota d'inscriptions atteint pour ce lien")}
-        case "DOMAIN_NOT_ALLOWED":
-                // Cas théorique : race entre usecase check et SQL check (ex: link modifié
-                // entre les deux). Le SQL est authoritative.
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "DOMAIN_NOT_ALLOWED")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "DOMAIN_NOT_ALLOWED", Message: fallbackMsg(res.Message, "Domaine email non autorisé")}
-        case "USER_EXISTS":
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "USER_EXISTS")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "USER_EXISTS", Message: fallbackMsg(res.Message, "Un compte existe déjà avec cet email")}
-        case "MATRICULE_REQUIRED":
-                // Cas théorique : race entre usecase check et SQL check (ex: link modifié
-                // entre les deux — requireMatricule passé à true). Le SQL est authoritative.
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_REQUIRED")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "MATRICULE_REQUIRED", Message: fallbackMsg(res.Message, "Un matricule est requis pour cette inscription")}
-        case "MATRICULE_INVALID":
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_INVALID")
-                }
-                return nil, &domain.SignupLinkStateError{Code: "MATRICULE_INVALID", Message: fallbackMsg(res.Message, "Le format du matricule est invalide")}
-        default:
-                if link != nil {
-                        uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, res.Code)
-                }
-                return nil, fmt.Errorf("unknown accept_student_signup code: %s (%s)", res.Code, res.Message)
-        }
+	// Mapper le code métier.
+	switch res.Code {
+	case "OK":
+		// Succès → log audit + envoyer email de bienvenue (non bloquant).
+		if link != nil {
+			userID := ""
+			if res.UserID != nil {
+				userID = *res.UserID
+			}
+			uc.logAudit(ctx, link.ID, userID, email, ip, userAgent, true, "OK")
+		}
+		if uc.mailer != nil {
+			uc.sendStudentWelcomeEmail(ctx, token, res)
+		}
+		return res, nil
+	case "NOT_FOUND":
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "NOT_FOUND")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "NOT_FOUND", Message: fallbackMsg(res.Message, "Lien d'inscription introuvable")}
+	case "INACTIVE":
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "INACTIVE")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "INACTIVE", Message: fallbackMsg(res.Message, "Ce lien d'inscription a été révoqué")}
+	case "EXPIRED":
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "EXPIRED")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "EXPIRED", Message: fallbackMsg(res.Message, "Ce lien d'inscription a expiré")}
+	case "QUOTA_EXCEEDED":
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "QUOTA_EXCEEDED")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "QUOTA_EXCEEDED", Message: fallbackMsg(res.Message, "Quota d'inscriptions atteint pour ce lien")}
+	case "DOMAIN_NOT_ALLOWED":
+		// Cas théorique : race entre usecase check et SQL check (ex: link modifié
+		// entre les deux). Le SQL est authoritative.
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "DOMAIN_NOT_ALLOWED")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "DOMAIN_NOT_ALLOWED", Message: fallbackMsg(res.Message, "Domaine email non autorisé")}
+	case "USER_EXISTS":
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "USER_EXISTS")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "USER_EXISTS", Message: fallbackMsg(res.Message, "Un compte existe déjà avec cet email")}
+	case "MATRICULE_REQUIRED":
+		// Cas théorique : race entre usecase check et SQL check (ex: link modifié
+		// entre les deux — requireMatricule passé à true). Le SQL est authoritative.
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_REQUIRED")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "MATRICULE_REQUIRED", Message: fallbackMsg(res.Message, "Un matricule est requis pour cette inscription")}
+	case "MATRICULE_INVALID":
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, "MATRICULE_INVALID")
+		}
+		return nil, &domain.SignupLinkStateError{Code: "MATRICULE_INVALID", Message: fallbackMsg(res.Message, "Le format du matricule est invalide")}
+	default:
+		if link != nil {
+			uc.logAudit(ctx, link.ID, "", email, ip, userAgent, false, res.Code)
+		}
+		return nil, fmt.Errorf("unknown accept_student_signup code: %s (%s)", res.Code, res.Message)
+	}
 }
 
 // logAudit logge un événement d'inscription dans "RegistrationEvent" via la
@@ -515,20 +611,20 @@ func (uc *StudentSignupLinkUseCase) Accept(ctx context.Context, token, email, na
 // Non bloquant : si l'audit échoue (DB indisponible, etc.), on log l'erreur sans
 // faire échouer l'inscription.
 func (uc *StudentSignupLinkUseCase) logAudit(ctx context.Context, linkID, userID, email, ip, userAgent string, success bool, code string) {
-        if linkID == "" {
-                return // rien à logger sans linkID
-        }
-        if err := uc.repo.LogRegistrationEvent(ctx, linkID, userID, email, ip, userAgent, success, code); err != nil && uc.appLogger != nil {
-                uc.appLogger("registration event log failed", "link_id", linkID, "code", code, "error", err)
-        }
+	if linkID == "" {
+		return // rien à logger sans linkID
+	}
+	if err := uc.repo.LogRegistrationEvent(ctx, linkID, userID, email, ip, userAgent, success, code); err != nil && uc.appLogger != nil {
+		uc.appLogger("registration event log failed", "link_id", linkID, "code", code, "error", err)
+	}
 }
 
 // fallbackMsg retourne message si non vide, sinon fallback.
 func fallbackMsg(message, fallback string) string {
-        if strings.TrimSpace(message) != "" {
-                return message
-        }
-        return fallback
+	if strings.TrimSpace(message) != "" {
+		return message
+	}
+	return fallback
 }
 
 // sendStudentWelcomeEmail envoie l'email de bienvenue après inscription réussie.
@@ -544,88 +640,88 @@ func fallbackMsg(message, fallback string) string {
 // message optionnel du créateur). Le template HTML-échappe le customMessage
 // pour prévenir XSS (un créateur ne peut pas injecter du HTML dans l'email).
 func (uc *StudentSignupLinkUseCase) sendStudentWelcomeEmail(ctx context.Context, token string, res *domain.AcceptSignupResult) {
-        // Context avec timeout de 30s (évite fuite si DB ou Resend est lent).
-        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-        defer cancel()
+	// Context avec timeout de 30s (évite fuite si DB ou Resend est lent).
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-        var (
-                etabNom       string
-                filiereNom    string
-                enseignantNom string
-                etabType      string
-                customMsg     string
-        )
-        if res.EtablissementNom != nil {
-                etabNom = *res.EtablissementNom
-        }
-        if res.FiliereNom != nil && *res.FiliereNom != "" {
-                filiereNom = *res.FiliereNom
-        } else {
-                filiereNom = "—"
-        }
-        // Récupérer le nom du créateur + le type d'étab + le customWelcomeMessage
-        // via FindByToken (le résultat AcceptSignup ne retourne pas le créateur
-        // — seulement l'étab et la filière).
-        if link, err := uc.repo.FindByToken(ctx, token); err == nil && link != nil {
-                if link.Creator != nil {
-                        enseignantNom = link.Creator.Name
-                }
-                if link.Etablissement != nil {
-                        etabType = link.Etablissement.Type
-                }
-                if link.CustomWelcomeMessage != nil {
-                        customMsg = *link.CustomWelcomeMessage
-                }
-        }
+	var (
+		etabNom       string
+		filiereNom    string
+		enseignantNom string
+		etabType      string
+		customMsg     string
+	)
+	if res.EtablissementNom != nil {
+		etabNom = *res.EtablissementNom
+	}
+	if res.FiliereNom != nil && *res.FiliereNom != "" {
+		filiereNom = *res.FiliereNom
+	} else {
+		filiereNom = "—"
+	}
+	// Récupérer le nom du créateur + le type d'étab + le customWelcomeMessage
+	// via FindByToken (le résultat AcceptSignup ne retourne pas le créateur
+	// — seulement l'étab et la filière).
+	if link, err := uc.repo.FindByToken(ctx, token); err == nil && link != nil {
+		if link.Creator != nil {
+			enseignantNom = link.Creator.Name
+		}
+		if link.Etablissement != nil {
+			etabType = link.Etablissement.Type
+		}
+		if link.CustomWelcomeMessage != nil {
+			customMsg = *link.CustomWelcomeMessage
+		}
+	}
 
-        // Matricule pour l'email (peut être nil si pas de filière).
-        matricule := ""
-        if res.UserMatricule != nil {
-                matricule = *res.UserMatricule
-        }
+	// Matricule pour l'email (peut être nil si pas de filière).
+	matricule := ""
+	if res.UserMatricule != nil {
+		matricule = *res.UserMatricule
+	}
 
-        // Nom du destinataire (utilise le nom fourni par l'étudiant).
-        recipientName := ""
-        if res.UserName != nil {
-                recipientName = *res.UserName
-        }
-        toEmail := ""
-        if res.UserEmail != nil {
-                toEmail = *res.UserEmail
-        }
+	// Nom du destinataire (utilise le nom fourni par l'étudiant).
+	recipientName := ""
+	if res.UserName != nil {
+		recipientName = *res.UserName
+	}
+	toEmail := ""
+	if res.UserEmail != nil {
+		toEmail = *res.UserEmail
+	}
 
-        tplData := emailtpl.StudentWelcomeData{
-                EmailData:         emailtpl.DefaultData(recipientName, uc.appBaseURL),
-                EtablissementNom:  etabNom,
-                EtablissementType: etabType,
-                FiliereNom:        filiereNom,
-                EnseignantNom:     enseignantNom,
-                LoginURL:          uc.appBaseURL + "/login",
-                Matricule:         matricule,
-                CustomMessage:     customMsg,
-        }
+	tplData := emailtpl.StudentWelcomeData{
+		EmailData:         emailtpl.DefaultData(recipientName, uc.appBaseURL),
+		EtablissementNom:  etabNom,
+		EtablissementType: etabType,
+		FiliereNom:        filiereNom,
+		EnseignantNom:     enseignantNom,
+		LoginURL:          uc.appBaseURL + "/login",
+		Matricule:         matricule,
+		CustomMessage:     customMsg,
+	}
 
-        if err := uc.mailer.Send(mailer.Email{
-                To:      toEmail,
-                Subject: "SECT — Votre compte étudiant est prêt",
-                Body:    emailtpl.StudentWelcomeText(tplData),
-                HTML:    emailtpl.StudentWelcomeHTML(tplData),
-        }); err != nil && uc.appLogger != nil {
-                // Sécurité : ne jamais logger le token en clair. On log seulement le
-                // userID si disponible (jamais le token).
-                userID := ""
-                if res.UserID != nil {
-                        userID = *res.UserID
-                }
-                uc.appLogger("student welcome email failed", "user_id", userID, "error", err)
-        }
+	if err := uc.mailer.Send(mailer.Email{
+		To:      toEmail,
+		Subject: "SECT — Votre compte étudiant est prêt",
+		Body:    emailtpl.StudentWelcomeText(tplData),
+		HTML:    emailtpl.StudentWelcomeHTML(tplData),
+	}); err != nil && uc.appLogger != nil {
+		// Sécurité : ne jamais logger le token en clair. On log seulement le
+		// userID si disponible (jamais le token).
+		userID := ""
+		if res.UserID != nil {
+			userID = *res.UserID
+		}
+		uc.appLogger("student welcome email failed", "user_id", userID, "error", err)
+	}
 }
 
 // SetLogger injecte un logger optionnel pour tracer les erreurs d'envoi email
 // sans propager. Permet au main.go de brancher slog sans coupler le usecase
 // à *slog.Logger.
 func (uc *StudentSignupLinkUseCase) SetLogger(fn func(msg string, args ...any)) {
-        uc.appLogger = fn
+	uc.appLogger = fn
 }
 
 // Stats — SECT-REG-LINK-PHASE3-BACKEND-1
@@ -655,36 +751,37 @@ func (uc *StudentSignupLinkUseCase) SetLogger(fn func(msg string, args ...any)) 
 //  7. COUNT(success), COUNT(failure) — depuis RegistrationEvent (via JOIN StudentSignupLink)
 //  8. Top 5 liens by useCount (avec label, maxUses, expiresAt, actif)
 //  9. Daily creations (30 derniers jours) — GROUP BY date_trunc('day', createdAt)
+//
 // 10. Failure breakdown by code (GROUP BY code WHERE success=false)
 //
 // Les erreurs de query non critiques (ex: RegistrationEvent si la table n'existe
 // pas encore en dev) sont ignorées — les compteurs restent à 0 (déjà initialisés).
 func (uc *StudentSignupLinkUseCase) Stats(ctx context.Context, claims db.SessionClaims) (*domain.StudentSignupLinkStats, error) {
-        role := domain.Role(claims.Role)
-        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
-                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
-        }
-        if claims.UserID == "" {
-                return nil, &domain.UnauthorizedError{Message: "session invalide"}
-        }
-        // RESPONSABLE doit avoir un étab (sinon la RLS ne retourne rien — on
-        // retourne une erreur explicite pour aider au debug).
-        if role == domain.RoleResponsable && claims.EtablissementID == "" {
-                return nil, &domain.UnauthorizedError{Message: "établissement requis dans la session"}
-        }
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if claims.UserID == "" {
+		return nil, &domain.UnauthorizedError{Message: "session invalide"}
+	}
+	// RESPONSABLE doit avoir un étab (sinon la RLS ne retourne rien — on
+	// retourne une erreur explicite pour aider au debug).
+	if role == domain.RoleResponsable && claims.EtablissementID == "" {
+		return nil, &domain.UnauthorizedError{Message: "établissement requis dans la session"}
+	}
 
-        stats := &domain.StudentSignupLinkStats{
-                TopLinks:         []domain.TopLinkStat{},
-                DailyCreations:   []domain.DailyCreationStat{},
-                FailureBreakdown: map[string]int{},
-        }
+	stats := &domain.StudentSignupLinkStats{
+		TopLinks:         []domain.TopLinkStat{},
+		DailyCreations:   []domain.DailyCreationStat{},
+		FailureBreakdown: map[string]int{},
+	}
 
-        err := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
-                // 1-6. Compteurs globaux en une seule query (FILTER pour perf).
-                // Le scoping est appliqué par la RLS automatiquement (pas de WHERE explicite).
-                var total, active, expired, revoked, expiringSoon int
-                var totalUses sql.NullInt64
-                q := `
+	err := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
+		// 1-6. Compteurs globaux en une seule query (FILTER pour perf).
+		// Le scoping est appliqué par la RLS automatiquement (pas de WHERE explicite).
+		var total, active, expired, revoked, expiringSoon int
+		var totalUses sql.NullInt64
+		q := `
                         SELECT
                                 count(*) AS total,
                                 count(*) FILTER (WHERE "actif" = true AND "expiresAt" > NOW() AND "deletedAt" IS NULL) AS active,
@@ -694,63 +791,63 @@ func (uc *StudentSignupLinkUseCase) Stats(ctx context.Context, claims db.Session
                                 COALESCE(sum("useCount"), 0) AS total_uses
                         FROM "StudentSignupLink"
                 `
-                if err := tx.QueryRow(ctx, q).Scan(&total, &active, &expired, &revoked, &expiringSoon, &totalUses); err == nil {
-                        stats.Total = total
-                        stats.Active = active
-                        stats.Expired = expired
-                        stats.Revoked = revoked
-                        stats.ExpiringSoon = expiringSoon
-                        if totalUses.Valid {
-                                stats.TotalUses = int(totalUses.Int64)
-                        }
-                }
+		if err := tx.QueryRow(ctx, q).Scan(&total, &active, &expired, &revoked, &expiringSoon, &totalUses); err == nil {
+			stats.Total = total
+			stats.Active = active
+			stats.Expired = expired
+			stats.Revoked = revoked
+			stats.ExpiringSoon = expiringSoon
+			if totalUses.Valid {
+				stats.TotalUses = int(totalUses.Int64)
+			}
+		}
 
-                // 7. Compteurs succès/échec depuis RegistrationEvent (via JOIN).
-                // NB : si la table RegistrationEvent n'existe pas en dev (migration
-                // 000080 pas appliquée), la query échoue silencieusement — on garde 0.
-                // La RLS sur StudentSignupLink filtre automatiquement la JOIN.
-                regQ := `
+		// 7. Compteurs succès/échec depuis RegistrationEvent (via JOIN).
+		// NB : si la table RegistrationEvent n'existe pas en dev (migration
+		// 000080 pas appliquée), la query échoue silencieusement — on garde 0.
+		// La RLS sur StudentSignupLink filtre automatiquement la JOIN.
+		regQ := `
                         SELECT
                                 count(*) FILTER (WHERE r."success" = true) AS success,
                                 count(*) FILTER (WHERE r."success" = false) AS failure
                         FROM "RegistrationEvent" r
                         JOIN "StudentSignupLink" s ON s."id" = r."linkId"
                 `
-                var successCount, failureCount int
-                if err := tx.QueryRow(ctx, regQ).Scan(&successCount, &failureCount); err == nil {
-                        stats.SuccessCount = successCount
-                        stats.FailureCount = failureCount
-                }
+		var successCount, failureCount int
+		if err := tx.QueryRow(ctx, regQ).Scan(&successCount, &failureCount); err == nil {
+			stats.SuccessCount = successCount
+			stats.FailureCount = failureCount
+		}
 
-                // 8. Top 5 liens par useCount.
-                topQ := `
+		// 8. Top 5 liens par useCount.
+		topQ := `
                         SELECT "id", COALESCE("label", 'Sans libellé'), "useCount", "maxUses", "expiresAt", "actif"
                         FROM "StudentSignupLink"
                         WHERE "deletedAt" IS NULL
                         ORDER BY "useCount" DESC, "createdAt" DESC
                         LIMIT 5
                 `
-                rows, qerr := tx.Query(ctx, topQ)
-                if qerr == nil {
-                        defer rows.Close()
-                        for rows.Next() {
-                                var tl domain.TopLinkStat
-                                var label string
-                                var maxUses *int
-                                var expiresAt time.Time
-                                var actif bool
-                                if err := rows.Scan(&tl.ID, &label, &tl.UseCount, &maxUses, &expiresAt, &actif); err == nil {
-                                        tl.Label = label
-                                        tl.MaxUses = maxUses
-                                        tl.ExpiresAt = expiresAt.Format("2006-01-02T15:04:05Z07:00")
-                                        tl.Actif = actif
-                                        stats.TopLinks = append(stats.TopLinks, tl)
-                                }
-                        }
-                }
+		rows, qerr := tx.Query(ctx, topQ)
+		if qerr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var tl domain.TopLinkStat
+				var label string
+				var maxUses *int
+				var expiresAt time.Time
+				var actif bool
+				if err := rows.Scan(&tl.ID, &label, &tl.UseCount, &maxUses, &expiresAt, &actif); err == nil {
+					tl.Label = label
+					tl.MaxUses = maxUses
+					tl.ExpiresAt = expiresAt.Format("2006-01-02T15:04:05Z07:00")
+					tl.Actif = actif
+					stats.TopLinks = append(stats.TopLinks, tl)
+				}
+			}
+		}
 
-                // 9. Daily creations (30 derniers jours).
-                dailyQ := `
+		// 9. Daily creations (30 derniers jours).
+		dailyQ := `
                         SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
                                count(*) AS count
                         FROM "StudentSignupLink"
@@ -758,19 +855,19 @@ func (uc *StudentSignupLinkUseCase) Stats(ctx context.Context, claims db.Session
                         GROUP BY day
                         ORDER BY day ASC
                 `
-                rows2, qerr2 := tx.Query(ctx, dailyQ)
-                if qerr2 == nil {
-                        defer rows2.Close()
-                        for rows2.Next() {
-                                var dc domain.DailyCreationStat
-                                if err := rows2.Scan(&dc.Day, &dc.Count); err == nil {
-                                        stats.DailyCreations = append(stats.DailyCreations, dc)
-                                }
-                        }
-                }
+		rows2, qerr2 := tx.Query(ctx, dailyQ)
+		if qerr2 == nil {
+			defer rows2.Close()
+			for rows2.Next() {
+				var dc domain.DailyCreationStat
+				if err := rows2.Scan(&dc.Day, &dc.Count); err == nil {
+					stats.DailyCreations = append(stats.DailyCreations, dc)
+				}
+			}
+		}
 
-                // 10. Failure breakdown by code.
-                fbQ := `
+		// 10. Failure breakdown by code.
+		fbQ := `
                         SELECT r."code", count(*) AS count
                         FROM "RegistrationEvent" r
                         JOIN "StudentSignupLink" s ON s."id" = r."linkId"
@@ -778,22 +875,22 @@ func (uc *StudentSignupLinkUseCase) Stats(ctx context.Context, claims db.Session
                         GROUP BY r."code"
                         ORDER BY count DESC
                 `
-                rows3, qerr3 := tx.Query(ctx, fbQ)
-                if qerr3 == nil {
-                        defer rows3.Close()
-                        for rows3.Next() {
-                                var code string
-                                var count int
-                                if err := rows3.Scan(&code, &count); err == nil {
-                                        stats.FailureBreakdown[code] = count
-                                }
-                        }
-                }
+		rows3, qerr3 := tx.Query(ctx, fbQ)
+		if qerr3 == nil {
+			defer rows3.Close()
+			for rows3.Next() {
+				var code string
+				var count int
+				if err := rows3.Scan(&code, &count); err == nil {
+					stats.FailureBreakdown[code] = count
+				}
+			}
+		}
 
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return stats, nil
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return stats, nil
 }
