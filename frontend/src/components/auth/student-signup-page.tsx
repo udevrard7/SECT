@@ -1036,36 +1036,44 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
+            {/* SECT-INSCRIPTION-BADGES-FIX-1 : remplacer les DSBadge shadcn (conçus
+                pour thème clair) par des badges inline avec couleurs hex du thème
+                sombre. Les DSBadge variants (primary/success/info/warning)
+                avaient des fonds clairs qui rendaient le texte illisible sur le
+                fond sombre — notamment le badge 'primary' qui créait un rectangle
+                blanc masquant le texte. */}
             {linkData.etablissement?.type && (
-              <DSBadge variant="primary" size="sm">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border border-[#84CC16]/40 bg-[#84CC16]/15 text-[#84CC16]">
+                <Building2 className="h-3 w-3" />
                 {ETAB_TYPE_LABELS[linkData.etablissement.type] || linkData.etablissement.type}
-              </DSBadge>
+              </span>
             )}
             {linkData.filiere?.nom && (
-              <DSBadge variant="success" size="sm">
-                <BookOpen className="h-3 w-3 mr-1" />
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border border-[#F59E0B]/40 bg-[#F59E0B]/15 text-[#F59E0B]">
+                <BookOpen className="h-3 w-3" />
                 {linkData.filiere.nom}
                 {linkData.filiere.code ? ` (${linkData.filiere.code})` : ''}
-              </DSBadge>
+              </span>
             )}
             {linkData.etablissement?.ville && (
-              <DSBadge variant="info" size="sm">
-                <MapPin className="h-3 w-3 mr-1" />
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border border-white/20 bg-white/5 text-white/80">
+                <MapPin className="h-3 w-3" />
                 {linkData.etablissement.ville}
-              </DSBadge>
+              </span>
             )}
             {linkData.niveau && (
-              <DSBadge variant="warning" size="sm">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border border-[#C2410C]/40 bg-[#C2410C]/15 text-[#C2410C]">
+                <GraduationCap className="h-3 w-3" />
                 {linkData.niveau}
-              </DSBadge>
+              </span>
             )}
           </div>
           {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : banner contexte domaine email */}
           {linkData.emailDomainRestriction && (
-            <DSBadge variant="warning" size="sm" className="w-full justify-start">
-              <AtSign className="h-3 w-3 mr-1" />
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border border-[#C2410C]/40 bg-[#C2410C]/15 text-[#C2410C] w-full">
+              <AtSign className="h-3 w-3" />
               Email institutionnel requis : @{linkData.emailDomainRestriction}
-            </DSBadge>
+            </span>
           )}
           {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
               de l'enseignant (affiché si non vide côté backend). */}
