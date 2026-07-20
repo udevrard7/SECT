@@ -399,3 +399,48 @@ var ValidNiveaux = map[string]bool{
 func IsValidNiveau(n string) bool {
         return ValidNiveaux[n]
 }
+
+// OrdreNiveaux définit l'ordre strict du cursus académique (L1 → DOCTORAT).
+// Utilisé pour calculer le niveau suivant lors de la promotion de fin d'année
+// (feature SECT-PROMOTION-* / SECT-ANNEE-RLS-FIX-2).
+//
+// L'ordre reflète le système LMD francophone :
+//   L1 < L2 < L3 (Licence) < M1 < M2 (Master) < DOCTORAT
+//
+// NB : il n'existe pas de table FiliereNiveau materialisant les niveaux offerts
+// par filière. L'enum NiveauEtude est global à la plateforme. Un étudiant en L3
+// qui valide est considéré DIPLOME si son établissement s'arrête à L3 (cas
+// Licence professionnelle), OU promu en M1 s'il continue. Cette décision est
+// gérée par la logique de promotion (override manuel possible), pas par ce helper.
+var OrdreNiveaux = []NiveauEtude{
+        NiveauL1, NiveauL2, NiveauL3,
+        NiveauM1, NiveauM2, NiveauDoctorat,
+}
+
+// NextNiveau retourne le niveau suivant dans le cursus, et un booléen isTerminal
+// indiquant si le niveau actuel est le dernier (DOCTORAT).
+//
+// Pour DOCTORAT, retourne (DOCTORAT, true) — l'étudiant est diplômé, pas de
+// niveau suivant.
+//
+// Pour un niveau invalide (vide ou non listé dans OrdreNiveaux), retourne
+// ("", false). L'appelant doit gérer ce cas comme une erreur (étudiant sans
+// niveau renseigné).
+//
+// Exemples :
+//   NextNiveau(NiveauL1)  → (NiveauL2, false)
+//   NextNiveau(NiveauL3)  → (NiveauM1, false)
+//   NextNiveau(NiveauM2)  → (NiveauDoctorat, false)
+//   NextNiveau(NiveauDoctorat) → (NiveauDoctorat, true)
+//   NextNiveau("")        → ("", false)
+func NextNiveau(n NiveauEtude) (next NiveauEtude, isTerminal bool) {
+        for i, niveau := range OrdreNiveaux {
+                if niveau == n {
+                        if i == len(OrdreNiveaux)-1 {
+                                return n, true // DOCTORAT = terminal
+                        }
+                        return OrdreNiveaux[i+1], false
+                }
+        }
+        return "", false
+}
