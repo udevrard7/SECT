@@ -1075,19 +1075,9 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               Email institutionnel requis : @{linkData.emailDomainRestriction}
             </span>
           )}
-          {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
-              de l'enseignant (affiché si non vide côté backend). */}
-          {linkData.customWelcomeMessage && (
-            <div className="mt-2 p-3 rounded-md bg-[#84CC16]/10 border border-[#84CC16]/20">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#84CC16] mb-1">
-                <MessageSquare className="h-3 w-3" />
-                Message de votre enseignant
-              </div>
-              <p className="text-sm text-white whitespace-pre-wrap">
-                {linkData.customWelcomeMessage}
-              </p>
-            </div>
-          )}
+          {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message personnalisé du créateur
+              DÉPLACÉ vers le bas du formulaire (avant bouton Continuer) —
+              SECT-INSCRIPTION-MESSAGE-MOVE-1. Anciennement ici, maintenant en bas. */}
           {linkData.creatorName && (
             <p className="text-xs text-white/40 pt-1 border-t border-white/10">
               Invité par <span className="font-medium text-white">{linkData.creatorName}</span>
@@ -1124,6 +1114,23 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               showLabel={false}
               showValue={false}
             />
+          </div>
+        )}
+
+        {/* SECT-INSCRIPTION-MESSAGE-MOVE-1 : message personnalisé du créateur
+            déplacé en BAS du formulaire (avant le bouton Continuer) pour une
+            meilleure lisibilité — le message est l'information la plus importante
+            après le contexte établissement, il doit être vu juste avant l'action.
+            Libellé changé : 'Message de votre enseignant' → 'Message aux Étudiants'. */}
+        {linkData.customWelcomeMessage && (
+          <div className="p-3 rounded-lg bg-[#84CC16]/10 border border-[#84CC16]/20">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#84CC16] mb-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Message aux Étudiants
+            </div>
+            <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+              {linkData.customWelcomeMessage}
+            </p>
           </div>
         )}
 
