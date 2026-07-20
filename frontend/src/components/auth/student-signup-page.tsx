@@ -17,10 +17,12 @@
 //  - Banner contextuel « Email institutionnel requis » si le lien impose un
 //    domaine (@univ-ci.edu).
 //
-// Identité visuelle : "Savane EdTech" (palette africaine, motif kente,
-// particules flottantes, font-display). Aucune dépendance à accept-invitation
-// (les helpers getPasswordStrength / getPasswordChecks / useCountdown /
-// FloatingParticle sont clonés ici pour éviter un couplage fragile).
+// Identité visuelle : "Savane EdTech" — palette dark navy (#0A1931 / #0f172a /
+// #1E1B4B) + accents vert lime #84CC16 + or #F59E0B + terre cuite #C2410C,
+// motif kente + glow orbs animés + glass-morphism. Alignée exactement sur la
+// page /souscrire-b2c (cf. SECT-INSCRIPTION-STYLE-ALIGN-1). Aucune dépendance à
+// accept-invitation (les helpers getPasswordStrength / getPasswordChecks /
+// useCountdown sont clonés ici pour éviter un couplage fragile).
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react'
@@ -54,13 +56,10 @@ import {
   ShieldAlert,
   AlertTriangle,
   MessageSquare,
+  GraduationCap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import {
-  Card,
-  CardContent,
-} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -152,71 +151,81 @@ declare global {
   }
 }
 
-// ─── Step Indicator (clone adapté depuis accept-invitation-page.tsx) ───
+// ─── Step Indicator — aligné sur le style Progress de /souscrire-b2c ───
 // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes pour la page
 // d'inscription étudiante. Step 1 = Vérification du contexte du lien,
 // Step 2 = Création du compte (formulaire + Turnstile).
-
-// SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : StepIndicator responsive + glassmorphism,
-// aligné sur le style du wizard B2C responsable (h-7 w-7 sm:h-8 sm:w-8, aria-label).
+//
+// SECT-INSCRIPTION-STYLE-ALIGN-1 : refonte visuelle exacte du StepIndicator
+// pour matcher le composant Progress de /souscrire-b2c (palette dark navy +
+// vert lime #84CC16 + or #F59E0B + terre cuite #C2410C, glow pulse, track
+// animé). Adapté pour 2 cercles (au lieu de 3) : la formule de fill devient
+// `(step-1)/1` au lieu de `(step-1)/2`.
 function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
+  const labels: [string, string] = ['Vérification', 'Création du compte']
+  const step = currentStep
   return (
     <div
-      className="flex items-center justify-center gap-2 sm:gap-3 mb-6"
+      className="mb-6"
       role="navigation"
       aria-label="Étapes d'inscription étudiante"
     >
-      {/* Step 1 */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${
-            currentStep >= 1
-              ? 'bg-success text-success-foreground shadow-md shadow-success/30'
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          {currentStep > 1 ? <CheckCircle2 className="h-4 w-4" /> : '1'}
-        </div>
-        <span
-          className={`text-xs sm:text-sm font-medium transition-colors ${
-            currentStep >= 1
-              ? 'text-success-text'
-              : 'text-muted-foreground'
-          }`}
-        >
-          Vérification
-        </span>
+      <div className="relative flex items-center justify-between px-2">
+        {/* Background track */}
+        <div className="absolute top-1/2 left-2 right-2 h-0.5 bg-white/10 -translate-y-1/2" />
+        {/* Animated fill */}
+        <motion.div
+          className="absolute top-1/2 left-2 h-0.5 bg-gradient-to-r from-[#84CC16] to-[#65A30D] -translate-y-1/2"
+          initial={false}
+          animate={{ width: `calc((100% - 1rem) * ${Math.max(step - 1, 0) / 1})` }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        />
+        {/* Circles */}
+        {[1, 2].map((n) => {
+          const isComplete = step > n
+          const isCurrent = step === n
+          return (
+            <motion.div
+              key={n}
+              className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                isComplete
+                  ? 'bg-[#84CC16] border-[#84CC16] text-[#0A1931]'
+                  : isCurrent
+                    ? 'bg-[#0A1931] border-[#84CC16] text-[#84CC16]'
+                    : 'bg-[#0A1931] border-white/15 text-white/40'
+              }`}
+              animate={
+                isCurrent
+                  ? {
+                      boxShadow: [
+                        '0 0 0 0 rgba(132,204,22,0.5)',
+                        '0 0 0 8px rgba(132,204,22,0)',
+                      ],
+                    }
+                  : {}
+              }
+              transition={isCurrent ? { duration: 1.5, repeat: Infinity } : {}}
+            >
+              {isComplete ? <CheckCircle2 className="h-4 w-4" /> : n}
+            </motion.div>
+          )
+        })}
       </div>
-
-      {/* Connector */}
-      <div
-        className={`h-0.5 w-4 sm:w-8 transition-colors duration-300 ${
-          currentStep >= 2
-            ? 'bg-success'
-            : 'bg-muted'
-        }`}
-      />
-
-      {/* Step 2 */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${
-            currentStep >= 2
-              ? 'bg-success text-success-foreground shadow-md shadow-success/30'
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          2
-        </div>
-        <span
-          className={`text-xs sm:text-sm font-medium transition-colors ${
-            currentStep >= 2
-              ? 'text-success-text'
-              : 'text-muted-foreground'
-          }`}
-        >
-          Création du compte
-        </span>
+      <div className="grid grid-cols-2 mt-2">
+        {labels.map((label, i) => (
+          <span
+            key={i}
+            className={`text-center text-[10px] font-medium transition-colors ${
+              step === i + 1
+                ? 'text-white'
+                : step > i + 1
+                  ? 'text-white/60'
+                  : 'text-white/40'
+            }`}
+          >
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -248,10 +257,10 @@ function getPasswordStrength(password: string): {
   if (/[0-9]/.test(password)) score++
   if (/[^A-Za-z0-9]/.test(password)) score++
 
-  if (score <= 1) return { score, label: 'Faible', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-500' }
-  if (score === 2) return { score, label: 'Moyen', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-500' }
-  if (score === 3) return { score, label: 'Fort', color: 'text-success-text', bgColor: 'bg-success' }
-  return { score, label: 'Très fort', color: 'text-success-text', bgColor: 'bg-success' }
+  if (score <= 1) return { score, label: 'Faible', color: 'text-red-400', bgColor: 'bg-red-500' }
+  if (score === 2) return { score, label: 'Moyen', color: 'text-amber-400', bgColor: 'bg-amber-500' }
+  if (score === 3) return { score, label: 'Fort', color: 'text-[#84CC16]', bgColor: 'bg-[#84CC16]' }
+  return { score, label: 'Très fort', color: 'text-[#84CC16]', bgColor: 'bg-[#84CC16]' }
 }
 
 function getPasswordChecks(password: string) {
@@ -304,44 +313,6 @@ function useCountdown(targetDate: string | null) {
   }, [targetDate])
 
   return timeLeft
-}
-
-// ─── Floating particles (cloné depuis login-form.tsx) ───
-// Particules flottantes palette africaine : or (#F59E0B), vert lime (#84CC16),
-// terre cuite (#C2410C). Identité "Savane EdTech".
-
-function FloatingParticle({
-  delay,
-  duration,
-  x,
-  y,
-  size,
-  color,
-}: {
-  delay: number
-  duration: number
-  x: string
-  y: string
-  size: number
-  color: string
-}) {
-  return (
-    <motion.div
-      className="absolute rounded-full pointer-events-none"
-      style={{ left: x, top: y, width: size, height: size, backgroundColor: color, filter: 'blur(1px)' }}
-      animate={{
-        y: [0, -30, 0],
-        opacity: [0, 0.6, 0],
-        scale: [0.5, 1, 0.5],
-      }}
-      transition={{
-        duration,
-        delay,
-        repeat: Infinity,
-        ease: 'easeInOut',
-      }}
-    />
-  )
 }
 
 // ─── Zod schema ───
@@ -763,8 +734,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   // ─── Render: Loading state ───
   const renderLoading = () => (
     <div className="flex flex-col items-center justify-center py-12">
-      <Loader2 className="h-10 w-10 animate-spin text-success-text mb-4" />
-      <p className="text-sm text-muted-foreground">Vérification de votre lien d&apos;inscription...</p>
+      <Loader2 className="h-10 w-10 animate-spin text-[#84CC16] mb-4" />
+      <p className="text-sm text-white/40">Vérification de votre lien d&apos;inscription...</p>
     </div>
   )
 
@@ -890,11 +861,11 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
     return (
       <div className="flex flex-col items-center text-center py-8" role="alert">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full mb-4 bg-destructive/10 text-destructive">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full mb-4 bg-red-500/10 text-red-400">
           {errorContent.icon}
         </div>
-        <h3 className="text-lg font-semibold mb-2 font-display">{errorContent.title}</h3>
-        <p className="text-sm text-muted-foreground max-w-sm mb-6">
+        <h3 className="text-lg font-semibold mb-2 font-display text-white">{errorContent.title}</h3>
+        <p className="text-sm text-white/40 max-w-sm mb-6">
           {errorContent.description}
         </p>
         <div className="flex flex-wrap gap-3 justify-center">
@@ -907,7 +878,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                 setSubmitErrorCode(null)
                 if (verifyError) verifyQuery.refetch()
               }}
-              className="border-success/30 text-success-text hover:bg-success/10"
+              className="border-[#84CC16]/30 text-[#84CC16] hover:bg-[#84CC16]/10"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Réessayer
@@ -919,7 +890,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               onClick={() => {
                 if (typeof window !== 'undefined') window.location.reload()
               }}
-              className="border-info/30 text-info hover:bg-info/10"
+              className="border-[#F59E0B]/30 text-[#F59E0B] hover:bg-[#F59E0B]/10"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Recharger
@@ -927,7 +898,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           )}
           {errorContent.showSupport && (
             <a href="mailto:contact@sect.app?subject=Probl%C3%A8me%20lien%20d%27inscription">
-              <Button className="bg-success hover:bg-success/90 text-success-foreground">
+              <Button className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all">
                 Contacter le support
               </Button>
             </a>
@@ -944,21 +915,21 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-        className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10 mb-6"
+        className="flex h-20 w-20 items-center justify-center rounded-full bg-[#84CC16]/15 mb-6"
       >
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
         >
-          <CheckCircle2 className="h-10 w-10 text-success-text" />
+          <CheckCircle2 className="h-10 w-10 text-[#84CC16]" />
         </motion.div>
       </motion.div>
       <motion.h3
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="text-xl font-semibold text-success-text mb-2 font-display"
+        className="text-xl font-semibold text-[#84CC16] mb-2 font-display"
       >
         Compte créé avec succès !
       </motion.h3>
@@ -966,7 +937,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="text-sm text-muted-foreground mb-4"
+        className="text-sm text-white/40 mb-4"
       >
         Bienvenue sur SECT. Vous pouvez maintenant vous connecter avec votre email et votre mot de passe.
       </motion.p>
@@ -976,12 +947,12 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 mb-6 flex items-center gap-3"
+          className="rounded-lg border border-[#F59E0B]/30 bg-[#F59E0B]/5 px-4 py-3 mb-6 flex items-center gap-3"
         >
-          <KeyRound className="h-5 w-5 text-warning flex-shrink-0" />
+          <KeyRound className="h-5 w-5 text-[#F59E0B] flex-shrink-0" />
           <div className="text-left">
-            <p className="text-xs text-muted-foreground">Votre matricule étudiant</p>
-            <p className="text-sm font-mono font-bold tracking-wider text-warning-foreground">
+            <p className="text-xs text-white/40">Votre matricule étudiant</p>
+            <p className="text-sm font-mono font-bold tracking-wider text-white">
               {matricule}
             </p>
           </div>
@@ -995,7 +966,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       >
         <Button
           onClick={onComplete}
-          className="bg-success hover:bg-success/90 text-success-foreground shadow-md shadow-success/20"
+          className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all"
         >
           Se connecter
           <ArrowRight className="h-4 w-4 ml-2" />
@@ -1009,18 +980,18 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   // dédié + un bouton "Se connecter" au lieu du formulaire.
   const renderUserExists = () => (
     <div className="flex flex-col items-center text-center py-8" role="alert">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full mb-4 bg-info/10 text-info">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full mb-4 bg-[#84CC16]/15 text-[#84CC16]">
         <AlertCircle className="h-8 w-8" />
       </div>
-      <h3 className="text-lg font-semibold mb-2 font-display">Compte existant</h3>
-      <p className="text-sm text-muted-foreground max-w-sm mb-6">
+      <h3 className="text-lg font-semibold mb-2 font-display text-white">Compte existant</h3>
+      <p className="text-sm text-white/40 max-w-sm mb-6">
         Un compte existe déjà avec l&apos;adresse{' '}
-        <span className="font-medium text-foreground">{userExistsEmail}</span>. Connectez-vous
+        <span className="font-medium text-white">{userExistsEmail}</span>. Connectez-vous
         directement avec cette adresse email.
       </p>
       <Button
         onClick={onComplete}
-        className="bg-success hover:bg-success/90 text-success-foreground"
+        className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all"
       >
         Aller à la connexion
         <ArrowRight className="h-4 w-4 ml-2" />
@@ -1038,7 +1009,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
     return (
       <motion.div
-        initial={{ opacity: 0, x: -20 }}
+        initial={{ opacity: 0, x: -30 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 20 }}
         transition={{ duration: 0.3 }}
@@ -1046,25 +1017,25 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       >
         {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : chip de section colorée (alignée wizard B2C). */}
         <div className="flex items-center gap-1.5 mb-2">
-          <Building2 className="h-4 w-4 text-info" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-info">
+          <Building2 className="h-4 w-4 text-[#84CC16]" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#84CC16]">
             Étape 1 — Vérification du contexte
           </span>
         </div>
 
         <div className="text-center space-y-1 mb-2">
-          <h2 className="text-lg font-semibold font-display">Confirmez votre inscription</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-lg font-semibold font-display text-white">Confirmez votre inscription</h2>
+          <p className="text-sm text-white/40">
             Vérifiez les informations ci-dessous avant de créer votre compte.
           </p>
         </div>
 
-        {/* Contexte établissement — glassmorphism interne (bg-card/40 + border/60) */}
-        <div className="rounded-lg border border-border/60 bg-card/40 backdrop-blur-sm p-4 space-y-3">
-          <p className="text-xs text-muted-foreground">Vous rejoignez</p>
+        {/* Contexte établissement — glassmorphism interne (bg-white/[0.04] + border-white/10) */}
+        <div className="rounded-lg border border-white/10 bg-white/[0.04] backdrop-blur-sm p-4 space-y-3">
+          <p className="text-xs text-white/40">Vous rejoignez</p>
           <div className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-success-text flex-shrink-0" />
-            <p className="text-sm font-semibold font-display">{linkData.etablissementNom}</p>
+            <Building2 className="h-4 w-4 text-[#84CC16] flex-shrink-0" />
+            <p className="text-sm font-semibold font-display text-white">{linkData.etablissementNom}</p>
           </div>
           <div className="flex flex-wrap gap-1.5">
             <DSBadge variant="primary" size="sm">
@@ -1099,28 +1070,28 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
               de l'enseignant (affiché si non vide côté backend). */}
           {linkData.customWelcomeMessage && (
-            <div className="mt-2 p-3 rounded-md bg-info/10 border border-info/20">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-info mb-1">
+            <div className="mt-2 p-3 rounded-md bg-[#84CC16]/10 border border-[#84CC16]/20">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#84CC16] mb-1">
                 <MessageSquare className="h-3 w-3" />
                 Message de votre enseignant
               </div>
-              <p className="text-sm text-foreground whitespace-pre-wrap">
+              <p className="text-sm text-white whitespace-pre-wrap">
                 {linkData.customWelcomeMessage}
               </p>
             </div>
           )}
           {linkData.creatorName && (
-            <p className="text-xs text-muted-foreground pt-1 border-t border-border/50">
-              Invité par <span className="font-medium text-foreground">{linkData.creatorName}</span>
+            <p className="text-xs text-white/40 pt-1 border-t border-white/10">
+              Invité par <span className="font-medium text-white">{linkData.creatorName}</span>
             </p>
           )}
         </div>
 
         {/* Compte à rebours expiration (toujours visible au step 1) */}
         {countdown && countdown !== 'Expirée' && (
-          <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
-            <Clock className="h-4 w-4 text-warning flex-shrink-0" />
-            <p className="text-xs text-warning-foreground">
+          <div className="flex items-center gap-2 rounded-lg border border-[#F59E0B]/30 bg-[#F59E0B]/5 px-3 py-2">
+            <Clock className="h-4 w-4 text-[#F59E0B] flex-shrink-0" />
+            <p className="text-xs text-white">
               <span className="font-semibold">Expire dans :</span> {countdown}
             </p>
           </div>
@@ -1128,13 +1099,13 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
         {/* Places restantes */}
         {placesRestantes != null && (
-          <div className="rounded-lg border border-info/20 bg-info/5 p-3 space-y-2">
+          <div className="rounded-lg border border-[#84CC16]/20 bg-[#84CC16]/5 p-3 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-info">
+              <span className="flex items-center gap-1.5 text-[#84CC16]">
                 <Users className="h-3.5 w-3.5" />
                 Places restantes
               </span>
-              <span className="font-mono font-semibold tabular-nums">
+              <span className="font-mono font-semibold tabular-nums text-white">
                 {placesRestantes} / {linkData.maxUses}
               </span>
             </div>
@@ -1151,7 +1122,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         {/* Bouton Continuer */}
         <Button
           onClick={() => setStep(2)}
-          className="w-full bg-success hover:bg-success/90 text-success-foreground shadow-md shadow-success/20"
+          className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all"
         >
           Continuer
           <ArrowRight className="h-4 w-4 ml-2" />
@@ -1182,7 +1153,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
     return (
       <motion.div
-        initial={{ opacity: 0, x: 20 }}
+        initial={{ opacity: 0, x: 30 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -20 }}
         transition={{ duration: 0.3 }}
@@ -1190,8 +1161,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : chip de section colorée (alignée wizard B2C). */}
           <div className="flex items-center gap-1.5 mb-2">
-            <User className="h-4 w-4 text-gold" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-gold">
+            <User className="h-4 w-4 text-[#F59E0B]" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-[#F59E0B]">
               Étape 2 — Création du compte
             </span>
           </div>
@@ -1200,7 +1171,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           <button
             type="button"
             onClick={() => setStep(1)}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-white/40 hover:text-white transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Retour
@@ -1208,21 +1179,21 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
           {/* Name field */}
           <div className="space-y-2">
-            <Label htmlFor="signup-name">Nom complet</Label>
+            <Label htmlFor="signup-name" className="text-white/80">Nom complet</Label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <Input
                 id="signup-name"
                 type="text"
                 placeholder="Prénom Nom"
                 autoComplete="name"
-                className="pl-9"
+                className="pl-9 h-12 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/25 focus:bg-white/8 transition-all"
                 aria-invalid={!!form.formState.errors.name}
                 {...form.register('name')}
               />
             </div>
             {form.formState.errors.name && (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-xs text-red-400" role="alert">
                 {form.formState.errors.name.message}
               </p>
             )}
@@ -1234,33 +1205,33 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               utilise etab.matriculeRegex (Postgres regex) côté client + backend. */}
           {linkData.requireMatricule === true && (
             <div className="space-y-2">
-              <Label htmlFor="signup-matricule" className="flex items-center gap-1.5">
-                <KeyRound className="h-3.5 w-3.5 text-warning" />
+              <Label htmlFor="signup-matricule" className="flex items-center gap-1.5 text-white/80">
+                <KeyRound className="h-3.5 w-3.5 text-[#F59E0B]" />
                 Matricule étudiant
-                <span className="text-destructive">*</span>
+                <span className="text-red-400">*</span>
               </Label>
               <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
                 <Input
                   id="signup-matricule"
                   type="text"
                   placeholder={linkData.etablissement?.matriculeExample || 'Votre matricule étudiant'}
                   autoComplete="off"
-                  className="pl-9 font-mono"
+                  className="pl-9 h-12 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/25 focus:bg-white/8 transition-all font-mono"
                   aria-invalid={!!form.formState.errors.matricule}
                   {...form.register('matricule')}
                 />
               </div>
               {linkData.etablissement?.matriculeFormat && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <p className="text-xs text-white/40 flex items-center gap-1">
                   <span>Format attendu :</span>
-                  <span className="font-mono font-medium text-foreground">
+                  <span className="font-mono font-medium text-white">
                     {linkData.etablissement.matriculeFormat}
                   </span>
                 </p>
               )}
               {form.formState.errors.matricule && (
-                <p className="text-xs text-destructive" role="alert">
+                <p className="text-xs text-red-400" role="alert">
                   {form.formState.errors.matricule.message}
                 </p>
               )}
@@ -1269,21 +1240,21 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
           {/* Email field */}
           <div className="space-y-2">
-            <Label htmlFor="signup-email">Adresse email</Label>
+            <Label htmlFor="signup-email" className="text-white/80">Adresse email</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <Input
                 id="signup-email"
                 type="email"
                 placeholder="vous@exemple.com"
                 autoComplete="email"
-                className="pl-9"
+                className="pl-9 h-12 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/25 focus:bg-white/8 transition-all"
                 aria-invalid={!!form.formState.errors.email}
                 {...form.register('email')}
               />
             </div>
             {form.formState.errors.email && (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-xs text-red-400" role="alert">
                 {form.formState.errors.email.message}
               </p>
             )}
@@ -1291,22 +1262,22 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
           {/* Password field */}
           <div className="space-y-2">
-            <Label htmlFor="signup-password">Mot de passe</Label>
+            <Label htmlFor="signup-password" className="text-white/80">Mot de passe</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <Input
                 id="signup-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Créez un mot de passe sécurisé"
                 autoComplete="new-password"
-                className="pl-9 pr-10"
+                className="pl-9 pr-10 h-12 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/25 focus:bg-white/8 transition-all"
                 aria-invalid={!!form.formState.errors.password}
                 {...form.register('password')}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
                 aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1321,7 +1292,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                     <div
                       key={level}
                       className={`h-1.5 flex-1 rounded-full transition-colors ${
-                        strength.score >= level ? strength.bgColor : 'bg-muted'
+                        strength.score >= level ? strength.bgColor : 'bg-white/10'
                       }`}
                     />
                   ))}
@@ -1334,20 +1305,20 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
             {/* Requirements checklist */}
             {password.length > 0 && (
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-1.5">
+                <p className="text-xs font-medium text-white/40 mb-2">
                   Exigences du mot de passe
                 </p>
                 {checks.map((check) => (
                   <div key={check.label} className="flex items-center gap-2">
                     {check.met ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-success-text flex-shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[#84CC16] flex-shrink-0" />
                     ) : (
-                      <X className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <X className="h-3.5 w-3.5 text-white/40 flex-shrink-0" />
                     )}
                     <span
                       className={`text-xs ${
-                        check.met ? 'text-success-text' : 'text-muted-foreground'
+                        check.met ? 'text-[#84CC16]' : 'text-white/40'
                       }`}
                     >
                       {check.label}
@@ -1357,7 +1328,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               </div>
             )}
             {form.formState.errors.password && (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-xs text-red-400" role="alert">
                 {form.formState.errors.password.message}
               </p>
             )}
@@ -1365,22 +1336,22 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
 
           {/* Confirm password field */}
           <div className="space-y-2">
-            <Label htmlFor="signup-confirm-password">Confirmer le mot de passe</Label>
+            <Label htmlFor="signup-confirm-password" className="text-white/80">Confirmer le mot de passe</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <Input
                 id="signup-confirm-password"
                 type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Confirmez votre mot de passe"
                 autoComplete="new-password"
-                className="pl-9 pr-10"
+                className="pl-9 pr-10 h-12 rounded-xl bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/25 focus:bg-white/8 transition-all"
                 aria-invalid={!!form.formState.errors.confirmPassword}
                 {...form.register('confirmPassword')}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
                 aria-label={
                   showConfirmPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'
                 }
@@ -1389,13 +1360,13 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               </button>
             </div>
             {confirmPassword.length > 0 && !passwordsMatch && (
-              <p className="text-xs text-destructive">Les mots de passe ne correspondent pas</p>
+              <p className="text-xs text-red-400">Les mots de passe ne correspondent pas</p>
             )}
             {confirmPassword.length > 0 && passwordsMatch && (
-              <p className="text-xs text-success-text">Les mots de passe correspondent</p>
+              <p className="text-xs text-[#84CC16]">Les mots de passe correspondent</p>
             )}
             {form.formState.errors.confirmPassword && (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-xs text-red-400" role="alert">
                 {form.formState.errors.confirmPassword.message}
               </p>
             )}
@@ -1410,20 +1381,20 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                 onCheckedChange={(checked) => {
                   form.setValue('acceptCGU', checked === true, { shouldValidate: true })
                 }}
-                className="mt-0.5"
+                className="mt-0.5 border-white/20 data-[state=checked]:bg-[#84CC16] data-[state=checked]:border-[#84CC16] data-[state=checked]:text-[#0A1931]"
                 aria-invalid={!!form.formState.errors.acceptCGU}
               />
               <label
                 htmlFor="signup-cgu"
-                className="text-sm leading-relaxed cursor-pointer text-muted-foreground"
+                className="text-sm leading-relaxed cursor-pointer text-white/40"
               >
                 J&apos;accepte les{' '}
-                <span className="font-medium text-foreground">conditions d&apos;utilisation</span> et la{' '}
-                <span className="font-medium text-foreground">politique de confidentialité</span> de SECT.
+                <span className="font-medium text-white">conditions d&apos;utilisation</span> et la{' '}
+                <span className="font-medium text-white">politique de confidentialité</span> de SECT.
               </label>
             </div>
             {form.formState.errors.acceptCGU && (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-xs text-red-400" role="alert">
                 {form.formState.errors.acceptCGU.message}
               </p>
             )}
@@ -1440,8 +1411,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           {/* pas encore injecté son iframe. */}
           {turnstileSiteKey && (
             <div className="space-y-2">
-              <Label htmlFor="cf-turnstile">Vérification de sécurité</Label>
-              <div className="relative min-h-[70px] rounded-md border border-border/60 bg-muted/20 p-2">
+              <Label htmlFor="cf-turnstile" className="text-white/80">Vérification de sécurité</Label>
+              <div className="relative min-h-[70px] rounded-md border border-white/10 bg-white/5 p-2">
                 {/* Conteneur Turnstile — VIDE, géré par Cloudflare. Ne PAS
                     mettre d'enfants React ici (conflit DOM). */}
                 <div
@@ -1453,22 +1424,22 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                 {/* Placeholder de chargement : overlay absolu au-dessus du
                     conteneur Turnstile. Caché une fois le widget rendu. */}
                 {!turnstileRendered && !turnstileLoadFailed && (
-                  <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/20 rounded-md pointer-events-none">
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-white/40 bg-white/5 rounded-md pointer-events-none">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Chargement du défi de sécurité…
                   </div>
                 )}
                 {/* État d'échec : overlay absolu avec bouton Réessayer. */}
                 {turnstileLoadFailed && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-xs text-muted-foreground bg-background/95 rounded-md">
-                    <ShieldAlert className="h-4 w-4 text-warning" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-xs text-white/40 bg-[#0A1931]/95 rounded-md">
+                    <ShieldAlert className="h-4 w-4 text-[#F59E0B]" />
                     <span>Le défi de sécurité n&apos;a pas pu se charger.</span>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={retryTurnstile}
-                      className="h-7 text-xs mt-1"
+                      className="h-7 text-xs mt-1 border-[#84CC16]/30 text-[#84CC16] hover:bg-[#84CC16]/10"
                     >
                       <RefreshCw className="h-3.5 w-3.5 mr-1" />
                       Réessayer
@@ -1477,13 +1448,13 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
                 )}
               </div>
               {!turnstileToken && !turnstileLoadFailed && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <p className="text-xs text-white/40 flex items-center gap-1.5">
                   <ShieldCheck className="h-3 w-3 flex-shrink-0" />
                   Vérification anti-robot requise pour activer le bouton de création.
                 </p>
               )}
               {turnstileToken && (
-                <p className="text-xs text-success-text flex items-center gap-1.5">
+                <p className="text-xs text-[#84CC16] flex items-center gap-1.5">
                   <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
                   Vérification réussie. Vous pouvez créer votre compte.
                 </p>
@@ -1495,7 +1466,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           <Button
             type="submit"
             disabled={!isFormValid || isSubmitting || !turnstileSatisfied || !matriculeSatisfied}
-            className="w-full bg-success hover:bg-success/90 text-success-foreground shadow-md shadow-success/20 mt-2"
+            className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#0A1931] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all mt-2"
           >
             {isSubmitting ? (
               <>
@@ -1528,7 +1499,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   const activeError: VerifyErrorCode = submitErrorCode ?? verifyError
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-success/10 via-background to-info/10 relative overflow-hidden">
+    <div className="relative min-h-screen flex flex-col bg-gradient-to-br from-[#0A1931] via-[#0f172a] to-[#1E1B4B] p-4 sm:p-6 overflow-hidden">
       {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : script Cloudflare Turnstile */}
       {/* Chargé uniquement si siteKey non vide (dev mode = pas de widget). */}
       {turnstileSiteKey && (
@@ -1540,141 +1511,130 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         />
       )}
 
-      {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : arrière-plan multi-couches pour effet wahou.
-          Couche 1 : gradient radial doré (haut gauche) + vert (bas droite) pour ambiance Savane.
-          Couche 2 : 12 particules flottantes (palette africaine or/vert/terre cuite).
-          Couche 3 : motif kente subtil en overlay (opacity 3%). */}
+      {/* SECT-INSCRIPTION-STYLE-ALIGN-1 : arrière-plan aligné sur /souscrire-b2c.
+          Couche 1 : 2 glow orbs animés (vert lime + or) qui pulse.
+          Couche 2 : motif kente subtil (opacity 4%) en repeating-linear-gradient. */}
+      <motion.div
+        className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full bg-[#84CC16]/15 blur-3xl pointer-events-none"
+        animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.6, 0.4] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        aria-hidden="true"
+      />
+      <motion.div
+        className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-[#F59E0B]/10 blur-3xl pointer-events-none"
+        animate={{ scale: [1.1, 1, 1.1], opacity: [0.3, 0.5, 0.3] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        aria-hidden="true"
+      />
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
         aria-hidden="true"
         style={{
-          backgroundImage:
-            'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08), transparent 40%), radial-gradient(circle at 85% 80%, rgba(132, 204, 22, 0.08), transparent 40%), radial-gradient(circle at 50% 50%, rgba(194, 65, 12, 0.04), transparent 60%)',
+          backgroundImage: `
+            repeating-linear-gradient(90deg, transparent 0, transparent 50px, #84CC16 50px, #84CC16 55px, transparent 55px, transparent 58px, #F59E0B 58px, #F59E0B 61px, transparent 61px, transparent 64px, #C2410C 64px, #C2410C 66px, transparent 66px, transparent 100px),
+            repeating-linear-gradient(45deg, transparent 0, transparent 25px, #F59E0B 25px, #F59E0B 30px, transparent 30px, transparent 50px)
+          `,
         }}
       />
 
-      {/* Floating particles (palette africaine) — 12 particules pour densité wahou */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-80" aria-hidden="true">
-        <FloatingParticle delay={0} duration={4} x="10%" y="25%" size={4} color="#F59E0B" />
-        <FloatingParticle delay={0.8} duration={5} x="85%" y="15%" size={3} color="#84CC16" />
-        <FloatingParticle delay={1.5} duration={3.5} x="20%" y="65%" size={5} color="#F59E0B" />
-        <FloatingParticle delay={0.3} duration={4.5} x="75%" y="55%" size={3} color="#84CC16" />
-        <FloatingParticle delay={1.2} duration={3} x="45%" y="10%" size={4} color="#C2410C" />
-        <FloatingParticle delay={2} duration={4} x="90%" y="75%" size={3} color="#F59E0B" />
-        <FloatingParticle delay={0.6} duration={5.5} x="15%" y="85%" size={4} color="#84CC16" />
-        <FloatingParticle delay={1.8} duration={3.8} x="60%" y="40%" size={3} color="#F59E0B" />
-        <FloatingParticle delay={2.5} duration={4.2} x="35%" y="35%" size={2} color="#C2410C" />
-        <FloatingParticle delay={3} duration={5} x="70%" y="90%" size={3} color="#84CC16" />
-        <FloatingParticle delay={0.4} duration={3.5} x="5%" y="50%" size={4} color="#F59E0B" />
-        <FloatingParticle delay={2.2} duration={4.8} x="95%" y="45%" size={2} color="#C2410C" />
-      </div>
-
       {/* Main content */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12 relative z-10">
-        {/* Branding */}
+      <main className="flex-1 flex flex-col items-center justify-center px-2 py-8 sm:py-12 relative z-10">
+        {/* Signup Card — WizardCard style aligné sur /souscrire-b2c
+            (glass-morphism + kente top bar + logo + brand subtitle). */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-8"
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+          className="w-full max-w-md relative z-10"
         >
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <motion.img
-              src="/logo.svg"
-              alt="SECT"
-              className="w-14 h-14 rounded-xl shadow-lg"
-              whileHover={{ scale: 1.05 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          <div className="relative bg-white/[0.06] backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl shadow-black/40 p-6 sm:p-7 overflow-hidden">
+            {/* Top kente accent bar */}
+            <div
+              className="absolute top-0 left-0 right-0 h-1"
+              style={{
+                background:
+                  'linear-gradient(90deg, #84CC16 0%, #84CC16 25%, #C2410C 25%, #C2410C 50%, #F59E0B 50%, #F59E0B 75%, #1E1B4B 75%)',
+              }}
+              aria-hidden="true"
             />
-            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-success-text to-info bg-clip-text text-transparent font-display">
-              SECT
-            </h1>
-          </div>
-          <p className="text-lg font-medium text-success-text font-display">
-            Inscription étudiante
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground max-w-md">
-            Créez votre compte pour rejoindre la plateforme d&apos;évaluation
-          </p>
-        </motion.div>
 
-        {/* Signup Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
-          className="w-full max-w-xl"
-        >
-          {/* SECT-STUDENT-SIGNUP-DESIGN-WAHOU-1 : glassmorphism renforcé — backdrop-blur-xl
-              + bg-card/80 (translucide) + ring-1 ring-white/10 + shadow-2xl pour effet
-              glass profond. La barre kente (ds-kente-top) reste sur le dessus. */}
-          <Card className="ds-kente-top overflow-hidden shadow-2xl shadow-success/10 backdrop-blur-xl bg-card/80 ring-1 ring-white/10">
-            <CardContent className="pt-6">
-              <AnimatePresence mode="wait">
-                {isVerifying && (
-                  <motion.div
-                    key="loading"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    {renderLoading()}
-                  </motion.div>
-                )}
-                {!isVerifying && activeError && (
-                  <motion.div
-                    key="error"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    {renderError(activeError)}
-                  </motion.div>
-                )}
-                {!isVerifying && !activeError && isSuccess && (
-                  <motion.div
-                    key="success"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    {renderSuccess()}
-                  </motion.div>
-                )}
-                {!isVerifying && !activeError && !isSuccess && userExistsEmail && (
-                  <motion.div
-                    key="user-exists"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    {renderUserExists()}
-                  </motion.div>
-                )}
-                {/* SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes avec
-                    StepIndicator visible uniquement dans le flow normal. */}
-                {!isVerifying && !activeError && !isSuccess && !userExistsEmail && linkData && (
-                  <motion.div
-                    key={`step-${step}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    <StepIndicator currentStep={step} />
-                    {step === 1 && renderStep1()}
-                    {step === 2 && renderStep2()}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </CardContent>
-          </Card>
+            {/* Logo + brand */}
+            <div className="flex flex-col items-center mb-5 mt-2">
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center mb-3 shadow-lg shadow-[#84CC16]/30">
+                <GraduationCap className="h-7 w-7 text-[#0A1931]" />
+              </div>
+              <p className="text-[10px] text-[#84CC16]/80 font-medium tracking-wider uppercase">
+                SECT — Système d&apos;Évaluation Casse-Tête
+              </p>
+              <h1 className="mt-2 text-xl sm:text-2xl font-semibold text-white font-display">
+                Inscription étudiante
+              </h1>
+            </div>
+
+            <AnimatePresence mode="wait">
+              {isVerifying && (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {renderLoading()}
+                </motion.div>
+              )}
+              {!isVerifying && activeError && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {renderError(activeError)}
+                </motion.div>
+              )}
+              {!isVerifying && !activeError && isSuccess && (
+                <motion.div
+                  key="success"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {renderSuccess()}
+                </motion.div>
+              )}
+              {!isVerifying && !activeError && !isSuccess && userExistsEmail && (
+                <motion.div
+                  key="user-exists"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {renderUserExists()}
+                </motion.div>
+              )}
+              {/* SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : wizard 2 étapes avec
+                  StepIndicator visible uniquement dans le flow normal. */}
+              {!isVerifying && !activeError && !isSuccess && !userExistsEmail && linkData && (
+                <motion.div
+                  key={`step-${step}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <StepIndicator currentStep={step} />
+                  {step === 1 && renderStep1()}
+                  {step === 2 && renderStep2()}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </motion.div>
       </main>
 
       {/* Footer */}
       <footer className="py-4 text-center relative z-10 mt-auto">
-        <Separator className="mx-auto max-w-md mb-4 bg-border/50" />
-        <p className="text-xs text-muted-foreground">
+        <Separator className="mx-auto max-w-md mb-4 bg-white/10" />
+        <p className="text-xs text-white/40">
           &copy; 2026 SECT — Tous droits réservés
         </p>
       </footer>
