@@ -17849,3 +17849,41 @@ Stage Summary:
 - Migration 000086 appliquée à Neon DB production (version 86)
 - Impact : ValidationUE.anneeAcademiqueId est maintenant NOT NULL. L'index unique (etudiantId, uniteEnseignementId, anneeAcademiqueId) est une vraie contrainte (plus de doublons NULL). Les futures agrégations par année (moyenne annuelle, crédits validés) pour la feature de promotion seront exactes.
 - Prérequis critique pour SECT-PROMOTION-* (feature de clôture d'année) : sans NOT NULL, le calcul des crédits/moyenne par étudiant-par-année serait faussé par les lignes NULL.
+
+---
+Task ID: SECT-INSCRIPTION-SCHEMA-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Création du schéma DB complet pour la feature de clôture d'année académique — 3 tables (Inscription, ReglesPassage, PromotionBatch) + 2 enums + 2 fonctions SECURITY DEFINER + constantes AuditLog.
+
+Work Log:
+- Lecture des patterns existants : AuditLog table (000002) + RLS (000024), style enum (000001), fonction SECURITY DEFINER (create_b2c_subscription 000062), grants (000020 ALTER DEFAULT PRIVILEGES).
+- Migration 000087_academic_progression (up + down) :
+  * Enum StatutInscription (7 valeurs : EN_COURS, PROMU, REDOUBLANT, DIPLOME, EXCLU, REORIENTE, QUITTE — pas de RATTRAPAGE/ADMISSIBLE, redondants).
+  * Enum PromotionBatchStatut (4 valeurs : PENDING, RUNNING, COMPLETED, FAILED).
+  * Table PromotionBatch (créée EN PREMIER car Inscription.batchId la référence via FK) : id, etablissementId, anneeSourceId, anneeCibleId, statut, runById, seuilMoyenne, counts (promu/redoublant/diplome/exclu/erreur), progression, details, errorMessage, createdAt, termineAt. RLS TO PUBLIC.
+  * Table ReglesPassage (config par établissement, UNIQUE etablissementId) : seuilMoyennePassage (10.0), seuilMoyenneRattrapage (8.0), creditsMinPourcent (60), regime (STRICT), limiteRedoublements (2). RLS TO PUBLIC.
+  * Table Inscription (pivot historisée) : id, etudiantId, anneeAcademiqueId, filiereId, niveau, statut, moyenneAnnuelle, creditsValides, creditsTotaux, decisionManuelle, raisonDecision, decideParId, dateCloture, batchId. UNIQUE(etudiantId, anneeAcademiqueId). RLS TO PUBLIC (ETUDIANT self, RESPONSABLE same-etab, ADMIN, system).
+  * Fonction next_niveau(niveau) : miroir SQL du helper Go NextNiveau(). IMMUTABLE. L1→L2→...→DOCTORAT (terminal).
+  * Fonction SECURITY DEFINER cloturer_annee_etudiant(...) : cascade atomique par étudiant. Calcule moyenne+credits depuis ValidationUE, détermine décision (auto selon règles ou override manuel), UPDATE User.niveau si PROMU, INSERT/UPDATE Inscription source + cible, INSERT AuditLog. Bypass RLS. Retourne record (decision, moyenne, credits, nouveau_niveau, error_message).
+  * Backfill ReglesPassage : 1 ligne par établissement existant (2 lignes créées).
+- Constantes AuditLog dans domain/auth.go : 8 nouvelles actions (PROMOTION_BATCH_STARTED/COMPLETED + PROMOTION_DECISION_PROMU/REDOUBLANT/DIPLOME/EXCLU/REORIENTE/QUITTE).
+- Premier déploiement échoué : erreur "relation PromotionBatch does not exist" car Inscription (créée avant PromotionBatch) référençait PromotionBatch via FK. Fix : réordonner (PromotionBatch créée en premier). Base nettoyée (force 86 + DROP IF EXISTS), migration ré-appliquée avec succès.
+- go build ./... OK, go vet ./internal/domain/... OK.
+- Migration appliquée à Neon (endpoint direct) : v86 → v87, 2.08s, aucune erreur.
+- Vérification post-migration (script Go pgx) : 3 tables créées ✓, 2 enums créés ✓, 2 fonctions créées ✓, ReglesPassage backfill 2 lignes ✓.
+- Commit a1cd7d2 + push GitHub (auteur udevrard7 <ulrichdouh@gmail.com>).
+- Follow-up commit 65377de : gofmt restore tabs dans auth.go (le commit précédent avait involontairement converti les tabs en espaces lors de l'Edit).
+
+Stage Summary:
+- 4 fichiers modifiés/créés :
+  * backend/db/db/migrations/000087_academic_progression.up.sql (créé, 387 lignes)
+  * backend/db/db/migrations/000087_academic_progression.down.sql (créé, rollback)
+  * backend/internal/domain/auth.go (modifié, +17 lignes — 8 constantes AuditActionPromotion*)
+- Migration 000087 appliquée à Neon DB production (version 87)
+- Backend compile (go build + go vet clean)
+- Schéma DB complet pour la feature de clôture d'année en place :
+  * Historisation : Inscription (1 ligne par étudiant par année, fige niveau+moyenne+credits+décision)
+  * Configuration : ReglesPassage (seuils par établissement, backfillé pour les 2 étab existants)
+  * Async : PromotionBatch (suivi des jobs de clôture, statut + counts + progression)
+  * Atomicité : cloturer_annee_etudiant() SECURITY DEFINER (cascade par étudiant, bypass RLS)
+- Prêt pour SECT-INSCRIPTION-SIGNUP-HOOK-1 (création auto d'Inscription à l'inscription étudiante) et SECT-PROMOTION-BACKEND-1 (repository/usecase/handlers/worker).
