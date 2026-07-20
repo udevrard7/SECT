@@ -71,13 +71,21 @@ import { Badge as DSBadge, ProgressBar } from '@/components/ds'
 
 interface VerifyLinkResponse {
   valid: boolean
-  etablissementId: string
-  etablissementNom: string
-  etablissementType: string
-  etablissementVille: string | null
-  filiereId: string | null
-  filiereNom: string | null
-  filiereCode: string | null
+  // SECT-INSCRIPTION-DISPLAY-FIX-1 : le backend retourne etablissement + filiere
+  // imbriqués (objet), PAS plats. Anciennement le type attendait etablissementNom,
+  // filiereNom etc. plats → undefined → rien ne s'affichait sauf niveau (qui est plat).
+  etablissement?: {
+    nom: string
+    type: string
+    ville?: string | null
+    matriculeRegex?: string
+    matriculeFormat?: string
+    matriculeExample?: string
+  }
+  filiere?: {
+    nom: string
+    code?: string
+  } | null
   creatorName: string
   expiresAt: string
   useCount: number
@@ -91,20 +99,8 @@ interface VerifyLinkResponse {
   customWelcomeMessage?: string | null
   // SECT-STUDENT-SIGNUP-MATRICULE-1 : flag B2B — si true, l'étudiant doit saisir
   // un matricule (fourni par son établissement). La validation utilise la config
-  // matricule de l'établissement (regex/format/example ci-dessous).
+  // matricule de l'établissement (regex/format/example ci-dessus).
   requireMatricule?: boolean
-  // SECT-STUDENT-SIGNUP-MATRICULE-1 : config matricule de l'établissement.
-  // Objet imbriqué retourné par le backend (cf. handler verifyStudentSignupLink).
-  // matriculeRegex : regex Postgres pour valider le format (ex: ^ETU-\d{4}-\d{3}$)
-  // matriculeFormat : format humain lisible (ex: ETU-AAAA-NNN)
-  // matriculeExample : exemple concret (ex: ETU-2026-001)
-  etablissement?: {
-    nom: string
-    type: string
-    matriculeRegex?: string
-    matriculeFormat?: string
-    matriculeExample?: string
-  }
 }
 
 type VerifyErrorCode =
@@ -1035,23 +1031,27 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           <p className="text-xs text-white/40">Vous rejoignez</p>
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-[#84CC16] flex-shrink-0" />
-            <p className="text-sm font-semibold font-display text-white">{linkData.etablissementNom}</p>
+            <p className="text-sm font-semibold font-display text-white">
+              {linkData.etablissement?.nom || 'Établissement'}
+            </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            <DSBadge variant="primary" size="sm">
-              {ETAB_TYPE_LABELS[linkData.etablissementType] || linkData.etablissementType}
-            </DSBadge>
-            {linkData.filiereNom && (
-              <DSBadge variant="success" size="sm">
-                <BookOpen className="h-3 w-3 mr-1" />
-                {linkData.filiereNom}
-                {linkData.filiereCode ? ` (${linkData.filiereCode})` : ''}
+            {linkData.etablissement?.type && (
+              <DSBadge variant="primary" size="sm">
+                {ETAB_TYPE_LABELS[linkData.etablissement.type] || linkData.etablissement.type}
               </DSBadge>
             )}
-            {linkData.etablissementVille && (
+            {linkData.filiere?.nom && (
+              <DSBadge variant="success" size="sm">
+                <BookOpen className="h-3 w-3 mr-1" />
+                {linkData.filiere.nom}
+                {linkData.filiere.code ? ` (${linkData.filiere.code})` : ''}
+              </DSBadge>
+            )}
+            {linkData.etablissement?.ville && (
               <DSBadge variant="info" size="sm">
                 <MapPin className="h-3 w-3 mr-1" />
-                {linkData.etablissementVille}
+                {linkData.etablissement.ville}
               </DSBadge>
             )}
             {linkData.niveau && (
