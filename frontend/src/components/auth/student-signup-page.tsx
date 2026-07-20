@@ -489,8 +489,19 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
   //  - On sauvegarde le widget ID pour pouvoir le reset/remove proprement.
   //  - Avant chaque render(), on vide le conteneur #cf-turnstile au cas où un
   //    résidu d'un widget précédent empêche Cloudflare de re-render.
+  //
+  // SECT-TURNSTILE-RENDER-FIX-1 : BUG FIX — le conteneur #cf-turnstile n'existe
+  // qu'au Step 2 (dans renderStep2). Avant ce fix, le useEffect se déclenchait
+  // dès que siteKey était fetched (Step 1), appelait render() sur un conteneur
+  // introuvable → retournait undefined → setTurnstileLoadFailed(true) → bouton
+  // "Réessayer" affiché dès l'arrivée au Step 2. Fix : ajouter `step` dans les
+  // dépendances + guard `if (step !== 2) return` + vérifier que le conteneur
+  // existe avant de render (sinon retry 100ms).
   useEffect(() => {
     if (!turnstileSiteKey || turnstileRendered) return
+    // SECT-TURNSTILE-RENDER-FIX-1 : ne rendre le widget qu'au Step 2 (le conteneur
+    // #cf-turnstile n'est monté que dans renderStep2). Au Step 1, on sort tôt.
+    if (step !== 2) return
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     let retryTimer: ReturnType<typeof setTimeout> | null = null
@@ -499,10 +510,21 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       if (typeof window === 'undefined') return
       if (window.turnstile) {
         try {
+          // SECT-TURNSTILE-RENDER-FIX-1 : vérifier que le conteneur #cf-turnstile
+          // existe dans le DOM avant d'appeler render(). Au Step 2, le conteneur
+          // est monté par renderStep2, mais il peut y avoir un race condition
+          // (useEffect se déclenche avant le commit DOM). Si le conteneur n'existe
+          // pas encore, on retry dans 100ms au lieu de failer silencieusement.
+          const container = document.getElementById('cf-turnstile')
+          if (!container) {
+            // Conteneur pas encore monté — retry dans 100ms (max ~5s via le
+            // timeoutId de 8s qui mettra loadFailed=true si jamais rendu).
+            retryTimer = setTimeout(tryRender, 100)
+            return
+          }
           // Nettoie le conteneur avant render (au cas où un widget précédent
           // ait laissé des résidus — hidden input, etc.).
-          const container = document.getElementById('cf-turnstile')
-          if (container && container.innerHTML) {
+          if (container.innerHTML) {
             container.innerHTML = ''
           }
           const widgetId = window.turnstile.render('#cf-turnstile', {
@@ -553,7 +575,29 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       if (timeoutId) clearTimeout(timeoutId)
       if (retryTimer) clearTimeout(retryTimer)
     }
-  }, [turnstileSiteKey, turnstileRendered])
+  }, [turnstileSiteKey, turnstileRendered, step])
+
+  // SECT-TURNSTILE-RENDER-FIX-1 : cleanup quand on quitte le Step 2.
+  // Si l'utilisateur retourne au Step 1 après que le widget a été rendu, on
+  // retire le widget Cloudflare et on reset turnstileRendered pour permettre
+  // un re-render propre au prochain passage au Step 2. Sans ça, le widget
+  // resterait orphan (conteneur démonté mais turnstileRendered=true bloque le
+  // re-render au prochain Step 2).
+  useEffect(() => {
+    if (step === 2 || !turnstileRendered) return
+    // On a quitté le Step 2 et le widget était rendu — cleanup.
+    if (typeof window !== 'undefined' && window.turnstile && turnstileWidgetId) {
+      try {
+        window.turnstile.remove(turnstileWidgetId)
+      } catch {
+        /* ignore — widget déjà retiré ou ID invalide */
+      }
+    }
+    setTurnstileWidgetId(null)
+    setTurnstileRendered(false)
+    setTurnstileLoadFailed(false)
+    setTurnstileToken(null)
+  }, [step])
 
   // SECT-STUDENT-SIGNUP-WIZARD-REDESIGN-1 : retry du widget Turnstile.
   // On retire l'ancien widget (si présent) puis on reset les états pour
