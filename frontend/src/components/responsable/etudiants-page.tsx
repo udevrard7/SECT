@@ -38,7 +38,13 @@ import {
   ArrowLeft,
   ArrowUpDown,
   BarChart3,
+  Sparkles,
+  Share2,
+  QrCode,
+  PartyPopper,
+  Zap,
 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -334,6 +340,21 @@ function downloadCSV(content: string, filename: string) {
   link.click()
   URL.revokeObjectURL(url)
 }
+
+// SECT-SIGNUP-LINK-SUCCESS-WAHOU-1 : palette confetti pour le burst de l'icône succès.
+// Subtil : 10 particules, couleurs Savane (lime / gold / terracotta / navy / info).
+const CONFETTI_COLORS = [
+  '#84CC16', // lime (success)
+  '#F59E0B', // gold
+  '#C2410C', // terracotta
+  '#1E1B4B', // navy (inscription dark)
+  '#3B82F6', // info blue
+  '#84CC16',
+  '#F59E0B',
+  '#C2410C',
+  '#1E1B4B',
+  '#3B82F6',
+]
 
 // ─── Main Component ───
 
@@ -773,6 +794,66 @@ export function EtudiantsPage() {
     }).catch(() => {
       toast.error('Erreur', { description: 'Impossible de copier.' })
     })
+  }
+
+  // SECT-SIGNUP-LINK-SUCCESS-WAHOU-1 : téléchargement du QR code en PNG.
+  // On récupère le SVG rendu par QRCodeSVG dans la share card (wrapper #share-qr-wrapper),
+  // on le sérialise, on le dessine sur un canvas 400x400 avec fond blanc, puis on déclenche
+  // le téléchargement. Robuste : si le SVG n'est pas trouvé (dialog fermé trop tôt, etc.),
+  // on affiche un toast d'erreur sans planter le thread.
+  const downloadQRAsPNG = (url: string, filename: string) => {
+    const wrapper = document.getElementById('share-qr-wrapper')
+    const svg = wrapper?.querySelector('svg')
+    if (!svg) {
+      toast.error('Erreur', { description: 'QR code introuvable. Fermez et rouvrez le dialogue.' })
+      return
+    }
+    try {
+      // Clone + ensure xmlns so the serialized SVG renders standalone in <img>.
+      const clone = svg.cloneNode(true) as SVGSVGElement
+      if (!clone.getAttribute('xmlns')) {
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+      }
+      const svgData = new XMLSerializer().serializeToString(clone)
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+      const objectUrl = URL.createObjectURL(svgBlob)
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const size = 400
+        canvas.width = size
+        canvas.height = size
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl)
+          toast.error('Erreur', { description: 'Canvas non disponible.' })
+          return
+        }
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, size, size)
+        ctx.drawImage(img, 20, 20, size - 40, size - 40)
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            toast.error('Erreur', { description: 'Génération PNG échouée.' })
+            return
+          }
+          const link = document.createElement('a')
+          link.href = URL.createObjectURL(blob)
+          link.download = `${filename}-qr.png`
+          link.click()
+          URL.revokeObjectURL(link.href)
+          toast.success('QR téléchargé', { description: 'Image PNG prête à imprimer ou partager.' })
+        })
+        URL.revokeObjectURL(objectUrl)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        toast.error('Erreur', { description: 'Lecture du QR code impossible.' })
+      }
+      img.src = objectUrl
+    } catch {
+      toast.error('Erreur', { description: 'Conversion SVG → PNG impossible.' })
+    }
   }
 
   // ─── Open edit dialog ───
@@ -2705,101 +2786,316 @@ export function EtudiantsPage() {
           </DialogHeader>
 
           {createdLink ? (
-            /* ─── Écran de succès (après création) ─── */
-            <div className="space-y-4">
-              <div className="flex flex-col items-center text-center py-2">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10 mb-3">
-                  <CheckCircle2 className="h-7 w-7 text-success-text" />
-                </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Voici votre lien d&apos;inscription. Copiez-le et partagez-le aux étudiants concernés.
-                </p>
-              </div>
+            /* ─── Écran de succès (après création) — SECT-SIGNUP-LINK-SUCCESS-WAHOU-1 ───
+                Refonte : animations Framer Motion (stagger + spring + pulse rings),
+                icône success animée avec sparkles, share card unifiée (QR + URL côte
+                à côte + actions de partage groupées), badges métadonnées animés,
+                boutons avec whileHover/whileTap. Reste dans la palette Savane claire. */
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
+              }}
+              className="relative space-y-4"
+            >
+              {/* Background glow — halo subtil derrière l'écran de succès */}
+              <motion.div
+                aria-hidden
+                className="absolute top-0 right-0 w-40 h-40 rounded-full bg-success/10 blur-3xl pointer-events-none"
+                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              />
 
-              {/* URL copiable */}
-              <div className="space-y-2">
-                <Label htmlFor="created-link-url">Lien d&apos;inscription</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="created-link-url"
-                    readOnly
-                    value={createdLink.url}
-                    className="font-mono text-xs"
-                    onFocus={(e) => e.currentTarget.select()}
+              {/* ── Icône succès animée (spring pop-in + pulse rings + sparkles + confetti) ── */}
+              <motion.div
+                variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
+                className="relative flex flex-col items-center text-center py-2"
+              >
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, scale: 0 },
+                    visible: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 200, damping: 15 } },
+                  }}
+                  className="relative flex h-16 w-16 items-center justify-center mb-3"
+                >
+                  {/* Pulse rings — 2 anneaux concentriques qui pulsent vers l'extérieur */}
+                  <motion.div
+                    aria-hidden
+                    className="absolute inset-0 rounded-full bg-success/20"
+                    animate={{ scale: [1, 1.6], opacity: [0.6, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
                   />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleCopyToClipboard(createdLink.url, 'Lien')}
-                    aria-label="Copier le lien"
+                  <motion.div
+                    aria-hidden
+                    className="absolute inset-0 rounded-full bg-success/15"
+                    animate={{ scale: [1, 1.8], opacity: [0.4, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
+                  />
+
+                  {/* Confetti burst — 10 particules qui s'éparpillent vers l'extérieur (wahou subtil) */}
+                  {CONFETTI_COLORS.map((color, i) => {
+                    const angle = (i / CONFETTI_COLORS.length) * Math.PI * 2
+                    const distance = 38
+                    return (
+                      <motion.div
+                        key={`confetti-${i}`}
+                        aria-hidden
+                        className="absolute h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: color, left: '50%', top: '50%' }}
+                        initial={{ x: 0, y: 0, opacity: 0, scale: 0 }}
+                        animate={{
+                          x: Math.cos(angle) * distance,
+                          y: Math.sin(angle) * distance,
+                          opacity: [0, 1, 0],
+                          scale: [0, 1, 0.5],
+                        }}
+                        transition={{ duration: 1, delay: 0.35, ease: 'easeOut' }}
+                      />
+                    )
+                  })}
+
+                  {/* Icône principale — gradient + ombre colorée */}
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-success to-success/80 shadow-lg shadow-success/30">
+                    <CheckCircle2 className="h-8 w-8 text-success-foreground" />
+                  </div>
+
+                  {/* Sparkles autour de l'icône */}
+                  <motion.div
+                    aria-hidden
+                    className="absolute -top-1 -right-1 text-gold"
+                    animate={{ scale: [0, 1.2, 0], rotate: [0, 180, 360] }}
+                    transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
                   >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+                    <Sparkles className="h-4 w-4" />
+                  </motion.div>
+                  <motion.div
+                    aria-hidden
+                    className="absolute -bottom-1 -left-1 text-gold/70"
+                    animate={{ scale: [0, 1, 0], rotate: [0, -180, -360] }}
+                    transition={{ duration: 2.4, repeat: Infinity, delay: 0.9 }}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                  </motion.div>
+                </motion.div>
 
-              {/* Métadadonnées du lien créé */}
-              <div className="flex flex-wrap gap-1.5">
-                <DSBadge variant="info" size="sm">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Expire le {formatDateFR(createdLink.expiresAt)}
-                </DSBadge>
-                {createdLink.maxUses != null ? (
-                  <DSBadge variant="warning" size="sm">
-                    {createdLink.maxUses} places
-                  </DSBadge>
-                ) : (
-                  <DSBadge variant="success" size="sm">Illimité</DSBadge>
-                )}
-                {createdLink.label && (
-                  <DSBadge variant="primary" size="sm">{createdLink.label}</DSBadge>
-                )}
-                {createdLink.emailDomainRestriction && (
-                  <DSBadge variant="info" size="sm">
-                    <AtSign className="h-3 w-3 mr-1" />
-                    @{createdLink.emailDomainRestriction}
-                  </DSBadge>
-                )}
-                {createdLink.customWelcomeMessage && (
-                  <DSBadge variant="info" size="sm">
-                    <MessageSquare className="h-3 w-3 mr-1" />
-                    Message personnalisé
-                  </DSBadge>
-                )}
-                {createdLink.requireMatricule && (
-                  <DSBadge variant="warning" size="sm">
-                    <KeyRound className="h-3 w-3 mr-1" />
-                    Matricule requis
-                  </DSBadge>
-                )}
-              </div>
+                <motion.div
+                  variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                  className="flex items-center gap-1.5 mb-1"
+                >
+                  <PartyPopper className="h-4 w-4 text-gold" />
+                  <h3 className="text-base font-semibold text-foreground">
+                    Lien d&apos;inscription créé&nbsp;!
+                  </h3>
+                </motion.div>
+                <motion.p
+                  variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                  className="text-sm text-muted-foreground mb-3 max-w-md"
+                >
+                  Voici votre lien d&apos;inscription. Partagez-le aux étudiants concernés —
+                  ils s&apos;inscrivent en moins de 2 minutes.
+                </motion.p>
+              </motion.div>
 
-              {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : QR code pour projection
-                  en amphi / partage WhatsApp / affichage en salle. */}
-              {createdLink.url && (
-                <div className="flex flex-col items-center gap-2 py-3 border-t border-border/50">
-                  <p className="text-xs text-muted-foreground">
-                    Scannez pour vous inscrire
+              {/* ── Share Card — QR + URL unifiés dans une carte premium ── */}
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+                }}
+                className="relative rounded-2xl border-2 border-success/30 bg-gradient-to-br from-success/5 via-card to-info/5 p-5 overflow-hidden"
+              >
+                {/* Bande kent décorative en haut (lime / terracotta / gold / navy) */}
+                <div
+                  aria-hidden
+                  className="absolute top-0 left-0 right-0 h-1"
+                  style={{
+                    background:
+                      'linear-gradient(90deg, #84CC16 0%, #84CC16 25%, #C2410C 25%, #C2410C 50%, #F59E0B 50%, #F59E0B 75%, #1E1B4B 75%)',
+                  }}
+                />
+
+                {/* Header de la carte */}
+                <div className="flex items-center gap-2 mb-4 mt-1">
+                  <QrCode className="h-4 w-4 text-success-text" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-success-text">
+                    Carte de partage
                   </p>
-                  <div className="p-3 bg-white rounded-lg border">
+                  <Zap className="h-3.5 w-3.5 text-gold ml-auto" aria-hidden />
+                </div>
+
+                {/* QR + URL côte à côte (sm+) ou empilés (mobile) */}
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  {/* QR code — wrapper avec id pour le téléchargement PNG */}
+                  <div
+                    id="share-qr-wrapper"
+                    className="flex-shrink-0 p-3 bg-white rounded-xl shadow-md"
+                  >
                     <QRCodeSVG
                       value={createdLink.url}
-                      size={160}
+                      size={140}
                       level="M"
                       marginSize={0}
                       aria-label="QR code d inscription"
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground text-center max-w-xs">
-                    Idéal pour projection en amphi ou affichage en salle.
-                  </p>
+
+                  {/* URL + bouton copier */}
+                  <div className="flex-1 w-full space-y-2">
+                    <Label htmlFor="created-link-url" className="text-xs text-muted-foreground">
+                      Lien d&apos;inscription
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="created-link-url"
+                        readOnly
+                        value={createdLink.url}
+                        className="font-mono text-xs h-10"
+                        onFocus={(e) => e.currentTarget.select()}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyToClipboard(createdLink.url, 'Lien')}
+                        aria-label="Copier le lien"
+                        className="h-10"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Scannez le QR code ou partagez le lien. Les étudiants s&apos;inscrivent
+                      en moins de 2 minutes.
+                    </p>
+                  </div>
                 </div>
-              )}
+
+                {/* Actions de partage unifiées — WhatsApp / Copier message / Télécharger QR */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4 pt-4 border-t border-border/50">
+                  <motion.a
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    href={`https://wa.me/?text=${encodeURIComponent('Inscrivez-vous sur SECT : ' + createdLink.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex col-span-2 sm:col-span-1"
+                  >
+                    <Button type="button" variant="outline" size="sm" className="w-full">
+                      <MessageCircle className="h-4 w-4 mr-1.5 text-success-text" />
+                      WhatsApp
+                    </Button>
+                  </motion.a>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="col-span-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        const shareText = `Inscrivez-vous sur SECT : ${createdLink.url}\n\nScannez ce QR code en cours ou copiez le lien dans votre navigateur.`
+                        handleCopyToClipboard(shareText, 'Message de partage')
+                      }}
+                    >
+                      <Share2 className="h-4 w-4 mr-1.5 text-info" />
+                      Copier message
+                    </Button>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="col-span-2 sm:col-span-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => downloadQRAsPNG(createdLink.url, createdLink.label || 'inscription-sect')}
+                    >
+                      <Download className="h-4 w-4 mr-1.5 text-gold" />
+                      Télécharger QR
+                    </Button>
+                  </motion.div>
+                </div>
+              </motion.div>
+
+              {/* ── Métadonnées du lien créé — badges animés en stagger ── */}
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0 },
+                  visible: { opacity: 1, transition: { staggerChildren: 0.05, delayChildren: 0.3 } },
+                }}
+                className="flex flex-wrap gap-1.5"
+              >
+                <motion.span
+                  variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                >
+                  <DSBadge variant="info" size="sm">
+                    <Clock className="h-3 w-3 mr-1" />
+                    Expire le {formatDateFR(createdLink.expiresAt)}
+                  </DSBadge>
+                </motion.span>
+                {createdLink.maxUses != null ? (
+                  <motion.span
+                    variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                  >
+                    <DSBadge variant="warning" size="sm">
+                      {createdLink.maxUses} places
+                    </DSBadge>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                  >
+                    <DSBadge variant="success" size="sm">Illimité</DSBadge>
+                  </motion.span>
+                )}
+                {createdLink.label && (
+                  <motion.span
+                    variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                  >
+                    <DSBadge variant="primary" size="sm">{createdLink.label}</DSBadge>
+                  </motion.span>
+                )}
+                {createdLink.emailDomainRestriction && (
+                  <motion.span
+                    variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                  >
+                    <DSBadge variant="info" size="sm">
+                      <AtSign className="h-3 w-3 mr-1" />
+                      @{createdLink.emailDomainRestriction}
+                    </DSBadge>
+                  </motion.span>
+                )}
+                {createdLink.customWelcomeMessage && (
+                  <motion.span
+                    variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                  >
+                    <DSBadge variant="info" size="sm">
+                      <MessageSquare className="h-3 w-3 mr-1" />
+                      Message personnalisé
+                    </DSBadge>
+                  </motion.span>
+                )}
+                {createdLink.requireMatricule && (
+                  <motion.span
+                    variants={{ hidden: { opacity: 0, scale: 0.8 }, visible: { opacity: 1, scale: 1 } }}
+                  >
+                    <DSBadge variant="warning" size="sm">
+                      <KeyRound className="h-3 w-3 mr-1" />
+                      Matricule requis
+                    </DSBadge>
+                  </motion.span>
+                )}
+              </motion.div>
 
               {/* Message personnalisé (preview si défini) */}
               {createdLink.customWelcomeMessage && (
-                <div className="rounded-md bg-info/10 border border-info/20 p-3 space-y-1">
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 12 },
+                    visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
+                  }}
+                  className="rounded-md bg-info/10 border border-info/20 p-3 space-y-1"
+                >
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-info">
                     <MessageSquare className="h-3 w-3" />
                     Message de bienvenue
@@ -2807,50 +3103,56 @@ export function EtudiantsPage() {
                   <p className="text-sm text-foreground whitespace-pre-wrap">
                     {createdLink.customWelcomeMessage}
                   </p>
-                </div>
+                </motion.div>
               )}
 
-              {/* Actions partage */}
-              <div className="flex flex-wrap gap-2 pt-2">
-                <a
-                  href={`https://wa.me/?text=${encodeURIComponent('Inscrivez-vous sur SECT : ' + createdLink.url)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex"
-                >
-                  <Button type="button" variant="outline" size="sm">
-                    <MessageCircle className="h-4 w-4 mr-1.5" />
-                    Partager via WhatsApp
+              {/* ── Actions finales — Fermer + Créer un autre lien ── */}
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0, transition: { delay: 0.5, duration: 0.4, ease: 'easeOut' } },
+                }}
+                className="flex flex-wrap gap-2 pt-2"
+              >
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1 min-w-[120px]">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCloseWizard}
+                    className="w-full"
+                  >
+                    Fermer
                   </Button>
-                </a>
-                <Button type="button" variant="ghost" size="sm" onClick={handleCloseWizard}>
-                  Fermer
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setCreatedLink(null)
-                    setLinkLabel('')
-                    setLinkFiliereId('')
-                    setLinkNiveau('')
-                    setLinkMaxUses('')
-                    setLinkEmailDomain('')
-                    setLinkCustomMessage('')
-                    // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
-                    setLinkValidityHours(30 * 24)
-                    setLinkValidityCustom('')
-                    // SECT-REG-LINK-WIZARD-UX-1 : reset du toggle matricule + étape.
-                    setLinkRequireMatricule(false)
-                    setWizardStep(1)
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Créer un autre lien
-                </Button>
-              </div>
-            </div>
+                </motion.div>
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1 min-w-[160px]">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="w-full bg-gradient-to-r from-success to-success/80 hover:from-success/90 hover:to-success/70"
+                    onClick={() => {
+                      setCreatedLink(null)
+                      setLinkLabel('')
+                      setLinkFiliereId('')
+                      setLinkNiveau('')
+                      setLinkMaxUses('')
+                      setLinkEmailDomain('')
+                      setLinkCustomMessage('')
+                      // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
+                      setLinkValidityHours(30 * 24)
+                      setLinkValidityCustom('')
+                      // SECT-REG-LINK-WIZARD-UX-1 : reset du toggle matricule + étape.
+                      setLinkRequireMatricule(false)
+                      setWizardStep(1)
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Créer un autre lien
+                  </Button>
+                </motion.div>
+              </motion.div>
+            </motion.div>
           ) : (
             /* ─── Wizard 3 étapes + StepIndicator ─── */
             <div className="space-y-5">
