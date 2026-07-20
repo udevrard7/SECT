@@ -35,6 +35,8 @@ import (
 // Phase 2 : ajout emailDomainRestriction (optionnel — B2B only).
 // Phase 3 : ajout customWelcomeMessage (optionnel — message perso dans welcome email).
 // VALIDITY-1 : ajout expiresInHours (optionnel — TTL personnalisé en heures, 1..8760).
+// MATRICULE-1 : ajout requireMatricule (optionnel — B2B only, force l'étudiant à saisir
+// un matricule à l'inscription, validé via etab.regexMatricule).
 type createStudentSignupLinkRequest struct {
         FiliereID              *string `json:"filiereId,omitempty"`
         Niveau                 *string `json:"niveau,omitempty"`
@@ -42,6 +44,7 @@ type createStudentSignupLinkRequest struct {
         Label                  *string `json:"label,omitempty"`
         EmailDomainRestriction *string `json:"emailDomainRestriction,omitempty"` // PHASE 2 — B2B
         CustomWelcomeMessage   *string `json:"customWelcomeMessage,omitempty"`   // PHASE 3 — message perso welcome email
+        RequireMatricule       *bool   `json:"requireMatricule,omitempty"`       // MATRICULE-1 — B2B, force matricule saisi
         ExpiresInHours         *int    `json:"expiresInHours,omitempty"`         // VALIDITY-1 — TTL personnalisé (1..8760 h)
         // Champs ignorés (sécurité) :
         EtablissementID string `json:"etablissementId,omitempty"`
@@ -73,6 +76,7 @@ func (s *Server) createStudentSignupLink(w http.ResponseWriter, r *http.Request)
                 Label:                  req.Label,
                 EmailDomainRestriction: req.EmailDomainRestriction,
                 CustomWelcomeMessage:   req.CustomWelcomeMessage, // PHASE 3
+                RequireMatricule:       req.RequireMatricule,     // MATRICULE-1
                 ExpiresInHours:         req.ExpiresInHours,       // VALIDITY-1
         }
 
@@ -94,6 +98,7 @@ func (s *Server) createStudentSignupLink(w http.ResponseWriter, r *http.Request)
                 "label":                  link.Label,
                 "emailDomainRestriction": link.EmailDomainRestriction,            // PHASE 2 — peut être nil
                 "customWelcomeMessage":   link.CustomWelcomeMessage,             // PHASE 3 — peut être nil
+                "requireMatricule":       link.RequireMatricule,                  // MATRICULE-1 — bool
                 "useCount":               link.UseCount,
                 "actif":                  link.Actif,
         })
@@ -134,6 +139,7 @@ func (s *Server) listStudentSignupLinks(w http.ResponseWriter, r *http.Request) 
                 Label                  *string    `json:"label,omitempty"`
                 EmailDomainRestriction *string    `json:"emailDomainRestriction,omitempty"` // PHASE 2
                 CustomWelcomeMessage   *string    `json:"customWelcomeMessage,omitempty"`   // PHASE 3
+                RequireMatricule       bool       `json:"requireMatricule"`                 // MATRICULE-1
                 CreatedAt              string     `json:"createdAt"`
         }
         safe := make([]safeLink, 0, len(links))
@@ -151,6 +157,7 @@ func (s *Server) listStudentSignupLinks(w http.ResponseWriter, r *http.Request) 
                         Label:                  l.Label,
                         EmailDomainRestriction: l.EmailDomainRestriction,
                         CustomWelcomeMessage:   l.CustomWelcomeMessage,
+                        RequireMatricule:       l.RequireMatricule,
                         CreatedAt:              l.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
                 })
         }
@@ -216,7 +223,7 @@ func mapSignupStateError(w http.ResponseWriter, e *domain.SignupLinkStateError) 
         case "USER_EXISTS":
                 // 409 Conflict — un compte existe déjà avec cet email.
                 writeSignupStateError(w, http.StatusConflict, e.Code, e.Message)
-        case "INACTIVE", "EXPIRED", "QUOTA_EXCEEDED", "DOMAIN_NOT_ALLOWED", "TURNSTILE_FAILED":
+        case "INACTIVE", "EXPIRED", "QUOTA_EXCEEDED", "DOMAIN_NOT_ALLOWED", "TURNSTILE_FAILED", "MATRICULE_REQUIRED", "MATRICULE_INVALID":
                 writeSignupStateError(w, http.StatusBadRequest, e.Code, e.Message)
         default:
                 writeSignupStateError(w, http.StatusBadRequest, e.Code, e.Message)
@@ -306,10 +313,23 @@ func (s *Server) verifyStudentSignupLink(w http.ResponseWriter, r *http.Request)
                 resp["maxUses"] = nil
         }
         if link.Etablissement != nil {
-                resp["etablissement"] = map[string]any{
+                etab := map[string]any{
                         "nom":  link.Etablissement.Nom,
                         "type": link.Etablissement.Type,
                 }
+                // MATRICULE-1 — exposer la config matricule de l'étab au frontend pour
+                // qu'il puisse valider l'input étudiant (regex) + afficher un placeholder
+                // (example) + helper (format). Uniquement si non-nil ET non-vide.
+                if link.Etablissement.MatriculeRegex != nil && *link.Etablissement.MatriculeRegex != "" {
+                        etab["matriculeRegex"] = *link.Etablissement.MatriculeRegex
+                }
+                if link.Etablissement.MatriculeFormat != nil && *link.Etablissement.MatriculeFormat != "" {
+                        etab["matriculeFormat"] = *link.Etablissement.MatriculeFormat
+                }
+                if link.Etablissement.MatriculeExample != nil && *link.Etablissement.MatriculeExample != "" {
+                        etab["matriculeExample"] = *link.Etablissement.MatriculeExample
+                }
+                resp["etablissement"] = etab
         }
         if link.Filiere != nil {
                 resp["filiere"] = map[string]any{
@@ -341,6 +361,15 @@ func (s *Server) verifyStudentSignupLink(w http.ResponseWriter, r *http.Request)
         // frontend de l'afficher en preview (optionnel — non bloquant).
         if link.CustomWelcomeMessage != nil && *link.CustomWelcomeMessage != "" {
                 resp["customWelcomeMessage"] = *link.CustomWelcomeMessage
+        }
+
+        // MATRICULE-1 — exposer requireMatricule au frontend pour qu'il puisse
+        // afficher le champ matricule dans le wizard d'inscription. Si false/absent,
+        // le frontend ne montre pas le champ (comportement inchangé). Si true, le
+        // frontend affiche le champ + valide via etab.matriculeRegex (exposé ci-dessus
+        // dans l'objet etablissement).
+        if link.RequireMatricule {
+                resp["requireMatricule"] = true
         }
 
         w.Header().Set("Content-Type", "application/json")
@@ -381,17 +410,20 @@ func (s *Server) studentSignupLinkStats(w http.ResponseWriter, r *http.Request) 
 
 // acceptStudentSignupRequest — body du POST /api/student-signup (PUBLIC).
 // Phase 2 : ajout cfTurnstileToken (optionnel — requis si Turnstile configuré).
+// MATRICULE-1 : ajout matricule (optionnel — requis si link.requireMatricule=true,
+// validé via etab.regexMatricule côté SQL).
 type acceptStudentSignupRequest struct {
         Token            string `json:"token"`
         Email            string `json:"email"`
         Name             string `json:"name"`
         Password         string `json:"password"`
+        Matricule        string `json:"matricule,omitempty"`        // MATRICULE-1 — matricule saisi (B2B)
         CfTurnstileToken string `json:"cfTurnstileToken"` // PHASE 2 — token Cloudflare Turnstile
 }
 
 // acceptStudentSignup — POST /api/student-signup (PUBLIC)
 //
-// Body : { token, email, name, password, cfTurnstileToken? }
+// Body : { token, email, name, password, matricule?, cfTurnstileToken? }
 // Phase 2 :
 //   - Rate-limit par IP (10 req / 10 min / IP — clone de landingDemoAllow).
 //   - Vérification Cloudflare Turnstile (si configuré).
@@ -441,6 +473,7 @@ func (s *Server) acceptStudentSignup(w http.ResponseWriter, r *http.Request) {
                 strings.TrimSpace(req.Email),
                 strings.TrimSpace(req.Name),
                 req.Password, // ne pas trim le password (les espaces peuvent être volontaires)
+                req.Matricule, // ne pas trim ici — le usecase+SQL trim/trient eux-mêmes
                 ip,
                 r.UserAgent(),
         )

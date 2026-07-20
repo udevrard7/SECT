@@ -90,6 +90,22 @@ interface VerifyLinkResponse {
   // SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé
   // (présent seulement si non vide côté backend — preview dans l'encart contexte).
   customWelcomeMessage?: string | null
+  // SECT-STUDENT-SIGNUP-MATRICULE-1 : flag B2B — si true, l'étudiant doit saisir
+  // un matricule (fourni par son établissement). La validation utilise la config
+  // matricule de l'établissement (regex/format/example ci-dessous).
+  requireMatricule?: boolean
+  // SECT-STUDENT-SIGNUP-MATRICULE-1 : config matricule de l'établissement.
+  // Objet imbriqué retourné par le backend (cf. handler verifyStudentSignupLink).
+  // matriculeRegex : regex Postgres pour valider le format (ex: ^ETU-\d{4}-\d{3}$)
+  // matriculeFormat : format humain lisible (ex: ETU-AAAA-NNN)
+  // matriculeExample : exemple concret (ex: ETU-2026-001)
+  etablissement?: {
+    nom: string
+    type: string
+    matriculeRegex?: string
+    matriculeFormat?: string
+    matriculeExample?: string
+  }
 }
 
 type VerifyErrorCode =
@@ -100,6 +116,8 @@ type VerifyErrorCode =
   | 'USER_EXISTS'
   | 'DOMAIN_NOT_ALLOWED'
   | 'TURNSTILE_FAILED'
+  | 'MATRICULE_REQUIRED'
+  | 'MATRICULE_INVALID'
   | 'NETWORK_ERROR'
   | 'SERVER_ERROR'
   | null
@@ -341,6 +359,10 @@ const signupSchema = z
     acceptCGU: z.boolean().refine((v) => v === true, {
       message: "Vous devez accepter les conditions d'utilisation",
     }),
+    // SECT-STUDENT-SIGNUP-MATRICULE-1 : matricule optionnel (requis conditionnellement
+    // si linkData.requireMatricule === true). La validation required + regex est
+    // faite côté onSubmit handler (dynamique selon linkData) + côté backend (authoritative).
+    matricule: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Les mots de passe ne correspondent pas',
@@ -559,6 +581,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       password: '',
       confirmPassword: '',
       acceptCGU: false,
+      matricule: '',
     },
     mode: 'onTouched',
   })
@@ -591,6 +614,36 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
       })
       return
     }
+    // SECT-STUDENT-SIGNUP-MATRICULE-1 : validation matricule côté client (UX rapide).
+    // Le backend refait la validation (authoritative). Si requireMatricule=true et
+    // matricule vide → on bloque ici (évite un round-trip). Si regex fournie et ne
+    // match pas → on bloque aussi avec un message explicite.
+    if (linkData?.requireMatricule === true) {
+      const mat = values.matricule?.trim() ?? ''
+      if (!mat) {
+        toast.error('Matricule requis', {
+          description: 'Veuillez saisir le matricule fourni par votre établissement.',
+        })
+        return
+      }
+      const regex = linkData.etablissement?.matriculeRegex
+      if (regex) {
+        try {
+          const re = new RegExp(regex)
+          if (!re.test(mat)) {
+            toast.error('Format de matricule invalide', {
+              description: linkData.etablissement?.matriculeFormat
+                ? `Format attendu : ${linkData.etablissement.matriculeFormat}`
+                : 'Le format du matricule ne correspond pas à celui attendu par votre établissement.',
+            })
+            return
+          }
+        } catch {
+          // Regex Postgres invalide côté JS (syntaxe différente) — on skip la
+          // validation client et on laisse le backend faire (fail-open UX).
+        }
+      }
+    }
     setIsSubmitting(true)
     setUserExistsEmail(null)
     try {
@@ -604,6 +657,8 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           password: values.password,
           // SECT-REG-LINK-PHASE2-FRONTEND-1 : token Turnstile (vide en dev mode).
           cfTurnstileToken: turnstileToken ?? '',
+          // SECT-STUDENT-SIGNUP-MATRICULE-1 : matricule B2B (vide si non requis).
+          matricule: values.matricule?.trim() || '',
         }),
       })
       const data = await res.json()
@@ -619,7 +674,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         // dédié pour les nouveaux codes (DOMAIN_NOT_ALLOWED / TURNSTILE_FAILED
         // / QUOTA_EXCEEDED capitation). Les autres erreurs (USER_EXISTS, etc.)
         // conservent leur traitement existant (écran dédié ou toast).
-        if (data.code === 'DOMAIN_NOT_ALLOWED' || data.code === 'TURNSTILE_FAILED' || data.code === 'QUOTA_EXCEEDED') {
+        if (data.code === 'DOMAIN_NOT_ALLOWED' || data.code === 'TURNSTILE_FAILED' || data.code === 'QUOTA_EXCEEDED' || data.code === 'MATRICULE_REQUIRED' || data.code === 'MATRICULE_INVALID') {
           setSubmitErrorCode(data.code as VerifyErrorCode)
           toast.error('Inscription échouée', {
             description: data.error || 'Veuillez corriger et réessayer.',
@@ -737,6 +792,28 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
             showSupport: true,
             showReload: true,
           }
+        case 'MATRICULE_REQUIRED':
+          // SECT-STUDENT-SIGNUP-MATRICULE-1 : matricule B2B requis mais manquant.
+          return {
+            icon: <KeyRound className="h-8 w-8" />,
+            title: 'Matricule requis',
+            description: 'Votre établissement exige un matricule pour l\'inscription. Veuillez saisir le matricule qui vous a été fourni, puis réessayer.',
+            showRetry: true,
+            showSupport: true,
+            showReload: false,
+          }
+        case 'MATRICULE_INVALID':
+          // SECT-STUDENT-SIGNUP-MATRICULE-1 : format matricule invalide.
+          return {
+            icon: <KeyRound className="h-8 w-8" />,
+            title: 'Format de matricule invalide',
+            description: linkData?.etablissement?.matriculeFormat
+              ? `Le format attendu est : ${linkData.etablissement.matriculeFormat}${linkData.etablissement.matriculeExample ? ` (ex: ${linkData.etablissement.matriculeExample})` : ''}`
+              : 'Le matricule saisi ne correspond pas au format attendu par votre établissement.',
+            showRetry: true,
+            showSupport: true,
+            showReload: false,
+          }
         case 'NETWORK_ERROR':
           return {
             icon: <AlertCircle className="h-8 w-8" />,
@@ -792,7 +869,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               onClick={() => {
                 if (typeof window !== 'undefined') window.location.reload()
               }}
-              className="border-info/30 text-info-foreground hover:bg-info/10"
+              className="border-info/30 text-info hover:bg-info/10"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Recharger
@@ -995,7 +1072,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
         {placesRestantes != null && (
           <div className="rounded-lg border border-info/20 bg-info/5 p-3 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-info-foreground">
+              <span className="flex items-center gap-1.5 text-info">
                 <Users className="h-3.5 w-3.5" />
                 Places restantes
               </span>
@@ -1039,6 +1116,11 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
     // SECT-REG-LINK-PHASE2-FRONTEND-1 : Turnstile doit être complété si activé.
     const turnstileRequired = !!turnstileSiteKey
     const turnstileSatisfied = !turnstileRequired || !!turnstileToken
+    // SECT-STUDENT-SIGNUP-MATRICULE-1 : si le lien exige un matricule, le bouton
+    // submit est désactivé tant que le champ est vide (UX — le backend refait le check).
+    const matriculeRequired = linkData.requireMatricule === true
+    const matriculeValue = form.watch('matricule')?.trim() ?? ''
+    const matriculeSatisfied = !matriculeRequired || matriculeValue.length > 0
 
     return (
       <motion.div
@@ -1079,6 +1161,45 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
               </p>
             )}
           </div>
+
+          {/* SECT-STUDENT-SIGNUP-MATRICULE-1 : Matricule B2B (conditionnel).
+              Affiché uniquement si le lien exige un matricule (requireMatricule=true).
+              L'étudiant saisit le matricule fourni par son établissement. La validation
+              utilise etab.matriculeRegex (Postgres regex) côté client + backend. */}
+          {linkData.requireMatricule === true && (
+            <div className="space-y-2">
+              <Label htmlFor="signup-matricule" className="flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5 text-warning" />
+                Matricule étudiant
+                <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="signup-matricule"
+                  type="text"
+                  placeholder={linkData.etablissement?.matriculeExample || 'Votre matricule étudiant'}
+                  autoComplete="off"
+                  className="pl-9 font-mono"
+                  aria-invalid={!!form.formState.errors.matricule}
+                  {...form.register('matricule')}
+                />
+              </div>
+              {linkData.etablissement?.matriculeFormat && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span>Format attendu :</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {linkData.etablissement.matriculeFormat}
+                  </span>
+                </p>
+              )}
+              {form.formState.errors.matricule && (
+                <p className="text-xs text-destructive" role="alert">
+                  {form.formState.errors.matricule.message}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Email field */}
           <div className="space-y-2">
@@ -1307,7 +1428,7 @@ export function StudentSignupPage({ token, initialEmail = '', onComplete }: Stud
           {/* Submit button */}
           <Button
             type="submit"
-            disabled={!isFormValid || isSubmitting || !turnstileSatisfied}
+            disabled={!isFormValid || isSubmitting || !turnstileSatisfied || !matriculeSatisfied}
             className="w-full bg-success hover:bg-success/90 text-success-foreground shadow-md shadow-success/20 mt-2"
           >
             {isSubmitting ? (

@@ -136,6 +136,9 @@ interface ImportResult {
 // (B2B — restriction du domaine email autorisé sur le lien).
 // SECT-REG-LINK-PHASE3-FRONTEND-1 : champ customWelcomeMessage ajouté
 // (message de bienvenue personnalisé optionnel, max 500 caractères).
+// SECT-REG-LINK-WIZARD-UX-1 : champ requireMatricule ajouté (B2B — si vrai,
+// l'étudiant devra saisir le matricule fourni par son établissement lors de
+// l'inscription, validé via le format défini dans la config de l'établissement).
 interface StudentSignupLink {
   id: string
   etablissementId: string
@@ -153,6 +156,7 @@ interface StudentSignupLink {
   filiereNom: string | null
   emailDomainRestriction?: string | null
   customWelcomeMessage?: string | null
+  requireMatricule?: boolean
 }
 
 interface CreateLinkResponse {
@@ -167,6 +171,7 @@ interface CreateLinkResponse {
   createdAt: string
   emailDomainRestriction?: string | null
   customWelcomeMessage?: string | null
+  requireMatricule?: boolean
 }
 
 // SECT-REG-LINK-PHASE3-FRONTEND-1 : agrégats stats retournés par
@@ -452,7 +457,10 @@ export function EtudiantsPage() {
 
   // SECT-REG-LINK-B2C-MVP-1 : state pour la modal "Générer un lien d'inscription"
   // (B2C self-service). Le bouton est dans le header à côté de "Importer CSV".
-  const [showLinkDialog, setShowLinkDialog] = useState(false)
+  // SECT-REG-LINK-WIZARD-UX-1 : l'ancien booléen `showLinkDialog` est supprimé
+  // (la modal unique GlassModal est remplacée par 3 Dialogs séparés : wizard /
+  // liens existants / stats). Voir `showWizard`, `showLinksDialog`,
+  // `showStatsDialog` ci-dessous.
   const [linkLabel, setLinkLabel] = useState('')
   const [linkFiliereId, setLinkFiliereId] = useState('')
   const [linkNiveau, setLinkNiveau] = useState('')
@@ -474,7 +482,20 @@ export function EtudiantsPage() {
   const [revokeLinkTarget, setRevokeLinkTarget] = useState<StudentSignupLink | null>(null)
   const [isRevokingLink, setIsRevokingLink] = useState(false)
   // SECT-REG-LINK-PHASE3-FRONTEND-1 : toggle de la vue statistiques (lazy fetch)
-  const [showStats, setShowStats] = useState(false)
+  // SECT-REG-LINK-WIZARD-UX-1 : refactor — la modal GlassModal unique est
+  // remplacée par 3 Dialogs shadcn séparés (wizard / liens existants / stats).
+  // `showLinkDialog` et `showStats` sont supprimés au profit de 3 nouveaux
+  // booléens (lazy fetch via `enabled` sur les queries TanStack).
+  const [showWizard, setShowWizard] = useState(false)
+  const [showLinksDialog, setShowLinksDialog] = useState(false)
+  const [showStatsDialog, setShowStatsDialog] = useState(false)
+  // SECT-REG-LINK-WIZARD-UX-1 : étape courante du wizard de création (1-2-3).
+  // 1 = Contexte, 2 = Restrictions, 3 = Validité & Confirmation.
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
+  // SECT-REG-LINK-WIZARD-UX-1 : toggle "Exiger un matricule étudiant" (B2B).
+  // Si vrai, l'étudiant devra saisir le matricule fourni par son établissement
+  // lors de l'inscription. Validé via le format défini dans la config étab.
+  const [linkRequireMatricule, setLinkRequireMatricule] = useState(false)
 
   // ETUDIANTS-FIX-E10 : query dependencies pour preview suppression.
   // Se déclenche quand l'utilisateur ouvre l'AlertDialog de suppression.
@@ -1133,7 +1154,9 @@ export function EtudiantsPage() {
   // SECT-REG-LINK-B2C-MVP-1 : Liens d'inscription direct étudiant (B2C)
   // ═══════════════════════════════════════════════════════════════════════════
   // Query TanStack : lister les liens existants (sans token — sécurité backend).
-  // Le fetch n'est déclenché que lorsque la modal est ouverte (enabled: showLinkDialog).
+  // SECT-REG-LINK-WIZARD-UX-1 : le fetch est désormais déclenché à l'ouverture
+  // du Dialog "Liens existants" (enabled: showLinksDialog) au lieu de l'ancienne
+  // modal GlassModal unique.
   const signupLinksQuery = useQuery<{ links: StudentSignupLink[] }>({
     queryKey: ['student-signup-links'],
     queryFn: async () => {
@@ -1141,7 +1164,7 @@ export function EtudiantsPage() {
       if (!res.ok) throw new Error('Failed to fetch student signup links')
       return res.json()
     },
-    enabled: showLinkDialog,
+    enabled: showLinksDialog,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   })
@@ -1163,8 +1186,9 @@ export function EtudiantsPage() {
   }, [signupLinks])
 
   // SECT-REG-LINK-PHASE3-FRONTEND-1 : agrégats stats (lazy fetch).
-  // Le fetch n'est déclenché QUE si l'utilisateur clique sur « Statistiques »
-  // (enabled: showStats) — évite une requête systématique à l'ouverture de la modal.
+  // SECT-REG-LINK-WIZARD-UX-1 : le fetch est désormais déclenché à l'ouverture
+  // du Dialog "Statistiques" (enabled: showStatsDialog) au lieu de l'ancien
+  // écran interne toggle par `showStats`.
   const statsQuery = useQuery<StudentSignupLinkStats>({
     queryKey: ['student-signup-links-stats'],
     queryFn: async () => {
@@ -1172,13 +1196,14 @@ export function EtudiantsPage() {
       if (!res.ok) throw new Error('Failed to fetch stats')
       return res.json()
     },
-    enabled: showStats,
+    enabled: showStatsDialog,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   })
 
-  // Ouvrir la modal — reset les champs et l'écran de succès
-  const handleOpenLinkDialog = () => {
+  // SECT-REG-LINK-WIZARD-UX-1 : ouvrir le wizard de création (3 étapes).
+  // Reset tous les champs du formulaire + l'écran de succès + l'étape = 1.
+  const handleOpenWizard = () => {
     setLinkLabel('')
     setLinkFiliereId('')
     setLinkNiveau('')
@@ -1188,15 +1213,20 @@ export function EtudiantsPage() {
     // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
     setLinkValidityHours(30 * 24)
     setLinkValidityCustom('')
+    // SECT-REG-LINK-WIZARD-UX-1 : reset du toggle matricule (B2B).
+    setLinkRequireMatricule(false)
     setCreatedLink(null)
     setIsCreatingLink(false)
-    setShowStats(false)
-    setShowLinkDialog(true)
+    setWizardStep(1)
+    setShowWizard(true)
   }
 
-  // Fermer la modal — invalide le cache pour re-sync à la prochaine ouverture
-  const handleCloseLinkDialog = () => {
-    setShowLinkDialog(false)
+  // SECT-REG-LINK-WIZARD-UX-1 : fermer le wizard — reset complet pour la
+  // prochaine ouverture. N'invalide PAS le cache (la query `signupLinksQuery`
+  // reste stale 30s — suffisamment court pour re-sync à la prochaine ouverture
+  // du Dialog "Liens existants").
+  const handleCloseWizard = () => {
+    setShowWizard(false)
     setCreatedLink(null)
     setLinkLabel('')
     setLinkFiliereId('')
@@ -1207,7 +1237,8 @@ export function EtudiantsPage() {
     // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
     setLinkValidityHours(30 * 24)
     setLinkValidityCustom('')
-    setShowStats(false)
+    setLinkRequireMatricule(false)
+    setWizardStep(1)
   }
 
   // Créer un nouveau lien d'inscription (POST /api/student-signup-links)
@@ -1216,7 +1247,9 @@ export function EtudiantsPage() {
   const handleCreateLink = async () => {
     setIsCreatingLink(true)
     try {
-      const body: Record<string, string | number> = {}
+      // SECT-REG-LINK-WIZARD-UX-1 : `requireMatricule` est un booléen (B2B),
+      // on élargit donc le type du body à `boolean` en plus de `string|number`.
+      const body: Record<string, string | number | boolean> = {}
       if (linkLabel.trim()) body.label = linkLabel.trim()
       if (linkFiliereId && linkFiliereId !== '__none__') body.filiereId = linkFiliereId
       if (linkNiveau && linkNiveau !== '__none__') body.niveau = linkNiveau
@@ -1246,6 +1279,12 @@ export function EtudiantsPage() {
           return
         }
         body.customWelcomeMessage = msg
+      }
+      // SECT-REG-LINK-WIZARD-UX-1 : toggle "Exiger un matricule étudiant" (B2B).
+      // Si vrai, l'étudiant devra saisir son matricule lors de l'inscription.
+      // Validé côté backend via le format défini dans la config de l'établissement.
+      if (linkRequireMatricule) {
+        body.requireMatricule = true
       }
       // SECT-REG-LINK-VALIDITY-1 : durée de validité personnalisée.
       // On envoie expiresInHours uniquement si != 720 (30j, valeur par défaut
@@ -1377,12 +1416,53 @@ export function EtudiantsPage() {
           </DropdownMenu>
           {/* SECT-REG-LINK-B2C-MVP-1 : lien d'inscription direct étudiant.
               Masqué pour l'ADMIN (pas d'établissement rattaché → usecase refuse).
-              Visible pour RESPONSABLE (B2B) et ENSEIGNANT (B2C étab PERSONNEL). */}
+              Visible pour RESPONSABLE (B2B) et ENSEIGNANT (B2C étab PERSONNEL).
+              SECT-REG-LINK-WIZARD-UX-1 : l'ancien bouton unique est remplacé par
+              un DropdownMenu à 3 entrées — Créer un lien (wizard 3 étapes),
+              Liens existants (liste + révocation), Statistiques (KPIs + charts). */}
           {user?.role !== 'ADMIN' && (
-            <Button variant="outline" size="sm" onClick={handleOpenLinkDialog}>
-              <Link2 className="h-4 w-4" />
-              Lien d&apos;inscription
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="Actions d'inscription étudiante">
+                  <Link2 className="h-4 w-4" />
+                  Inscription
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64" sideOffset={4}>
+                <DropdownMenuItem
+                  onClick={handleOpenWizard}
+                  className="items-start gap-2.5 focus:bg-success/10 focus:text-accent-foreground hover:bg-success/10"
+                >
+                  <Plus className="h-4 w-4 text-success-text" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-success-text">Créer un lien</span>
+                    <span className="text-xs text-muted-foreground">Wizard 3 étapes : contexte, restrictions, validité</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setShowLinksDialog(true)}
+                  className="items-start gap-2.5"
+                >
+                  <List className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex flex-col gap-0.5">
+                    <span>Liens existants</span>
+                    <span className="text-xs text-muted-foreground">Consulter, révoquer les liens déjà créés</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowStatsDialog(true)}
+                  className="items-start gap-2.5"
+                >
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex flex-col gap-0.5">
+                    <span>Statistiques</span>
+                    <span className="text-xs text-muted-foreground">KPIs, top liens, échecs, créations/jour</span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           <Button className="bg-success hover:bg-success/90" size="sm" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
@@ -2511,7 +2591,7 @@ export function EtudiantsPage() {
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-warning hover:bg-warning/90 text-white"
+              className="bg-warning hover:bg-warning/90 text-warning-foreground"
               onClick={() => { setMatriculeChangeDialog(false); doEditSubmit(); }}
             >
               Confirmer le changement
@@ -2584,48 +2664,749 @@ export function EtudiantsPage() {
       </AlertDialog>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          SECT-REG-LINK-B2C-MVP-1 : Modal "Générer un lien d'inscription"
-          ═══════════════════════════════════════════════════════════════════
-          GlassModal DS, 2 écrans : (1) formulaire de génération + liste des
-          liens existants, (2) écran de succès avec URL copiable + partage
-          WhatsApp. La liste ne contient PAS le token (sécurité backend) —
-          seules les stats + bouton "Révoquer" sont affichées.
+          SECT-REG-LINK-WIZARD-UX-1 : 3 Dialogs séparés pour la gestion des
+          liens d'inscription (remplace l'ancien GlassModal unique) :
+          (1) Wizard — création en 3 étapes + écran de succès intégré
+          (2) Liens existants — liste regroupée par filière + révocation
+          (3) Statistiques — KPIs + top liens + échecs + créations/jour
           ═══════════════════════════════════════════════════════════════════ */}
-      <GlassModal
-        open={showLinkDialog}
-        onClose={handleCloseLinkDialog}
-        title={
-          showStats
-            ? 'Statistiques des liens'
-            : createdLink
-              ? 'Lien créé !'
-              : 'Générer un lien d\'inscription'
-        }
-        description={
-          showStats
-            ? 'Aperçu de l\'utilisation de vos liens d\'inscription.'
-            : createdLink
-              ? undefined
-              : 'Partagez ce lien aux étudiants. Ils s\'inscriront eux-mêmes, la base de données se remplit automatiquement.'
-        }
-        size="lg"
-      >
-        {showStats ? (
-          /* ─── Écran statistiques (SECT-REG-LINK-PHASE3-FRONTEND-1) ─── */
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold font-display">Statistiques des liens</h3>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowStats(false)}
-              >
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Retour
-              </Button>
-            </div>
 
+      {/* ─── (1) Wizard Dialog : 3 étapes + écran de succès ─── */}
+      <Dialog open={showWizard} onOpenChange={(open) => { if (!open) handleCloseWizard() }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-success-text" />
+              {createdLink ? 'Lien créé avec succès' : 'Créer un lien d\'inscription'}
+            </DialogTitle>
+            <DialogDescription>
+              {createdLink
+                ? undefined
+                : 'Partagez ce lien aux étudiants. Ils s\'inscriront eux-mêmes, la base de données se remplit automatiquement.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdLink ? (
+            /* ─── Écran de succès (après création) ─── */
+            <div className="space-y-4">
+              <div className="flex flex-col items-center text-center py-2">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10 mb-3">
+                  <CheckCircle2 className="h-7 w-7 text-success-text" />
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Voici votre lien d&apos;inscription. Copiez-le et partagez-le aux étudiants concernés.
+                </p>
+              </div>
+
+              {/* URL copiable */}
+              <div className="space-y-2">
+                <Label htmlFor="created-link-url">Lien d&apos;inscription</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="created-link-url"
+                    readOnly
+                    value={createdLink.url}
+                    className="font-mono text-xs"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleCopyToClipboard(createdLink.url, 'Lien')}
+                    aria-label="Copier le lien"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Métadadonnées du lien créé */}
+              <div className="flex flex-wrap gap-1.5">
+                <DSBadge variant="info" size="sm">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Expire le {formatDateFR(createdLink.expiresAt)}
+                </DSBadge>
+                {createdLink.maxUses != null ? (
+                  <DSBadge variant="warning" size="sm">
+                    {createdLink.maxUses} places
+                  </DSBadge>
+                ) : (
+                  <DSBadge variant="success" size="sm">Illimité</DSBadge>
+                )}
+                {createdLink.label && (
+                  <DSBadge variant="primary" size="sm">{createdLink.label}</DSBadge>
+                )}
+                {createdLink.emailDomainRestriction && (
+                  <DSBadge variant="info" size="sm">
+                    <AtSign className="h-3 w-3 mr-1" />
+                    @{createdLink.emailDomainRestriction}
+                  </DSBadge>
+                )}
+                {createdLink.customWelcomeMessage && (
+                  <DSBadge variant="info" size="sm">
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    Message personnalisé
+                  </DSBadge>
+                )}
+                {createdLink.requireMatricule && (
+                  <DSBadge variant="warning" size="sm">
+                    <KeyRound className="h-3 w-3 mr-1" />
+                    Matricule requis
+                  </DSBadge>
+                )}
+              </div>
+
+              {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : QR code pour projection
+                  en amphi / partage WhatsApp / affichage en salle. */}
+              {createdLink.url && (
+                <div className="flex flex-col items-center gap-2 py-3 border-t border-border/50">
+                  <p className="text-xs text-muted-foreground">
+                    Scannez pour vous inscrire
+                  </p>
+                  <div className="p-3 bg-white rounded-lg border">
+                    <QRCodeSVG
+                      value={createdLink.url}
+                      size={160}
+                      level="M"
+                      marginSize={0}
+                      aria-label="QR code d inscription"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground text-center max-w-xs">
+                    Idéal pour projection en amphi ou affichage en salle.
+                  </p>
+                </div>
+              )}
+
+              {/* Message personnalisé (preview si défini) */}
+              {createdLink.customWelcomeMessage && (
+                <div className="rounded-md bg-info/10 border border-info/20 p-3 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-info">
+                    <MessageSquare className="h-3 w-3" />
+                    Message de bienvenue
+                  </div>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">
+                    {createdLink.customWelcomeMessage}
+                  </p>
+                </div>
+              )}
+
+              {/* Actions partage */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent('Inscrivez-vous sur SECT : ' + createdLink.url)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex"
+                >
+                  <Button type="button" variant="outline" size="sm">
+                    <MessageCircle className="h-4 w-4 mr-1.5" />
+                    Partager via WhatsApp
+                  </Button>
+                </a>
+                <Button type="button" variant="ghost" size="sm" onClick={handleCloseWizard}>
+                  Fermer
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setCreatedLink(null)
+                    setLinkLabel('')
+                    setLinkFiliereId('')
+                    setLinkNiveau('')
+                    setLinkMaxUses('')
+                    setLinkEmailDomain('')
+                    setLinkCustomMessage('')
+                    // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
+                    setLinkValidityHours(30 * 24)
+                    setLinkValidityCustom('')
+                    // SECT-REG-LINK-WIZARD-UX-1 : reset du toggle matricule + étape.
+                    setLinkRequireMatricule(false)
+                    setWizardStep(1)
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Créer un autre lien
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* ─── Wizard 3 étapes + StepIndicator ─── */
+            <div className="space-y-5">
+              <LinkWizardStepIndicator currentStep={wizardStep} />
+
+              {wizardStep === 1 && (
+                /* ── Step 1 : Contexte ── */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <GraduationCap className="h-4 w-4 text-info" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-info">
+                      Étape 1 — Contexte du lien
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="link-label" className="text-sm">
+                        Libellé <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Input
+                        id="link-label"
+                        placeholder="ex: Promo L1 2026"
+                        value={linkLabel}
+                        onChange={(e) => setLinkLabel(e.target.value)}
+                        className="h-10"
+                      />
+                    </div>
+
+                    {canSelectFiliere && (
+                      <div className="space-y-2">
+                        <Label htmlFor="link-filiere" className="text-sm">
+                          Filière <span className="text-muted-foreground font-normal">(optionnel)</span>
+                        </Label>
+                        <Select value={linkFiliereId || '__none__'} onValueChange={setLinkFiliereId}>
+                          <SelectTrigger id="link-filiere" className="h-10">
+                            <SelectValue placeholder="Toutes les filières" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Toutes les filières</SelectItem>
+                            {filieres.map((f) => (
+                              <SelectItem key={f.id} value={f.id}>
+                                {f.nom}{f.code ? ` (${f.code})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="link-niveau" className="text-sm">
+                        Niveau <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Select value={linkNiveau || '__none__'} onValueChange={setLinkNiveau}>
+                        <SelectTrigger id="link-niveau" className="h-10">
+                          <SelectValue placeholder="Tous niveaux" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Tous niveaux</SelectItem>
+                          {niveauOptions.map((n) => (
+                            <SelectItem key={n} value={n}>{n}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleCloseWizard}
+                      aria-label="Annuler et fermer le wizard"
+                    >
+                      <X className="h-4 w-4 mr-1.5" />
+                      Annuler
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setWizardStep(2)}
+                      className="bg-success hover:bg-success/90 text-success-foreground"
+                    >
+                      Continuer
+                      <ChevronRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 2 && (
+                /* ── Step 2 : Restrictions ── */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4 text-gold" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gold">
+                      Étape 2 — Restrictions &amp; message
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                    {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B). */}
+                    {/* Masqué pour ENSEIGNANT (B2C) — un prof B2C n'a pas de domaine propre. */}
+                    {canSelectFiliere && (
+                      <div className="space-y-2">
+                        <Label htmlFor="link-email-domain" className="flex items-center gap-1.5 text-sm">
+                          <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+                          Domaine email autorisé <span className="text-muted-foreground font-normal">(optionnel)</span>
+                        </Label>
+                        <Input
+                          id="link-email-domain"
+                          type="text"
+                          placeholder="ex: univ-ci.edu"
+                          value={linkEmailDomain}
+                          onChange={(e) => setLinkEmailDomain(e.target.value)}
+                          className="h-10"
+                          aria-describedby="link-email-domain-hint"
+                        />
+                        <p id="link-email-domain-hint" className="text-xs text-muted-foreground leading-relaxed">
+                          Laissez vide pour autoriser tous les domaines. Ex: univ-ci.edu
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="link-max-uses" className="text-sm">
+                        Max inscriptions <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Input
+                        id="link-max-uses"
+                        type="number"
+                        min={1}
+                        placeholder="Vide = illimité"
+                        value={linkMaxUses}
+                        onChange={(e) => setLinkMaxUses(e.target.value)}
+                        className="h-10"
+                        aria-describedby="link-max-uses-hint"
+                      />
+                      <p id="link-max-uses-hint" className="text-xs text-muted-foreground leading-relaxed">
+                        Vide = illimité. Une fois le quota atteint, le lien désactive automatiquement.
+                      </p>
+                    </div>
+
+                    {/* SECT-REG-LINK-WIZARD-UX-1 : toggle "Exiger un matricule étudiant" (B2B).
+                        L'étudiant devra saisir le matricule fourni par son établissement
+                        lors de l'inscription. La validation utilise le format défini dans
+                        la configuration de l'établissement. */}
+                    {canSelectFiliere && (
+                      <div className="space-y-2 rounded-md border border-warning/20 bg-warning/5 p-3">
+                        <div className="flex items-start gap-2.5">
+                          <Checkbox
+                            id="link-require-matricule"
+                            checked={linkRequireMatricule}
+                            onCheckedChange={(checked) => setLinkRequireMatricule(checked === true)}
+                            className="mt-0.5"
+                          />
+                          <div className="space-y-1 min-w-0">
+                            <Label htmlFor="link-require-matricule" className="text-sm font-medium cursor-pointer">
+                              <span className="flex items-center gap-1.5">
+                                <KeyRound className="h-3.5 w-3.5 text-warning" />
+                                Exiger un matricule étudiant
+                              </span>
+                            </Label>
+                            <p id="link-require-matricule-hint" className="text-xs text-muted-foreground leading-relaxed">
+                              L&apos;étudiant devra saisir le matricule fourni par son établissement. La validation utilise le format défini dans la configuration de l&apos;établissement.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé.
+                        Visible pour TOUS les rôles (B2B + B2C) — optionnel, max 500 chars. */}
+                    <div className="space-y-2">
+                      <Label htmlFor="link-custom-message" className="flex items-center gap-1.5 text-sm">
+                        <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                        Message de bienvenue <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Textarea
+                        id="link-custom-message"
+                        placeholder="Ex : Bienvenue en L1 Info ! Pensez à apporter votre laptop le premier jour."
+                        value={linkCustomMessage}
+                        onChange={(e) => setLinkCustomMessage(e.target.value)}
+                        maxLength={500}
+                        rows={3}
+                        className="resize-none"
+                        aria-describedby="link-custom-message-hint"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <p id="link-custom-message-hint" className="text-xs text-muted-foreground leading-relaxed">
+                          Affiché dans l&apos;email de bienvenue des étudiants.
+                        </p>
+                        <span className={`text-xs font-mono tabular-nums ${linkCustomMessage.length >= 480 ? 'text-warning' : 'text-muted-foreground'}`}>
+                          {linkCustomMessage.length}/500
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setWizardStep(1)}
+                      aria-label="Revenir à l'étape précédente"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1.5" />
+                      Retour
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setWizardStep(3)}
+                      className="bg-success hover:bg-success/90 text-success-foreground"
+                    >
+                      Continuer
+                      <ChevronRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 3 && (
+                /* ── Step 3 : Validité & Confirmation ── */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-warning" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-warning">
+                      Étape 3 — Validité &amp; confirmation
+                    </span>
+                  </div>
+
+                  {/* ── Durée de validité (SECT-REG-LINK-VALIDITY-1) ── */}
+                  <div className="space-y-3 rounded-lg border-2 border-warning/30 bg-warning/5 p-4">
+                    <div className="flex items-center gap-1.5 pb-1">
+                      <Clock className="h-4 w-4 text-warning" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-warning">
+                        Durée de validité du lien
+                      </span>
+                    </div>
+
+                    {/* Presets : 5 durées rapides */}
+                    <div className="flex flex-wrap gap-2">
+                      {LINK_VALIDITY_PRESETS.map((preset) => {
+                        const isActive = linkValidityCustom === '' && linkValidityHours === preset.hours
+                        return (
+                          <button
+                            key={preset.hours}
+                            type="button"
+                            onClick={() => {
+                              setLinkValidityHours(preset.hours)
+                              setLinkValidityCustom('')
+                            }}
+                            aria-pressed={isActive}
+                            className={`group flex min-w-[64px] flex-col items-center rounded-md border px-3 py-2 transition-all ${
+                              isActive
+                                ? 'border-success bg-success/15 text-success-text shadow-sm'
+                                : 'border-border bg-background hover:border-warning/40 hover:bg-warning/10 text-foreground'
+                            }`}
+                          >
+                            <span className="text-sm font-semibold leading-none">{preset.label}</span>
+                            <span className={`mt-1 text-[10px] leading-none ${isActive ? 'text-success-text/80' : 'text-muted-foreground'}`}>
+                              {preset.hint}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Champ custom : nombre de jours */}
+                    <div className="flex items-end gap-2 pt-1">
+                      <div className="flex-1 space-y-2">
+                        <Label htmlFor="link-validity-custom" className="text-xs text-muted-foreground">
+                          Ou durée personnalisée (en jours)
+                        </Label>
+                        <Input
+                          id="link-validity-custom"
+                          type="number"
+                          min={1}
+                          max={365}
+                          placeholder="ex: 45"
+                          value={linkValidityCustom}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setLinkValidityCustom(v)
+                            const days = parseInt(v, 10)
+                            if (!Number.isNaN(days) && days >= 1 && days <= 365) {
+                              setLinkValidityHours(days * 24)
+                            }
+                          }}
+                          className="h-10"
+                          aria-describedby="link-validity-custom-hint"
+                        />
+                      </div>
+                      <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3">
+                        <span className="text-sm font-medium text-muted-foreground">jours</span>
+                      </div>
+                    </div>
+                    <p id="link-validity-custom-hint" className="text-xs text-muted-foreground leading-relaxed">
+                      Entre 1 et 365 jours. Au-delà, créez un nouveau lien.
+                    </p>
+
+                    {/* Affichage de l'expiration calculée */}
+                    <div className="flex items-center gap-2 rounded-md border border-info/20 bg-info/5 px-3 py-2">
+                      <Clock className="h-4 w-4 flex-shrink-0 text-info" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs leading-tight text-info">
+                          <span className="font-semibold">{formatValidityLabel(linkValidityHours)}</span>
+                          {' '}— expire le{' '}
+                          <span className="font-mono font-semibold">{computeExpiryDate(linkValidityHours)}</span>
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+                          Vous pourrez révoquer ce lien à tout moment.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Récapitulatif (read-only) ── */}
+                  <div className="rounded-lg border border-border/60 bg-muted/30 p-4 space-y-2">
+                    <div className="flex items-center gap-1.5 pb-1">
+                      <CheckCircle2 className="h-4 w-4 text-success-text" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-success-text">
+                        Récapitulatif
+                      </span>
+                    </div>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Libellé</dt>
+                        <dd className="font-medium truncate">
+                          {linkLabel.trim() || <span className="text-muted-foreground italic">Sans libellé</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Filière</dt>
+                        <dd className="font-medium truncate">
+                          {linkFiliereId && linkFiliereId !== '__none__'
+                            ? (filieres.find((f) => f.id === linkFiliereId)?.nom ?? '—')
+                            : <span className="text-muted-foreground italic">Toutes</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Niveau</dt>
+                        <dd className="font-medium">
+                          {linkNiveau && linkNiveau !== '__none__'
+                            ? linkNiveau
+                            : <span className="text-muted-foreground italic">Tous</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Domaine email</dt>
+                        <dd className="font-medium truncate">
+                          {linkEmailDomain.trim()
+                            ? `@${linkEmailDomain.trim().replace(/^@/, '')}`
+                            : <span className="text-muted-foreground italic">Tous</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Max inscriptions</dt>
+                        <dd className="font-medium">
+                          {linkMaxUses
+                            ? linkMaxUses
+                            : <span className="text-muted-foreground italic">Illimité</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Matricule requis</dt>
+                        <dd className="font-medium">
+                          {linkRequireMatricule
+                            ? <span className="text-warning">Oui</span>
+                            : <span className="text-muted-foreground italic">Non</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start sm:col-span-2">
+                        <dt className="text-muted-foreground">Message de bienvenue</dt>
+                        <dd className="font-medium truncate max-w-full">
+                          {linkCustomMessage.trim()
+                            ? <span className="truncate">{linkCustomMessage.trim().slice(0, 80)}{linkCustomMessage.trim().length > 80 ? '…' : ''}</span>
+                            : <span className="text-muted-foreground italic">Aucun</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start sm:col-span-2">
+                        <dt className="text-muted-foreground">Durée de validité</dt>
+                        <dd className="font-medium">{formatValidityLabel(linkValidityHours)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setWizardStep(2)}
+                      aria-label="Revenir à l'étape précédente"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1.5" />
+                      Retour
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleCreateLink}
+                      disabled={isCreatingLink}
+                      className="bg-success hover:bg-success/90 text-success-foreground font-semibold"
+                    >
+                      {isCreatingLink ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Génération...
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="h-4 w-4" />
+                          Créer le lien
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── (2) Existing Links Dialog ─── */}
+      <Dialog open={showLinksDialog} onOpenChange={setShowLinksDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <List className="h-5 w-5 text-info" />
+              Liens d&apos;inscription existants
+            </DialogTitle>
+            <DialogDescription>
+              {signupLinks.length > 0
+                ? `${signupLinks.length} lien(s) — regroupés par filière`
+                : 'Consultez, gérez et révoquez les liens déjà créés'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto max-h-[65vh] pr-1 scrollbar-thin space-y-2">
+            {isLoadingSignupLinks ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <PulseSkeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : signupLinks.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                <Link2 className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">Aucun lien créé pour le moment.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Utilisez « Créer un lien » pour générer votre premier lien d&apos;inscription.
+                </p>
+              </div>
+            ) : (
+              /* SECT-REG-LINK-PHASE3-FRONTEND-1 : liens regroupés par filière
+                 (clé '__none__' pour les liens B2C sans filière). */
+              <div className="space-y-3">
+                {Object.entries(groupedLinks).map(([filiereKey, links]) => (
+                  <div key={filiereKey} className="space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {filiereKey === '__none__'
+                        ? 'Sans filière'
+                        : (filieres.find((f) => f.id === filiereKey)?.nom ?? 'Filière inconnue')}
+                    </div>
+                    {links.map((link) => {
+                      const expired = isExpired(link.expiresAt)
+                      const placesRestantes =
+                        link.maxUses != null ? Math.max(0, link.maxUses - link.useCount) : null
+                      return (
+                        <div
+                          key={link.id}
+                          className={`rounded-lg border p-3 space-y-2 ${
+                            expired || !link.actif
+                              ? 'border-destructive/30 bg-destructive/5 opacity-75'
+                              : 'border-border'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium truncate">
+                                {link.label || <span className="text-muted-foreground italic">Sans libellé</span>}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Créé le {formatDateFR(link.createdAt)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {!link.actif && (
+                                <DSBadge variant="danger" size="sm">Révoqué</DSBadge>
+                              )}
+                              {link.actif && expired && (
+                                <DSBadge variant="warning" size="sm">Expiré</DSBadge>
+                              )}
+                              {link.actif && !expired && (
+                                <DSBadge variant="success" size="sm">Actif</DSBadge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            {link.filiereNom && (
+                              <DSBadge variant="primary" size="sm">{link.filiereNom}</DSBadge>
+                            )}
+                            {link.niveau && (
+                              <DSBadge variant="info" size="sm">{link.niveau}</DSBadge>
+                            )}
+                            {link.emailDomainRestriction && (
+                              <DSBadge variant="info" size="sm">
+                                <AtSign className="h-3 w-3 mr-0.5" />
+                                @{link.emailDomainRestriction}
+                              </DSBadge>
+                            )}
+                            {link.customWelcomeMessage && (
+                              <DSBadge variant="info" size="sm">
+                                <MessageSquare className="h-3 w-3 mr-0.5" />
+                                Message perso
+                              </DSBadge>
+                            )}
+                            {link.requireMatricule && (
+                              <DSBadge variant="warning" size="sm">
+                                <KeyRound className="h-3 w-3 mr-0.5" />
+                                Matricule requis
+                              </DSBadge>
+                            )}
+                            <span className="text-muted-foreground">
+                              <Users className="h-3 w-3 inline mr-0.5" />
+                              {link.useCount}
+                              {link.maxUses != null ? ` / ${link.maxUses}` : ' inscriptions'}
+                              {placesRestantes != null && placesRestantes === 0 && ' (complet)'}
+                            </span>
+                            <span className="text-muted-foreground">
+                              <Clock className="h-3 w-3 inline mr-0.5" />
+                              {getExpiryCountdown(link.expiresAt)}
+                            </span>
+                          </div>
+                          {link.actif && !expired && (
+                            <div className="flex justify-end pt-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
+                                onClick={() => setRevokeLinkTarget(link)}
+                                aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                Révoquer
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── (3) Stats Dialog ─── */}
+      <Dialog open={showStatsDialog} onOpenChange={setShowStatsDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-info" />
+              Statistiques d&apos;inscription
+            </DialogTitle>
+            <DialogDescription>
+              Aperçu de l&apos;utilisation de vos liens d&apos;inscription
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
             {statsQuery.isLoading ? (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -2770,552 +3551,8 @@ export function EtudiantsPage() {
               </>
             ) : null}
           </div>
-        ) : createdLink ? (
-          /* ─── Écran de succès (après création) ─── */
-          <div className="space-y-4">
-            <div className="flex flex-col items-center text-center py-2">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10 mb-3">
-                <CheckCircle2 className="h-7 w-7 text-success-text" />
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Voici votre lien d&apos;inscription. Copiez-le et partagez-le aux étudiants concernés.
-              </p>
-            </div>
-
-            {/* URL copiable */}
-            <div className="space-y-2">
-              <Label htmlFor="created-link-url">Lien d&apos;inscription</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="created-link-url"
-                  readOnly
-                  value={createdLink.url}
-                  className="font-mono text-xs"
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleCopyToClipboard(createdLink.url, 'Lien')}
-                  aria-label="Copier le lien"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Métadadonnées du lien créé */}
-            <div className="flex flex-wrap gap-1.5">
-              <DSBadge variant="info" size="sm">
-                <Clock className="h-3 w-3 mr-1" />
-                Expire le {formatDateFR(createdLink.expiresAt)}
-              </DSBadge>
-              {createdLink.maxUses != null ? (
-                <DSBadge variant="warning" size="sm">
-                  {createdLink.maxUses} places
-                </DSBadge>
-              ) : (
-                <DSBadge variant="success" size="sm">Illimité</DSBadge>
-              )}
-              {createdLink.label && (
-                <DSBadge variant="primary" size="sm">{createdLink.label}</DSBadge>
-              )}
-              {createdLink.emailDomainRestriction && (
-                <DSBadge variant="info" size="sm">
-                  <AtSign className="h-3 w-3 mr-1" />
-                  @{createdLink.emailDomainRestriction}
-                </DSBadge>
-              )}
-              {createdLink.customWelcomeMessage && (
-                <DSBadge variant="info" size="sm">
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  Message personnalisé
-                </DSBadge>
-              )}
-            </div>
-
-            {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : QR code pour projection
-                en amphi / partage WhatsApp / affichage en salle. */}
-            {createdLink.url && (
-              <div className="flex flex-col items-center gap-2 py-3 border-t border-border/50">
-                <p className="text-xs text-muted-foreground">
-                  Scannez pour vous inscrire
-                </p>
-                <div className="p-3 bg-white rounded-lg border">
-                  <QRCodeSVG
-                    value={createdLink.url}
-                    size={160}
-                    level="M"
-                    marginSize={0}
-                    aria-label="QR code d inscription"
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground text-center max-w-xs">
-                  Idéal pour projection en amphi ou affichage en salle.
-                </p>
-              </div>
-            )}
-
-            {/* Message personnalisé (preview si défini) */}
-            {createdLink.customWelcomeMessage && (
-              <div className="rounded-md bg-info/10 border border-info/20 p-3 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-info">
-                  <MessageSquare className="h-3 w-3" />
-                  Message de bienvenue
-                </div>
-                <p className="text-sm text-foreground whitespace-pre-wrap">
-                  {createdLink.customWelcomeMessage}
-                </p>
-              </div>
-            )}
-
-            {/* Actions partage */}
-            <div className="flex flex-wrap gap-2 pt-2">
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent('Inscrivez-vous sur SECT : ' + createdLink.url)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex"
-              >
-                <Button type="button" variant="outline" size="sm">
-                  <MessageCircle className="h-4 w-4 mr-1.5" />
-                  Partager via WhatsApp
-                </Button>
-              </a>
-              <Button type="button" variant="ghost" size="sm" onClick={handleCloseLinkDialog}>
-                Fermer
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setCreatedLink(null)
-                  setLinkLabel('')
-                  setLinkFiliereId('')
-                  setLinkNiveau('')
-                  setLinkMaxUses('')
-                  setLinkEmailDomain('')
-                  setLinkCustomMessage('')
-                  // SECT-REG-LINK-VALIDITY-1 : reset à la valeur par défaut (30 jours).
-                  setLinkValidityHours(30 * 24)
-                  setLinkValidityCustom('')
-                }}
-              >
-                <Plus className="h-4 w-4 mr-1.5" />
-                Créer un autre lien
-              </Button>
-            </div>
-          </div>
-        ) : (
-          /* ─── Écran formulaire + liste ─── */
-          <div className="space-y-5">
-            {/* SECT-REG-LINK-VALIDITY-1 : refonte du formulaire de génération.
-                Structure en 3 sections visuelles (Informations / Restrictions &
-                message / Durée de validité) avec en-tête kente, hiérarchie claire,
-                labels entièrement visibles (text-sm, no truncate) et palette
-                Savane EdTech (success/warning/info/gold). La section "Durée de
-                validité" est mise en avant (border-warning) car c'est le nouveau
-                contrôle demandé par l'utilisateur. */}
-            <div className="space-y-5">
-              {/* ── Hero kente : titre + sous-titre ── */}
-              <div className="ds-kente-top -mx-1 rounded-lg bg-gradient-to-br from-success/8 via-transparent to-gold/8 px-4 py-4 flex items-start gap-3">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/25">
-                  <Link2 className="h-5 w-5 text-success-text" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-base font-semibold font-display text-foreground leading-tight">
-                    Nouveau lien d&apos;inscription
-                  </h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                    Les étudiants s&apos;inscrivent eux-mêmes via ce lien. La base de données se remplit automatiquement.
-                  </p>
-                </div>
-              </div>
-
-              {/* ── Section 1 : Informations du lien ── */}
-              <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
-                <div className="flex items-center gap-1.5 pb-1">
-                  <GraduationCap className="h-4 w-4 text-info" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-info">
-                    Informations du lien
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="link-label" className="text-sm">
-                    Libellé <span className="text-muted-foreground font-normal">(optionnel)</span>
-                  </Label>
-                  <Input
-                    id="link-label"
-                    placeholder="ex: Promo L1 2026"
-                    value={linkLabel}
-                    onChange={(e) => setLinkLabel(e.target.value)}
-                    className="h-10"
-                  />
-                </div>
-
-                {canSelectFiliere && (
-                  <div className="space-y-2">
-                    <Label htmlFor="link-filiere" className="text-sm">
-                      Filière <span className="text-muted-foreground font-normal">(optionnel)</span>
-                    </Label>
-                    <Select value={linkFiliereId || '__none__'} onValueChange={setLinkFiliereId}>
-                      <SelectTrigger id="link-filiere" className="h-10">
-                        <SelectValue placeholder="Toutes les filières" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">Toutes les filières</SelectItem>
-                        {filieres.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.nom}{f.code ? ` (${f.code})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="link-niveau" className="text-sm">
-                      Niveau <span className="text-muted-foreground font-normal">(optionnel)</span>
-                    </Label>
-                    <Select value={linkNiveau || '__none__'} onValueChange={setLinkNiveau}>
-                      <SelectTrigger id="link-niveau" className="h-10">
-                        <SelectValue placeholder="Tous niveaux" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">Tous niveaux</SelectItem>
-                        {niveauOptions.map((n) => (
-                          <SelectItem key={n} value={n}>{n}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="link-max-uses" className="text-sm">
-                      Max inscriptions <span className="text-muted-foreground font-normal">(optionnel)</span>
-                    </Label>
-                    <Input
-                      id="link-max-uses"
-                      type="number"
-                      min={1}
-                      placeholder="Vide = illimité"
-                      value={linkMaxUses}
-                      onChange={(e) => setLinkMaxUses(e.target.value)}
-                      className="h-10"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Section 2 : Restrictions & message de bienvenue ── */}
-              <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
-                <div className="flex items-center gap-1.5 pb-1">
-                  <MessageSquare className="h-4 w-4 text-gold" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gold">
-                    Restrictions &amp; message
-                  </span>
-                </div>
-
-                {/* SECT-REG-LINK-PHASE2-FRONTEND-1 : restriction de domaine email (B2B). */}
-                {/* Masqué pour ENSEIGNANT (B2C) — un prof B2C n'a pas de domaine propre. */}
-                {canSelectFiliere && (
-                  <div className="space-y-2">
-                    <Label htmlFor="link-email-domain" className="flex items-center gap-1.5 text-sm">
-                      <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
-                      Domaine email autorisé <span className="text-muted-foreground font-normal">(optionnel)</span>
-                    </Label>
-                    <Input
-                      id="link-email-domain"
-                      type="text"
-                      placeholder="ex: univ-ci.edu"
-                      value={linkEmailDomain}
-                      onChange={(e) => setLinkEmailDomain(e.target.value)}
-                      className="h-10"
-                      aria-describedby="link-email-domain-hint"
-                    />
-                    <p id="link-email-domain-hint" className="text-xs text-muted-foreground leading-relaxed">
-                      Seuls les emails se terminant par @ce-domaine pourront s&apos;inscrire. Laissez vide pour autoriser tous les domaines.
-                    </p>
-                  </div>
-                )}
-
-                {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : message de bienvenue personnalisé.
-                    Visible pour TOUS les rôles (B2B + B2C) — optionnel, max 500 chars. */}
-                <div className="space-y-2">
-                  <Label htmlFor="link-custom-message" className="flex items-center gap-1.5 text-sm">
-                    <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                    Message de bienvenue <span className="text-muted-foreground font-normal">(optionnel)</span>
-                  </Label>
-                  <Textarea
-                    id="link-custom-message"
-                    placeholder="Ex : Bienvenue en L1 Info ! Pensez à apporter votre laptop le premier jour."
-                    value={linkCustomMessage}
-                    onChange={(e) => setLinkCustomMessage(e.target.value)}
-                    maxLength={500}
-                    rows={3}
-                    className="resize-none"
-                    aria-describedby="link-custom-message-hint"
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <p id="link-custom-message-hint" className="text-xs text-muted-foreground leading-relaxed">
-                      Affiché dans l&apos;email de bienvenue des étudiants.
-                    </p>
-                    <span className={`text-xs font-mono tabular-nums ${linkCustomMessage.length >= 480 ? 'text-warning' : 'text-muted-foreground'}`}>
-                      {linkCustomMessage.length}/500
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Section 3 : Durée de validité (SECT-REG-LINK-VALIDITY-1) ──
-                  Mise en avant (border-warning) car c'est le nouveau contrôle.
-                  Presets rapides + champ custom + affichage de l'expiration calculée. */}
-              <div className="space-y-3 rounded-lg border-2 border-warning/30 bg-warning/5 p-4">
-                <div className="flex items-center gap-1.5 pb-1">
-                  <Clock className="h-4 w-4 text-warning" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-warning">
-                    Durée de validité du lien
-                  </span>
-                </div>
-
-                {/* Presets : 5 durées rapides */}
-                <div className="flex flex-wrap gap-2">
-                  {LINK_VALIDITY_PRESETS.map((preset) => {
-                    const isActive = linkValidityCustom === '' && linkValidityHours === preset.hours
-                    return (
-                      <button
-                        key={preset.hours}
-                        type="button"
-                        onClick={() => {
-                          setLinkValidityHours(preset.hours)
-                          setLinkValidityCustom('')
-                        }}
-                        aria-pressed={isActive}
-                        className={`group flex min-w-[64px] flex-col items-center rounded-md border px-3 py-2 transition-all ${
-                          isActive
-                            ? 'border-success bg-success/15 text-success-text shadow-sm'
-                            : 'border-border bg-background hover:border-warning/40 hover:bg-warning/10 text-foreground'
-                        }`}
-                      >
-                        <span className="text-sm font-semibold leading-none">{preset.label}</span>
-                        <span className={`mt-1 text-[10px] leading-none ${isActive ? 'text-success-text/80' : 'text-muted-foreground'}`}>
-                          {preset.hint}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {/* Champ custom : nombre de jours */}
-                <div className="flex items-end gap-2 pt-1">
-                  <div className="flex-1 space-y-2">
-                    <Label htmlFor="link-validity-custom" className="text-xs text-muted-foreground">
-                      Ou durée personnalisée (en jours)
-                    </Label>
-                    <Input
-                      id="link-validity-custom"
-                      type="number"
-                      min={1}
-                      max={365}
-                      placeholder="ex: 45"
-                      value={linkValidityCustom}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setLinkValidityCustom(v)
-                        const days = parseInt(v, 10)
-                        if (!Number.isNaN(days) && days >= 1 && days <= 365) {
-                          setLinkValidityHours(days * 24)
-                        }
-                      }}
-                      className="h-10"
-                      aria-describedby="link-validity-custom-hint"
-                    />
-                  </div>
-                  <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3">
-                    <span className="text-sm font-medium text-muted-foreground">jours</span>
-                  </div>
-                </div>
-                <p id="link-validity-custom-hint" className="text-xs text-muted-foreground leading-relaxed">
-                  Entre 1 et 365 jours. Au-delà, créez un nouveau lien.
-                </p>
-
-                {/* Affichage de l'expiration calculée */}
-                <div className="flex items-center gap-2 rounded-md border border-info/20 bg-info/5 px-3 py-2">
-                  <Clock className="h-4 w-4 flex-shrink-0 text-info" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs leading-tight text-info-foreground">
-                      <span className="font-semibold">{formatValidityLabel(linkValidityHours)}</span>
-                      {' '}— expire le{' '}
-                      <span className="font-mono font-semibold">{computeExpiryDate(linkValidityHours)}</span>
-                    </p>
-                    <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
-                      Vous pourrez révoquer ce lien à tout moment.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Bouton de génération ── */}
-              <Button
-                type="button"
-                onClick={handleCreateLink}
-                disabled={isCreatingLink}
-                className="w-full h-11 bg-success hover:bg-success/90 text-success-foreground font-semibold"
-              >
-                {isCreatingLink ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Génération...
-                  </>
-                ) : (
-                  <>
-                    <Link2 className="h-4 w-4" />
-                    Générer le lien
-                  </>
-                )}
-              </Button>
-            </div>
-
-            <Separator />
-
-            {/* Liste des liens existants */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold font-display">Liens existants</h4>
-                <div className="flex items-center gap-2">
-                  {/* SECT-REG-LINK-PHASE3-FRONTEND-1 : toggle vers la vue stats (lazy fetch). */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => setShowStats(true)}
-                  >
-                    <BarChart3 className="h-3.5 w-3.5 mr-1" />
-                    Statistiques
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    {signupLinks.length} lien(s)
-                  </span>
-                </div>
-              </div>
-
-              {isLoadingSignupLinks ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <PulseSkeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : signupLinks.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-border p-6 text-center">
-                  <Link2 className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Aucun lien créé pour le moment.</p>
-                </div>
-              ) : (
-                /* SECT-REG-LINK-PHASE3-FRONTEND-1 : liens regroupés par filière
-                   (clé '__none__' pour les liens B2C sans filière). */
-                <div className="max-h-60 overflow-y-auto space-y-3 scrollbar-thin">
-                  {Object.entries(groupedLinks).map(([filiereKey, links]) => (
-                    <div key={filiereKey} className="space-y-2">
-                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        {filiereKey === '__none__'
-                          ? 'Sans filière'
-                          : (filieres.find((f) => f.id === filiereKey)?.nom ?? 'Filière inconnue')}
-                      </div>
-                      {links.map((link) => {
-                        const expired = isExpired(link.expiresAt)
-                        const placesRestantes =
-                          link.maxUses != null ? Math.max(0, link.maxUses - link.useCount) : null
-                        return (
-                          <div
-                            key={link.id}
-                            className={`rounded-lg border p-3 space-y-2 ${
-                              expired || !link.actif
-                                ? 'border-destructive/30 bg-destructive/5 opacity-75'
-                                : 'border-border'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">
-                                  {link.label || <span className="text-muted-foreground italic">Sans libellé</span>}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  Créé le {formatDateFR(link.createdAt)}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                {!link.actif && (
-                                  <DSBadge variant="danger" size="sm">Révoqué</DSBadge>
-                                )}
-                                {link.actif && expired && (
-                                  <DSBadge variant="warning" size="sm">Expiré</DSBadge>
-                                )}
-                                {link.actif && !expired && (
-                                  <DSBadge variant="success" size="sm">Actif</DSBadge>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                              {link.filiereNom && (
-                                <DSBadge variant="primary" size="sm">{link.filiereNom}</DSBadge>
-                              )}
-                              {link.niveau && (
-                                <DSBadge variant="info" size="sm">{link.niveau}</DSBadge>
-                              )}
-                              {link.emailDomainRestriction && (
-                                <DSBadge variant="info" size="sm">
-                                  <AtSign className="h-3 w-3 mr-0.5" />
-                                  @{link.emailDomainRestriction}
-                                </DSBadge>
-                              )}
-                              {link.customWelcomeMessage && (
-                                <DSBadge variant="info" size="sm">
-                                  <MessageSquare className="h-3 w-3 mr-0.5" />
-                                  Message perso
-                                </DSBadge>
-                              )}
-                              <span className="text-muted-foreground">
-                                <Users className="h-3 w-3 inline mr-0.5" />
-                                {link.useCount}
-                                {link.maxUses != null ? ` / ${link.maxUses}` : ' inscriptions'}
-                                {placesRestantes != null && placesRestantes === 0 && ' (complet)'}
-                              </span>
-                              <span className="text-muted-foreground">
-                                <Clock className="h-3 w-3 inline mr-0.5" />
-                                {getExpiryCountdown(link.expiresAt)}
-                              </span>
-                            </div>
-                            {link.actif && !expired && (
-                              <div className="flex justify-end pt-1">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
-                                  onClick={() => setRevokeLinkTarget(link)}
-                                  aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                  Révoquer
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </GlassModal>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Revoke Signup Link Confirmation ─── */}
       <AlertDialog
@@ -3380,6 +3617,104 @@ function StatCard({
       </div>
       <div className="text-2xl font-bold font-mono tabular-nums">{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECT-REG-LINK-WIZARD-UX-1 : LinkWizardStepIndicator — indicateur d'étapes
+// numérotées (1-2-3) avec connecteur, inspiré du StepIndicator de
+// student-signup-page.tsx mais adapté pour 3 étapes et responsive mobile-first
+// (cercles plus petits + libellés masqués sur très petits écrans via sr-only).
+// Palette Savane EdTech : étape active/complétée = bg-success + text-success-foreground,
+// étape à venir = bg-muted + text-muted-foreground. Connecteur bg-success si étape
+// suivante atteinte, sinon bg-muted.
+// ═══════════════════════════════════════════════════════════════════════════
+function LinkWizardStepIndicator({ currentStep }: { currentStep: 1 | 2 | 3 }) {
+  return (
+    <div
+      className="flex items-center justify-center gap-2 sm:gap-3 mb-2"
+      role="navigation"
+      aria-label="Étapes du wizard de création de lien"
+    >
+      {/* Step 1 — Contexte */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-colors ${
+            currentStep >= 1
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          aria-current={currentStep === 1 ? 'step' : undefined}
+        >
+          {currentStep > 1 ? <CheckCircle2 className="h-4 w-4" /> : '1'}
+        </div>
+        <span
+          className={`text-xs sm:text-sm font-medium transition-colors ${
+            currentStep >= 1 ? 'text-success-text' : 'text-muted-foreground'
+          }`}
+        >
+          Contexte
+        </span>
+      </div>
+
+      {/* Connector 1-2 */}
+      <div
+        className={`h-0.5 w-4 sm:w-8 transition-colors ${
+          currentStep >= 2 ? 'bg-success' : 'bg-muted'
+        }`}
+        aria-hidden="true"
+      />
+
+      {/* Step 2 — Restrictions */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-colors ${
+            currentStep >= 2
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          aria-current={currentStep === 2 ? 'step' : undefined}
+        >
+          {currentStep > 2 ? <CheckCircle2 className="h-4 w-4" /> : '2'}
+        </div>
+        <span
+          className={`text-xs sm:text-sm font-medium transition-colors ${
+            currentStep >= 2 ? 'text-success-text' : 'text-muted-foreground'
+          }`}
+        >
+          Restrictions
+        </span>
+      </div>
+
+      {/* Connector 2-3 */}
+      <div
+        className={`h-0.5 w-4 sm:w-8 transition-colors ${
+          currentStep >= 3 ? 'bg-success' : 'bg-muted'
+        }`}
+        aria-hidden="true"
+      />
+
+      {/* Step 3 — Validité */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-colors ${
+            currentStep >= 3
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          aria-current={currentStep === 3 ? 'step' : undefined}
+        >
+          3
+        </div>
+        <span
+          className={`text-xs sm:text-sm font-medium transition-colors ${
+            currentStep >= 3 ? 'text-success-text' : 'text-muted-foreground'
+          }`}
+        >
+          Validité
+        </span>
+      </div>
     </div>
   )
 }

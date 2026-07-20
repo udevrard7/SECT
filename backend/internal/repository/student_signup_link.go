@@ -33,6 +33,9 @@ func (r *StudentSignupLinkRepository) Pool() *pgxpool.Pool {
 //
 // SECT-REG-LINK-PHASE3-BACKEND-1 : ajout colonne "customWelcomeMessage" (text,
 // nullable). expiryReminderSent a un DEFAULT false côté DB — non inséré ici.
+//
+// SECT-STUDENT-SIGNUP-MATRICULE-1 : ajout colonne "requireMatricule" (boolean,
+// DEFAULT false). Si nil côté input, on insère false (comportement inchangé).
 func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.CreateStudentSignupLinkInput, token string) (*domain.StudentSignupLink, error) {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok {
@@ -46,13 +49,15 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
                                 "id", "token", "etablissementId", "filiereId", "niveau",
                                 "createdById", "expiresAt", "maxUses", "useCount", "actif",
                                 "label", "emailDomainRestriction", "customWelcomeMessage",
+                                "requireMatricule",
                                 "createdAt", "updatedAt"
                         )
-                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, true, $8, $9, $10,
+                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, true, $8, $9, $10, $11,
                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "id", "token", "etablissementId", "filiereId", "niveau",
                                   "createdById", "expiresAt", "maxUses", "useCount", "actif",
                                   "label", "emailDomainRestriction", "customWelcomeMessage",
+                                  "requireMatricule",
                                   "createdAt", "updatedAt"`
                 row := tx.QueryRow(ctx, query,
                         token,
@@ -65,12 +70,14 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
                         nullableStrPtr(input.Label),
                         nullableStrPtr(input.EmailDomainRestriction),
                         nullableStrPtr(input.CustomWelcomeMessage),
+                        input.RequireMatricule != nil && *input.RequireMatricule,
                 )
                 l := &domain.StudentSignupLink{}
                 if err := row.Scan(
                         &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                         &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
                         &l.Label, &l.EmailDomainRestriction, &l.CustomWelcomeMessage,
+                        &l.RequireMatricule,
                         &l.CreatedAt, &l.UpdatedAt,
                 ); err != nil {
                         if isUniqueViolation(err) {
@@ -95,30 +102,37 @@ func (r *StudentSignupLinkRepository) Create(ctx context.Context, input domain.C
 // pour rester compatible avec le rôle prod sect_app (NOBYPASSRLS). Le token EST
 // l'authentification — pas de claims JWT requises.
 //
-// 21 colonnes retournées par la fonction SQL (Phase 3 étendue — 2 colonnes ajoutées :
-// link_custom_welcome_message + link_expiry_reminder_sent, en 14e et 15e position,
-// avant les colonnes de jointure) :
+// 25 colonnes retournées par la fonction SQL (migration 000082 étendue — 4 colonnes
+// ajoutées : link_require_matricule + etab_matricule_regex + etab_matricule_format
+// + etab_matricule_example, en 16e à 19e position, avant les colonnes de jointure) :
 //  1. link_id, 2. link_token, 3. link_etablissement_id, 4. link_filiere_id,
 //  5. link_niveau, 6. link_created_by_id, 7. link_expires_at, 8. link_max_uses,
 //  9. link_use_count, 10. link_actif, 11. link_label, 12. link_created_at,
 //  13. link_email_domain_restriction (PHASE 2),
 //  14. link_custom_welcome_message (PHASE 3),
 //  15. link_expiry_reminder_sent (PHASE 3),
-//  16. etab_nom, 17. etab_type, 18. etab_ville, 19. fil_nom, 20. fil_code,
-//  21. creator_name
+//  16. link_require_matricule (MATRICULE-1),
+//  17. etab_matricule_regex (MATRICULE-1),
+//  18. etab_matricule_format (MATRICULE-1),
+//  19. etab_matricule_example (MATRICULE-1),
+//  20. etab_nom, 21. etab_type, 22. etab_ville, 23. fil_nom, 24. fil_code,
+//  25. creator_name
 func (r *StudentSignupLinkRepository) FindByToken(ctx context.Context, token string) (*domain.StudentSignupLink, error) {
         row := r.pool.QueryRow(ctx, `SELECT * FROM find_student_signup_link_by_token($1)`, token)
         l := &domain.StudentSignupLink{}
         var (
-                etabNom, etabType, etabVille *string
-                filNom, filCode              *string
-                creatorName                  *string
+                etabNom, etabType, etabVille            *string
+                matriculeRegex, matriculeFormat, matriculeExample *string
+                filNom, filCode                          *string
+                creatorName                              *string
         )
         if err := row.Scan(
                 &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                 &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
                 &l.Label, &l.CreatedAt, &l.EmailDomainRestriction,
                 &l.CustomWelcomeMessage, &l.ExpiryReminderSent,
+                &l.RequireMatricule,
+                &matriculeRegex, &matriculeFormat, &matriculeExample,
                 &etabNom, &etabType, &etabVille,
                 &filNom, &filCode,
                 &creatorName,
@@ -137,6 +151,12 @@ func (r *StudentSignupLinkRepository) FindByToken(ctx context.Context, token str
                 if etabType != nil {
                         etab.Type = *etabType
                 }
+                // SECT-STUDENT-SIGNUP-MATRICULE-1 : propager la config matricule de
+                // l'étab (regex/format/example) pour que le frontend puisse valider
+                // l'input étudiant + afficher un placeholder + helper.
+                etab.MatriculeRegex = matriculeRegex
+                etab.MatriculeFormat = matriculeFormat
+                etab.MatriculeExample = matriculeExample
                 l.Etablissement = etab
         }
         if l.FiliereID != nil && filNom != nil {
@@ -179,11 +199,14 @@ func (r *StudentSignupLinkRepository) ListByCreator(ctx context.Context, creator
                 // SECT-REG-LINK-PHASE3-BACKEND-1 : ajout colonnes expiryReminderSent +
                 // customWelcomeMessage (utiles pour l'affichage du message perso côté
                 // frontend + suivi du flag reminder).
+                //
+                // SECT-STUDENT-SIGNUP-MATRICULE-1 : ajout colonne requireMatricule
+                // (utile pour afficher le toggle côté frontend list de liens).
                 query := `
                         SELECT "id", "token", "etablissementId", "filiereId", "niveau",
                                "createdById", "expiresAt", "maxUses", "useCount", "actif",
                                "label", "emailDomainRestriction", "customWelcomeMessage",
-                               "expiryReminderSent", "createdAt", "updatedAt"
+                               "expiryReminderSent", "requireMatricule", "createdAt", "updatedAt"
                         FROM "StudentSignupLink"
                         WHERE "createdById" = $1 AND "deletedAt" IS NULL
                         ORDER BY "createdAt" DESC`
@@ -198,7 +221,7 @@ func (r *StudentSignupLinkRepository) ListByCreator(ctx context.Context, creator
                                 &l.ID, &l.Token, &l.EtablissementID, &l.FiliereID, &l.Niveau,
                                 &l.CreatedByID, &l.ExpiresAt, &l.MaxUses, &l.UseCount, &l.Actif,
                                 &l.Label, &l.EmailDomainRestriction, &l.CustomWelcomeMessage,
-                                &l.ExpiryReminderSent, &l.CreatedAt, &l.UpdatedAt,
+                                &l.ExpiryReminderSent, &l.RequireMatricule, &l.CreatedAt, &l.UpdatedAt,
                         ); err != nil {
                                 return fmt.Errorf("scan student signup link: %w", err)
                         }
@@ -254,12 +277,18 @@ func (r *StudentSignupLinkRepository) Revoke(ctx context.Context, id string) err
 //   - "QUOTA_EXCEEDED"    — maxUses atteint
 //   - "DOMAIN_NOT_ALLOWED" — (PHASE 2) email ne match pas emailDomainRestriction
 //   - "USER_EXISTS"       — email déjà utilisé (unique_violation catchée côté SQL)
+//   - "MATRICULE_REQUIRED" — (MATRICULE-1) requireMatricule=true mais p_matricule vide
+//   - "MATRICULE_INVALID"  — (MATRICULE-1) p_matricule ne match pas etab.regexMatricule
 //
 // La fonction retourne 8 colonnes : o_code, o_user_id, o_user_email, o_user_name,
 // o_user_matricule, o_etablissement_nom, o_filiere_nom, o_message.
-func (r *StudentSignupLinkRepository) AcceptSignup(ctx context.Context, token, email, hashedPassword, name string) (*domain.AcceptSignupResult, error) {
-        row := r.pool.QueryRow(ctx, `SELECT * FROM accept_student_signup($1, $2, $3, $4)`,
-                token, email, hashedPassword, name)
+//
+// SECT-STUDENT-SIGNUP-MATRICULE-1 : ajout 5e paramètre `matricule`. Si le
+// link.requireMatricule = true, la fonction SQL valide + stocke le matricule saisi.
+// Si false, le matricule est ignoré (auto-génération FIL/LJ/YY/NNN côté SQL).
+func (r *StudentSignupLinkRepository) AcceptSignup(ctx context.Context, token, email, hashedPassword, name, matricule string) (*domain.AcceptSignupResult, error) {
+        row := r.pool.QueryRow(ctx, `SELECT * FROM accept_student_signup($1, $2, $3, $4, $5)`,
+                token, email, hashedPassword, name, matricule)
         res := &domain.AcceptSignupResult{}
         if err := row.Scan(
                 &res.Code,

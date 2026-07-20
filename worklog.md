@@ -17707,3 +17707,41 @@ Stage Summary:
   PERSONNEL gère ses ÉTUDIANTS) sont préservés.
 - Le check rowsAffected défensif protège contre toute future régression RLS silencieuse
   sur la suppression utilisateur (meilleure observabilité : toast erreur au lieu de 200 faux)
+
+---
+Task ID: SECT-REG-LINK-WIZARD-UX-1 + SECT-STUDENT-SIGNUP-MATRICULE-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Refonte UX du formulaire de création de lien d'inscription (wizard 3 étapes + dropdown + dialogs séparés) + ajout du matricule B2B obligatoire pour les étudiants des établissements institutionnels
+
+Work Log:
+- Exploration approfondie (subagent Explore) : cartographie du formulaire de création de lien (etudiants-page.tsx lignes 2594-3318, GlassModal unique avec 3 écrans internes) + du wizard étudiant (student-signup-page.tsx, 2 étapes)
+- Identification de 4 bugs de lisibilité white-on-white (text-info-foreground blanc sur bg-info/5 quasi-blanc en light mode)
+- Découverte infrastructure matricule existante : Etablissement.{exempleMatricule, formatMatricule, regexMatricule} (migration 000002) + User.matricule (unique index)
+- Décision architecture : split en 2 Task IDs parallèles (A: frontend wizard UX, B: backend matricule B2B) avec intégration finale du champ matricule côté étudiant par l'orchestrateur
+- Task B (subagent general-purpose) : migration 000082_student_signup_link_matricule (up + down), extension domain.StudentSignupLink + CreateStudentSignupLinkInput + EtablissementRef + repository.Create/FindByToken/ListByCreator/AcceptSignup + usecase.Accept + handlers create/verify/accept/list + mapSignupStateError. go build + go vet clean.
+- Task A (subagent full-stack-developer) : refonte etudiants-page.tsx (3385→3721 lignes) — DropdownMenu trigger (3 options: Créer/Liens existants/Statistiques), Wizard 3 étapes (Contexte/Restrictions/Validité), Dialogs séparés, StepIndicator, Récapitulatif, checkbox "Exiger un matricule" dans Step 2, fix lisibilité (text-info-foreground→text-info sur bg-info/5, text-white→text-warning-foreground sur bg-warning). bun run lint + tsc clean.
+- Intégration finale (orchestrateur) : extension student-signup-page.tsx — type VerifyLinkResponse (+requireMatricule +etablissement{matriculeRegex,matriculeFormat,matriculeExample}), VerifyErrorCode (+MATRICULE_REQUIRED +MATRICULE_INVALID), schema zod (+matricule optional), defaultValues (+matricule), onSubmit (validation client required + regex + body POST matricule), renderError switch (+2 cas), renderStep2 (champ matricule conditionnel après Nom avec KeyRound icon + placeholder example + helper format), disabled bouton submit si matricule requis vide, fix lisibilité (bouton Recharger + Places restantes).
+- Build backend final : go build ./cmd/api OK (26M), go vet ./internal/... OK
+- Lint frontend final : bun run lint OK (0 errors, 1 warning pre-existing dans use-surveillance-ws.ts hors-scope), npx tsc --noEmit OK
+- Migration 000082 appliquée à Neon (connexion neondb_owner, URL poolée) : version 81 → 82, durée 2.1s, aucune erreur
+- Commit + push GitHub (auteur udevrard7 <ulrichdouh@gmail.com>)
+
+Stage Summary:
+- 9 fichiers modifiés/créés :
+  * backend/db/db/migrations/000082_student_signup_link_matricule.up.sql (créé, 261 lignes)
+  * backend/db/db/migrations/000082_student_signup_link_matricule.down.sql (créé, rollback)
+  * backend/internal/domain/student_signup_link.go (modifié, +RequireMatricule sur StudentSignupLink + CreateStudentSignupLinkInput + AcceptSignup signature +1 param + 2 nouveaux codes SignupLinkStateError)
+  * backend/internal/domain/user.go (modifié, EtablissementRef +3 champs matricule config)
+  * backend/internal/repository/student_signup_link.go (modifié, Create +FindByToken 25 cols +ListByCreator +AcceptSignup 5 params)
+  * backend/internal/usecase/student_signup_link.go (modifié, Accept +1 param matricule + validation + 2 switch cases)
+  * backend/internal/transport/http/student_signup_link_handlers.go (modifié, createStudentSignupLinkRequest +1 champ + response +safeLink +verify etab map +3 champs matricule +acceptStudentSignupRequest +Matricule +mapSignupStateError +2 codes)
+  * frontend/src/components/responsable/etudiants-page.tsx (modifié, +336 lignes — DropdownMenu + Wizard 3 étapes + 3 Dialogs + StepIndicator + Récapitulatif + checkbox requireMatricule + fix lisibilité)
+  * frontend/src/components/auth/student-signup-page.tsx (modifié, +champ matricule conditionnel + validation client + 2 codes erreur + fix lisibilité)
+- Migration 000082 appliquée à Neon DB production (version 82)
+- Backend compile (go build + go vet clean)
+- Frontend compile (lint + tsc clean)
+- Impact UX :
+  * Formulaire création lien : wizard 3 étapes clair (Contexte → Restrictions → Validité) au lieu d'un mono-écran surchargé
+  * Dropdown "Inscription" (3 options) au lieu d'un bouton unique — séparation création/liste/stats
+  * Bugs white-on-white corrigés (4 occurrences) — texte lisible en light mode
+  * Matricule B2B : les établissements institutionnels peuvent cocher "Exiger un matricule" → l'étudiant saisit son matricule, validé contre la regex de l'établissement (Etablissement.regexMatricule)
