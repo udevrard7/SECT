@@ -85,6 +85,11 @@ type Server struct {
 	// établissement). Injecté via NewServer (paramètre ajouté en fin de
 	// signature pour minimiser le diff avec les callers existants).
 	authRepo *repository.AuthRepository
+	// SECT-PROMOTION-BACKEND-1 : usecase de clôture d'année académique.
+	// Expose les 6 endpoints /cloture-annee + /regles-passage + /etudiants/{id}/promote.
+	// Le worker promotion_worker.go (démarré dans main.go) pickup les batches
+	// PENDING créés par POST /cloture-annee et les traite async.
+	promotionUC *usecase.PromotionUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -128,6 +133,11 @@ func NewServer(
 	// listEtablissementAuditLogs (lecture du journal d'audit scoped par
 	// établissement). Ajouté en fin de signature pour minimiser le diff.
 	authRepo *repository.AuthRepository,
+	// SECT-PROMOTION-BACKEND-1 : usecase de clôture d'année académique
+	// (ajouté en fin de signature pour minimiser le diff avec les callers
+	// existants). Le worker promotion_worker.go est démarré séparément dans
+	// main.go (pas besoin de l'injecter dans Server — il communique via DB).
+	promotionUC *usecase.PromotionUseCase,
 ) *Server {
 	s := &Server{
 		dbPool:              dbPool,
@@ -162,6 +172,7 @@ func NewServer(
 		appBaseURL:          appBaseURL,
 		quotaChecker:        quotaChecker,
 		authRepo:            authRepo,
+		promotionUC:         promotionUC,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -470,6 +481,53 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteAnnee)
 		})
+
+		// SECT-PROMOTION-BACKEND-1 — clôture d'année académique.
+		//
+		// 4 endpoints sous /api/etablissements/{etablissementId}/cloture-annee :
+		//   POST   /           → crée un batch PENDING (202 + batchId).
+		//   POST   /preview    → liste étudiants + décision suggérée (sans appliquer).
+		//   GET    /status     → polling progression d'un batch (?batchId=X).
+		//   GET    /batches    → historique des batches de l'étab.
+		//
+		// Auth : RequireAuth + RequireRoleOrPersonalEtab("ADMIN", "RESPONSABLE")
+		// (le prof B2C dans un étab PERSONNEL peut aussi clôturer — cohérent
+		// avec les autres mutations académiques). Le usecase valide en plus le
+		// scoping (RESPONSABLE ne peut agir que sur SON étab).
+		//
+		// Le worker promotion_worker.go (démarré dans main.go) pickup les
+		// batches PENDING toutes les 10s et les traite async via la fonction
+		// SQL cloturer_annee_etudiant (SECURITY DEFINER, bypass RLS).
+		r.Route("/api/etablissements/{etablissementId}/cloture-annee", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"))
+			r.Post("/", s.runPromotion)                 // 202 Accepted + batchId
+			r.Post("/preview", s.previewPromotion)      // calcul sans appliquer
+			r.Get("/status", s.getPromotionBatchStatus) // polling
+			r.Get("/batches", s.listPromotionBatches)   // historique
+		})
+
+		// SECT-PROMOTION-BACKEND-1 — config des seuils de passage par étab.
+		// GET /api/etablissements/{etablissementId}/regles-passage
+		// Retourne seuilMoyennePassage, seuilMoyenneRattrapage,
+		// creditsMinPourcent, regime, limiteRedoublements (ou défauts si non
+		// configuré — cas anormal, le backfill 000087 devrait couvrir).
+		r.With(
+			middleware.RequireAuth,
+			middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
+		).Get("/api/etablissements/{etablissementId}/regles-passage", s.getReglesPassage)
+
+		// SECT-PROMOTION-BACKEND-1 — override individuel hors batch.
+		// POST /api/etudiants/{etudiantId}/promote
+		// Le RESPONSABLE force une décision pour un étudiant (PROMU,
+		// REDOUBLANT, DIPLOME, EXCLU, REORIENTE, QUITTE) avec un motif
+		// optionnel. Appelle cloturer_annee_etudiant avec decisionOverride.
+		// NB : déclaré hors du groupe /api/etudiants (qui n'a que GET /) pour
+		// éviter le conflit de routage chi.
+		r.With(
+			middleware.RequireAuth,
+			middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
+		).Post("/api/etudiants/{etudiantId}/promote", s.promoteStudentManual)
 
 		// E1-INVITATIONS — endpoints authentifiés (RESPONSABLE, ADMIN
 		// pour les mutations ; ENSEIGNANT inclus sur le GET car le
