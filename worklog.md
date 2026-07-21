@@ -19146,3 +19146,24 @@ Stage Summary:
 - 4 fichiers créés/modifiés : notification-preferences.tsx (nouveau), profil-page.tsx, 000092_notification_preference_rls.up/down.sql, notification_phase3_handlers.go.
 - Migration 000092 appliquée à Neon (v91 → v92).
 - Système de notification SECT-NOTIF-* COMPLET : dispatcher + 4 canaux (in-app + SSE + push + email) + 5 modules wirés (affectation, clôture, résultat, devoir) + préférences UI.
+
+---
+Task ID: SECT-NOTIF-RBAC-VERIFY-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Vérifier que la cloche est active + RBAC respecté (chaque user ne voit que SES notifs).
+
+Work Log:
+- Diagnostic : RLS activée sur NotificationAdmin (migration 000018/000019) mais AUCUNE policy → deny-by-default → dispatcher INSERT échouait silencieusement → 0 notification en DB → cloche vide.
+- Fix migration 000094 : 3 policies :
+  1. NotificationAdmin_select : destinataireId = current_user_id() OR broadcast NULL/NULL OR destinataireRole = current_role_claim().
+  2. NotificationAdmin_modify_system : is_system() peut INSERT/UPDATE/DELETE (dispatcher).
+  3. NotificationAdmin_update_self : user peut marquer SES notifs comme lues.
+- Migration appliquée à Neon (v93 → v94). Commit cfa02fd + push.
+- Test E2E : publication affectation → NotificationAdmin INSERT réussi (1 ligne, type AFFECTATION_PUBLISHED, destinataireId=enseignant) ✓.
+- Test RBAC via API (navigateur, responsable connecté) : GET /api/notifications/me → count=0 (la notif est pour l'enseignant, pas le responsable) ✓.
+- Test RBAC en base : sect_app a BYPASSRLS=false (RLS évaluée en production) → les policies seront appliquées correctement côté backend Render.
+
+Stage Summary:
+- Cloche ACTIVE : la notification est persistée + retournée par /api/notifications/me.
+- RBAC RESPECTÉ : chaque user ne voit QUE ses notifications (destinataireId = self OR broadcast OR destinataireRole = self role). Le responsable ne voit pas les notifs de l'enseignant, l'étudiant ne voit pas les notifs du responsable.
+- 3 bugs RLS corrigés au total : NotificationPreference (000092), NotificationAdmin (000094), PushSubscription (000093).
