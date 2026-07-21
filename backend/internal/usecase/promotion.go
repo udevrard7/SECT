@@ -32,6 +32,7 @@ import (
 
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/notification"
 	"github.com/udevrard7/sect/backend/internal/repository"
 )
 
@@ -53,6 +54,12 @@ type PromotionUseCase struct {
 	authRepo  *repository.AuthRepository
 	pool      *pgxpool.Pool
 	logger    *slog.Logger
+
+	// SECT-NOTIF-CLOTURE-1 : dispatcher de notifications (nil = pas de notif).
+	// Injecté via SetNotificationDispatcher (setter — évite de casser la signature
+	// NewPromotionUseCase existante). Appelé après chaque CloturerEtudiant pour
+	// notifier l'étudiant de sa décision (promu/redoublant/diplômé).
+	notifDispatcher *notification.Dispatcher
 }
 
 // NewPromotionUseCase crée un nouveau PromotionUseCase.
@@ -63,6 +70,11 @@ func NewPromotionUseCase(promoRepo domain.PromotionRepository, authRepo *reposit
 		pool:      pool,
 		logger:    logger,
 	}
+}
+
+// SetNotificationDispatcher injecte le dispatcher de notifications (SECT-NOTIF-CLOTURE-1).
+func (uc *PromotionUseCase) SetNotificationDispatcher(d *notification.Dispatcher) {
+	uc.notifDispatcher = d
 }
 
 // RunPromotion crée un batch PENDING et journalise l'action. Le worker
@@ -745,6 +757,22 @@ func (uc *PromotionUseCase) RunPromotionSync(ctx context.Context, claims db.Sess
 			case domain.StatutInscriptionExclu, domain.StatutInscriptionReoriente, domain.StatutInscriptionQuitte:
 				result.ExcluCount++
 			}
+
+			// SECT-NOTIF-CLOTURE-1 : notifier l'étudiant de sa décision.
+			if uc.notifDispatcher != nil {
+				titre, msg := uc.buildClotureNotification(dec.Decision, etu.Nom, input.AnneeSourceID)
+				uc.notifDispatcher.Dispatch(ctx, notification.Event{
+					UserID:      etu.EtudiantID,
+					Type:        "CLOTURE_DECISION",
+					Titre:       titre,
+					Message:     msg,
+					Categorie:   "pedagogique",
+					Priorite:    "success",
+					ActionURL:   "/mes-resultats",
+					ActionLabel: "Voir mes résultats",
+					Icone:       "GraduationCap",
+				})
+			}
 		}
 		result.Progression++
 		// Update live (pour polling si le frontend suit en parallèle).
@@ -800,4 +828,28 @@ func (uc *PromotionUseCase) auditBatchCompleted(ctx context.Context, batchID, et
 		Details:  string(detailsJSON),
 	}
 	_ = uc.authRepo.CreateAuditLog(ctx, entry)
+}
+
+// buildClotureNotification construit le titre + message de la notification
+// envoyée à l'étudiant après clôture, selon sa décision.
+// SECT-NOTIF-CLOTURE-1.
+func (uc *PromotionUseCase) buildClotureNotification(decision domain.StatutInscription, nomEtudiant, anneeSourceID string) (titre, message string) {
+	switch decision {
+	case domain.StatutInscriptionPromu:
+		titre = "Promotion accordée 🎓"
+		message = fmt.Sprintf("%s, vous êtes promu(e) au niveau supérieur pour la prochaine année académique.", nomEtudiant)
+	case domain.StatutInscriptionRedoublant:
+		titre = "Décision de fin d'année"
+		message = fmt.Sprintf("%s, vous redoublez l'année. Consultez vos résultats pour plus de détails.", nomEtudiant)
+	case domain.StatutInscriptionDiplome:
+		titre = "Diplôme obtenu 🎉"
+		message = fmt.Sprintf("Félicitations %s, vous avez validé votre diplôme !", nomEtudiant)
+	case domain.StatutInscriptionExclu:
+		titre = "Décision de fin d'année"
+		message = fmt.Sprintf("%s, consultez votre statut auprès de votre responsable.", nomEtudiant)
+	default:
+		titre = "Clôture de l'année académique"
+		message = fmt.Sprintf("%s, votre année académique a été clôturée.", nomEtudiant)
+	}
+	return
 }

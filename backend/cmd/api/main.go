@@ -295,6 +295,10 @@ func main() {
 	server.WithNotificationDispatcher(notifDispatcher)
 	logger.Info("Notification dispatcher configured")
 
+	// SECT-NOTIF-CLOTURE-1 : injecte le dispatcher dans PromotionUseCase
+	// pour que la clôture notifie chaque étudiant (promu/redoublant/diplômé).
+	promotionUC.SetNotificationDispatcher(notifDispatcher)
+
 	// SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
 	// Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.
 	if cfg.GeniusPayAPIKey != "" {
