@@ -19069,3 +19069,39 @@ Stage Summary:
 - Bug P0 (UEs + affectations cassés) résolu : migration 000091 fix récursion RLS.
 - 5 enrichissements validés en production : horodatage, AuditLog, lock 409, email, visibilité étudiant (RLS).
 - Commits : ab561e3 (enrichissements), d65fbfb (fix récursion).
+
+---
+Task ID: SECT-ETUDIANT-MES-ENSEIGNANTS-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Créer page étudiante "Mes enseignants" / "Mes UE" pour exploiter la RLS Affectation_select étendue (migration 000091).
+
+Work Log:
+- Cartographié le dashboard étudiant : 3 catégories (Vue d'ensemble, Mes Évaluations, Mes Résultats). Ajout d'une 4e catégorie "Mes cours".
+- Créé frontend/src/components/etudiant/mes-enseignants-page.tsx (nouveau dossier etudiant/) :
+  * 2 onglets : "Mes enseignants" (groupé par enseignant) + "Mes UE" (groupé par UE).
+  * Consomme GET /api/affectations — RLS auto-filtre (filière étudiant + PUBLIEE).
+  * Card par enseignant : avatar initiale + nom + email + liste UE (code, nom, niveau badge, type CM/TD/TP badge, volume, groupe) + date publication.
+  * Card par UE : code + nom + niveau + filiere badge + liste enseignants + date publication.
+  * États : loading (PulseSkeleton), empty (message friendly), error (AlertCircle + retry).
+  * Type CM=primary, TD=secondary, TP=info. Responsive sm:grid-cols-2. Dark mode.
+  * Fix Rules of Hooks : useMemo AVANT les early returns.
+- routes.ts : PageId 'mes-enseignants' + PAGE_ROUTES /mes-enseignants + PAGE_LABELS + PAGE_DESCRIPTIONS + PAGE_ALLOWED_ROLES ['ETUDIANT'] + ETUDIANT_CATEGORIES (nouvelle catégorie 'Mes cours' icon BookOpen avec item 'mes-enseignants' icon Users).
+- page-content.tsx : mapping 'mes-enseignants' → MesEnseignantsPage.
+- Icons Users/BookOpen/GraduationCap déjà présents dans ICON_MAP (sidebar + command-palette).
+- tsc 0 erreur, lint 0 erreur. Commit 3ada9cc + push GitHub.
+
+Vérification E2E Agent Browser :
+- Login responsable + accès /mes-enseignants → redirige vers /dashboard (page ETUDIANT-only). ✓
+- Test RLS en base avec claims étudiant (ASSANI Emile, filière Informatique) :
+  * current_user_filiere_id() = bonne filière ✓
+  * is_etudiant() = true ✓
+  * affectation_visible_by_student() = true sur PUBLIEE de sa filière ✓
+  * Affectation_select : 24 affectations visibles pour l'étudiant ✓
+- Test UI étudiant complet NON réalisé : mot de passe étudiant inconnu (le compte assani.emile@uniabidjan.com n'a pas le même mot de passe que le responsable). Demande à l'utilisateur en cours.
+
+Stage Summary:
+- 3 fichiers modifiés/créés : mes-enseignants-page.tsx (nouveau), routes.ts, page-content.tsx.
+- Page étudiante créée avec 2 onglets (Mes enseignants + Mes UE).
+- RLS validée en base (avec claims) : l'étudiant voit bien les affectations PUBLIEE de sa filière.
+- Redirection responsable→dashboard confirmée (page ETUDIANT-only).
+- En attente du mot de passe étudiant pour test UI complet.
