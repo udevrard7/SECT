@@ -19105,3 +19105,27 @@ Stage Summary:
 - RLS validée en base (avec claims) : l'étudiant voit bien les affectations PUBLIEE de sa filière.
 - Redirection responsable→dashboard confirmée (page ETUDIANT-only).
 - En attente du mot de passe étudiant pour test UI complet.
+
+---
+Task ID: SECT-ETUDIANT-MES-ENSEIGNANTS-1 (vérification E2E étudiant)
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Test E2E page /mes-enseignants avec un vrai compte étudiant (ASSANI Emile, filière Informatique).
+
+Work Log:
+- Login étudiant réussi : email assani.emile@uniabidjan.com + Merci#2026 (matricule INF/LJ/25/008 — login par matricule échoue, login par email OK).
+- Navigation /mes-enseignants : page charge, heading "Mes enseignants & unités d'enseignement", 2 onglets (Mes enseignants selected + Mes UE).
+- Onglet "Mes enseignants" :
+  * 1 card enseignant affichée (prof01@uniabidjan.com).
+  * UE affichée : UE-INFO-L201 — Bureautique II (préfixe INFO = filière Informatique).
+  * Types CM + TP affichés (badges colorés).
+  * PAS d'UE d'autres filières (pas de UE-SEG, pas de Sciences Éco) — l'étudiant ne voit QUE sa filière.
+- Onglet "Mes UE" :
+  * Card UE-INFO-L201 — Bureautique II + badge filière INFORMATIQUE.
+  * Types CM + TP + enseignant affichés.
+- 0 erreur console sur les 2 onglets.
+
+Stage Summary:
+- Page étudiante /mes-enseignants PLEINEMENT FONCTIONNELLE en production.
+- RLS Affectation_select (migration 000091, fonction affectation_visible_by_student) valide : l'étudiant ne voit QUE les affectations PUBLIEE des UE de SA filière (Informatique), pas celles des autres filières.
+- 2 onglets (Mes enseignants + Mes UE) opérationnels, avec groupement par enseignant / par UE.
+- L'enrichissement "visibilité étudiant" (SECT-AFFECTATION-PUBLISH-ENRICH-1 point 5) est maintenant exploité côté UI.
