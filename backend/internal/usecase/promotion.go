@@ -435,11 +435,11 @@ func (uc *PromotionUseCase) fetchEtudiantForPromotion(ctx context.Context, claim
 	var info etudiantInfo
 	err := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-			SELECT "etablissementId", "filiereId", "niveau"::text
-			FROM "User"
-			WHERE "id" = $1
-			  AND "role" = 'ETUDIANT'
-			  AND "deletedAt" IS NULL`,
+                        SELECT "etablissementId", "filiereId", "niveau"::text
+                        FROM "User"
+                        WHERE "id" = $1
+                          AND "role" = 'ETUDIANT'
+                          AND "deletedAt" IS NULL`,
 			etudiantID,
 		).Scan(&info.etablissementID, &info.filiereID, &info.niveau)
 	})
@@ -450,4 +450,176 @@ func (uc *PromotionUseCase) fetchEtudiantForPromotion(ctx context.Context, claim
 		return nil, fmt.Errorf("fetchEtudiantForPromotion: %w", err)
 	}
 	return &info, nil
+}
+
+// RunPromotionSync traite un batch de clôture de manière SYNCHRONE (dans la
+// requête HTTP) au lieu d'async via le worker. Cette variante est nécessaire sur
+// Render free tier où le worker async est tué par le cold start (la goroutine
+// meurt avant de traiter le batch, laissant le statut RUNNING orphelin).
+//
+// Étapes (identiques au worker processPendingBatches, mais sync) :
+//  1. Crée le batch PENDING (RunPromotion existant).
+//  2. Charge ReglesPassage (fallback défauts).
+//  3. Charge les étudiants éligibles.
+//  4. Pour chaque étudiant : CloturerEtudiant + incrément counts. Best-effort.
+//  5. Marque le batch COMPLETED + AuditLog.
+//  6. Retourne le résultat final.
+//
+// Timeout : le handler HTTP doit mettre un timeout < 30s (limite Render free).
+// Pour 800 étudiants, le traitement peut prendre 20-25s — acceptable. Au-delà,
+// le frontend doit utiliser le mode async (worker) ou découper en chunks.
+//
+// SECT-CLOTURE-E2E-VERIFY-1 : cette méthode est le chemin principal de prod.
+// Le worker async reste en place (defense-in-depth) mais n'est pas fiable sur
+// Render free.
+func (uc *PromotionUseCase) RunPromotionSync(ctx context.Context, claims db.SessionClaims, input domain.RunPromotionInput) (*domain.PromotionBatchResult, error) {
+	// 1. Crée le batch PENDING (valide rôle + scoping + ReglesPassage).
+	batch, err := uc.RunPromotion(ctx, claims, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Charge ReglesPassage (déjà fait dans RunPromotion, mais on reload pour
+	// avoir l'objet complet — RunPromotion ne le retourne pas).
+	regles, err := uc.loadReglesPassage(ctx, claims, input.EtablissementID)
+	if err != nil {
+		errMsg := fmt.Sprintf("loadReglesPassage: %v", err)
+		_ = uc.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutFailed,
+			domain.PromotionBatchResult{BatchID: batch.ID, Statut: domain.PromotionBatchStatutFailed}, &errMsg)
+		return nil, err
+	}
+
+	// 3. Marque le batch RUNNING.
+	sysCtx := db.WithClaimsContext(ctx, db.SystemClaims())
+	_ = uc.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutRunning,
+		domain.PromotionBatchResult{BatchID: batch.ID, Statut: domain.PromotionBatchStatutRunning}, nil)
+
+	// 4. Charge les étudiants éligibles.
+	etudiants, err := uc.promoRepo.ListEtudiantsForPromotion(sysCtx, input.EtablissementID, input.AnneeSourceID)
+	if err != nil {
+		errMsg := fmt.Sprintf("ListEtudiantsForPromotion: %v", err)
+		_ = uc.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutFailed,
+			domain.PromotionBatchResult{BatchID: batch.ID, Statut: domain.PromotionBatchStatutFailed}, &errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	// 5. Parse les overrides.
+	overrideMap := make(map[string]domain.OverrideDecision)
+	if len(input.Overrides) > 0 {
+		for _, ov := range input.Overrides {
+			overrideMap[ov.EtudiantID] = ov
+		}
+	}
+
+	// 6. Boucle de traitement (best-effort par étudiant).
+	result := domain.PromotionBatchResult{
+		BatchID:        batch.ID,
+		Statut:         domain.PromotionBatchStatutRunning,
+		TotalEtudiants: len(etudiants),
+	}
+	anneeCibleID := input.AnneeCibleID // déjà *string
+	var runByIDPtr *string
+	if input.RunByID != "" {
+		r := input.RunByID
+		runByIDPtr = &r
+	}
+	var batchIDPtr *string = &batch.ID
+
+	for _, etu := range etudiants {
+		var decisionOverride *string
+		var motif *string
+		if ov, ok := overrideMap[etu.EtudiantID]; ok {
+			d := string(ov.Decision)
+			decisionOverride = &d
+			if ov.Motif != "" {
+				motif = &ov.Motif
+			}
+		}
+		var niveauPtr *string
+		if string(etu.Niveau) != "" {
+			n := string(etu.Niveau)
+			niveauPtr = &n
+		}
+
+		dec, err := uc.promoRepo.CloturerEtudiant(
+			ctx, etu.EtudiantID, input.AnneeSourceID, anneeCibleID,
+			etu.FiliereID, niveauPtr,
+			decisionOverride, motif,
+			runByIDPtr, batchIDPtr, *regles,
+		)
+		if err != nil || dec.ErrorMessage != "" {
+			result.ErreurCount++
+			msg := dec.ErrorMessage
+			if err != nil {
+				msg = err.Error()
+			}
+			result.Erreurs = append(result.Erreurs, domain.EtudiantErreur{
+				EtudiantID: etu.EtudiantID, Nom: etu.Nom, Erreur: msg,
+			})
+		} else {
+			switch dec.Decision {
+			case domain.StatutInscriptionPromu:
+				result.PromuCount++
+			case domain.StatutInscriptionRedoublant:
+				result.RedoublantCount++
+			case domain.StatutInscriptionDiplome:
+				result.DiplomeCount++
+			case domain.StatutInscriptionExclu, domain.StatutInscriptionReoriente, domain.StatutInscriptionQuitte:
+				result.ExcluCount++
+			}
+		}
+		result.Progression++
+		// Update live (pour polling si le frontend suit en parallèle).
+		_ = uc.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutRunning, result, nil)
+	}
+
+	// 7. Marque COMPLETED.
+	result.Statut = domain.PromotionBatchStatutCompleted
+	if err := uc.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutCompleted, result, nil); err != nil {
+		uc.logger.Error("RunPromotionSync: UpdateBatchStatut COMPLETED failed", "batchId", batch.ID, "error", err)
+	}
+
+	// 8. AuditLog (non bloquant).
+	uc.auditBatchCompleted(ctx, batch.ID, input.EtablissementID, input.RunByID, result)
+
+	uc.logger.Info("RunPromotionSync: batch COMPLETED",
+		"batchId", batch.ID,
+		"total", result.TotalEtudiants,
+		"promu", result.PromuCount,
+		"redoublant", result.RedoublantCount,
+		"diplome", result.DiplomeCount,
+		"erreur", result.ErreurCount,
+	)
+	return &result, nil
+}
+
+// auditBatchCompleted journalise la fin d'un batch dans AuditLog. Non bloquant.
+func (uc *PromotionUseCase) auditBatchCompleted(ctx context.Context, batchID, etablissementID, runByID string, result domain.PromotionBatchResult) {
+	if uc.authRepo == nil {
+		return
+	}
+	details := map[string]any{
+		"batchId":         batchID,
+		"etablissementId": etablissementID,
+		"totalEtudiants":  result.TotalEtudiants,
+		"promuCount":      result.PromuCount,
+		"redoublantCount": result.RedoublantCount,
+		"diplomeCount":    result.DiplomeCount,
+		"excluCount":      result.ExcluCount,
+		"erreurCount":     result.ErreurCount,
+	}
+	detailsJSON, _ := json.Marshal(details)
+	var runByPtr *string
+	if runByID != "" {
+		runByPtr = &runByID
+	}
+	batchIDPtr := batchID
+	entry := &domain.AuditLogEntry{
+		UserID:   runByPtr,
+		Action:   domain.AuditActionPromotionBatchCompleted,
+		Entite:   "PromotionBatch",
+		EntiteID: &batchIDPtr,
+		Details:  string(detailsJSON),
+	}
+	_ = uc.authRepo.CreateAuditLog(ctx, entry)
 }
