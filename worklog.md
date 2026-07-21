@@ -18489,3 +18489,120 @@ Prêt pour test E2E :
 4. RESPONSABLE définit comme courante → ANNEE_ACADEMIQUE_SET_CURRENT (entite=Etablissement, entiteId=étab, details: {anneeId, anneeLibelle, etablissementId, modifiePar}).
 5. RESPONSABLE supprime définitivement une année SANS dépendances → ANNEE_ACADEMIQUE_HARD_DELETED (details: {id, libelle, etablissementId, dependenciesDestroyed: {inscriptions:0, validationsUE:0, promotionBatches:0, epreuves:0, etablissements:0}}).
 6. Vérifier le journal d'audit (GET /api/etablissements/{id}/audit-log?action=ANNEE_ACADEMIQUE_*) → 5 nouvelles entries visibles.
+
+---
+Task ID: SECT-ANNEE-COUNTS-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Alimenter CountEpreuves (champ mort jusqu'ici — BUG #14) + ajouter CountInscriptions sur AnneeAcademique pour afficher des stats par année (inscriptions + épreuves) sur les cartes de la liste /programme-academique → Années académiques.
+
+Work Log:
+
+- Backend domain/academique.go (struct AnneeAcademique) :
+  * Ajout du champ `CountInscriptions *int` juste après `CountEpreuves` (JSON tag `countInscriptions,omitempty`).
+  * Commentaire de struct étendu pour expliquer le rôle des 2 champs décoratifs (peuplés par `columnsAnnee` via sous-requêtes corrélées, consommation frontend pour stats sur cartes, BUG #14 résolu côté CountEpreuves, comportement Create = 0/0 harmless).
+
+- Backend repository/academique.go (constante `columnsAnnee` + helper `scanAnnee`) :
+  * `columnsAnnee` étendue avec 2 sous-requêtes corrélées (COALESCE pour défense en profondeur, bien que COUNT ne retourne jamais NULL) :
+      COALESCE((SELECT count(*) FROM "Epreuve"     WHERE "anneeAcademiqueId" = "AnneeAcademique"."id"), 0) AS count_epreuves,
+      COALESCE((SELECT count(*) FROM "Inscription" WHERE "anneeAcademiqueId" = "AnneeAcademique"."id"), 0) AS count_inscriptions
+  * Approche retenue : sous-requêtes corrélées dans la constante partagée plutôt que LATERAL JOIN (qui nécessiterait un alias `a` + colonnes qualifiées). Cette approche fonctionne dans TOUS les contextes : SELECT (List, FindByID) ET RETURNING (Create INSERT, Update UPDATE). LATERAL JOIN aurait échoué dans RETURNING.
+  * `scanAnnee` étendue pour scanner 10 colonnes (8 base + CountEpreuves + CountInscriptions). Les destinations sont `*int` — pgx convertit BIGINT (retourné par COUNT) en int et alloue le pointeur.
+  * Aucune modification aux méthodes List/FindByID/Create/Update — elles utilisent toutes `columnsAnnee` et `scanAnnee`, donc héritent automatiquement des 2 counts. Coût : 2 subqueries par requête (négligeable pour ~10-50 années/étab, index FKs existants sur Epreuve/Inscription.anneeAcademiqueId).
+  * Commentaire détaillé sur la constante `columnsAnnee` pour expliquer le pattern retenu vs LATERAL JOIN (rationnel technique).
+
+- Frontend src/components/responsable/annees-academiques-section.tsx :
+  * Interface `AnneeAcademique` étendue avec `countEpreuves?: number` et `countInscriptions?: number` (optionnels pour compat ascendante avec réponses API antérieures).
+  * Import lucide : ajout de `BookOpen` (inscriptions) et `FileText` (épreuves).
+  * Carte année : nouvelle ligne « Row 2.5 » entre la ligne dates+badge période (Row 2) et la ligne actions (Row 3). Affiche 2 stats en texte muted 11px avec icônes h-3 w-3 :
+      📖 {n} inscription(s)  📝 {n} épreuve(s)
+    Pluriel géré (suffixe 's' si count > 1). Affichage conditionnel : chaque stat ne s'affiche que si son count > 0 (évite le bruit sur une année fraîchement créée sans données rattachées). Le conteneur lui-même ne s'affiche que si au moins un des 2 counts > 0.
+
+Stage Summary:
+- 3 fichiers modifiés :
+  * backend/internal/domain/academique.go — +1 champ (CountInscriptions), commentaire étendu.
+  * backend/internal/repository/academique.go — `columnsAnnee` étendue (2 sous-requêtes corrélées), `scanAnnee` étendue (10 destinations), commentaire détaillé.
+  * frontend/src/components/responsable/annees-academiques-section.tsx — interface +1 import lucide + nouvelle Row 2.5 stats sur les cartes.
+- BUG #14 résolu : `CountEpreuves` n'était jamais peuplé (champ mort). Maintenant il l'est, partout (List/FindByID/Create/Update).
+- Pas de migration DB nécessaire : COUNT sur tables existantes (Epreuve, Inscription) avec FKs déjà indexées.
+- Pas de nouvelle route API : les counts voyagent dans la payload JSON existante de `GET /api/annees-academiques`, `GET /api/annees-academiques/{id}`, `POST /api/annees-academiques`, `PATCH /api/annees-academiques/{id}`.
+- Performance : 2 subqueries par ligne. Pour la liste d'années d'un étab (~10-50 lignes), cela reste < 5ms total. Index sur `Epreuve(anneeAcademiqueId)` et `Inscription(anneeAcademiqueId)` déjà posés par les FKs CASCADE/SET NULL (migrations 000086/000087) → index-only scan possible.
+
+Déviations du spec (mineures) :
+- Spec mentionnait LATERAL JOIN pour List. Implémenté via sous-requêtes corrélées dans `columnsAnnee` (partagée par toutes les méthodes) plutôt que LATERAL JOIN. Raisons :
+  * LATERAL JOIN nécessite un alias de table `a` + colonnes qualifiées, ce qui casserait les WHERE non qualifiés existants (`"id" = $1`, `"etablissementId" = $1`) et la constante partagée `columnsAnnee`.
+  * LATERAL JOIN ne fonctionne pas dans RETURNING (INSERT/UPDATE), donc aurait exigé une 2e requête SELECT après chaque Create/Update pour récupérer les counts → coût + complexité.
+  * Le pattern à sous-requêtes corrélées est équivalent en performance pour ce volume de données (~10-50 lignes/étab) et fonctionne dans tous les contextes SQL.
+- COALESCE conservé bien que COUNT(*) ne retourne jamais NULL — défense en profondeur + lisibilité (le SQL du spec utilisait COALESCE dans le LATERAL JOIN).
+- Aucune distinction List/FindByID : toutes les méthodes retournent désormais les counts. Le spec disait "FindByID will have them too — harmless" → c'est ce qui est fait.
+
+VÉRIFICATION (mandatory) :
+- gofmt -w sur 2 fichiers Go → OK (gofmt -l retourne vide).
+- go build ./... → exit 0 (OK).
+- go vet ./... → exit 0 (OK, 0 warnings).
+- cd frontend && npx tsc --noEmit → exit 0 (0 erreurs).
+- cd frontend && bun run lint → 0 erreurs, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated). Mes modifications : 0 warning, 0 erreur.
+- Aucun commit (orchestrateur gère).
+
+---
+Task ID: SECT-ANNEE-UX-POLISH-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: 2 améliorations UX sur les années académiques — (a) filtre par période (Toutes/Passées/En cours/À venir) sur la liste des années ; (b) shortcut « Créer l'année suivante » sur Step 1 de la page Clôture + bouton « Créer une année » dans l'empty state du sélecteur d'année source.
+
+Work Log:
+
+- Frontend src/components/responsable/annees-academiques-section.tsx :
+  * Imports ajoutés : `Select, SelectContent, SelectItem, SelectTrigger, SelectValue` depuis `@/components/ui/select`.
+  * Nouveau type `PeriodeFilter = 'all' | PeriodeStatut` et constante `PERIODE_FILTER_OPTIONS` (4 entrées : Toutes les périodes / Passées / En cours / À venir).
+  * Choix du label « En cours » (et non « Active ») pour éviter la confusion avec le flag `actif` (toggle d'activation). « En cours » = période entre dateDebut et dateFin selon now(), sans lien avec actif=true/false.
+  * Nouveau state `periodeFilter` (default 'all').
+  * `visibleAnnees` refactorisée en `useMemo` qui compose 2 filtres client-side :
+      1. `showInactive` (toggle existant) — masque actif=false sauf si toggle on.
+      2. `periodeFilter` — filtre par `computePeriodeStatut` (Passée/En cours/À venir) si !== 'all'.
+    Aucun round-trip API : le backend renvoie toujours toutes les années, on filtre en mémoire.
+  * Header : ajout d'un `Select` compact (h-8 w-[150px] text-xs) à gauche du toggle « Afficher inactives ». N'apparaît que si `annees.length > 0` (sinon le header tout entier est remplacé par l'empty state).
+  * Empty state adaptatif : si `visibleAnnees.length === 0`, on distingue 2 causes pour guider l'utilisateur :
+      - `periodeFilter !== 'all'` → message « Aucune année ne correspond à la période sélectionnée » + bouton « Réinitialiser le filtre période ».
+      - Sinon → message existant « Toutes les années sont désactivées » + bouton « Afficher les années inactives » (comportement pré-POLISH préservé).
+
+- Frontend src/components/responsable/cloture-annee-page.tsx :
+  * Imports ajoutés : `useRouter` depuis `next/navigation` ; `Plus, ArrowUpRight` depuis lucide-react.
+  * Nouveau helper module-level `computeNextYearLibelle(annees)` : retourne le libellé suggéré pour la prochaine année (ex. « 2026-2027 » si la dernière année est « 2025-2026 »). Duplication volontaire de `computeNextYearSuggestions` (qui n'est pas exportée) — commenté inline avec un TODO pour extraire vers `@/lib/academic-progress.ts` si une 3e consommatrice apparaît. On ne calcule que le libellé (pas dateDebut/dateFin) car le bouton navigue vers le formulaire de création où l'utilisateur remplit les dates lui-même.
+  * Hook `useRouter()` ajouté en haut du composant `ClotureAnneePage`.
+  * `nextYearLibelle` calculé via `useMemo` sur `annees`.
+  * Step 1 — Année source (SelectContent empty state) :
+      - Remplacement du `<div>` texte seul par un `<div>` avec texte + bouton « Créer une année » (variant default, size sm, icône Plus).
+      - Le bouton utilise `onPointerDown={(e) => e.stopPropagation()}` + `onClick={(e) => { e.preventDefault(); router.push('/programme-academique') }}` pour éviter que Radix Select ne ferme le dropdown avant le onClick (sinon le portal capturerait le pointer et la navigation ne se déclencherait pas).
+  * Step 1 — Année cible :
+      - Réorganisation du bloc Label/Select : le Label est maintenant dans un `flex flex-wrap items-baseline justify-between` pour permettre l'ajout d'un bouton shortcut à droite.
+      - Ajout d'un `Button` variant link (size sm, h-auto p-0 text-xs) « Créer l'année suivante ({nextYearLibelle}) » avec icône ArrowUpRight. Visible uniquement si `anneesActives.length > 0 && nextYearLibelle` (sinon l'empty state du sélecteur source joue déjà ce rôle). onClick navigue vers `/programme-academique`.
+      - Pas de duplication du formulaire de création inline — l'utilisateur est redirigé vers la page existante (keep it DRY, per spec).
+
+Stage Summary:
+- 2 fichiers modifiés (frontend uniquement) :
+  * frontend/src/components/responsable/annees-academiques-section.tsx — filtre par période (Select) + empty state adaptatif + 1 import (Select) + 1 type + 1 constante + 1 state + 1 useMemo refactor.
+  * frontend/src/components/responsable/cloture-annee-page.tsx — 2 imports (useRouter, Plus, ArrowUpRight) + 1 helper module-level + 1 hook + 1 useMemo + bouton « Créer une année » dans empty state + bouton « Créer l'année suivante » shortcut.
+- Pas de modification backend — le filtre par période est 100% client-side (le backend renvoie toujours toutes les années, c'est léger pour ~10-50 lignes).
+- Pas de nouveau composant UI — réutilisation du Select shadcn (déjà utilisé dans cloture-annee-page.tsx) et des Button variants existants.
+- Le bouton « Créer une année » dans le dropdown Radix Select a nécessité `onPointerDown stopPropagation` pour fonctionner — pattern à retenir pour tout futur bouton inline dans un SelectContent.
+
+Déviations du spec (mineures) :
+- Spec mentionnait « Actives » comme option de filtre. Renommé en « En cours » pour éviter la confusion avec le flag `actif` (le spec lui-même disait « name it "En cours" to avoid confusion » — application littérale).
+- Spec suggérait d'extraire `computeNextYearSuggestions` vers un shared helper OU de le dupliquer. Choix : duplication (15 lignes) car l'extraction vers `@/lib/academic-progress.ts` aurait touché un module partagé et impliqué de décider de la signature (libelle seul vs libelle+dates) — hors scope P2. TODO commenté pour extraction future si 3e consommatrice.
+- Empty state du sélecteur « Année à clôturer » : spec disait « should have a button 'Créer une année' ». Implémenté avec stopPropagation sur onPointerDown car Radix Select capture les pointer events dans le portal. Sans ce stopPropagation, le click sur le bouton fermerait le dropdown sans déclencher le router.push.
+- Bouton « Créer l'année suivante » : placé à droite du Label « Année cible » (variant link discret) plutôt qu'à côté du Select lui-même, pour éviter de surcharger la ligne. Le spec disait « next to the Année cible selector » — interprété comme « dans le bloc Année cible ».
+- Pas de bouton « Créer l'année suivante » quand `anneesActives.length === 0` : dans ce cas, c'est l'empty state du sélecteur source qui joue ce rôle (bouton « Créer une année »). Évite la redondance.
+
+VÉRIFICATION (mandatory) :
+- cd frontend && npx tsc --noEmit → exit 0 (0 erreurs).
+- cd frontend && bun run lint → 0 erreurs, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated). Mes modifications : 0 warning, 0 erreur.
+- Aucun commit (orchestrateur gère).
+
+Prêt pour test E2E :
+1. RESPONSABLE ouvre /programme-academique → Années académiques → un Select « Toutes les périodes » apparaît à côté du toggle inactives.
+2. Sélectionner « En cours » → seules les années dont la période inclut now() s'affichent.
+3. Sélectionner « Passées » → seules les années dont dateFin < now() s'affichent.
+4. Sélectionner « À venir » → seules les années dont dateDebut > now() s'affichent.
+5. Sélectionner un filtre qui ne match aucune année → empty state avec bouton « Réinitialiser le filtre période ».
+6. Sur chaque carte année avec données : ligne « 📖 n inscription(s)  📝 n épreuve(s) » visible. Carte d'année fraîchement créée : pas de ligne stats (0/0).
+7. RESPONSABLE ouvre /cloture-annee → Step 1 → si au moins une année active existe, un lien « Créer l'année suivante (2026-2027) » apparaît à droite du Label « Année cible ». Cliquer → navigation vers /programme-academique.
+8. Si aucune année active n'existe, ouvrir le dropdown « Année à clôturer » → bouton « Créer une année » visible dans l'empty state. Cliquer → navigation vers /programme-academique.

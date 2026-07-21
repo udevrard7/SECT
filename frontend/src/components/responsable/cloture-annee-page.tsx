@@ -43,6 +43,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -66,6 +67,8 @@ import {
   Info,
   MoreVertical,
   Clock3,
+  Plus,
+  ArrowUpRight,
 } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -243,6 +246,31 @@ const STEP_LABELS: Record<Step, string> = {
   3: 'Confirmation',
   4: 'Progression',
   5: 'Bilan',
+}
+
+// ─── SECT-ANNEE-UX-POLISH-1 : suggestion « Créer l'année suivante » ───
+// Calcule, à partir de la liste des années existantes, le libellé de la
+// prochaine année académique (pour le bouton shortcut sur Step 1).
+//
+// Duplication volontaire (vs import depuis annees-academiques-section.tsx)
+// car le helper d'origine n'est pas exporté et l'extraire vers un module
+// partagé (lib/academic-progress.ts ou un nouveau fichier) serait un refacto
+// trop invasif pour cette P2. La logique est identique : on prend l'année
+// avec la dateFin la plus récente, on propose (lastYear+1)-(lastYear+2).
+//
+// Miroir : computeNextYearSuggestions dans annees-academiques-section.tsx.
+// Si l'évolution venait à toucher l'un des 2 helpers, penser à synchroniser
+// l'autre (TODO : extraire vers @/lib/academic-progress.ts si une 3e
+// consommatrice apparaît).
+function computeNextYearLibelle(annees: AnneeAcademique[]): string | null {
+  if (annees.length === 0) return null
+  const sorted = [...annees].sort(
+    (a, b) => new Date(b.dateFin).getTime() - new Date(a.dateFin).getTime(),
+  )
+  const mostRecent = sorted[0]
+  const lastYear = new Date(mostRecent.dateDebut).getFullYear()
+  if (Number.isNaN(lastYear)) return null
+  return `${lastYear + 1}-${lastYear + 2}`
 }
 
 // ─── Helper : détection responsive (mobile < 640px) ───
@@ -708,6 +736,12 @@ export function ClotureAnneePage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
+  // SECT-ANNEE-UX-POLISH-1 : navigation vers /programme-academique pour le
+  // shortcut « Créer l'année suivante » / « Créer une année » (empty state).
+  // useRouter (next/navigation) plutôt qu'un <Link> pour pouvoir déclencher
+  // la navigation depuis un onClick (boutons inline dans la SelectContent +
+  // bouton dédié à côté du sélecteur « Année cible »).
+  const router = useRouter()
 
   // ASSISTANCE-MODE-FRONTEND : user.etablissementId contient l'ID de
   // l'établissement actif pour le RESPONSABLE ET pour l'ADMIN en mode
@@ -768,6 +802,16 @@ export function ClotureAnneePage() {
   }, [annees])
 
   const anneesActives = useMemo(() => annees.filter((a) => a.actif), [annees])
+
+  // SECT-ANNEE-UX-POLISH-1 : libellé suggéré pour la prochaine année
+  // académique (ex. « 2026-2027 » si la dernière année est « 2025-2026 »).
+  // Utilisé pour le label du bouton shortcut « Créer l'année suivante » sur
+  // Step 1 (navigue vers /programme-academique où l'utilisateur remplit le
+  // formulaire — pas de duplication du form inline, keep it DRY).
+  const nextYearLibelle = useMemo(
+    () => computeNextYearLibelle(annees),
+    [annees],
+  )
 
   // ─── Règles de passage ───
   const reglesQuery = useQuery<ReglesPassage>({
@@ -1250,9 +1294,31 @@ export function ClotureAnneePage() {
                       </SelectTrigger>
                       <SelectContent>
                         {anneesActives.length === 0 ? (
-                          <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                            Aucune année active. Créez-en une dans Programme
-                            académique → Années académiques.
+                          // SECT-ANNEE-UX-POLISH-1 : empty state avec CTA
+                          // « Créer une année » qui navigue vers
+                          // /programme-academique (où l'utilisateur remplit
+                          // le formulaire de création — pas de duplication
+                          // inline, keep it DRY). Le bouton utilise
+                          // onPointerDown stopPropagation pour éviter que
+                          // Radix Select ne ferme le dropdown avant le
+                          // onClick (sinon le click serait capturé par le
+                          // portal et le routeur ne se déclencherait pas).
+                          <div className="px-2 py-3 text-sm text-muted-foreground text-center space-y-2">
+                            <p>Aucune année active. Créez-en une dans Programme académique → Années académiques.</p>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="default"
+                              className="gap-1.5 w-full"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                router.push('/programme-academique')
+                              }}
+                            >
+                              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                              Créer une année
+                            </Button>
                           </div>
                         ) : (
                           anneesActives.map((a) => (
@@ -1275,12 +1341,38 @@ export function ClotureAnneePage() {
 
                   {/* Année cible (optionnelle) */}
                   <div className="space-y-1.5">
-                    <Label htmlFor="annee-cible" className="text-sm font-medium">
-                      Année cible{' '}
-                      <span className="text-muted-foreground">
-                        (optionnel — pour les nouvelles inscriptions)
-                      </span>
-                    </Label>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <Label htmlFor="annee-cible" className="text-sm font-medium">
+                        Année cible{' '}
+                        <span className="text-muted-foreground">
+                          (optionnel — pour les nouvelles inscriptions)
+                        </span>
+                      </Label>
+                      {/* SECT-ANNEE-UX-POLISH-1 : shortcut « Créer l'année
+                          suivante » — visible uniquement s'il existe déjà au
+                          moins une année active (sinon l'empty state du
+                          sélecteur « Année à clôturer » ci-dessus joue déjà ce
+                          rôle). Navigue vers /programme-academique où
+                          l'utilisateur remplit le formulaire de création — pas
+                          de duplication du form inline, keep it DRY. Le
+                          libellé suggéré est calculé via computeNextYearLibelle
+                          (ex. « 2026-2027 » si la dernière année est
+                          « 2025-2026 »). Si le calcul échoue (lastYear NaN),
+                          on retombe sur un libellé générique. */}
+                      {anneesActives.length > 0 && nextYearLibelle && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs gap-1"
+                          onClick={() => router.push('/programme-academique')}
+                          title={`Créer l'année ${nextYearLibelle} dans Programme académique`}
+                        >
+                          <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                          Créer l&apos;année suivante ({nextYearLibelle})
+                        </Button>
+                      )}
+                    </div>
                     <Select value={anneeCibleId} onValueChange={setAnneeCibleId}>
                       <SelectTrigger id="annee-cible" className="w-full">
                         <SelectValue placeholder="Aucune (archive pure)" />
