@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+     4→import { useQuery } from '@tanstack/react-query'
+     5→import { useRouter, useSearchParams } from 'next/navigation'
+     6→import { useAuthStore } from '@/stores/auth-store'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     9→import { Checkbox } from '@/components/ui/checkbox'
+    10→import { Label } from '@/components/ui/label'
+    11→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+    12→import { Textarea } from '@/components/ui/textarea'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+    16→import { Progress } from '@/components/ui/progress'
+    17→import {
+    18→  Clock,
+    19→  ShieldCheck,
+    20→  AlertTriangle,
+    21→  ChevronLeft,
+    22→  ChevronRight,
+    23→  Flag,
+    24→  FlagOff,
+    25→  Maximize,
+    26→  Eye,
+    27→  ClipboardPaste,
+    28→  CheckCircle2,
+    29→  Send,
+    30→  Home,
+    31→  BookOpen,
+    32→  Lock,
+    33→  FileWarning,
+    34→  Save,
+    35→  Loader2,
+    36→  PanelLeftClose,
+    37→  PanelLeftOpen,
+    38→  X,
+    39→  Timer,
+    40→  ShieldAlert,
+    41→  Printer,
+    42→  MousePointerClick,
+    43→  Camera,
+    44→  MinusCircle,
+    45→  WifiOff,
+    46→  CloudUpload,
+    47→} from 'lucide-react'
+    48→import { toast } from 'sonner'
+    49→import { CodingQuestionStudent } from '@/components/coding/code-editor'
+    50→import { type CodingLanguage, type CodingAnswer, type TestResult, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
+    51→import { useOfflineSubmission } from '@/hooks/use-offline-submission'
+    52→import { cacheAnswer, getCachedAnswers, clearCachedAnswers, saveExamSnapshot, getExamSnapshot, isSnapshotFresh, clearExamSnapshot } from '@/lib/exam-answers-cache'
+    53→import { debounce } from '@/lib/debounce'
+    54→
+    55→// ─── Types ──────────────────────────────────────────────────────────────────
+    56→
+    57→interface ExamSession {
+    58→  id: string
+    59→  etudiantId: string
+    60→  epreuveId: string
+    61→  statut: 'NON_COMMENCEE' | 'EN_COURS' | 'SOUMISE' | 'CORRIGEE' | 'RETOURNEE' | 'ABSENT' | 'NON_SOUMIS'
+    62→  dateDebut: string | null
+    63→  dateFin: string | null
+    64→  score: number | null
+    65→  alertes: number
+    66→  penalite?: number
+    67→  logEvents?: string | null
+    68→  propositionMappings?: string | null
+    69→}
+    70→
+    71→interface ExamQuestion {
+    72→  id: string
+    73→  questionId: string
+    74→  bareme: number
+    75→  ordre: number
+    76→  question: {
+    77→    id: string
+    78→    type: 'QCU' | 'QCM' | 'QRC' | 'TRS' | 'REFLEXION' | 'CODE'
+    79→    enonce: string
+    80→    propositions: string[] | null
+    81→    difficulte: string
+    82→    themes: string[] | null
+    83→    // CODE-specific fields (present when type is 'CODE')
+    84→    langage?: string
+    85→    codeInitial?: string
+    86→    fonctionSignature?: string
+    87→    testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+    88→  }
+    89→}
+    90→
+    91→interface EpreuveInfo {
+    92→  id: string
+    93→  titre: string
+    94→  description: string | null
+    95→  duree: number
+    96→  blocageRetour: boolean
+    97→  melangePropositions: boolean
+    98→  proctoringActif: boolean
+    99→  verificationIdentite: boolean
+   100→  noteTotal?: number
+   101→  dateFin?: string
+   102→  delaiGrace?: number
+   103→  clotureeAt?: string | null
+   104→  clotureeAutomatiquement?: boolean
+   105→  raisonCloture?: string | null
+   106→}
+   107→
+   108→interface SecurityConfig {
+   109→  proctoringActif: boolean
+   110→  detectionCopie: boolean
+   111→  detectionOnglet: boolean
+   112→  detectionFullscreen: boolean
+   113→  blocageCopie: boolean
+   114→  blocageClicDroit: boolean
+   115→  blocageImpression: boolean
+   116→  verificationIdentite: boolean
+   117→  tempsInactiviteMax: number
+   118→  nbOngletsMax: number
+   119→  nbAlertesMax: number
+   120→  autoSubmitOnViolation: boolean
+   121→  captureEcran: boolean
+   122→  rapportFraude: boolean
+   123→  seuilSimilarite: number
+   124→  penaliteFullscreenExit: number
+   125→  fullscreenObligatoire: boolean
+   126→  intervalleCaptureEcran: number
+   127→}
+   128→
+   129→type ExamPhase = 'pre-exam' | 'in-exam' | 'post-exam'
+   130→type AutoSubmitReason = 'time' | 'violations' | 'inactivity' | null
+   131→
+   132→// ─── Default security config (fallback) ─────────────────────────────────────
+   133→
+   134→const DEFAULT_SECURITY: SecurityConfig = {
+   135→  proctoringActif: false,
+   136→  detectionCopie: true,
+   137→  detectionOnglet: true,
+   138→  detectionFullscreen: true,
+   139→  blocageCopie: true,
+   140→  blocageClicDroit: true,
+   141→  blocageImpression: true,
+   142→  verificationIdentite: false,
+   143→  tempsInactiviteMax: 120,
+   144→  nbOngletsMax: 3,
+   145→  nbAlertesMax: 5,
+   146→  autoSubmitOnViolation: false,
+   147→  captureEcran: false,
+   148→  rapportFraude: true,
+   149→  seuilSimilarite: 0.85,
+   150→  penaliteFullscreenExit: 5,
+   151→  fullscreenObligatoire: true,
+   152→  intervalleCaptureEcran: 60,
+   153→}
+   154→
+   155→// SUBMIT-JITTER-1 (OPT-7) : amplitude du jitter appliqué à l'auto-submit de
+   156→// fin de temps. Quand le chronomètre atteint 0, au lieu de soumettre à l'instant
+   157→// (t=0 pour toute la promotion → pic qui sature le backend), on tire un délai
+   158→// aléatoire dans [0, SUBMIT_JITTER_MS] pour étaler les soumissions sur cette
+   159→// fenêtre. 45s étaie 1000 étudiants sur ~6-7 submits/s, juste sous la capacité
+   160→// Render free. Overridable via NEXT_PUBLIC_SUBMIT_JITTER_MS (ex. 60000 en prod).
+   161→const SUBMIT_JITTER_MS = (() => {
+   162→  const raw = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUBMIT_JITTER_MS : undefined
+   163→  const parsed = raw ? parseInt(raw, 10) : NaN
+   164→  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 120000 ? parsed : 45000
+   165→})()
+   166→// Nombre max de retries si le backend renvoie 202 (file pleine). 10 × 3s = 30s
+   167→// max, reste sous le timeout de session frontend.
+   168→const SUBMIT_MAX_RETRIES = 10
+   169→
+   170→// ─── Utility: format time as HH:MM:SS ──────────────────────────────────────
+   171→
+   172→function formatTime(totalSeconds: number): string {
+   173→  if (totalSeconds <= 0) return '00:00:00'
+   174→  const h = Math.floor(totalSeconds / 3600)
+   175→  const m = Math.floor((totalSeconds % 3600) / 60)
+   176→  const s = totalSeconds % 60
+   177→  return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':')
+   178→}
+   179→
+   180→// ─── Utility: parse JSON safely ─────────────────────────────────────────────
+   181→
+   182→function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
+   183→  if (!value) return fallback
+   184→  try {
+   185→    return JSON.parse(value) as T
+   186→  } catch {
+   187→    return fallback
+   188→  }
+   189→}
+   190→
+   191→// ─── Letter labels for propositions ─────────────────────────────────────────
+   192→
+   193→const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+   194→
+   195→// BUGFIX (E2E-TEST) : les propositions générées par l'IA sont des objets
+   196→// {text, isCorrect} (voir generation-ia-page.tsx + buildEpreuvePrompt), mais
+   197→// la passation attendait des strings. React error #31 quand il tentait de
+   198→// rendre {prop} (objet) comme enfant de <span>. Ce helper gère les 2 formats.
+   199→function getPropText(prop: unknown): string {
+   200→  if (typeof prop === 'string') return prop
+   201→  if (prop && typeof prop === 'object' && 'text' in prop) {
+   202→    return String((prop as { text: unknown }).text)
+   203→  }
+   204→  return String(prop)
+   205→}
+   206→
+   207→// ─── Main Component ─────────────────────────────────────────────────────────
+   208→
+   209→export function PassationPage() {
+   210→  const router = useRouter()
+   211→  const searchParams = useSearchParams()
+   212→  const { user } = useAuthStore()
+   213→
+   214→  // ─── Offline submission hook ────────────────────────────────────────────
+   215→  // Allows exam submission to be queued in IndexedDB when the network is
+   216→  // unavailable, then replayed automatically by the Service Worker (BG Sync)
+   217→  // or on the next `online` event (iOS Safari fallback).
+   218→  const { submitOffline, pendingCount, isOnline } = useOfflineSubmission()
+   219→
+   220→  const epreuveId = searchParams.get('epreuveId') || ''
+   221→
+   222→  // If no epreuveId, redirect to mes-epreuves
+   223→  useEffect(() => {
+   224→    if (!epreuveId) {
+   225→      router.push('/mes-epreuves')
+   226→    }
+   227→  }, [epreuveId, router])
+   228→
+   229→  // ─── Core state ────────────────────────────────────────────────────────
+   230→  const [phase, setPhase] = useState<ExamPhase>('pre-exam')
+   231→  const [epreuve, setEpreuve] = useState<EpreuveInfo | null>(null)
+   232→  const [questions, setQuestions] = useState<ExamQuestion[]>([])
+   233→  const [session, setSession] = useState<ExamSession | null>(null)
+   234→
+   235→  // ─── Exam state ────────────────────────────────────────────────────────
+   236→  const [currentIndex, setCurrentIndex] = useState(0)
+   237→  const [reponses, setReponses] = useState<Record<string, string>>({})
+   238→  const [activeCodeLanguages, setActiveCodeLanguages] = useState<Record<string, CodingLanguage>>({})
+   239→  const [flaggedQuestions, setFlaggedQuestions] = useState<Set<string>>(new Set())
+   240→  const [timeRemaining, setTimeRemaining] = useState(0)
+   241→  const [autoSubmitted, setAutoSubmitted] = useState(false)
+   242→  const [isSubmitting, setIsSubmitting] = useState(false)
+   243→  // SUBMIT-JITTER-1 (OPT-7) : countdown affiché à l'étudiant pendant la
+   244→  // fenêtre de jitter (entre l'expiration du temps et le submit effectif).
+   245→  // null = pas de jitter en cours.
+   246→  const [pendingAutoSubmitIn, setPendingAutoSubmitIn] = useState<number | null>(null)
+   247→  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+   248→  const [sidebarOpen, setSidebarOpen] = useState(true)
+   249→
+   250→  // ─── Consent state ─────────────────────────────────────────────────────
+   251→  const [consentAccepted, setConsentAccepted] = useState(false)
+   252→  const [isStarting, setIsStarting] = useState(false)
+   253→
+   254→  // ─── Security config state ─────────────────────────────────────────────
+   255→  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(DEFAULT_SECURITY)
+   256→
+   257→  // ─── Anti-cheat state ──────────────────────────────────────────────────
+   258→  const [showFullscreenWarning, setShowFullscreenWarning] = useState(false)
+   259→  const [showTabSwitchWarning, setShowTabSwitchWarning] = useState(false)
+   260→  const [fullscreenExitCount, setFullscreenExitCount] = useState(0)
+   261→  const [totalAlertCount, setTotalAlertCount] = useState(0)
+   262→  const [autoSubmitReason, setAutoSubmitReason] = useState<AutoSubmitReason>(null)
+   263→  const [showViolationDialog, setShowViolationDialog] = useState(false)
+   264→  const [showInactivityWarning, setShowInactivityWarning] = useState(false)
+   265→  const [penalite, setPenalite] = useState(0)
+   266→  const [isFullscreenBlocked, setIsFullscreenBlocked] = useState(false)
+   267→  const [lastCaptureTime, setLastCaptureTime] = useState<Date | null>(null)
+   268→  const [showCaptureFlash, setShowCaptureFlash] = useState(false)
+   269→
+   270→  // ─── Submit result state ──────────────────────────────────────────────────
+   271→  const [submitResult, setSubmitResult] = useState<{
+   272→    score: number
+   273→    totalPossible: number
+   274→    autoGradedTotal: number
+   275→    pendingCorrection: number
+   276→    scenario: 'A' | 'B'
+   277→    scenarioMessage: string
+   278→  } | null>(null)
+   279→
+   280→  // ─── Closure / grace period state ───────────────────────────────────────
+   281→  const [isEpreuveClosed, setIsEpreuveClosed] = useState(false)
+   282→  const [inGracePeriod, setInGracePeriod] = useState(false)
+   283→  const [gracePeriodEndsAt, setGracePeriodEndsAt] = useState<Date | null>(null)
+   284→  const [closureRaison, setClosureRaison] = useState<string | null>(null)
+   285→  const [showClosureDialog, setShowClosureDialog] = useState(false)
+   286→
+   287→  // ─── Refs ──────────────────────────────────────────────────────────────
+   288→  const autoSaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   289→  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   290→  const inactivityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   291→  const captureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   292→  const examContainerRef = useRef<HTMLDivElement>(null)
+   293→  const reponsesRef = useRef(reponses)
+   294→  const sessionRef = useRef(session)
+   295→  const phaseRef = useRef(phase)
+   296→  const lastActivityRef = useRef<number>(Date.now())
+   297→  const securityConfigRef = useRef(securityConfig)
+   298→  const totalAlertCountRef = useRef(totalAlertCount)
+   299→  const isAutoSubmittingRef = useRef(false)
+   300→  const fullscreenExitCountRef = useRef(fullscreenExitCount)
+   301→  // SUBMIT-JITTER-1 (OPT-7) : quand le temps expire, au lieu de soumettre
+   302→  // immédiatement (tous les étudiants au même t=0 → pic qui fait crasher le
+   303→  // backend Render), on tire un délai aléatoire [0, SUBMIT_JITTER_MS] pour
+   304→  // étaler les soumissions. Voir timer effect + submitExam.
+   305→  const pendingAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+   306→  const penaliteRef = useRef(penalite)
+   307→  // OPT-5 : ref pour détecter les changements et skip l'auto-save quand rien n'a changé.
+   308→  // Stocke un hash sérialisé des dernières réponses sauvées.
+   309→  const lastSavedReponsesHashRef = useRef<string>('')
+   310→
+   311→  // Keep refs in sync
+   312→  useEffect(() => { reponsesRef.current = reponses }, [reponses])
+   313→  useEffect(() => { sessionRef.current = session }, [session])
+   314→  useEffect(() => { phaseRef.current = phase }, [phase])
+   315→  useEffect(() => { securityConfigRef.current = securityConfig }, [securityConfig])
+   316→  useEffect(() => { totalAlertCountRef.current = totalAlertCount }, [totalAlertCount])
+   317→  useEffect(() => { fullscreenExitCountRef.current = fullscreenExitCount }, [fullscreenExitCount])
+   318→  useEffect(() => { penaliteRef.current = penalite }, [penalite])
+   319→
+   320→  // ─── Fetch epreuve data (TanStack Query) ──────────────────────────────
+   321→  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+   322→  // ATTENTION : cette page gère un examen en cours avec timers, auto-save et
+   323→  // anti-fraude. Seul le fetch initial est migré. Les setInterval (timer,
+   324→  // auto-save, inactivité, capture, closure-check) sont INTACTS.
+   325→  // staleTime: 0 → refetch au remontage (préserve le comportement original :
+   326→  // l'étudiant qui revient sur la page récupère un timeRemaining frais).
+   327→  // refetchOnWindowFocus/reconnect: false → JAMAIS de refetch pendant l'examen
+   328→  // (évite d'écraser les réponses en cours avec les données serveur).
+   329→  const epreuveQuery = useQuery<{
+   330→    epreuve: EpreuveInfo
+   331→    securityConfig: SecurityConfig
+   332→    session: ExamSession | null
+   333→    questions: ExamQuestion[]
+   334→    reponses: Record<string, string>
+   335→    activeCodeLanguages: Record<string, CodingLanguage>
+   336→    fullscreenExitCount: number
+   337→    timeRemaining: number
+   338→    phase: ExamPhase
+   339→    totalAlertCount: number
+   340→    penalite: number
+   341→  }>({
+   342→    queryKey: ['passation-epreuve', epreuveId, user?.id],
+   343→    queryFn: async () => {
+   344→      // OPT-10: Stale-While-Revalidate — check IndexedDB first
+   345→      const cachedSnapshot = await getExamSnapshot(epreuveId)
+   346→      if (cachedSnapshot && isSnapshotFresh(cachedSnapshot, 5 * 60 * 1000)) {
+   347→        // Return cached data immediately for instant UI
+   348→        // The server fetch will happen in the background (staleTime + refetch)
+   349→        return {
+   350→          epreuve: cachedSnapshot.epreuve,
+   351→          securityConfig: DEFAULT_SECURITY, // will be fetched separately
+   352→          session: cachedSnapshot.session,
+   353→          questions: cachedSnapshot.questions,
+   354→          reponses: cachedSnapshot.reponses,
+   355→          activeCodeLanguages: cachedSnapshot.activeCodeLanguages,
+   356→          fullscreenExitCount: cachedSnapshot.fullscreenExitCount,
+   357→          timeRemaining: cachedSnapshot.timeRemaining,
+   358→          phase: cachedSnapshot.session?.statut === 'EN_COURS' ? 'in-exam' : 'pre-exam',
+   359→          totalAlertCount: cachedSnapshot.totalAlertCount,
+   360→          penalite: cachedSnapshot.penalite,
+   361→        }
+   362→      }
+   363→
+   364→      // Fetch epreuve info (studentView=true strips correct answers for security)
+   365→      const epreuveRes = await fetch(`/api/epreuves/${epreuveId}?studentView=true`)
+   366→      if (!epreuveRes.ok) throw new Error('Épreuve introuvable')
+   367→      const epreuveData = await epreuveRes.json()
+   368→      const epreuveInfo: EpreuveInfo = epreuveData.epreuve || epreuveData
+   369→
+   370→      // Fetch security settings based on user's etablissementId
+   371→      let securityConfig = DEFAULT_SECURITY
+   372→      const etabId = user?.etablissementId || user?.etablissement?.id
+   373→      if (etabId) {
+   374→        try {
+   375→          const secRes = await fetch(`/api/security-settings/etablissement/${etabId}`)
+   376→          if (secRes.ok) {
+   377→            const secData = await secRes.json()
+   378→            if (secData.securitySettings) {
+   379→              securityConfig = {
+   380→                proctoringActif: secData.securitySettings.proctoringActif ?? DEFAULT_SECURITY.proctoringActif,
+   381→                detectionCopie: secData.securitySettings.detectionCopie ?? DEFAULT_SECURITY.detectionCopie,
+   382→                detectionOnglet: secData.securitySettings.detectionOnglet ?? DEFAULT_SECURITY.detectionOnglet,
+   383→                detectionFullscreen: secData.securitySettings.detectionFullscreen ?? DEFAULT_SECURITY.detectionFullscreen,
+   384→                blocageCopie: secData.securitySettings.blocageCopie ?? DEFAULT_SECURITY.blocageCopie,
+   385→                blocageClicDroit: secData.securitySettings.blocageClicDroit ?? DEFAULT_SECURITY.blocageClicDroit,
+   386→                blocageImpression: secData.securitySettings.blocageImpression ?? DEFAULT_SECURITY.blocageImpression,
+   387→                verificationIdentite: secData.securitySettings.verificationIdentite ?? DEFAULT_SECURITY.verificationIdentite,
+   388→                tempsInactiviteMax: secData.securitySettings.tempsInactiviteMax ?? DEFAULT_SECURITY.tempsInactiviteMax,
+   389→                nbOngletsMax: secData.securitySettings.nbOngletsMax ?? DEFAULT_SECURITY.nbOngletsMax,
+   390→                nbAlertesMax: secData.securitySettings.nbAlertesMax ?? DEFAULT_SECURITY.nbAlertesMax,
+   391→                autoSubmitOnViolation: secData.securitySettings.autoSubmitOnViolation ?? DEFAULT_SECURITY.autoSubmitOnViolation,
+   392→                captureEcran: secData.securitySettings.captureEcran ?? DEFAULT_SECURITY.captureEcran,
+   393→                rapportFraude: secData.securitySettings.rapportFraude ?? DEFAULT_SECURITY.rapportFraude,
+   394→                seuilSimilarite: secData.securitySettings.seuilSimilarite ?? DEFAULT_SECURITY.seuilSimilarite,
+   395→                penaliteFullscreenExit: secData.securitySettings.penaliteFullscreenExit ?? DEFAULT_SECURITY.penaliteFullscreenExit,
+   396→                fullscreenObligatoire: secData.securitySettings.fullscreenObligatoire ?? DEFAULT_SECURITY.fullscreenObligatoire,
+   397→                intervalleCaptureEcran: secData.securitySettings.intervalleCaptureEcran ?? DEFAULT_SECURITY.intervalleCaptureEcran,
+   398→              }
+   399→            }
+   400→          }
+   401→        } catch {
+   402→          // Use defaults if security settings fetch fails
+   403→        }
+   404→      }
+   405→
+   406→      // Check for existing session first (to get sessionId for consistent proposition ordering)
+   407→      let activeSessionId: string | null = null
+   408→      let activeSession: ExamSession | null = null
+   409→      if (user?.id) {
+   410→        const sessionRes = await fetch(`/api/sessions?etudiantId=${user.id}&epreuveId=${epreuveId}`)
+   411→        if (sessionRes.ok) {
+   412→          const sessionsData = await sessionRes.json()
+   413→          activeSession = sessionsData.find(
+   414→            (s: ExamSession) => s.statut === 'EN_COURS' || s.statut === 'NON_COMMENCEE'
+   415→          ) ?? null
+   416→          if (activeSession) {
+   417→            activeSessionId = activeSession.id
+   418→          }
+   419→        }
+   420→      }
+   421→
+   422→      // Fetch questions — if there's an active session, pass sessionId to get consistent proposition ordering
+   423→      const questionsUrl = activeSessionId
+   424→        ? `/api/epreuves/${epreuveId}/questions?sessionId=${activeSessionId}`
+   425→        : `/api/epreuves/${epreuveId}/questions`
+   426→      const questionsRes = await fetch(questionsUrl)
+   427→      if (!questionsRes.ok) throw new Error('Questions introuvables')
+   428→      const questionsData: ExamQuestion[] = await questionsRes.json()
+   429→      // Sort by ordre
+   430→      questionsData.sort((a: ExamQuestion, b: ExamQuestion) => a.ordre - b.ordre)
+   431→
+   432→      // Defaults for resume state
+   433→      let reponses: Record<string, string> = {}
+   434→      let activeCodeLanguages: Record<string, CodingLanguage> = {}
+   435→      let fullscreenExitCount = 0
+   436→      let timeRemaining = 0
+   437→      let phase: ExamPhase = 'pre-exam'
+   438→      let totalAlertCount = activeSession?.alertes || 0
+   439→      let penalite = activeSession?.penalite || 0
+   440→
+   441→      // Resume exam if there's an active session
+   442→      if (activeSessionId && activeSession) {
+   443→        if (activeSession.statut === 'EN_COURS' && activeSession.dateDebut) {
+   444→          // Resume: calculate remaining time
+   445→          const start = new Date(activeSession.dateDebut).getTime()
+   446→          const end = start + epreuveInfo.duree * 60 * 1000
+   447→          timeRemaining = Math.max(0, Math.floor((end - Date.now()) / 1000))
+   448→
+   449→          // Load existing answers
+   450→          const answersRes = await fetch(`/api/sessions/${activeSessionId}`)
+   451→          if (answersRes.ok) {
+   452→            const answersData = await answersRes.json()
+   453→            const sessionData = answersData.session || answersData
+   454→            const loadedReponses: Record<string, string> = {}
+   455→            if (sessionData.reponses && Array.isArray(sessionData.reponses)) {
+   456→              sessionData.reponses.forEach((r: { questionId: string; contenu: string | null }) => {
+   457→                if (r.contenu) loadedReponses[r.questionId] = r.contenu
+   458→              })
+   459→            }
+   460→            reponses = loadedReponses
+   461→
+   462→            // Restore active languages from saved coding answers
+   463→            const loadedLanguages: Record<string, CodingLanguage> = {}
+   464→            Object.entries(loadedReponses).forEach(([qId, contenu]) => {
+   465→              const answer = parseCodingAnswer(contenu)
+   466→              if (answer?.language) {
+   467→                loadedLanguages[qId] = answer.language
+   468→              }
+   469→            })
+   470→            if (Object.keys(loadedLanguages).length > 0) {
+   471→              activeCodeLanguages = loadedLanguages
+   472→            }
+   473→          }
+   474→
+   475→          // Count fullscreen exits from logEvents to restore penalty count
+   476→          if (activeSession.logEvents) {
+   477→            try {
+   478→              const logs = JSON.parse(activeSession.logEvents as string)
+   479→              fullscreenExitCount = logs.filter((l: { type: string }) => l.type === 'FULLSCREEN_EXIT').length
+   480→            } catch {
+   481→              // Ignore parse errors
+   482→            }
+   483→          }
+   484→
+   485→          // Resume exam directly
+   486→          phase = 'in-exam'
+   487→        }
+   488→      }
+   489→
+   490→      // OPT-10: save snapshot for future stale-while-revalidate
+   491→      if (user?.id) {
+   492→        saveExamSnapshot({
+   493→          epreuveId,
+   494→          userId: user.id,
+   495→          epreuve: epreuveInfo,
+   496→          questions: questionsData,
+   497→          session: activeSession,
+   498→          reponses,
+   499→          activeCodeLanguages,
+   500→          timeRemaining,
+   501→          fullscreenExitCount,
+   502→          totalAlertCount,
+   503→          penalite,
+   504→        }).catch(() => {}) // non-blocking
+   505→      }
+   506→
+   507→      return {
+   508→        epreuve: epreuveInfo,
+   509→        securityConfig,
+   510→        session: activeSession,
+   511→        questions: questionsData,
+   512→        reponses,
+   513→        activeCodeLanguages,
+   514→        fullscreenExitCount,
+   515→        timeRemaining,
+   516→        phase,
+   517→        totalAlertCount,
+   518→        penalite,
+   519→      }
+   520→    },
+   521→    enabled: !!epreuveId,
+   522→    staleTime: 30 * 1000, // OPT-10: 30s stale time — allows stale-while-revalidate
+   523→    refetchOnWindowFocus: false,
+   524→    refetchOnReconnect: false,
+   525→  })
+   526→
+   527→  // Sync query.data → local state (préserve le comportement du fetch original
+   528→  // qui setEpreuve/setSecurityConfig/etc. au fur et à mesure). Le useEffect ne
+   529→  // se déclenche qu'au montage initial et au remontage (retour sur la page).
+   530→  useEffect(() => {
+   531→    const d = epreuveQuery.data
+   532→    if (!d) return
+   533→    setEpreuve(d.epreuve)
+   534→    setSecurityConfig(d.securityConfig)
+   535→    setSession(d.session)
+   536→    setQuestions(d.questions)
+   537→    setActiveCodeLanguages(d.activeCodeLanguages)
+   538→    setFullscreenExitCount(d.fullscreenExitCount)
+   539→    setTimeRemaining(d.timeRemaining)
+   540→    setPhase(d.phase)
+   541→    setTotalAlertCount(d.totalAlertCount)
+   542→    setPenalite(d.penalite)
+   543→
+   544→    // BUGFIX (EXAM-OFFLINE-1) : restaurer les réponses depuis IndexedDB
+   545→    // si elles sont plus récentes que celles du serveur (micro-coupure
+   546→    // pendant l'examen + refresh). Les réponses IndexedDB priment car
+   547→    // elles reflètent la dernière action de l'étudiant.
+   548→    if (d.session?.id) {
+   549→      getCachedAnswers(d.session.id).then((cached) => {
+   550→        if (Object.keys(cached).length > 0) {
+   551→          // Fusion : IndexedDB prime sur le serveur pour les questions
+   552→          // présentes dans le cache (plus récentes)
+   553→          setReponses({ ...d.reponses, ...cached })
+   554→        } else {
+   555→          setReponses(d.reponses)
+   556→        }
+   557→      })
+   558→    } else {
+   559→      setReponses(d.reponses)
+   560→    }
+   561→  }, [epreuveQuery.data])
+   562→
+   563→  // Toast sur erreur (préserve le comportement du catch original)
+   564→  useEffect(() => {
+   565→    if (epreuveQuery.error) {
+   566→      const err = epreuveQuery.error
+   567→      toast.error('Erreur', {
+   568→        description: err instanceof Error ? err.message : 'Impossible de charger l\'épreuve',
+   569→      })
+   570→    }
+   571→  }, [epreuveQuery.error])
+   572→
+   573→  // loading dérivé : false si pas d'epreuveId (préserve le setLoading(false)
+   574→  // du guard original), sinon isLoading de la query.
+   575→  const loading = !epreuveId ? false : epreuveQuery.isLoading
+   576→
+   577→  // ─── Start exam ────────────────────────────────────────────────────────
+   578→  const startExam = useCallback(async () => {
+   579→    if (!user?.id || !epreuveId || isStarting) return
+   580→    setIsStarting(true)
+   581→
+   582→    try {
+   583→      const res = await fetch('/api/sessions', {
+   584→        method: 'POST',
+   585→        headers: { 'Content-Type': 'application/json' },
+   586→        body: JSON.stringify({ etudiantId: user.id, epreuveId }),
+   587→      })
+   588→
+   589→      if (!res.ok) {
+   590→        // SECT-B2C-EXPIRE : 402 = quota étudiant dépassé (plan Solo)
+   591→        if (res.status === 402) {
+   592→          const errData = await res.json().catch(() => ({}))
+   593→          throw new Error(errData.error || 'Votre établissement a dépassé la limite d\'étudiants du plan. Contactez votre enseignant.')
+   594→        }
+   595→        throw new Error('Impossible de démarrer la session')
+   596→      }
+   597→      const data = await res.json()
+   598→      setSession(data.session)
+   599→
+   600→      // Update questions from session response (ensures consistent proposition ordering with stored mapping)
+   601→      if (data.epreuve?.questions && Array.isArray(data.epreuve.questions)) {
+   602→        const sessionQuestions = data.epreuve.questions.sort(
+   603→          (a: ExamQuestion, b: ExamQuestion) => a.ordre - b.ordre
+   604→        )
+   605→        setQuestions(sessionQuestions)
+   606→      }
+   607→
+   608→      // Calculate time
+   609→      const start = new Date(data.session.dateDebut).getTime()
+   610→      const end = start + (epreuve?.duree || 60) * 60 * 1000
+   611→      const remaining = Math.max(0, Math.floor((end - Date.now()) / 1000))
+   612→      setTimeRemaining(remaining)
+   613→
+   614→      // Reset activity tracking
+   615→      lastActivityRef.current = Date.now()
+   616→
+   617→      // Request fullscreen — MANDATORY if fullscreenObligatoire is true
+   618→      // E2E-TEST-FIX : bypass en mode test (NEXT_PUBLIC_TEST_MODE=true) pour
+   619→      // permettre l'automatisation Agent Browser. En production, le plein écran
+   620→      // reste obligatoire pour l'anti-fraude.
+   621→      const isTestMode = process.env.NEXT_PUBLIC_TEST_MODE === 'true'
+   622→      if (securityConfigRef.current.detectionFullscreen && !isTestMode) {
+   623→        try {
+   624→          await document.documentElement.requestFullscreen()
+   625→        } catch {
+   626→          // If fullscreen is mandatory and we can't enter it, warn the student
+   627→          if (securityConfigRef.current.fullscreenObligatoire) {
+   628→            toast.warning('Plein écran requis', {
+   629→              description: 'Veuillez autoriser le plein écran pour commencer l\'épreuve. Appuyez sur F11 si le bouton ne fonctionne pas.',
+   630→              duration: 8000,
+   631→            })
+   632→          }
+   633→        }
+   634→      }
+   635→
+   636→      setPhase('in-exam')
+   637→    } catch (err) {
+   638→      toast.error('Erreur', {
+   639→        description: err instanceof Error ? err.message : 'Impossible de démarrer l\'épreuve',
+   640→      })
+   641→    } finally {
+   642→      setIsStarting(false)
+   643→    }
+   644→  }, [user?.id, epreuveId, epreuve?.duree, isStarting])
+   645→
+   646→  // ─── Auto-save answers ─────────────────────────────────────────────────
+   647→  // BUGFIX (EXAM-OFFLINE-1) : saveAnswers gère maintenant le hors-ligne.
+   648→  // Si le fetch échoue (micro-coupure), les réponses sont déjà en IndexedDB
+   649→  // (via handleAnswerChange) et un retry est programmé au retour online.
+   650→  //
+   651→  // OPT-5 : skip l'auto-save si les réponses n'ont pas changé depuis le dernier save.
+   652→  // Réduit ~50% des requêtes HTTP pendant l'examen (les étudiants ne modifient
+   653→  // pas leurs réponses en continu). Pour 5000 étudiants, on passe de 167 saves/s
+   654→  // à ~83 saves/s en moyenne.
+   655→  const saveAnswers = useCallback(async () => {
+   656→    if (!sessionRef.current || phaseRef.current !== 'in-exam') return
+   657→
+   658→    try {
+   659→      const currentReponses = reponsesRef.current
+   660→      const entries = Object.entries(currentReponses)
+   661→
+   662→      if (entries.length === 0) {
+   663→        setLastSaved(new Date())
+   664→        return
+   665→      }
+   666→
+   667→      // OPT-5 : comparer les réponses actuelles avec les dernières sauvegardées.
+   668→      // Si rien n'a changé, on skip le save (économise 1 requête HTTP + 1 write DB).
+   669→      const currentHash = JSON.stringify(entries.sort())
+   670→      if (currentHash === lastSavedReponsesHashRef.current) {
+   671→        return // Rien n'a changé, skip
+   672→      }
+   673→
+   674→      // Batch save all answers
+   675→      const res = await fetch(`/api/sessions/${sessionRef.current.id}`, {
+   676→        method: 'PUT',
+   677→        headers: { 'Content-Type': 'application/json' },
+   678→        body: JSON.stringify({ reponses: currentReponses }),
+   679→      })
+   680→
+   681→      if (res.ok) {
+   682→        lastSavedReponsesHashRef.current = currentHash
+   683→        setLastSaved(new Date())
+   684→      }
+   685→    } catch {
+   686→      // BUGFIX (EXAM-OFFLINE-1) : réseau coupé — les réponses sont déjà
+   687→      // en IndexedDB (sauvegardées à chaque handleAnswerChange). Un retry
+   688→      // automatique se déclenchera au retour du réseau (online event).
+   689→      // On ne perturbe pas l'étudiant (silent fail).
+   690→    }
+   691→  }, [])
+   692→
+   693→  // OPT-9 : version debouncée de saveAnswers.
+   694→  // Quand l'étudiant navigue rapidement entre les questions, on coalesce
+   695→  // les saves en un seul appel API après 2s d'inactivité.
+   696→  // Le flush immédiat reste disponible pour le submit (debouncedSave.flush()).
+   697→  const debouncedSaveAnswers = useMemo(
+   698→    () => debounce(saveAnswers, 2000),
+   699→    [saveAnswers]
+   700→  )
+   701→
+   702→  // Cleanup du debounce au démontage
+   703→  useEffect(() => {
+   704→    return () => {
+   705→      debouncedSaveAnswers.cancel()
+   706→    }
+   707→  }, [debouncedSaveAnswers])
+   708→
+   709→  // Annule le jitter si l'étudiant soumet manuellement avant la fin du compte
+   710→  // à rebours. Appelé depuis submitExam (via cleanup) et au unmount.
+   711→  const cancelPendingAutoSubmit = useCallback(() => {
+   712→    if (pendingAutoSubmitTimeoutRef.current) {
+   713→      clearTimeout(pendingAutoSubmitTimeoutRef.current)
+   714→      pendingAutoSubmitTimeoutRef.current = null
+   715→    }
+   716→    setPendingAutoSubmitIn(null)
+   717→  }, [])
+   718→
+   719→  // ─── Submit exam ───────────────────────────────────────────────────────
+   720→  // SUBMIT-JITTER-1 + SUBMIT-RATELIMIT-1 (OPT-7) : gère le 202 Accepted du
+   721→  // backend (file de submits pleine) en réessayant après le Retry-After
+   722→  // indiqué. Le submit reste idempotent côté backend (statut session vérifié),
+   723→  // donc un retry est sûr. Max SUBMIT_MAX_RETRIES pour rester sous le timeout
+   724→  // de session frontend.
+   725→  const submitExam = useCallback(async (autoSubmit: boolean = false, reason: AutoSubmitReason = null) => {
+   726→    if (!sessionRef.current || isAutoSubmittingRef.current) return
+   727→    if (isSubmitting && !autoSubmit) return
+   728→
+   729→    // SUBMIT-JITTER-1 : si l'étudiant soumet manuellement pendant la fenêtre
+   730→    // de jitter, annuler le submit jitteré planifié.
+   731→    cancelPendingAutoSubmit()
+   732→
+   733→    isAutoSubmittingRef.current = true
+   734→    setIsSubmitting(true)
+   735→
+   736→    try {
+   737→      // Save answers first
+   738→      // OPT-9 : flush immédiat de tous les saves en attente avant le submit
+   739→      debouncedSaveAnswers.flush()
+   740→      // Small delay to let the flush complete
+   741→      await new Promise(resolve => setTimeout(resolve, 100))
+   742→
+   743→      type SubmitResponse = {
+   744→        penalite?: number
+   745→        scenario?: 'A' | 'B'
+   746→        scenarioMessage?: string
+   747→        score?: number
+   748→        totalPossible?: number
+   749→        autoGradableTotal?: number
+   750→        pendingCorrection?: number
+   751→      }
+   752→
+   753→      // SUBMIT-RATELIMIT-1 : on ne peut pas utiliser submitOffline pour le
+   754→      // submit final car le hook traite tout 2xx (dont 202) comme un succès.
+   755→      // Or 202 = "file pleine, réessayez" → il faut retry avec Retry-After.
+   756→      // On fait donc un fetch direct avec boucle de retry, en gardant le
+   757→      // fallback offline (outbox) si le réseau lâche complètement.
+   758→      const submitUrl = `/api/sessions/${sessionRef.current.id}/submit`
+   759→      const submitBody = JSON.stringify({ autoSubmit, reponses: reponsesRef.current })
+   760→
+   761→      let data: SubmitResponse | undefined
+   762→      let lastError: string | undefined
+   763→      let attempt = 0
+   764→      let queued = false
+   765→
+   766→      while (attempt < SUBMIT_MAX_RETRIES) {
+   767→        attempt += 1
+   768→
+   769→        // Offline → outbox (une seule fois, puis break)
+   770→        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+   771→          const result = await submitOffline<SubmitResponse>(
+   772→            submitUrl,
+   773→            { autoSubmit, reponses: reponsesRef.current },
+   774→            { type: 'submit-exam', meta: { examTitle: epreuve?.titre ?? 'Épreuve' } }
+   775→          )
+   776→          if (!result.synced) {
+   777→            // Hook a déjà toastyé. Si l'outbox échoue aussi, on remonte.
+   778→            if (result.error) {
+   779→              toast.error('Sauvegarde hors ligne impossible', { description: result.error })
+   780→            }
+   781→            return
+   782→          }
+   783→          if (result.error) {
+   784→            throw new Error(result.error)
+   785→          }
+   786→          data = result.data
+   787→          break
+   788→        }
+   789→
+   790→        // Online → fetch direct pour pouvoir distinguer 202 des vrais succès
+   791→        let res: Response
+   792→        try {
+   793→          res = await fetch(submitUrl, {
+   794→            method: 'POST',
+   795→            headers: { 'Content-Type': 'application/json' },
+   796→            body: submitBody,
+   797→            credentials: 'same-origin',
+   798→          })
+   799→        } catch (err) {
+   800→          // Erreur réseau inattendue → fallback offline outbox (une fois)
+   801→          const result = await submitOffline<SubmitResponse>(
+   802→            submitUrl,
+   803→            { autoSubmit, reponses: reponsesRef.current },
+   804→            { type: 'submit-exam', meta: { examTitle: epreuve?.titre ?? 'Épreuve' } }
+   805→          )
+   806→          if (!result.synced) {
+   807→            if (result.error) {
+   808→              toast.error('Sauvegarde hors ligne impossible', { description: result.error })
+   809→            }
+   810→            return
+   811→          }
+   812→          if (result.error) throw new Error(result.error)
+   813→          data = result.data
+   814→          break
+   815→        }
+   816→
+   817→        // SUBMIT-RATELIMIT-1 : 202 Accepted = file pleine, retry après Retry-After
+   818→        if (res.status === 202) {
+   819→          const body = await res.json().catch(() => ({} as { retryAfter?: number }))
+   820→          const retryAfter = (body as { retryAfter?: number }).retryAfter ?? 3
+   821→          queued = true
+   822→          // Indicateur visuel pendant l'attente
+   823→          if (attempt === 1) {
+   824→            toast.info('Soumission en file d\'attente…', {
+   825→              description: `Le serveur traite d'autres copies. Nouvelle tentative dans ${retryAfter}s.`,
+   826→              duration: retryAfter * 1000 + 500,
+   827→            })
+   828→          }
+   829→          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+   830→          continue
+   831→        }
+   832→
+   833→        // Vrai succès (200) ou erreur HTTP
+   834→        if (!res.ok) {
+   835→          const err = await res.json().catch(() => ({}))
+   836→          throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`)
+   837→        }
+   838→
+   839→        data = (await res.json().catch(() => undefined)) as SubmitResponse | undefined
+   840→        break
+   841→      }
+   842→
+   843→      if (queued && !data) {
+   844→        // Épuisé les retries sans succès — l'étudiant garde sa copie en IndexedDB
+   845→        // (déjà sauvée) et le SW retryera. On ne perd rien.
+   846→        toast.warning('Soumission en cours de traitement', {
+   847→          description: 'Le serveur est très sollicité. Votre copie est sauvegardée et sera soumise automatiquement.',
+   848→          duration: 6000,
+   849→        })
+   850→        return
+   851→      }
+   852→
+   853→      if (!data) {
+   854→        throw new Error(lastError ?? 'Réponse vide du serveur')
+   855→      }
+   856→
+   857→      if (autoSubmit) {
+   858→        setAutoSubmitted(true)
+   859→        setAutoSubmitReason(reason)
+   860→      }
+   861→
+   862→      // Update penalty from server response
+   863→      if (data?.penalite !== undefined) {
+   864→        setPenalite(data.penalite)
+   865→      }
+   866→
+   867→      // Store submit result for scenario-specific display
+   868→      if (data?.scenario) {
+   869→        setSubmitResult({
+   870→          score: data.score ?? 0,
+   871→          totalPossible: data.totalPossible ?? 0,
+   872→          autoGradedTotal: data.autoGradableTotal ?? data.totalPossible ?? 0,
+   873→          pendingCorrection: data.pendingCorrection ?? 0,
+   874→          scenario: data.scenario,
+   875→          scenarioMessage: data.scenarioMessage ?? '',
+   876→        })
+   877→      }
+   878→
+   879→      setPhase('post-exam')
+   880→
+   881→      // BUGFIX (EXAM-OFFLINE-1) : nettoyer le cache IndexedDB après submit
+   882→      // réussi (les réponses sont maintenant sur le serveur).
+   883→      if (sessionRef.current) {
+   884→        clearCachedAnswers(sessionRef.current.id)
+   885→      }
+   886→
+   887→      // OPT-10: nettoyer le snapshot IndexedDB après submit réussi
+   888→      clearExamSnapshot(epreuveId).catch(() => {})
+   889→
+   890→      // Exit fullscreen
+   891→      try {
+   892→        if (document.fullscreenElement) {
+   893→          await document.exitFullscreen()
+   894→        }
+   895→      } catch {
+   896→        // Ignore
+   897→      }
+   898→
+   899→      // Clean up intervals
+   900→      if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current)
+   901→      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+   902→      if (inactivityIntervalRef.current) clearInterval(inactivityIntervalRef.current)
+   903→      if (captureIntervalRef.current) clearInterval(captureIntervalRef.current)
+   904→    } catch (err) {
+   905→      toast.error('Erreur', {
+   906→        description: err instanceof Error ? err.message : 'Impossible de soumettre l\'épreuve',
+   907→      })
+   908→    } finally {
+   909→      setIsSubmitting(false)
+   910→      isAutoSubmittingRef.current = false
+   911→    }
+   912→  }, [isSubmitting, debouncedSaveAnswers, submitOffline, epreuve, cancelPendingAutoSubmit])
+   913→
+   914→  // ─── Log alert (enhanced with penalty) ─────────────────────────────────
+   915→  const logAlert = useCallback(async (type: string, details?: string, alertPenalite?: number) => {
+   916→    if (!sessionRef.current) return
+   917→
+   918→    try {
+   919→      await fetch(`/api/sessions/${sessionRef.current.id}`, {
+   920→        method: 'PUT',
+   921→        headers: { 'Content-Type': 'application/json' },
+   922→        body: JSON.stringify({
+   923→          alerte: {
+   924→            type,
+   925→            details,
+   926→            penalite: alertPenalite || 0,
+   927→          },
+   928→        }),
+   929→      })
+   930→
+   931→      // Increment client-side alert count
+   932→      setTotalAlertCount((prev) => {
+   933→        const newCount = prev + 1
+   934→        // Check if we need to auto-submit
+   935→        const config = securityConfigRef.current
+   936→        if (config.autoSubmitOnViolation && newCount >= config.nbAlertesMax && !isAutoSubmittingRef.current) {
+   937→          // Trigger auto-submit via violation dialog
+   938→          setAutoSubmitReason('violations')
+   939→          setShowViolationDialog(true)
+   940→        }
+   941→        return newCount
+   942→      })
+   943→
+   944→      // Update penalty
+   945→      if (alertPenalite && alertPenalite > 0) {
+   946→        setPenalite((prev) => prev + alertPenalite)
+   947→      }
+   948→    } catch {
+   949→      // Silent fail
+   950→    }
+   951→  }, [])
+   952→
+   953→  // ─── Handle violation dialog confirmation ──────────────────────────────
+   954→  const handleViolationSubmit = useCallback(() => {
+   955→    setShowViolationDialog(false)
+   956→    submitExam(true, 'violations')
+   957→  }, [submitExam])
+   958→
+   959→  // ─── Capture screenshot ───────────────────────────────────────────────
+   960→  const captureScreen = useCallback(async () => {
+   961→    if (!sessionRef.current || !examContainerRef.current) return
+   962→
+   963→    try {
+   964→      // Dynamic import of html2canvas-pro
+   965→      const html2canvas = (await import('html2canvas-pro')).default
+   966→      const canvas = await html2canvas(examContainerRef.current, {
+   967→        scale: 0.5, // Lower resolution for smaller payload
+   968→        useCORS: true,
+   969→        logging: false,
+   970→        allowTaint: true,
+   971→      })
+   972→
+   973→      const image = canvas.toDataURL('image/jpeg', 0.4) // Compress to JPEG 40% quality
+   974→
+   975→      // Upload to server
+   976→      await fetch(`/api/sessions/${sessionRef.current.id}/capture`, {
+   977→        method: 'POST',
+   978→        headers: { 'Content-Type': 'application/json' },
+   979→        body: JSON.stringify({ image }),
+   980→      })
+   981→
+   982→      // Show brief flash indicator
+   983→      setShowCaptureFlash(true)
+   984→      setLastCaptureTime(new Date())
+   985→      setTimeout(() => setShowCaptureFlash(false), 1500)
+   986→    } catch {
+   987→      // Silent fail — don't disrupt the exam
+   988→    }
+   989→  }, [])
+   990→
+   991→  // ─── SUBMIT-JITTER-1 (OPT-7) : planification du submit jitteré ────────
+   992→  // Quand le temps expire, on ne soumet pas immédiatement. On tire un délai
+   993→  // aléatoire dans [0, SUBMIT_JITTER_MS] et on planifie le submit. L'étudiant
+   994→  // voit un compte à rebours pendant cette fenêtre. Si l'étudiant soumet
+   995→  // manuellement avant (bouton « Terminer »), le jitter est annulé.
+   996→  //
+   997→  // Objectif : étaler le pic de soumission. Sans cela, N étudiants soumettent
+   998→  // à t=0 et saturent le backend (timeout 30s Render → 502 → réponses perdues).
+   999→  // Avec 45s de jitter, 1000 étudiants → ~6-7 submits/s en moyenne, sous la
+  1000→  // capacité Render free (~6-7 submits/s).
+  1001→  const scheduleAutoSubmitWithJitter = useCallback(() => {
+  1002→    // Si un submit est déjà en cours (manuel ou jitter précédent), ne rien faire
+  1003→    if (isAutoSubmittingRef.current) return
+  1004→    if (pendingAutoSubmitTimeoutRef.current) return
+  1005→
+  1006→    // Jitter = 0 → submit immédiat (comportement d'origine, utile pour tests)
+  1007→    const jitterMs = SUBMIT_JITTER_MS > 0 ? Math.floor(Math.random() * SUBMIT_JITTER_MS) : 0
+  1008→    const seconds = Math.ceil(jitterMs / 1000)
+  1009→    setPendingAutoSubmitIn(seconds)
+  1010→
+  1011→    // Countdown visible (mise à jour chaque seconde)
+  1012→    let remaining = seconds
+  1013→    const countdownInterval = setInterval(() => {
+  1014→      remaining -= 1
+  1015→      if (remaining >= 0) {
+  1016→        setPendingAutoSubmitIn(remaining)
+  1017→      }
+  1018→      if (remaining <= 0) {
+  1019→        clearInterval(countdownInterval)
+  1020→      }
+  1021→    }, 1000)
+  1022→
+  1023→    pendingAutoSubmitTimeoutRef.current = setTimeout(() => {
+  1024→      clearInterval(countdownInterval)
+  1025→      pendingAutoSubmitTimeoutRef.current = null
+  1026→      setPendingAutoSubmitIn(null)
+  1027→      submitExam(true, 'time')
+  1028→    }, jitterMs)
+  1029→  }, [submitExam])
+  1030→
+  1031→  // SUBMIT-JITTER-1 : cleanup à l'unmount — évite qu'un submit ne se déclenche
+  1032→  // après que le composant ait été démonté (fuite mémoire + state sur composant
+  1033→  // non monté).
+  1034→  useEffect(() => {
+  1035→    return () => {
+  1036→      if (pendingAutoSubmitTimeoutRef.current) {
+  1037→        clearTimeout(pendingAutoSubmitTimeoutRef.current)
+  1038→        pendingAutoSubmitTimeoutRef.current = null
+  1039→      }
+  1040→    }
+  1041→  }, [])
+  1042→
+  1043→  // ─── Timer effect ──────────────────────────────────────────────────────
+  1044→  // SUBMIT-JITTER-1 (OPT-7) : quand le temps expire, on ne soumet PAS
+  1045→  // immédiatement. À la place, on planifie un submit après un délai aléatoire
+  1046→  // [0, SUBMIT_JITTER_MS] pour étaler le pic de soumission sur toute la
+  1047→  // promotion. L'étudiant voit un compte à rebours « Soumission dans Xs »
+  1048→  // pendant la fenêtre de jitter.
+  1049→  useEffect(() => {
+  1050→    if (phase !== 'in-exam') return
+  1051→
+  1052→    timerIntervalRef.current = setInterval(() => {
+  1053→      setTimeRemaining((prev) => {
+  1054→        if (prev <= 1) {
+  1055→          // Time's up — planifier le submit jitteré au lieu de submit immédiat
+  1056→          clearInterval(timerIntervalRef.current!)
+  1057→          scheduleAutoSubmitWithJitter()
+  1058→          return 0
+  1059→        }
+  1060→        return prev - 1
+  1061→      })
+  1062→    }, 1000)
+  1063→
+  1064→    return () => {
+  1065→      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+  1066→    }
+  1067→    // scheduleAutoSubmitWithJitter est stable (useCallback ci-dessus) et est
+  1068→    // capturé via submitExam (dépendance) — pas besoin de l'ajouter aux deps.
+  1069→  }, [phase, submitExam])
+  1070→
+  1071→  // ─── Auto-save effect (every 45s) ──────────────────────────────────────
+  1072→  // OPT-4 : intervalle augmenté de 30s à 45s. Avec OPT-1 (cache RAM côté backend),
+  1073→  // les réponses sont en RAM de toute façon, le save HTTP est juste un "signal"
+  1074→  // pour alimenter le cache. 45s est suffisant et réduit la charge serveur de 33%.
+  1075→  // En cas de crash, on perd au max 45s de réponses (acceptable vs charge divisée).
+  1076→  useEffect(() => {
+  1077→    if (phase !== 'in-exam') return
+  1078→
+  1079→    autoSaveIntervalRef.current = setInterval(() => {
+  1080→      saveAnswers()
+  1081→    }, 45000)
+  1082→
+  1083→    return () => {
+  1084→      if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current)
+  1085→    }
+  1086→  }, [phase, saveAnswers])
+  1087→
+  1088→  // ─── BUGFIX (EXAM-OFFLINE-1) : Retry auto au retour réseau ────────────
+  1089→  // Quand le réseau revient après une micro-coupure, on re-tente saveAnswers
+  1090→  // immédiatement (les réponses sont en IndexedDB, il faut les pousser au
+  1091→  // serveur). L'étudiant voit un toast de confirmation discret.
+  1092→  useEffect(() => {
+  1093→    if (phase !== 'in-exam') return
+  1094→
+  1095→    const handleOnline = () => {
+  1096→      // OPT-9 : flush immédiat des saves en attente quand le réseau revient
+  1097→      debouncedSaveAnswers.flush()
+  1098→      saveAnswers().then(() => {
+  1099→        toast.success('Connexion rétablie', {
+  1100→          description: 'Vos réponses ont été synchronisées.',
+  1101→          duration: 3000,
+  1102→        })
+  1103→      })
+  1104→    }
+  1105→
+  1106→    window.addEventListener('online', handleOnline)
+  1107→    return () => window.removeEventListener('online', handleOnline)
+  1108→  }, [phase, saveAnswers, debouncedSaveAnswers])
+  1109→
+  1110→  // ─── Anti-cheat: Fullscreen exit detection (with penalty) ─────────────
+  1111→  // E2E-TEST-FIX : bypass en mode test pour permettre l'automatisation.
+  1112→  useEffect(() => {
+  1113→    // E2E-TEST-FIX : en mode test, ne pas activer la détection plein écran.
+  1114→    if (process.env.NEXT_PUBLIC_TEST_MODE === 'true') return
+  1115→    if (phase !== 'in-exam' || !securityConfig.detectionFullscreen) return
+  1116→
+  1117→    function handleFullscreenChange() {
+  1118→      if (!document.fullscreenElement) {
+  1119→        // Student exited fullscreen
+  1120→        setFullscreenExitCount((prev) => {
+  1121→          const newCount = prev + 1
+  1122→          const config = securityConfigRef.current
+  1123→
+  1124→          // Apply penalty starting from 2nd exit
+  1125→          if (newCount >= 2) {
+  1126→            const penaltyAmount = config.penaliteFullscreenExit
+  1127→            logAlert(
+  1128→              'FULLSCREEN_EXIT',
+  1129→              `Sortie plein écran n°${newCount} — Pénalité de -${penaltyAmount} points appliquée`,
+  1130→              penaltyAmount
+  1131→            )
+  1132→            toast.error('Pénalité appliquée', {
+  1133→              description: `-${penaltyAmount} points pour sortie du plein écran (tentative n°${newCount}). Total pénalités: -${penaliteRef.current + penaltyAmount} points`,
+  1134→              duration: 5000,
+  1135→            })
+  1136→          } else {
+  1137→            // 1st exit: just warning, no penalty
+  1138→            logAlert('FULLSCREEN_EXIT', `Sortie plein écran n°1 — Avertissement (pas de pénalité)`)
+  1139→            toast.warning('Mode plein écran requis', {
+  1140→              description: 'La prochaine sortie du plein écran entraînera une pénalité de points.',
+  1141→              duration: 5000,
+  1142→            })
+  1143→          }
+  1144→
+  1145→          // If fullscreen is mandatory, block the exam
+  1146→          if (config.fullscreenObligatoire) {
+  1147→            setIsFullscreenBlocked(true)
+  1148→          } else {
+  1149→            setShowFullscreenWarning(true)
+  1150→          }
+  1151→
+  1152→          return newCount
+  1153→        })
+  1154→      } else {
+  1155→        // Student re-entered fullscreen
+  1156→        setIsFullscreenBlocked(false)
+  1157→      }
+  1158→    }
+  1159→
+  1160→    document.addEventListener('fullscreenchange', handleFullscreenChange)
+  1161→    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  1162→  }, [phase, securityConfig.detectionFullscreen, logAlert])
+  1163→
+  1164→  // ─── Anti-cheat: Tab switch detection (conditional) ───────────────────
+  1165→  useEffect(() => {
+  1166→    if (phase !== 'in-exam' || !securityConfig.detectionOnglet) return
+  1167→
+  1168→    function handleVisibilityChange() {
+  1169→      if (document.hidden) {
+  1170→        const timestamp = new Date().toLocaleTimeString('fr-FR')
+  1171→        logAlert('TAB_SWITCH', `Changement d'onglet à ${timestamp}`)
+  1172→      } else {
+  1173→        // Returning to tab — show warning
+  1174→        setShowTabSwitchWarning(true)
+  1175→      }
+  1176→    }
+  1177→
+  1178→    document.addEventListener('visibilitychange', handleVisibilityChange)
+  1179→    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  1180→  }, [phase, securityConfig.detectionOnglet, logAlert])
+  1181→
+  1182→  // ─── Anti-cheat: Right-click prevention (conditional) ─────────────────
+  1183→  useEffect(() => {
+  1184→    if (phase !== 'in-exam' || !securityConfig.blocageClicDroit) return
+  1185→
+  1186→    function handleContextMenu(e: MouseEvent) {
+  1187→      e.preventDefault()
+  1188→    }
+  1189→
+  1190→    document.addEventListener('contextmenu', handleContextMenu)
+  1191→    return () => document.removeEventListener('contextmenu', handleContextMenu)
+  1192→  }, [phase, securityConfig.blocageClicDroit])
+  1193→
+  1194→  // ─── Anti-cheat: Keyboard shortcuts prevention (enhanced) ─────────────
+  1195→  useEffect(() => {
+  1196→    if (phase !== 'in-exam') return
+  1197→
+  1198→    function handleKeyDown(e: KeyboardEvent) {
+  1199→      const config = securityConfigRef.current
+  1200→
+  1201→      // Block Ctrl+C, Ctrl+U (if blocageCopie) — always block these
+  1202→      // Block Ctrl+V (if blocageCopie) — but allow in code editors for CODE questions
+  1203→      const isInCodeEditor = !!(e.target as HTMLElement)?.closest?.('.monaco-editor, .code-editor-container')
+  1204→      if (config.blocageCopie && e.ctrlKey && (e.key === 'c' || e.key === 'u')) {
+  1205→        e.preventDefault()
+  1206→        if (e.key === 'c') logAlert('COPY_ATTEMPT', 'Ctrl+C')
+  1207→      }
+  1208→      if (config.blocageCopie && e.ctrlKey && e.key === 'v' && !isInCodeEditor) {
+  1209→        e.preventDefault()
+  1210→        logAlert('PASTE_ATTEMPT', 'Ctrl+V')
+  1211→      }
+  1212→
+  1213→      // Always block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (DevTools)
+  1214→      if (e.key === 'F12') {
+  1215→        e.preventDefault()
+  1216→        logAlert('DEVTOOLS_ATTEMPT', 'F12')
+  1217→      }
+  1218→      if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
+  1219→        e.preventDefault()
+  1220→        logAlert('DEVTOOLS_ATTEMPT', 'Ctrl+Shift+I')
+  1221→      }
+  1222→      if (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.key === 'j')) {
+  1223→        e.preventDefault()
+  1224→        logAlert('DEVTOOLS_ATTEMPT', 'Ctrl+Shift+J')
+  1225→      }
+  1226→      if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+  1227→        e.preventDefault()
+  1228→        logAlert('DEVTOOLS_ATTEMPT', 'Ctrl+Shift+C')
+  1229→      }
+  1230→
+  1231→      // Block PrintScreen + Ctrl+P (blocageImpression)
+  1232→      if (config.blocageImpression) {
+  1233→        if (e.key === 'PrintScreen') {
+  1234→          e.preventDefault()
+  1235→          // Clear clipboard to prevent screenshot paste
+  1236→          try {
+  1237→            navigator.clipboard.writeText('')
+  1238→          } catch {
+  1239→            // Clipboard API may not be available
+  1240→          }
+  1241→          logAlert('PRINTSCREEN_ATTEMPT', 'Touche Impr. écran')
+  1242→          toast.warning('Capture désactivée', {
+  1243→            description: 'La touche Impr. écran est désactivée pendant l\'épreuve.',
+  1244→          })
+  1245→        }
+  1246→        // Block Ctrl+P
+  1247→        if (e.ctrlKey && e.key === 'p') {
+  1248→          e.preventDefault()
+  1249→          logAlert('PRINT_ATTEMPT', 'Ctrl+P')
+  1250→          toast.warning('Impression désactivée', {
+  1251→            description: 'L\'impression est désactivée pendant l\'épreuve.',
+  1252→          })
+  1253→        }
+  1254→        // Block Win+Shift+S (Windows Snipping Tool) — detected via key combination
+  1255→        if (e.metaKey && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+  1256→          e.preventDefault()
+  1257→          try {
+  1258→            navigator.clipboard.writeText('')
+  1259→          } catch {
+  1260→            // Clipboard API may not be available
+  1261→          }
+  1262→          logAlert('PRINTSCREEN_ATTEMPT', 'Win+Shift+S (Outil Capture)')
+  1263→          toast.warning('Capture désactivée', {
+  1264→            description: 'L\'outil de capture est désactivé pendant l\'épreuve.',
+  1265→          })
+  1266→        }
+  1267→      }
+  1268→
+  1269→      // Block Alt+Tab (cannot be reliably blocked in browsers, but we log the attempt)
+  1270→      if (e.altKey && e.key === 'Tab') {
+  1271→        logAlert('ALT_TAB', 'Alt+Tab détecté')
+  1272→      }
+  1273→
+  1274→      // Block Escape (prevents exiting fullscreen)
+  1275→      if (e.key === 'Escape' && config.detectionFullscreen && config.fullscreenObligatoire) {
+  1276→        // We can't prevent Escape from exiting fullscreen, but we'll detect it via fullscreenchange
+  1277→        // and block the exam content via isFullscreenBlocked
+  1278→      }
+  1279→    }
+  1280→
+  1281→    document.addEventListener('keydown', handleKeyDown)
+  1282→    return () => document.removeEventListener('keydown', handleKeyDown)
+  1283→  }, [phase, logAlert])
+  1284→
+  1285→  // ─── Anti-cheat: Inactivity detection (conditional) ───────────────────
+  1286→  useEffect(() => {
+  1287→    if (phase !== 'in-exam') return
+  1288→    const maxInactive = securityConfig.tempsInactiviteMax
+  1289→    if (maxInactive <= 0) return
+  1290→
+  1291→    // Reset activity timestamp
+  1292→    lastActivityRef.current = Date.now()
+  1293→
+  1294→    function resetActivity() {
+  1295→      lastActivityRef.current = Date.now()
+  1296→    }
+  1297→
+  1298→    // Listen for user activity
+  1299→    const activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'] as const
+  1300→    activityEvents.forEach((evt) => {
+  1301→      document.addEventListener(evt, resetActivity, { passive: true })
+  1302→    })
+  1303→
+  1304→    // Check inactivity every 5 seconds
+  1305→    inactivityIntervalRef.current = setInterval(() => {
+  1306→      const elapsed = Math.floor((Date.now() - lastActivityRef.current) / 1000)
+  1307→      const config = securityConfigRef.current
+  1308→
+  1309→      if (elapsed >= config.tempsInactiviteMax) {
+  1310→        // Inactivity threshold reached
+  1311→        if (!isAutoSubmittingRef.current) {
+  1312→          logAlert('INACTIVITY', `Inactivité détectée: ${elapsed} secondes`)
+  1313→          setShowInactivityWarning(true)
+  1314→
+  1315→          if (config.autoSubmitOnViolation) {
+  1316→            setAutoSubmitReason('inactivity')
+  1317→            setShowViolationDialog(true)
+  1318→          }
+  1319→        }
+  1320→        // Reset timer to avoid repeated alerts
+  1321→        lastActivityRef.current = Date.now()
+  1322→      }
+  1323→    }, 5000)
+  1324→
+  1325→    return () => {
+  1326→      activityEvents.forEach((evt) => {
+  1327→        document.removeEventListener(evt, resetActivity)
+  1328→      })
+  1329→      if (inactivityIntervalRef.current) clearInterval(inactivityIntervalRef.current)
+  1330→    }
+  1331→  }, [phase, securityConfig.tempsInactiviteMax, logAlert])
+  1332→
+  1333→  // ─── Periodic screenshot capture ───────────────────────────────────────
+  1334→  useEffect(() => {
+  1335→    if (phase !== 'in-exam' || !securityConfig.captureEcran) return
+  1336→
+  1337→    const interval = securityConfig.intervalleCaptureEcran * 1000
+  1338→    if (interval <= 0) return
+  1339→
+  1340→    // First capture after half the interval
+  1341→    const firstCaptureTimeout = setTimeout(() => {
+  1342→      captureScreen()
+  1343→    }, interval / 2)
+  1344→
+  1345→    // Then periodically
+  1346→    captureIntervalRef.current = setInterval(() => {
+  1347→      captureScreen()
+  1348→    }, interval)
+  1349→
+  1350→    return () => {
+  1351→      clearTimeout(firstCaptureTimeout)
+  1352→      if (captureIntervalRef.current) clearInterval(captureIntervalRef.current)
+  1353→    }
+  1354→  }, [phase, securityConfig.captureEcran, securityConfig.intervalleCaptureEcran, captureScreen])
+  1355→
+  1356→  // ─── Periodic closure check (every 15s during exam) ───────────────────
+  1357→  useEffect(() => {
+  1358→    if (phase !== 'in-exam' || !epreuveId) return
+  1359→
+  1360→    const checkClosure = async () => {
+  1361→      try {
+  1362→        const res = await fetch(`/api/epreuves/auto-close?epreuveId=${epreuveId}`)
+  1363→        if (res.ok) {
+  1364→          const data = await res.json()
+  1365→          
+  1366→          if (data.isClosed) {
+  1367→            setIsEpreuveClosed(true)
+  1368→            setClosureRaison(data.raisonCloture)
+  1369→            setShowClosureDialog(true)
+  1370→            // Auto-submit if still in exam
+  1371→            if (phaseRef.current === 'in-exam' && !isAutoSubmittingRef.current) {
+  1372→              submitExam(true, 'time')
+  1373→            }
+  1374→          } else if (data.inGracePeriod) {
+  1375→            setInGracePeriod(true)
+  1376→            setGracePeriodEndsAt(data.gracePeriodEndsAt ? new Date(data.gracePeriodEndsAt) : null)
+  1377→          } else {
+  1378→            setInGracePeriod(false)
+  1379→            setGracePeriodEndsAt(null)
+  1380→          }
+  1381→        }
+  1382→      } catch {
+  1383→        // Silent fail — don't disrupt the exam
+  1384→      }
+  1385→    }
+  1386→
+  1387→    // OPT-4 : intervalle augmenté de 15s à 30s. La clôture d'épreuve est gérée
+  1388→    // aussi par le worker backend AutoCloseWorker (60s). 30s est un bon compromis :
+  1389→    // assez réactif pour les étudiants, réduit la charge serveur de 50%.
+  1390→    checkClosure()
+  1391→    const interval = setInterval(checkClosure, 30000)
+  1392→
+  1393→    return () => clearInterval(interval)
+  1394→  }, [phase, epreuveId, submitExam])
+  1395→
+  1396→  // ─── Computed: inactivity progress ────────────────────────────────────
+  1397→  const [inactivitySeconds, setInactivitySeconds] = useState(0)
+  1398→  useEffect(() => {
+  1399→    if (phase !== 'in-exam' || securityConfig.tempsInactiviteMax <= 0) return
+  1400→
+  1401→    const interval = setInterval(() => {
+  1402→      setInactivitySeconds(Math.floor((Date.now() - lastActivityRef.current) / 1000))
+  1403→    }, 1000)
+  1404→
+  1405→    return () => clearInterval(interval)
+  1406→  }, [phase, securityConfig.tempsInactiviteMax])
+  1407→
+  1408→  const inactivityRatio = securityConfig.tempsInactiviteMax > 0
+  1409→    ? Math.min(inactivitySeconds / securityConfig.tempsInactiviteMax, 1)
+  1410→    : 0
+  1411→
+  1412→  // ─── Save on question navigation ───────────────────────────────────────
+  1413→  const navigateToQuestion = useCallback((index: number) => {
+  1414→    setCurrentIndex(index)
+  1415→    // OPT-9 : debounced save — si l'étudiant navigue rapidement, les saves sont coalescés
+  1416→    debouncedSaveAnswers()
+  1417→  }, [debouncedSaveAnswers])
+  1418→
+  1419→  // ─── Handle answer change ──────────────────────────────────────────────
+  1420→  // BUGFIX (EXAM-OFFLINE-1) : chaque réponse est persistée en IndexedDB
+  1421→  // instantanément (non-bloquant). En cas de micro-coupure réseau + refresh
+  1422→  // ou fermeture d'onglet, les réponses sont restaurées au remontage.
+  1423→  const handleAnswerChange = useCallback((questionId: string, value: string) => {
+  1424→    setReponses((prev) => ({ ...prev, [questionId]: value }))
+  1425→    // Persistance IndexedDB (fire-and-forget, non-bloquant)
+  1426→    if (sessionRef.current) {
+  1427→      cacheAnswer(sessionRef.current.id, questionId, value)
+  1428→    }
+  1429→  }, [])
+  1430→
+  1431→  // ─── Handle QCM toggle ─────────────────────────────────────────────────
+  1432→  const handleQCMToggle = useCallback((questionId: string, letter: string) => {
+  1433→    setReponses((prev) => {
+  1434→      const current = parseJsonSafe<string[]>(prev[questionId], [])
+  1435→      const updated = current.includes(letter)
+  1436→        ? current.filter((l) => l !== letter)
+  1437→        : [...current, letter]
+  1438→      const newValue = JSON.stringify(updated)
+  1439→      // BUGFIX (EXAM-OFFLINE-1) : persister en IndexedDB
+  1440→      if (sessionRef.current) {
+  1441→        cacheAnswer(sessionRef.current.id, questionId, newValue)
+  1442→      }
+  1443→      return { ...prev, [questionId]: newValue }
+  1444→    })
+  1445→  }, [])
+  1446→
+  1447→  // ─── Toggle flag ───────────────────────────────────────────────────────
+  1448→  const toggleFlag = useCallback((questionId: string) => {
+  1449→    setFlaggedQuestions((prev) => {
+  1450→      const next = new Set(prev)
+  1451→      if (next.has(questionId)) next.delete(questionId)
+  1452→      else next.add(questionId)
+  1453→      return next
+  1454→    })
+  1455→  }, [])
+  1456→
+  1457→  // ─── Paste handler for QRC/TRS (conditional) ──────────────────────────
+  1458→  const handlePastePrevent = useCallback((e: React.ClipboardEvent) => {
+  1459→    if (!securityConfig.blocageCopie) return
+  1460→    e.preventDefault()
+  1461→    logAlert('PASTE_ATTEMPT')
+  1462→    toast.warning('Coller désactivé', {
+  1463→      description: 'Le copier-coller est interdit pour ce type de question.',
+  1464→    })
+  1465→  }, [logAlert, securityConfig.blocageCopie])
+  1466→
+  1467→  // ─── Dynamic pre-exam rules ───────────────────────────────────────────
+  1468→  const examRules = (() => {
+  1469→    const rules: { icon: React.ElementType; text: string; highlight?: boolean }[] = []
+  1470→
+  1471→    if (securityConfig.detectionFullscreen) {
+  1472→      rules.push({
+  1473→        icon: Maximize,
+  1474→        text: securityConfig.fullscreenObligatoire
+  1475→          ? 'Le mode plein écran est OBLIGATOIRE — l\'épreuve est bloquée si vous quittez le plein écran'
+  1476→          : 'Le mode plein écran est activé pendant l\'épreuve',
+  1477→        highlight: securityConfig.fullscreenObligatoire,
+  1478→      })
+  1479→    }
+  1480→    if (securityConfig.detectionFullscreen && securityConfig.penaliteFullscreenExit > 0) {
+  1481→      rules.push({
+  1482→        icon: MinusCircle,
+  1483→        text: `Chaque sortie du plein écran à partir de la 2ème tentative entraîne une pénalité de -${securityConfig.penaliteFullscreenExit} points sur votre note`,
+  1484→        highlight: true,
+  1485→      })
+  1486→    }
+  1487→    if (securityConfig.detectionOnglet) {
+  1488→      rules.push({ icon: Eye, text: 'Toute sortie de l\'onglet sera enregistrée' })
+  1489→    }
+  1490→    if (securityConfig.blocageCopie) {
+  1491→      rules.push({ icon: ClipboardPaste, text: 'Le copier-coller est désactivé pour les questions à réponse courte' })
+  1492→    }
+  1493→    if (securityConfig.blocageClicDroit) {
+  1494→      rules.push({ icon: MousePointerClick, text: 'Le clic droit est désactivé pendant l\'épreuve' })
+  1495→    }
+  1496→    if (securityConfig.blocageImpression) {
+  1497→      rules.push({ icon: Printer, text: 'Les touches Impr. écran et l\'outil de capture Windows sont désactivés' })
+  1498→    }
+  1499→    if (securityConfig.captureEcran) {
+  1500→      rules.push({
+  1501→        icon: Camera,
+  1502→        text: `Des captures d'écran périodiques seront effectuées toutes les ${securityConfig.intervalleCaptureEcran} secondes`,
+  1503→      })
+  1504→    }
+  1505→    rules.push({ icon: Save, text: 'Les réponses sont sauvegardées automatiquement toutes les 30 secondes' })
+  1506→    rules.push({ icon: Clock, text: 'L\'épreuve sera soumise automatiquement à la fin du temps imparti' })
+  1507→    if (securityConfig.autoSubmitOnViolation) {
+  1508→      rules.push({
+  1509→        icon: ShieldAlert,
+  1510→        text: `Après ${securityConfig.nbAlertesMax} alertes de sécurité, l'épreuve sera soumise automatiquement`,
+  1511→        highlight: true,
+  1512→      })
+  1513→    }
+  1514→    if (securityConfig.tempsInactiviteMax > 0) {
+  1515→      rules.push({
+  1516→        icon: Timer,
+  1517→        text: `Toute inactivité de plus de ${securityConfig.tempsInactiviteMax} secondes sera signalée`,
+  1518→      })
+  1519→    }
+  1520→
+  1521→    return rules
+  1522→  })()
+  1523→
+  1524→  // ─── Computed: answered questions count ────────────────────────────────
+  1525→  const answeredCount = questions.filter((q) => {
+  1526→    const answer = reponses[q.questionId]
+  1527→    if (!answer) return false
+  1528→    if (q.question.type === 'QCM') {
+  1529→      const selected = parseJsonSafe<string[]>(answer, [])
+  1530→      return selected.length > 0
+  1531→    }
+  1532→    return answer.trim().length > 0
+  1533→  }).length
+  1534→
+  1535→  const totalPoints = questions.reduce((sum, q) => sum + q.bareme, 0)
+  1536→
+  1537→  // ─── Loading state ─────────────────────────────────────────────────────
+  1538→  if (loading) {
+  1539→    return (
+  1540→      <div className="flex items-center justify-center min-h-[60vh]">
+  1541→        <div className="flex flex-col items-center gap-4">
+  1542→          <Loader2 className="h-8 w-8 animate-spin text-success-text" />
+  1543→          <p className="text-sm text-muted-foreground">Chargement de l&apos;épreuve...</p>
+  1544→        </div>
+  1545→      </div>
+  1546→    )
+  1547→  }
+  1548→
+  1549→  // ─── No epreuveId ──────────────────────────────────────────────────────
+  1550→  if (!epreuveId || !epreuve) {
+  1551→    return (
+  1552→      <div className="flex items-center justify-center min-h-[60vh]">
+  1553→        <Card className="w-full max-w-lg">
+  1554→          <CardHeader className="text-center">
+  1555→            <CardTitle className="text-xl font-display tracking-tight">Aucune épreuve sélectionnée</CardTitle>
+  1556→            <CardDescription>
+  1557→              Veuillez sélectionner une épreuve depuis votre tableau de bord.
+  1558→            </CardDescription>
+  1559→          </CardHeader>
+  1560→          <CardContent className="flex justify-center">
+  1561→            <Button
+  1562→              variant="outline"
+  1563→              className="border-success/40 text-success-text hover:bg-success/10"
+  1564→              onClick={() => router.push('/mes-epreuves')}
+  1565→            >
+  1566→              <Home className="h-4 w-4 mr-2" />
+  1567→              Mes épreuves
+  1568→            </Button>
+  1569→          </CardContent>
+  1570→        </Card>
+  1571→      </div>
+  1572→    )
+  1573→  }
+  1574→
+  1575→  // ═══════════════════════════════════════════════════════════════════════
+  1576→  // PHASE 1: PRE-EXAM CONSENT SCREEN
+  1577→  // ═══════════════════════════════════════════════════════════════════════
+  1578→
+  1579→  if (phase === 'pre-exam') {
+  1580→    return (
+  1581→      <div className="flex items-center justify-center min-h-[70vh] p-4">
+  1582→        <Card className="w-full max-w-2xl border-success/30 ">
+  1583→          <CardHeader className="text-center pb-2">
+  1584→            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ">
+  1585→              <ShieldCheck className="h-8 w-8 text-success-text" />
+  1586→            </div>
+  1587→            <CardTitle className="text-2xl font-display tracking-tight">{epreuve.titre}</CardTitle>
+  1588→            {epreuve.description && (
+  1589→              <CardDescription className="mt-1">{epreuve.description}</CardDescription>
+  1590→            )}
+  1591→          </CardHeader>
+  1592→          <CardContent className="space-y-6">
+  1593→            {/* Exam info */}
+  1594→            <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+  1595→              <div className="rounded-lg border border-success/30 bg-success/10 p-3  /50">
+  1596→                <Clock className="mx-auto h-5 w-5 text-success-text mb-1" />
+  1597→                <p className="text-lg font-bold text-success-text dark:text-success-text">{epreuve.duree} min</p>
+  1598→                <p className="text-xs text-muted-foreground">Durée</p>
+  1599→              </div>
+  1600→              <div className="rounded-lg border border-info/30 bg-info/10 p-3  ">
+  1601→                <BookOpen className="mx-auto h-5 w-5 text-info mb-1" />
+  1602→                <p className="text-lg font-bold text-info dark:text-info">{questions.length}</p>
+  1603→                <p className="text-xs text-muted-foreground">Questions</p>
+  1604→              </div>
+  1605→              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-800 dark:bg-cyan-950/50">
+  1606→                <CheckCircle2 className="mx-auto h-5 w-5 text-cyan-600 mb-1" />
+  1607→                <p className="text-lg font-bold text-cyan-700 dark:text-cyan-400">{totalPoints}</p>
+  1608→                <p className="text-xs text-muted-foreground">Points</p>
+  1609→              </div>
+  1610→            </div>
+  1611→
+  1612→            {/* Dynamic Rules */}
+  1613→            <div className="rounded-lg border bg-muted/30 p-4">
+  1614→              <h3 className="font-display font-semibold tracking-tight text-sm mb-3 flex items-center gap-2">
+  1615→                <Lock className="h-4 w-4 text-success-text" />
+  1616→                Règles de l&apos;épreuve
+  1617→              </h3>
+  1618→              <ul className="space-y-2.5">
+  1619→                {examRules.map((rule, i) => (
+  1620→                  <li key={i} className={`flex items-start gap-2.5 text-sm ${rule.highlight ? 'font-medium' : ''}`}>
+  1621→                    <rule.icon className={`h-4 w-4 mt-0.5 shrink-0 ${rule.highlight ? 'text-destructive' : 'text-success-text'}`} />
+  1622→                    <span className={rule.highlight ? 'text-destructive ' : ''}>{rule.text}</span>
+  1623→                  </li>
+  1624→                ))}
+  1625→              </ul>
+  1626→            </div>
+  1627→
+  1628→            {/* Penalty warning box */}
+  1629→            {securityConfig.detectionFullscreen && securityConfig.penaliteFullscreenExit > 0 && (
+  1630→              <div className="rounded-lg border border-warning/40 bg-warning/10 p-4  ">
+  1631→                <div className="flex items-start gap-3">
+  1632→                  <MinusCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+  1633→                  <div className="space-y-1">
+  1634→                    <p className="text-sm font-semibold text-warning">
+  1635→                      Système de pénalité plein écran
+  1636→                    </p>
+  1637→                    <p className="text-xs text-warning">
+  1638→                      1ère sortie : avertissement sans pénalité. À partir de la 2ème sortie :
+  1639→                      -{securityConfig.penaliteFullscreenExit} points par sortie.
+  1640→                      {securityConfig.fullscreenObligatoire && ' L\'épreuve sera bloquée tant que vous n\'êtes pas en plein écran.'}
+  1641→                    </p>
+  1642→                  </div>
+  1643→                </div>
+  1644→              </div>
+  1645→            )}
+  1646→
+  1647→            {/* Consent checkbox */}
+  1648→            <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-success/10/50 p-4  ">
+  1649→              <Checkbox
+  1650→                id="consent"
+  1651→                checked={consentAccepted}
+  1652→                onCheckedChange={(checked) => setConsentAccepted(checked === true)}
+  1653→                className="mt-0.5 data-[state=checked]:bg-success data-[state=checked]:border-success"
+  1654→              />
+  1655→              <Label htmlFor="consent" className="text-sm font-normal cursor-pointer leading-relaxed">
+  1656→                J&apos;accepte les règles de l&apos;épreuve et je m&apos;engage à la réaliser de manière honnête et autonome.
+  1657→                J&apos;ai compris que toute sortie du mode plein écran à partir de la 2ème tentative entraînera une pénalité.
+  1658→              </Label>
+  1659→            </div>
+  1660→
+  1661→            {/* Start button */}
+  1662→            <Button
+  1663→              onClick={startExam}
+  1664→              disabled={!consentAccepted || isStarting}
+  1665→              className="w-full  text-white h-11 text-base"
+  1666→              size="lg"
+  1667→            >
+  1668→              {isStarting ? (
+  1669→                <>
+  1670→                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+  1671→                  Démarrage en cours...
+  1672→                </>
+  1673→              ) : (
+  1674→                <>
+  1675→                  <ShieldCheck className="h-5 w-5 mr-2" />
+  1676→                  Commencer l&apos;épreuve
+  1677→                </>
+  1678→              )}
+  1679→            </Button>
+  1680→          </CardContent>
+  1681→        </Card>
+  1682→      </div>
+  1683→    )
+  1684→  }
+  1685→
+  1686→  // ═══════════════════════════════════════════════════════════════════════
+  1687→  // PHASE 3: POST-EXAM
+  1688→  // ═══════════════════════════════════════════════════════════════════════
+  1689→
+  1690→  if (phase === 'post-exam') {
+  1691→    const autoSubmitMessages: Record<NonNullable<AutoSubmitReason>, { title: string; description: string }> = {
+  1692→      time: {
+  1693→        title: 'Temps écoulé',
+  1694→        description: 'Votre épreuve a été soumise automatiquement car le temps imparti est écoulé.',
+  1695→      },
+  1696→      violations: {
+  1697→        title: 'Trop d\'alertes de sécurité',
+  1698→        description: 'Votre épreuve a été soumise automatiquement car vous avez atteint le nombre maximum d\'alertes de sécurité.',
+  1699→      },
+  1700→      inactivity: {
+  1701→        title: 'Inactivité prolongée',
+  1702→        description: 'Votre épreuve a été soumise automatiquement en raison d\'une inactivité prolongée.',
+  1703→      },
+  1704→    }
+  1705→
+  1706→    return (
+  1707→      <div className="flex items-center justify-center min-h-[70vh] p-4">
+  1708→        <Card className="w-full max-w-lg border-success/30 ">
+  1709→          <CardHeader className="text-center pb-2">
+  1710→            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ">
+  1711→              <CheckCircle2 className="h-8 w-8 text-success-text" />
+  1712→            </div>
+  1713→            <CardTitle className="text-2xl font-display tracking-tight">Épreuve soumise !</CardTitle>
+  1714→            <CardDescription className="mt-1">
+  1715→              {autoSubmitted && autoSubmitReason && autoSubmitMessages[autoSubmitReason]
+  1716→                ? autoSubmitMessages[autoSubmitReason].description
+  1717→                : autoSubmitted
+  1718→                  ? 'Votre épreuve a été soumise automatiquement.'
+  1719→                  : 'Votre épreuve a été soumise avec succès.'}
+  1720→            </CardDescription>
+  1721→          </CardHeader>
+  1722→          <CardContent className="space-y-4">
+  1723→            <div className="grid grid-cols-2 gap-4">
+  1724→              <div className="rounded-lg border p-4 text-center">
+  1725→                <p className="text-2xl font-bold text-success-text">{answeredCount}</p>
+  1726→                <p className="text-xs text-muted-foreground mt-1">Questions répondues</p>
+  1727→              </div>
+  1728→              <div className="rounded-lg border p-4 text-center">
+  1729→                <p className="text-2xl font-bold">{questions.length}</p>
+  1730→                <p className="text-xs text-muted-foreground mt-1">Questions totales</p>
+  1731→              </div>
+  1732→            </div>
+  1733→
+  1734→            {/* Scenario A: Show final score immediately */}
+  1735→            {submitResult && submitResult.scenario === 'A' && (
+  1736→              <div className="rounded-lg border border-success/30 bg-success/10 p-4  ">
+  1737→                <div className="flex items-center gap-2 mb-2">
+  1738→                  <CheckCircle2 className="h-5 w-5 text-success-text" />
+  1739→                  <p className="text-sm font-semibold text-success-text">
+  1740→                    Correction automatique terminée
+  1741→                  </p>
+  1742→                </div>
+  1743→                <div className="flex items-baseline gap-1 ml-7">
+  1744→                  <span className="text-3xl font-bold text-success-text">
+  1745→                    {submitResult.score.toFixed(1)}
+  1746→                  </span>
+  1747→                  <span className="text-lg text-muted-foreground">/{submitResult.totalPossible}</span>
+  1748→                </div>
+  1749→                <p className="text-xs text-success-text ml-7 mt-1">
+  1750→                  Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.
+  1751→                </p>
+  1752→              </div>
+  1753→            )}
+  1754→
+  1755→            {/* Scenario B: Show partial score with pending correction */}
+  1756→            {submitResult && submitResult.scenario === 'B' && (
+  1757→              <div className="space-y-3">
+  1758→                <div className="rounded-lg border border-info/30 bg-info/10 p-4  ">
+  1759→                  <div className="flex items-center gap-2 mb-2">
+  1760→                    <CheckCircle2 className="h-5 w-5 text-info" />
+  1761→                    <p className="text-sm font-semibold text-info">
+  1762→                      Note partielle (questions auto-corrigées)
+  1763→                    </p>
+  1764→                  </div>
+  1765→                  <div className="flex items-baseline gap-1 ml-7">
+  1766→                    <span className="text-3xl font-bold text-info">
+  1767→                      {submitResult.score.toFixed(1)}
+  1768→                    </span>
+  1769→                    <span className="text-lg text-muted-foreground">/{submitResult.autoGradedTotal}</span>
+  1770→                  </div>
+  1771→                  <p className="text-xs text-info ml-7 mt-1">
+  1772→                    Score basé uniquement sur les questions à choix (QCU/QCM).
+  1773→                  </p>
+  1774→                </div>
+  1775→                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3  ">
+  1776→                  <div className="flex items-center gap-2">
+  1777→                    <Clock className="h-4 w-4 text-warning" />
+  1778→                    <p className="text-sm font-semibold text-warning">
+  1779→                      En attente de correction manuelle
+  1780→                    </p>
+  1781→                  </div>
+  1782→                  <p className="text-xs text-warning ml-6 mt-1">
+  1783→                    {submitResult.pendingCorrection} question{submitResult.pendingCorrection > 1 ? 's' : ''} ouverte{submitResult.pendingCorrection > 1 ? 's' : ''} (QRC/Réflexion) nécessite{submitResult.pendingCorrection > 1 ? 'nt' : ''} une correction par l&apos;enseignant.
+  1784→                    Votre note définitive sera disponible après correction.
+  1785→                  </p>
+  1786→                </div>
+  1787→              </div>
+  1788→            )}
+  1789→
+  1790→            {/* Penalty display */}
+  1791→            {penalite > 0 && (
+  1792→              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3  ">
+  1793→                <div className="flex items-center gap-2 mb-1">
+  1794→                  <MinusCircle className="h-4 w-4 text-warning" />
+  1795→                  <p className="text-sm font-semibold text-warning">
+  1796→                    Pénalité appliquée : -{penalite} point{penalite > 1 ? 's' : ''}
+  1797→                  </p>
+  1798→                </div>
+  1799→                <p className="text-xs text-warning ml-6">
+  1800→                  Retrait pour {fullscreenExitCount - 1} sortie{fullscreenExitCount - 1 > 1 ? 's' : ''} du plein écran au-delà de la 1ère
+  1801→                  ({securityConfig.penaliteFullscreenExit} pts × {fullscreenExitCount - 1} = -{penalite} pts)
+  1802→                </p>
+  1803→              </div>
+  1804→            )}
+  1805→
+  1806→            {/* Alert count display */}
+  1807→            {totalAlertCount > 0 && (
+  1808→              <div className="rounded-lg border p-3">
+  1809→                <div className="flex items-center gap-2">
+  1810→                  <ShieldAlert className="h-4 w-4 text-warning" />
+  1811→                  <p className="text-sm font-medium">
+  1812→                    {totalAlertCount} alerte{totalAlertCount > 1 ? 's' : ''} de sécurité enregistrée{totalAlertCount > 1 ? 's' : ''}
+  1813→                  </p>
+  1814→                </div>
+  1815→                <p className="text-xs text-muted-foreground ml-6">
+  1816→                  Les alertes ont été communiquées à votre enseignant.
+  1817→                </p>
+  1818→              </div>
+  1819→            )}
+  1820→
+  1821→            {autoSubmitted && autoSubmitReason && autoSubmitMessages[autoSubmitReason] && (
+  1822→              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3  ">
+  1823→                <FileWarning className="h-5 w-5 text-warning mt-0.5 shrink-0" />
+  1824→                <div>
+  1825→                  <p className="text-sm font-semibold text-warning">
+  1826→                    {autoSubmitMessages[autoSubmitReason].title}
+  1827→                  </p>
+  1828→                  <p className="text-sm text-warning">
+  1829→                    {autoSubmitMessages[autoSubmitReason].description}
+  1830→                  </p>
+  1831→                </div>
+  1832→              </div>
+  1833→            )}
+  1834→
+  1835→            <Button
+  1836→              className="w-full  text-white"
+  1837→              onClick={() => router.push('/mes-epreuves')}
+  1838→            >
+  1839→              <Home className="h-4 w-4 mr-2" />
+  1840→              Retour au tableau de bord
+  1841→            </Button>
+  1842→          </CardContent>
+  1843→        </Card>
+  1844→      </div>
+  1845→    )
+  1846→  }
+  1847→
+  1848→  // ═══════════════════════════════════════════════════════════════════════
+  1849→  // PHASE 2: IN-EXAM INTERFACE
+  1850→  // ═══════════════════════════════════════════════════════════════════════
+  1851→
+  1852→  const currentQuestion = questions[currentIndex]
+  1853→  const isLowTime = timeRemaining < 600 // less than 10 minutes
+  1854→  const isVeryLowTime = timeRemaining < 60 // less than 1 minute
+  1855→
+  1856→  // Alert counter color
+  1857→  const alertRatio = securityConfig.nbAlertesMax > 0 ? totalAlertCount / securityConfig.nbAlertesMax : 0
+  1858→  const alertBadgeColor = alertRatio >= 0.8
+  1859→    ? 'border-destructive/40 text-destructive bg-destructive/10'
+  1860→    : alertRatio >= 0.5
+  1861→      ? 'border-warning text-warning bg-warning/10  dark:text-warning '
+  1862→      : 'border-success/40 text-success-text bg-success/10  dark:text-success-text /50'
+  1863→
+  1864→  // Inactivity badge color
+  1865→  const inactivityBadgeColor = inactivityRatio >= 0.8
+  1866→    ? 'text-destructive'
+  1867→    : inactivityRatio >= 0.5
+  1868→      ? 'text-warning'
+  1869→      : 'text-success-text'
+  1870→
+  1871→  return (
+  1872→    <div
+  1873→      ref={examContainerRef}
+  1874→      className="fixed inset-0 z-50 bg-background flex flex-col select-none"
+  1875→      onContextMenu={(e) => {
+  1876→        if (securityConfig.blocageClicDroit) e.preventDefault()
+  1877→      }}
+  1878→    >
+  1879→      {/* ─── Fullscreen Blocked Overlay ────────────────────────────────── */}
+  1880→      {isFullscreenBlocked && securityConfig.fullscreenObligatoire && (
+  1881→        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
+  1882→          <div className="text-center space-y-6 p-8 max-w-md">
+  1883→            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-destructive/15 dark:bg-destructive/30/50">
+  1884→              <Maximize className="h-10 w-10 text-destructive" />
+  1885→            </div>
+  1886→            <h2 className="text-2xl font-display font-bold tracking-tight text-white">Mode plein écran requis</h2>
+  1887→            <p className="text-muted-foreground">
+  1888→              Vous avez quitté le mode plein écran. L&apos;épreuve est bloquée tant que vous n&apos;êtes pas en plein écran.
+  1889→            </p>
+  1890→            {fullscreenExitCount >= 2 && (
+  1891→              <div className="rounded-lg bg-warning/30/50 border border-warning p-3">
+  1892→                <p className="text-warning text-sm font-medium">
+  1893→                  ⚠️ Pénalité de -{securityConfig.penaliteFullscreenExit} points appliquée
+  1894→                  (sortie n°{fullscreenExitCount})
+  1895→                </p>
+  1896→                <p className="text-warning text-xs mt-1">
+  1897→                  Total pénalités : -{penalite} points
+  1898→                </p>
+  1899→              </div>
+  1900→            )}
+  1901→            {securityConfig.autoSubmitOnViolation && (
+  1902→              <p className="text-muted-foreground text-sm">
+  1903→                Alertes restantes avant soumission automatique : {Math.max(0, securityConfig.nbAlertesMax - totalAlertCount)}
+  1904→              </p>
+  1905→            )}
+  1906→            <Button
+  1907→              onClick={async () => {
+  1908→                try {
+  1909→                  await document.documentElement.requestFullscreen()
+  1910→                } catch {
+  1911→                  // Fallback — instruct user
+  1912→                  toast.error('Impossible de revenir en plein écran', {
+  1913→                    description: 'Appuyez sur F11 pour activer le plein écran.',
+  1914→                    duration: 8000,
+  1915→                  })
+  1916→                }
+  1917→              }}
+  1918→              className=" text-white h-12 text-base px-8"
+  1919→              size="lg"
+  1920→            >
+  1921→              <Maximize className="h-5 w-5 mr-2" />
+  1922→              Revenir en plein écran
+  1923→            </Button>
+  1924→            <p className="text-muted-foreground text-xs">
+  1925→              Le chronomètre continue de tourner pendant que vous n&apos;êtes pas en plein écran.
+  1926→            </p>
+  1927→          </div>
+  1928→        </div>
+  1929→      )}
+  1930→
+  1931→      {/* ─── Screenshot capture flash indicator ─────────────────────────── */}
+  1932→      {showCaptureFlash && (
+  1933→        <div className="fixed top-4 right-4 z-[90] flex items-center gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 shadow-lg animate-pulse">
+  1934→          <Camera className="h-4 w-4 text-info" />
+  1935→          <span className="text-xs font-medium text-info">Capture d&apos;écran</span>
+  1936→        </div>
+  1937→      )}
+  1938→
+  1939→      {/* ─── Grace Period Banner ─────────────────────────────────────────── */}
+  1940→      {inGracePeriod && gracePeriodEndsAt && !isEpreuveClosed && (
+  1941→        <div className="fixed top-0 left-0 right-0 z-[95] bg-warning text-white px-4 py-2 text-center shadow-lg">
+  1942→          <div className="flex items-center justify-center gap-2">
+  1943→            <AlertTriangle className="h-5 w-5 animate-pulse" />
+  1944→            <span className="font-bold text-sm">
+  1945→              ⏰ Période de grâce — Temps écoulé ! Soumettez rapidement votre épreuve !
+  1946→            </span>
+  1947→            <span className="bg-white/20 rounded px-2 py-0.5 text-xs font-mono">
+  1948→              {Math.max(0, Math.ceil((gracePeriodEndsAt.getTime() - Date.now()) / 60000))} min restante(s)
+  1949→            </span>
+  1950→          </div>
+  1951→        </div>
+  1952→      )}
+  1953→
+  1954→      {/* ─── Offline Status Banner ─────────────────────────────────────────── */}
+  1955→      {!isOnline && (
+  1956→        <div className="fixed top-0 left-0 right-0 z-[94] bg-amber-600 text-white px-4 py-2 text-center shadow-lg">
+  1957→          <div className="flex items-center justify-center gap-2">
+  1958→            <WifiOff className="h-4 w-4" />
+  1959→            <span className="font-medium text-sm">
+  1960→              Hors ligne — vos réponses sont sauvegardées et seront soumises à la reconnexion.
+  1961→            </span>
+  1962→          </div>
+  1963→        </div>
+  1964→      )}
+  1965→
+  1966→      {/* ─── Closure Dialog ───────────────────────────────────────────────── */}
+  1967→      <Dialog open={showClosureDialog} onOpenChange={setShowClosureDialog}>
+  1968→        <DialogContent className="sm:max-w-md">
+  1969→          <DialogHeader>
+  1970→            <DialogTitle className="flex items-center gap-2 text-destructive ">
+  1971→              <Lock className="h-5 w-5" />
+  1972→              Épreuve clôturée
+  1973→            </DialogTitle>
+  1974→            <DialogDescription>
+  1975→              Cette épreuve a été clôturée automatiquement.
+  1976→              {closureRaison === 'TOUS_SOUMIS'
+  1977→                ? ' Tous les étudiants ont soumis leur composition.'
+  1978→                : ' La période de passation est terminée.'}
+  1979→            </DialogDescription>
+  1980→          </DialogHeader>
+  1981→          <div className="py-4 text-center">
+  1982→            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/15 dark:bg-destructive/30/50">
+  1983→              <Lock className="h-8 w-8 text-destructive" />
+  1984→            </div>
+  1985→            <p className="text-sm text-muted-foreground">
+  1986→              Les soumissions ne sont plus acceptées. Votre travail a été sauvegardé automatiquement.
+  1987→            </p>
+  1988→          </div>
+  1989→          <DialogFooter>
+  1990→            <Button variant="outline" onClick={() => {
+  1991→              setShowClosureDialog(false)
+  1992→              router.push('/mes-epreuves')
+  1993→            }}>
+  1994→              <Home className="h-4 w-4 mr-2" />
+  1995→              Retour aux épreuves
+  1996→            </Button>
+  1997→          </DialogFooter>
+  1998→        </DialogContent>
+  1999→      </Dialog>
+  2000→
+
+[showing lines 1-2000 of 2861; use offset=2001 with limit to continue reading]
