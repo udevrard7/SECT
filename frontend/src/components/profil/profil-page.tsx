@@ -50,6 +50,7 @@ import { Separator } from '@/components/ui/separator'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { useBadges } from '@/hooks/use-dashboard'
 import { RewardCenter, type Reward, type GamificationTier } from '@/components/ds'
+import { NotificationPreferences } from './notification-preferences'
 import type { BadgeWithProgress, NiveauBadge } from '@/lib/badges-engine'
 import { toast } from 'sonner'
 
@@ -581,6 +582,14 @@ export function ProfilPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ─── Préférences de notification (SECT-NOTIF-PREFERENCES-UI-1) ─── */}
+      <section className="space-y-4 pt-2" aria-label="Préférences de notification">
+        <h2 className="text-xl font-display font-bold tracking-tight md:text-2xl">
+          Préférences de notification
+        </h2>
+        <NotificationPreferences />
+      </section>
 
       {/* ─── Mes récompenses (RewardCenter DS) ─── */}
       {/* userProgress est omis : l'AuthUser ne contient pas d'XP/niveau,
