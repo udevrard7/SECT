@@ -48,6 +48,7 @@ import { AIProvidersPage } from '@/components/admin/ai-providers-page'
 import { CorbeillePage } from '@/components/corbeille/corbeille-page'
 import { SurveillancePage } from '@/components/surveillance/surveillance-page'
 import { ResponsableParametresPage } from '@/components/responsable/responsable-parametres-page'
+import { ClotureAnneePage } from '@/components/responsable/cloture-annee-page'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import type { PageId } from '@/lib/routes'
@@ -100,6 +101,7 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
   corbeille: CorbeillePage,
   surveillance: SurveillancePage,
   parametres: ResponsableParametresPage,
+  'cloture-annee': ClotureAnneePage,
 }
 
 // ─── Legacy redirect mappings ───
