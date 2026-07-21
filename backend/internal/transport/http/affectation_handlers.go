@@ -18,6 +18,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/emailtpl"
 	"github.com/udevrard7/sect/backend/internal/mailer"
 	"github.com/udevrard7/sect/backend/internal/middleware"
+	"github.com/udevrard7/sect/backend/internal/notification"
 )
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -910,6 +911,24 @@ func (s *Server) auditAndNotifyAffectationPublish(
 		slog.Info("Affectation publish email sent",
 			"affectationId", affectationID,
 			"enseignantEmail", enseignantEmail, "ueId", ueID)
+	}
+
+	// ── (3) Notification in-app + SSE + push (SECT-NOTIF-AFFECTATION-1) ──
+	// Le dispatcher gère l'in-app (NotificationAdmin INSERT), le SSE (temps réel
+	// vers le bell), et le push (si VAPID configuré). L'email est déjà envoyé
+	// ci-dessus — on ne le passe pas au dispatcher pour éviter le doublon.
+	if s.notifDispatcher != nil {
+		s.notifDispatcher.Dispatch(ctx, notification.Event{
+			UserID:      enseignantID,
+			Type:        "AFFECTATION_PUBLISHED",
+			Titre:       "Nouvelle affectation publiée",
+			Message:     fmt.Sprintf("%s — %s (%s) pour %s", ueCode, ueNom, typeSeance, annee),
+			Categorie:   "pedagogique",
+			Priorite:    "info",
+			ActionURL:   "/mes-enseignants",
+			ActionLabel: "Voir mes affectations",
+			Icone:       "Send",
+		})
 	}
 }
 
