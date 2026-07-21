@@ -267,6 +267,15 @@ const (
 	// avant/apres (seuils) + modifiePar. Journalisée par le usecase
 	// PromotionUseCase.UpdateReglesPassage (non bloquant).
 	AuditActionPromotionReglesUpdated = "PROMOTION_REGLES_UPDATED"
+
+	// SECT-ANNEE-AUDITLOG-1 — actions sur les années académiques.
+	// Chaque mutation d'année est journalisée dans AuditLog pour traçabilité
+	// (qui a créé/modifié/supprimé/défini comme courante, quand, quel établissement).
+	AuditActionAnneeCreated     = "ANNEE_ACADEMIQUE_CREATED"
+	AuditActionAnneeUpdated     = "ANNEE_ACADEMIQUE_UPDATED"
+	AuditActionAnneeSoftDeleted = "ANNEE_ACADEMIQUE_SOFT_DELETED"
+	AuditActionAnneeHardDeleted = "ANNEE_ACADEMIQUE_HARD_DELETED"
+	AuditActionAnneeSetCurrent  = "ANNEE_ACADEMIQUE_SET_CURRENT"
 )
 
 // Erreurs spécifiques à l'auth

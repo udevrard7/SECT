@@ -136,7 +136,7 @@ func main() {
 	accessUC := usecase.NewAccessUseCase(accessRepo)
 	// ABONNEMENTS-FIX-A3 : pool passé au EtablissementUseCase pour la
 	// transaction atomique du wizard de souscription (étab + responsable + abonnement).
-	etabUC := usecase.NewEtablissementUseCase(etabRepo, accessUC, pool)
+	etabUC := usecase.NewEtablissementUseCase(etabRepo, accessUC, pool, authRepo) // SECT-ANNEE-AUDITLOG-1 : +authRepo pour audit SetCurrentAnnee
 	// U5 (CRITICAL) : UserUseCase dépend de authRepo pour ResetPassword +
 	// UnlockAccount + RevokeAllUserRefreshTokens + CreateAuditLog.
 	// U1/U7 (CRITICAL) : UserUseCase dépend de accessUC pour ValidateAccessForEtablissement.
@@ -144,7 +144,7 @@ func main() {
 	filiereUC := usecase.NewFiliereUseCase(filiereRepo, quotaRepo)
 	ueUC := usecase.NewUEUseCase(ueRepo)
 	efUC := usecase.NewEnseignantFiliereUseCase(efRepo)
-	anneeUC := usecase.NewAnneeUseCase(anneeRepo)
+	anneeUC := usecase.NewAnneeUseCase(anneeRepo, authRepo) // SECT-ANNEE-AUDITLOG-1 : +authRepo pour audit mutations
 	// E1-INVITATIONS : usecase invitations (token + bcrypt + matricule + email).
 	// mailer passé pour l'envoi de l'email d'invitation (template "Savane EdTech"
 	// via ResendMailer en production).

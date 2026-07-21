@@ -58,6 +58,7 @@ import {
 import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { formatDateUTC } from '@/lib/date-utils'
 
 interface AnneeAcademique {
   id: string
@@ -555,9 +556,9 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                       {/* Row 2 : dates + badge période */}
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-muted-foreground min-w-0 truncate">
-                          {new Date(annee.dateDebut).toLocaleDateString('fr-FR')}
+                          {formatDateUTC(annee.dateDebut)}
                           {' → '}
-                          {new Date(annee.dateFin).toLocaleDateString('fr-FR')}
+                          {formatDateUTC(annee.dateFin)}
                         </p>
                         <PeriodeBadge statut={periode} />
                       </div>
