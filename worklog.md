@@ -18914,3 +18914,132 @@ Vérification E2E Agent Browser :
 Stage Summary:
 - 1 fichier modifié : annees-academiques-section.tsx (KPI strip remplace StatCard grid).
 - Hiérarchie visuelle rétablie : KPIs (métriques inline) vs year cards (cards d'action).
+
+---
+Task ID: SECT-AFFECTATION-PUBLISH-ENRICH-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: 5 enrichissements de l'action « publier » d'une affectation
+      (horodatage + audit + lock + email + visibilité étudiants).
+
+Work Log:
+- Constat initial : une partie du travail avait déjà été amorcée par une
+  session précédente (migration 000090 créée, AuditActionAffectationPublished
+  ajouté à domain/auth.go, champs PublishedAt/PublishedByID ajoutés à
+  AffectationRef + Affectation dans domain/academique.go, listAffectations
+  étendu pour retourner publishedAt/publishedBy, createAffectation étendu
+  pour poser publishedAt/publishedById dès la création si statut=PUBLIEE,
+  template emailtpl/affectation_published.go créé, Server struct + main.go
+  déjà wirent authRepo/mailer/pool).
+- Il manquait : la logique côté updateAffectation (lock + horodatage
+  transitionnel + audit + email) et l'UI frontend (409 handling + affichage
+  publishedAt + tooltip).
+
+- backend/internal/transport/http/affectation_handlers.go (MODIFIED) :
+  * updateAffectation entièrement réécrit :
+    - SELECT préalable (dans le même tx) de la ligne courante : statut +
+      contexte enseignant/UE/filiere/etablissement (pour lock + audit +
+      email, sans refetch).
+    - LOCK : si current.statut == 'PUBLIEE' ET (input.Statut == nil OU
+      *input.Statut == 'PUBLIEE') → retour errAffectationLocked (sentinel)
+      → handler mappe à 409 Conflict avec message guidé « Cette affectation
+      est publiée — repassez-la en PROVISOIRE ou VALIDEE pour la modifier ».
+    - HORODATAGE : si transition vers PUBLIEE (current != PUBLIEE &&
+      *input.Statut == 'PUBLIEE') → ajout SET "publishedAt" =
+      CURRENT_TIMESTAMP, "publishedById" = $claimsUserID.
+    - CLEAR : si transition away from PUBLIEE (current == PUBLIEE &&
+      *input.Statut in [PROVISOIRE, VALIDEE]) → ajout SET "publishedAt" =
+      NULL, "publishedById" = NULL (cohérence : une affectation non-PUBLIEE
+      ne doit pas avoir de publishedAt « fantôme »).
+    - Fix subtil : `args = append(args, id)` déplacé APRÈS l'ajout
+      éventuel du placeholder publishedById, pour préserver la
+      correspondance $n ↔ args[n-1] (sinon $argIdx pour publishedById
+      aurait pointé sur id).
+    - RETURNING étendu à publishedAt (nullable) pour MAJ UI sans refetch.
+  * Nouvelle méthode auditAndNotifyAffectationPublish(ctx, claims,
+    affectationID, enseignantID, ueID, typeSeance, annee, groupe,
+    volumeHeures, enseignantName, enseignantEmail, ueCode, ueNom,
+    filiereNom, etablissementNom, publishedByID) :
+    - (1) AuditLog AFFECTATION_PUBLISHED via s.authRepo.CreateAuditLog
+      (non bloquant — slog.Error si échec, la mutation reste validée).
+      details JSON : {affectationId, enseignantId, enseignant, ue:{id,
+      code,nom}, typeSeance, annee, publishedBy:{id,name}, groupe?,
+      volumeHeures?}. Entite=Affectation, Reason="Publication
+      d'affectation (visible aux étudiants)".
+    - (2) Email enseignant via s.mailer.Send (non bloquant) —
+      Subject="Votre affectation est publiée", template
+      emailtpl.AffectationPublishedHTML/Text (déjà existant). Skip si
+      enseignantEmail vide (slog.Warn).
+  * Import ajouté : "context" (signature auditAndNotifyAffectationPublish).
+
+- frontend/src/components/responsable/affectations-page.tsx (MODIFIED) :
+  * AffectationItem étendu : publishedAt?, publishedById?, publishedBy?
+    ({id, name}).
+  * Helpers ajoutés :
+    - formatPublishedDate(iso) → "DD/MM/YYYY à HH:mm" via
+      Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Abidjan' }).
+    - affectationLockedMessage(serverMsg?) → retourne le message serveur
+      ou un défaut "Cette affectation est publiée — repassez-la en
+      PROVISOIRE pour la modifier".
+  * handlePublish / handleValidate / handleEditSubmit : détection 409 →
+    throw new Error(affectationLockedMessage(err.error)) → toast.error
+    guidé (au lieu du message générique).
+  * Remplacement du "—" muet sur les rows PUBLIEE par un bloc
+    <span title="Publiée le {date} par {name}"><Clock/> Publiée le
+    {date}</span> (small muted). Tooltip natif (title=) pour ne pas
+    alourdir avec TooltipProvider. Clock icon déjà importé.
+  * tsc + lint OK (0 errors).
+
+- backend/db/db/migrations/000090_affectation_publish_enrich.up.sql +
+  .down.sql (déjà présents, APPLIQUÉS) :
+  * ADD COLUMN publishedAt TIMESTAMP(3) + publishedById TEXT REFERENCES
+    User(id) ON DELETE SET NULL.
+  * RLS Affectation_select étendue : 4e branche OR pour ETUDIANT — voit
+    les affectations PUBLIEE dont l'UE.filiereId IS NOT DISTINCT FROM
+    current_user_filiere_id() (UE multi-filières couvertes via filiereId
+    exact — pas de fuite cross-filière).
+  * Down : restore l'ancienne policy (3 branches) + DROP columns.
+  * migrate version → 90 ✓.
+
+- frontend (étudiant) — SKIP documenté :
+  * Recherche grep + lecture des composants : aucun composant étudiant
+    (passation/, mes-resultats/, dashboard/etudiant-dashboard.tsx,
+    evaluations/) ne fetch /api/affectations ni n'affiche d'enseignant
+    par UE. Le dashboard étudiant ne mentionne pas les affectations.
+  * La RLS permet désormais aux étudiants de SELECT les PUBLIEE de leur
+    filière (côté DB), mais aucun UI étudiant n'existe pour afficher
+    « mon enseignant pour l'UE X ». La spec autorisait explicitement
+    ce SKIP : « SKIP if no student course page ».
+  * Recommandation : créer un onglet « Mes enseignants » ou « Mes UE »
+    côté étudiant dans une tâche ultinaire pour exploiter la RLS.
+
+- Pas de système de notification in-app existant (pas de table
+  Notification, pas de repo notification) — l'email + l'audit couvrent
+  la notification. Aucun écart.
+
+Vérifications :
+- gofmt -w : 0 fichiers non-conformes (sur les 10 in-scope).
+- go build ./... → 0 erreur.
+- go vet ./... → 0 erreur.
+- cd frontend && npx tsc --noEmit → 0 erreur.
+- cd frontend && bun run lint → 0 erreur (1 warning pré-existant dans
+  use-surveillance-ws.ts — unrelated).
+- migrate version → 90 ✓.
+- Pas de commit (spec).
+
+Stage Summary:
+- 1 fichier Go modifié : affectation_handlers.go (updateAffectation
+  réécrit + nouvelle méthode auditAndNotifyAffectationPublish).
+- 1 fichier TSX modifié : affectations-page.tsx (interface étendue,
+  helpers formatPublishedDate + affectationLockedMessage, 409 handling
+  sur 3 handlers, tooltip + horodatage sur rows PUBLIEE).
+- 2 fichiers pré-existants (migration 000090 up/down, template
+  affectation_published.go) — déjà créés par session précédente, juste
+  vérifiés + gofmtés.
+- gofmt appliqué aussi à domain/auth.go, domain/academique.go,
+  mailer.go, emailtpl/base.go, emailtpl/invitation.go (pour
+  normaliser l'indentation tabs vs spaces laissée par la session
+  précédente).
+- Migration v90 appliquée → RLS étendue pour les étudiants (SELECT
+  PUBLIEE de leur filière).
+- Aucune UI étudiant créée (SKIP documenté — pas de page « mes
+  enseignants » existante).

@@ -276,6 +276,14 @@ const (
 	AuditActionAnneeSoftDeleted = "ANNEE_ACADEMIQUE_SOFT_DELETED"
 	AuditActionAnneeHardDeleted = "ANNEE_ACADEMIQUE_HARD_DELETED"
 	AuditActionAnneeSetCurrent  = "ANNEE_ACADEMIQUE_SET_CURRENT"
+
+	// SECT-AFFECTATION-PUBLISH-ENRICH-1 — publication d'une affectation
+	// enseignant↔UE. Journalisée dans AuditLog par le handler
+	// updateAffectation quand statut passe à PUBLIEE. Entite=Affectation,
+	// entiteId=affectationId, details JSON {affectationId, enseignantId,
+	// uniteEnseignementId, typeSeance, anneeUniversitaire, publishedById}.
+	// Non bloquant : si l'audit échoue, la publication reste effective.
+	AuditActionAffectationPublished = "AFFECTATION_PUBLISHED"
 )
 
 // Erreurs spécifiques à l'auth

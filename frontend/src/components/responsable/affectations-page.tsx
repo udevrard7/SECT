@@ -81,6 +81,12 @@ interface AffectationItem {
   commentaire: string | null
   createdAt: string
   updatedAt: string
+  // SECT-AFFECTATION-PUBLISH-ENRICH-1 : horodatage de publication (RFC3339 UTC,
+  // nullable tant que statut != PUBLIEE). Permet d'afficher « Publiée le … »
+  // côté UI sans refetch.
+  publishedAt?: string
+  publishedById?: string
+  publishedBy?: { id: string; name: string }
   enseignant: {
     id: string
     name: string
@@ -160,6 +166,32 @@ function getStatutBadge(statut: string): React.ReactNode {
     default:
       return <Badge variant="outline" className="text-xs">{statut}</Badge>
   }
+}
+
+// SECT-AFFECTATION-PUBLISH-ENRICH-1 : formatage « Publiée le DD/MM/YYYY à HH:mm »
+// depuis une date ISO (RFC3339 UTC). Retourne '' si la date est vide/invalide.
+// Format FR court — lisible pour un responsable pédagogique.
+function formatPublishedDate(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Africa/Abidjan',
+  }).format(d)
+}
+
+// SECT-AFFECTATION-PUBLISH-ENRICH-1 : détermine le message d'erreur à afficher
+// quand le backend retourne 409 (affectation verrouillée car PUBLIEE). Si la
+// response contient un message d'erreur explicite, on l'utilise ; sinon on
+// retourne le message par défaut.
+function affectationLockedMessage(serverMsg?: string): string {
+  if (serverMsg && serverMsg.trim() !== '') return serverMsg
+  return 'Cette affectation est publiée — repassez-la en PROVISOIRE pour la modifier'
 }
 
 function getNiveauBadge(niveau: string): React.ReactNode {
@@ -722,6 +754,11 @@ export function AffectationsPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = affectation PUBLIEE verrouillée.
+        // Message spécifique pour guider le responsable (repasser en PROVISOIRE).
+        if (res.status === 409) {
+          throw new Error(affectationLockedMessage(err.error))
+        }
         throw new Error(err.error || 'Erreur lors de la modification')
       }
 
@@ -747,6 +784,12 @@ export function AffectationsPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = on tente de modifier une
+        // affectation déjà PUBLIEE (validate est un cas pathologique mais
+        // possible si la ligne a été publiée entre-temps par un autre admin).
+        if (res.status === 409) {
+          throw new Error(affectationLockedMessage(err.error))
+        }
         throw new Error(err.error || 'Erreur lors de la validation')
       }
       toast.success('Affectation validée', {
@@ -770,6 +813,12 @@ export function AffectationsPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = déjà PUBLIEE (cas rare :
+        // double-clic ou publication concurrente par un autre responsable).
+        // On n'affiche pas le message serveur brut mais un message guidé.
+        if (res.status === 409) {
+          throw new Error(affectationLockedMessage(err.error))
+        }
         throw new Error(err.error || 'Erreur lors de la publication')
       }
       toast.success('Affectation publiée', {
@@ -1191,7 +1240,21 @@ export function AffectationsPage() {
                                 </Button>
                               )}
                               {affectation.statut === 'PUBLIEE' && (
-                                <span className="text-xs text-muted-foreground px-2">—</span>
+                                <span
+                                  className="flex items-center gap-1.5 text-xs text-muted-foreground px-2"
+                                  title={
+                                    affectation.publishedAt
+                                      ? `Publiée le ${formatPublishedDate(affectation.publishedAt)}${
+                                          affectation.publishedBy?.name ? ` par ${affectation.publishedBy.name}` : ''
+                                        }`
+                                      : 'Affectation publiée'
+                                  }
+                                >
+                                  <Clock className="h-3 w-3" />
+                                  {affectation.publishedAt
+                                    ? `Publiée le ${formatPublishedDate(affectation.publishedAt)}`
+                                    : 'Publiée'}
+                                </span>
                               )}
                             </div>
                           </TableCell>
