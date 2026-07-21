@@ -18706,3 +18706,27 @@ Prêt pour test E2E :
 8. Command palette (⌘K) → « Année académique » apparaît (et plus « Clôture de l'année »).
 9. ADMIN en mode assistance (user.etablissementId non null) → voit /annee-academique. ADMIN global (etablissementId null) → bloqué par PAGE_ALLOWED_ROLES + garde interne ClotureAnneePage.
 
+
+---
+Task ID: SECT-ANNEE-MERGE-1 (vérification E2E)
+Agent: Z.ai Code (Tutor/Assistant) + full-stack-developer (subagent)
+Task: Fusion AnneeAcademique + Clôture en 1 page 2 onglets. Vérification E2E Agent Browser.
+
+Work Log:
+- Subagent full-stack-developer : 1 fichier créé (annee-academique-page.tsx) + 4 modifiés (cloture-annee-page, programme-academique-page, routes.ts, page-content.tsx). tsc + lint OK.
+- Commit f4e0f0f + push GitHub.
+
+Vérification E2E Agent Browser (sect-app.vercel.app, registrar@uniabidjan.com) :
+- Sidebar : entry 'Année académique' (icône CalendarClock) remplace 'Clôture de l'année' ✓.
+- Page /annee-academique : heading 'Année académique' + tablist 2 onglets (Années + Clôture) ✓.
+- Onglet Années (selected par défaut) : 'Années académiques 4' + filtre période + bouton 'Nouvelle année' + cards (2027-2028, etc.) ✓.
+- Switch vers onglet Clôture : heading 'Clôture de l'année académique' + sélecteur 'Année à clôturer' + bouton 'Prévisualiser' + 'Historique des clôtures' ✓.
+- Raccourci 'Créer l'année suivante (2028-2029)' : switch vers onglet Années SANS navigation (URL reste /annee-academique) ✓.
+- /programme-academique : section 'Années académiques' retirée (seules Distribution + Matrice restent) ✓.
+- 0 erreur console sur tous les flows.
+
+Stage Summary:
+- Fusion réussie : 1 entry sidebar + 1 page + 2 onglets. Workflow cohérent (configurer année → clôturer dans la même page).
+- Raccourci 'Créer année suivante' = switch d'onglet (plus de navigation).
+- Toutes les fonctionnalités préservées (CRUD années, clôture sync, counts, filtre, Réactiver, hard-delete safe, override, history).
+- Aucun changement backend.
