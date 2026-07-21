@@ -70,7 +70,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { AnneesAcademiquesSection } from './annees-academiques-section'
+// SECT-ANNEE-MERGE-1 : la section AnneesAcademiquesSection n'est plus embarquée
+// dans Programme académique — elle a migré vers la nouvelle page
+// /annee-academique (onglet « Années »), fusionnée avec la Clôture. L'import a
+// été supprimé pour éviter un import-mort (eslint-unused-imports) ; la section
+// reste disponible via `annees-academiques-section.tsx`.
 
 // ─── Types ───
 
@@ -930,12 +934,6 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               </Card>
             )}
           </div>
-
-          {/* ─── Années académiques ─── */}
-          {/* PROG-ACAD-CRITICAL-FIX-1 (BUG #10) : CRUD complet des années */}
-          {etabId && (
-            <AnneesAcademiquesSection etablissementId={etabId} />
-          )}
         </div>
       )}
 

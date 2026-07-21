@@ -41,7 +41,7 @@ export type PageId =
   | 'exam-prep'
   | 'aide-etudiants'
   | 'mes-etudiants'
-  | 'cloture-annee'
+  | 'annee-academique'
   | 'profil'
   | 'parametres'
 
@@ -86,7 +86,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   'exam-prep': '/exam-prep',
   'aide-etudiants': '/aide-etudiants',
   'mes-etudiants': '/mes-etudiants',
-  'cloture-annee': '/cloture-annee',
+  'annee-academique': '/annee-academique',
   profil: '/profil',
   parametres: '/parametres',
 }
@@ -266,7 +266,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   'exam-prep': 'Préparation examens',
   'aide-etudiants': 'Aide des étudiants',
   'mes-etudiants': 'Mes classes',
-  'cloture-annee': 'Clôture de l\'année',
+  'annee-academique': 'Année académique',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -312,7 +312,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'exam-prep': "Transformez vos supports de cours en moteur de préparation actif : Q&A IA, entraînement, planning et aide de l'enseignant",
   'aide-etudiants': "Répondez aux questions de vos étudiants sur les documents de cours",
   'mes-etudiants': "Consultez les étudiants de vos classes et téléchargez leurs relevés de notes détaillés",
-  'cloture-annee': "Promouvoir les étudiants au niveau supérieur",
+  'annee-academique': "Gérer les années académiques et la clôture de fin d'année",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -415,7 +415,13 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'filieres', label: 'Filières', icon: 'GraduationCap' },
       { id: 'programme-academique', label: 'Programme académique', icon: 'BookMarked' },
-      { id: 'cloture-annee', label: 'Clôture de l\'année', icon: 'CalendarClock' },
+      // SECT-ANNEE-MERGE-1 : fusion des modules « Années académiques » et
+      // « Clôture de l'année » en une seule page /annee-academique avec 2
+      // onglets (Années + Clôture). Le libellé « Année académique » couvre
+      // les 2 usages ; l'icône CalendarClock reste (déjà mappée dans l'ICON_MAP
+      // de la sidebar et de la command palette, et symbolise bien le cycle
+      // annuel + la clôture).
+      { id: 'annee-academique', label: 'Année académique', icon: 'CalendarClock' },
       { id: 'affectations', label: 'Affectations', icon: 'UserCheck' },
     ],
   },
@@ -612,11 +618,13 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // authentifiés (dont ETUDIANT) via URL directe. L'étudiant voyait le wizard
   // complet et ne découvrait le 403 qu'au clic "Générer".
   'questions-ia': ['ENSEIGNANT', 'RESPONSABLE', 'ADMIN'],
-  // SECT-PROMOTION-FRONTEND-1 : page Clôture de l'année réservée RESPONSABLE
-  // + ADMIN (ce dernier en mode assistance sur un établissement). L'ADMIN
+  // SECT-ANNEE-MERGE-1 : page « Année académique » réservée RESPONSABLE +
+  // ADMIN (ce dernier en mode assistance sur un établissement). L'ADMIN
   // global sans etablissementId est bloqué par la garde interne de la page
-  // (message "Aucun établissement actif").
-  'cloture-annee': ['RESPONSABLE', 'ADMIN'],
+  // (message "Aucun établissement actif" dans ClotureAnneePage). Cette page
+  // fusionne l'ancienne page /cloture-annee avec la section Années académiques
+  // auparavant embarquée dans /programme-academique.
+  'annee-academique': ['RESPONSABLE', 'ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)

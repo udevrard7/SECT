@@ -48,7 +48,11 @@ import { AIProvidersPage } from '@/components/admin/ai-providers-page'
 import { CorbeillePage } from '@/components/corbeille/corbeille-page'
 import { SurveillancePage } from '@/components/surveillance/surveillance-page'
 import { ResponsableParametresPage } from '@/components/responsable/responsable-parametres-page'
-import { ClotureAnneePage } from '@/components/responsable/cloture-annee-page'
+// SECT-ANNEE-MERGE-1 : remplace l'ancien `ClotureAnneePage` importé directement
+// ici. La nouvelle page `AnneeAcademiquePage` est un wrapper à 2 onglets
+// (Années + Clôture) qui monte `ClotureAnneePage` en interne via
+// `cloture-annee-page.tsx`. Plus besoin d'importer `ClotureAnneePage` ici.
+import { AnneeAcademiquePage } from '@/components/responsable/annee-academique-page'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import type { PageId } from '@/lib/routes'
@@ -101,7 +105,9 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
   corbeille: CorbeillePage,
   surveillance: SurveillancePage,
   parametres: ResponsableParametresPage,
-  'cloture-annee': ClotureAnneePage,
+  // SECT-ANNEE-MERGE-1 : la page /annee-academique remplace /cloture-annee.
+  // Wrapper à 2 onglets (Années + Clôture). Voir annee-academique-page.tsx.
+  'annee-academique': AnneeAcademiquePage,
 }
 
 // ─── Legacy redirect mappings ───
