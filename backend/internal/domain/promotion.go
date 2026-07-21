@@ -264,6 +264,12 @@ type PromotionRepository interface {
 	// 000087 devrait couvrir tous les étab).
 	GetReglesPassage(ctx context.Context, etablissementID string) (*ReglesPassage, error)
 
+	// UpdateReglesPassage upsert les règles de passage d'un établissement. Si aucune
+	// ligne n'existe pour l'établissement, elle est créée (INSERT). Sinon, UPDATE.
+	// RLS via claims (RESPONSABLE same-etab only — pas l'ENSEIGNANT B2C qui ne gère
+	// pas les règles pédagogiques de son étab personnel).
+	UpdateReglesPassage(ctx context.Context, regles ReglesPassage) (*ReglesPassage, error)
+
 	// ListEtudiantsForPromotion retourne la liste des étudiants éligibles à la
 	// clôture pour un établissement + une année source donnés. RLS via claims.
 	//

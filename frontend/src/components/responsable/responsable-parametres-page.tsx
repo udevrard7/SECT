@@ -43,6 +43,8 @@ import {
   Clock,
   AlertCircle,
   Ban,
+  // SECT-REGLES-PASSAGE-MUTATION-1 : icône pour l'onglet "Règles de passage".
+  SlidersHorizontal,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -102,6 +104,9 @@ import { useAuthStore } from '@/stores/auth-store'
 // SECT-ETABLISSEMENT-AUDIT-1 : nouvel onglet Audit — délégué au composant
 // AuditTab (lazy-loaded via TanStack Query interne, gate `enabled=!!etabId`).
 import { AuditTab } from '@/components/responsable/audit-tab'
+// SECT-REGLES-PASSAGE-MUTATION-1 : nouvel onglet "Règles de passage" — délégué
+// au composant ReglesPassageTab (lazy-loaded via TanStack Query interne).
+import { ReglesPassageTab } from '@/components/responsable/regles-passage-tab'
 
 // ─── Types ───
 
@@ -1240,9 +1245,12 @@ export function ResponsableParametresPage() {
 
         {/* ─── Tabs ─── */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          {/* SECT-ETABLISSEMENT-AUDIT-1 : 6 onglets (ajout de l'onglet Audit en */}
-          {/* position 6 — vue passive en lecture seule du journal d'audit). */}
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6">
+          {/* SECT-ETABLISSEMENT-AUDIT-1 + SECT-REGLES-PASSAGE-MUTATION-1 : 7 onglets */}
+          {/* (ajout de l'onglet Audit en position 6 + Règles de passage en 7). */}
+          {/* sm:grid-cols-7 → 7 onglets sur une seule row desktop, grid-cols-2 */}
+          {/* (3.5 rows de 2 sur mobile) avec col-span-2 sm:col-span-1 sur les */}
+          {/* 3 derniers pour éviter qu'un item seul reste sur sa ligne mobile. */}
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-7">
             <TabsTrigger value="etablissement" className="gap-1.5">
               <Building2 className="h-4 w-4 hidden sm:block" />
               Établissement
@@ -1260,18 +1268,22 @@ export function ResponsableParametresPage() {
               Whitelist IP
             </TabsTrigger>
             {/* ACCESS-WORKFLOW-UI : onglet Accès ADMIN pour RESPONSABLE. */}
-            {/* col-span-2 sm:col-span-1 → pleine largeur sur mobile (5e item seul */}
-            {/* sur sa ligne), 1 colonne sur desktop (row de 6). */}
+            {/* col-span-2 sm:col-span-1 → pleine largeur sur mobile, 1 colonne */}
+            {/* sur desktop. */}
             <TabsTrigger value="acces-admin" className="gap-1.5 col-span-2 sm:col-span-1">
               <KeyRound className="h-4 w-4 hidden sm:block" />
               Accès ADMIN
             </TabsTrigger>
             {/* SECT-ETABLISSEMENT-AUDIT-1 : onglet Audit (lecture seule). */}
-            {/* col-span-2 sm:col-span-1 → même pattern que acces-admin (pleine */}
-            {/* largeur sur mobile, 1 colonne sur desktop). */}
             <TabsTrigger value="audit" className="gap-1.5 col-span-2 sm:col-span-1">
               <FileSearch className="h-4 w-4 hidden sm:block" />
               Audit
+            </TabsTrigger>
+            {/* SECT-REGLES-PASSAGE-MUTATION-1 : onglet "Règles de passage" — */}
+            {/* modification des seuils pédagogiques de fin d'année (UPSERT). */}
+            <TabsTrigger value="regles-passage" className="gap-1.5 col-span-2 sm:col-span-1">
+              <SlidersHorizontal className="h-4 w-4 hidden sm:block" />
+              Règles de passage
             </TabsTrigger>
           </TabsList>
 
@@ -2238,6 +2250,26 @@ export function ResponsableParametresPage() {
                   <FileSearch className="h-10 w-10 text-muted-foreground/30 mb-3" />
                   <p className="text-sm text-muted-foreground">
                     Sélectionnez un établissement pour consulter son journal d&apos;audit.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ═══════════ Tab: Règles de passage (SECT-REGLES-PASSAGE-MUTATION-1) ═══════════ */}
+          {/* Onglet de modification des seuils pédagogiques de fin d'année — */}
+          {/* délégué au composant ReglesPassageTab qui gère son propre TanStack */}
+          {/* Query (GET + PUT mutation) + lazy-loading via `enabled`. */}
+          <TabsContent value="regles-passage">
+            {activeEtabId ? (
+              <ReglesPassageTab etablissementId={activeEtabId} />
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                  <SlidersHorizontal className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    Sélectionnez un établissement pour configurer ses règles
+                    de passage.
                   </p>
                 </CardContent>
               </Card>

@@ -18126,3 +18126,110 @@ Stage Summary:
 Déviations du spec (mineures) :
 - `filiereNom` utilise `json:"filiereNom,omitempty"` (omis quand nil, pas `null` explicite) — cohérent avec le pattern existant (FiliereID aussi omitempty). Le frontend type `filiereNom?: string | null` gère les deux cas.
 - Le `isMobileInscriptions` hook est local au fichier (pas d'import du hook partagé @/hooks/use-mobile.ts) — pattern identique à audit-tab.tsx, breakpoint 639px (sm:) au lieu de 768px (md:) pour laisser la table visible sur tablette.
+
+---
+Task ID: SECT-REGLES-PASSAGE-MUTATION-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Ajouter un endpoint PUT /api/etablissements/{etablissementId}/regles-passage pour modifier (upsert) les règles de passage d'un établissement + intégration d'un 7e onglet "Règles de passage" dans la page Paramètres Établissement (responsable-parametres-page.tsx) avec un formulaire d'édition. C'est le complément d'écriture au GET existant (SECT-PROMOTION-BACKEND-1) — jusqu'ici les règles étaient read-only dans l'écran Clôture avec la note "modifiable via l'admin (page Paramètres → Règles de passage)" qui pointait vers une page qui n'existait pas encore.
+
+Work Log:
+- Lecture du worklog (entrées SECT-INSCRIPTION-HISTORY-ENDPOINT-1 et SECT-CLOTURE-E2E-VERIFY-1 — feature de clôture pleinement fonctionnelle en prod, historical endpoint ajouté).
+- Lecture de domain/promotion.go — ReglesPassage struct + ReglesPassageDefaults + interface PromotionRepository (GetReglesPassage existant).
+- Lecture de repository/promotion.go — pattern GetReglesPassage (RLS via db.WithTx + claims), mapBatchErr pour NotFoundError.
+- Lecture de transport/http/promotion_handlers.go — getReglesPassage handler (ClaimsFromContext + writeJSONError + MapDomainError + json.NewEncoder).
+- Lecture de transport/http/router.go — route GET /regles-passage déclarée inline (r.With(RequireAuth, RequireRoleOrPersonalEtab).Get(...)).
+- Lecture de usecase/promotion.go — GetReglesPassage (fallback defaults si NotFoundError), PromoteStudentManual (pattern validation rôle + scoping + audit non-bloquant).
+- Lecture de la migration 000087_academic_progression.up.sql — schéma ReglesPassage (UNIQUE etablissementId, DEFAULT 10/8/60/STRICT/2), RLS ReglesPassage_modify (is_responsable same-etab uniquement, PAS is_admin — defense in depth via usecase), backfill pattern `'regles_' || replace(gen_random_uuid()::text, '-', '')`.
+- Lecture du frontend cloture-annee-page.tsx (lignes 1306-1369) — block read-only "Règles de passage en vigueur" + note "modifiable via l'admin (page Paramètres → Règles de passage)".
+- Lecture du frontend responsable-parametres-page.tsx (structure tabs, activeEtabId, imports, accent) + audit-tab.tsx (modèle de composant tab self-contained avec TanStack Query).
+
+BACKEND (6 fichiers modifiés) :
+
+1. backend/internal/domain/auth.go (+7 lignes) :
+   - Nouvelle constante `AuditActionPromotionReglesUpdated = "PROMOTION_REGLES_UPDATED"` (entite=ReglesPassage). Cohérent avec les autres AuditActionPromotion* du block.
+
+2. backend/internal/domain/promotion.go (+6 lignes) :
+   - Nouvelle méthode `UpdateReglesPassage(ctx, regles ReglesPassage) (*ReglesPassage, error)` ajoutée à l'interface PromotionRepository (entre GetReglesPassage et ListEtudiantsForPromotion). Docstring précise UPSERT + RLS + ENSEIGNANT B2C exclu.
+
+3. backend/internal/repository/promotion.go (+125 lignes) :
+   - Implémentation `UpdateReglesPassage` : RLS via `db.WithTx(ctx, r.pool, claims, fn)` avec claims du context (pas SystemClaims — la policy ReglesPassage_modify accepte is_responsable same-etab). UPSERT `INSERT ... ON CONFLICT ("etablissementId") DO UPDATE SET ... RETURNING ...` — l'ID est généré côté SQL via `COALESCE($1, 'regles_' || replace(gen_random_uuid()::text, '-', ''))` quand l'appelant n'en fournit pas (pattern du backfill 000087). Le SET ne touche pas à la colonne id → l'ID existant est préservé en cas d'UPDATE.
+   - Nouveau helper local `validateReglesPassage(regles)` (defense in depth) — valide seuilMoyennePassage ∈ [0,20], seuilMoyenneRattrapage ∈ [0, seuilMoyennePassage], creditsMinPourcent ∈ [0,100], limiteRedoublements ≥ 0, regime ∈ {'STRICT', 'COMPENSATION'}.
+
+4. backend/internal/usecase/promotion.go (+145 lignes) :
+   - Nouveau struct `UpdateReglesPassageInput` (5 champs : SeuilMoyennePassage, SeuilMoyenneRattrapage, CreditsMinPourcent, Regime, LimiteRedoublements).
+   - Nouvelle méthode `UpdateReglesPassage(ctx, claims, etablissementID, input)` :
+     * Validation rôle (ADMIN/RESPONSABLE — l'ENSEIGNANT B2C est rejeté même si le middleware RequireRoleOrPersonalEtab le laisse passer dans son étab personnel).
+     * Scoping (RESPONSABLE ne peut modifier que SON étab).
+     * Validation seuils (validateReglesPassageInput — miroir du validateur repo, defense in depth).
+     * Charge l'ID existant via GetReglesPassage (pour le conserver lors de l'UPSERT — traçabilité AuditLog). Si NotFoundError, l'ID sera généré côté SQL.
+     * Appelle promoRepo.UpdateReglesPassage.
+     * AuditLog non bloquant (action=PROMOTION_REGLES_UPDATED, entite=ReglesPassage, details JSON avec avant/apres + modifiePar).
+   - Nouveau helper `validateReglesPassageInput(input)` — miroir usecase de validateReglesPassage.
+   - Nouveau helper `auditReglesUpdated(ctx, claims, etabID, input, existing)` — non bloquant (si authRepo nil ou audit échoue, log + continue ; les règles sont déjà persistées).
+
+5. backend/internal/transport/http/promotion_handlers.go (+70 lignes) :
+   - Nouveau struct `updateReglesPassageRequest` (5 champs JSON — miroir du DTO backend).
+   - Nouveau handler `updateReglesPassage` pour PUT /api/etablissements/{etablissementId}/regles-passage.
+   - Auth : RequireAuth + RequireRoleOrPersonalEtab("ADMIN", "RESPONSABLE") côté router. Le usecase rejette l'ENSEIGNANT B2C (rôle non autorisé) — c'est l'autorité finale.
+   - Body : JSON décodé vers updateReglesPassageRequest, converti en usecase.UpdateReglesPassageInput.
+   - Réponse : 200 OK + ReglesPassage mise à jour (id + createdAt + updatedAt peuplés côté SQL).
+   - Nouvel import `usecase` ajouté (needed pour UpdateReglesPassageInput).
+
+6. backend/internal/transport/http/router.go (+14 lignes) :
+   - Nouvelle route PUT déclarée juste après le GET /regles-passage existant (cohérence thématique), avec le même middleware RequireAuth + RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE") — pattern inline `r.With(...).Put(...)` identique au GET.
+
+FRONTEND (2 fichiers, 1 nouveau + 1 modifié) :
+
+7. frontend/src/components/responsable/regles-passage-tab.tsx (NOUVEAU — ~575 lignes) :
+   - Composant tab self-contained (modèle : audit-tab.tsx). Props : `{ etablissementId: string }`.
+   - TanStack Query `['regles-passage', etablissementId]` (GET, staleTime 60s, refetchOnWindowFocus false).
+   - Formulaire avec 5 champs (react state local, pas react-hook-form — surcharge inutile pour 5 champs) :
+     * Seuil Moyenne Passage (number, step 0.5, min 0, max 20) — helper "Moyenne minimum pour être promu (ex: 10/20)."
+     * Seuil Moyenne Rattrapage (number, step 0.5, min 0, max=seuilPassage) — helper "Moyenne minimum pour éviter le redoublement (ex: 8/20). Doit être ≤ au seuil de passage."
+     * Crédits Min. (%) (number, min 0, max 100) — helper "Pourcentage minimum de crédits ECTS à valider (ex: 60%)."
+     * Régime (Select: STRICT | COMPENSATION) — helper "STRICT = toutes les UE doivent être validées ; COMPENSATION = compensation entre UE."
+     * Limite Redoublements (number, min 0, max 5) — helper "Nombre maximum de redoublements autorisés (ex: 2)."
+   - Carte d'introduction en haut (bg-info/5) : "Ces règles déterminent comment les étudiants sont promus ou redoublent à la fin de l'année. Elles s'appliquent à tous les niveaux (L1→L2→...→Doctorat)."
+   - Hydrate le form depuis la query (one-shot via flag `loaded`) — pattern standard TanStack Query "hydrate state from query", disable ciblé react-hooks/set-state-in-effect (comme audit-tab.tsx).
+   - Détection de changements (hasChanges) — désactive le bouton Enregistrer si pas de diff vs données serveur.
+   - Validation côté formulaire (validationError) — miroir des règles backend, affiché en inline si invalide.
+   - Mutation PUT /api/etablissements/{id}/regles-passage (useMutation). On success :
+     * toast.success "Règles de passage mises à jour" + description "Les nouveaux seuils seront appliqués lors de la prochaine clôture d'année."
+     * invalidate ['regles-passage', etablissementId] (refresh local)
+     * invalidate ['cloture-annee-preview'] (broad prefix — la preview dépend des règles, doit se rafraîchir)
+     * Ré-hydrate le form avec la réponse (timestamps + id à jour).
+   - On error : toast.error "Erreur de sauvegarde" + description = err.message.
+   - Bouton "Annuler" (reset vers valeurs serveur) + "Enregistrer" (Save icon, disabled si !hasChanges || validationError || saving). Loading state : Loader2 animate-spin + "Enregistrement…".
+   - Badge "Dernière maj: DD/MM/YYYY HH:MM" + badge "Modifications non enregistrées" (warning) si hasChanges.
+   - Loading : PulseSkeleton (5 champs skeleton). Error : friendly message + bouton "Réessayer" (refetch).
+   - Framer Motion entrance (initial opacity 0 + y 8 → animate opacity 1 + y 0, duration 0.25).
+   - Palette Savane EdTech (success/warning/info/destructive — pas de bleu/indigo).
+   - Français throughout.
+
+8. frontend/src/components/responsable/responsable-parametres-page.tsx (+30 lignes) :
+   - Import `SlidersHorizontal` (lucide-react) pour l'icône du 7e onglet.
+   - Import `ReglesPassageTab` depuis `@/components/responsable/regles-passage-tab`.
+   - TabsList bump `sm:grid-cols-6` → `sm:grid-cols-7` (7 onglets tiennent sur une row desktop ; mobile reste grid-cols-2 avec col-span-2 sm:col-span-1 sur les 3 derniers pour éviter qu'un item seul reste sur sa ligne mobile).
+   - Nouveau TabsTrigger value="regles-passage" avec icône SlidersHorizontal + label "Règles de passage" (col-span-2 sm:col-span-1, même pattern que acces-admin/audit).
+   - Nouveau TabsContent value="regles-passage" après le tab Audit — délègue à `<ReglesPassageTab etablissementId={activeEtabId} />` si activeEtabId, sinon fallback Card avec icône + message "Sélectionnez un établissement pour configurer ses règles de passage." (même pattern que le tab Audit).
+
+VERIFICATION (mandatory) :
+- gofmt -w sur les 6 fichiers Go modifiés → OK (gofmt -l retourne vide).
+- go build ./... → exit 0 (OK).
+- go vet ./... → exit 0 (OK, 0 warnings).
+- npx tsc --noEmit → exit 0 (0 erreurs).
+- bun run lint → 0 erreurs, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated, directive eslint-disable non utilisée). Mes 2 fichiers frontend (regles-passage-tab.tsx + responsable-parametres-page.tsx) → 0 warning, 0 erreur après fix d'une directive eslint-disable inutile (setLoaded(true) ne déclenche pas la règle react-hooks/set-state-in-effect car la valeur est une constante true, pas une valeur dérivée d'un state du deps).
+
+Stage Summary:
+- 8 fichiers modifiés (6 backend + 2 frontend, dont 1 nouveau composant frontend).
+- Architecture : backend expose un endpoint PUT RLS-scoped (RESPONSABLE same-etab only via la policy ReglesPassage_modify existante — pas de migration nécessaire). Le usecase valide le rôle + scoping + seuils (defense in depth) et journalise AuditLog non bloquant. Le repo fait l'UPSERT en une seule query SQL (INSERT...ON CONFLICT DO UPDATE...RETURNING) avec ID généré côté SQL si nouvel INSERT. Le frontend expose un 7e onglet dans Paramètres Établissement avec un formulaire d'édition + invalidation croisée de la preview Clôture (broad prefix).
+- RLS : la policy ReglesPassage_modify existante (is_responsable same-etab + is_system) gère le scoping — pas de migration. ADMIN est ALLOWED côté usecase mais BLOQUÉ côté RLS (policy n'inclut pas is_admin pour modify) → l'opération échouerait avec une erreur RLS. Acceptable car le usecase est l'autorité sur le rôle et la RLS sur le scoping — defense in depth.
+- Audit : nouvelle action PROMOTION_REGLES_UPDATED (entite=ReglesPassage) journalisée avec détails JSON avant/apres pour traçabilité. Non bloquant.
+- Aucun commit (orchestrateur gère).
+- Prêt pour test end-to-end : connexion RESPONSABLE → Paramètres → onglet "Règles de passage" → modifier un seuil → Enregistrer → toast.success → vérifier que la page Clôture reflète les nouveaux seuils (le block read-only doit se rafraîchir via invalidate ['regles-passage', etabId]).
+
+Déviations du spec (mineures) :
+- L'ID est généré côté SQL (`COALESCE($1, 'regles_' || ...)`) plutôt que côté Go — plus robuste (pas de uuid.NewString() si l'appelant oublie de fournir un ID, et cohérent avec le pattern du backfill 000087). Le spec disait "if creating (INSERT), generate a new ID like 'regles_' || gen_random_uuid()" — c'est exactement ce qu'on fait, mais côté SQL.
+- La `validateReglesPassage` est définie comme fonction libre (pas méthode sur PromotionRepository) — pas de receiver nécessaire, et permet de la réutiliser depuis d'autres packages si besoin. Le spec disait "Validate: ..." sans préciser la forme.
+- Le usecase charge l'ID existant via GetReglesPassage avant l'UPSERT pour le conserver (au lieu de laisser le repo générer un nouvel ID à chaque UPDATE). C'est une optimisation de traçabilité (lien avec AuditLog historique) — pas de contradiction avec le spec.
+- Le composant frontend utilise `useState` + hydrate-from-query plutôt que react-hook-form — surcharge inutile pour 5 champs, et le pattern d'hydrate one-shot avec flag `loaded` est standard TanStack Query (cf. audit-tab.tsx). Le spec permettait explicitement les deux ("react-hook-form or simple useState").

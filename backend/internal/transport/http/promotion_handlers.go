@@ -39,6 +39,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
+	"github.com/udevrard7/sect/backend/internal/usecase"
 )
 
 // runPromotionRequest — body du POST /cloture-annee.
@@ -254,6 +255,71 @@ func (s *Server) getReglesPassage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(regles)
+}
+
+// updateReglesPassageRequest — body du PUT /api/etablissements/{id}/regles-passage.
+//
+// Les 5 champs correspondent aux 5 colonnes configurables de la table
+// ReglesPassage (cf. domain.ReglesPassage). Le usecase valide les seuils.
+type updateReglesPassageRequest struct {
+	SeuilMoyennePassage    float64 `json:"seuilMoyennePassage"`
+	SeuilMoyenneRattrapage float64 `json:"seuilMoyenneRattrapage"`
+	CreditsMinPourcent     int     `json:"creditsMinPourcent"`
+	Regime                 string  `json:"regime"`
+	LimiteRedoublements    int     `json:"limiteRedoublements"`
+}
+
+// updateReglesPassage — PUT /api/etablissements/{etablissementId}/regles-passage
+//
+// SECT-REGLES-PASSAGE-MUTATION-1 : upsert (INSERT ou UPDATE) des règles de
+// passage d'un établissement. Le RESPONSABLE peut modifier les seuils de
+// passage (seuilMoyennePassage, seuilMoyenneRattrapage, creditsMinPourcent,
+// regime, limiteRedoublements) qui déterminent comment les étudiants sont
+// promus ou redoublent à la fin de l'année.
+//
+// Auth : RequireAuth + RequireRoleOrPersonalEtab("ADMIN", "RESPONSABLE").
+// Le middleware laisse passer l'ENSEIGNANT B2C dans son étab personnel, mais
+// le usecase le rejette (rôle non autorisé) — seul ADMIN/RESPONSABLE peut
+// modifier les règles pédagogiques. La RLS ReglesPassage_modify filtre en plus
+// (is_responsable same-etab uniquement, pas is_admin).
+//
+// Body : updateReglesPassageRequest (5 champs).
+// Réponse : 200 OK avec la ReglesPassage mise à jour (id + timestamps peuplés).
+func (s *Server) updateReglesPassage(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	etabID := chi.URLParam(r, "etablissementId")
+	if etabID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id établissement requis")
+		return
+	}
+
+	var req updateReglesPassageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+
+	input := usecase.UpdateReglesPassageInput{
+		SeuilMoyennePassage:    req.SeuilMoyennePassage,
+		SeuilMoyenneRattrapage: req.SeuilMoyenneRattrapage,
+		CreditsMinPourcent:     req.CreditsMinPourcent,
+		Regime:                 req.Regime,
+		LimiteRedoublements:    req.LimiteRedoublements,
+	}
+
+	regles, err := s.promotionUC.UpdateReglesPassage(r.Context(), claims, etabID, input)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(regles)
 }
 
