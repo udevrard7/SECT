@@ -81,6 +81,15 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 			}
 		}()
 
+		// SECT-CLOTURE-E2E-VERIFY-1 (fix orphan) : au démarrage, récupérer les
+		// batches RUNNING orphelins (claimés par un worker précédent qui a
+		// crashé/redémarré avant de finir le traitement). Sans ça, un batch
+		// RUNNING reste bloqué à jamais (fetchAndClaim ne cherche que PENDING).
+		// Stratégie : marquer RUNNING → PENDING pour re-traitement automatique
+		// au premier tick. Les batches idempotents (cloturer_annee_etudiant
+		// gère EXISTS sur Inscription) supportent un re-traitement safe.
+		w.recoverOrphanBatches(ctx)
+
 		// Premier check immédiat au démarrage (rattrapage des batches PENDING
 		// créés pendant que le serveur était down — cf. cleanup_worker).
 		w.safeProcessPendingBatches(ctx)
@@ -98,6 +107,48 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// recoverOrphanBatches marque les batches RUNNING anciens (>2 min) comme PENDING
+// pour re-traitement. Un batch RUNNING depuis >2 min est nécessairement orphelin
+// (un batch normal est traité en <30s même pour 800 étudiants). Sans cette
+// récupération, un crash du worker mid-treatment laisserait le batch bloqué.
+//
+// Idempotence : cloturer_annee_etudiant gère le cas où l'Inscription source
+// existe déjà (la met à jour au lieu d'insérer). L'Inscription cible a un
+// UNIQUE(etudiantId, anneeAcademiqueId) → un re-traitement ne crée pas de
+// doublon. Safe de re-traiter.
+func (w *PromotionWorker) recoverOrphanBatches(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("PromotionWorker: PANIC in recoverOrphanBatches (recovered)",
+				"panic", r, "stack", string(debug.Stack()))
+		}
+	}()
+	// db.WithTx pose les claims RLS (SET LOCAL app.claims.*) via SetClaimsTx.
+	// Sans ça, is_system() retournerait false et la policy PromotionBatch_modify
+	// (qui exige is_system() OR is_responsable()) rejetterait l'UPDATE silencieusement.
+	var rowsAffected int64
+	err := db.WithTx(ctx, w.dbPool, db.SystemClaims(), func(tx pgx.Tx) error {
+		ct, err := tx.Exec(ctx, `
+                        UPDATE "PromotionBatch"
+                        SET "statut" = 'PENDING', "errorMessage" = NULL
+                        WHERE "statut" = 'RUNNING'
+                          AND "createdAt" < NOW() - INTERVAL '2 minutes'`)
+		if err != nil {
+			return err
+		}
+		rowsAffected = ct.RowsAffected()
+		return nil
+	})
+	if err != nil {
+		w.logger.Error("PromotionWorker: recoverOrphanBatches failed", "error", err)
+		return
+	}
+	if rowsAffected > 0 {
+		w.logger.Info("PromotionWorker: orphan RUNNING batches recovered to PENDING",
+			"count", rowsAffected)
+	}
 }
 
 // safeProcessPendingBatches wrap processPendingBatches avec un recover par
@@ -140,16 +191,34 @@ func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
 		return // rien à traiter
 	}
 
-	w.logger.Info("PromotionWorker: processing batch",
+	w.logger.Info("PromotionWorker: processing batch (step 1 claim OK)",
 		"batchId", batch.ID,
 		"etablissementId", batch.EtablissementID,
 		"anneeSourceId", batch.AnneeSourceID,
 	)
 
+	// SECT-CLOTURE-E2E-VERIFY-1 (diagnostic) : catch-all recover qui marque le
+	// batch FAILED avec le stack trace en errorMessage. Ainsi, même sans accès
+	// aux logs Render, on voit la cause du crash en base (GET /status renvoie
+	// errorMessage). Sans ça, un panic entre le claim et le marquage FAILED
+	// laisse le batch RUNNING orphelin.
+	defer func() {
+		if r := recover(); r != nil {
+			stack := string(debug.Stack())
+			w.logger.Error("PromotionWorker: PANIC mid-treatment (marking batch FAILED)",
+				"batchId", batch.ID, "panic", r, "stack", stack)
+			errMsg := fmt.Sprintf("PANIC: %v\n%s", r, stack[:min(800, len(stack))])
+			_ = w.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutFailed,
+				domain.PromotionBatchResult{BatchID: batch.ID, Statut: domain.PromotionBatchStatutFailed},
+				&errMsg)
+		}
+	}()
+
 	// 2. Charge les ReglesPassage de l'étab (SystemClaims — bypass RLS).
 	// On wrap le context avec SystemClaims car les méthodes du repo attendent
 	// des claims dans le context (db.ClaimsFromContext).
 	sysCtx := db.WithClaimsContext(ctx, db.SystemClaims())
+	w.logger.Info("PromotionWorker: step 2 GetReglesPassage", "batchId", batch.ID)
 	regles, err := w.promoRepo.GetReglesPassage(sysCtx, batch.EtablissementID)
 	if err != nil {
 		// Si pas de ReglesPassage (cas anormal — backfill 000087 manquant),
@@ -162,6 +231,8 @@ func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
 	}
 
 	// 3. Charge la liste des étudiants éligibles.
+	w.logger.Info("PromotionWorker: step 3 ListEtudiantsForPromotion", "batchId", batch.ID,
+		"etablissementId", batch.EtablissementID, "anneeSourceId", batch.AnneeSourceID)
 	etudiants, err := w.promoRepo.ListEtudiantsForPromotion(sysCtx, batch.EtablissementID, batch.AnneeSourceID)
 	if err != nil {
 		// Erreur fatale — on marque le batch FAILED.
@@ -173,6 +244,7 @@ func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
 			"batchId", batch.ID, "error", err)
 		return
 	}
+	w.logger.Info("PromotionWorker: step 3 OK", "batchId", batch.ID, "etudiantCount", len(etudiants))
 
 	// 4. UPDATE batch totalEtudiants.
 	counts := domain.PromotionBatchResult{
