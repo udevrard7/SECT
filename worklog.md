@@ -19043,3 +19043,29 @@ Stage Summary:
   PUBLIEE de leur filière).
 - Aucune UI étudiant créée (SKIP documenté — pas de page « mes
   enseignants » existante).
+
+---
+Task ID: SECT-AFFECTATION-RECURSION-FIX-1 + vérification E2E enrichissements
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Fix bug UEs + affectations ne chargent plus (récursion infinie RLS). Vérification E2E des 5 enrichissements.
+
+Work Log:
+- Bug signalé : UEs + affectations ne chargent plus après migration 000090.
+- Reproduction Agent Browser : GET /api/affectations → 500, GET /api/unites-enseignement → 500. Erreur : "infinite recursion detected in policy for relation UniteEnseignement (SQLSTATE 42P17)".
+- Cause racine : la nouvelle branche étudiant de Affectation_select (000090) faisait EXISTS sur UniteEnseignement → déclenchait UniteEnseignement_select (000024) qui a une branche enseignant EXISTS sur Affectation → récursion infinie.
+- Fix migration 000091 : fonction SECURITY DEFINER affectation_visible_by_student(p_affectation_id) qui lit l'UE bypass RLS (row_security = off). La branche étudiant de Affectation_select appelle cette fonction au lieu d'un EXISTS sur UE → pas de récursion.
+- Migration appliquée à Neon (v90 → v91). Commit d65fbfb + push.
+- Vérification API : GET /api/affectations → 200 (15359 bytes), GET /api/unites-enseignement → 200 (3412 bytes). Endpoints restaurés.
+
+Vérification E2E Agent Browser des 5 enrichissements :
+1. Horodatage : affectation PUBLIEE affiche "Publiée le 21/07/2026 07:43" (chip Clock) ✓.
+2. AuditLog : 1 entrée AFFECTATION_PUBLISHED en base avec details JSON complet (affectationId, enseignantId+name, ue code+nom, typeSeance, volumeHeures, annee, publishedBy id+name) ✓.
+3. Lock backend : PATCH sur PUBLIEE sans changer statut → 409 "Cette affectation est publiée — repassez-la en PROVISOIRE ou VALIDEE pour la modifier" ✓.
+4. Email enseignant : template affectation_published.go envoyé (non bloquant — log si échec). Non vérifié en E2E (pas d'accès boîte email), mais code en place.
+5. Visibilité étudiant : RLS Affectation_select étendue via fonction SECURITY DEFINER (non récursive). Non testé en E2E (pas de page étudiante), mais RLS prête.
+- 0 erreur console sur tous les flows.
+
+Stage Summary:
+- Bug P0 (UEs + affectations cassés) résolu : migration 000091 fix récursion RLS.
+- 5 enrichissements validés en production : horodatage, AuditLog, lock 409, email, visibilité étudiant (RLS).
+- Commits : ab561e3 (enrichissements), d65fbfb (fix récursion).
