@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { Providers } from "@/components/providers";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { PushNotificationManager } from "@/components/pwa/push-notification-manager";
 
 // ── Design System fonts ──
 // Inter : display (titres) + body (corps) — weights 400/500/700
@@ -116,6 +117,7 @@ export default function RootLayout({
           {children}
         </Providers>
         <ServiceWorkerRegister />
+        <PushNotificationManager />
         <Toaster />
         {/* BUGFIX (DUP-SRCDocs-1) : Sonner Toaster manquait — 57 fichiers
             utilisent `import { toast } from 'sonner'` mais le Toaster Sonner

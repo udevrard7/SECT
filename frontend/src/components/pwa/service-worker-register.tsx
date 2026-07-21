@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 /**
  * ServiceWorkerRegister — Enregistre le Service Worker pour le PWA offline.
@@ -9,14 +10,14 @@ import { useEffect } from 'react'
  * qu'en production (process.env.NODE_ENV === 'production') pour éviter
  * de cacher les assets en dev (Turbopack HMR).
  *
- * Au succès, log une info. En cas d'erreur, log non-bloquant (l'app
- * fonctionne sans SW, juste sans offline).
- *
- * Gère aussi le cycle de mise à jour : si un nouveau SW est activé
- * (controllerchange), recharge la page une fois pour prendre en compte
- * les nouveaux assets.
+ * SECT-PWA-AUDIT-1 : au lieu de recharger automatiquement la page quand un
+ * nouveau SW est activé (controllerchange), on affiche un toast "Nouvelle
+ * version disponible — recharger ?" avec un bouton. L'utilisateur garde le
+ * contrôle et ne perd pas son travail en cours.
  */
 export function ServiceWorkerRegister() {
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+
   useEffect(() => {
     // En dev, on n'enregistre pas le SW (conflit avec HMR Turbopack)
     if (process.env.NODE_ENV !== 'production') return
@@ -31,7 +32,7 @@ export function ServiceWorkerRegister() {
 
         // Nouveau SW en attente → notifie pour activation
         if (registration.waiting) {
-          registration.waiting.postMessage('SKIP_WAITING')
+          setUpdateAvailable(true)
         }
 
         // Écoute les nouvelles versions
@@ -40,13 +41,14 @@ export function ServiceWorkerRegister() {
           if (!newWorker) return
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // Nouveau SW installé → skip waiting pour activation immédiate
-              newWorker.postMessage('SKIP_WAITING')
+              // Nouveau SW installé → toast au lieu de skip waiting auto
+              setUpdateAvailable(true)
             }
           })
         })
 
-        // Recharge la page quand le contrôleur change (nouveau SW actif)
+        // Quand le contrôleur change (après que l'utilisateur a cliqué
+        // "Recharger"), reload la page.
         let refreshing = false
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           if (refreshing) return
@@ -68,6 +70,33 @@ export function ServiceWorkerRegister() {
       return () => window.removeEventListener('load', register)
     }
   }, [])
+
+  // Toast "Nouvelle version disponible" avec bouton Recharger
+  useEffect(() => {
+    if (!updateAvailable) return
+    const toastId = toast.info('Nouvelle version disponible', {
+      description: 'Une mise à jour de SECT est prête à être installée.',
+      duration: Infinity, // persistant jusqu'à action
+      action: {
+        label: 'Recharger',
+        onClick: () => {
+          // Demande au SW d'activer la nouvelle version
+          navigator.serviceWorker.getRegistration().then((reg) => {
+            if (reg?.waiting) {
+              reg.waiting.postMessage('SKIP_WAITING')
+            } else {
+              window.location.reload()
+            }
+          })
+        },
+      },
+      cancel: {
+        label: 'Plus tard',
+        onClick: () => setUpdateAvailable(false),
+      },
+    })
+    return () => { toast.dismiss(toastId) }
+  }, [updateAvailable])
 
   return null
 }

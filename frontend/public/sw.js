@@ -17,10 +17,9 @@
  * exhaustif (les URLs Turbopack sont dynamiques) — on cache à la volée.
  */
 
-// UX-FIX : bump de version pour forcer l'invalidation du cache après les
-// fixes E2E (passation propositions, auto-grading, code editor language).
-// Les utilisateurs auront le nouveau SW au prochain reload.
-const CACHE_VERSION = 'sect-v4'
+// SECT-PWA-AUDIT-1 : bump de version pour forcer l'invalidation du cache
+// après tous les fixes (notifications, alertes, affectations, annee-academique).
+const CACHE_VERSION = 'sect-v5'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
@@ -28,11 +27,14 @@ const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 const PRECACHE_URLS = [
   '/',
   '/offline',
+  '/login',
   '/manifest.json',
   '/favicon.ico',
   '/favicon-32x32.png',
   '/favicon-16x16.png',
   '/apple-touch-icon.png',
+  '/icon-192.png',
+  '/favicon.png',
 ]
 
 // ─── INSTALL : pré-cache l'app shell ───
