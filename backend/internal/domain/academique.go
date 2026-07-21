@@ -345,16 +345,32 @@ type EnseignantFiliereRepository interface {
 // ============================================================
 
 // AnneeAcademique représente une année académique d'un établissement.
+//
+// SECT-ANNEE-COUNTS-1 : CountEpreuves et CountInscriptions sont des champs
+// "décoratifs" remplis par la couche repository via des sous-requêtes
+// corrélées dans la liste de colonnes `columnsAnnee` (cf.
+// repository/academique.go). Ils exposent les counts des entités liées à
+// l'année (Epreuve / Inscription) pour que le frontend puisse afficher
+// "X inscription(s) · Y épreuve(s)" sur chaque carte de la liste, sans
+// avoir à faire 2 requêtes supplémentaires par carte (pattern N+1 évité).
+//
+// Avant, CountEpreuves existait mais n'était jamais peuplé (BUG #14 —
+// "dead field"). Maintenant, il est alimenté par toutes les méthodes
+// repository (List, FindByID, Create, Update) car `columnsAnnee` porte
+// désormais les 2 sous-requêtes corrélées. Côté Create, les deux counts
+// valent toujours 0 (l'année vient d'être insérée, aucune dépendance
+// encore rattachée) — harmless, et évite une 2e requête.
 type AnneeAcademique struct {
-	ID              string    `json:"id"`
-	Libelle         string    `json:"libelle"`
-	DateDebut       time.Time `json:"dateDebut"`
-	DateFin         time.Time `json:"dateFin"`
-	EtablissementID string    `json:"etablissementId"`
-	Actif           bool      `json:"actif"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
-	CountEpreuves   *int      `json:"countEpreuves,omitempty"`
+	ID                string    `json:"id"`
+	Libelle           string    `json:"libelle"`
+	DateDebut         time.Time `json:"dateDebut"`
+	DateFin           time.Time `json:"dateFin"`
+	EtablissementID   string    `json:"etablissementId"`
+	Actif             bool      `json:"actif"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+	CountEpreuves     *int      `json:"countEpreuves,omitempty"`
+	CountInscriptions *int      `json:"countInscriptions,omitempty"`
 }
 
 // CreateAnneeInput pour créer une année académique.

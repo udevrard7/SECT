@@ -782,11 +782,43 @@ func NewAnneeAcademiqueRepository(pool *pgxpool.Pool) *AnneeAcademiqueRepository
 	return &AnneeAcademiqueRepository{pool: pool}
 }
 
-const columnsAnnee = `"id", "libelle", "dateDebut", "dateFin", "etablissementId", "actif", "createdAt", "updatedAt"`
+// columnsAnnee — liste des colonnes sélectionnées par toutes les méthodes
+// AnneeAcademiqueRepository (List, FindByID, Create RETURNING, Update RETURNING).
+//
+// SECT-ANNEE-COUNTS-1 : les 2 dernières colonnes sont des sous-requêtes
+// corrélées qui alimentent CountEpreuves / CountInscriptions (champs décoratifs
+// du domain.AnneeAcademique). Le pattern à sous-requêtes corrélées (plutôt que
+// LATERAL JOIN) est retenu car :
+//   - il fonctionne dans RETURNING (INSERT/UPDATE) là où LATERAL JOIN échoue
+//     (RETURNING n'accepte pas de JOIN, seulement des expressions sur la ligne
+//     insérée/modifiée) ;
+//   - il évite d'introduire un alias de table `a` qui casserait les WHERE non
+//     qualifiés existants (`"id" = $1`, `"etablissementId" = $1`).
+//
+// COUNT(*) ne retourne jamais NULL (0 si aucune ligne), donc COALESCE est
+// techniquement redondant — conservé pour lisibilité et défense en profondeur
+// (au cas où une future évolution de la sous-requête pourrait ramener NULL).
+//
+// Performance : pour la liste d'années d'un établissement (~10-50 lignes max),
+// 2 sous-requêtes par ligne restent négligeables (< 1 ms). Sur un établissement
+// volumineux, un index sur `Epreuve(anneeAcademiqueId)` et
+// `Inscription(anneeAcademiqueId)` existe déjà (FKs CASCADE/SET NULL posées par
+// migrations 000086/000087) → index-only scan possible.
+const columnsAnnee = `"id", "libelle", "dateDebut", "dateFin", "etablissementId", "actif", "createdAt", "updatedAt",
+        COALESCE((SELECT count(*) FROM "Epreuve" WHERE "anneeAcademiqueId" = "AnneeAcademique"."id"), 0) AS count_epreuves,
+        COALESCE((SELECT count(*) FROM "Inscription" WHERE "anneeAcademiqueId" = "AnneeAcademique"."id"), 0) AS count_inscriptions`
 
 func scanAnnee(s scanner) (*domain.AnneeAcademique, error) {
 	a := &domain.AnneeAcademique{}
-	err := s.Scan(&a.ID, &a.Libelle, &a.DateDebut, &a.DateFin, &a.EtablissementID, &a.Actif, &a.CreatedAt, &a.UpdatedAt)
+	// SECT-ANNEE-COUNTS-1 : on scanne les 2 counts en fin de SELECT
+	// (CountEpreuves puis CountInscriptions — l'ordre correspond à l'ordre
+	// des colonnes dans `columnsAnnee`). Les destinations sont *int : pgx
+	// convertit BIGINT (retourné par COUNT) en int et alloue le pointeur.
+	err := s.Scan(
+		&a.ID, &a.Libelle, &a.DateDebut, &a.DateFin, &a.EtablissementID,
+		&a.Actif, &a.CreatedAt, &a.UpdatedAt,
+		&a.CountEpreuves, &a.CountInscriptions,
+	)
 	if err != nil {
 		return nil, err
 	}

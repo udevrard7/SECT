@@ -38,6 +38,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, Plus, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2,
   RefreshCw, X, CalendarDays, Star, Power, RotateCcw, AlertTriangle,
+  BookOpen, FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -45,6 +46,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +77,12 @@ interface AnneeAcademique {
   actif: boolean
   createdAt: string
   updatedAt: string
+  // SECT-ANNEE-COUNTS-1 : counts décoratifs peuplés par la couche backend
+  // (sous-requêtes corrélées dans columnsAnnee, cf.
+  // backend/internal/repository/academique.go). Optionnels car absents des
+  // réponses API antérieures à cette évolution (compat ascendante).
+  countEpreuves?: number
+  countInscriptions?: number
 }
 
 // SECT-ANNEE-HARDDELETE-SAFE-1 : miroir de backend/internal/domain/academique.go
@@ -100,6 +114,18 @@ interface Props {
 // ─── Helpers ───
 
 type PeriodeStatut = 'past' | 'active' | 'future'
+
+// SECT-ANNEE-UX-POLISH-1 : filtre par période côté UI (ne pas confondre avec
+// le `actif` flag — ici « En cours » = periode active selon les dates, pas
+// « actif=true »). 'all' = pas de filtre.
+type PeriodeFilter = 'all' | PeriodeStatut
+
+const PERIODE_FILTER_OPTIONS: { value: PeriodeFilter; label: string }[] = [
+  { value: 'all', label: 'Toutes les périodes' },
+  { value: 'past', label: 'Passées' },
+  { value: 'active', label: 'En cours' },
+  { value: 'future', label: 'À venir' },
+]
 
 /** Calcule le statut de période d'une année (Passée/Active/À venir) vs now. */
 function computePeriodeStatut(dateDebut: string, dateFin: string): PeriodeStatut {
@@ -171,6 +197,12 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   const [confirmDelete, setConfirmDelete] = useState<AnneeAcademique | null>(null)
   const [confirmHardDelete, setConfirmHardDelete] = useState<AnneeAcademique | null>(null)
   const [showInactive, setShowInactive] = useState(false)
+  // SECT-ANNEE-UX-POLISH-1 : filtre par période (Toutes / Passées / En cours /
+  // À venir). Côté UI uniquement — le backend renvoie toujours toutes les
+  // années de l'établissement, on filtre en mémoire. 'all' par défaut pour ne
+  // pas masquer les années Passées (souvent l'utilisateur veut les voir pour
+  // archivage / audit).
+  const [periodeFilter, setPeriodeFilter] = useState<PeriodeFilter>('all')
 
   // ─── Liste des années (TanStack Query) ───
   const anneesQuery = useQuery<AnneeAcademique[]>({
@@ -203,9 +235,23 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   // ─── Suggestions pour la création (prochaine année) ───
   const suggestions = useMemo(() => computeNextYearSuggestions(annees), [annees])
 
-  // ─── Filtrage des inactives ───
+  // ─── Filtrage des inactives + filtre par période (SECT-ANNEE-UX-POLISH-1) ───
+  // On compose 2 filtres client-side :
+  //   1. `showInactive` : masque les années soft-deleted (actif=false) sauf si
+  //      le toggle est activé. Cohérent avec /programme-academique.
+  //   2. `periodeFilter` : filtre par statut de période calculé via
+  //      `computePeriodeStatut` (Passée / En cours / À venir). 'all' = aucun
+  //      filtre. Ne pas confondre avec le `actif` flag.
   const hasInactive = annees.some((a) => !a.actif)
-  const visibleAnnees = showInactive ? annees : annees.filter((a) => a.actif)
+  const visibleAnnees = useMemo(() => {
+    let arr = showInactive ? annees : annees.filter((a) => a.actif)
+    if (periodeFilter !== 'all') {
+      arr = arr.filter(
+        (a) => computePeriodeStatut(a.dateDebut, a.dateFin) === periodeFilter,
+      )
+    }
+    return arr
+  }, [annees, showInactive, periodeFilter])
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
@@ -442,6 +488,32 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
           </Badge>
         </h3>
         <div className="flex items-center gap-2">
+          {/* SECT-ANNEE-UX-POLISH-1 : filtre par période (Toutes / Passées /
+              En cours / À venir). Côté UI uniquement — le backend renvoie
+              toutes les années, on filtre en mémoire via `computePeriodeStatut`.
+              « En cours » = période entre dateDebut et dateFin (PAS le flag
+              `actif`). N'apparaît que s'il y a au moins 1 année (sinon le
+              header tout entier est remplacé par l'empty state). */}
+          {annees.length > 0 && (
+            <Select
+              value={periodeFilter}
+              onValueChange={(v) => setPeriodeFilter(v as PeriodeFilter)}
+            >
+              <SelectTrigger
+                className="h-8 w-[150px] text-xs"
+                aria-label="Filtrer par période"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PERIODE_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {/* Toggle « Afficher les années inactives » — cohérent avec
               /programme-academique. Par défaut masquées pour ne pas polluer
               la liste avec des années archivées. N'apparaît que s'il existe
@@ -493,21 +565,45 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
           </CardContent>
         </Card>
       ) : visibleAnnees.length === 0 ? (
-        // Toutes les années sont inactives et le toggle est off.
+        // SECT-ANNEE-UX-POLISH-1 : 2 causes possibles à visibleAnnees vide —
+        //   (a) toutes les années sont inactives ET le toggle est off → on
+        //       propose d'activer le toggle « Afficher inactives » ;
+        //   (b) un filtre par période (Passées/En cours/À venir) ne
+        //       correspond à aucune année → on propose de réinitialiser le
+        //       filtre. On distingue les 2 cas pour guider l'utilisateur.
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-8 text-center">
-            <Power className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              Toutes les années sont désactivées.
-            </p>
-            <Button
-              variant="link"
-              size="sm"
-              className="mt-1 h-auto p-0"
-              onClick={() => setShowInactive(true)}
-            >
-              Afficher les années inactives
-            </Button>
+            {periodeFilter !== 'all' ? (
+              <>
+                <Calendar className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Aucune année ne correspond à la période sélectionnée.
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-1 h-auto p-0"
+                  onClick={() => setPeriodeFilter('all')}
+                >
+                  Réinitialiser le filtre période
+                </Button>
+              </>
+            ) : (
+              <>
+                <Power className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Toutes les années sont désactivées.
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-1 h-auto p-0"
+                  onClick={() => setShowInactive(true)}
+                >
+                  Afficher les années inactives
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -562,6 +658,35 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                         </p>
                         <PeriodeBadge statut={periode} />
                       </div>
+
+                      {/* Row 2.5 — SECT-ANNEE-COUNTS-1 : stats inscriptions + épreuves.
+                          Affiché uniquement si au moins un des 2 counts est > 0
+                          (évite le bruit sur une année fraîchement créée sans
+                          aucune donnée rattachée). Texte muted + icônes lucide
+                          compactes (h-3 w-3) pour rester discret. */}
+                      {((annee.countInscriptions ?? 0) > 0 ||
+                        (annee.countEpreuves ?? 0) > 0) && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                          {(annee.countInscriptions ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-1">
+                              <BookOpen className="h-3 w-3" aria-hidden="true" />
+                              <span>
+                                {annee.countInscriptions} inscription
+                                {(annee.countInscriptions ?? 0) > 1 ? 's' : ''}
+                              </span>
+                            </span>
+                          )}
+                          {(annee.countEpreuves ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-1">
+                              <FileText className="h-3 w-3" aria-hidden="true" />
+                              <span>
+                                {annee.countEpreuves} épreuve
+                                {(annee.countEpreuves ?? 0) > 1 ? 's' : ''}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Row 3 : actions */}
                       <div className="flex items-center gap-1.5 pt-1">
