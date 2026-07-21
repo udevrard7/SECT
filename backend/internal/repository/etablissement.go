@@ -150,7 +150,9 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 		// les exécute avec row_security off pour que l'admin PaaS voie les
 		// vrais compteurs. Les données individuelles restent protégées par RLS
 		// (l'admin ne peut pas SELECT * FROM "User" WHERE etablissementId = X).
-		_, _ = tx.Exec(ctx, `SET LOCAL row_security = off`)
+		if _, err := tx.Exec(ctx, `SET LOCAL row_security = off`); err != nil {
+			return fmt.Errorf("set row_security off: %w", err)
+		}
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query etablissements: %w", err)
