@@ -18869,3 +18869,24 @@ Stage Summary:
 - Refonte Savane EdTech réussie : kente strips/patterns + DS components (StatCard, GlassModal, PulseSkeleton) + palette africaine (vert lime + terre cuite + bleu nuit + or).
 - Toutes les fonctionnalités préservées : CRUD années, counts par année, filtre période, SetCurrentAnnee, bouton Réactiver, hard-delete safe, form avec actif toggle, suggestions.
 - Onglet Années maintenant cohérent avec l'identité Savane EdTech.
+
+---
+Task ID: S2-MODAL-FIX-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Bug modale suppression d'année académique non centrée (invisible sous le fold).
+
+Work Log:
+- Reproduction Agent Browser : ouverture modale hard-delete → computed style `position: relative` au lieu de `fixed`, modalTop 555px pour viewport 577px → modale invisible sans scroll.
+- Diagnostic : l'AlertDialogContent avait la classe `.ds-kente-top` (bordure kente 3px via ::after). Or `.ds-kente-top { position: relative; }` (globals.css ligne 333) override le `fixed` de l'AlertDialogContent (utility Tailwind) → la modale se positionnait en relative dans le flow au lieu d'être fixed/centrée.
+- Fix : retrait de `.ds-kente-top` sur l'AlertDialogContent (ligne 907). Le kente accent visuel n'est pas critique sur une modale destructive (le contenu est déjà clair).
+- Vérification : GlassModal (form + soft-delete) non affecté — utilise `.ds-kente-strip` (sans position) en interne, pas `.ds-kente-top`.
+- Commit 4f4a9dd + push GitHub.
+
+Vérification E2E Agent Browser post-fix :
+- Modale hard-delete : position `fixed`, rectTop 150, rectBottom 428, viewport 577 → centrée et entièrement visible ✓.
+- `centered: true` ✓.
+- Titre + bouton Supprimer visibles ✓.
+
+Stage Summary:
+- 1 fichier modifié : annees-academiques-section.tsx (retrait classe .ds-kente-top sur AlertDialogContent).
+- Bug visuel résolu : la modale de suppression est maintenant centrée au viewport.
