@@ -63,11 +63,19 @@ export function useOfflineSubmission() {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
-    // Écoute les messages du SW (soumission syncée via Background Sync)
+    // Écoute les messages du SW (soumission syncée ou échec via Background Sync)
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'SUBMISSION_SYNCED') {
         toast.success('Soumission synchronisée', {
           description: 'Votre examen a été soumis avec succès.',
+        })
+        getOutboxCount().then(setPendingCount)
+      }
+      // SECT-PWA-AUDIT-1 P2-9 : échec persistant après 3 tentatives
+      if (event.data?.type === 'SUBMISSION_FAILED') {
+        toast.error('Soumission en attente', {
+          description: event.data.message || 'Une soumission n\'a pas pu être envoyée après plusieurs tentatives. Vérifiez votre connexion.',
+          duration: 10000,
         })
         getOutboxCount().then(setPendingCount)
       }
