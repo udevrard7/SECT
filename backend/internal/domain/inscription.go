@@ -58,6 +58,23 @@ type Inscription struct {
 	UpdatedAt         time.Time         `json:"updatedAt"`
 }
 
+// InscriptionWithLabels — Inscription enrichie des libellés des FK
+// (AnneAcademique.libelle + Filiere.nom).
+//
+// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : DTO renvoyé par
+// GET /api/etudiants/{etudiantId}/inscriptions pour éviter au frontend des
+// requêtes N+1 (1 fetch pour l'année + 1 fetch par filière). Le JOIN côté SQL
+// coûte une passe unique pour tout l'historique d'un étudiant (5-10 lignes max).
+//
+// AnneeLibelle est toujours non-vide (anneeAcademiqueId NOT NULL côté DB,
+// FK obligatoire). FiliereNom est *string (nullable) car FiliereID est *string
+// côté schema (un étudiant peut être inscrit sans filière — cas B2C isolé).
+type InscriptionWithLabels struct {
+	Inscription
+	AnneeLibelle string  `json:"anneeLibelle"`
+	FiliereNom   *string `json:"filiereNom,omitempty"`
+}
+
 // CreateInscriptionForSignupResult — résultat de la fonction SQL
 // create_inscription_for_signup (migration 000088, SECURITY DEFINER).
 //
@@ -94,6 +111,13 @@ type InscriptionRepository interface {
 	// confondues), trié par année descendante. RLS via claims (ETUDIANT self,
 	// RESPONSABLE same-etab, ADMIN with etab access).
 	ListByEtudiant(ctx context.Context, etudiantID string) ([]Inscription, error)
+
+	// ListByEtudiantEnriched — comme ListByEtudiant mais avec les libellés
+	// (AnneeAcademique.libelle + Filiere.nom) JOINés côté SQL pour éviter N+1
+	// frontend. Tri par AnneeAcademique.dateDebut DESC (année la plus récente
+	// en premier). RLS via claims (mêmes policies Inscription_select).
+	// SECT-INSCRIPTION-HISTORY-ENDPOINT-1.
+	ListByEtudiantEnriched(ctx context.Context, etudiantID string) ([]InscriptionWithLabels, error)
 
 	// ListByAnnee retourne toutes les inscriptions d'une année académique pour
 	// un établissement (tous étudiants), trié par nom étudiant. RLS via claims.

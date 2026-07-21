@@ -18053,3 +18053,76 @@ Stage Summary:
   * Historique (liste des batches passés)
 - Architecture finale : sync (route /run-sync) comme chemin principal (Render free cold start incompatible avec worker async). Worker async reste en place (defense-in-depth) pour les environnements Render payants ou futures migrations.
 - DB Neon : batches COMPLETED avec counts corrects, Inscriptions créées, AuditLog journalisés, User.niveau mis à jour pour les promus.
+
+---
+Task ID: SECT-INSCRIPTION-HISTORY-ENDPOINT-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Ajouter un endpoint GET /api/etudiants/{etudiantId}/inscriptions (historique des années d'un étudiant) + intégration dans le dialogue de détail étudiant de etudiants-page.tsx. C'est le "gap identifié" par SECT-PROMOTION-FRONTEND-1 (la lib academic-progress.ts avait déjà DECISION_LABELS/DECISION_COLORS/formatMoyenne/formatCredits prêts à être consommés).
+
+Work Log:
+- Lecture du worklog (entrées SECT-CLOTURE-E2E-VERIFY-1 finalisation — feature de clôture pleinement fonctionnelle en prod).
+- Lecture de domain/inscription.go — InscriptionRepository interface + struct Inscription déjà en place.
+- Lecture de repository/inscription.go — ListByEtudiant déjà implémenté (RLS via db.WithTx + claims).
+- Lecture de transport/http/promotion_handlers.go — pattern handlers (ClaimsFromContext + writeJSONError + MapDomainError + json.NewEncoder).
+- Lecture de transport/http/router.go — Server struct + NewServer signature + route /promote (chi URL params, RequireAuth + RequireRoleOrPersonalEtab).
+
+BACKEND (5 fichiers modifiés) :
+
+1. backend/internal/domain/inscription.go (+16 lignes) :
+   - Nouveau struct `InscriptionWithLabels` (embed Inscription + AnneeLibelle string + FiliereNom *string). Tags JSON : anneeLibelle (toujours présent), filiereNom,omitempty (nullable car FiliereID est nullable).
+   - Nouvelle méthode `ListByEtudiantEnriched(ctx, etudiantID) ([]InscriptionWithLabels, error)` ajoutée à l'interface InscriptionRepository.
+
+2. backend/internal/repository/inscription.go (+54 lignes) :
+   - Implémentation `ListByEtudiantEnriched` : même pattern RLS que ListByEtudiant (db.WithTx + claims via db.ClaimsFromContext). JOIN AnneeAcademique (libelle) + LEFT JOIN Filiere (nom). ORDER BY AnneeAcademique.dateDebut DESC, createdAt DESC (année la plus récente en premier, tie-break défensif).
+   - Le JOIN ne casse pas la RLS : les policies AnneeAcademique_select + Filiere_select laissent lire les métadonnées aux mêmes rôles autorisés à lire l'Inscription.
+
+3. backend/internal/transport/http/promotion_handlers.go (+46 lignes) :
+   - Nouveau handler `listEtudiantInscriptions` pour GET /api/etudiants/{etudiantId}/inscriptions.
+   - Auth : RequireAuth uniquement (pas de RequireRoleOrPersonalEtab — la RLS policy Inscription_select filtre déjà via user_in_my_etab(etudiantId). ETUDIANT voit son propre historique, RESPONSABLE/ADMIN voient les étudiants de leur étab. Un check de rôle exclurait à tort l'étudiant lui-même).
+   - Toujours renvoyer un tableau (même vide — pas de null) pour faciliter le parsing frontend (TanStack Query + map direct).
+   - MapDomainError pour les erreurs domaine.
+
+4. backend/internal/transport/http/router.go (+18 lignes) :
+   - Nouveau champ `inscriptionRepo *repository.InscriptionRepository` sur Server struct (commenté SECT-INSCRIPTION-HISTORY-ENDPOINT-1).
+   - Ajout du paramètre `inscriptionRepo *repository.InscriptionRepository` à NewServer (en fin de signature pour minimiser le diff avec les callers existants).
+   - Wire dans le struct literal : `inscriptionRepo: inscriptionRepo,`.
+   - Nouvelle route GET /api/etudiants/{etudiantId}/inscriptions avec middleware RequireAuth (déclarée juste après la route /promote pour la cohérence thématique).
+
+5. backend/cmd/api/main.go (1 ligne modifiée) :
+   - Ajout de `inscriptionRepo` (déjà instancié ligne 79) à l'appel `httptransport.NewServer(...)` (en fin d'argument list).
+
+FRONTEND (1 fichier modifié) :
+
+6. frontend/src/components/responsable/etudiants-page.tsx (~190 lignes ajoutées) :
+   - Import des helpers depuis @/lib/academic-progress (getDecisionLabel, getDecisionColorClasses, formatMoyenne, formatCredits).
+   - Nouveau type `InscriptionHistoryItem` (miroir du DTO backend InscriptionWithLabels).
+   - Nouveau hook local `useIsMobileInscriptions` (breakpoint 639px = Tailwind sm:, pattern identique à audit-tab.tsx — pas le hook partagé @/hooks/use-mobile.ts qui utilise 768px car la table tient sur tablette).
+   - Nouveau TanStack Query `inscriptionsQuery` (key: ['etudiant-inscriptions', detailEtudiantId], enabled: detailDialogOpen && detailEtudiantId !== null, staleTime 60s — l'historique change rarement ~1x/an).
+   - Détail Dialog : max-w-md → max-w-2xl (pour laisser tenir la table 7 colonnes).
+   - Nouvelle section "Historique des années" à la fin du dialogue, après le grid de champs existant :
+     * Header avec titre + compteur "N inscription(s)".
+     * Loading : 3 lignes PulseSkeleton (placeholder Année/Niveau/Filière/Moyenne/Décision).
+     * Error (non-bloquant) : petit texte rouge discret — le reste du dialog reste fonctionnel.
+     * Empty : "Aucune inscription historisée pour cet étudiant." (cas étudiant fraîchement inscrit sans clôture).
+     * Success desktop (≥640px) : Table 7 colonnes (Année, Niveau, Filière, Moyenne /20, Crédits validés/total, Décision badge coloré, Date clôture + marqueur "(manuel)" si decisionManuelle=true).
+     * Success mobile (<640px) : Cards empilées (pattern audit-tab.tsx) avec grid 2 cols (Niveau/Filière/Moyenne/Crédits) + ligne Clôturée le full-width + badge Décision dans le header.
+   - Badge Décision utilise DECISION_LABELS (libellé FR) + DECISION_COLORS (classes Tailwind statiques pour purge v4) via getDecisionLabel + getDecisionColorClasses.
+
+VERIFICATION (mandatory) :
+- gofmt -w sur les 5 fichiers Go modifiés → OK.
+- go build ./... → exit 0 (OK).
+- go vet ./... → exit 0 (OK, 0 warnings).
+- npx tsc --noEmit → exit 0 (0 erreurs).
+- bun run lint → 0 erreurs, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated, directive eslint-disable non utilisée). Mes 2 fichiers modifiés (etudiants-page.tsx + academic-progress.ts) → 0 warning, 0 erreur.
+
+Stage Summary:
+- 6 fichiers modifiés (5 backend + 1 frontend).
+- Architecture : le backend expose un endpoint RLS-scoped qui JOIN côté SQL les libellés (évite N+1 frontend). Le frontend consomme via TanStack Query lazy-fetch (uniquement à l'ouverture du dialogue de détail), avec rendu responsive table/cards (pattern audit-tab.tsx) et gestion gracieuse des états loading/empty/error.
+- RLS : la policy Inscription_select existante (user_in_my_etab(etudiantId)) gère le scoping — ETUDIANT voit son propre historique, RESPONSABLE same-etab, ADMIN avec etab access. Pas de check de rôle supplémentaire dans le handler (aurait exclu à tort l'étudiant lui-même qui consulte son propre historique).
+- Auth : RequireAuth uniquement (cohérent avec /api/users/{id} qui est aussi RLS-only). Les mutations /promote et /cloture-annee gardent RequireRoleOrPersonalEtab (mutations ADMIN/RESPONSABLE).
+- Aucun commit (orchestrateur gère).
+- Prêt pour test end-to-end (frontend + backend déployés) : connexion RESPONSABLE → Étudiants → clic "Détails" sur un étudiant avec ≥1 clôture → vérifier que la table Historique des années s'affiche avec année/niveau/filière/moyenne/crédits/décision badge coloré/date clôture.
+
+Déviations du spec (mineures) :
+- `filiereNom` utilise `json:"filiereNom,omitempty"` (omis quand nil, pas `null` explicite) — cohérent avec le pattern existant (FiliereID aussi omitempty). Le frontend type `filiereNom?: string | null` gère les deux cas.
+- Le `isMobileInscriptions` hook est local au fichier (pas d'import du hook partagé @/hooks/use-mobile.ts) — pattern identique à audit-tab.tsx, breakpoint 639px (sm:) au lieu de 768px (md:) pour laisser la table visible sur tablette.

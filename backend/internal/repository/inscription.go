@@ -40,8 +40,8 @@ func (r *InscriptionRepository) CreateForSignup(ctx context.Context, etudiantID,
 	)
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT o_code, o_inscription_id, o_annee_id, o_message
-		FROM public.create_inscription_for_signup($1, $2, $3, $4)`,
+                SELECT o_code, o_inscription_id, o_annee_id, o_message
+                FROM public.create_inscription_for_signup($1, $2, $3, $4)`,
 		etudiantID, etablissementID, filiereID, niveau,
 	).Scan(&code, &inscriptionID, &anneeID, &message)
 	if err != nil {
@@ -67,13 +67,13 @@ func (r *InscriptionRepository) ListByEtudiant(ctx context.Context, etudiantID s
 	var inscriptions []domain.Inscription
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT "id", "etudiantId", "anneeAcademiqueId", "filiereId", "niveau",
-			       "statut", "moyenneAnnuelle", "creditsValides", "creditsTotaux",
-			       "decisionManuelle", "raisonDecision", "decideParId", "dateCloture",
-			       "batchId", "createdAt", "updatedAt"
-			FROM "Inscription"
-			WHERE "etudiantId" = $1
-			ORDER BY "createdAt" DESC`, etudiantID)
+                        SELECT "id", "etudiantId", "anneeAcademiqueId", "filiereId", "niveau",
+                               "statut", "moyenneAnnuelle", "creditsValides", "creditsTotaux",
+                               "decisionManuelle", "raisonDecision", "decideParId", "dateCloture",
+                               "batchId", "createdAt", "updatedAt"
+                        FROM "Inscription"
+                        WHERE "etudiantId" = $1
+                        ORDER BY "createdAt" DESC`, etudiantID)
 		if err != nil {
 			return fmt.Errorf("ListByEtudiant query: %w", err)
 		}
@@ -87,6 +87,61 @@ func (r *InscriptionRepository) ListByEtudiant(ctx context.Context, etudiantID s
 				&ins.BatchID, &ins.CreatedAt, &ins.UpdatedAt,
 			); err != nil {
 				return fmt.Errorf("ListByEtudiant scan: %w", err)
+			}
+			inscriptions = append(inscriptions, ins)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return inscriptions, nil
+}
+
+// ListByEtudiantEnriched — comme ListByEtudiant mais avec les libellés
+// (AnneeAcademique.libelle + Filiere.nom) JOINés côté SQL pour éviter N+1
+// frontend. Tri par AnneeAcademique.dateDebut DESC (année la plus récente
+// en premier), puis par createdAt DESC (tie-break pour 2 lignes même année —
+// cas anormal, la contrainte UNIQUE(etudiantId, anneeAcademiqueId) empêche).
+//
+// RLS via claims (mêmes policies Inscription_select — le JOIN ne casse pas la
+// RLS, les policies AnneeAcademique_select / Filiere_select laissent lire les
+// métadonnées aux mêmes rôles autorisés à lire l'Inscription).
+//
+// SECT-INSCRIPTION-HISTORY-ENDPOINT-1.
+func (r *InscriptionRepository) ListByEtudiantEnriched(ctx context.Context, etudiantID string) ([]domain.InscriptionWithLabels, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return nil, fmt.Errorf("ListByEtudiantEnriched: claims manquants dans le context")
+	}
+
+	var inscriptions []domain.InscriptionWithLabels
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+                        SELECT i."id", i."etudiantId", i."anneeAcademiqueId", i."filiereId", i."niveau",
+                               i."statut", i."moyenneAnnuelle", i."creditsValides", i."creditsTotaux",
+                               i."decisionManuelle", i."raisonDecision", i."decideParId", i."dateCloture",
+                               i."batchId", i."createdAt", i."updatedAt",
+                               a."libelle", f."nom"
+                        FROM "Inscription" i
+                        JOIN "AnneeAcademique" a ON a."id" = i."anneeAcademiqueId"
+                        LEFT JOIN "Filiere" f ON f."id" = i."filiereId"
+                        WHERE i."etudiantId" = $1
+                        ORDER BY a."dateDebut" DESC, i."createdAt" DESC`, etudiantID)
+		if err != nil {
+			return fmt.Errorf("ListByEtudiantEnriched query: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var ins domain.InscriptionWithLabels
+			if err := rows.Scan(
+				&ins.ID, &ins.EtudiantID, &ins.AnneeAcademiqueID, &ins.FiliereID, &ins.Niveau,
+				&ins.Statut, &ins.MoyenneAnnuelle, &ins.CreditsValides, &ins.CreditsTotaux,
+				&ins.DecisionManuelle, &ins.RaisonDecision, &ins.DecideParID, &ins.DateCloture,
+				&ins.BatchID, &ins.CreatedAt, &ins.UpdatedAt,
+				&ins.AnneeLibelle, &ins.FiliereNom,
+			); err != nil {
+				return fmt.Errorf("ListByEtudiantEnriched scan: %w", err)
 			}
 			inscriptions = append(inscriptions, ins)
 		}
@@ -115,14 +170,14 @@ func (r *InscriptionRepository) ListByAnnee(ctx context.Context, anneeAcademique
 	var inscriptions []domain.Inscription
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT i."id", i."etudiantId", i."anneeAcademiqueId", i."filiereId", i."niveau",
-			       i."statut", i."moyenneAnnuelle", i."creditsValides", i."creditsTotaux",
-			       i."decisionManuelle", i."raisonDecision", i."decideParId", i."dateCloture",
-			       i."batchId", i."createdAt", i."updatedAt"
-			FROM "Inscription" i
-			JOIN "User" u ON u."id" = i."etudiantId"
-			WHERE i."anneeAcademiqueId" = $1 AND u."etablissementId" = $2
-			ORDER BY u."name" ASC`, anneeAcademiqueID, etablissementID)
+                        SELECT i."id", i."etudiantId", i."anneeAcademiqueId", i."filiereId", i."niveau",
+                               i."statut", i."moyenneAnnuelle", i."creditsValides", i."creditsTotaux",
+                               i."decisionManuelle", i."raisonDecision", i."decideParId", i."dateCloture",
+                               i."batchId", i."createdAt", i."updatedAt"
+                        FROM "Inscription" i
+                        JOIN "User" u ON u."id" = i."etudiantId"
+                        WHERE i."anneeAcademiqueId" = $1 AND u."etablissementId" = $2
+                        ORDER BY u."name" ASC`, anneeAcademiqueID, etablissementID)
 		if err != nil {
 			return fmt.Errorf("ListByAnnee query: %w", err)
 		}
