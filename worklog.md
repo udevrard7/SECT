@@ -18282,3 +18282,67 @@ Stage Summary:
 - 2 fichiers modifiés : repository/academique.go (fix Create parsing), usecase/academique.go (ajout validation Update).
 - Bug P0 CRITIQUE résolu : la création d'année académique marche maintenant en production (avant, impossible depuis le début du module).
 - Validation Update ajoutée : empêche dateDebut >= dateFin sur modification.
+
+---
+Task ID: SECT-ANNEE-HARDDELETE-SAFE-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Sécuriser le HardDelete d'AnneeAcademique (check dépendances + ConflictError 409) + endpoint GET /dependencies + UI « Réactiver » + toggle actif dans le form d'édition + AlertDialog shadcn avec checkbox pour la confirmation hard-delete.
+
+Work Log:
+- Diagnostic : le HardDelete d'AnneeAcademique (usecase ligne 534 → repo ligne 990) exécutait un DELETE brut SANS vérifier les dépendances. Or les migrations 000086 (ValidationUE.anneeAcademiqueId NOT NULL → FK CASCADE) et 000087 (Inscription.anneeAcademiqueId + PromotionBatch.anneeSourceId CASCADE) signifient que hard-delete une année utilisée = destruction IRRÉVERSIBLE des historiques d'inscription, des notes/validations UE, et des batches de clôture. Le frontend affichait en plus un message mensonger (« perdront leur référence » — inexact, c'est un CASCADE DELETE).
+- Backend domain/academique.go : ajout struct `AnneeDependencies{Inscriptions, ValidationsUE, PromotionBatches, Epreuves, Etablissements int; CanHardDelete bool}` + méthode `GetDependencies(ctx, id)` à l'interface `AnneeAcademiqueRepository`.
+- Backend repository/academique.go : ajout `GetDependencies` — 5 subqueries COUNT agrégées en une seule query SQL (1 round-trip DB) via db.WithTx (RLS actif, claims depuis le context). Commentaire mis à jour sur `HardDelete` (référence SECT-ANNEE-HARDDELETE-SAFE-1 + rappel des FKs CASCADE depuis 000086/000087).
+- Backend usecase/academique.go : `HardDelete` modifié — appelle `GetDependencies` AVANT le DELETE. Si `!CanHardDelete`, retourne `*domain.ConflictError` (déjà mappé → HTTP 409 par middleware.MapDomainError) avec un message FR listant les 5 counts + recommandation « Désactivez-la (actif=false) au lieu de la supprimer ». Ajout aussi d'un usecase `GetDependencies(ctx, claims, id)` (rôle + id requis) pour le handler.
+- Backend transport/http/academique_handlers.go : nouveau handler `getAnneeDependencies` — `GET /api/annees-academiques/{id}/dependencies` → bare `AnneeDependencies` JSON. Pattern identique à `getFiliereDependencies` (ClaimsFromContext + MapDomainError). Commentaire du handler `deleteAnnee` mis à jour pour référencer le check côté usecase.
+- Backend transport/http/router.go : route `r.Get("/{id}/dependencies", s.getAnneeDependencies)` déclarée DANS le groupe `/api/annees-academiques` (RequireAuth — la RLS scoping via db.WithTx avec claims user gère le filtrage, cohérent avec getFiliereDependencies qui est aussi sous RequireAuth seul).
+- Frontend annees-academiques-section.tsx :
+  * Imports : ajout `RotateCcw` + `AlertTriangle` (lucide), `Checkbox` (ui/checkbox), AlertDialog components (ui/alert-dialog).
+  * Interface `AnneeDependencies` (miroir du backend).
+  * `useQuery(['annee-dependencies', confirmHardDelete?.id], ...)` — enabled uniquement quand `confirmHardDelete` est set (lazy fetch). `staleTime: 0` pour toujours re-vérifier au reopen.
+  * State `hardDeleteAcknowledged` (checkbox).
+  * `updateMutation` input type étendu pour accepter `actif`.
+  * Nouveau `reactivateMutation` (PATCH { actif: true }) → toast.success « Année réactivée » + invalidate ['annees-academiques', etabId].
+  * Cartes inactives : ajout d'un bouton « Réactiver » (icône RotateCcw, couleur success) à côté du bouton « Supprimer » (icône Trash2, couleur destructive). Le bouton hard-delete reset `hardDeleteAcknowledged` à false à l'ouverture.
+  * AlertDialog shadcn remplace l'ancien ConfirmDialog pour le hard-delete. Affiche :
+    - Loading state « Vérification des dépendances… » pendant le fetch.
+    - Error state si le fetch échoue.
+    - Cas 1 (canHardDelete=true) : encart success « Suppression définitive possible — Cette année n'a aucune dépendance. »
+    - Cas 2 (canHardDelete=false) : encart destructive avec liste de chaque count > 0 (libellé + nature CASCADE/SET NULL) + encart warning « Dépendances trouvées : » + checkbox obligatoire « Je comprends que ces données seront définitivement supprimées. »
+    - Bouton « Supprimer définitivement » disabled tant que `!canConfirmHardDelete` (loading deps OU !canHardDelete && !acknowledged) OU mutation en cours. `e.preventDefault()` en defense in depth.
+  * AnneeFormDialog : signature `onSubmit` étendue avec `actif?: boolean`. State `actif` local initialisé depuis `initial?.actif ?? true`. Switch « Année active » (Power icon) ajouté en mode édition uniquement, avec description « Désactivée = masquée par défaut (suppression logique, réversible). ». En mode création, `actif` n'est pas envoyé (backend le met à true par défaut).
+
+Stage Summary:
+- 6 fichiers modifiés (5 backend + 1 frontend) :
+  * backend/internal/domain/academique.go — +struct AnneeDependencies, +méthode GetDependencies interface.
+  * backend/internal/repository/academique.go — +GetDependencies (5 COUNT agrégés en 1 query), commentaire HardDelete mis à jour.
+  * backend/internal/usecase/academique.go — HardDelete modifié (check deps + ConflictError 409), +GetDependencies usecase.
+  * backend/internal/transport/http/academique_handlers.go — +handler getAnneeDependencies, commentaire deleteAnnee mis à jour.
+  * backend/internal/transport/http/router.go — +route GET /{id}/dependencies.
+  * frontend/src/components/responsable/annees-academiques-section.tsx — imports, AnneeDependencies interface, dependenciesQuery, reactivateMutation, bouton « Réactiver » sur cartes inactives, AlertDialog shadcn avec checkbox pour hard-delete, Switch actif dans AnneeFormDialog.
+- Sécurité : defense in depth — le check est fait côté frontend (preview + checkbox obligatoire) ET côté backend (usecase HardDelete renvoie 409 si dépendances). Le repo HardDelete reste le DELETE réel (le usecase est l'autorité du check).
+- ConflictError existe déjà dans domain/user.go et est déjà mappé → HTTP 409 par middleware.MapDomainError. Pas de nouveau type d'erreur à créer.
+- RLS : GetDependencies utilise db.WithTx avec claims user → scoping auto par les policies existantes (is_responsable AND same-etab). Aucune migration nécessaire.
+
+VERIFICATION (mandatory) :
+- gofmt -w sur les 5 fichiers Go modifiés → OK (gofmt -l retourne vide).
+- go build ./... → exit 0 (OK).
+- go vet ./... → exit 0 (OK, 0 warnings).
+- npx tsc --noEmit → exit 0 (0 erreurs).
+- bun run lint → 0 erreurs, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated). Mes modifications : 0 warning, 0 erreur.
+- Aucun commit (orchestrateur gère).
+
+Déviations du spec (mineures) :
+- Spec disait « Use shadcn AlertDialog for the confirmation » : j'ai remplacé l'ancien ConfirmDialog custom (Framer Motion + kente) pour le hard-delete par un shadcn AlertDialog — cohérent avec filieres-page.tsx qui fait pareil pour son delete confirmation. Les autres dialogs (create/edit/soft-delete) gardent l'ancien pattern custom (visuel kente + Framer Motion) pour ne pas introduire de churn visuel hors-scope.
+- La checkbox « Je comprends… » est un shadcn Checkbox (et non un Switch) — c'est le pattern standard pour une acknowledgement obligatoire (case à cocher, pas toggle).
+- Le bouton « Supprimer définitivement » est disabled tant que les deps chargent (dependenciesQuery.isLoading) — l'utilisateur doit attendre la vérification même si canHardDelete finit par être true. C'est plus sûr que de permettre un clic immédiat.
+- Le usecase HardDelete refait le check deps côté serveur même si le frontend a déjà vérifié (defense in depth : le frontend peut être bypassé par un appel direct à DELETE ?hard=true).
+- `actif` est envoyé en PATCH seulement si modifié via le form d'édition. En mode création, `actif` n'est pas envoyé (backend default = true). Cohérent avec le contrat actuel de `UpdateAnneeInput` où tous les champs sont optionnels (*bool).
+
+Prêt pour test E2E :
+1. Connexion RESPONSABLE → Programme académique → section « Années académiques ».
+2. Désactiver une année utilisée (bouton Power) → toast « désactivée ».
+3. Toggle « Afficher inactives » → carte inactive visible avec 2 boutons : RotateCcw (Réactiver) + Trash2 (Supprimer).
+4. Click Réactiver → toast « Année réactivée », carte repasse active.
+5. Click Modifier sur une carte → Switch « Année active » visible dans le form, peut toggle actif=false → Enregistrer → carte désactivée.
+6. Click Trash2 sur une carte avec dépendances → AlertDialog ouvre, « Vérification des dépendances… » puis liste des counts (inscriptions/validations/batches/épreuves/étab) avec warning rouge, checkbox obligatoire. Bouton « Supprimer définitivement » disabled tant que checkbox unchecked. Si on check + clique → 409 ConflictError → toast.error avec le message backend listant les counts.
+7. Click Trash2 sur une carte SANS dépendances → AlertDialog ouvre, encart success « Suppression définitive possible ». Bouton activé, clic → toast.success « Année académique supprimée définitivement ».

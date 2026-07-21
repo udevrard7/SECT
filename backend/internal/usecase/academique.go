@@ -528,9 +528,20 @@ func (uc *AnneeUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims,
 }
 
 // HardDelete supprime définitivement une année académique (DELETE réel,
-// irréversible). Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement
-// perdront leur référence. Si l'année supprimée était l'année courante d'un
-// établissement, etab.anneeAcademiqueCouranteId deviendra NULL (ON DELETE SET NULL).
+// irréversible). Les FKs CASCADE sur Inscription/ValidationUE/PromotionBatch
+// DÉTRUIRONT ces lignes (depuis migrations 000086 + 000087). Les FKs SET NULL
+// sur Epreuve/Etablissement.anneeAcademiqueCouranteId perdront leur référence.
+//
+// SECT-ANNEE-HARDDELETE-SAFE-1 : avant de supprimer, on vérifie les dépendances
+// via GetDependencies. Si AU MOINS UNE dépendance est non nulle, on renvoie un
+// *domain.ConflictError (HTTP 409) listant les counts dans le message — pour
+// empêcher la perte catastrophique de données (inscriptions étudiantes,
+// validations, historique des clôtures). Le frontend peut appeler
+// GET /api/annees-academiques/{id}/dependencies pour prévisualiser les counts
+// et afficher un avertissement avant que l'utilisateur ne confirme.
+//
+// Si toutes les dépendances sont nulles (CanHardDelete=true), on procède au
+// DELETE réel via anneeRepo.HardDelete.
 func (uc *AnneeUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) error {
 	role := domain.Role(claims.Role)
 	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
@@ -539,5 +550,38 @@ func (uc *AnneeUseCase) HardDelete(ctx context.Context, claims db.SessionClaims,
 	if id == "" {
 		return &domain.ValidationError{Field: "id", Message: "requis"}
 	}
+
+	// Safety check : empêcher le hard-delete si dépendances non nulles.
+	deps, err := uc.anneeRepo.GetDependencies(ctx, id)
+	if err != nil {
+		return fmt.Errorf("HardDelete: vérifier dépendances: %w", err)
+	}
+	if !deps.CanHardDelete {
+		return &domain.ConflictError{
+			Message: fmt.Sprintf(
+				"Impossible de supprimer cette année : elle possède %d inscription(s), "+
+					"%d validation(s) UE, %d batch(s) de clôture, %d épreuve(s), "+
+					"%d établissement(s) l'utilisant comme année courante. "+
+					"Désactivez-la (actif=false) au lieu de la supprimer.",
+				deps.Inscriptions, deps.ValidationsUE, deps.PromotionBatches,
+				deps.Epreuves, deps.Etablissements,
+			),
+		}
+	}
+
 	return uc.anneeRepo.HardDelete(ctx, id)
+}
+
+// GetDependencies récupère les dépendances d'une année académique (5 counts +
+// flag CanHardDelete) pour l'endpoint GET /api/annees-academiques/{id}/dependencies.
+// SECT-ANNEE-HARDDELETE-SAFE-1.
+func (uc *AnneeUseCase) GetDependencies(ctx context.Context, claims db.SessionClaims, id string) (*domain.AnneeDependencies, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if id == "" {
+		return nil, &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	return uc.anneeRepo.GetDependencies(ctx, id)
 }

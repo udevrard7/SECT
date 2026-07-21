@@ -485,6 +485,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listAnnees)
 			r.Get("/{id}", s.getAnnee)
+			// SECT-ANNEE-HARDDELETE-SAFE-1 : dependencies pour preview hard-delete.
+			// Read-only (5 COUNT agrégés) — RequireAuth suffit, la RLS scoping via
+			// db.WithTx avec claims user gère le filtrage (is_responsable same-etab).
+			r.Get("/{id}/dependencies", s.getAnneeDependencies)
 			// Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)

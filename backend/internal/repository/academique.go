@@ -978,10 +978,15 @@ func (r *AnneeAcademiqueRepository) SoftDelete(ctx context.Context, id string) (
 }
 
 // HardDelete supprime définitivement une année académique de la DB (DELETE réel).
-// Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement.anneeAcademiqueCouranteId
-// perdront leur référence — pas de cascade bloquante.
+// Les FKs SET NULL sur Epreuve/Etablissement.anneeAcademiqueCouranteId perdront
+// leur référence, et les FKs CASCADE sur Inscription/ValidationUE/PromotionBatch
+// détruiront ces lignes (depuis migrations 000086 + 000087).
 // RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
 // Retourne NotFoundError si l'année n'existe pas.
+//
+// SECT-ANNEE-HARDDELETE-SAFE-1 : ne pas appeler directement sans avoir vérifié
+// GetDependencies au préalable (le usecase HardDelete le fait automatiquement et
+// renvoie un *ConflictError si un count > 0).
 //
 // BUGFIX (AUDIT-RLS-REPOS-001) : le code utilisait r.pool.BeginTx SANS
 // SetClaimsTx → claims NULL → policy AnneeAcademique_modify_responsable
@@ -1003,4 +1008,53 @@ func (r *AnneeAcademiqueRepository) HardDelete(ctx context.Context, id string) e
 		}
 		return nil
 	})
+}
+
+// GetDependencies récupère les counts des 5 dépendances liées à une année
+// académique, pour le check pré-hard-delete (SECT-ANNEE-HARDDELETE-SAFE-1) et
+// l'endpoint GET /api/annees-academiques/{id}/dependencies.
+//
+// 5 subqueries COUNT agrégées en une seule query (1 round-trip DB) :
+//   - Inscription.anneeAcademiqueId        → CASCADE DELETE (histo étudiants)
+//   - ValidationUE.anneeAcademiqueId       → CASCADE DELETE (notes/validations)
+//   - PromotionBatch.anneeSourceId         → CASCADE DELETE (clôtures historisées)
+//   - Epreuve.anneeAcademiqueId            → SET NULL (épreuves orphelinées)
+//   - Etablissement.anneeAcademiqueCouranteId → SET NULL (année courante perdue)
+//
+// CanHardDelete = true ssi tous les counts valent 0.
+// RLS actif — filtrage par claims JWT posés via db.WithTx.
+func (r *AnneeAcademiqueRepository) GetDependencies(ctx context.Context, id string) (*domain.AnneeDependencies, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("GetDependencies Annee: claims manquants dans le context")
+	}
+
+	deps := &domain.AnneeDependencies{}
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		query := `SELECT
+                        (SELECT count(*) FROM "Inscription" WHERE "anneeAcademiqueId" = $1),
+                        (SELECT count(*) FROM "ValidationUE" WHERE "anneeAcademiqueId" = $1),
+                        (SELECT count(*) FROM "PromotionBatch" WHERE "anneeSourceId" = $1),
+                        (SELECT count(*) FROM "Epreuve" WHERE "anneeAcademiqueId" = $1),
+                        (SELECT count(*) FROM "Etablissement" WHERE "anneeAcademiqueCouranteId" = $1)`
+		if err := tx.QueryRow(ctx, query, id).Scan(
+			&deps.Inscriptions,
+			&deps.ValidationsUE,
+			&deps.PromotionBatches,
+			&deps.Epreuves,
+			&deps.Etablissements,
+		); err != nil {
+			return fmt.Errorf("query annee dependencies: %w", err)
+		}
+		deps.CanHardDelete = deps.Inscriptions == 0 &&
+			deps.ValidationsUE == 0 &&
+			deps.PromotionBatches == 0 &&
+			deps.Epreuves == 0 &&
+			deps.Etablissements == 0
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return deps, nil
 }
