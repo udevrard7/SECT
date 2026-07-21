@@ -18844,3 +18844,30 @@ Prêt pour test E2E :
 8. Dark mode : vérifier que les kente strips (vert/terre/or) restent visibles
    et que les StatCards basculent correctement (bg-card, border-border).
 
+
+---
+Task ID: R2-SAVANE-REFONTE-1 (vérification E2E)
+Agent: Z.ai Code (Tutor/Assistant) + frontend-styling-expert (subagent)
+Task: Refonte Savane EdTech du module /programme-academique + annees-academiques-section. Vérification E2E Agent Browser.
+
+Work Log:
+- Refonte par subagent frontend-styling-expert : 2 fichiers modifiés (annees-academiques-section.tsx + programme-academique-page.tsx). Présentation uniquement — logique métier préservée à l'identique.
+- DS components : StatCard (4 KPI + 6 cards niveau), GlassModal (form + confirm), PulseSkeleton (loading).
+- Kente classes : ds-kente-strip (headers), ds-kente-top (cards), ds-kente-pattern (empty states), ds-kente-pattern-strong (hero), ds-african-divider (sections), ds-kente-badge (Courante).
+- Palette Savane : vert lime (primary, L1), terre cuite (secondary, M2), bleu nuit (foreground), or (gold, L3).
+- tsc 0 erreur, lint 0 erreur. Commit eff1ba7 + push.
+
+Vérification E2E Agent Browser (sect-app.vercel.app, registrar@uniabidjan.com) :
+- Page /programme-academique charge avec 0 erreur console ✓.
+- 3 sections affichées : Distribution par niveau, Matrice Filière × Niveau, Années académiques ✓.
+- 4 KPI StatCard (Niveaux actifs, Total UEs, Enseignants affectés, Couverture globale) ✓.
+- 6 cards niveau (L1/L2/L3/M1/M2/Doctorat) avec labels complets ✓.
+- Section Années : 5 années (2027-2028 créée au test), badge 'Courante', counts inscriptions ✓.
+- Test création : bouton 'Nouvelle année' → GlassModal avec libellé pré-rempli '2027-2028' + dates suggérées → Créer → toast 'Année académique créée' ✓. Liste passée de 4 à 5 années ✓.
+- Test filtre période : 'À venir' → seules 2027-2028 + 2026-2027 affichées (passées + en cours filtrées) ✓.
+- 0 erreur console sur tous les flows.
+
+Stage Summary:
+- Refonte Savane EdTech réussie : design kente + DS components unifiés + palette africaine (vert lime + terre cuite + bleu nuit + or).
+- Toutes les fonctionnalités préservées : création d'année, counts par année, filtre période, SetCurrentAnnee, bouton Réactiver, hard-delete safe, form avec actif toggle.
+- Module /programme-academique maintenant cohérent avec les autres pages DS (cloture-annee, audit-tab, regles-passage-tab).
