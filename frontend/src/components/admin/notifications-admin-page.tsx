@@ -16,6 +16,8 @@ import {
   EyeOff,
   Trash2,
   CheckCheck,
+  ChevronDown,
+  ChevronUp,
   LayoutList,
   LayoutGrid,
   Clock,
@@ -401,6 +403,8 @@ export function NotificationsAdminPage() {
   // ─── View state ───
   const [viewMode, setViewMode] = useState<'list' | 'card'>('card')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  // SECT-NOTIF-ADMIN-IMPROVE-1 (P3) : état d'expansion pour l'historique des diffusions cliquable.
+  const [expandedBroadcastIds, setExpandedBroadcastIds] = useState<Set<string>>(new Set())
 
   // ─── Tab state ───
   const [activeTab, setActiveTab] = useState('notifications')
@@ -450,6 +454,19 @@ export function NotificationsAdminPage() {
   // ─── Toggle message expand ───
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  // SECT-NOTIF-ADMIN-IMPROVE-1 (P3) : bascule l'expansion d'une diffusion dans l'historique.
+  const toggleBroadcastExpand = (id: string) => {
+    setExpandedBroadcastIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
         next.delete(id)
@@ -1301,37 +1318,89 @@ export function NotificationsAdminPage() {
                     onChange={(e) => setFormIcone(e.target.value)}
                   />
                 </div>
+
+                {/* SECT-NOTIF-ADMIN-IMPROVE-1 (P3) : aperçu compact de la notification dans la cloche. */}
+                {/* Affiché uniquement si un titre ou un message est saisi. */}
+                {(formTitre.trim() || formMessage.trim()) && (
+                  <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Bell className="h-3 w-3 shrink-0" />
+                      Aperçu — voici comment la notification apparaîtra dans la cloche
+                    </p>
+                    <div className="space-y-1.5 rounded-md border bg-background p-3 shadow-sm">
+                      {formTitre && (
+                        <p className="text-sm font-semibold leading-tight">{formTitre}</p>
+                      )}
+                      {formMessage && (
+                        <p className="text-xs leading-relaxed text-muted-foreground">{formMessage}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {getPriorityBadge(formPriorite)}
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                          {getCategoryIcon(formCategorie)}
+                          <span className="ml-0.5">{getCategoryLabel(formCategorie)}</span>
+                        </Badge>
+                        {formIcone && (
+                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                            <Tag className="mr-0.5 h-2.5 w-2.5" />
+                            {formIcone}
+                          </Badge>
+                        )}
+                      </div>
+                      {formActionUrl && (
+                        <Button variant="outline" size="sm" className="h-7 gap-1" disabled>
+                          {formActionLabel || 'Voir'}
+                          <ArrowRight className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
-              <CardFooter className="flex justify-end gap-2 border-t pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setFormTitre('')
-                    setFormMessage('')
-                    setFormType('BROADCAST')
-                    setFormPriorite('NORMALE')
-                    setFormCategorie('SYSTEME')
-                    setFormDestinataireRole('')
-                    setFormExpireLe('')
-                    setFormActionUrl('')
-                    setFormActionLabel('')
-                    setFormIcone('')
-                  }}
-                >
-                  Réinitialiser
-                </Button>
-                <Button
-                  className="bg-success hover:bg-success/90"
-                  onClick={handleBroadcast}
-                  disabled={isSubmitting || !formTitre || !formMessage}
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  {isSubmitting ? 'Envoi en cours...' : 'Diffuser'}
-                </Button>
+              <CardFooter className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                {/* SECT-NOTIF-ADMIN-IMPROVE-1 (P2) : compteur de destinataires avant le bouton Diffuser. */}
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Users className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Cette diffusion sera envoyée à :{' '}
+                    <span className="font-medium text-foreground">
+                      {formDestinataireRole && formDestinataireRole !== 'all'
+                        ? `Tous les ${formDestinataireRole}`
+                        : 'Tous les utilisateurs'}
+                    </span>
+                  </span>
+                </p>
+                <div className="flex w-full justify-end gap-2 sm:w-auto">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setFormTitre('')
+                      setFormMessage('')
+                      setFormType('BROADCAST')
+                      setFormPriorite('NORMALE')
+                      setFormCategorie('SYSTEME')
+                      setFormDestinataireRole('')
+                      setFormExpireLe('')
+                      setFormActionUrl('')
+                      setFormActionLabel('')
+                      setFormIcone('')
+                    }}
+                  >
+                    Réinitialiser
+                  </Button>
+                  <Button
+                    className="bg-success hover:bg-success/90"
+                    onClick={handleBroadcast}
+                    disabled={isSubmitting || !formTitre || !formMessage}
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    {isSubmitting ? 'Envoi en cours...' : 'Diffuser'}
+                  </Button>
+                </div>
               </CardFooter>
             </Card>
 
@@ -1421,43 +1490,96 @@ export function NotificationsAdminPage() {
                   ) : (
                     <ScrollArea className="max-h-80">
                       <div className="space-y-3">
-                        {recentBroadcasts.map((broadcast) => (
-                          <div
-                            key={broadcast.id}
-                            className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${getTypeIconColor(broadcast.type)}`}>
-                              <Megaphone className="h-4 w-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-medium truncate">{broadcast.titre}</p>
-                                {getPriorityBadge(broadcast.priorite)}
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                {broadcast.message}
-                              </p>
-                              <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Users className="h-3 w-3" />
-                                  {broadcast.destinataireRole ? getRoleLabel(broadcast.destinataireRole) : 'Tous'}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {formatRelativeTime(broadcast.createdAt)}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  {broadcast.lu ? (
-                                    <Eye className="h-3 w-3 text-success-text" />
-                                  ) : (
-                                    <EyeOff className="h-3 w-3 text-warning" />
+                        {recentBroadcasts.map((broadcast) => {
+                          // SECT-NOTIF-ADMIN-IMPROVE-1 (P3) : historique des diffusions cliquable.
+                          const isBroadcastExpanded = expandedBroadcastIds.has(broadcast.id)
+                          return (
+                            <div
+                              key={broadcast.id}
+                              className="overflow-hidden rounded-lg border transition-colors hover:bg-muted/50"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => toggleBroadcastExpand(broadcast.id)}
+                                aria-expanded={isBroadcastExpanded}
+                                className="flex w-full items-start gap-3 p-3 text-left"
+                              >
+                                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${getTypeIconColor(broadcast.type)}`}>
+                                  <Megaphone className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-sm font-medium truncate">{broadcast.titre}</p>
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                      {getPriorityBadge(broadcast.priorite)}
+                                      {isBroadcastExpanded ? (
+                                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                    {broadcast.message}
+                                  </p>
+                                  <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Users className="h-3 w-3" />
+                                      {broadcast.destinataireRole ? getRoleLabel(broadcast.destinataireRole) : 'Tous'}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {formatRelativeTime(broadcast.createdAt)}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      {broadcast.lu ? (
+                                        <Eye className="h-3 w-3 text-success-text" />
+                                      ) : (
+                                        <EyeOff className="h-3 w-3 text-warning" />
+                                      )}
+                                      {broadcast.lu ? 'Lue' : 'Non lue'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </button>
+                              {isBroadcastExpanded && (
+                                <div className="space-y-2.5 border-t bg-muted/20 px-3 py-3">
+                                  <p className="text-xs leading-relaxed text-foreground">
+                                    {broadcast.message}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      Créée le {formatDateTime(broadcast.createdAt)}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Users className="h-3 w-3" />
+                                      Destinataires : {broadcast.destinataireRole ? getRoleLabel(broadcast.destinataireRole) : 'Tous'}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Tag className="h-3 w-3" />
+                                      Priorité : {broadcast.priorite}
+                                    </span>
+                                  </div>
+                                  {!broadcast.lu && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 gap-1 border-success/30 text-success-text hover:bg-success/10"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleToggleRead(broadcast)
+                                      }}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                      Marquer comme lue
+                                    </Button>
                                   )}
-                                  {broadcast.lu ? 'Lue' : 'Non lue'}
-                                </span>
-                              </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </ScrollArea>
                   )}

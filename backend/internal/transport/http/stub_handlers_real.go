@@ -278,12 +278,13 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
 			argIdx++
 		}
 
-		// ADMIN : voit TOUTES les alertes (SECT-NOTIF-E2E-VERIFY-1 fix — avant,
-		// l'admin ne voyait que les alertes système userId NULL + filiereId NULL
-		// + epreuveId NULL. Désormais, l'admin voit toutes les alertes, comme
-		// le suggère is_admin() dans la policy RLS Alerte_select).
+		// ADMIN PaaS : ne voit QUE les alertes système (userId NULL + filiereId
+		// NULL + epreuveId NULL). L'admin est propriétaire du SaaS multi-tenant
+		// et ne doit PAS accéder aux données sensibles des établissements
+		// (alertes fraude, alertes élèves, etc.). Les alertes système sont
+		// les alertes globales (ex: maintenance, clôture auto).
 		if role == "ADMIN" {
-			rbacConds = append(rbacConds, `TRUE`)
+			rbacConds = append(rbacConds, `(a."userId" IS NULL AND a."filiereId" IS NULL AND a."epreuveId" IS NULL)`)
 		}
 
 		// Clause WHERE : (RBAC) AND (filtre lue optionnel)
