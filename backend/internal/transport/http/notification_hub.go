@@ -72,3 +72,28 @@ func (h *notificationHub) Broadcast(userID string, event NotificationEvent) {
 		}
 	}
 }
+
+// BroadcastNotification est la fonction publique exposée pour que le package
+// notification.Dispatcher puisse broadcaster via le hub SSE sans dépendance
+// circulaire (notification → transport/http interdit ; on passe par cette
+// fonction exportée appelée depuis main.go).
+//
+// SECT-NOTIF-DISPATCHER-1 : le dispatcher construit des notification.SSEEvent
+// (miroir de NotificationEvent sans la dépendance transport/http). Cette
+// fonction les convertit et délègue au globalNotificationHub.
+func BroadcastNotification(userID string, event SSEEventAdapter) {
+	data := json.RawMessage(event.Data)
+	globalNotificationHub.Broadcast(userID, NotificationEvent{
+		Type:      event.Type,
+		Data:      data,
+		Timestamp: event.Timestamp,
+	})
+}
+
+// SSEEventAdapter est le miroir de notification.SSEEvent (évite la dépendance
+// circulaire notification → transport/http). La structure est identique.
+type SSEEventAdapter struct {
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data"`
+	Timestamp string          `json:"timestamp"`
+}
