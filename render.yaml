@@ -77,3 +77,12 @@ services:
         sync: false
       - key: TURNSTILE_SECRET_KEY
         sync: false
+      # ── Web Push VAPID (SECT-NOTIF-VAPID-1) ──
+      # Générer les clés : npx web-push generate-vapid-keys
+      # Si vide → push désactivé (in-app + SSE restent actifs).
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: "mailto:ulrichdouh@gmail.com"

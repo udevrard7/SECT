@@ -291,7 +291,7 @@ func main() {
 			Data:      event.Data,
 			Timestamp: event.Timestamp,
 		})
-	})
+	}, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject)
 	server.WithNotificationDispatcher(notifDispatcher)
 	logger.Info("Notification dispatcher configured")
 
