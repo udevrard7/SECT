@@ -731,8 +731,17 @@ function HistorySection({
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ClotureAnneePage — composant principal.
+//
+// SECT-ANNEE-MERGE-1 : cette page peut être montée de 2 façons :
+//   1. Page autonome (legacy) — aucun prop. Les raccourcis « Créer une année »
+//      et « Créer l'année suivante » naviguent vers /programme-academique
+//      (router.push) comme avant.
+//   2. Onglet « Clôture » de la page /annee-academique — prop optionnelle
+//      `onSwitchToAnnees` fournie. Les raccourcis appellent
+//      `onSwitchToAnnees()` pour basculer vers l'onglet « Années » sans
+//      navigation router (garder l'état de la page parent).
 // ═══════════════════════════════════════════════════════════════════════════
-export function ClotureAnneePage() {
+export function ClotureAnneePage({ onSwitchToAnnees }: { onSwitchToAnnees?: () => void } = {}) {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
@@ -1303,8 +1312,14 @@ export function ClotureAnneePage() {
                           // Radix Select ne ferme le dropdown avant le
                           // onClick (sinon le click serait capturé par le
                           // portal et le routeur ne se déclencherait pas).
+                          // SECT-ANNEE-MERGE-1 : si la page est montée comme
+                          // onglet « Clôture » de /annee-academique, on
+                          // bascule vers l'onglet « Années » via
+                          // onSwitchToAnnees() plutôt que de naviguer vers
+                          // /programme-academique (la section Années est
+                          // désormais là, pas dans Programme académique).
                           <div className="px-2 py-3 text-sm text-muted-foreground text-center space-y-2">
-                            <p>Aucune année active. Créez-en une dans Programme académique → Années académiques.</p>
+                            <p>Aucune année active. Créez-en une dans l&apos;onglet Années.</p>
                             <Button
                               type="button"
                               size="sm"
@@ -1313,7 +1328,14 @@ export function ClotureAnneePage() {
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
                                 e.preventDefault()
-                                router.push('/programme-academique')
+                                // SECT-ANNEE-MERGE-1 : onSwitchToAnnees si
+                                // fourni (montage en onglet), sinon
+                                // router.push (fallback legacy).
+                                if (onSwitchToAnnees) {
+                                  onSwitchToAnnees()
+                                } else {
+                                  router.push('/programme-academique')
+                                }
                               }}
                             >
                               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1358,15 +1380,25 @@ export function ClotureAnneePage() {
                           libellé suggéré est calculé via computeNextYearLibelle
                           (ex. « 2026-2027 » si la dernière année est
                           « 2025-2026 »). Si le calcul échoue (lastYear NaN),
-                          on retombe sur un libellé générique. */}
+                          on retombe sur un libellé générique.
+                          SECT-ANNEE-MERGE-1 : si la page est montée comme onglet
+                          « Clôture » de /annee-academique, on bascule vers
+                          l'onglet « Années » via onSwitchToAnnees() plutôt que
+                          de naviguer vers /programme-academique. */}
                       {anneesActives.length > 0 && nextYearLibelle && (
                         <Button
                           type="button"
                           variant="link"
                           size="sm"
                           className="h-auto p-0 text-xs gap-1"
-                          onClick={() => router.push('/programme-academique')}
-                          title={`Créer l'année ${nextYearLibelle} dans Programme académique`}
+                          onClick={() => {
+                            if (onSwitchToAnnees) {
+                              onSwitchToAnnees()
+                            } else {
+                              router.push('/programme-academique')
+                            }
+                          }}
+                          title={`Créer l'année ${nextYearLibelle} dans l'onglet Années`}
                         >
                           <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                           Créer l&apos;année suivante ({nextYearLibelle})

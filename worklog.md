@@ -18629,3 +18629,80 @@ Stage Summary:
   * SECT-ANNEE-UX-POLISH-1 : filtre par période (4 options) + raccourci 'Créer l'année suivante' depuis Clôture.
 - Commits : 728b2f8 (auditlog + date column), eb3e15f (counts + UX polish).
 - Module AnneeAcademique maintenant complet : bug P0 résolu, safety P0 (harddelete safe), guards P1 (setcurrent), et 4 améliorations P2 (auditlog, date column, counts, UX polish).
+
+---
+Task ID: SECT-ANNEE-MERGE-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Fusion des modules AnneeAcademique et Clôture en une seule page /annee-academique avec 2 onglets (frontend uniquement).
+
+Work Log:
+- Lecture du tail de worklog.md pour contexte (SECT-ANNEE-COUNTS-1 / SECT-ANNEE-UX-POLISH-1 — l'UX P2 précédente avait introduit `router.push('/programme-academique')` comme shortcut dans ClotureAnneePage ; ces 2 raccourcis devaient être reroutés vers le nouveau tab Années).
+- Lecture intégrale des fichiers concernés : routes.ts (PageId/PageId union/PAGE_ROUTES/PAGE_LABELS/PAGE_DESCRIPTIONS/PAGE_ALLOWED_ROLES/NAV_CATEGORIES['RESPONSABLE']), page-content.tsx (PAGE_COMPONENTS), sidebar.tsx + command-palette.tsx (ICON_MAP — CalendarClock déjà présent, CalendarDays non nécessaire pour la sidebar mais utilisé dans le TabsTrigger du nouveau wrapper), programme-academique-page.tsx (top + bloc AnneesAcademiquesSection ~lignes 934-938 + import ligne 73), annees-academiques-section.tsx (export + queryKeys), cloture-annee-page.tsx (export ligne 735 + 2 router.push ligne ~1316 et ~1368 + title attributes).
+
+Modifications (5 fichiers modifiés, 1 fichier créé — frontend uniquement, 0 backend) :
+
+1. frontend/src/components/responsable/annee-academique-page.tsx (NOUVEAU) :
+   - Wrapper à 2 onglets « Années » + « Clôture ». Radix Tabs (shadcn/ui) avec TabsList `grid grid-cols-2 max-w-md` (responsive : 2 colonnes partout, 2 tabs seulement).
+   - Onglet « Années » → `<AnneesAcademiquesSection etablissementId={etabId} />` (si etabId, sinon message « Aucun établissement actif »). Préserve 100% du CRUD + filtre période + counts + réactivation + hard-delete safe.
+   - Onglet « Clôture » → `<ClotureAnneePage onSwitchToAnnees={() => setActiveTab('annees')} />`. Préserve 100% du workflow 5 étapes + sync route + overrides + history.
+   - Badge « Action requise » sur le TabsTrigger « Clôture » : petit point `!` rouge (`bg-destructive text-destructive-foreground`) si `anneeCourante.dateFin < now()`. Calculé via 2 useQuery TanStack (`['annees-academiques', etabId]` + `['annee-courante', etabId]`), clés partagées avec AnneesAcademiquesSection → 0 refetch au switch d'onglet.
+   - etabId récupéré via `useAuthStore()` → `user?.etablissementId ?? null` (même pattern que cloture-annee-page.tsx ligne 749). Cohérent avec l'ASSISTANCE-MODE-FRONTEND (ADMIN en assistance = RESPONSABLE effectif).
+   - Comments SECT-ANNEE-MERGE-1 partout pour tracer la raison d'être du wrapper + l'arbitrage « polling ne reprend pas au remontage » (accepté par spec).
+
+2. frontend/src/components/responsable/cloture-annee-page.tsx (MODIFIED) :
+   - Signature : `export function ClotureAnneePage({ onSwitchToAnnees }: { onSwitchToAnnees?: () => void } = {})`. Default `= {}` pour backward compat (montage sans props par PAGE_COMPONENTS registry → fallback router.push).
+   - 2 raccourcis `router.push('/programme-academique')` (lignes ~1316 et ~1368) remplacés par `if (onSwitchToAnnees) { onSwitchToAnnees() } else { router.push('/programme-academique') }`. Le fallback router.push est conservé pour les tests E2E / montage standalone.
+   - Title attributes : `dans Programme académique` → `dans l'onglet Années` (2 occurrences : bouton « Créer l'année suivante » + texte du empty state « Créez-en une dans l'onglet Années »).
+   - router import conservé (utilisé comme fallback).
+
+3. frontend/src/components/responsable/programme-academique-page.tsx (MODIFIED) :
+   - Retrait du bloc `<AnneesAcademiquesSection etablissementId={etabId} />` (lignes 934-938). « Simple retrait sans lien » per spec — l'utilisateur accède désormais aux années via /annee-academique, pas via /programme-academique.
+   - Retrait de l'import `import { AnneesAcademiquesSection } from './annees-academiques-section'` (ligne 73) pour éviter l'erreur lint `unused-imports` (la section n'est plus référencée). Comment SECT-ANNEE-MERGE-1 laissé à la place pour expliquer la migration.
+   - `etabId` toujours utilisé par les 3 queries (filieres/ues/affectations) → pas de variable unused.
+
+4. frontend/src/lib/routes.ts (MODIFIED) :
+   - `PageId` : `'cloture-annee'` retiré, `'annee-academique'` ajouté.
+   - `PAGE_ROUTES` : `'cloture-annee': '/cloture-annee'` retiré, `'annee-academique': '/annee-academique'` ajouté.
+   - `PAGE_LABELS` : `'cloture-annee'` retiré, `'annee-academique': 'Année académique'` ajouté.
+   - `PAGE_DESCRIPTIONS` : `'cloture-annee'` retiré, `'annee-academique': "Gérer les années académiques et la clôture de fin d'année"` ajouté.
+   - `PAGE_ALLOWED_ROLES` : `'cloture-annee': ['RESPONSABLE', 'ADMIN']` remplacé par `'annee-academique': ['RESPONSABLE', 'ADMIN']` (mêmes rôles — commentaire SECT-PROMOTION-FRONTEND-1 conservé et adapté).
+   - `NAV_CATEGORIES['RESPONSABLE']` → catégorie « Organisation Académique » : `{ id: 'cloture-annee', label: 'Clôture de l\\'année', icon: 'CalendarClock' }` remplacé par `{ id: 'annee-academique', label: 'Année académique', icon: 'CalendarClock' }`. Icône CalendarClock conservée (déjà mappée dans l'ICON_MAP de sidebar.tsx + command-palette.tsx — pas besoin d'ajouter CalendarDays à l'ICON_MAP, même si on l'utilise dans le TabsTrigger du wrapper car c'est un import direct lucide-react, pas un lookup string→icon).
+
+5. frontend/src/components/layout/page-content.tsx (MODIFIED) :
+   - Import : `ClotureAnneePage` remplacé par `AnneeAcademiquePage` (avec commentaire SECT-ANNEE-MERGE-1 expliquant que ClotureAnneePage reste montée en interne par le wrapper).
+   - `PAGE_COMPONENTS` : `'cloture-annee': ClotureAnneePage` remplacé par `'annee-academique': AnneeAcademiquePage`.
+
+6. sidebar.tsx + command-palette.tsx : AUCUNE modification nécessaire. L'icône CalendarClock est déjà mappée dans les 2 ICON_MAPs (sidebar.tsx ligne 37/97 + command-palette.tsx ligne 9/30). Le nouvel item nav utilise `icon: 'CalendarClock'` → résolution existante, 0 delta. (CalendarDays est utilisé dans le TabsTrigger du wrapper via import direct lucide-react — pas de lookup ICON_MAP concerné.)
+
+Stage Summary:
+- 1 fichier créé (annee-academique-page.tsx, ~200 lignes), 5 fichiers modifiés (routes.ts, page-content.tsx, programme-academique-page.tsx, cloture-annee-page.tsx, [sidebar.tsx + command-palette.tsx non modifiés]).
+- Backend : 0 modification. Tous les endpoints REST sont inchangés (annees-academiques CRUD + annee-courante GET + cloture-annee preview/run-sync/status/batches). Les clés TanStack Query sont inchangées → cache partagé entre l'ancien et le nouveau montage.
+- UX : 1 entrée sidebar « Année académique » (au lieu de 2 : « Programme académique » + « Clôture de l'année »). « Programme académique » garde sa propre entrée (BookMarked). L'utilisateur accède aux années via /annee-academique (onglet « Années ») et à la clôture via le même URL (onglet « Clôture »).
+- Fonctionnalités préservées :
+  * AnneesAcademiquesSection : CRUD + counts (inscriptions/épreuves) + filtre période (Toutes/Passées/En cours/À venir) + toggle inactives + Reactivate + hard-delete safe + SetCurrent + suggestions création.
+  * ClotureAnneePage : workflow 5 étapes (Config → Preview → Confirm → Progress → Bilan) + run-sync route + overrides manuels + history des batches + CSV export + shortcuts « Créer une année » (empty state) et « Créer l'année suivante » (now → switch to Années tab via onSwitchToAnnees).
+- Badge « Action requise » : calculé via `anneeCourante.dateFin < now()`. Affiché uniquement quand l'année courante est terminée — invite le RESPONSABLE à effectuer la clôture. Petit `!` rouge dans le TabsTrigger « Clôture » (h-4 min-w-4 px-1 text-[10px] font-bold). Accessible : title + aria-label.
+
+Déviations du spec (mineures) :
+- Récupération de `etabId` : le spec suggérait `useApi()` ou un store Zustand. En pratique, le pattern existant dans cloture-annee-page.tsx (ligne 749) et programme-academique-page.tsx (ligne 248) est `useAuthStore()` → `user?.etablissementId`. J'ai suivi ce pattern pour rester cohérent (0 nouveau hook, 0 nouveau store). C'est exactement ce que faisait ClotureAnneePage avant la fusion → 0 risque de régression sur l'ASSISTANCE-MODE-FRONTEND.
+- ClotureAnneePage polling au remontage : le spec mentionnait « Le batch async continue en DB ; au retour sur l'onglet, le polling reprend ». En vérité, le polling NE REPREND PAS automatiquement car `batchId` est local state (useState) et est réinitialisé à `null` quand le TabsContent est démonté par Radix Tabs. Vérifié dans cloture-annee-page.tsx : `statusQuery.enabled = !!etabId && !!batchId && step === 4` — or `batchId` reset à null au remontage → pas de polling. C'est cohérent avec le spec qui disait « le state interne est reset, c'est acceptable ». La route `run-sync` étant SYNCHRONE (le worker async est tué par cold start Render free — cf. commentaire ligne 924-926), en pratique l'utilisateur reste sur l'onglet Clôture pendant toute la durée de la clôture (25s max) et le polling n'a lieu que pendant l'étape 4 inline. Donc pas de cas réel où l'utilisateur switch d'onglet en plein milieu d'un batch. Aucune modification à faire.
+- Icône sidebar : j'ai conservé `CalendarClock` pour le nouvel item nav « Année académique » plutôt que `CalendarDays`, car `CalendarClock` est déjà dans l'ICON_MAP (0 delta sur sidebar.tsx + command-palette.tsx) et symbolise bien le cycle annuel + la clôture (horloge sur calendrier). `CalendarDays` est utilisé dans le TabsTrigger « Années » du wrapper via import direct lucide-react (pas de lookup ICON_MAP → pas besoin de l'ajouter à la map).
+
+VÉRIFICATION (mandatory) :
+- cd frontend && npx tsc --noEmit → EXIT 0 (0 erreurs).
+- cd frontend && bun run lint → EXIT 0, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated, déjà documenté dans worklog précédent). Mes modifications : 0 warning, 0 erreur.
+- Aucun commit (orchestrateur gère).
+- Aucun backend modifié.
+- Routes.test.ts ne référence pas `cloture-annee` → pas de test à mettre à jour.
+
+Prêt pour test E2E :
+1. RESPONSABLE ouvre /annee-academique → 2 onglets « Années » et « Clôture » (CalendarDays / CalendarClock). L'onglet « Années » est actif par défaut.
+2. Onglet « Années » : liste des années avec cards, filtre période, toggle inactives, bouton « Créer », « Définir comme courante », etc. Tout le CRUD fonctionne.
+3. Si l'année courante a `dateFin < now()` → badge `!` rouge sur le TabsTrigger « Clôture ». Sinon, pas de badge.
+4. Onglet « Clôture » : workflow 5 étapes. Step 1 → si aucune année active, bouton « Créer une année » dans l'empty state du Select. Cliquer → bascule vers onglet « Années » (PAS de navigation /programme-academique).
+5. Step 1 → si au moins une année active, lien « Créer l'année suivante (20XX-20XX) » à droite du Label « Année cible ». Cliquer → bascule vers onglet « Années ».
+6. Sidebar RESPONSABLE → catégorie « Organisation Académique » : « Filières », « Programme académique », « Année académique » (CalendarClock), « Affectations ». Plus d'entrée « Clôture de l'année ».
+7. /programme-academique → la section Années académiques n'y est plus (uniquement Distribution par niveau + Matrice Filière × Niveau).
+8. Command palette (⌘K) → « Année académique » apparaît (et plus « Clôture de l'année »).
+9. ADMIN en mode assistance (user.etablissementId non null) → voit /annee-academique. ADMIN global (etablissementId null) → bloqué par PAGE_ALLOWED_ROLES + garde interne ClotureAnneePage.
+
