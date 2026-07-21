@@ -76,10 +76,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  StatCard,
   GlassModal,
   PulseSkeleton,
-  StatCardSkeletonGrid,
 } from '@/components/ds'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -464,12 +462,16 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     !!hardDeleteDeps && (hardDeleteDeps.canHardDelete || hardDeleteAcknowledged)
 
   // ─── Loading ───
-  // S2-SAVANE-ANNEES-REFONTE-1 : header + KPI skeleton grid + cards skeleton.
+  // S2-KPI-HIERARCHY-FIX-1 : header + KPI strip skeleton + cards skeleton.
   if (anneesQuery.isLoading) {
     return (
       <div className="space-y-6">
         <SectionHeaderSkeleton />
-        <StatCardSkeletonGrid count={3} />
+        <div className="flex flex-wrap gap-3">
+          {[0, 1, 2].map((i) => (
+            <PulseSkeleton key={i} className="h-16 flex-1 min-w-[140px]" />
+          ))}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <PulseSkeleton key={i} variant="card" className="h-44" />
@@ -538,41 +540,80 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       />
 
       {/* ════════════════════════════════════════════════════════════════
-          KPI row — S2-SAVANE-ANNEES-REFONTE-1
-          3 StatCards : Total / Courante / Actives. Chargement via skeletons.
+          KPI strip — S2-KPI-HIERARCHY-FIX-1
+          Strip compact horizontal de métriques (PAS de cards) pour différencier
+          visuellement des cards d'années opérationnelles ci-dessous.
+          Avant : 3 StatCard avec ds-kente-top (identiques aux year cards →
+          confusion hiérarchique). Maintenant : strip inline léger, fond teinté,
+          sans kente-top, format "métrique" (icône + grand chiffre + label).
           ════════════════════════════════════════════════════════════════ */}
       {anneesCouranteLoading(anneeCouranteQuery) ? (
-        <StatCardSkeletonGrid count={3} />
+        <div className="flex flex-wrap gap-3">
+          {[0, 1, 2].map((i) => (
+            <PulseSkeleton key={i} className="h-16 flex-1 min-w-[140px]" />
+          ))}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard
-            label="Total années"
-            value={totalAnnees}
-            icon={CalendarDays}
-            accent="primary"
-            hint="Toutes années confondues (actives + inactives)"
-            index={0}
-          />
-          <StatCard
-            label="Année courante"
-            value={anneeCouranteLibelle ?? 'Aucune'}
-            icon={Star}
-            accent="gold"
-            hint={
-              anneeCouranteLibelle
-                ? 'Année active pour cet établissement'
-                : 'Aucune année définie comme courante'
-            }
-            index={1}
-          />
-          <StatCard
-            label="Années actives"
-            value={anneesActivesCount}
-            icon={CircleCheck}
-            accent="success"
-            hint={`${totalAnnees - anneesActivesCount} désactivée(s)`}
-            index={2}
-          />
+        <div className="flex flex-wrap gap-3">
+          {/* Métrique 1 : Total années */}
+          <div
+            className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 flex-1 min-w-[160px]"
+            role="status"
+            aria-label="Total années académiques"
+          >
+            <div className="h-9 w-9 shrink-0 rounded-md bg-primary/15 text-primary-text flex items-center justify-center">
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
+                {totalAnnees}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                Total années
+              </p>
+            </div>
+          </div>
+
+          {/* Métrique 2 : Année courante */}
+          <div
+            className="flex items-center gap-3 rounded-lg border border-gold/30 bg-gold/5 px-4 py-3 flex-1 min-w-[160px]"
+            role="status"
+            aria-label="Année courante"
+          >
+            <div className="h-9 w-9 shrink-0 rounded-md bg-gold/15 text-gold flex items-center justify-center">
+              <Star className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-bold leading-none text-foreground truncate" title={anneeCouranteLibelle ?? 'Aucune'}>
+                {anneeCouranteLibelle ?? 'Aucune'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                Année courante
+              </p>
+            </div>
+          </div>
+
+          {/* Métrique 3 : Années actives */}
+          <div
+            className="flex items-center gap-3 rounded-lg border border-success/25 bg-success/5 px-4 py-3 flex-1 min-w-[160px]"
+            role="status"
+            aria-label="Années actives"
+          >
+            <div className="h-9 w-9 shrink-0 rounded-md bg-success/15 text-success-text flex items-center justify-center">
+              <CircleCheck className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
+                {anneesActivesCount}
+                <span className="text-sm font-normal text-muted-foreground ml-1">
+                  / {totalAnnees}
+                </span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                Années actives
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
