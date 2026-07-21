@@ -255,6 +255,54 @@ async function flushSubmissionOutbox() {
 
     const failed = results.filter((r) => r.status === 'rejected')
     if (failed.length > 0) {
+      // SECT-PWA-AUDIT-1 P2-9 : incrémenter le compteur de tentatives
+      // pour chaque item échoué. Après 3 tentatives, notifier l'utilisateur
+      // que sa soumission est en attente (échec persistant).
+      const db3 = await openOutboxDB()
+      const itemsRemaining = await db3.transaction('outbox', 'readonly').objectStore('outbox').getAll()
+      db3.close()
+
+      const failedItems = itemsRemaining.filter((_, i) => results[i]?.status === 'rejected')
+      let shouldNotifyFailure = false
+
+      for (const item of failedItems) {
+        // Incrémenter attempts (ou initialiser à 1 si absent)
+        const attempts = (item.attempts || 0) + 1
+        const db4 = await openOutboxDB()
+        await db4.transaction('outbox', 'readwrite').objectStore('outbox').put({
+          ...item,
+          attempts,
+          lastAttemptAt: Date.now(),
+        })
+        db4.close()
+
+        // Après 3 tentatives → notifier l'utilisateur
+        if (attempts >= 3) {
+          shouldNotifyFailure = true
+        }
+      }
+
+      if (shouldNotifyFailure) {
+        // Notifier le client qu'une soumission échoue de façon persistante
+        const clients = await self.clients.matchAll({ includeUncontrolled: true })
+        clients.forEach((c) => c.postMessage({
+          type: 'SUBMISSION_FAILED',
+          count: failedItems.length,
+          message: `${failedItems.length} soumission(s) en attente — vérifiez votre connexion ou réessayez plus tard.`,
+        }))
+
+        // Afficher aussi une notification push locale (visible même si
+        // l'app n'est pas ouverte)
+        self.registration.showNotification('SECT — Soumission en attente', {
+          body: `${failedItems.length} soumission(s) n'ont pas pu être envoyées. Vérifiez votre connexion et réessayez.`,
+          icon: '/favicon.png',
+          badge: '/favicon-32x32.png',
+          tag: 'submission-failed',
+          requireInteraction: true,
+          data: { url: '/mes-epreuves' },
+        })
+      }
+
       // Retry : re-enregistre le sync pour les échecs restants
       const reg = await self.registration.sync.register('submit-exam')
       return reg
