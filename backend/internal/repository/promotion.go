@@ -221,14 +221,13 @@ func (r *PromotionRepository) UpdateBatchStatut(ctx context.Context, batchID str
 	}
 
 	err := db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
-		// On construit la clause SET dynamiquement pour ne mettre à jour
-		// errorMessage que si fourni (sinon on garde l'ancien).
-		var errSQL string
-		if errorMessage != nil {
-			errSQL = `, "errorMessage" = $11`
-		}
-
-		query := fmt.Sprintf(`
+		// SECT-CLOTURE-E2E-VERIFY-1 (fix indexation) : on inclut TOUJOURS
+		// "errorMessage" = $11 dans la clause SET (avec COALESCE pour préserver
+		// l'ancienne valeur si errorMessage est nil). L'ancienne version sautait
+		// $11 quand errorMessage était nil, mais gardait $12 pour termineAt →
+		// mismatch d'index ($12 référencé mais seulement 10 args fournis) →
+		// erreur silencieuse → le batch restait RUNNING.
+		query := `
                         UPDATE "PromotionBatch" SET
                                 "statut" = $2,
                                 "totalEtudiants" = $3,
@@ -239,9 +238,15 @@ func (r *PromotionRepository) UpdateBatchStatut(ctx context.Context, batchID str
                                 "erreurCount" = $8,
                                 "progression" = $9,
                                 "details" = COALESCE($10, "details"),
+                                "errorMessage" = COALESCE($11, "errorMessage"),
                                 "termineAt" = COALESCE($12, "termineAt")
-                                %s
-                        WHERE "id" = $1`, errSQL)
+                        WHERE "id" = $1`
+
+		// errorMessageArg : nil si non fourni (COALESCE préserve l'ancienne valeur).
+		var errorMessageArg any
+		if errorMessage != nil {
+			errorMessageArg = *errorMessage
+		}
 
 		args := []any{
 			batchID,
@@ -254,12 +259,9 @@ func (r *PromotionRepository) UpdateBatchStatut(ctx context.Context, batchID str
 			counts.ErreurCount,
 			counts.Progression,
 			detailsArg,
+			errorMessageArg,
+			termineAtArg,
 		}
-		if errorMessage != nil {
-			args = append(args, *errorMessage)
-		}
-		// $12 : termineAtArg (dernier paramètre).
-		args = append(args, termineAtArg)
 
 		ct, err := tx.Exec(ctx, query, args...)
 		if err != nil {
