@@ -18,6 +18,19 @@
  *     aucune année courante n'est définie.
  *   - Toggle « Afficher les années inactives » (cohérent avec /programme-academique).
  *
+ * R2-SAVANE-REFONTE-1 : Refonte DS Savane EdTech — présentation uniquement.
+ *   - Header de section avec `.ds-kente-strip` (bande tricolore vert/terre/or).
+ *   - Cards d'année avec `.ds-kente-top` (bordure supérieure tricolore).
+ *   - Badge « Courante » doré (gold) avec accent `.ds-kente-badge`.
+ *   - AnneeFormDialog refactorisée en `GlassModal` (size md) avec kente strip
+ *     en en-tête + Label shadcn au lieu de `<label>` brut.
+ *   - ConfirmDialog (soft delete) refactorisée en `GlassModal` (size sm).
+ *   - AlertDialog hard-delete conservé (shadcn) avec `.ds-african-divider`
+ *     avant la liste des dépendances + styling destructive.
+ *   - Empty state avec motif `.ds-kente-pattern` + icône CalendarClock + CTA.
+ *   - Loading state via `PulseSkeleton` (4 cards skeleton).
+ * Aucune logique modifiée — queries, mutations, handlers, state inchangés.
+ *
  * Endpoints :
  *   GET    /api/annees-academiques?etablissementId=X
  *   POST   /api/annees-academiques
@@ -37,13 +50,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, Plus, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2,
-  RefreshCw, X, CalendarDays, Star, Power, RotateCcw, AlertTriangle,
+  RefreshCw, X, CalendarClock, Star, Power, RotateCcw, AlertTriangle,
   BookOpen, FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -63,7 +77,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { PulseSkeleton } from '@/components/ds'
+import { GlassModal, PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatDateUTC } from '@/lib/date-utils'
@@ -98,7 +112,7 @@ interface AnneeDependencies {
 }
 
 // Référence légère renvoyée par GET /api/etablissements/{id}/annee-courante.
-// Mirroir du domain.AnneeAcademiqueRef côté backend (migration 000017).
+// Miroir du domain.AnneeAcademiqueRef côté backend (migration 000017).
 interface AnneeAcademiqueRef {
   id: string
   libelle: string
@@ -437,18 +451,22 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     !!hardDeleteDeps && (hardDeleteDeps.canHardDelete || hardDeleteAcknowledged)
 
   // ─── Loading ───
+  // R2-SAVANE-REFONTE-1 : header avec kente strip + 4 skeletons PulseSkeleton.
   if (anneesQuery.isLoading) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display text-base font-semibold flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-primary-text" />
-            Années académiques
-          </h3>
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="ds-kente-strip" aria-hidden="true" />
+          <div className="p-4">
+            <h3 className="font-display text-base font-semibold flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary-text" />
+              Années académiques
+            </h3>
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <PulseSkeleton key={i} variant="card" className="h-28" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <PulseSkeleton key={i} variant="card" className="h-32" />
           ))}
         </div>
       </div>
@@ -459,10 +477,15 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   if (anneesQuery.isError) {
     return (
       <div className="space-y-4">
-        <h3 className="font-display text-base font-semibold flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary-text" />
-          Années académiques
-        </h3>
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="ds-kente-strip" aria-hidden="true" />
+          <div className="p-4">
+            <h3 className="font-display text-base font-semibold flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary-text" />
+              Années académiques
+            </h3>
+          </div>
+        </div>
         <Card className="border-l-4 border-l-destructive">
           <CardContent className="flex flex-col items-center justify-center py-8 text-center">
             <AlertCircle className="h-8 w-8 text-destructive" />
@@ -478,90 +501,97 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-display text-base font-semibold flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary-text" />
-          Années académiques
-          <Badge variant="secondary" className="ml-1 bg-primary/10 text-primary-text">
-            {annees.length}
-          </Badge>
-        </h3>
-        <div className="flex items-center gap-2">
-          {/* SECT-ANNEE-UX-POLISH-1 : filtre par période (Toutes / Passées /
-              En cours / À venir). Côté UI uniquement — le backend renvoie
-              toutes les années, on filtre en mémoire via `computePeriodeStatut`.
-              « En cours » = période entre dateDebut et dateFin (PAS le flag
-              `actif`). N'apparaît que s'il y a au moins 1 année (sinon le
-              header tout entier est remplacé par l'empty state). */}
-          {annees.length > 0 && (
-            <Select
-              value={periodeFilter}
-              onValueChange={(v) => setPeriodeFilter(v as PeriodeFilter)}
-            >
-              <SelectTrigger
-                className="h-8 w-[150px] text-xs"
-                aria-label="Filtrer par période"
+      {/* Header — R2-SAVANE-REFONTE-1 : section header avec kente strip tricolore */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="ds-kente-strip" aria-hidden="true" />
+        <div className="p-4 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-display text-base font-semibold flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-primary-text" />
+            Années académiques
+            <Badge className="bg-primary/10 text-primary-text text-[10px] font-semibold ml-0.5">
+              {annees.length}
+            </Badge>
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* SECT-ANNEE-UX-POLISH-1 : filtre par période (Toutes / Passées /
+                En cours / À venir). Côté UI uniquement — le backend renvoie
+                toutes les années, on filtre en mémoire via `computePeriodeStatut`.
+                « En cours » = période entre dateDebut et dateFin (PAS le flag
+                `actif`). N'apparaît que s'il y a au moins 1 année (sinon le
+                header tout entier est remplacé par l'empty state). */}
+            {annees.length > 0 && (
+              <Select
+                value={periodeFilter}
+                onValueChange={(v) => setPeriodeFilter(v as PeriodeFilter)}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIODE_FILTER_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {/* Toggle « Afficher les années inactives » — cohérent avec
-              /programme-academique. Par défaut masquées pour ne pas polluer
-              la liste avec des années archivées. N'apparaît que s'il existe
-              au moins une année inactive. */}
-          {hasInactive && (
-            <label
-              htmlFor="show-inactive-annees"
-              className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground transition-colors"
-              title="Afficher les années désactivées"
+                <SelectTrigger
+                  className="h-8 w-[150px] text-xs"
+                  aria-label="Filtrer par période"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERIODE_FILTER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {/* Toggle « Afficher les années inactives » — cohérent avec
+                /programme-academique. Par défaut masquées pour ne pas polluer
+                la liste avec des années archivées. N'apparaît que s'il existe
+                au moins une année inactive. */}
+            {hasInactive && (
+              <label
+                htmlFor="show-inactive-annees"
+                className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground transition-colors"
+                title="Afficher les années désactivées"
+              >
+                <Switch
+                  id="show-inactive-annees"
+                  checked={showInactive}
+                  onCheckedChange={setShowInactive}
+                  aria-label="Afficher les années inactives"
+                />
+                <Power className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">Afficher inactives</span>
+              </label>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refresh()}
+              disabled={isRefreshing}
+              className="gap-1.5"
+              aria-label="Actualiser"
             >
-              <Switch
-                id="show-inactive-annees"
-                checked={showInactive}
-                onCheckedChange={setShowInactive}
-                aria-label="Afficher les années inactives"
-              />
-              <Power className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">Afficher inactives</span>
-            </label>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refresh()}
-            disabled={isRefreshing}
-            className="gap-1.5"
-            aria-label="Actualiser"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
-          </Button>
-          <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Nouvelle année</span>
-          </Button>
+              <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
+            </Button>
+            <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Nouvelle année</span>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Empty state */}
+      {/* Empty state — R2-SAVANE-REFONTE-1 : motif kente + icône CalendarClock + CTA */}
       {annees.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Calendar className="h-7 w-7 text-primary-text" />
+        <Card className="border-dashed ds-kente-pattern overflow-hidden">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <CalendarClock className="h-8 w-8 text-primary-text" />
             </div>
-            <p className="mt-3 text-sm font-medium">Aucune année académique</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-4 text-base font-medium text-foreground">Aucune année académique</p>
+            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
               Créez votre première année académique pour organiser vos épreuves et affectations.
             </p>
+            <Button size="sm" className="mt-4 gap-1.5" onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4" />
+              Créer une année
+            </Button>
           </CardContent>
         </Card>
       ) : visibleAnnees.length === 0 ? (
@@ -571,12 +601,12 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
         //   (b) un filtre par période (Passées/En cours/À venir) ne
         //       correspond à aucune année → on propose de réinitialiser le
         //       filtre. On distingue les 2 cas pour guider l'utilisateur.
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+        <Card className="border-dashed ds-kente-pattern overflow-hidden">
+          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
             {periodeFilter !== 'all' ? (
               <>
-                <Calendar className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-                <p className="mt-2 text-sm text-muted-foreground">
+                <CalendarClock className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-3 text-sm text-muted-foreground">
                   Aucune année ne correspond à la période sélectionnée.
                 </p>
                 <Button
@@ -590,8 +620,8 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
               </>
             ) : (
               <>
-                <Power className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-                <p className="mt-2 text-sm text-muted-foreground">
+                <Power className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-3 text-sm text-muted-foreground">
                   Toutes les années sont désactivées.
                 </p>
                 <Button
@@ -627,39 +657,46 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                 >
                   <Card
                     className={cn(
-                      'h-full ds-kente-top transition-shadow',
+                      'h-full ds-kente-top transition-shadow overflow-hidden',
                       !annee.actif && 'opacity-60',
                       isCourante && 'ds-glow-gold border-success/40'
                     )}
                   >
                     <CardContent className="p-4 space-y-3">
-                      {/* Row 1 : libellé + badge courante */}
+                      {/* Row 1 : libellé (grand, foreground bold) + badges courante/période.
+                          R2-SAVANE-REFONTE-1 : badge Courante doré avec accent kente-badge. */}
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-semibold text-sm truncate min-w-0">
+                        <p className="font-semibold text-base text-foreground truncate min-w-0 flex-1">
                           {annee.libelle}
                         </p>
-                        {isCourante && (
-                          <Badge
-                            role="status"
-                            className="bg-success/15 text-success-text border-success/30 text-[10px] gap-1 shrink-0"
-                          >
-                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                            Courante
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isCourante && (
+                            <Badge
+                              role="status"
+                              className="bg-gold/15 text-gold border-gold/30 text-[10px] gap-1"
+                            >
+                              <span
+                                className="ds-kente-badge h-2.5 w-2.5 rounded-sm"
+                                aria-hidden="true"
+                              />
+                              Courante
+                            </Badge>
+                          )}
+                          <PeriodeBadge statut={periode} />
+                        </div>
                       </div>
 
-                      {/* Row 2 : dates + badge période */}
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs text-muted-foreground min-w-0 truncate">
+                      {/* Row 2 : dates avec icône Calendar (formatDateUTC) */}
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">
                           {formatDateUTC(annee.dateDebut)}
                           {' → '}
                           {formatDateUTC(annee.dateFin)}
-                        </p>
-                        <PeriodeBadge statut={periode} />
+                        </span>
                       </div>
 
-                      {/* Row 2.5 — SECT-ANNEE-COUNTS-1 : stats inscriptions + épreuves.
+                      {/* Row 3 — SECT-ANNEE-COUNTS-1 : stats inscriptions + épreuves.
                           Affiché uniquement si au moins un des 2 counts est > 0
                           (évite le bruit sur une année fraîchement créée sans
                           aucune donnée rattachée). Texte muted + icônes lucide
@@ -688,8 +725,10 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                         </div>
                       )}
 
-                      {/* Row 3 : actions */}
-                      <div className="flex items-center gap-1.5 pt-1">
+                      {/* Row 4 : actions — séparateur subtil + boutons DS variants.
+                          Boutons conservés : Définir courante / Modifier /
+                          Désactiver / Réactiver / Supprimer définitivement. */}
+                      <div className="flex items-center gap-1.5 pt-2 border-t border-border/50">
                         {annee.actif && !isCourante && (
                           <Button
                             variant="default"
@@ -830,7 +869,9 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       {/* SECT-ANNEE-HARDDELETE-SAFE-1 : AlertDialog shadcn avec dépendances
           réelles chargées via GET /{id}/dependencies. Avant, le message disait
           « perdront leur référence » (inexact : Inscription/ValidationUE/
-          PromotionBatch sont CASCADE DELETE → détruites, pas juste déréférencées). */}
+          PromotionBatch sont CASCADE DELETE → détruites, pas juste déréférencées).
+          R2-SAVANE-REFONTE-1 : divider `.ds-african-divider` avant la liste
+          des counts + styling destructive conservé. */}
       <AlertDialog
         open={!!confirmHardDelete}
         onOpenChange={(open) => {
@@ -881,7 +922,9 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                   </div>
                 )}
 
-                {/* Cas 2 : dépendances présentes → avertissement + checkbox */}
+                {/* Cas 2 : dépendances présentes → avertissement + checkbox.
+                    R2-SAVANE-REFONTE-1 : divider `.ds-african-divider` avant
+                    la liste des counts (séparateur visuel tricolore). */}
                 {hardDeleteDeps && hardDeleteDeps.canHardDelete === false && (
                   <div className="space-y-2">
                     <div className="rounded-lg bg-destructive/10 p-3 text-sm border border-destructive/20">
@@ -896,6 +939,8 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                         désactivez l'année (actif=false) au lieu de la supprimer.
                       </p>
                     </div>
+                    {/* R2-SAVANE-REFONTE-1 : séparateur africain tricolore */}
+                    <div className="ds-african-divider my-2" aria-hidden="true" />
                     <div className="rounded-lg bg-warning/10 p-3 text-sm space-y-1 border border-warning/20">
                       <p className="font-display font-medium text-warning">
                         Dépendances trouvées :
@@ -988,6 +1033,8 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
 }
 
 // ─── Form Dialog (créer / modifier) ───
+// R2-SAVANE-REFONTE-1 : refactorisé en GlassModal (size md) avec kente strip
+// en en-tête. Champs avec Label shadcn (accessibilité) + Input + Switch.
 
 function AnneeFormDialog({
   title,
@@ -1048,96 +1095,118 @@ function AnneeFormDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-border p-6 ds-kente-top"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display text-lg font-semibold">{title}</h3>
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0" aria-label="Fermer">
+    <GlassModal
+      open={true}
+      onClose={onClose}
+      size="md"
+      showCloseButton={false}
+    >
+      {/* R2-SAVANE-REFONTE-1 : kente strip + header custom (le GlassModal body
+          a p-5, on bleed avec -mx-5 -mt-5 pour placer la strip tout en haut). */}
+      <div className="-mx-5 -mt-5">
+        <div className="ds-kente-strip rounded-t-xl" aria-hidden="true" />
+        <div className="flex items-center justify-between gap-4 p-5 pb-3 border-b border-border/50">
+          <h2
+            id="annee-form-title"
+            className="font-display text-lg font-bold tracking-tight"
+          >
+            {title}
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Fermer"
+            className="shrink-0 h-9 w-9 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4 mt-4" aria-labelledby="annee-form-title">
+        <div className="space-y-1.5">
+          <Label htmlFor="annee-libelle" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Libellé
+          </Label>
+          <Input
+            id="annee-libelle"
+            value={libelle}
+            onChange={(e) => setLibelle(e.target.value)}
+            placeholder="ex: 2025-2026"
+            autoFocus
+          />
+          {!initial && suggestions && (
+            <p className="text-[11px] text-muted-foreground">
+              Suggestion basée sur la dernière année. Modifiable librement.
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="annee-debut" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Date début
+            </Label>
+            <Input
+              id="annee-debut"
+              type="date"
+              value={dateDebut}
+              onChange={(e) => setDateDebut(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="annee-fin" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Date fin
+            </Label>
+            <Input
+              id="annee-fin"
+              type="date"
+              value={dateFin}
+              onChange={(e) => setDateFin(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* SECT-ANNEE-HARDDELETE-SAFE-1 : toggle « Année active » en mode édition.
+            Permet de réactiver/désactiver une année depuis le formulaire. */}
+        {initial && (
+          <label
+            htmlFor="annee-actif-toggle"
+            className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg border border-border p-3 hover:border-border/80 transition-colors"
+          >
+            <div className="min-w-0">
+              <span className="text-sm font-medium flex items-center gap-1.5">
+                <Power className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                Année active
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Désactivée = masquée par défaut (suppression logique, réversible).
+              </p>
+            </div>
+            <Switch
+              id="annee-actif-toggle"
+              checked={actif}
+              onCheckedChange={setActif}
+              aria-label="Année active"
+            />
+          </label>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" size="sm" disabled={loading} className="gap-1.5">
+            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {initial ? 'Modifier' : 'Créer'}
           </Button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase">Libellé</label>
-            <Input
-              value={libelle}
-              onChange={(e) => setLibelle(e.target.value)}
-              placeholder="ex: 2025-2026"
-              className="mt-1"
-              autoFocus
-            />
-            {!initial && suggestions && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Suggestion basée sur la dernière année. Modifiable librement.
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase">Date début</label>
-              <Input
-                type="date"
-                value={dateDebut}
-                onChange={(e) => setDateDebut(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase">Date fin</label>
-              <Input
-                type="date"
-                value={dateFin}
-                onChange={(e) => setDateFin(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          {/* SECT-ANNEE-HARDDELETE-SAFE-1 : toggle « Année active » en mode édition.
-              Permet de réactiver/désactiver une année depuis le formulaire. */}
-          {initial && (
-            <label
-              htmlFor="annee-actif-toggle"
-              className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg border border-border p-3"
-            >
-              <div className="min-w-0">
-                <span className="text-sm font-medium flex items-center gap-1.5">
-                  <Power className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                  Année active
-                </span>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Désactivée = masquée par défaut (suppression logique, réversible).
-                </p>
-              </div>
-              <Switch
-                id="annee-actif-toggle"
-                checked={actif}
-                onCheckedChange={setActif}
-                aria-label="Année active"
-              />
-            </label>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              Annuler
-            </Button>
-            <Button type="submit" size="sm" disabled={loading} className="gap-1.5">
-              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {initial ? 'Modifier' : 'Créer'}
-            </Button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
+      </form>
+    </GlassModal>
   )
 }
 
 // ─── Confirm Dialog (désactiver) ───
+// R2-SAVANE-REFONTE-1 : refactoré en GlassModal (size sm) avec kente strip.
 
 function ConfirmDialog({
   title,
@@ -1161,32 +1230,34 @@ function ConfirmDialog({
   const iconBg = isDanger ? 'bg-destructive/10' : 'bg-warning/10'
   const iconColor = isDanger ? 'text-destructive' : 'text-warning'
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className={`w-full max-w-sm bg-card rounded-2xl shadow-2xl border p-6 ${isDanger ? 'border-destructive/30' : 'border-warning/30'}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}>
-            <AlertCircle className={`h-5 w-5 ${iconColor}`} aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-display text-base font-semibold">{title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{message}</p>
-          </div>
+    <GlassModal
+      open={true}
+      onClose={onClose}
+      size="sm"
+      showCloseButton={false}
+    >
+      {/* R2-SAVANE-REFONTE-1 : kente strip en haut de la modale */}
+      <div className="-mx-5 -mt-5">
+        <div className="ds-kente-strip rounded-t-xl" aria-hidden="true" />
+      </div>
+      <div className="flex items-start gap-3 mt-2">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}>
+          <AlertCircle className={`h-5 w-5 ${iconColor}`} aria-hidden="true" />
         </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={loading} className="gap-1.5">
-            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {confirmLabel}
-          </Button>
+        <div className="min-w-0">
+          <h3 className="font-display text-base font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{message}</p>
         </div>
-      </motion.div>
-    </div>
+      </div>
+      <div className="flex justify-end gap-2 mt-5">
+        <Button variant="outline" size="sm" onClick={onClose}>
+          Annuler
+        </Button>
+        <Button variant="destructive" size="sm" onClick={onConfirm} disabled={loading} className="gap-1.5">
+          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {confirmLabel}
+        </Button>
+      </div>
+    </GlassModal>
   )
 }
