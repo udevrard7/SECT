@@ -18263,3 +18263,22 @@ Stage Summary:
 - Frontend : onglet "Règles de passage" dans Paramètres (7e onglet) + section "Historique des années" dans la fiche étudiant.
 - 0 erreur console sur les 2 flows.
 - La feature de clôture d'année est maintenant COMPLÈTE : clôture sync + historique + config règles.
+
+---
+Task ID: SECT-ANNEE-DATE-FIX-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Fix bug P0 "format ISO invalide" sur la création d'année académique + ajout validation Update.
+
+Work Log:
+- Reproduction Agent Browser : /programme-academique → "Nouvelle année" → Créer → toast "format ISO invalide".
+- Diagnostic : double parsing incohérent. Usecase Create (ligne 443) parse avec time.Parse("2006-01-02", ...) → accepte YYYY-MM-DD. Repository Create (ligne 859) re-validait avec time.Parse(time.RFC3339, ...) → exige 2006-01-02T15:04:05Z07:00 → échoue sur YYYY-MM-DD du frontend (<input type="date">).
+- Fix repository Create : time.RFC3339 → "2006-01-02" + truncation [:min(10, len(...))]. Cohérent avec le usecase. Accepte YYYY-MM-DD ET RFC3339.
+- Fix usecase Update : ajout validation dateDebut < dateFin (avant : aucune validation sur Update). Charge l'année existante pour comparer avec les valeurs non modifiées.
+- go build + go vet OK.
+- Commit c59e807 + push GitHub.
+- Vérification Agent Browser post-déploiement : création 2026-2027 → toast "Année académique créée" ✓. Liste passe de 3 à 4 années ✓.
+
+Stage Summary:
+- 2 fichiers modifiés : repository/academique.go (fix Create parsing), usecase/academique.go (ajout validation Update).
+- Bug P0 CRITIQUE résolu : la création d'année académique marche maintenant en production (avant, impossible depuis le début du module).
+- Validation Update ajoutée : empêche dateDebut >= dateFin sur modification.
