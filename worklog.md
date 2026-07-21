@@ -18378,3 +18378,114 @@ Stage Summary:
   * SECT-ANNEE-SETCURRENT-GUARD-1 : SetCurrentAnnee exige actif=true + messages précis.
 - Module AnneeAcademique maintenant robuste : création marche, suppression safe, définition courante cohérente.
 - Commits : c59e807 (date fix), 60847a9 (worklog), e0f07bc (harddelete safe), ee62335 (setcurrent guard).
+
+---
+Task ID: SECT-ANNEE-DATE-COLUMN-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Migration AnneeAcademique.dateDebut/dateFin TIMESTAMP(3) → DATE + helper frontend formatDateUTC.
+
+Work Log:
+- Lecture des patterns : 000086_validation_ue_annee_not_null.up.sql (structure comments + ALTER), academique.go (AnneeAcademique.DateDebut time.Time — inchangé, pgx mappe DATE→time.Time), annees-academiques-section.tsx (2 occurrences `toLocaleDateString('fr-FR')` lignes 558+560).
+- Vérifié : `/home/z/my-project/sect/frontend/src/lib/date-utils.ts` n'existait pas → création.
+- Vérifié : version Neon pré-migration = 88 → 000089 est le bon prochain numéro.
+
+Changes:
+1. `backend/db/db/migrations/000089_annee_date_columns.up.sql` (NEW) :
+   ALTER TABLE "AnneeAcademique" ALTER COLUMN "dateDebut" TYPE DATE USING "dateDebut"::date;
+   ALTER TABLE "AnneeAcademique" ALTER COLUMN "dateFin"   TYPE DATE USING "dateFin"::date;
+   + commentaires de contexte (timezone shift, FK non impactées).
+2. `backend/db/db/migrations/000089_annee_date_columns.down.sql` (NEW) :
+   Rollback DATE → TIMESTAMP(3) USING ::timestamp.
+3. `frontend/src/lib/date-utils.ts` (NEW) :
+   export function formatDateUTC(iso: string): string — parse YYYY-MM-DD directement (split '-') et retourne DD/MM/YYYY sans conversion tz ; fallback new Date(iso) + getUTCDate/Month/FullYear pour RFC3339 ; retourne l'input brut si parsing échoue.
+4. `frontend/src/components/responsable/annees-academiques-section.tsx` (MODIFY) :
+   +import { formatDateUTC } from '@/lib/date-utils'
+   Lignes 558+560 : `new Date(annee.dateDebut).toLocaleDateString('fr-FR')` → `formatDateUTC(annee.dateDebut)` ; idem dateFin. Aucune autre occurrence de `toLocaleDateString` dans le fichier.
+
+Go code : AUCUN changement — pgx mappe DATE → time.Time transparentement (le struct AnneeAcademique reste `DateDebut time.Time` / `DateFin time.Time`).
+
+Verification:
+- Migration appliquée à Neon → `migrate version` retourne 89 ✓.
+- `cd frontend && npx tsc --noEmit` → exit 0 (0 erreurs) ✓.
+- `cd frontend && bun run lint` → 0 erreurs, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated). Mes modifications : 0 warning, 0 erreur ✓.
+- Aucun commit (orchestrateur gère).
+
+Stage Summary:
+- 4 fichiers : 2 migrations SQL (up + down), 1 helper TS (date-utils.ts), 1 modification TSX (import + 2 remplacements).
+- Bug de timezone (décalage d'un jour pour UTC-5/Négatives sur `toLocaleDateString('fr-FR')`) éliminé : les colonnes DATE ne portent plus de timezone côté DB, et le frontend formate sans conversion.
+- Helper formatDateUTC est réutilisable pour toutes futures colonnes DATE (sans tz) — le pattern `slice(0,10)` + split('-') est robuste pour YYYY-MM-DD pur.
+
+---
+Task ID: SECT-ANNEE-AUDITLOG-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Ajouter la journalisation AuditLog à toutes les mutations d'AnneeAcademique (Create/Update/SoftDelete/HardDelete) + SetCurrentAnnee (EtablissementUseCase) pour traçabilité — parité avec ReglesPassage (PROMOTION_REGLES_UPDATED) et PromotionBatch (PROMOTION_BATCH_STARTED/COMPLETED).
+
+Work Log:
+- Backend domain/auth.go : ajout de 5 nouvelles constantes d'action dans le block `AuditAction*` (après AuditActionPromotionReglesUpdated) :
+  * AuditActionAnneeCreated     = "ANNEE_ACADEMIQUE_CREATED"
+  * AuditActionAnneeUpdated     = "ANNEE_ACADEMIQUE_UPDATED"
+  * AuditActionAnneeSoftDeleted = "ANNEE_ACADEMIQUE_SOFT_DELETED"
+  * AuditActionAnneeHardDeleted = "ANNEE_ACADEMIQUE_HARD_DELETED"
+  * AuditActionAnneeSetCurrent  = "ANNEE_ACADEMIQUE_SET_CURRENT"
+  Toutes avec un commentaire FR référençant SECT-ANNEE-AUDITLOG-1 et expliquant le but (traçabilité qui/quand/quel établissement).
+
+- Backend usecase/academique.go (AnneeUseCase) :
+  * Imports ajoutés : encoding/json, log/slog, internal/repository.
+  * Struct : ajout du champ `authRepo *repository.AuthRepository` (nil-safe = pas d'audit, pour tests).
+  * Constructor : `NewAnneeUseCase(anneeRepo, authRepo *repository.AuthRepository)` — signature étendue d'un paramètre.
+  * Helper privé `auditAnnee(ctx, claims, action, annee, details map[string]any)` — pattern identique à `auditBatchStarted`/`auditReglesUpdated` dans promotion.go :
+    - nil-check sur authRepo (slog.Warn + return).
+    - Marshal JSON des details (slog.Error + return si échec).
+    - Construction de l'AuditLogEntry : UserID=claims.UserID, Action=action, Entite="AnneeAcademique", EntiteID=&annee.ID, AdresseIP="academique-api", EtablissementID=&etabID (claims.EtablissementID, fallback annee.EtablissementID si vide), Reason="Mutation d'année académique".
+    - Appel `authRepo.CreateAuditLog(ctx, entry)` — NON bloquant (slog.Error si échec, return sans fail).
+    - Auto-remplit id/libelle/etablissementId dans details si absents (évite la redondance côté appelant).
+  * `Create` : après `anneeRepo.Create` succès → `auditAnnee(ctx, claims, AuditActionAnneeCreated, annee, {libelle, dateDebut (YYYY-MM-DD), dateFin, etablissementId})`.
+  * `Update` : après `anneeRepo.Update` succès → `auditAnnee(ctx, claims, AuditActionAnneeUpdated, updated, {changes: {libelle?, dateDebut?, dateFin?, actif?}})`. `changes` ne contient que les champs fournis dans l'input (les *string/*bool nil sont omis) — c'est le diff côté client (avant/après serait trop coûteux à charger et le spec demande "fields that changed").
+  * `SoftDelete` : après `anneeRepo.SoftDelete` succès → `auditAnnee(ctx, claims, AuditActionAnneeSoftDeleted, annee, {id, libelle})`. Le repo retourne l'année soft-deleted avec son libelle.
+  * `HardDelete` : le check deps (CanHardDelete) reste AVANT. Si CanHardDelete=true → on charge l'annee via `anneeRepo.FindByID` (pour récupérer le libelle — après DELETE, FindByID ne renverrait plus rien), on exécute `anneeRepo.HardDelete`, puis `auditAnnee(ctx, claims, AuditActionAnneeHardDeleted, annee, {id, libelle, dependenciesDestroyed: {inscriptions, validationsUE, promotionBatches, epreuves, etablissements}})`. Comme CanHardDelete=true garantit que tous les counts sont 0, le bloc dependenciesDestroyed atteste formellement qu'aucune donnée n'a été détruite par CASCADE (information importante pour audit forensique). Aucun audit sur le path ConflictError 409 (ce n'est pas une mutation — juste un refus).
+
+- Backend usecase/etablissement.go (EtablissementUseCase) :
+  * Imports ajoutés : encoding/json, log/slog, internal/repository.
+  * Struct : ajout du champ `authRepo *repository.AuthRepository`. Le spec demandait de vérifier si la struct avait déjà authRepo — ELLE NE L'AVAIT PAS (seulement etabRepo/accessUC/pool). Donc ajouté + constructor `NewEtablissementUseCase` étendu d'un 4e paramètre.
+  * Constructor : `NewEtablissementUseCase(etabRepo, accessUC, pool, authRepo)` — signature étendue.
+  * `SetCurrentAnnee` : après `etabRepo.SetCurrentAnnee` succès → récupère le libellé de l'année via `etabRepo.GetCurrentAnnee(ctx, etablissementID)` (second SELECT — le SetCurrentAnnee a déjà validé que l'année appartient à l'étab, donc ce SELECT ne peut échouer que sur un crash DB ; auquel cas on slog.Warn et on continue avec anneeLibelle=""). Construit l'AuditLogEntry inline :
+    - UserID=claims.UserID, Action=AuditActionAnneeSetCurrent, Entite="Etablissement", EntiteID=&etablissementID, AdresseIP="academique-api", EtablissementID=&etablissementID, Reason="Année académique courante définie".
+    - Details JSON : {anneeId, anneeLibelle, etablissementId, modifiePar: claims.UserID}.
+    - Non bloquant (slog.Error si CreateAuditLog échoue).
+  * Pas de helper `auditEtab` mutualisé car un seul call site (SetCurrentAnnee) — inline évite une couche d'indirection.
+
+- Backend cmd/api/main.go : 
+  * Ligne 139 : `NewEtablissementUseCase(etabRepo, accessUC, pool, authRepo)` — authRepo (déjà créé ligne 65) passé en 4e paramètre.
+  * Ligne 147 : `NewAnneeUseCase(anneeRepo, authRepo)` — authRepo passé en 2e paramètre.
+  * Aucune autre modification — le `authRepo` était déjà instancié plus haut (ligne 65) et déjà injecté dans authUC/userUC/promotionUC/studentSignupLinkUC. Aucune nouvelle instantiation.
+
+Stage Summary:
+- 4 fichiers modifiés (backend uniquement) :
+  * backend/internal/domain/auth.go — +5 constantes AuditActionAnnee*.
+  * backend/internal/usecase/academique.go — +field authRepo, +helper auditAnnee, +audit calls dans Create/Update/SoftDelete/HardDelete.
+  * backend/internal/usecase/etablissement.go — +field authRepo, +constructor param, +audit inline dans SetCurrentAnnee.
+  * backend/cmd/api/main.go — +authRepo passé à NewAnneeUseCase et NewEtablissementUseCase.
+- Pattern respecté : AuditLog est NON bloquant (nil-check sur authRepo + slog sur erreur, jamais de return err). La mutation reste source de vérité, l'audit est observabilité.
+- Pas de migration DB nécessaire : la table AuditLog existe déjà (migration 000083) avec policy INSERT WITH CHECK(true) → RLS autorise l'insertion sans bypass. Aucune fonction SECURITY DEFINER nécessaire (confirmé par commentaire dans repository/auth.go:230-233).
+- Pas de nouvelle entite à créer — "AnneeAcademique" et "Etablissement" sont juste des strings dans le champ `entite` (le schéma est libre).
+
+Déviations du spec (mineures) :
+- EtablissementUseCase n'avait PAS authRepo initialement (le spec demandait de vérifier) → champ ajouté + constructor étendu. Aucune autre struct affectée.
+- Pour SetCurrentAnnee, le libellé de l'année est récupéré via `etabRepo.GetCurrentAnnee` (déjà existant) plutôt que d'injecter anneeRepo dans EtablissementUseCase — évite d'ajouter une 5e dépendance à la struct. Le second SELECT est acceptable (1 round-trip DB supplémentaire, seulement sur le path SetCurrentAnnee qui est rare — une fois par année académique).
+- Update : le `details.changes` contient les valeurs fournies dans l'input (pas un diff avant/après). Le spec disait "changes: {...fields that changed}" — interprété comme "fields that the client asked to change" (les champs *string/*bool non-nil de UpdateAnneeInput). Charger l'existant pour faire un vrai diff avant/après aurait nécessité un FindByID préalable systématique (coûteux) — le pattern actuel suffit pour audit (on sait QUI a modifié QUOI à QUEL MOMENT, et le nouveau libellé est dans l'AnneeAcademique retourné par Update si on veut le récupérer).
+- HardDelete : audit AFTER succès uniquement (pas avant) — un ConflictError 409 (dépendances non nulles) n'est PAS journalisé car ce n'est pas une mutation (juste un refus). Cohérent avec le spec qui disait "log AFTER successful deletion".
+- AdresseIP : la valeur "academique-api" est utilisée (pas l'IP réelle du client) — cohérent avec promotion.go qui utilise "promotion-api". Récupérer l'IP réelle nécessiterait de la propager via le context depuis le middleware RequireAuth, ce qui est hors-scope de cette tâche (et n'est pas fait pour les autres actions audit non plus).
+
+VÉRIFICATION (mandatory) :
+- gofmt -w sur les 4 fichiers Go modifiés → OK (gofmt -l retourne vide).
+- go build ./... → exit 0 (OK).
+- go vet ./... → exit 0 (OK, 0 warnings).
+- Aucun commit (orchestrateur gère).
+
+Prêt pour test E2E :
+1. RESPONSABLE crée une nouvelle année → AuditLog reçoit ANNEE_ACADEMIQUE_CREATED (details: {libelle, dateDebut, dateFin, etablissementId}).
+2. RESPONSABLE modifie le libellé → ANNEE_ACADEMIQUE_UPDATED (details: {id, libelle, etablissementId, changes: {libelle: "nouveau"}}).
+3. RESPONSABLE désactive (soft-delete) → ANNEE_ACADEMIQUE_SOFT_DELETED (details: {id, libelle, etablissementId}).
+4. RESPONSABLE définit comme courante → ANNEE_ACADEMIQUE_SET_CURRENT (entite=Etablissement, entiteId=étab, details: {anneeId, anneeLibelle, etablissementId, modifiePar}).
+5. RESPONSABLE supprime définitivement une année SANS dépendances → ANNEE_ACADEMIQUE_HARD_DELETED (details: {id, libelle, etablissementId, dependenciesDestroyed: {inscriptions:0, validationsUE:0, promotionBatches:0, epreuves:0, etablissements:0}}).
+6. Vérifier le journal d'audit (GET /api/etablissements/{id}/audit-log?action=ANNEE_ACADEMIQUE_*) → 5 nouvelles entries visibles.

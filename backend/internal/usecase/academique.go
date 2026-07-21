@@ -3,11 +3,14 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/repository"
 )
 
 // ============================================================
@@ -403,13 +406,72 @@ func (uc *EnseignantFiliereUseCase) Delete(ctx context.Context, claims db.Sessio
 // ============================================================
 
 // AnneeUseCase implémente les cas d'usage des années académiques.
+//
+// SECT-ANNEE-AUDITLOG-1 : authRepo ajouté pour journaliser chaque mutation
+// (Create/Update/SoftDelete/HardDelete) dans AuditLog. Optionnel (nil = pas
+// d'audit, pour les tests unitaires qui ne veulent pas de DB AuditLog).
 type AnneeUseCase struct {
 	anneeRepo domain.AnneeAcademiqueRepository
+	authRepo  *repository.AuthRepository
 }
 
 // NewAnneeUseCase crée un nouveau usecase.
-func NewAnneeUseCase(anneeRepo domain.AnneeAcademiqueRepository) *AnneeUseCase {
-	return &AnneeUseCase{anneeRepo: anneeRepo}
+// authRepo est optionnel (nil = pas de journalisation AuditLog).
+func NewAnneeUseCase(anneeRepo domain.AnneeAcademiqueRepository, authRepo *repository.AuthRepository) *AnneeUseCase {
+	return &AnneeUseCase{anneeRepo: anneeRepo, authRepo: authRepo}
+}
+
+// auditAnnee journalise une mutation d'année académique dans AuditLog.
+// Non bloquant : si authRepo est nil OU si CreateAuditLog échoue, on log une
+// warning/error mais on ne fait PAS échouer la mutation (la mutation est la
+// source de vérité ; l'audit est observabilité).
+//
+// SECT-ANNEE-AUDITLOG-1.
+//
+// Param details : map[string]any — sera marshalée en JSON. Les champs id,
+// libelle, etablissementId sont auto-ajoutés depuis l'annee s'ils ne sont pas
+// déjà présents (pour éviter la redondance côté appelant).
+func (uc *AnneeUseCase) auditAnnee(ctx context.Context, claims db.SessionClaims, action string, annee *domain.AnneeAcademique, details map[string]any) {
+	if uc.authRepo == nil {
+		slog.Warn("AnneeUseCase: authRepo nil, audit annee skip", "action", action, "anneeId", annee.ID)
+		return
+	}
+	if details == nil {
+		details = map[string]any{}
+	}
+	if _, ok := details["id"]; !ok {
+		details["id"] = annee.ID
+	}
+	if _, ok := details["libelle"]; !ok {
+		details["libelle"] = annee.Libelle
+	}
+	if _, ok := details["etablissementId"]; !ok && annee.EtablissementID != "" {
+		details["etablissementId"] = annee.EtablissementID
+	}
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		slog.Error("AnneeUseCase: marshal audit details failed", "action", action, "anneeId", annee.ID, "error", err)
+		return
+	}
+	userID := claims.UserID
+	etabID := claims.EtablissementID
+	if etabID == "" && annee.EtablissementID != "" {
+		etabID = annee.EtablissementID
+	}
+	entry := &domain.AuditLogEntry{
+		UserID:          &userID,
+		Action:          action,
+		Entite:          "AnneeAcademique",
+		EntiteID:        &annee.ID,
+		Details:         string(detailsJSON),
+		AdresseIP:       "academique-api",
+		EtablissementID: &etabID,
+		Reason:          "Mutation d'année académique",
+	}
+	if err := uc.authRepo.CreateAuditLog(ctx, entry); err != nil {
+		slog.Error("AnneeUseCase: audit échec",
+			"action", action, "anneeId", annee.ID, "error", err)
+	}
 }
 
 // List liste les années académiques d'un établissement.
@@ -452,7 +514,18 @@ func (uc *AnneeUseCase) Create(ctx context.Context, claims db.SessionClaims, inp
 	if role == domain.RoleResponsable || role == domain.RoleEnseignant {
 		input.EtablissementID = claims.EtablissementID
 	}
-	return uc.anneeRepo.Create(ctx, input)
+	annee, err := uc.anneeRepo.Create(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	// SECT-ANNEE-AUDITLOG-1 : journaliser la création (non bloquant).
+	uc.auditAnnee(ctx, claims, domain.AuditActionAnneeCreated, annee, map[string]any{
+		"libelle":         annee.Libelle,
+		"dateDebut":       annee.DateDebut.Format("2006-01-02"),
+		"dateFin":         annee.DateFin.Format("2006-01-02"),
+		"etablissementId": annee.EtablissementID,
+	})
+	return annee, nil
 }
 
 // FindByID récupère une année académique par ID.
@@ -511,7 +584,30 @@ func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id 
 			return nil, &domain.ValidationError{Field: "dateFin", Message: "la date de fin doit être après la date de début"}
 		}
 	}
-	return uc.anneeRepo.Update(ctx, id, input)
+	updated, err := uc.anneeRepo.Update(ctx, id, input)
+	if err != nil {
+		return nil, err
+	}
+	// SECT-ANNEE-AUDITLOG-1 : journaliser la modification (non bloquant).
+	// details.changes ne contient que les champs réellement fournis dans
+	// l'input (les *string/*bool nil sont omis) — c'est le diff coté client.
+	changes := map[string]any{}
+	if input.Libelle != nil {
+		changes["libelle"] = *input.Libelle
+	}
+	if input.DateDebut != nil {
+		changes["dateDebut"] = *input.DateDebut
+	}
+	if input.DateFin != nil {
+		changes["dateFin"] = *input.DateFin
+	}
+	if input.Actif != nil {
+		changes["actif"] = *input.Actif
+	}
+	uc.auditAnnee(ctx, claims, domain.AuditActionAnneeUpdated, updated, map[string]any{
+		"changes": changes,
+	})
+	return updated, nil
 }
 
 // SoftDelete désactive une année académique (actif=false).
@@ -524,7 +620,16 @@ func (uc *AnneeUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims,
 	if id == "" {
 		return nil, &domain.ValidationError{Field: "id", Message: "requis"}
 	}
-	return uc.anneeRepo.SoftDelete(ctx, id)
+	annee, err := uc.anneeRepo.SoftDelete(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// SECT-ANNEE-AUDITLOG-1 : journaliser la désactivation (non bloquant).
+	uc.auditAnnee(ctx, claims, domain.AuditActionAnneeSoftDeleted, annee, map[string]any{
+		"id":      annee.ID,
+		"libelle": annee.Libelle,
+	})
+	return annee, nil
 }
 
 // HardDelete supprime définitivement une année académique (DELETE réel,
@@ -569,7 +674,31 @@ func (uc *AnneeUseCase) HardDelete(ctx context.Context, claims db.SessionClaims,
 		}
 	}
 
-	return uc.anneeRepo.HardDelete(ctx, id)
+	// SECT-ANNEE-AUDITLOG-1 : on charge l'année AVANT la suppression pour
+	// récupérer son libelle (après le DELETE, FindByID ne renverrait plus
+	// rien). Le check deps ci-dessus garantit que les counts ci-dessous
+	// sont tous 0 (CanHardDelete=true), mais on les inclut quand même
+	// dans le details pour attester formellement qu'aucune dépendance
+	// n'a été détruite.
+	annee, err := uc.anneeRepo.FindByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("HardDelete: load existing: %w", err)
+	}
+	if err := uc.anneeRepo.HardDelete(ctx, id); err != nil {
+		return err
+	}
+	uc.auditAnnee(ctx, claims, domain.AuditActionAnneeHardDeleted, annee, map[string]any{
+		"id":      annee.ID,
+		"libelle": annee.Libelle,
+		"dependenciesDestroyed": map[string]int{
+			"inscriptions":     deps.Inscriptions,
+			"validationsUE":    deps.ValidationsUE,
+			"promotionBatches": deps.PromotionBatches,
+			"epreuves":         deps.Epreuves,
+			"etablissements":   deps.Etablissements,
+		},
+	})
+	return nil
 }
 
 // GetDependencies récupère les dépendances d'une année académique (5 counts +
