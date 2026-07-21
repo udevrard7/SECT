@@ -19,6 +19,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/mailer"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/monitoring"
+	"github.com/udevrard7/sect/backend/internal/notification"
 	"github.com/udevrard7/sect/backend/internal/repository"
 	"github.com/udevrard7/sect/backend/internal/storage"
 	httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
@@ -275,6 +276,24 @@ func main() {
 	// (cold start tue le worker goroutine avant traitement du job).
 
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, authRepo, promotionUC, inscriptionRepo)
+
+	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications.
+	// Instancié APRÈS le serveur (le hub SSE global est dans transport/http,
+	// on passe une fonction de broadcast qui l'utilise). Injecté via setter
+	// (pattern WithGeniusPay/WithTurnstile) — évite d'étendre NewServer.
+	// Le dispatcher est nil-safe côté handlers : si nil, pas de notification.
+	notifDispatcher := notification.New(pool, mailSvc, logger, func(userID string, event notification.SSEEvent) {
+		// Adaptateur : le hub SSE attend transport/http.SSEEventAdapter,
+		// le dispatcher utilise notification.SSEEvent (pas de dépendance
+		// circulaire notification → transport/http). On convertit ici.
+		httptransport.BroadcastNotification(userID, httptransport.SSEEventAdapter{
+			Type:      event.Type,
+			Data:      event.Data,
+			Timestamp: event.Timestamp,
+		})
+	})
+	server.WithNotificationDispatcher(notifDispatcher)
+	logger.Info("Notification dispatcher configured")
 
 	// SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
 	// Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.

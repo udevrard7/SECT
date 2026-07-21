@@ -15,6 +15,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/mailer"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/monitoring"
+	"github.com/udevrard7/sect/backend/internal/notification"
 	"github.com/udevrard7/sect/backend/internal/repository"
 	"github.com/udevrard7/sect/backend/internal/usecase"
 )
@@ -94,6 +95,17 @@ type Server struct {
 	// d'un étudiant (GET /api/etudiants/{etudiantId}/inscriptions). RLS via claims
 	// (ETUDIANT self / RESPONSABLE same-etab / ADMIN with etab access).
 	inscriptionRepo *repository.InscriptionRepository
+	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications. Injecté via
+	// WithNotificationDispatcher (setter pattern — évite d'étendre la signature
+	// NewServer déjà très longue). nil = pas de notification (dev/tests).
+	notifDispatcher *notification.Dispatcher
+}
+
+// WithNotificationDispatcher injecte le dispatcher de notifications après
+// construction du serveur. Pattern identique à WithGeniusPay / WithTurnstile.
+func (s *Server) WithNotificationDispatcher(d *notification.Dispatcher) *Server {
+	s.notifDispatcher = d
+	return s
 }
 
 // NewServer crée et configure le serveur HTTP.
