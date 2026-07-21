@@ -46,6 +46,14 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth-store'
+// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : helpers partagés avec la page de
+// clôture d'année (libellés + couleurs des décisions d'inscription + formatters).
+import {
+  getDecisionLabel,
+  getDecisionColorClasses,
+  formatMoyenne,
+  formatCredits,
+} from '@/lib/academic-progress'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -121,6 +129,36 @@ interface EtudiantItem {
   createdAt: string
   etablissement: { id: string; nom: string } | null
   filiere: { id: string; nom: string; code?: string | null } | null
+}
+
+// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : type miroir du DTO backend
+// `domain.InscriptionWithLabels` (backend/internal/domain/inscription.go).
+// Renvoyé par GET /api/etudiants/{etudiantId}/inscriptions sous forme de tableau
+// JSON (vide si l'étudiant n'a aucune inscription historisée — cas d'un étudiant
+// fraîchement inscrit dont l'Inscription EN_COURS n'a pas encore été clôturée).
+//
+// Les champs anneeLibelle + filiereNom sont JOINés côté SQL (évite N+1 frontend).
+// filiereNom/filiereId/raisonDecision/dateCloture sont nullable (un étudiant peut
+// être sans filière, ou son inscription EN_COURS n'a pas encore de dateCloture).
+interface InscriptionHistoryItem {
+  id: string
+  etudiantId: string
+  anneeAcademiqueId: string
+  anneeLibelle: string
+  filiereId?: string | null
+  filiereNom?: string | null
+  niveau: string
+  statut: string
+  moyenneAnnuelle?: number | null
+  creditsValides: number
+  creditsTotaux: number
+  decisionManuelle: boolean
+  raisonDecision?: string | null
+  decideParId?: string | null
+  dateCloture?: string | null
+  batchId?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 interface FiliereOption {
@@ -334,6 +372,29 @@ function getInitials(name: string): string {
     .join('')
     .slice(0, 2)
     .toUpperCase()
+}
+
+/**
+ * useIsMobileInscriptions — détection responsive pour le rendu de l'historique
+ * des inscriptions dans le dialogue de détail étudiant (SECT-INSCRIPTION-
+ * HISTORY-ENDPOINT-1). Table sur desktop (≥640px) / cards empilées sur mobile.
+ *
+ * Même pattern que audit-tab.tsx (useIsMobile local avec breakpoint 639px =
+ * Tailwind sm:) — on n'utilise pas le hook partagé @/hooks/use-mobile.ts qui
+ * utilise 768px (md:) car la table d'historique peut tenir sur tablette.
+ */
+function useIsMobileInscriptions(): boolean {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)')
+    const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile('matches' in e ? e.matches : false)
+    }
+    onChange(mq)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return isMobile
 }
 
 function downloadCSV(content: string, filename: string) {
@@ -1290,6 +1351,33 @@ export function EtudiantsPage() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : Historique des inscriptions d'un
+  // étudiant (GET /api/etudiants/{etudiantId}/inscriptions).
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Query lazy-fetch : déclenchée uniquement à l'ouverture du Dialog "Détails
+  // de l'étudiant" (detailDialogOpen=true) ET si un étudiant est sélectionné
+  // (detailEtudiant non null). staleTime 60s — l'historique change rarement
+  // (seulement à chaque clôture d'année, ~1x/an), pas besoin de re-fetch court.
+  // refetchOnWindowFocus=false pour éviter le re-fetch au retour depuis un
+  // autre onglet (pattern identique aux autres queries de la page).
+  const detailEtudiantId = detailEtudiant?.id ?? null
+  const inscriptionsQuery = useQuery<InscriptionHistoryItem[]>({
+    queryKey: ['etudiant-inscriptions', detailEtudiantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etudiants/${detailEtudiantId}/inscriptions`, { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch etudiant inscriptions')
+      return res.json()
+    },
+    enabled: detailDialogOpen && detailEtudiantId !== null,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const inscriptions = inscriptionsQuery.data ?? []
+  const isLoadingInscriptions = inscriptionsQuery.isLoading
+  const isErrorInscriptions = inscriptionsQuery.isError
+  const isMobileInscriptions = useIsMobileInscriptions()
 
   // SECT-REG-LINK-WIZARD-UX-1 : ouvrir le wizard de création (3 étapes).
   // Reset tous les champs du formulaire + l'écran de succès + l'étape = 1.
@@ -2419,7 +2507,7 @@ export function EtudiantsPage() {
 
       {/* ─── Detail Dialog ─── */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Détails de l&apos;étudiant</DialogTitle>
           </DialogHeader>
@@ -2470,6 +2558,163 @@ export function EtudiantsPage() {
                   <p className="text-muted-foreground">Mot de passe</p>
                   <p>{detailEtudiant.mustChangePwd ? 'À changer' : 'Défini'}</p>
                 </div>
+              </div>
+
+              {/* ─── SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : Historique des années ─── */}
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-foreground">
+                    Historique des années
+                  </h4>
+                  {!isLoadingInscriptions && !isErrorInscriptions && inscriptions.length > 0 && (
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                      {inscriptions.length} inscription{inscriptions.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+
+                {/* Loading : PulseSkeleton (3 lignes placeholders) */}
+                {isLoadingInscriptions && (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-3 rounded-md border p-2"
+                      >
+                        <PulseSkeleton className="h-4 w-20" />
+                        <PulseSkeleton className="h-4 w-10" />
+                        <PulseSkeleton className="hidden sm:block h-4 w-24" />
+                        <PulseSkeleton className="h-4 w-12 ml-auto" />
+                        <PulseSkeleton className="h-6 w-20" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Error (non-blocking) : petit texte discret — le reste du dialog reste fonctionnel */}
+                {!isLoadingInscriptions && isErrorInscriptions && (
+                  <p className="text-xs text-destructive italic">
+                    Impossible de charger l&apos;historique des années.
+                  </p>
+                )}
+
+                {/* Empty : message friendly */}
+                {!isLoadingInscriptions && !isErrorInscriptions && inscriptions.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Aucune inscription historisée pour cet étudiant.
+                  </p>
+                )}
+
+                {/* Success : table sur desktop / cards sur mobile (pattern audit-tab.tsx) */}
+                {!isLoadingInscriptions && !isErrorInscriptions && inscriptions.length > 0 && (
+                  isMobileInscriptions ? (
+                    <div className="space-y-2">
+                      {inscriptions.map((ins) => (
+                        <Card key={ins.id}>
+                          <CardContent className="p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold">
+                                {ins.anneeLibelle}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className={getDecisionColorClasses(ins.statut)}
+                              >
+                                {getDecisionLabel(ins.statut)}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <p className="text-muted-foreground">Niveau</p>
+                                <p className="font-medium">{ins.niveau || '—'}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Filière</p>
+                                <p className="font-medium truncate" title={ins.filiereNom ?? undefined}>
+                                  {ins.filiereNom || '—'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Moyenne</p>
+                                <p className="font-mono tabular-nums">
+                                  {formatMoyenne(ins.moyenneAnnuelle)}{ins.moyenneAnnuelle !== null && ins.moyenneAnnuelle !== undefined ? '/20' : ''}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Crédits</p>
+                                <p className="font-mono tabular-nums">
+                                  {formatCredits(ins.creditsValides, ins.creditsTotaux)}
+                                </p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="text-muted-foreground">Clôturée le</p>
+                                <p>
+                                  {ins.dateCloture ? formatDateTimeFR(ins.dateCloture) : '—'}
+                                  {ins.decisionManuelle && (
+                                    <span className="ml-2 text-xs text-muted-foreground italic">
+                                      (décision manuelle)
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-md border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Année</TableHead>
+                            <TableHead className="text-xs">Niveau</TableHead>
+                            <TableHead className="text-xs">Filière</TableHead>
+                            <TableHead className="text-xs text-right">Moyenne</TableHead>
+                            <TableHead className="text-xs text-right">Crédits</TableHead>
+                            <TableHead className="text-xs">Décision</TableHead>
+                            <TableHead className="text-xs">Clôturée le</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {inscriptions.map((ins) => (
+                            <TableRow key={ins.id}>
+                              <TableCell className="text-sm font-medium whitespace-nowrap">
+                                {ins.anneeLibelle}
+                              </TableCell>
+                              <TableCell className="text-sm">{ins.niveau || '—'}</TableCell>
+                              <TableCell className="text-sm max-w-[160px] truncate" title={ins.filiereNom ?? undefined}>
+                                {ins.filiereNom || '—'}
+                              </TableCell>
+                              <TableCell className="text-sm text-right font-mono tabular-nums">
+                                {formatMoyenne(ins.moyenneAnnuelle)}
+                                {ins.moyenneAnnuelle !== null && ins.moyenneAnnuelle !== undefined ? '/20' : ''}
+                              </TableCell>
+                              <TableCell className="text-sm text-right font-mono tabular-nums">
+                                {formatCredits(ins.creditsValides, ins.creditsTotaux)}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant="outline"
+                                  className={getDecisionColorClasses(ins.statut)}
+                                >
+                                  {getDecisionLabel(ins.statut)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                {ins.dateCloture ? formatDateTimeFR(ins.dateCloture) : '—'}
+                                {ins.decisionManuelle && (
+                                  <span className="ml-1 italic">(manuel)</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
+                )}
               </div>
             </div>
           )}

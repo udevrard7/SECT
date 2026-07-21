@@ -90,6 +90,10 @@ type Server struct {
 	// Le worker promotion_worker.go (démarré dans main.go) pickup les batches
 	// PENDING créés par POST /cloture-annee et les traite async.
 	promotionUC *usecase.PromotionUseCase
+	// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : repo pour l'historique des inscriptions
+	// d'un étudiant (GET /api/etudiants/{etudiantId}/inscriptions). RLS via claims
+	// (ETUDIANT self / RESPONSABLE same-etab / ADMIN with etab access).
+	inscriptionRepo *repository.InscriptionRepository
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -138,6 +142,10 @@ func NewServer(
 	// existants). Le worker promotion_worker.go est démarré séparément dans
 	// main.go (pas besoin de l'injecter dans Server — il communique via DB).
 	promotionUC *usecase.PromotionUseCase,
+	// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : repo pour l'historique des
+	// inscriptions d'un étudiant (ajouté en fin de signature pour minimiser
+	// le diff avec les callers existants).
+	inscriptionRepo *repository.InscriptionRepository,
 ) *Server {
 	s := &Server{
 		dbPool:              dbPool,
@@ -173,6 +181,7 @@ func NewServer(
 		quotaChecker:        quotaChecker,
 		authRepo:            authRepo,
 		promotionUC:         promotionUC,
+		inscriptionRepo:     inscriptionRepo,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -529,6 +538,18 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			middleware.RequireAuth,
 			middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
 		).Post("/api/etudiants/{etudiantId}/promote", s.promoteStudentManual)
+
+		// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 — historique des années d'un étudiant.
+		// GET /api/etudiants/{etudiantId}/inscriptions
+		// Retourne toutes les Inscription du student (EN_COURS + clôturées) avec
+		// les libellés anneeLibelle + filiereNom JOINés côté SQL (évite N+1 frontend).
+		// Auth : RequireAuth uniquement (la RLS policy Inscription_select filtre déjà
+		// via user_in_my_etab(etudiantId) — ETUDIANT voit son propre historique,
+		// RESPONSABLE/ADMIN voient les étudiants de leur étab). Pas de
+		// RequireRoleOrPersonalEtab : ça exclurait à tort l'étudiant lui-même.
+		r.With(
+			middleware.RequireAuth,
+		).Get("/api/etudiants/{etudiantId}/inscriptions", s.listEtudiantInscriptions)
 
 		// E1-INVITATIONS — endpoints authentifiés (RESPONSABLE, ADMIN
 		// pour les mutations ; ENSEIGNANT inclus sur le GET car le

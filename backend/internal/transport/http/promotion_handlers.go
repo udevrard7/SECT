@@ -15,6 +15,12 @@
 //	POST   /api/etudiants/{etudiantId}/promote
 //	  → promoteStudentManual : override individuel hors batch.
 //
+// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : 1 endpoint additionnel :
+//
+//	GET    /api/etudiants/{etudiantId}/inscriptions
+//	  → listEtudiantInscriptions : historique des années d'un étudiant (JOIN
+//	    AnneeAcademique + Filiere pour éviter N+1 frontend).
+//
 // Auth : RequireAuth + RequireRoleOrPersonalEtab("ADMIN", "RESPONSABLE")
 // (le prof B2C dans un étab PERSONNEL peut aussi clôturer — cohérent avec les
 // autres mutations académiques). Le usecase valide en plus le scoping
@@ -389,4 +395,49 @@ func (s *Server) runPromotionSync(w http.ResponseWriter, r *http.Request) {
 		"erreurCount":     result.ErreurCount,
 		"erreurs":         result.Erreurs,
 	})
+}
+
+// listEtudiantInscriptions — GET /api/etudiants/{etudiantId}/inscriptions
+//
+// SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : retourne l'historique complet des
+// années académiques d'un étudiant (toutes années confondues), trié par année
+// la plus récente en premier. Le JOIN sur AnneeAcademique + Filiere permet
+// de renvoyer directement les libellés (anneeLibelle + filiereNom) au frontend
+// — qui n'a pas besoin de 2èmes fetchs pour résoudre les IDs.
+//
+// Auth : RequireAuth uniquement (pas de RequireRoleOrPersonalEtab — la RLS
+// policy Inscription_select filtre déjà via user_in_my_etab(etudiantId), qui
+// laisse passer ETUDIANT pour SOI-MÊME, RESPONSABLE pour SON étab, ADMIN avec
+// accès étab). Le check de rôle serait redondant et exclurait à tort l'étudiant
+// lui-même qui a le droit de consulter son propre historique.
+//
+// Réponse : tableau JSON d'InscriptionWithLabels (ou [] si l'étudiant n'a
+// aucune inscription historisée — cas d'un étudiant fraîchement inscrit dont
+// l'Inscription EN_COURS n'a pas encore été clôturée).
+func (s *Server) listEtudiantInscriptions(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	etudiantID := chi.URLParam(r, "etudiantId")
+	if etudiantID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id étudiant requis")
+		return
+	}
+
+	inscriptions, err := s.inscriptionRepo.ListByEtudiantEnriched(r.Context(), etudiantID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	// Toujours renvoyer un tableau (même vide — pas de null) pour faciliter le
+	// parsing côté frontend (TanStack Query + map direct).
+	if inscriptions == nil {
+		inscriptions = []domain.InscriptionWithLabels{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(inscriptions)
 }
