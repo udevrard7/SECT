@@ -17975,3 +17975,37 @@ Stage Summary:
   * GET /api/etudiants/{id}/inscriptions — endpoint absent côté backend. Le spec SECT-PROMOTION-FRONTEND-1 demandait l'ajout d'une section "Historique des années" au dialogue de détail étudiant dans etudiants-page.tsx, mais a explicitement prévu le SKIP si l'endpoint n'existe pas. La lib academic-progress.ts (notamment DECISION_LABELS/DECISION_COLORS + formatMoyenne/formatCredits) est prête à être consommée par cette future section quand l'endpoint sera déployé.
   * POST /api/etablissements/{id}/regles-passage (modification) — endpoint absent. La page clôture affiche les règles en read-only avec note "modifiable via l'admin". Il manque un onglet/écran côté Paramètres établissement pour éditer ces seuils.
 - Prêt pour test end-to-end (frontend + backend + worker async) : navigation RESPONSABLE → sidebar "Organisation Académique" → "Clôture de l'année" → sélectionner année source → Prévisualiser → (optionnel : overrides) → Lancer → confirmer → suivre progression → bilan → CSV.
+
+---
+Task ID: SECT-CLOTURE-E2E-VERIFY-1
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Vérification end-to-end de la feature de clôture d'année sur la production (sect-app.vercel.app + sect-zead.onrender.com) après les déploiements Vercel + Render.
+
+Work Log:
+- Attente 90s pour déploiements Vercel + Render (auto-déploy on push).
+- Vérification santé backend Render : GET /health → HTTP 200, {"service":"sect-api","status":"ok","version":"0.2.0"}.
+- Vérification frontend Vercel : GET / → HTTP 200 (1.65s).
+- Vérification des 4 nouveaux endpoints backend (doivent retourner 401 = déployés, pas 404 = manquants) :
+  * GET  /api/etablissements/{id}/regles-passage           → 401 ✓
+  * POST /api/etablissements/{id}/cloture-annee/preview    → 401 ✓
+  * GET  /api/etablissements/{id}/cloture-annee/status     → 401 ✓
+  * POST /api/etudiants/{id}/promote                       → 401 ✓
+  → Tous les routes sont enregistrées dans le routeur chi, l'auth middleware rejette correctement les requêtes non authentifiées.
+- Vérification visuelle Agent Browser sur sect-app.vercel.app :
+  * Landing page : rendu OK, titre "SECT — Vos examens corrigés par l'IA en 2 minutes", 0 erreur console, 2 messages info PWA (Service Worker enregistré).
+  * Clic "Connexion" → /login : page de login rendue OK, heading "Bon retour ! 👋", tabs Personnel/Étudiant, champs email + password, bouton "Se connecter", 0 erreur console.
+  * Screenshot capturé (/tmp/sect-login.png).
+- Vérification déploiement Vercel Production : commit 9a6dec59 (dernier commit frontend SECT-PROMOTION-FRONTEND-1) déployé en Production à 00:11:34Z.
+- LIMITATION : le flow complet (login RESPONSABLE → navigation Clôture de l'année → preview → confirm → progress polling → bilan) n'a PAS pu être testé — nécessite des credentials RESPONSABLE/ADMIN qui ne sont pas disponibles dans cet environnement. Le compte admin ulrichdouh@gmail.com est référencé dans le worklog précédent (SECT-RESPONSABLE-DELETE-RLS-FIX-1) mais le mot de passe n'est pas accessible.
+
+Stage Summary:
+- Vérification infrastructure : Vercel + Render déployés au dernier commit, backend healthy, tous les nouveaux endpoints enregistrés (401 not 404).
+- Vérification frontend : landing + login rendus sans erreur console ni runtime crash.
+- Vérification flow complet : NON réalisée (credentials manquants). Recommandation : l'utilisateur (qui possède les credentials) doit tester le flow complet :
+  1. Se connecter en RESPONSABLE sur sect-app.vercel.app
+  2. Vérifier que "Clôture de l'année" apparaît dans le sidebar sous "Organisation Académique"
+  3. Naviguer vers la page, sélectionner une année source + cible
+  4. Prévisualiser (vérifier que la liste des étudiants s'affiche avec décisions suggérées)
+  5. Lancer la clôture (vérifier le polling ProgressBar + le bilan final)
+  6. Vérifier l'AuditLog (onglet Audit dans Paramètres) trace les décisions PROMOTION_DECISION_*
+- Si bugs observés, ouvrir un task SECT-CLOTURE-BUGFIX-* avec reproduction Agent Browser.
