@@ -148,15 +148,19 @@ type UECount struct {
 
 // AffectationRef est une référence légère à une Affectation (enseignant↔UE).
 type AffectationRef struct {
-	ID                 string   `json:"id"`
-	EnseignantID       string   `json:"enseignantId"`
-	TypeSeance         string   `json:"typeSeance"`
-	Groupe             *string  `json:"groupe,omitempty"`
-	VolumeHeures       float64  `json:"volumeHeures"`
-	AnneeUniversitaire string   `json:"anneeUniversitaire"`
-	Statut             string   `json:"statut"`
-	Commentaire        *string  `json:"commentaire,omitempty"`
-	Enseignant         *UserRef `json:"enseignant,omitempty"`
+	ID                 string  `json:"id"`
+	EnseignantID       string  `json:"enseignantId"`
+	TypeSeance         string  `json:"typeSeance"`
+	Groupe             *string `json:"groupe,omitempty"`
+	VolumeHeures       float64 `json:"volumeHeures"`
+	AnneeUniversitaire string  `json:"anneeUniversitaire"`
+	Statut             string  `json:"statut"`
+	Commentaire        *string `json:"commentaire,omitempty"`
+	// SECT-AFFECTATION-PUBLISH-ENRICH-1 : horodatage de publication (nullable).
+	PublishedAt   *time.Time `json:"publishedAt,omitempty"`
+	PublishedByID *string    `json:"publishedById,omitempty"`
+	PublishedBy   *UserRef   `json:"publishedBy,omitempty"`
+	Enseignant    *UserRef   `json:"enseignant,omitempty"`
 }
 
 // Affectation représente une affectation enseignant↔UE (table Affectation).
@@ -172,6 +176,15 @@ type Affectation struct {
 	Commentaire         *string   `json:"commentaire,omitempty"`
 	CreatedAt           time.Time `json:"createdAt"`
 	UpdatedAt           time.Time `json:"updatedAt"`
+	// SECT-AFFECTATION-PUBLISH-ENRICH-1 : horodatage de publication.
+	// Nullable — set quand statut devient PUBLIEE (et cleared si on
+	// repasse en PROVISOIRE/VALIDEE côté handler).
+	PublishedAt   *time.Time `json:"publishedAt,omitempty"`
+	PublishedByID *string    `json:"publishedById,omitempty"`
+	// PublishedBy est enrichi à la lecture (JOIN User) — non persisté
+	// directement dans Affectation, peuplé par listAffectations /
+	// updateAffectation via le UserRef de l'utilisateur qui a publié.
+	PublishedBy *UserRef `json:"publishedBy,omitempty"`
 	// Relations
 	Enseignant        *UserRef `json:"enseignant,omitempty"`
 	UniteEnseignement *UERef   `json:"uniteEnseignement,omitempty"`
