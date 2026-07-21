@@ -18730,3 +18730,121 @@ Stage Summary:
 - Raccourci 'Créer année suivante' = switch d'onglet (plus de navigation).
 - Toutes les fonctionnalités préservées (CRUD années, clôture sync, counts, filtre, Réactiver, hard-delete safe, override, history).
 - Aucun changement backend.
+
+
+---
+Task ID: S2-SAVANE-ANNEES-REFONTE-1
+Agent: frontend-styling-expert (subagent)
+Task: Refonte visuelle complète « Savane EdTech » de l'onglet Années (annees-academiques-section.tsx). Présentation uniquement — 0 delta logique.
+
+Work Log:
+
+1. frontend/src/components/responsable/annees-academiques-section.tsx (REWRITE — ~1080 lignes) :
+   - Imports étendus : StatCard, GlassModal, PulseSkeleton, StatCardSkeletonGrid depuis @/components/ds ; Label depuis @/components/ui/label ; CalendarClock, CircleCheck ajoutés aux icônes lucide-react.
+   - Toute la logique préservée 1:1 : queries (annees-academiques, annee-courante, annee-dependencies), mutations (create/update/reactivate/softDelete/hardDelete/setCurrentAnnee), state (showForm, editingAnnee, confirmDelete, confirmHardDelete, showInactive, periodeFilter, hardDeleteAcknowledged), helpers (computePeriodeStatut, computeNextYearSuggestions, formatDateUTC import), interfaces (AnneeAcademique, AnneeDependencies, AnneeAcademiqueRef), query keys, fetch URLs, handlers.
+   - Aucune signature d'API modifiée. Aucune query key modifiée. Aucune URL d'endpoint modifiée.
+
+2. Refonte présentation (S2-SAVANE-ANNEES-REFONTE-1) :
+
+   a) SectionHeader (nouveau sub-composant) :
+      - Bande .ds-kente-strip 6px tricolore en haut (vert/terre/or) — signature Savane EdTech.
+      - Fond .ds-kente-pattern-subtle (losanges tessellés 24px, opacité 0.04).
+      - Titre « Années académiques » (font-display text-xl bold) + icône CalendarDays (text-primary-text).
+      - Count badge = pill gold (bg-gold/15 text-gold border-gold/30) avec nombre tabular-nums.
+      - Sous-titre « Gérez les années scolaires de votre établissement » (text-sm text-muted-foreground).
+      - Bloc droit (responsive flex-wrap) : Select filtre période (Toutes/Passées/En cours/À venir) + label+Switch « Afficher inactives » (avec icône Power) + bouton refresh (icône RefreshCw, spinner si isRefreshing) + bouton « Nouvelle année » (Plus icon).
+      - Masqué si showFilters=false (empty state ou error state).
+
+   b) KPI row (NEW) :
+      - 3 StatCards (sm:grid-cols-2 lg:grid-cols-3 gap-4) :
+        * « Total années » (value=annees.length, accent=primary, icon=CalendarDays, hint « Toutes années confondues (actives + inactives) »).
+        * « Année courante » (value=anneeCouranteLibelle ?? 'Aucune', accent=gold, icon=Star, hint contextuel).
+        * « Années actives » (value=annees.filter(a => a.actif).length, accent=success, icon=CircleCheck, hint « X désactivée(s) »).
+      - Loading state via StatCardSkeletonGrid count={3} (au lieu de 4 par défaut) pendant anneeCouranteQuery.isLoading.
+
+   c) Grille de cartes années :
+      - DÉCISION EntityCard vs custom Card : custom Card retenue. EntityCard non adaptée car son slot thumbnail 16:9 (mandatory dans son layout) gaspille ~100px verticaux et son API ne supporte pas une row de 5 boutons d'action. Le spec §3 autorisait explicitement cette alternative (« custom Card with .ds-kente-top if EntityCard doesn't fit »).
+      - Carte : Card + .ds-kente-top (3px tricolore en haut) + CardContent p-5 space-y-3.
+      - Row 1 : libellé (font-display text-xl bold text-foreground, truncate + title) + badges (Courante gold avec .ds-kente-badge + Star fill-current | Désactivée muted | PeriodeBadge).
+      - Row 2 : dates (Calendar icon h-3.5 + formatDateUTC(dateDebut) → formatDateUTC(dateFin), text-xs muted, tabular-nums, séparateur « → » opacité réduite).
+      - Row 3 (conditionnel) : counts inscriptions + épreuves (BookOpen text-primary-text/70 + FileText text-secondary/80, count tabular-nums, border-top).
+      - Row 4 : actions — DS variants :
+        * « Définir courante » : variant=default (bg-primary), Star icon, sm, flex-1 min-w-[140px], spinner si isSettingCourante.
+        * « Modifier » : variant=outline, Pencil icon, sm, flex-1 si pas de bouton courante.
+        * « Désactiver » : variant=outline + text-warning border-warning/30 hover:bg-warning/10 (Power icon, square 8x8).
+        * « Réactiver » : variant=outline + text-success-text border-success/30 hover:bg-success/10 (RotateCcw icon, spinner si isReactivating).
+        * « Supprimer définitivement » : variant=outline + text-destructive border-destructive/30 hover:bg-destructive/10 (Trash2 icon).
+      - Inactives : opacity-70 + badge « Désactivée » muted. Courante : ds-glow-gold + border-success/40 + ring-1 ring-gold/30.
+      - Grid responsive : grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4. Animations Framer Motion (layout + AnimatePresence popLayout) préservées.
+      - Empty state (annees.length === 0) : Card border-dashed + .ds-kente-watermark + cercle ring-primary/5 + CalendarClock (text-primary-text) + « Aucune année académique » + description + CTA « Créer une année » (Plus icon, primary).
+      - Empty state filtré (visibleAnnees.length === 0 avec annees > 0) : conserve les 2 cas (periodeFilter !== 'all' → reset filtre ; sinon → activer toggle inactives).
+      - Loading state : SectionHeaderSkeleton + StatCardSkeletonGrid count=3 + 4 PulseSkeleton variant=card h-44.
+
+   d) Form (AnneeFormDialog) — GlassModal DS :
+      - Remplace le fixed inset-0 brut par GlassModal size=md, title dynamique, description contextuelle.
+      - Bande .ds-kente-strip en bleed (-mx-5 -mt-5 mb-4) en haut du body — effet de bandoulière qui casse le padding.
+      - Champs : libellé (Input + Label htmlFor « annee-libelle », placeholder « ex: 2025-2026 », autoFocus) + dateDebut/dateFin (Input type=date + Label, grid-cols-2) + actif (Switch dans label border + Power icon, edit mode only).
+      - Suggestions conservées (computeNextYearSuggestions pré-remplit + hint « Suggestion basée sur la dernière année »).
+      - Footer : Annuler (outline sm, disabled pendant submit) + Créer/Enregistrer (primary sm, disabled pendant submit, spinner Loader2). Submit via form id="annee-form" + button form="annee-form" (pattern GlassModal footer↔body).
+      - Validation : tous champs requis + dateFin > dateDebut (toast.error si échec).
+
+   e) Confirm dialog soft-delete (ConfirmDialog) — GlassModal sm :
+      - Remplace le fixed inset-0 brut par GlassModal size=sm.
+      - Bande .ds-kente-strip en bleed.
+      - Icône AlertCircle dans cercle coloré (warning ou danger selon variant).
+      - Title « Désactiver l'année ? » + message warning « réversible via bouton Réactiver ou toggle Afficher inactives ».
+      - Footer : Annuler (outline) + Désactiver (warning variant = bouton default avec bg-warning text-warning-foreground ; ou destructive si variant='danger').
+
+   f) Hard-delete AlertDialog (shadcn) conservé :
+      - .ds-kente-top ajouté sur AlertDialogContent.
+      - Title « Supprimer définitivement l'année académique ? » + icône AlertTriangle + text-destructive.
+      - .ds-african-divider (4px tricolore) inséré avant la liste des dépendances — séparation visuelle forte.
+      - Liste des dépendances refactorisée via sub-composant DependencyRow : icône + count (font-mono tabular-nums min-w-[2rem] text-right) + nature (flex-1) + tag (badge mini uppercase tracking-wider bg-warning/15 text-warning border-warning/20). Remplace les <p> « • count nature » bruts.
+      - États conservés : dependenciesQuery.isLoading (spinner + « Vérification… »), dependenciesQuery.isError (alerte destructive), canHardDelete=true (badge succès CheckCircle2), canHardDelete=false (alerte destructive + liste + checkbox).
+      - Checkbox obligatoire (hard-delete-ack) pour activer le bouton Supprimer définitivement (destructive + spinner).
+      - canConfirmHardDelete gating préservé (defense in depth + e.preventDefault si non-confirmable).
+
+3. Sub-composants DS extraits :
+   - SectionHeader (header card avec bande kente + fond pattern-subtle + filtres + actions).
+   - SectionHeaderSkeleton (header en chargement avec PulseSkeleton).
+   - DependencyRow (ligne de dépendance dans AlertDialog hard-delete).
+   - anneesCouranteLoading (helper local — détermine si la KPI row doit afficher le skeleton).
+   - AnneeFormDialog (refonte GlassModal).
+   - ConfirmDialog (refonte GlassModal sm).
+   - PeriodeBadge (existant — refactorisé : CircleCheck au lieu de Calendar pour le badge Active, icône sémantique plus claire).
+
+VÉRIFICATION (mandatory) :
+- cd frontend && npx tsc --noEmit → EXIT 0 (0 erreurs).
+- cd frontend && bun run lint → EXIT 0, 1 warning PRÉ-EXISTANT (use-surveillance-ws.ts:121 — unrelated, déjà documenté dans worklog SECT-ANNEE-MERGE-1). Mes modifications : 0 warning, 0 erreur.
+- Aucun commit (orchestrateur gère).
+- Aucun backend modifié. Aucune URL d'API modifiée. Aucune query key modifiée. Aucune signature de handler modifiée.
+
+DÉCISIONS DE DESIGN (notes pour revue) :
+
+1. EntityCard vs custom Card : custom Card retenue. EntityCard (slot thumbnail 16:9 mandatory + API onAction pour 1 seul chevron) inadaptée à une carte compacte multi-actions (5 boutons, densité d'info élevée). Le spec §3 autorisait explicitement cette alternative. La signature DS est maintenue via .ds-kente-top (3px tricolore en haut) — équivalent visuel de la bande EntityCard sans le gaspillage vertical.
+
+2. StatCardSkeletonGrid count=3 : la grid hardcodée `lg:grid-cols-4` de StatCardSkeletonGrid (PulseSkeleton.tsx) ne matche pas le layout loaded (lg:grid-cols-3). Acceptable pour un état de chargement transitoire (<1s typiquement). Surcharge de personnaliser le composant DS pour ce cas isolé — non justifié.
+
+3. Boutons d'action DS variants : shadcn Button n'a pas de variant `warning` ou `success` natif (uniquement default/destructive/outline/secondary/ghost/link). Pour respecter le spec « warning for Désactiver, success for Réactiver » :
+   - « Désactiver » : variant=outline + classes text-warning border-warning/30 hover:bg-warning/10 (warning orange look).
+   - « Réactiver » : variant=outline + classes text-success-text border-success/30 hover:bg-success/10 (success green look).
+   - « Supprimer définitivement » : variant=outline + classes text-destructive border-destructive/30 hover:bg-destructive/10 (destructive red look, compact carré pour densité).
+   - « Définir courante » : variant=default (bg-primary vert lime, look primary).
+   - « Modifier » : variant=outline neutre.
+   Cette approche respecte le design system (tokens sémantiques uniquement, pas de hex brut) et la compatibilité dark mode. Dans le ConfirmDialog, le bouton warning utilise bg-warning text-warning-foreground (override du default) pour signaler visuellement l'action réversible (vs destructive bg-destructive).
+
+4. Bande .ds-kente-strip en bleed dans les modales : GlassModal a un body p-5 ; la bande kente utilise -mx-5 -mt-5 mb-4 pour casser le padding et s'étendre bord-à-bord en haut du body, créant un effet de « bandoulière » qui rappelle les textiles kente. Détail signature Savane EdTech.
+
+5. KPI row affichée dans tous les états sauf loading et error. Même quand annees.length === 0 (empty state), les 3 StatCards affichent 0 / Aucune / 0 — utile pour l'utilisateur qui voit immédiatement l'état de son établissement.
+
+6. Compatibilité ascendante : la signature `AnneesAcademiquesSection({ etablissementId })` est inchangée. Le composant reste montable depuis annee-academique-page.tsx sans modification.
+
+Prêt pour test E2E :
+1. /annee-academique → onglet « Années » : header card avec bande kente + fond pattern-subtle + count badge gold + KPI row (3 StatCards) + grille de cartes années.
+2. Carte année : libellé XL bold + badges (Courante gold kente / Désactivée muted / période) + dates avec icône Calendar + counts (BookOpen/FileText) + 5 boutons d'action DS.
+3. Bouton « Nouvelle année » → GlassModal md avec bande kente bleed + form (libellé + dates + actif toggle en édition) + footer Annuler/Créer.
+4. Bouton « Désactiver » → GlassModal sm avec icône warning + bouton warning.
+5. Bouton « Supprimer définitivement » → AlertDialog avec .ds-kente-top + .ds-african-divider + DependencyRow layout + checkbox + bouton destructive.
+6. Toggle « Afficher inactives » → cartes inactives en opacity-70 avec badge « Désactivée ».
+7. Loading → SectionHeaderSkeleton + StatCardSkeletonGrid + 4 PulseSkeleton cards.
+8. Dark mode : tous les tokens sémantiques (bg-card, text-foreground, bg-primary, bg-gold, text-success-text, bg-warning, bg-destructive, border-border) s'adaptent automatiquement via les variables CSS du design system.
