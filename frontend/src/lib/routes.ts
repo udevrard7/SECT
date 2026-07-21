@@ -39,6 +39,7 @@ export type PageId =
   | 'surveillance'
   | 'mes-certificats'
   | 'exam-prep'
+  | 'mes-enseignants'
   | 'aide-etudiants'
   | 'mes-etudiants'
   | 'annee-academique'
@@ -84,6 +85,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   surveillance: '/surveillance',
   'mes-certificats': '/mes-certificats',
   'exam-prep': '/exam-prep',
+  'mes-enseignants': '/mes-enseignants',
   'aide-etudiants': '/aide-etudiants',
   'mes-etudiants': '/mes-etudiants',
   'annee-academique': '/annee-academique',
@@ -264,6 +266,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   surveillance: 'Surveillance & Alertes',
   'mes-certificats': 'Mes certificats',
   'exam-prep': 'Préparation examens',
+  'mes-enseignants': 'Mes enseignants',
   'aide-etudiants': 'Aide des étudiants',
   'mes-etudiants': 'Mes classes',
   'annee-academique': 'Année académique',
@@ -310,6 +313,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   surveillance: 'Consultez les alertes anti-fraude et captures d\'écran',
   'mes-certificats': 'Consulter et télécharger vos certificats',
   'exam-prep': "Transformez vos supports de cours en moteur de préparation actif : Q&A IA, entraînement, planning et aide de l'enseignant",
+  'mes-enseignants': "Voir les enseignants affectés à vos unités d'enseignement",
   'aide-etudiants': "Répondez aux questions de vos étudiants sur les documents de cours",
   'mes-etudiants': "Consultez les étudiants de vos classes et téléchargez leurs relevés de notes détaillés",
   'annee-academique': "Gérer les années académiques et la clôture de fin d'année",
@@ -563,6 +567,17 @@ const ETUDIANT_CATEGORIES: NavCategory[] = [
     ],
   },
   {
+    // SECT-ETUDIANT-MES-ENSEIGNANTS-1 : nouvelle catégorie "Mes cours"
+    // pour la page /mes-enseignants (voire future page /mes-ue).
+    id: 'etu-cours',
+    label: 'Mes cours',
+    icon: 'BookOpen',
+    defaultOpen: true,
+    items: [
+      { id: 'mes-enseignants', label: 'Mes enseignants', icon: 'Users' },
+    ],
+  },
+  {
     id: 'etu-evaluations',
     label: 'Mes Évaluations',
     icon: 'FileCheck',
@@ -625,6 +640,12 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // fusionne l'ancienne page /cloture-annee avec la section Années académiques
   // auparavant embarquée dans /programme-academique.
   'annee-academique': ['RESPONSABLE', 'ADMIN'],
+  // SECT-ETUDIANT-MES-ENSEIGNANTS-1 : page "Mes enseignants" réservée ETUDIANT.
+  // La RLS Affectation_select (migration 000091, fonction
+  // affectation_visible_by_student) auto-filtre sur la filière de l'étudiant +
+  // statut PUBLIEE — l'étudiant ne voit que les affectations publiées des UE
+  // de sa filière.
+  'mes-enseignants': ['ETUDIANT'],
 }
 
 // Profile page labels (accessible from header, not sidebar)
