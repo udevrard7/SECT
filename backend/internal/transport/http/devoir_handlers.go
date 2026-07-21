@@ -5,10 +5,11 @@
 // mutations attendues par le frontend (devoirs-page.tsx).
 //
 // Routes ajoutées (router.go) :
-//   POST   /api/devoirs            — création (ENSEIGNANT)
-//   GET    /api/devoirs/{id}       — détail avec Soumission[] (ENSEIGNANT)
-//   PATCH  /api/devoirs/{id}       — update champs OU action (publish/close/archive/reopen)
-//   DELETE /api/devoirs/{id}       — soft delete (deletedAt = now)
+//
+//	POST   /api/devoirs            — création (ENSEIGNANT)
+//	GET    /api/devoirs/{id}       — détail avec Soumission[] (ENSEIGNANT)
+//	PATCH  /api/devoirs/{id}       — update champs OU action (publish/close/archive/reopen)
+//	DELETE /api/devoirs/{id}       — soft delete (deletedAt = now)
 //
 // Pattern : handlers directs sur s.dbPool (conforme à devoirsListReal +
 // aiGradeSession), pas de nouveau usecase. RLS on via WithTx (claims posés).
@@ -27,6 +28,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/middleware"
+	"github.com/udevrard7/sect/backend/internal/notification"
 	"github.com/udevrard7/sect/backend/internal/worker"
 )
 
@@ -80,28 +82,28 @@ type devoirSoumissionListDTO struct {
 
 // devoirDetailDTO — matche le type TS Devoir (devoirs-types.ts) côté enseignant
 type devoirDetailDTO struct {
-	ID                  string                  `json:"id"`
-	Titre               string                  `json:"titre"`
-	Description         *string                 `json:"description"`
-	Consignes           *string                 `json:"consignes"`
-	UniteEnseignementID string                  `json:"uniteEnseignementId"`
-	EnseignantID        string                  `json:"enseignantId"`
-	TypeSeance          string                  `json:"typeSeance"`
-	DatePublication     *string                 `json:"datePublication"`
-	DateLimite          string                  `json:"dateLimite"`
-	NoteMax             float64                 `json:"noteMax"`
-	RenduFichiers       *string                 `json:"renduFichiers"`
-	SoumissionGroupe    bool                    `json:"soumissionGroupe"`
-	NbMaxFichiers       int                     `json:"nbMaxFichiers"`
-	TailleMaxFichier    int                     `json:"tailleMaxFichier"`
-	Statut              string                  `json:"statut"`
-	AnneeUniversitaire  string                  `json:"anneeUniversitaire"`
-	CreatedAt           string                  `json:"createdAt"`
-	UpdatedAt           string                  `json:"updatedAt"`
-	User                devoirUserDTO           `json:"User"`
-	UniteEnseignement   devoirUEDTO             `json:"UniteEnseignement"`
-	GrilleEvaluation    *devoirGrilleDTO        `json:"GrilleEvaluation"`
-	SoumissionCount     int                     `json:"soumissionCount"`
+	ID                  string                    `json:"id"`
+	Titre               string                    `json:"titre"`
+	Description         *string                   `json:"description"`
+	Consignes           *string                   `json:"consignes"`
+	UniteEnseignementID string                    `json:"uniteEnseignementId"`
+	EnseignantID        string                    `json:"enseignantId"`
+	TypeSeance          string                    `json:"typeSeance"`
+	DatePublication     *string                   `json:"datePublication"`
+	DateLimite          string                    `json:"dateLimite"`
+	NoteMax             float64                   `json:"noteMax"`
+	RenduFichiers       *string                   `json:"renduFichiers"`
+	SoumissionGroupe    bool                      `json:"soumissionGroupe"`
+	NbMaxFichiers       int                       `json:"nbMaxFichiers"`
+	TailleMaxFichier    int                       `json:"tailleMaxFichier"`
+	Statut              string                    `json:"statut"`
+	AnneeUniversitaire  string                    `json:"anneeUniversitaire"`
+	CreatedAt           string                    `json:"createdAt"`
+	UpdatedAt           string                    `json:"updatedAt"`
+	User                devoirUserDTO             `json:"User"`
+	UniteEnseignement   devoirUEDTO               `json:"UniteEnseignement"`
+	GrilleEvaluation    *devoirGrilleDTO          `json:"GrilleEvaluation"`
+	SoumissionCount     int                       `json:"soumissionCount"`
 	Soumission          []devoirSoumissionListDTO `json:"Soumission"`
 }
 
@@ -188,32 +190,32 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 	id := uuid.NewString()
 	var created devoirDetailDTO
 	var (
-		createdAt, updatedAt         time.Time
-		ueNiveau                     string
-		grilleID, grilleCriteres     *string
-		descr, consignes, renduFich  *string
-		datePubDB                    *time.Time
+		createdAt, updatedAt        time.Time
+		ueNiveau                    string
+		grilleID, grilleCriteres    *string
+		descr, consignes, renduFich *string
+		datePubDB                   *time.Time
 	)
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), `
-			INSERT INTO "Devoir" (
-				"id", "titre", "description", "consignes",
-				"uniteEnseignementId", "enseignantId", "typeSeance",
-				"datePublication", "dateLimite", "noteMax",
-				"renduFichiers", "soumissionGroupe", "nbMaxFichiers",
-				"tailleMaxFichier", "statut", "anneeUniversitaire",
-				"createdAt", "updatedAt"
-			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'BROUILLON', $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-			RETURNING
-				"id", "titre", "description", "consignes",
-				"uniteEnseignementId", "enseignantId", "typeSeance"::text,
-				"datePublication", "dateLimite", "noteMax",
-				"renduFichiers", "soumissionGroupe", "nbMaxFichiers",
-				"tailleMaxFichier", "statut"::text, "anneeUniversitaire",
-				"createdAt", "updatedAt"
-		`,
+                        INSERT INTO "Devoir" (
+                                "id", "titre", "description", "consignes",
+                                "uniteEnseignementId", "enseignantId", "typeSeance",
+                                "datePublication", "dateLimite", "noteMax",
+                                "renduFichiers", "soumissionGroupe", "nbMaxFichiers",
+                                "tailleMaxFichier", "statut", "anneeUniversitaire",
+                                "createdAt", "updatedAt"
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'BROUILLON', $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING
+                                "id", "titre", "description", "consignes",
+                                "uniteEnseignementId", "enseignantId", "typeSeance"::text,
+                                "datePublication", "dateLimite", "noteMax",
+                                "renduFichiers", "soumissionGroupe", "nbMaxFichiers",
+                                "tailleMaxFichier", "statut"::text, "anneeUniversitaire",
+                                "createdAt", "updatedAt"
+                `,
 			id, input.Titre, input.Description, input.Consignes,
 			input.UniteEnseignementID, input.EnseignantID, input.TypeSeance,
 			datePub, dateLimite, input.NoteMax,
@@ -232,13 +234,13 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 	// Joins UE + User (via une 2e tx — léger surcoût mais isole les erreurs)
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), `
-			SELECT ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
-			       u."id", u."name", u."email"
-			FROM "Devoir" d
-			JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
-			JOIN "User" u ON u."id" = d."enseignantId"
-			WHERE d."id" = $1
-		`, id).Scan(
+                        SELECT ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
+                               u."id", u."name", u."email"
+                        FROM "Devoir" d
+                        JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+                        JOIN "User" u ON u."id" = d."enseignantId"
+                        WHERE d."id" = $1
+                `, id).Scan(
 			&created.UniteEnseignement.ID, &created.UniteEnseignement.Code,
 			&created.UniteEnseignement.Nom, &ueNiveau,
 			&created.User.ID, &created.User.Name, &created.User.Email,
@@ -295,35 +297,35 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		d        devoirDetailDTO
-		createdAt, updatedAt time.Time
-		dateLimite *time.Time
-		datePubDB  *time.Time
-		ueNiveau   string
+		d                           devoirDetailDTO
+		createdAt, updatedAt        time.Time
+		dateLimite                  *time.Time
+		datePubDB                   *time.Time
+		ueNiveau                    string
 		descr, consignes, renduFich *string
-		grilleID, grilleCriteres *string
+		grilleID, grilleCriteres    *string
 	)
 
 	found := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			SELECT
-				d."id", d."titre", d."description", d."consignes",
-				d."uniteEnseignementId", d."enseignantId", d."typeSeance"::text,
-				d."datePublication", d."dateLimite", d."noteMax",
-				d."renduFichiers", d."soumissionGroupe", d."nbMaxFichiers",
-				d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
-				d."createdAt", d."updatedAt",
-				u."id", u."name", u."email",
-				ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
-				g."id", g."criteres",
-				COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)
-			FROM "Devoir" d
-			LEFT JOIN "User" u ON u."id" = d."enseignantId"
-			LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
-			LEFT JOIN "GrilleEvaluation" g ON g."devoirId" = d."id"
-			WHERE d."id" = $1 AND d."deletedAt" IS NULL
-		`, devoirID).Scan(
+                        SELECT
+                                d."id", d."titre", d."description", d."consignes",
+                                d."uniteEnseignementId", d."enseignantId", d."typeSeance"::text,
+                                d."datePublication", d."dateLimite", d."noteMax",
+                                d."renduFichiers", d."soumissionGroupe", d."nbMaxFichiers",
+                                d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
+                                d."createdAt", d."updatedAt",
+                                u."id", u."name", u."email",
+                                ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
+                                g."id", g."criteres",
+                                COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)
+                        FROM "Devoir" d
+                        LEFT JOIN "User" u ON u."id" = d."enseignantId"
+                        LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+                        LEFT JOIN "GrilleEvaluation" g ON g."devoirId" = d."id"
+                        WHERE d."id" = $1 AND d."deletedAt" IS NULL
+                `, devoirID).Scan(
 			&d.ID, &d.Titre, &descr, &consignes,
 			&d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
 			&datePubDB, &dateLimite, &d.NoteMax,
@@ -368,19 +370,19 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 	soumissions := []devoirSoumissionListDTO{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-			SELECT
-				s."id", s."devoirId", s."etudiantId",
-				s."contenuTexte", s."fichiersSoumis", s."commentaireEtudiant",
-				s."statut"::text, s."renduAt", s."note", s."commentaireEnseignant",
-				s."noteIA", s."justificationIA",
-				COALESCE(s."statutIA"::text, 'EN_ATTENTE'), s."erreurIA",
-				s."createdAt", s."updatedAt",
-				u."id", u."name", u."email", u."matricule"
-			FROM "Soumission" s
-			LEFT JOIN "User" u ON u."id" = s."etudiantId"
-			WHERE s."devoirId" = $1
-			ORDER BY s."renduAt" DESC, s."createdAt" DESC
-		`, devoirID)
+                        SELECT
+                                s."id", s."devoirId", s."etudiantId",
+                                s."contenuTexte", s."fichiersSoumis", s."commentaireEtudiant",
+                                s."statut"::text, s."renduAt", s."note", s."commentaireEnseignant",
+                                s."noteIA", s."justificationIA",
+                                COALESCE(s."statutIA"::text, 'EN_ATTENTE'), s."erreurIA",
+                                s."createdAt", s."updatedAt",
+                                u."id", u."name", u."email", u."matricule"
+                        FROM "Soumission" s
+                        LEFT JOIN "User" u ON u."id" = s."etudiantId"
+                        WHERE s."devoirId" = $1
+                        ORDER BY s."renduAt" DESC, s."createdAt" DESC
+                `, devoirID)
 		if err != nil {
 			return nil
 		}
@@ -480,11 +482,11 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 		var updatedStatut string
 		_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 			err := tx.QueryRow(r.Context(), `
-				UPDATE "Devoir"
-				SET "statut" = $2::"StatutDevoir", "updatedAt" = CURRENT_TIMESTAMP
-				WHERE "id" = $1 AND "deletedAt" IS NULL AND "enseignantId" = $3
-				RETURNING "statut"::text
-			`, devoirID, newStatut, claims.UserID).Scan(&updatedStatut)
+                                UPDATE "Devoir"
+                                SET "statut" = $2::"StatutDevoir", "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $1 AND "deletedAt" IS NULL AND "enseignantId" = $3
+                                RETURNING "statut"::text
+                        `, devoirID, newStatut, claims.UserID).Scan(&updatedStatut)
 			return err
 		})
 
@@ -579,11 +581,11 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 	whereClause := fmt.Sprintf(`"id" = $%d AND "deletedAt" IS NULL AND "enseignantId" = $%d`, argIdx, argIdx+1)
 
 	query := fmt.Sprintf(`
-		UPDATE "Devoir"
-		SET %s
-		WHERE %s
-		RETURNING "id", "titre", "statut"::text, "updatedAt"
-	`, joinStringsArr(setClauses, ", "), whereClause)
+                UPDATE "Devoir"
+                SET %s
+                WHERE %s
+                RETURNING "id", "titre", "statut"::text, "updatedAt"
+        `, joinStringsArr(setClauses, ", "), whereClause)
 
 	var respID, respTitre, respStatut string
 	var respUpdatedAt time.Time
@@ -634,11 +636,11 @@ func (s *Server) deleteDevoir(w http.ResponseWriter, r *http.Request) {
 	// Les autres erreurs (connexion, etc.) doivent remonter en 500.
 	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			UPDATE "Devoir"
-			SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
-			WHERE "id" = $1 AND "deletedAt" IS NULL AND "enseignantId" = $2
-			RETURNING "id"
-		`, devoirID, claims.UserID).Scan(&deletedID)
+                        UPDATE "Devoir"
+                        SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1 AND "deletedAt" IS NULL AND "enseignantId" = $2
+                        RETURNING "id"
+                `, devoirID, claims.UserID).Scan(&deletedID)
 		if err == nil {
 			found = true
 			return nil
@@ -665,7 +667,6 @@ func (s *Server) deleteDevoir(w http.ResponseWriter, r *http.Request) {
 		"id":      devoirID,
 	})
 }
-
 
 // ══════════════════════════════════════════════════════════════════════════
 // SOUMISSIONS — POST /api/soumissions, PATCH /api/soumissions/{id}
@@ -699,12 +700,12 @@ func (s *Server) createSoumission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		DevoirID           string  `json:"devoirId"`
-		EtudiantID         string  `json:"etudiantId"`
-		ContenuTexte       *string `json:"contenuTexte"`
-		FichiersSoumis     *string `json:"fichiersSoumis"`
+		DevoirID            string  `json:"devoirId"`
+		EtudiantID          string  `json:"etudiantId"`
+		ContenuTexte        *string `json:"contenuTexte"`
+		FichiersSoumis      *string `json:"fichiersSoumis"`
 		CommentaireEtudiant *string `json:"commentaireEtudiant"`
-		Statut             string  `json:"statut"`
+		Statut              string  `json:"statut"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
@@ -742,12 +743,12 @@ func (s *Server) createSoumission(w http.ResponseWriter, r *http.Request) {
 	conflict := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			SELECT 1 FROM "Soumission"
-			WHERE "devoirId" = $1 AND "etudiantId" = $2
-			  AND "deletedAt" IS NULL
-			  AND "statut"::text IN ('SOUMIS', 'CORRIGE', 'RETOURNE')
-			LIMIT 1
-		`, input.DevoirID, input.EtudiantID).Scan(&conflict)
+                        SELECT 1 FROM "Soumission"
+                        WHERE "devoirId" = $1 AND "etudiantId" = $2
+                          AND "deletedAt" IS NULL
+                          AND "statut"::text IN ('SOUMIS', 'CORRIGE', 'RETOURNE')
+                        LIMIT 1
+                `, input.DevoirID, input.EtudiantID).Scan(&conflict)
 		if err != nil && err.Error() != "no rows in result set" {
 			return err
 		}
@@ -767,27 +768,27 @@ func (s *Server) createSoumission(w http.ResponseWriter, r *http.Request) {
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), `
-			INSERT INTO "Soumission" (
-				"id", "devoirId", "etudiantId",
-				"contenuTexte", "fichiersSoumis", "commentaireEtudiant",
-				"statut", "renduAt",
-				"createdAt", "updatedAt"
-			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7::"StatutSoumission", $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-			RETURNING "id", "devoirId", "etudiantId", "statut"::text, "renduAt", "createdAt", "updatedAt"
-		`, id, input.DevoirID, input.EtudiantID,
+                        INSERT INTO "Soumission" (
+                                "id", "devoirId", "etudiantId",
+                                "contenuTexte", "fichiersSoumis", "commentaireEtudiant",
+                                "statut", "renduAt",
+                                "createdAt", "updatedAt"
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7::"StatutSoumission", $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "id", "devoirId", "etudiantId", "statut"::text, "renduAt", "createdAt", "updatedAt"
+                `, id, input.DevoirID, input.EtudiantID,
 			input.ContenuTexte, input.FichiersSoumis, input.CommentaireEtudiant,
 			input.Statut, renduAt,
 		).Scan(&createdID, &createdDevoirID, &createdEtudiantID, &createdStatut, &createdRenduAt, &createdAt, &updatedAt)
 	})
 
 	resp := map[string]any{
-		"id":          createdID,
-		"devoirId":    createdDevoirID,
-		"etudiantId":  createdEtudiantID,
-		"statut":      createdStatut,
-		"createdAt":   createdAt.UTC().Format(time.RFC3339),
-		"updatedAt":   updatedAt.UTC().Format(time.RFC3339),
+		"id":         createdID,
+		"devoirId":   createdDevoirID,
+		"etudiantId": createdEtudiantID,
+		"statut":     createdStatut,
+		"createdAt":  createdAt.UTC().Format(time.RFC3339),
+		"updatedAt":  updatedAt.UTC().Format(time.RFC3339),
 	}
 	if createdRenduAt != nil {
 		resp["renduAt"] = createdRenduAt.UTC().Format(time.RFC3339)
@@ -817,11 +818,11 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Note                 *float64 `json:"note,omitempty"`
+		Note                  *float64 `json:"note,omitempty"`
 		CommentaireEnseignant *string  `json:"commentaireEnseignant,omitempty"`
-		ContenuTexte         *string  `json:"contenuTexte,omitempty"`
-		CommentaireEtudiant  *string  `json:"commentaireEtudiant,omitempty"`
-		Statut               *string  `json:"statut,omitempty"`
+		ContenuTexte          *string  `json:"contenuTexte,omitempty"`
+		CommentaireEtudiant   *string  `json:"commentaireEtudiant,omitempty"`
+		Statut                *string  `json:"statut,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
@@ -831,17 +832,17 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 	// Récupérer la soumission existante pour valider l'accès et le statut courant
 	var (
 		existingDevoirID, existingEtudiantID, existingStatut string
-		devoirEnseignantID                                  string
+		devoirEnseignantID                                   string
 	)
 	found := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			SELECT s."devoirId", s."etudiantId", s."statut"::text,
-			       d."enseignantId"
-			FROM "Soumission" s
-			JOIN "Devoir" d ON d."id" = s."devoirId"
-			WHERE s."id" = $1
-		`, soumissionID).Scan(&existingDevoirID, &existingEtudiantID, &existingStatut, &devoirEnseignantID)
+                        SELECT s."devoirId", s."etudiantId", s."statut"::text,
+                               d."enseignantId"
+                        FROM "Soumission" s
+                        JOIN "Devoir" d ON d."id" = s."devoirId"
+                        WHERE s."id" = $1
+                `, soumissionID).Scan(&existingDevoirID, &existingEtudiantID, &existingStatut, &devoirEnseignantID)
 		if err == nil {
 			found = true
 		}
@@ -926,11 +927,11 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 	whereClause := fmt.Sprintf(`"id" = $%d AND "deletedAt" IS NULL`, argIdx)
 
 	query := fmt.Sprintf(`
-		UPDATE "Soumission"
-		SET %s
-		WHERE %s
-		RETURNING "id", "statut"::text, "note", "updatedAt"
-	`, joinStringsArr(setClauses, ", "), whereClause)
+                UPDATE "Soumission"
+                SET %s
+                WHERE %s
+                RETURNING "id", "statut"::text, "note", "updatedAt"
+        `, joinStringsArr(setClauses, ", "), whereClause)
 
 	var respID, respStatut string
 	var respNote *float64
@@ -950,6 +951,29 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 	}
 	if respNote != nil {
 		resp["note"] = *respNote
+	}
+
+	// SECT-NOTIF-DEVOIR-1 : notifier l'étudiant quand le devoir est RETOURNE
+	// (la correction est visible par l'étudiant). Non bloquant.
+	if s.notifDispatcher != nil && respStatut == "RETOURNE" {
+		var etudiantID, devoirTitre string
+		_ = s.dbPool.QueryRow(r.Context(), `
+                        SELECT s."etudiantId", d."titre"
+                        FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId"
+                        WHERE s."id" = $1`, soumissionID).Scan(&etudiantID, &devoirTitre)
+		if etudiantID != "" {
+			s.notifDispatcher.Dispatch(r.Context(), notification.Event{
+				UserID:      etudiantID,
+				Type:        "DEVOIR_CORRIGE",
+				Titre:       "Devoir corrigé 📝",
+				Message:     fmt.Sprintf("Votre devoir « %s » a été corrigé. Consultez votre note.", devoirTitre),
+				Categorie:   "evaluation",
+				Priorite:    "info",
+				ActionURL:   "/mes-devoirs",
+				ActionLabel: "Voir mon devoir",
+				Icone:       "BookOpen",
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -997,11 +1021,11 @@ func (s *Server) listGrillesEvaluation(w http.ResponseWriter, r *http.Request) {
 	result := []grille{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "devoirId", "criteres", "createdAt", "updatedAt"
-			FROM "GrilleEvaluation"
-			WHERE "devoirId" = $1
-			ORDER BY "createdAt" ASC
-		`, devoirID)
+                        SELECT "id", "devoirId", "criteres", "createdAt", "updatedAt"
+                        FROM "GrilleEvaluation"
+                        WHERE "devoirId" = $1
+                        ORDER BY "createdAt" ASC
+                `, devoirID)
 		if err != nil {
 			return nil
 		}
@@ -1040,8 +1064,8 @@ func (s *Server) createGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var input struct {
-		DevoirID  string `json:"devoirId"`
-		Criteres  any    `json:"criteres"`
+		DevoirID string `json:"devoirId"`
+		Criteres any    `json:"criteres"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
@@ -1064,11 +1088,11 @@ func (s *Server) createGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 	hasGrille := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			SELECT g."id"
-			FROM "GrilleEvaluation" g
-			JOIN "Devoir" d ON d."id" = g."devoirId"
-			WHERE g."devoirId" = $1 AND d."enseignantId" = $2
-		`, input.DevoirID, claims.UserID).Scan(&existingGrilleID)
+                        SELECT g."id"
+                        FROM "GrilleEvaluation" g
+                        JOIN "Devoir" d ON d."id" = g."devoirId"
+                        WHERE g."devoirId" = $1 AND d."enseignantId" = $2
+                `, input.DevoirID, claims.UserID).Scan(&existingGrilleID)
 		if err == nil {
 			hasGrille = true
 		}
@@ -1078,18 +1102,18 @@ func (s *Server) createGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 		// Si une grille existe déjà, on la met à jour (upsert sémantique)
 		_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 			_, err := tx.Exec(r.Context(), `
-				UPDATE "GrilleEvaluation"
-				SET "criteres" = $1, "updatedAt" = CURRENT_TIMESTAMP
-				WHERE "id" = $2
-			`, string(criteresJSON), existingGrilleID)
+                                UPDATE "GrilleEvaluation"
+                                SET "criteres" = $1, "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $2
+                        `, string(criteresJSON), existingGrilleID)
 			return err
 		})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"grille": map[string]any{
-				"id":        existingGrilleID,
-				"devoirId":  input.DevoirID,
-				"criteres":  string(criteresJSON),
+				"id":       existingGrilleID,
+				"devoirId": input.DevoirID,
+				"criteres": string(criteresJSON),
 			},
 			"message": "grille mise à jour",
 		})
@@ -1100,19 +1124,19 @@ func (s *Server) createGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 	var createdID string
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), `
-			INSERT INTO "GrilleEvaluation" ("id", "devoirId", "criteres", "createdAt", "updatedAt")
-			VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-			RETURNING "id"
-		`, id, input.DevoirID, string(criteresJSON)).Scan(&createdID)
+                        INSERT INTO "GrilleEvaluation" ("id", "devoirId", "criteres", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "id"
+                `, id, input.DevoirID, string(criteresJSON)).Scan(&createdID)
 	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]any{
 		"grille": map[string]any{
-			"id":        createdID,
-			"devoirId":  input.DevoirID,
-			"criteres":  string(criteresJSON),
+			"id":       createdID,
+			"devoirId": input.DevoirID,
+			"criteres": string(criteresJSON),
 		},
 	})
 }
@@ -1154,12 +1178,12 @@ func (s *Server) updateGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 	found := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			UPDATE "GrilleEvaluation" g
-			SET "criteres" = $1, "updatedAt" = CURRENT_TIMESTAMP
-			FROM "Devoir" d
-			WHERE g."id" = $2 AND g."devoirId" = d."id" AND d."enseignantId" = $3
-			RETURNING g."id"
-		`, string(criteresJSON), grilleID, claims.UserID).Scan(&updatedID)
+                        UPDATE "GrilleEvaluation" g
+                        SET "criteres" = $1, "updatedAt" = CURRENT_TIMESTAMP
+                        FROM "Devoir" d
+                        WHERE g."id" = $2 AND g."devoirId" = d."id" AND d."enseignantId" = $3
+                        RETURNING g."id"
+                `, string(criteresJSON), grilleID, claims.UserID).Scan(&updatedID)
 		if err == nil {
 			found = true
 		}
@@ -1179,7 +1203,6 @@ func (s *Server) updateGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 		"message": "grille mise à jour",
 	})
 }
-
 
 // ══════════════════════════════════════════════════════════════════════════
 // P3-DEVOIRS-3 : Upload présigné R2 pour soumissions de fichiers
@@ -1249,7 +1272,6 @@ func (s *Server) presignUploadSoumission(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-
 // ══════════════════════════════════════════════════════════════════════════
 // P4-DEVOIRS-4 : Évaluation IA asynchrone des soumissions
 // ══════════════════════════════════════════════════════════════════════════
@@ -1288,11 +1310,11 @@ func (s *Server) aiGradeSoumission(w http.ResponseWriter, r *http.Request) {
 	found := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
-			SELECT s."devoirId"
-			FROM "Soumission" s
-			JOIN "Devoir" d ON d."id" = s."devoirId"
-			WHERE s."id" = $1 AND d."enseignantId" = $2
-		`, soumissionID, claims.UserID).Scan(&devoirID)
+                        SELECT s."devoirId"
+                        FROM "Soumission" s
+                        JOIN "Devoir" d ON d."id" = s."devoirId"
+                        WHERE s."id" = $1 AND d."enseignantId" = $2
+                `, soumissionID, claims.UserID).Scan(&devoirID)
 		if err == nil {
 			found = true
 		}
@@ -1306,12 +1328,12 @@ func (s *Server) aiGradeSoumission(w http.ResponseWriter, r *http.Request) {
 	// Marquer statutIA = EN_ATTENTE (en attendant que le worker le prenne)
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		_, err := tx.Exec(r.Context(), `
-			UPDATE "Soumission"
-			SET "statutIA" = 'EN_ATTENTE'::"StatutIASoumission",
-			    "erreurIA" = NULL,
-			    "updatedAt" = CURRENT_TIMESTAMP
-			WHERE "id" = $1
-		`, soumissionID)
+                        UPDATE "Soumission"
+                        SET "statutIA" = 'EN_ATTENTE'::"StatutIASoumission",
+                            "erreurIA" = NULL,
+                            "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1
+                `, soumissionID)
 		return err
 	})
 
