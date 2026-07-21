@@ -904,7 +904,12 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
           }
         }}
       >
-        <AlertDialogContent className="ds-kente-top max-w-md">
+        <AlertDialogContent className="max-w-md">
+          {/* .ds-kente-top retiré S2-MODAL-FIX-1 : la classe force
+              `position: relative` (pour le ::after kente) ce qui override le
+              `fixed` de l'AlertDialogContent → la modale n'était plus centrée
+              au viewport (positionnée en relative dans le flow → invisible sous
+              le fold). On garde le kente accent via un divider interne. */}
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight text-destructive">
               <AlertTriangle className="h-5 w-5" aria-hidden="true" />
