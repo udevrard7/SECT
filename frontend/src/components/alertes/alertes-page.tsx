@@ -775,7 +775,7 @@ export function AlertesPage() {
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || severityFilter !== 'all' || typeFilter !== 'all' || lueFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
-              : 'Aucune alerte active pour le moment. Tout semble fonctionner correctement.'}
+              : 'Aucune alerte pour le moment. Tout semble fonctionner correctément.'}
           </p>
           {!search && severityFilter === 'all' && typeFilter === 'all' && lueFilter === 'all' && (
             <Button
