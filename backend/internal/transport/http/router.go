@@ -99,12 +99,20 @@ type Server struct {
 	// WithNotificationDispatcher (setter pattern — évite d'étendre la signature
 	// NewServer déjà très longue). nil = pas de notification (dev/tests).
 	notifDispatcher *notification.Dispatcher
+	// SECT-NOTIF-VAPID-1 : clé publique VAPID pour l'endpoint /api/push/vapid-public-key.
+	vapidPublicKey string
 }
 
 // WithNotificationDispatcher injecte le dispatcher de notifications après
 // construction du serveur. Pattern identique à WithGeniusPay / WithTurnstile.
 func (s *Server) WithNotificationDispatcher(d *notification.Dispatcher) *Server {
 	s.notifDispatcher = d
+	return s
+}
+
+// WithVapidPublicKey injecte la clé publique VAPID (SECT-NOTIF-VAPID-1).
+func (s *Server) WithVapidPublicKey(key string) *Server {
+	s.vapidPublicKey = key
 	return s
 }
 
@@ -898,6 +906,16 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		})
 
 		// NOTIFICATIONS-FIX-N7 : RequireRole("ADMIN") sur /admin.
+		// SECT-NOTIF-VAPID-1 : Web Push (VAPID) — endpoints pour l'abonnement PWA.
+		// /vapid-public-key est public (pas d'auth — le frontend a besoin de la clé
+		// avant de s'abonner). /subscribe et /unsubscribe exigent auth.
+		r.Get("/api/push/vapid-public-key", s.vapidPublicKeyHandler)
+		r.Route("/api/push", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Post("/subscribe", s.pushSubscribeHandler)
+			r.Delete("/subscribe", s.pushUnsubscribeHandler)
+		})
+
 		r.Route("/api/notifications", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.notificationsListReal)

@@ -293,7 +293,8 @@ func main() {
 		})
 	}, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject)
 	server.WithNotificationDispatcher(notifDispatcher)
-	logger.Info("Notification dispatcher configured")
+	server.WithVapidPublicKey(cfg.VAPIDPublicKey)
+	logger.Info("Notification dispatcher configured", "pushEnabled", cfg.VAPIDPublicKey != "")
 
 	// SECT-NOTIF-CLOTURE-1 : injecte le dispatcher dans PromotionUseCase
 	// pour que la clôture notifie chaque étudiant (promu/redoublant/diplômé).
