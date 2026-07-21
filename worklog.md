@@ -19129,3 +19129,20 @@ Stage Summary:
 - RLS Affectation_select (migration 000091, fonction affectation_visible_by_student) valide : l'étudiant ne voit QUE les affectations PUBLIEE des UE de SA filière (Informatique), pas celles des autres filières.
 - 2 onglets (Mes enseignants + Mes UE) opérationnels, avec groupement par enseignant / par UE.
 - L'enrichissement "visibilité étudiant" (SECT-AFFECTATION-PUBLISH-ENRICH-1 point 5) est maintenant exploité côté UI.
+
+---
+Task ID: SECT-NOTIF-PREFERENCES-UI-1 (finalisation)
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Page préférences de notification dans profil + fix RLS + fix emailEnabled default.
+
+Work Log:
+- Créé notification-preferences.tsx : 5 catégories (Pédagogique, Évaluations, Messagerie, Administration, Général) × 2 switches (Push + Email). GET/PATCH /api/notifications/preferences. TanStack Query + toast. Responsive.
+- Intégré dans profil-page.tsx (section avant "Mes récompenses").
+- BUG #1 : RLS activée sur NotificationPreference (migration 000019) mais AUCUNE policy → deny-by-default → INSERT échouait silencieusement (handler ignorait l'erreur avec _ = appdb.WithTx). Fix migration 000092 : 2 policies (select + modify, userId = current_user_id()).
+- BUG #2 : handler notificationsPreferencesUpdate default emailEnabled à false. Togguler uniquement push écrasait emailEnabled à false. Fix : défaut true (cohérent avec pushEnabled + frontend).
+- Vérification E2E Agent Browser : login responsable → /profil → toggle Push Pédagogique → switch checked=false ✓ → DB persistée (pedagogique: push=false) ✓.
+
+Stage Summary:
+- 4 fichiers créés/modifiés : notification-preferences.tsx (nouveau), profil-page.tsx, 000092_notification_preference_rls.up/down.sql, notification_phase3_handlers.go.
+- Migration 000092 appliquée à Neon (v91 → v92).
+- Système de notification SECT-NOTIF-* COMPLET : dispatcher + 4 canaux (in-app + SSE + push + email) + 5 modules wirés (affectation, clôture, résultat, devoir) + préférences UI.
