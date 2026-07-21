@@ -32,6 +32,7 @@ import (
 	"log/slog"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -95,6 +96,11 @@ type Dispatcher struct {
 	mailer mailer.Mailer // peut être nil (LogMailer par défaut)
 	logger *slog.Logger
 
+	// SECT-NOTIF-VAPID-1 : clés VAPID pour web push. Vides = push désactivé.
+	vapidPublicKey  string
+	vapidPrivateKey string
+	vapidSubject    string
+
 	// broadcastSSE est une fonction injectée (pour éviter une dépendance
 	// circulaire avec transport/http). Elle est wirée dans main.go après
 	// création du hub. nil = pas de SSE (tests unitaires).
@@ -113,15 +119,19 @@ type SSEEvent struct {
 //
 // mailer peut être nil (pas d'email). broadcastSSE peut être nil (pas de SSE,
 // utile en tests). Le pool est requis (pour l'INSERT NotificationAdmin).
-func New(pool *pgxpool.Pool, m mailer.Mailer, logger *slog.Logger, broadcastSSE func(userID string, event SSEEvent)) *Dispatcher {
+// vapidPublicKey/vapidPrivateKey vides = push désactivé (dev mode).
+func New(pool *pgxpool.Pool, m mailer.Mailer, logger *slog.Logger, broadcastSSE func(userID string, event SSEEvent), vapidPublicKey, vapidPrivateKey, vapidSubject string) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Dispatcher{
-		pool:         pool,
-		mailer:       m,
-		logger:       logger,
-		broadcastSSE: broadcastSSE,
+		pool:            pool,
+		mailer:          m,
+		logger:          logger,
+		broadcastSSE:    broadcastSSE,
+		vapidPublicKey:  vapidPublicKey,
+		vapidPrivateKey: vapidPrivateKey,
+		vapidSubject:    vapidSubject,
 	}
 }
 
@@ -190,11 +200,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 
 	insertErr := db.WithTx(ctx, d.pool, db.SystemClaims(), func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO "NotificationAdmin"
-				("id", "type", "titre", "message", "destinataireId", "destinataireRole",
-				 "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
-				 "expireLe", "createdAt")
-			VALUES ($1, $2, $3, $4, $5, NULL, false, $6, $7, $8, $9, $10, $11, NOW())`,
+                        INSERT INTO "NotificationAdmin"
+                                ("id", "type", "titre", "message", "destinataireId", "destinataireRole",
+                                 "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
+                                 "expireLe", "createdAt")
+                        VALUES ($1, $2, $3, $4, $5, NULL, false, $6, $7, $8, $9, $10, $11, NOW())`,
 			notifID, event.Type, event.Titre, event.Message, event.UserID,
 			actionURL, actionLabel, event.Priorite, event.Categorie, icone, expiresAt)
 		return err
@@ -242,9 +252,9 @@ func (d *Dispatcher) fetchPreferences(ctx context.Context, userID, categorie str
 	def := preferenceResult{pushEnabled: true, emailEnabled: true}
 	var push, email bool
 	err := d.pool.QueryRow(ctx, `
-		SELECT "pushEnabled", "emailEnabled"
-		FROM "NotificationPreference"
-		WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email)
+                SELECT "pushEnabled", "emailEnabled"
+                FROM "NotificationPreference"
+                WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email)
 	if err != nil {
 		// Pas de ligne (ou erreur) → défauts
 		return def
@@ -252,14 +262,71 @@ func (d *Dispatcher) fetchPreferences(ctx context.Context, userID, categorie str
 	return preferenceResult{pushEnabled: push, emailEnabled: email}
 }
 
-// sendPush envoie une notification web push à l'utilisateur. Implémentation
-// minimaliste pour l'instant — SECT-NOTIF-VAPID-1 configurera le vrai envoi
-// via web-push (clés VAPID + PushSubscription). Non bloquant.
+// sendPush envoie une notification web push à l'utilisateur via les
+// PushSubscription actives. Utilise la librairie webpush-go avec les clés
+// VAPID. Non bloquant : si VAPID non configuré ou pas de subscription, log + skip.
+//
+// SECT-NOTIF-VAPID-1.
 func (d *Dispatcher) sendPush(ctx context.Context, userID string, payload map[string]any) {
-	// TODO SECT-NOTIF-VAPID-1 : implémenter l'envoi via web-push.
-	// Pour l'instant, on log (le canal in-app + SSE suffisent pour la V1).
-	d.logger.Debug("notification.Dispatcher: sendPush (TODO VAPID)",
-		"userId", userID, "type", payload["type"])
+	if d.vapidPrivateKey == "" || d.vapidPublicKey == "" {
+		// VAPID non configuré — push désactivé (dev mode).
+		return
+	}
+
+	// Récupérer les PushSubscription actives pour cet utilisateur.
+	rows, err := d.pool.Query(ctx,
+		`SELECT "endpoint", "p256dh", "auth" FROM "PushSubscription" WHERE "userId" = $1`,
+		userID)
+	if err != nil {
+		d.logger.Warn("notification.sendPush: query subscriptions failed",
+			"userId", userID, "error", err)
+		return
+	}
+	defer rows.Close()
+
+	// Sérialiser le payload en JSON compact.
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	subCount := 0
+	for rows.Next() {
+		var endpoint, p256dh, auth string
+		if err := rows.Scan(&endpoint, &p256dh, &auth); err != nil {
+			continue
+		}
+
+		sub := webpush.Subscription{
+			Endpoint: endpoint,
+			Keys: webpush.Keys{
+				P256dh: p256dh,
+				Auth:   auth,
+			},
+		}
+
+		// Envoyer le push (timeout 10s par subscription).
+		resp, err := webpush.SendNotificationWithContext(ctx, payloadBytes, &sub, &webpush.Options{
+			VAPIDPublicKey:  d.vapidPublicKey,
+			VAPIDPrivateKey: d.vapidPrivateKey,
+			Subscriber:      d.vapidSubject,
+			TTL:             30, // 30 secondes (notifications temps réel)
+		})
+		if err != nil {
+			d.logger.Warn("notification.sendPush: send failed",
+				"userId", userID, "endpoint", endpoint[:30], "error", err)
+			continue
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		subCount++
+	}
+
+	if subCount > 0 {
+		d.logger.Debug("notification.sendPush: sent",
+			"userId", userID, "subscriptions", subCount, "type", payload["type"])
+	}
 }
 
 // sendEmail envoie un email via le mailer. Non bloquant.
