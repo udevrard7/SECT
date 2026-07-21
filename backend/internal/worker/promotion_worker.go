@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,10 +69,21 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 
 	go func() {
 		defer close(w.stopCh)
+		// SECT-CLOTURE-E2E-VERIFY-1 (fix panic) : recover global pour qu'un panic
+		// dans processPendingBatches ne tue pas définitivement la goroutine. Sans
+		// ce recover, un panic (ex: nil deref sur un étudiant sans niveau, erreur
+		// SQL inattendue) fait mourir le worker jusqu'au redémarrage du serveur,
+		// laissant les batches PENDING/RUNNING orphelins.
+		defer func() {
+			if r := recover(); r != nil {
+				w.logger.Error("PromotionWorker: PANIC in goroutine (recovered, worker continues)",
+					"panic", r, "stack", string(debug.Stack()))
+			}
+		}()
 
 		// Premier check immédiat au démarrage (rattrapage des batches PENDING
 		// créés pendant que le serveur était down — cf. cleanup_worker).
-		w.processPendingBatches(ctx)
+		w.safeProcessPendingBatches(ctx)
 
 		ticker := time.NewTicker(promotionTickInterval)
 		defer ticker.Stop()
@@ -82,10 +94,23 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 				w.logger.Info("Promotion Worker stopping...")
 				return
 			case <-ticker.C:
-				w.processPendingBatches(ctx)
+				w.safeProcessPendingBatches(ctx)
 			}
 		}
 	}()
+}
+
+// safeProcessPendingBatches wrap processPendingBatches avec un recover par
+// itération. Un panic sur un batch (données incohérentes, SQL inattendu) est
+// loggé + le worker continue les ticks suivants (au lieu de mourir).
+func (w *PromotionWorker) safeProcessPendingBatches(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("PromotionWorker: PANIC in processPendingBatches (recovered)",
+				"panic", r, "stack", string(debug.Stack()))
+		}
+	}()
+	w.processPendingBatches(ctx)
 }
 
 // processPendingBatches traite UN batch PENDING (le plus ancien). Si plusieurs
@@ -278,13 +303,13 @@ func (w *PromotionWorker) fetchAndClaimPendingBatch(ctx context.Context) (*domai
 	var statut string
 	err := db.WithTx(ctx, w.dbPool, db.SystemClaims(), func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
-			SELECT "id", "etablissementId", "anneeSourceId", "anneeCibleId",
-			       "statut", "runById", "seuilMoyenne", "details", "createdAt"
-			FROM "PromotionBatch"
-			WHERE "statut" = 'PENDING'
-			ORDER BY "createdAt" ASC
-			LIMIT 1
-			FOR UPDATE SKIP LOCKED`).Scan(
+                        SELECT "id", "etablissementId", "anneeSourceId", "anneeCibleId",
+                               "statut", "runById", "seuilMoyenne", "details", "createdAt"
+                        FROM "PromotionBatch"
+                        WHERE "statut" = 'PENDING'
+                        ORDER BY "createdAt" ASC
+                        LIMIT 1
+                        FOR UPDATE SKIP LOCKED`).Scan(
 			&batch.ID, &batch.EtablissementID, &batch.AnneeSourceID, &batch.AnneeCibleID,
 			&statut, &batch.RunByID, &batch.SeuilMoyenne, &batch.Details, &batch.CreatedAt,
 		)
@@ -363,9 +388,9 @@ func (w *PromotionWorker) auditBatchCompleted(ctx context.Context, batchID, etab
 
 	auditID := "audit_" + uuid.NewString()
 	_, err = w.dbPool.Exec(ctx, `
-		INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "etablissementId", "createdAt")
-		VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
-	`,
+                INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "etablissementId", "createdAt")
+                VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+        `,
 		auditID,
 		domain.AuditActionPromotionBatchCompleted,
 		"PromotionBatch",
