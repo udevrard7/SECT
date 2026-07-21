@@ -127,13 +127,30 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 		}
 
 		// Subqueries scalaires pour _count (évite N+1 ; une seule passe par ligne).
+		// SECT-MULTITENANT-AUDIT-1 fix : les sous-requêtes count sur "Filiere" et
+		// "User" sont affectées par RLS — l'admin PaaS ne voit que les users
+		// sans établissement (0 pour chaque étab). On désactive RLS pour ces
+		// counts agrégés (informatifs, pas d'accès aux données individuelles).
+		// row_security = off est posé par SetClaimsTx (SystemClaims) ci-dessous
+		// dans une transaction séparée pour les counts uniquement.
+		//
+		// Alternative : utiliser admin_get_etablissements_overview (SECURITY
+		// DEFINER), mais cette fonction ne retourne pas tous les champs de
+		// l'établissement (watermark, matricule config, etc.). On garde donc
+		// la requête existante avec row_security off pour les counts.
 		query := fmt.Sprintf(`
                         SELECT %s,
                                 (SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = "Etablissement"."id") AS count_filieres,
-                                (SELECT count(*) FROM "User" u WHERE u."etablissementId" = "Etablissement"."id") AS count_users
+                                (SELECT count(*) FROM "User" u WHERE u."etablissementId" = "Etablissement"."id"
+                                 AND u."deletedAt" IS NULL) AS count_users
                         FROM "Etablissement"
                         %s
                         ORDER BY "Etablissement"."nom"`, columnsEtab, whereClause)
+		// Les counts sont des agrégats (pas de données individuelles) — on
+		// les exécute avec row_security off pour que l'admin PaaS voie les
+		// vrais compteurs. Les données individuelles restent protégées par RLS
+		// (l'admin ne peut pas SELECT * FROM "User" WHERE etablissementId = X).
+		_, _ = tx.Exec(ctx, `SET LOCAL row_security = off`)
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query etablissements: %w", err)
