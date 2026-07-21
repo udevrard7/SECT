@@ -118,6 +118,11 @@ func (s *Server) fetchUnreadCountSSE(r *http.Request, claims appdb.SessionClaims
 			argIdx++
 		}
 
+		// ADMIN PaaS : uniquement les alertes système (multi-tenant).
+		if role == "ADMIN" {
+			rbacConds = append(rbacConds, `("source" = 'alerte' AND "destinataireId" IS NULL AND "filiereId" IS NULL AND "epreuveId" IS NULL)`)
+		}
+
 		query := fmt.Sprintf(`
                         SELECT count(*) FROM "NotificationUnified"
                         WHERE ("lue" = false) AND (%s)
@@ -204,6 +209,17 @@ func (s *Server) notificationsUnifiedList(w http.ResponseWriter, r *http.Request
 			rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = "NotificationUnified"."epreuveId" AND e."enseignantId" = $%d))`, argIdx))
 			args = append(args, claims.UserID)
 			argIdx++
+		}
+
+		// ADMIN PaaS : ne voit QUE les alertes système (source='alerte' avec
+		// userId NULL + filiereId NULL + epreuveId NULL). L'admin est
+		// propriétaire du SaaS multi-tenant et ne doit PAS accéder aux
+		// données sensibles des établissements (fraude, élèves, etc.).
+		// Les notifications (source='notification-admin') sont déjà filtrées
+		// par destinataireId/destinataireRole ci-dessus — pas besoin de
+		// filtre supplémentaire pour elles.
+		if role == "ADMIN" {
+			rbacConds = append(rbacConds, `("source" = 'alerte' AND "destinataireId" IS NULL AND "filiereId" IS NULL AND "epreuveId" IS NULL)`)
 		}
 
 		// Clause WHERE : (RBAC) AND (filtre lue optionnel)
