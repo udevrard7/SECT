@@ -229,7 +229,7 @@ function getSessionBadge(statut: string) {
 
 // ─── Score distribution mini chart ───
 
-function ScoreDistributionChart({ sessions }: { sessions: Session[] }) {
+function ScoreDistributionChart({ sessions, noteTotal }: { sessions: Session[]; noteTotal?: number }) {
   const scored = sessions.filter((s) => s.score !== null)
   if (scored.length === 0) return null
 
@@ -244,7 +244,9 @@ function ScoreDistributionChart({ sessions }: { sessions: Session[] }) {
   ]
 
   scored.forEach((s) => {
-    const score = s.score ?? 0
+    // SECT-EVAL-NORM-1 : normaliser le score sur /20 si noteTotal != 20
+    const rawScore = s.score ?? 0
+    const score = noteTotal && noteTotal > 0 ? (rawScore / noteTotal) * 20 : rawScore
     const bin = bins.find((b) => score >= b.min && score < b.max)
     if (bin) bin.count++
     else if (score >= 16) bins[6].count++
@@ -404,8 +406,10 @@ export function EvaluationsPage() {
     const completionRate = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0
     const totalAlertsEpreuve = sessions.reduce((sum, s) => sum + (s.alertes ?? 0), 0)
     const scoredSessions = sessions.filter((s) => s.score !== null)
+    // SECT-EVAL-NORM-1 : normaliser chaque score sur /20 avant de calculer la moyenne
+    const nt = epreuve.noteTotal ?? 20
     const avgScore = scoredSessions.length > 0
-      ? Math.round((scoredSessions.reduce((sum, s) => sum + (s.score ?? 0), 0) / scoredSessions.length) * 10) / 10
+      ? Math.round((scoredSessions.reduce((sum, s) => sum + (nt > 0 ? ((s.score ?? 0) / nt) * 20 : (s.score ?? 0)), 0) / scoredSessions.length) * 10) / 10
       : null
     const questionCount = epreuve.questions?.length ?? epreuve.questionCount ?? 0
     const totalPoints = epreuve.questions
@@ -984,7 +988,7 @@ export function EvaluationsPage() {
                   </div>
 
                   {/* Score distribution chart */}
-                  <ScoreDistributionChart sessions={detailEpreuve.sessions ?? []} />
+                  <ScoreDistributionChart sessions={detailEpreuve.sessions ?? []} noteTotal={detailEpreuve.noteTotal} />
 
                   {/* Average / median / pass rate stats */}
                   {(() => {
@@ -994,7 +998,9 @@ export function EvaluationsPage() {
                         Aucun résultat disponible pour le moment
                       </div>
                     )
-                    const scores = scored.map((s: Session) => s.score ?? 0)
+                    // SECT-EVAL-NORM-1 : normaliser les scores sur /20
+                    const ntDetail = detailEpreuve.noteTotal ?? 20
+                    const scores = scored.map((s: Session) => ntDetail > 0 ? ((s.score ?? 0) / ntDetail) * 20 : (s.score ?? 0))
                     const avg = Math.round((scores.reduce((a: number, b: number) => a + b, 0) / scores.length) * 10) / 10
                     const sorted = [...scores].sort((a: number, b: number) => a - b)
                     const median = sorted.length % 2 === 0
@@ -1095,8 +1101,18 @@ export function EvaluationsPage() {
                             </div>
                             <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                               {session.score !== null && (
-                                <Badge variant="outline" className={getScoreBadgeClasses(session.score)}>
-                                  {session.score}/20
+                                <Badge variant="outline" className={getScoreBadgeClasses(
+                                  // SECT-EVAL-NORM-1 : normaliser pour la couleur
+                                  detailEpreuve.noteTotal && detailEpreuve.noteTotal > 0
+                                    ? (session.score / detailEpreuve.noteTotal) * 20
+                                    : session.score
+                                )}>
+                                  {/* SECT-EVAL-NORM-1 : afficher le score normalisé /20 */}
+                                  {(
+                                    detailEpreuve.noteTotal && detailEpreuve.noteTotal > 0
+                                      ? Math.round((session.score / detailEpreuve.noteTotal) * 20 * 100) / 100
+                                      : session.score
+                                  ).toFixed(2)}/20
                                 </Badge>
                               )}
                               {getSessionBadge(session.statut)}
