@@ -18848,3 +18848,24 @@ Prêt pour test E2E :
 6. Toggle « Afficher inactives » → cartes inactives en opacity-70 avec badge « Désactivée ».
 7. Loading → SectionHeaderSkeleton + StatCardSkeletonGrid + 4 PulseSkeleton cards.
 8. Dark mode : tous les tokens sémantiques (bg-card, text-foreground, bg-primary, bg-gold, text-success-text, bg-warning, bg-destructive, border-border) s'adaptent automatiquement via les variables CSS du design system.
+
+---
+Task ID: S2-SAVANE-ANNEES-REFONTE-1 (vérification E2E)
+Agent: Z.ai Code (Tutor/Assistant) + frontend-styling-expert (subagent)
+Task: Refonte Savane EdTech de l'onglet Années (/annee-academique). Vérification E2E Agent Browser.
+
+Work Log:
+- Refonte par subagent frontend-styling-expert : annees-academiques-section.tsx refonte visuelle (logique préservée 1:1). tsc + lint OK.
+- Commit d800aee + push GitHub.
+
+Vérification E2E Agent Browser (sect-app.vercel.app, registrar@uniabidjan.com) :
+- Page /annee-academique onglet Années : heading 'Années académiques' + 3 KPI StatCard (Total années, Année courante, Années actives) + filtre période + bouton 'Nouvelle année' ✓.
+- Cards années avec .ds-kente-top : libellé + badges + dates + counts + 5 boutons d'action DS variants ✓.
+- Test création : bouton 'Nouvelle année' → GlassModal avec libellé pré-rempli '2028-2029' + dates suggérées → Créer → toast 'Année académique créée' ✓. 2028-2029 visible dans la liste ✓.
+- Test SetCurrentAnnee : 'Définir 2028-2029 comme courante' → badge 'Courante' (status role, gold + kente badge) affiché sur la card ✓. KPI 'Année courante' peuplé ✓.
+- 0 erreur console sur tous les flows.
+
+Stage Summary:
+- Refonte Savane EdTech réussie : kente strips/patterns + DS components (StatCard, GlassModal, PulseSkeleton) + palette africaine (vert lime + terre cuite + bleu nuit + or).
+- Toutes les fonctionnalités préservées : CRUD années, counts par année, filtre période, SetCurrentAnnee, bouton Réactiver, hard-delete safe, form avec actif toggle, suggestions.
+- Onglet Années maintenant cohérent avec l'identité Savane EdTech.
