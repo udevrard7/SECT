@@ -25,8 +25,10 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/udevrard7/sect/backend/internal/domain"
@@ -323,5 +325,68 @@ func (s *Server) promoteStudentManual(w http.ResponseWriter, r *http.Request) {
 		"creditsTotaux":   result.CreditsTotaux,
 		"nouveauNiveau":   result.NouveauNiveau,
 		"message":         "décision appliquée avec succès",
+	})
+}
+
+// runPromotionSync — POST /api/etablissements/{etablissementId}/cloture-annee/run-sync
+//
+// SECT-CLOTURE-E2E-VERIFY-1 : variante SYNCHRONE de runPromotion. Traite le batch
+// dans la requête HTTP (au lieu d'async via le worker). Nécessaire sur Render free
+// tier où le worker async est tué par le cold start.
+//
+// Retourne 200 OK avec le résultat final (counts + erreurs). Le frontend passe
+// directement à l'étape Bilan (pas de polling).
+//
+// Timeout : 25s (limite Render free = 30s). Pour >800 étudiants, le traitement
+// peut dépasser — dans ce cas le frontend doit utiliser le mode async (runPromotion
+// + polling /status) ou découper en chunks.
+func (s *Server) runPromotionSync(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	etabID := chi.URLParam(r, "etablissementId")
+	if etabID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id établissement requis")
+		return
+	}
+
+	var req runPromotionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+
+	input := domain.RunPromotionInput{
+		EtablissementID: etabID,
+		AnneeSourceID:   req.AnneeSourceID,
+		AnneeCibleID:    req.AnneeCibleID,
+		RunByID:         claims.UserID,
+		Overrides:       req.Overrides,
+	}
+
+	// Context avec timeout 25s (< 30s Render free).
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+
+	result, err := s.promotionUC.RunPromotionSync(ctx, claims, input)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"batchId":         result.BatchID,
+		"statut":          string(result.Statut),
+		"totalEtudiants":  result.TotalEtudiants,
+		"promuCount":      result.PromuCount,
+		"redoublantCount": result.RedoublantCount,
+		"diplomeCount":    result.DiplomeCount,
+		"excluCount":      result.ExcluCount,
+		"erreurCount":     result.ErreurCount,
+		"erreurs":         result.Erreurs,
 	})
 }

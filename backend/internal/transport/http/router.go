@@ -501,8 +501,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/etablissements/{etablissementId}/cloture-annee", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"))
-			r.Post("/", s.runPromotion)                 // 202 Accepted + batchId
+			r.Post("/", s.runPromotion)                 // 202 Accepted + batchId (async)
 			r.Post("/preview", s.previewPromotion)      // calcul sans appliquer
+			r.Post("/run-sync", s.runPromotionSync)     // SECT-CLOTURE-E2E-VERIFY-1 : sync (200 + result)
 			r.Get("/status", s.getPromotionBatchStatus) // polling
 			r.Get("/batches", s.listPromotionBatches)   // historique
 		})

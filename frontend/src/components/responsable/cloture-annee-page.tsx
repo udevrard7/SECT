@@ -876,14 +876,22 @@ export function ClotureAnneePage() {
   // Mutations
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // ─── Lancer la clôture (POST /cloture-annee) ───
+  // ─── Lancer la clôture (POST /cloture-annee/run-sync) ───
+  // SECT-CLOTURE-E2E-VERIFY-1 : route SYNCHRONE (le worker async est tué par le
+  // cold start Render free). La requête bloque jusqu'au résultat final (timeout
+  // 25s < 30s Render free), puis on passe directement au bilan (step 5).
   const runMutation = useMutation<
-    { batchId: string; statut: string },
+    {
+      batchId: string; statut: string;
+      totalEtudiants: number; promuCount: number; redoublantCount: number;
+      diplomeCount: number; excluCount: number; erreurCount: number;
+      erreurs: Array<{ etudiantId: string; nom: string; erreur: string }>;
+    },
     Error,
     { anneeSourceId: string; anneeCibleId?: string; overrides: OverrideDecision[] }
   >({
     mutationFn: async (input) => {
-      const res = await fetch(`/api/etablissements/${etabId}/cloture-annee`, {
+      const res = await fetch(`/api/etablissements/${etabId}/cloture-annee/run-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -895,17 +903,41 @@ export function ClotureAnneePage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error ?? 'Erreur lors du lancement de la clôture')
+        throw new Error(err?.error ?? 'Erreur lors de la clôture')
       }
-      return (await res.json()) as { batchId: string; statut: string }
+      return (await res.json()) as {
+        batchId: string; statut: string;
+        totalEtudiants: number; promuCount: number; redoublantCount: number;
+        diplomeCount: number; excluCount: number; erreurCount: number;
+        erreurs: Array<{ etudiantId: string; nom: string; erreur: string }>;
+      }
     },
     onSuccess: (data) => {
       setBatchId(data.batchId)
       setConfirmOpen(false)
-      setCompletedSteps((prev) => new Set(prev).add(3))
-      setStep(4)
-      toast.success('Clôture lancée', {
-        description: `Batch ${data.batchId.slice(0, 8)}… — traitement en cours.`,
+      setCompletedSteps((prev) => new Set(prev).add(3).add(4))
+      // SECT-CLOTURE-E2E-VERIFY-1 : la route sync retourne le résultat final,
+      // on passe directement au bilan (step 5). Pas de polling.
+      // On injecte le résultat dans finalStatus (format BatchStatus) pour que
+      // StepBilan l'affiche sans avoir à re-poller /status.
+      setFinalStatus({
+        batchId: data.batchId,
+        statut: data.statut as BatchStatus['statut'],
+        totalEtudiants: data.totalEtudiants,
+        promuCount: data.promuCount,
+        redoublantCount: data.redoublantCount,
+        diplomeCount: data.diplomeCount,
+        excluCount: data.excluCount,
+        erreurCount: data.erreurCount,
+        progression: data.totalEtudiants,
+        details: data.erreurs && data.erreurs.length > 0
+          ? JSON.stringify({ erreurs: data.erreurs })
+          : null,
+        errorMessage: null,
+      })
+      setStep(5)
+      toast.success('Clôture terminée', {
+        description: `${data.promuCount} promu(s), ${data.redoublantCount} redoublant(s), ${data.diplomeCount} diplômé(s)${data.erreurCount > 0 ? `, ${data.erreurCount} erreur(s)` : ''}.`,
       })
     },
     onError: (err: Error) => {
