@@ -18890,3 +18890,27 @@ Vérification E2E Agent Browser post-fix :
 Stage Summary:
 - 1 fichier modifié : annees-academiques-section.tsx (retrait classe .ds-kente-top sur AlertDialogContent).
 - Bug visuel résolu : la modale de suppression est maintenant centrée au viewport.
+
+---
+Task ID: S2-KPI-HIERARCHY-FIX-1
+Agent: Z.ai Code (Tutor/Assistant) — frontend-styling-expert
+Task: Différencier visuellement les KPIs des cards d'années (confusion hiérarchique).
+
+Work Log:
+- Diagnostic : les 3 KPI (StatCard avec ds-kente-top) et les year cards (Card avec ds-kente-top) avaient la même présentation (grid-cols-3, kente-top, bg-card, shadow) → confusion visuelle, l'utilisateur ne distinguait pas 'résumé métrique' de 'élément d'action'.
+- Fix : transformer les KPI en strip compact horizontal de métriques inline (PAS de cards), clairement distinct des year cards riches.
+  * KPI strip : flex flex-wrap gap-3, chaque métrique = flex items-center gap-3 rounded-lg border-{color}/20 bg-{color}/5 (fond teinté léger, fine bordure colorée), PAS de ds-kente-top, PAS de shadow, PAS de Card shadcn. Format : icône + grand chiffre + label court. 'Années actives' affiche 'N / total' (ratio).
+  * Year cards : inchangées (Card + ds-kente-top + shadow + motion + grid-cols-3 + 5 boutons d'action).
+  * Loading state : remplacé StatCardSkeletonGrid par 3 PulseSkeleton h-16 inline (cohérent avec le nouveau strip).
+- Imports StatCard + StatCardSkeletonGrid retirés (plus utilisés).
+- Commit 1785f58 + push GitHub.
+
+Vérification E2E Agent Browser :
+- KPI strip : flex flex-wrap gap-3, border-primary/20 bg-primary/5, hasKenteTop: false ✓.
+- Year cards : bg-card shadow-sm ds-kente-top ✓.
+- Différenciation claire : KPIs = strip léger coloré (lecture), cards = cards riches kente (action).
+- 0 erreur console.
+
+Stage Summary:
+- 1 fichier modifié : annees-academiques-section.tsx (KPI strip remplace StatCard grid).
+- Hiérarchie visuelle rétablie : KPIs (métriques inline) vs year cards (cards d'action).
