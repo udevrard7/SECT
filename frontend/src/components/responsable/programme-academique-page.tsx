@@ -23,7 +23,6 @@ import {
   List,
   Share2,
   Power,
-  CalendarClock,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -61,10 +60,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
-// R2-SAVANE-REFONTE-1 : import des composants DS Savane EdTech
-// (StatCard pour les KPIs + niveaux, StatCardSkeletonGrid pour le loading,
-// PulseSkeleton pour les états de chargement granulaires).
-import { PulseSkeleton, StatCard, StatCardSkeletonGrid, type StatTrend } from '@/components/ds'
+import { PulseSkeleton } from '@/components/ds'
 import {
   Table,
   TableBody,
@@ -208,20 +204,6 @@ const NIVEAU_CONFIG = [
 
 const TYPE_SEANCE_LABELS: Record<string, string> = {
   CM: 'Cours Magistral', TD: 'Travaux Dirigés', TP: 'Travaux Pratiques',
-}
-
-// R2-SAVANE-REFONTE-1 : accents DS Savane EdTech par niveau.
-// Palette cohérente sur les 6 niveaux : L1 vert lime (primary), L2 vert
-// (success), L3 or (gold), M1 bleu/cyan (info), M2 terre cuite (secondary),
-// Doctorat orange (warning). Chaque StatCard aura un accent visuel distinct
-// tout en restant dans la palette Savane EdTech.
-const NIVEAU_ACCENTS: Record<string, 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'info' | 'gold'> = {
-  L1: 'primary',
-  L2: 'success',
-  L3: 'gold',
-  M1: 'info',
-  M2: 'secondary',
-  DOCTORAT: 'warning',
 }
 
 const AFFECTATION_STATUT_COLORS: Record<string, string> = {
@@ -710,11 +692,11 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
 
   return (
     <div className="space-y-6">
-      {/* ─── R2-SAVANE-REFONTE-1 : Hero Header avec motif kente fort ─── */}
-      <div className="ds-kente-pattern-strong -mx-4 -mt-4 rounded-lg px-4 py-5 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b border-border/50 relative overflow-hidden">
+      {/* ─── Header ─── */}
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <GraduationCap className="h-7 w-7 text-primary-text" />
+            <GraduationCap className="h-7 w-7 text-success-text" />
             Programme académique
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -748,129 +730,137 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
             <span className="hidden sm:inline">Nouvelle UE</span>
           </Button>
         </div>
-        {/* R2-SAVANE-REFONTE-1 : kente strip en bas du hero header */}
-        <div className="ds-kente-strip absolute bottom-0 left-0 right-0 rounded-none" aria-hidden="true" />
       </div>
 
-      {/* ─── R2-SAVANE-REFONTE-1 : Stats Row en StatCards DS ─── */}
+      {/* ─── Stats Row (always visible) ─── */}
       {isLoading ? (
-        <StatCardSkeletonGrid count={4} />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}><CardContent className="flex items-center gap-3 p-4"><PulseSkeleton className="h-10 w-10 rounded-lg" /><div className="space-y-2"><PulseSkeleton className="h-3 w-24" /><PulseSkeleton className="h-6 w-12" /></div></CardContent></Card>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard
-            label="Niveaux actifs"
-            value={`${nbNiveauxActifs}/6`}
-            icon={Layers}
-            accent="primary"
-            index={0}
-          />
-          <StatCard
-            label="Total UEs"
-            value={ues.length}
-            icon={BookMarked}
-            accent="success"
-            index={1}
-          />
-          <StatCard
-            label="Enseignants affectés"
-            value={nbEnseignants}
-            icon={Users}
-            accent="warning"
-            index={2}
-          />
-          <StatCard
-            label="Couverture globale"
-            value={`${globalCoverage}%`}
-            icon={GraduationCap}
-            accent="info"
-            index={3}
-          />
+          <Card className="border-l-4 border-l-primary">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><Layers className="h-5 w-5 text-success-text" /></div>
+              <div>
+                <p className="text-xs text-muted-foreground">Niveaux actifs</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{nbNiveauxActifs}<span className="text-sm text-muted-foreground font-normal"> / 6</span></p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-l-4 border-l-primary">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><BookMarked className="h-5 w-5 text-success-text" /></div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total UEs</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{ues.length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-l-4 border-l-primary">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10"><Users className="h-5 w-5 text-warning" /></div>
+              <div>
+                <p className="text-xs text-muted-foreground">Enseignants affectés</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{nbEnseignants}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-l-4 border-l-primary">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10"><GraduationCap className="h-5 w-5 text-info" /></div>
+              <div>
+                <p className="text-xs text-muted-foreground">Couverture globale</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{globalCoverage}%</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* ─── OVERVIEW VIEW ─── */}
       {activeView === 'overview' && (
         <div className="space-y-6">
-          {/* R2-SAVANE-REFONTE-1 : Section Distribution par niveau.
-              Divider africain tricolore + header avec icône. StatCards DS
-              avec accent par niveau (L1=primary, L2=success, L3=gold, M1=info,
-              M2=secondary, Doctorat=warning). Chaque carte affiche le code
-              niveau (L1) + label complet + hint avec counts + trend coverage. */}
+          {/* Niveau Cards */}
           <div>
-            <div className="ds-african-divider mb-4" aria-hidden="true" />
             <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-primary-text" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
               Distribution par niveau
             </h2>
             {isLoading ? (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="p-4 rounded-lg border border-border bg-card space-y-3">
-                    <PulseSkeleton className="h-9 w-9 rounded-md" />
-                    <PulseSkeleton className="h-3 w-20" />
-                    <PulseSkeleton className="h-6 w-12" />
-                    <PulseSkeleton className="h-3 w-24" />
-                  </div>
+                  <Card key={i} className="animate-pulse"><CardContent className="p-4 space-y-3"><PulseSkeleton className="h-5 w-16" /><PulseSkeleton className="h-4 w-24" /><PulseSkeleton className="h-4 w-20" /><PulseSkeleton className="h-2 w-full" /></CardContent></Card>
                 ))}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-                {niveauStats.map((stat, i) => {
-                  // R2-SAVANE-REFONTE-1 : direction du trend selon le taux de
-                  // couverture. ≥80% = up (success), 50-79% = neutral, <50% = down
-                  // (destructive). Permet à l'utilisateur de scanner visuellement
-                  // les niveaux sous-couverts.
-                  const coverageDirection: StatTrend =
-                    stat.tauxCouverture >= 80
-                      ? 'up'
-                      : stat.tauxCouverture >= 50
-                        ? 'neutral'
-                        : 'down'
+                {niveauStats.map((stat) => {
+                  const coverage = getCoverageColor(stat.tauxCouverture)
                   return (
-                    <StatCard
+                    <Card
                       key={stat.key}
-                      label={stat.label}
-                      value={stat.shortLabel}
-                      icon={Layers}
-                      accent={NIVEAU_ACCENTS[stat.key] ?? 'primary'}
-                      index={i}
-                      hint={
-                        stat.nbUEs > 0
-                          ? `${stat.nbUEs} UE${stat.nbUEs > 1 ? 's' : ''} · ${stat.nbFilieres} fil. · ${stat.nbEnseignants} ens.`
-                          : 'Aucune UE'
-                      }
-                      trend={
-                        stat.nbUEs > 0
-                          ? {
-                              direction: coverageDirection,
-                              value: `${stat.tauxCouverture}%`,
-                              label: 'couverture',
-                            }
-                          : undefined
-                      }
+                      className={`group cursor-pointer transition-all hover:shadow-md border-l-4 ${stat.borderColor} ${stat.darkBorderColor}`}
                       onClick={() => handleMatrixCellClick(stat.key)}
-                    />
+                    >
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${stat.iconBg} ${stat.darkIconBg}`}>
+                            <Layers className={`h-4 w-4 ${stat.textColor} ${stat.darkTextColor}`} />
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <h3 className={`text-sm font-bold ${stat.textColor} ${stat.darkTextColor}`}>{stat.shortLabel}</h3>
+                        <p className="text-xs text-muted-foreground leading-tight line-clamp-2">{stat.label}</p>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground flex items-center gap-1"><GraduationCap className="h-3 w-3" />Filières</span>
+                            <span className="font-semibold">{stat.nbFilieres}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground flex items-center gap-1"><BookMarked className="h-3 w-3" />UEs</span>
+                            <span className="font-semibold">{stat.nbUEs}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" />Enseignants</span>
+                            <span className="font-semibold">{stat.nbEnseignants}</span>
+                          </div>
+                        </div>
+                        {stat.nbUEs > 0 ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Couverture</span>
+                              <span className={`font-semibold ${coverage.text} ${coverage.darkText}`}>{stat.tauxCouverture}%</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${coverage.bar}`} style={{ width: `${stat.tauxCouverture}%` }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">Aucune UE</p>
+                        )}
+                      </CardContent>
+                    </Card>
                   )
                 })}
               </div>
             )}
           </div>
 
-          {/* R2-SAVANE-REFONTE-1 : Section Matrice Filière × Niveau.
-              Divider africain + header. Card avec kente strip en haut pour
-              signaler l'en-tête du tableau (kente header row). */}
+          {/* Filière × Niveau Matrix (includes DOCTORAT) */}
           <div>
-            <div className="ds-african-divider mb-4" aria-hidden="true" />
             <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <BookMarked className="h-5 w-5 text-primary-text" />
+              <BookMarked className="h-5 w-5 text-success-text" />
               Matrice Filière × Niveau
             </h2>
             {isLoading ? (
               <Card><CardContent className="p-6 space-y-4"><PulseSkeleton className="h-10 w-full" /><PulseSkeleton className="h-10 w-full" /><PulseSkeleton className="h-10 w-full" /></CardContent></Card>
             ) : filieres.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12 ds-kente-pattern">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                  <Layers className="h-8 w-8 text-primary-text" />
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+                  <Layers className="h-8 w-8 text-success-text" />
                 </div>
                 <h3 className="mt-4 text-base font-display font-semibold tracking-tight">Aucune filière trouvée</h3>
                 <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -878,9 +868,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                 </p>
               </div>
             ) : (
-              <Card className="overflow-hidden">
-                {/* R2-SAVANE-REFONTE-1 : kente strip en haut du card matrice */}
-                <div className="ds-kente-strip" aria-hidden="true" />
+              <Card>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <Table>
@@ -897,7 +885,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                           <TableRow key={row.filiere.id}>
                             <TableCell className="sticky left-0 bg-background z-10 font-medium">
                               <div className="flex items-center gap-2">
-                                <GraduationCap className="h-4 w-4 text-primary-text" />
+                                <GraduationCap className="h-4 w-4 text-success-text" />
                                 <div>
                                   <p className="text-sm font-medium">{row.filiere.nom}</p>
                                   {row.filiere.code && <p className="text-xs text-muted-foreground font-mono tabular-nums">{row.filiere.code}</p>}
@@ -943,21 +931,11 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
             )}
           </div>
 
-          {/* R2-SAVANE-REFONTE-1 : Section Années académiques.
-              Divider africain + header avec icône. Le composant
-              AnneesAcademiquesSection (refonte R2-SAVANE-REFONTE-1) gère son
-              propre header interne avec kente strip. */}
-          <div>
-            <div className="ds-african-divider mb-4" aria-hidden="true" />
-            <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <CalendarClock className="h-5 w-5 text-primary-text" />
-              Années académiques
-            </h2>
-            {/* PROG-ACAD-CRITICAL-FIX-1 (BUG #10) : CRUD complet des années */}
-            {etabId && (
-              <AnneesAcademiquesSection etablissementId={etabId} />
-            )}
-          </div>
+          {/* ─── Années académiques ─── */}
+          {/* PROG-ACAD-CRITICAL-FIX-1 (BUG #10) : CRUD complet des années */}
+          {etabId && (
+            <AnneesAcademiquesSection etablissementId={etabId} />
+          )}
         </div>
       )}
 
