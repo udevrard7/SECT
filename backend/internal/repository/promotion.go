@@ -304,6 +304,131 @@ func (r *PromotionRepository) GetReglesPassage(ctx context.Context, etablissemen
 	return &regles, nil
 }
 
+// UpdateReglesPassage upsert les règles de passage d'un établissement. RLS via
+// claims (RESPONSABLE same-etab). Si aucune ligne n'existe pour l'étab, INSERT
+// (id généré côté SQL avec le pattern 'regles_' || gen_uuid() du backfill 000087).
+// Sinon, ON CONFLICT ("etablissementId") DO UPDATE.
+//
+// Validations (defense in depth — le usecase valide aussi, mais on garde une
+// seconde barrière ici en cas d'appel direct depuis un autre usecase/worker) :
+//   - seuilMoyennePassage ∈ [0, 20]
+//   - seuilMoyenneRattrapage ∈ [0, seuilMoyennePassage]
+//   - creditsMinPourcent ∈ [0, 100]
+//   - limiteRedoublements ≥ 0
+//   - regime ∈ {'STRICT', 'COMPENSATION'}
+//
+// Retourne la ligne upsertée (id + createdAt + updatedAt peuplés côté SQL).
+func (r *PromotionRepository) UpdateReglesPassage(ctx context.Context, regles domain.ReglesPassage) (*domain.ReglesPassage, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return nil, fmt.Errorf("UpdateReglesPassage: claims manquants dans le context")
+	}
+	if regles.EtablissementID == "" {
+		return nil, &domain.ValidationError{Field: "etablissementId", Message: "requis"}
+	}
+	if err := validateReglesPassage(regles); err != nil {
+		return nil, err
+	}
+
+	var out domain.ReglesPassage
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// Si l'appelant fournit un ID (UPDATE d'une ligne existante), on le
+		// passe tel quel — ON CONFLICT DO UPDATE conserve l'ID existant via
+		// la clause EXCLUDED (en fait on ne touche pas à la colonne id dans
+		// le SET, donc l'original est préservé). Pour un INSERT (nouvelle
+		// ligne), on génère l'ID côté SQL avec le pattern du backfill 000087
+		// ('regles_' || gen_random_uuid()) — d'où COALESCE(NULL, expr).
+		var idArg any
+		if regles.ID != "" {
+			idArg = regles.ID
+		} else {
+			idArg = nil
+		}
+
+		return tx.QueryRow(ctx, `
+                        INSERT INTO "ReglesPassage" (
+                                "id", "etablissementId", "seuilMoyennePassage",
+                                "seuilMoyenneRattrapage", "creditsMinPourcent", "regime",
+                                "limiteRedoublements", "createdAt", "updatedAt"
+                        )
+                        VALUES (
+                                COALESCE($1, 'regles_' || replace(gen_random_uuid()::text, '-', '')),
+                                $2, $3, $4, $5, $6, $7,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                        )
+                        ON CONFLICT ("etablissementId") DO UPDATE SET
+                                "seuilMoyennePassage"    = EXCLUDED."seuilMoyennePassage",
+                                "seuilMoyenneRattrapage" = EXCLUDED."seuilMoyenneRattrapage",
+                                "creditsMinPourcent"     = EXCLUDED."creditsMinPourcent",
+                                "regime"                 = EXCLUDED."regime",
+                                "limiteRedoublements"    = EXCLUDED."limiteRedoublements",
+                                "updatedAt"              = CURRENT_TIMESTAMP
+                        RETURNING "id", "etablissementId", "seuilMoyennePassage",
+                                  "seuilMoyenneRattrapage", "creditsMinPourcent", "regime",
+                                  "limiteRedoublements", "createdAt", "updatedAt"`,
+			idArg,
+			regles.EtablissementID,
+			regles.SeuilMoyennePassage,
+			regles.SeuilMoyenneRattrapage,
+			regles.CreditsMinPourcent,
+			regles.Regime,
+			regles.LimiteRedoublements,
+		).Scan(
+			&out.ID, &out.EtablissementID, &out.SeuilMoyennePassage,
+			&out.SeuilMoyenneRattrapage, &out.CreditsMinPourcent, &out.Regime,
+			&out.LimiteRedoublements, &out.CreatedAt, &out.UpdatedAt,
+		)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpdateReglesPassage: %w", err)
+	}
+	return &out, nil
+}
+
+// validateReglesPassage valide les seuils d'une config ReglesPassage. Utilisé
+// par UpdateReglesPassage (defense in depth — le usecase valide aussi, mais on
+// garde une seconde barrière ici en cas d'appel direct).
+//
+// Règles :
+//   - seuilMoyennePassage ∈ [0, 20]
+//   - seuilMoyenneRattrapage ∈ [0, seuilMoyennePassage] (doit être ≤ au seuil de passage)
+//   - creditsMinPourcent ∈ [0, 100]
+//   - limiteRedoublements ≥ 0 (pas de max — laissé à la discrétion de l'étab)
+//   - regime ∈ {'STRICT', 'COMPENSATION'}
+func validateReglesPassage(regles domain.ReglesPassage) error {
+	if regles.SeuilMoyennePassage < 0 || regles.SeuilMoyennePassage > 20 {
+		return &domain.ValidationError{
+			Field:   "seuilMoyennePassage",
+			Message: "doit être compris entre 0 et 20",
+		}
+	}
+	if regles.SeuilMoyenneRattrapage < 0 || regles.SeuilMoyenneRattrapage > regles.SeuilMoyennePassage {
+		return &domain.ValidationError{
+			Field:   "seuilMoyenneRattrapage",
+			Message: "doit être compris entre 0 et seuilMoyennePassage",
+		}
+	}
+	if regles.CreditsMinPourcent < 0 || regles.CreditsMinPourcent > 100 {
+		return &domain.ValidationError{
+			Field:   "creditsMinPourcent",
+			Message: "doit être compris entre 0 et 100",
+		}
+	}
+	if regles.LimiteRedoublements < 0 {
+		return &domain.ValidationError{
+			Field:   "limiteRedoublements",
+			Message: "doit être un entier positif ou nul",
+		}
+	}
+	if regles.Regime != "STRICT" && regles.Regime != "COMPENSATION" {
+		return &domain.ValidationError{
+			Field:   "regime",
+			Message: "doit être 'STRICT' ou 'COMPENSATION'",
+		}
+	}
+	return nil
+}
+
 // ListEtudiantsForPromotion retourne la liste des étudiants éligibles à la
 // clôture pour un établissement + une année source donnés. RLS via claims.
 //

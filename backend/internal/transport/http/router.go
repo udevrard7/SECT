@@ -527,6 +527,19 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
 		).Get("/api/etablissements/{etablissementId}/regles-passage", s.getReglesPassage)
 
+		// SECT-REGLES-PASSAGE-MUTATION-1 — modification des seuils de passage.
+		// PUT /api/etablissements/{etablissementId}/regles-passage
+		// Upsert (INSERT si l'étab n'a pas encore de ligne, UPDATE sinon). Le
+		// usecase valide le rôle (ADMIN/RESPONSABLE — l'ENSEIGNANT B2C est
+		// rejeté même si le middleware RequireRoleOrPersonalEtab le laisse
+		// passer dans son étab personnel) + scoping (RESPONSABLE same-etab).
+		// La RLS ReglesPassage_modify filtre en plus (is_responsable same-etab
+		// uniquement — pas is_admin, defense in depth).
+		r.With(
+			middleware.RequireAuth,
+			middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
+		).Put("/api/etablissements/{etablissementId}/regles-passage", s.updateReglesPassage)
+
 		// SECT-PROMOTION-BACKEND-1 — override individuel hors batch.
 		// POST /api/etudiants/{etudiantId}/promote
 		// Le RESPONSABLE force une décision pour un étudiant (PROMU,

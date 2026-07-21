@@ -260,6 +260,13 @@ const (
 	AuditActionPromotionDecisionExclu      = "PROMOTION_DECISION_EXCLU"
 	AuditActionPromotionDecisionReoriente  = "PROMOTION_DECISION_REORIENTE"
 	AuditActionPromotionDecisionQuitte     = "PROMOTION_DECISION_QUITTE"
+
+	// SECT-REGLES-PASSAGE-MUTATION-1 — modification des règles de passage
+	// d'un établissement (PUT /api/etablissements/{id}/regles-passage).
+	// Entite=ReglesPassage, entiteId=etablissementId, details JSON avec
+	// avant/apres (seuils) + modifiePar. Journalisée par le usecase
+	// PromotionUseCase.UpdateReglesPassage (non bloquant).
+	AuditActionPromotionReglesUpdated = "PROMOTION_REGLES_UPDATED"
 )
 
 // Erreurs spécifiques à l'auth

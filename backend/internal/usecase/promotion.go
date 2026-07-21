@@ -252,6 +252,184 @@ func (uc *PromotionUseCase) GetReglesPassage(ctx context.Context, claims db.Sess
 	return regles, nil
 }
 
+// UpdateReglesPassageInput — body du PUT /api/etablissements/{id}/regles-passage.
+//
+// Les 5 champs correspondent aux 5 colonnes configurables de la table
+// ReglesPassage (etablissementId + id sont fournis par l'URL ou générés côté SQL,
+// pas par le client).
+type UpdateReglesPassageInput struct {
+	SeuilMoyennePassage    float64 `json:"seuilMoyennePassage"`
+	SeuilMoyenneRattrapage float64 `json:"seuilMoyenneRattrapage"`
+	CreditsMinPourcent     int     `json:"creditsMinPourcent"`
+	Regime                 string  `json:"regime"`
+	LimiteRedoublements    int     `json:"limiteRedoublements"`
+}
+
+// UpdateReglesPassage upsert les règles de passage d'un établissement (PUT
+// /api/etablissements/{id}/regles-passage).
+//
+// Étapes :
+//  1. Valide le rôle (ADMIN/RESPONSABLE — l'ENSEIGNANT B2C n'a pas accès à la
+//     pédagogie de son étab personnel, contrairement aux autres mutations
+//     académiques comme /promote). Le usecase est l'autorité ici — le middleware
+//     RequireRoleOrPersonalEtab laisse passer l'ENSEIGNANT B2C, mais le usecase
+//     le rejette.
+//  2. Valide le scoping (RESPONSABLE ne peut modifier que SON étab).
+//  3. Valide les seuils (defense in depth — le repo valide aussi, mais on échoue
+//     vite côté usecase avant d'ouvrir une transaction).
+//  4. Charge l'ID existant éventuel (pour le conserver lors de l'UPSERT — sinon
+//     le repo génère un nouvel ID via 'regles_' || gen_random_uuid()).
+//  5. Appelle promoRepo.UpdateReglesPassage (RLS via claims).
+//  6. Journalise AuditLog (PROMOTION_REGLES_UPDATED). Non bloquant.
+//  7. Retourne la ligne upsertée.
+func (uc *PromotionUseCase) UpdateReglesPassage(ctx context.Context, claims db.SessionClaims, etablissementID string, input UpdateReglesPassageInput) (*domain.ReglesPassage, error) {
+	// ── 1. Validation rôle ──
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé (ADMIN ou RESPONSABLE requis)"}
+	}
+	if etablissementID == "" {
+		return nil, &domain.ValidationError{Field: "etablissementId", Message: "requis"}
+	}
+
+	// ── 2. Scoping RESPONSABLE ──
+	if role == domain.RoleResponsable && etablissementID != claims.EtablissementID {
+		return nil, &domain.UnauthorizedError{Message: "vous ne pouvez modifier que les règles de votre établissement"}
+	}
+
+	// ── 3. Validation seuils (defense in depth — repo valide aussi) ──
+	regles := domain.ReglesPassage{
+		EtablissementID:        etablissementID,
+		SeuilMoyennePassage:    input.SeuilMoyennePassage,
+		SeuilMoyenneRattrapage: input.SeuilMoyenneRattrapage,
+		CreditsMinPourcent:     input.CreditsMinPourcent,
+		Regime:                 input.Regime,
+		LimiteRedoublements:    input.LimiteRedoublements,
+	}
+	if err := validateReglesPassageInput(input); err != nil {
+		return nil, err
+	}
+
+	// ── 4. Charge l'ID existant (pour le conserver en cas d'UPDATE) ──
+	// Le repo ferait un INSERT avec nouvel ID sinon. On préfère conserver
+	// l'ID existant pour la traçabilité (lien avec AuditLog historique).
+	existing, err := uc.promoRepo.GetReglesPassage(ctx, etablissementID)
+	if err != nil {
+		// NotFoundError = pas de ligne existante → INSERT avec nouvel ID. OK.
+		if _, ok := err.(*domain.NotFoundError); !ok {
+			return nil, fmt.Errorf("UpdateReglesPassage: load existing: %w", err)
+		}
+		// existing reste nil, l'ID sera généré côté SQL.
+	} else {
+		regles.ID = existing.ID
+	}
+
+	// ── 5. UPSERT (RLS via claims) ──
+	updated, err := uc.promoRepo.UpdateReglesPassage(ctx, regles)
+	if err != nil {
+		return nil, err
+	}
+
+	// ── 6. AuditLog (non bloquant) ──
+	uc.auditReglesUpdated(ctx, claims, etablissementID, input, existing)
+
+	uc.logger.Info("PromotionUseCase: règles de passage mises à jour",
+		"etablissementId", etablissementID,
+		"seuilMoyennePassage", input.SeuilMoyennePassage,
+		"seuilMoyenneRattrapage", input.SeuilMoyenneRattrapage,
+		"creditsMinPourcent", input.CreditsMinPourcent,
+		"regime", input.Regime,
+		"limiteRedoublements", input.LimiteRedoublements,
+		"modifiePar", claims.UserID,
+	)
+
+	return updated, nil
+}
+
+// validateReglesPassageInput valide les seuils d'un UpdateReglesPassageInput.
+// Miroir côté usecase de repository.validateReglesPassage (defense in depth).
+func validateReglesPassageInput(input UpdateReglesPassageInput) error {
+	if input.SeuilMoyennePassage < 0 || input.SeuilMoyennePassage > 20 {
+		return &domain.ValidationError{
+			Field:   "seuilMoyennePassage",
+			Message: "doit être compris entre 0 et 20",
+		}
+	}
+	if input.SeuilMoyenneRattrapage < 0 || input.SeuilMoyenneRattrapage > input.SeuilMoyennePassage {
+		return &domain.ValidationError{
+			Field:   "seuilMoyenneRattrapage",
+			Message: "doit être compris entre 0 et seuilMoyennePassage",
+		}
+	}
+	if input.CreditsMinPourcent < 0 || input.CreditsMinPourcent > 100 {
+		return &domain.ValidationError{
+			Field:   "creditsMinPourcent",
+			Message: "doit être compris entre 0 et 100",
+		}
+	}
+	if input.LimiteRedoublements < 0 {
+		return &domain.ValidationError{
+			Field:   "limiteRedoublements",
+			Message: "doit être un entier positif ou nul",
+		}
+	}
+	if input.Regime != "STRICT" && input.Regime != "COMPENSATION" {
+		return &domain.ValidationError{
+			Field:   "regime",
+			Message: "doit être 'STRICT' ou 'COMPENSATION'",
+		}
+	}
+	return nil
+}
+
+// auditReglesUpdated journalise la mise à jour des règles de passage dans
+// AuditLog. Non bloquant : si l'audit échoue, on log warn + on continue (les
+// règles sont déjà persistées, l'audit manquant est un moindre mal).
+//
+// Action = PROMOTION_REGLES_UPDATED (nouvelle action), entite = Etablissement,
+// entiteId = étab. details JSON : { avant: {...}, apres: {...}, modifiePar }.
+func (uc *PromotionUseCase) auditReglesUpdated(ctx context.Context, claims db.SessionClaims, etablissementID string, input UpdateReglesPassageInput, existing *domain.ReglesPassage) {
+	if uc.authRepo == nil {
+		uc.logger.Warn("PromotionUseCase: authRepo nil, audit regles updated skip")
+		return
+	}
+	details := map[string]any{
+		"etablissementId": etablissementID,
+		"modifiePar":      claims.UserID,
+		"apres":           input,
+	}
+	if existing != nil {
+		details["avant"] = map[string]any{
+			"seuilMoyennePassage":    existing.SeuilMoyennePassage,
+			"seuilMoyenneRattrapage": existing.SeuilMoyenneRattrapage,
+			"creditsMinPourcent":     existing.CreditsMinPourcent,
+			"regime":                 existing.Regime,
+			"limiteRedoublements":    existing.LimiteRedoublements,
+		}
+	}
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		uc.logger.Error("PromotionUseCase: marshal audit regles details failed", "error", err)
+		return
+	}
+	etabID := etablissementID
+	userID := claims.UserID
+	entry := &domain.AuditLogEntry{
+		UserID:          &userID,
+		Action:          domain.AuditActionPromotionReglesUpdated,
+		Entite:          "ReglesPassage",
+		EntiteID:        &etabID,
+		Details:         string(detailsJSON),
+		AdresseIP:       "promotion-api",
+		EtablissementID: &etabID,
+		Reason:          "Règles de passage modifiées",
+	}
+	if err := uc.authRepo.CreateAuditLog(ctx, entry); err != nil {
+		uc.logger.Error("PromotionUseCase: audit PROMOTION_REGLES_UPDATED failed",
+			"etablissementId", etablissementID, "error", err)
+	}
+}
+
 // PromoteStudentManual applique un override individuel hors batch (POST
 // /api/etudiants/{id}/promote). Le RESPONSABLE force une décision pour un
 // étudiant spécifique (PROMU/REDOUBLANT/DIPLOME/EXCLU/REORIENTE/QUITTE) avec
