@@ -37,13 +37,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, Plus, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2,
-  RefreshCw, X, CalendarDays, Star, Power,
+  RefreshCw, X, CalendarDays, Star, Power, RotateCcw, AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -57,6 +68,18 @@ interface AnneeAcademique {
   actif: boolean
   createdAt: string
   updatedAt: string
+}
+
+// SECT-ANNEE-HARDDELETE-SAFE-1 : miroir de backend/internal/domain/academique.go
+// AnneeDependencies. Retourné par GET /api/annees-academiques/{id}/dependencies.
+// canHardDelete = true ssi tous les counts valent 0.
+interface AnneeDependencies {
+  inscriptions: number
+  validationsUE: number
+  promotionBatches: number
+  epreuves: number
+  etablissements: number
+  canHardDelete: boolean
 }
 
 // Référence légère renvoyée par GET /api/etablissements/{id}/annee-courante.
@@ -247,10 +270,13 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   })
 
   // ─── Mutation : modifier ───
+  // SECT-ANNEE-HARDDELETE-SAFE-1 : ajout de `actif` dans l'input pour permettre
+  // la réactivation/désactivation depuis le formulaire d'édition (en plus du
+  // bouton « Réactiver » dédié sur les cartes inactives).
   const updateMutation = useMutation<
     AnneeAcademique,
     Error,
-    { id: string; input: Partial<{ libelle: string; dateDebut: string; dateFin: string }> }
+    { id: string; input: Partial<{ libelle: string; dateDebut: string; dateFin: string; actif: boolean }> }
   >({
     mutationFn: async ({ id, input }) => {
       const res = await fetch(`/api/annees-academiques/${id}`, {
@@ -267,6 +293,29 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     onSuccess: () => {
       toast.success('Année académique modifiée')
       setEditingAnnee(null)
+      queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  // ─── Mutation : réactiver (PATCH /api/annees-academiques/{id} { actif: true }) ───
+  // SECT-ANNEE-HARDDELETE-SAFE-1 : bouton « Réactiver » sur les cartes inactives.
+  // Permet de restaurer une année soft-deleted sans repasser par le formulaire.
+  const reactivateMutation = useMutation<AnneeAcademique, Error, string>({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/annees-academiques/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actif: true }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || 'Échec de la réactivation')
+      }
+      return (await res.json()) as AnneeAcademique
+    },
+    onSuccess: () => {
+      toast.success('Année réactivée')
       queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
@@ -292,8 +341,9 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
 
   // ─── Mutation : supprimer définitivement (hard delete, irréversible) ───
   // DELETE /api/annees-academiques/{id}?hard=true → DELETE réel en DB.
-  // Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement.anneeAcademiqueCouranteId
-  // perdront leur référence. Si l'année était l'année courante, elle deviendra NULL.
+  // SECT-ANNEE-HARDDELETE-SAFE-1 : le backend vérifie désormais les dépendances
+  // et renvoie un 409 ConflictError si l'année possède au moins une dépendance.
+  // Le frontend prévisualise les counts via dependenciesQuery avant de confirmer.
   const hardDeleteMutation = useMutation<{ message?: string }, Error, string>({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/annees-academiques/${id}?hard=true`, { method: 'DELETE' })
@@ -306,11 +356,38 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     onSuccess: () => {
       toast.success('Année académique supprimée définitivement')
       setConfirmHardDelete(null)
+      setHardDeleteAcknowledged(false)
       queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
       queryClient.invalidateQueries({ queryKey: ['annee-courante', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
+
+  // ─── Dépendances pour hard-delete (SECT-ANNEE-HARDDELETE-SAFE-1) ───
+  // Fetch uniquement quand le dialogue de confirmation hard-delete est ouvert.
+  // Le backend renvoie 5 counts + canHardDelete. Si canHardDelete=false, on
+  // affiche un avertissement listant les counts et on exige une checkbox de
+  // confirmation. Le usecase HardDelete refait le check côté serveur (defense
+  // in depth) et renvoie 409 ConflictError si dépendances → onError.
+  const [hardDeleteAcknowledged, setHardDeleteAcknowledged] = useState(false)
+  const dependenciesQuery = useQuery<AnneeDependencies>({
+    queryKey: ['annee-dependencies', confirmHardDelete?.id],
+    queryFn: async () => {
+      const id = confirmHardDelete!.id
+      const res = await fetch(`/api/annees-academiques/${id}/dependencies`)
+      if (!res.ok) throw new Error('Failed to fetch dependencies')
+      return (await res.json()) as AnneeDependencies
+    },
+    enabled: !!confirmHardDelete,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+  const hardDeleteDeps = dependenciesQuery.data ?? null
+  // Le bouton « Supprimer définitivement » est désactivé tant que :
+  //   - les dépendances chargent (dependenciesQuery.isLoading),
+  //   - OU canHardDelete=false ET l'utilisateur n'a pas coché la case.
+  const canConfirmHardDelete =
+    !!hardDeleteDeps && (hardDeleteDeps.canHardDelete || hardDeleteAcknowledged)
 
   // ─── Loading ───
   if (anneesQuery.isLoading) {
@@ -536,17 +613,45 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                             <Power className="h-3 w-3" aria-hidden="true" />
                           </Button>
                         ) : (
-                          // Année déjà désactivée → bouton « Supprimer » (hard delete, irréversible)
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setConfirmHardDelete(annee)}
-                            aria-label={`Supprimer définitivement ${annee.libelle}`}
-                            title="Supprimer définitivement (irréversible)"
-                          >
-                            <Trash2 className="h-3 w-3" aria-hidden="true" />
-                          </Button>
+                          // Année déjà désactivée → boutons « Réactiver » + « Supprimer »
+                          // SECT-ANNEE-HARDDELETE-SAFE-1 : ajout du bouton « Réactiver »
+                          // (PATCH { actif: true }) à côté du bouton « Supprimer » (hard
+                          // delete). Avant, une fois désactivée, la seule action était la
+                          // suppression définitive — pas de retour en arrière simple.
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-xs text-success hover:text-success hover:bg-success/10"
+                              onClick={() => reactivateMutation.mutate(annee.id)}
+                              disabled={
+                                reactivateMutation.isPending &&
+                                reactivateMutation.variables === annee.id
+                              }
+                              aria-label={`Réactiver ${annee.libelle}`}
+                              title="Réactiver (actif=true)"
+                            >
+                              {reactivateMutation.isPending &&
+                              reactivateMutation.variables === annee.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => {
+                                setConfirmHardDelete(annee)
+                                setHardDeleteAcknowledged(false)
+                              }}
+                              aria-label={`Supprimer définitivement ${annee.libelle}`}
+                              title="Supprimer définitivement (irréversible)"
+                            >
+                              <Trash2 className="h-3 w-3" aria-hidden="true" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </CardContent>
@@ -575,7 +680,9 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
           title="Modifier l'année académique"
           initial={editingAnnee}
           onClose={() => setEditingAnnee(null)}
-          onSubmit={(input) => updateMutation.mutate({ id: editingAnnee.id, input })}
+          onSubmit={(input) =>
+            updateMutation.mutate({ id: editingAnnee.id, input })
+          }
           loading={updateMutation.isPending}
         />
       )}
@@ -594,17 +701,162 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       )}
 
       {/* Dialog : confirmer suppression définitive (hard delete, irréversible) */}
-      {confirmHardDelete && (
-        <ConfirmDialog
-          title="Supprimer définitivement l'année académique ?"
-          message={`« ${confirmHardDelete.libelle} » sera supprimée de la base de données. Cette action est IRRÉVERSIBLE. Les épreuves, validations UE et réglages d'année courante liés perdront leur référence.`}
-          confirmLabel="Supprimer définitivement"
-          variant="danger"
-          loading={hardDeleteMutation.isPending}
-          onClose={() => setConfirmHardDelete(null)}
-          onConfirm={() => hardDeleteMutation.mutate(confirmHardDelete.id)}
-        />
-      )}
+      {/* SECT-ANNEE-HARDDELETE-SAFE-1 : AlertDialog shadcn avec dépendances
+          réelles chargées via GET /{id}/dependencies. Avant, le message disait
+          « perdront leur référence » (inexact : Inscription/ValidationUE/
+          PromotionBatch sont CASCADE DELETE → détruites, pas juste déréférencées). */}
+      <AlertDialog
+        open={!!confirmHardDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmHardDelete(null)
+            setHardDeleteAcknowledged(false)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />
+              Supprimer définitivement l'année académique ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  « <strong>{confirmHardDelete?.libelle}</strong> » sera supprimée
+                  de la base de données. Cette action est <strong>IRRÉVERSIBLE</strong>.
+                </p>
+
+                {/* État de chargement des dépendances */}
+                {dependenciesQuery.isLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Vérification des dépendances…
+                  </div>
+                )}
+                {dependenciesQuery.isError && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-sm border border-destructive/20 text-destructive">
+                    Impossible de vérifier les dépendances. Réessayez ou désactivez
+                    l'année (actif=false) au lieu de la supprimer.
+                  </div>
+                )}
+
+                {/* Cas 1 : aucune dépendance → suppression possible */}
+                {hardDeleteDeps?.canHardDelete === true && (
+                  <div className="rounded-lg bg-success/10 p-3 text-sm border border-success/20">
+                    <p className="text-success font-medium flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                      Suppression définitive possible
+                    </p>
+                    <p className="text-success/80 mt-1">
+                      Cette année n'a aucune dépendance. Les FKs CASCADE/SET NULL
+                      n'affecteront aucune autre donnée.
+                    </p>
+                  </div>
+                )}
+
+                {/* Cas 2 : dépendances présentes → avertissement + checkbox */}
+                {hardDeleteDeps && hardDeleteDeps.canHardDelete === false && (
+                  <div className="space-y-2">
+                    <div className="rounded-lg bg-destructive/10 p-3 text-sm border border-destructive/20">
+                      <p className="text-destructive font-medium flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                        Cette année possède des dépendances
+                      </p>
+                      <p className="text-destructive/80 mt-1">
+                        La suppression <strong>DÉTRUIRA</strong> ces données de façon
+                        <strong> IRRÉVERSIBLE</strong> (CASCADE DELETE sur
+                        Inscription, ValidationUE, PromotionBatch). Recommandation :
+                        désactivez l'année (actif=false) au lieu de la supprimer.
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-warning/10 p-3 text-sm space-y-1 border border-warning/20">
+                      <p className="font-display font-medium text-warning">
+                        Dépendances trouvées :
+                      </p>
+                      {hardDeleteDeps.inscriptions > 0 && (
+                        <p className="text-warning">
+                          • <span className="font-mono tabular-nums">{hardDeleteDeps.inscriptions}</span>{' '}
+                          inscription(s) étudiante(s) — CASCADE DELETE
+                        </p>
+                      )}
+                      {hardDeleteDeps.validationsUE > 0 && (
+                        <p className="text-warning">
+                          • <span className="font-mono tabular-nums">{hardDeleteDeps.validationsUE}</span>{' '}
+                          validation(s) UE — CASCADE DELETE
+                        </p>
+                      )}
+                      {hardDeleteDeps.promotionBatches > 0 && (
+                        <p className="text-warning">
+                          • <span className="font-mono tabular-nums">{hardDeleteDeps.promotionBatches}</span>{' '}
+                          batch(s) de clôture — CASCADE DELETE
+                        </p>
+                      )}
+                      {hardDeleteDeps.epreuves > 0 && (
+                        <p className="text-warning">
+                          • <span className="font-mono tabular-nums">{hardDeleteDeps.epreuves}</span>{' '}
+                          épreuve(s) — SET NULL (orphelines)
+                        </p>
+                      )}
+                      {hardDeleteDeps.etablissements > 0 && (
+                        <p className="text-warning">
+                          • <span className="font-mono tabular-nums">{hardDeleteDeps.etablissements}</span>{' '}
+                          établissement(s) — SET NULL (année courante perdue)
+                        </p>
+                      )}
+                    </div>
+                    {/* Checkbox obligatoire pour confirmer la destruction */}
+                    <label
+                      htmlFor="hard-delete-ack"
+                      className="flex items-start gap-2 cursor-pointer select-none text-sm py-1"
+                    >
+                      <Checkbox
+                        id="hard-delete-ack"
+                        checked={hardDeleteAcknowledged}
+                        onCheckedChange={(v) => setHardDeleteAcknowledged(v === true)}
+                        className="mt-0.5"
+                      />
+                      <span className="text-foreground">
+                        Je comprends que ces données seront{' '}
+                        <strong className="text-destructive">définitivement supprimées</strong>.
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={hardDeleteMutation.isPending}>
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(
+                'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+                !canConfirmHardDelete && 'pointer-events-none opacity-50'
+              )}
+              disabled={!canConfirmHardDelete || hardDeleteMutation.isPending}
+              onClick={(e) => {
+                // Empêcher la fermeture auto d'AlertDialog si la suppression
+                // n'est pas encore confirmable (defense in depth — le bouton
+                // est déjà disabled, mais on ne sait jamais).
+                if (!canConfirmHardDelete) {
+                  e.preventDefault()
+                  return
+                }
+                if (confirmHardDelete) {
+                  hardDeleteMutation.mutate(confirmHardDelete.id)
+                }
+              }}
+            >
+              {hardDeleteMutation.isPending && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              )}
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -625,7 +877,10 @@ function AnneeFormDialog({
    *  avec la prochaine année académique calculée depuis la liste existante. */
   suggestions?: { libelle: string; dateDebut: string; dateFin: string } | null
   onClose: () => void
-  onSubmit: (input: { libelle: string; dateDebut: string; dateFin: string }) => void
+  // SECT-ANNEE-HARDDELETE-SAFE-1 : `actif` est optionnel (uniquement en mode
+  // édition via le Switch « Année active »). En mode création, l'année est
+  // toujours créée avec actif=true par défaut côté backend.
+  onSubmit: (input: { libelle: string; dateDebut: string; dateFin: string; actif?: boolean }) => void
   loading: boolean
 }) {
   // En mode édition (initial fourni) → on charge les valeurs de l'année.
@@ -643,6 +898,9 @@ function AnneeFormDialog({
       ? new Date(initial.dateFin).toISOString().slice(0, 10)
       : suggestions?.dateFin ?? ''
   )
+  // SECT-ANNEE-HARDDELETE-SAFE-1 : toggle actif en mode édition uniquement.
+  // Permet de réactiver/désactiver une année sans passer par le bouton dédié.
+  const [actif, setActif] = useState<boolean>(initial?.actif ?? true)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -654,7 +912,13 @@ function AnneeFormDialog({
       toast.error('La date de fin doit être après la date de début')
       return
     }
-    onSubmit({ libelle: libelle.trim(), dateDebut, dateFin })
+    // En mode édition, on envoie `actif` (potentiellement modifié). En mode
+    // création, on ne l'envoie pas (backend le met à true par défaut).
+    if (initial) {
+      onSubmit({ libelle: libelle.trim(), dateDebut, dateFin, actif })
+    } else {
+      onSubmit({ libelle: libelle.trim(), dateDebut, dateFin })
+    }
   }
 
   return (
@@ -708,6 +972,30 @@ function AnneeFormDialog({
               />
             </div>
           </div>
+          {/* SECT-ANNEE-HARDDELETE-SAFE-1 : toggle « Année active » en mode édition.
+              Permet de réactiver/désactiver une année depuis le formulaire. */}
+          {initial && (
+            <label
+              htmlFor="annee-actif-toggle"
+              className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg border border-border p-3"
+            >
+              <div className="min-w-0">
+                <span className="text-sm font-medium flex items-center gap-1.5">
+                  <Power className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  Année active
+                </span>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Désactivée = masquée par défaut (suppression logique, réversible).
+                </p>
+              </div>
+              <Switch
+                id="annee-actif-toggle"
+                checked={actif}
+                onCheckedChange={setActif}
+                aria-label="Année active"
+              />
+            </label>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Annuler
