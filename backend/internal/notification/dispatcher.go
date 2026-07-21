@@ -198,8 +198,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 		"createdAt":   time.Now().UTC().Format(time.RFC3339),
 	}
 
-	insertErr := db.WithTx(ctx, d.pool, db.SystemClaims(), func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `
+	// SECT-NOTIF-E2E-VERIFY-1 fix : utiliser context.Background() au lieu du ctx
+	// HTTP — une fois la réponse envoyée, le contexte HTTP est annulé et le
+	// COMMIT peut échouer silencieusement. Le dispatcher doit vivre sa propre
+	// vie (fire-and-forget).
+	insertCtx := context.Background()
+	insertErr := db.WithTx(insertCtx, d.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+		_, err := tx.Exec(insertCtx, `
                         INSERT INTO "NotificationAdmin"
                                 ("id", "type", "titre", "message", "destinataireId", "destinataireRole",
                                  "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",

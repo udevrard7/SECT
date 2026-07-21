@@ -305,7 +305,7 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
           <div className="flex flex-col items-center justify-center text-center py-6 ds-kente-pattern rounded-lg">
             <Shield className="h-10 w-10 text-success-text mb-2" />
             <p className="font-semibold">Tout est au vert</p>
-            <p className="text-sm text-muted-foreground">Aucune alerte active pour le moment.</p>
+            <p className="text-sm text-muted-foreground">0 alerte non lue — tout est sous contrôle.</p>
           </div>
         ) : (
           <div className="relative pl-6">
