@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+// SECT-ALERTES-FIX-1 P6 : useMemo ajouté pour le filtrage client-side des alertes.
+import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
@@ -258,6 +259,11 @@ export function AlertesPage() {
   const queryClient = useQueryClient()
 
   // ─── Filter state ───
+  // SECT-ALERTES-FIX-1 P6 : severityFilter + typeFilter sont filtrés côté client
+  // (useMemo sur `alertes`) — aucun refetch backend quand ils changent.
+  // NB : le type reste `string` pour rester compatible avec l'`onValueChange`
+  // du Select Radix (qui fournit `string`). La validité des valeurs est garantie
+  // par les <SelectItem> ci-dessous.
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -282,7 +288,10 @@ export function AlertesPage() {
   const [bulkLoading, setBulkLoading] = useState(false)
 
   // ─── Query keys (stables pour setQueryData optimiste) ───
-  const alertesQueryKey = ['alertes', user?.id, search, severityFilter, typeFilter, lueFilter] as const
+  // SECT-ALERTES-FIX-1 P6 : severityFilter + typeFilter retirés du queryKey car
+  // ils sont désormais filtrés côté client (useMemo) — pas de refetch au changement.
+  // search + lueFilter restent au queryKey car ils sont toujours envoyés au backend.
+  const alertesQueryKey = ['alertes', user?.id, search, lueFilter] as const
   const filieresQueryKey = ['alertes-filieres', user?.id] as const
 
   // ─── Fetch alertes (TanStack Query) ───
@@ -290,13 +299,15 @@ export function AlertesPage() {
   // Le queryKey inclut les filtres car l'API les prend en query params → refetch
   // automatique. La logique de fallback (stats dynamiques) est conservée dans
   // le queryFn ; isUsingFallback est dérivé du résultat.
+  // SECT-ALERTES-FIX-1 P6 : severity + type ne sont plus envoyés au backend,
+  // le GET /api/alertes retourne toutes les alertes et le filtrage par sévérité
+  // et type se fait côté client (useMemo sur `alertes`).
   const alertesQuery = useQuery<{ alertes: AlerteItem[]; isUsingFallback: boolean }>({
     queryKey: alertesQueryKey,
     queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      if (severityFilter && severityFilter !== 'all') params.set('severity', severityFilter)
-      if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter)
+      // SECT-ALERTES-FIX-1 P6 : severity + type retirés des query params (client-side).
       if (lueFilter === 'true') params.set('lue', 'true')
       else if (lueFilter === 'false') params.set('lue', 'false')
 
@@ -364,23 +375,36 @@ export function AlertesPage() {
     )
   }
 
-  // ─── Computed stats ───
-  const totalCount = alertes.length
-  const nonLuesCount = alertes.filter((a) => !a.lue).length
-  const critiquesCount = alertes.filter((a) => a.severity === 'CRITICAL' && !a.resolu).length
+  // ─── Filtered alertes (SECT-ALERTES-FIX-1 P6) ───
+  // Filtrage 100% côté client (severity + type + lue + search) via useMemo :
+  // évite tout refetch backend et permet de calculer les KPIs sur le subset filtré.
+  // La dépendance du useMemo couvre tous les inputs (alertes + 4 filtres) pour
+  // que la liste soit recalculée immédiatement quand un filtre change.
+  const filteredAlertes = useMemo(() => {
+    return alertes.filter((a) => {
+      // SECT-ALERTES-FIX-1 P6 : filtre sévérité (Tous / CRITICAL / WARNING / INFO)
+      if (severityFilter !== 'all' && a.severity !== severityFilter) return false
+      // SECT-ALERTES-FIX-1 P6 : filtre type (Tous / FRAUDE / PERFORMANCE / SYSTEME / RAPPEL / CUSTOM)
+      if (typeFilter !== 'all' && a.type !== typeFilter) return false
+      // Filtres préexistants (lue + recherche texte)
+      if (lueFilter === 'true' && !a.lue) return false
+      if (lueFilter === 'false' && a.lue) return false
+      if (search) {
+        const s = search.toLowerCase()
+        return a.titre.toLowerCase().includes(s) || a.description.toLowerCase().includes(s)
+      }
+      return true
+    })
+  }, [alertes, severityFilter, typeFilter, lueFilter, search])
 
-  // ─── Filtered alertes ───
-  const filteredAlertes = alertes.filter((a) => {
-    if (severityFilter !== 'all' && a.severity !== severityFilter) return false
-    if (typeFilter !== 'all' && a.type !== typeFilter) return false
-    if (lueFilter === 'true' && !a.lue) return false
-    if (lueFilter === 'false' && a.lue) return false
-    if (search) {
-      const s = search.toLowerCase()
-      return a.titre.toLowerCase().includes(s) || a.description.toLowerCase().includes(s)
-    }
-    return true
-  })
+  // ─── Computed stats (SECT-ALERTES-FIX-1 P6) ───
+  // KPIs calculés sur `filteredAlertes` (et non sur `alertes`) afin de refléter
+  // les filtres actifs (sévérité, type, lue, recherche). Les cartes Total / Non
+  // lues / Critiques s'actualisent donc instantanément quand l'utilisateur change
+  // un filtre, sans attendre un refetch backend.
+  const totalCount = filteredAlertes.length
+  const nonLuesCount = filteredAlertes.filter((a) => !a.lue).length
+  const critiquesCount = filteredAlertes.filter((a) => a.severity === 'CRITICAL' && !a.resolu).length
 
   // ─── Mark as read ───
   const handleMarkAsRead = async (alerte: AlerteItem) => {
@@ -425,15 +449,24 @@ export function AlertesPage() {
   }
 
   // ─── Mark all as read ───
+  // SECT-ALERTES-FIX-1 P6 : la bulk action "Tout marquer comme lu" agit sur les
+  // alertes actuellement filtrées (cohérent avec les KPIs filtrés et l'état
+  // disabled du bouton basé sur `nonLuesCount` qui reflète le subset filtré).
+  // Avant P6, elle opérait sur l'intégralité du tableau `alertes`.
   const handleMarkAllAsRead = async () => {
     setBulkLoading(true)
     try {
+      const unreadAlertes = filteredAlertes.filter((a) => !a.lue)
+      if (unreadAlertes.length === 0) return
+      const unreadIds = new Set(unreadAlertes.map((a) => a.id))
+      const markUnread = (prev: AlerteItem[]) =>
+        prev.map((a) => (unreadIds.has(a.id) ? { ...a, lue: true } : a))
+
       if (isUsingFallback) {
-        updateAlertesCache((prev) => prev.map((a) => ({ ...a, lue: true })))
+        updateAlertesCache(markUnread)
         toast.success('Toutes les alertes marquées comme lues')
         return
       }
-      const unreadAlertes = alertes.filter((a) => !a.lue)
       await Promise.all(
         unreadAlertes.map((a) =>
           fetch(`/api/alertes/${a.id}`, {
@@ -443,7 +476,7 @@ export function AlertesPage() {
           })
         )
       )
-      updateAlertesCache((prev) => prev.map((a) => ({ ...a, lue: true })))
+      updateAlertesCache(markUnread)
       toast.success('Toutes les alertes marquées comme lues')
     } catch {
       toast.error('Erreur', { description: 'Impossible de marquer toutes les alertes comme lues.' })
@@ -453,15 +486,22 @@ export function AlertesPage() {
   }
 
   // ─── Mark all as resolved ───
+  // SECT-ALERTES-FIX-1 P6 : la bulk action "Tout résoudre" agit sur les alertes
+  // actuellement filtrées (même rationale que handleMarkAllAsRead).
   const handleMarkAllAsResolved = async () => {
     setBulkLoading(true)
     try {
+      const unresolvedAlertes = filteredAlertes.filter((a) => !a.resolu)
+      if (unresolvedAlertes.length === 0) return
+      const unresolvedIds = new Set(unresolvedAlertes.map((a) => a.id))
+      const markResolved = (prev: AlerteItem[]) =>
+        prev.map((a) => (unresolvedIds.has(a.id) ? { ...a, resolu: true, lue: true } : a))
+
       if (isUsingFallback) {
-        updateAlertesCache((prev) => prev.map((a) => ({ ...a, resolu: true, lue: true })))
+        updateAlertesCache(markResolved)
         toast.success('Toutes les alertes résolues')
         return
       }
-      const unresolvedAlertes = alertes.filter((a) => !a.resolu)
       await Promise.all(
         unresolvedAlertes.map((a) =>
           fetch(`/api/alertes/${a.id}`, {
@@ -471,7 +511,7 @@ export function AlertesPage() {
           })
         )
       )
-      updateAlertesCache((prev) => prev.map((a) => ({ ...a, resolu: true, lue: true })))
+      updateAlertesCache(markResolved)
       toast.success('Toutes les alertes résolues')
     } catch {
       toast.error('Erreur', { description: 'Impossible de résoudre toutes les alertes.' })
@@ -646,7 +686,12 @@ export function AlertesPage() {
             className="pl-9"
           />
         </div>
+        {/* SECT-ALERTES-FIX-1 P6 : filtres sévérité + type (100% client-side via useMemo).
+            Les deux Select ci-dessous mettent à jour severityFilter / typeFilter ;
+            le recalcul de `filteredAlertes` et des KPIs est instantané (pas de refetch).
+            Les Select s'empilent (flex-wrap) sur mobile et s'alignent sur sm+. */}
         <div className="flex flex-wrap gap-2">
+          {/* Filtre sévérité — Tous / CRITICAL / WARNING / INFO (SECT-ALERTES-FIX-1 P6) */}
           <Select value={severityFilter} onValueChange={setSeverityFilter}>
             <SelectTrigger className="w-full sm:w-[140px]">
               <Filter className="h-3.5 w-3.5 mr-1" />
@@ -659,14 +704,15 @@ export function AlertesPage() {
               <SelectItem value="INFO">Info</SelectItem>
             </SelectContent>
           </Select>
+          {/* Filtre type — Tous / FRAUDE / PERFORMANCE / SYSTEME / RAPPEL / CUSTOM (SECT-ALERTES-FIX-1 P6) */}
           <Select value={typeFilter} onValueChange={setTypeFilter}>
             <SelectTrigger className="w-full sm:w-[160px]">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les types</SelectItem>
-              <SelectItem value="PERFORMANCE">Performance</SelectItem>
               <SelectItem value="FRAUDE">Fraude</SelectItem>
+              <SelectItem value="PERFORMANCE">Performance</SelectItem>
               <SelectItem value="SYSTEME">Système</SelectItem>
               <SelectItem value="RAPPEL">Rappel</SelectItem>
               <SelectItem value="CUSTOM">Personnalisée</SelectItem>
