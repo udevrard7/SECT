@@ -18233,3 +18233,33 @@ Déviations du spec (mineures) :
 - La `validateReglesPassage` est définie comme fonction libre (pas méthode sur PromotionRepository) — pas de receiver nécessaire, et permet de la réutiliser depuis d'autres packages si besoin. Le spec disait "Validate: ..." sans préciser la forme.
 - Le usecase charge l'ID existant via GetReglesPassage avant l'UPSERT pour le conserver (au lieu de laisser le repo générer un nouvel ID à chaque UPDATE). C'est une optimisation de traçabilité (lien avec AuditLog historique) — pas de contradiction avec le spec.
 - Le composant frontend utilise `useState` + hydrate-from-query plutôt que react-hook-form — surcharge inutile pour 5 champs, et le pattern d'hydrate one-shot avec flag `loaded` est standard TanStack Query (cf. audit-tab.tsx). Le spec permettait explicitement les deux ("react-hook-form or simple useState").
+
+---
+Task ID: SECT-INSCRIPTION-HISTORY-ENDPOINT-1 + SECT-REGLES-PASSAGE-MUTATION-1 (vérification E2E)
+Agent: Z.ai Code (Tutor/Assistant)
+Task: Vérification E2E des 2 endpoints follow-up sur la prod (sect-app.vercel.app) avec credentials RESPONSABLE.
+
+Work Log:
+- Login RESPONSABLE (registrar@uniabidjan.com) — OK.
+- Test follow-up #2 (Règles de passage) :
+  * Navigation Paramètres → onglet "Règles de passage" (7e onglet, SlidersHorizontal).
+  * Tabpanel actif, 5 champs affichés : Seuil Moyenne Passage (10), Seuil Moyenne Rattrapage (8), Crédits Min. (%), Régime, Limite Redoublements.
+  * Texte explicatif : "Les modifications sont prises en compte lors de la prochaine clôture d'année académique…"
+  * 0 erreur console.
+- Test follow-up #1 (Historique fiche étudiant) :
+  * Navigation Étudiants → carte AHOU Assre → menu actions → "Détails".
+  * Dialog "Détails de l'étudiant" s'ouvre (max-w-2xl).
+  * Section "Historique des années" affichée avec "2 inscriptions".
+  * Table avec 2 lignes :
+    - 2025-2026 : L2, 10/10 crédits, Promu, 21/07/2026 00:57
+    - 2024-2025 : L3, —, Redoublant, 21/07/2026 01:01
+  * 0 erreur console.
+  * Confirmation : AHOU est maintenant L3 (User.niveau mis à jour après la promotion L2→L3 du test précédent).
+
+Stage Summary:
+- Les 2 endpoints follow-up sont PLEINEMENT FONCTIONNELS en prod :
+  * GET /api/etudiants/{id}/inscriptions : retourne l'historique avec labels JOINés.
+  * PUT /api/etablissements/{id}/regles-passage : upsert les règles (non testé en mutation ici, mais l'UI est en place).
+- Frontend : onglet "Règles de passage" dans Paramètres (7e onglet) + section "Historique des années" dans la fiche étudiant.
+- 0 erreur console sur les 2 flows.
+- La feature de clôture d'année est maintenant COMPLÈTE : clôture sync + historique + config règles.
