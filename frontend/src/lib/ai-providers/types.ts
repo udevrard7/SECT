@@ -3,7 +3,7 @@
  * All AI providers must implement the AIProvider interface.
  */
 
-export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'VOXTRAL'
+export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'VOXTRAL' | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS'
 
 // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1 : capacité d'un provider IA.
 // - 'chat' : LLM textuel (génération de script, Q&A, etc.) — providers Mistral, ZAI, etc.
@@ -144,13 +144,13 @@ export const PROVIDER_TYPES: Record<AIProviderType, {
   },
   OPENAI: {
     label: 'OpenAI',
-    description: 'OpenAI GPT-4, GPT-4o, GPT-3.5 Turbo',
+    description: 'OpenAI GPT-4.1, GPT-4o, o3-mini, etc.',
     icon: 'Brain',
     requiresBaseUrl: false,
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+    defaultModel: 'gpt-4.1',
+    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'o1', 'o1-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   },
   OPENAI_COMPATIBLE: {
     label: 'OpenAI-Compatible',
@@ -160,27 +160,27 @@ export const PROVIDER_TYPES: Record<AIProviderType, {
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.groq.com/openai/v1',
     defaultModel: 'llama-3.3-70b-versatile',
-    models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'llama-3.2-1b-instant', 'llama-3.2-3b-instant', 'llama-3.2-11b-vision-instant', 'llama-3.2-90b-vision-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b', 'qwen-2.5-32b', 'whisper-large-v3', 'distil-whisper-large-v3-en'],
   },
   ANTHROPIC: {
     label: 'Anthropic',
-    description: 'Claude 3.5 Sonnet, Claude 3 Opus, etc.',
+    description: 'Claude Sonnet 4, Claude 3.5 Sonnet, etc.',
     icon: 'MessageSquare',
     requiresBaseUrl: false,
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.anthropic.com/v1',
-    defaultModel: 'claude-3-5-sonnet-20241022',
-    models: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
+    defaultModel: 'claude-sonnet-4-20250514',
+    models: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
   },
   GOOGLE: {
     label: 'Google AI',
-    description: 'Gemini Pro, Gemini Flash via OpenAI-compatible endpoint',
+    description: 'Gemini 2.5 Pro/Flash, Gemini 2.0 via OpenAI-compatible endpoint',
     icon: 'Globe',
     requiresBaseUrl: false,
     requiresApiKey: true,
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    defaultModel: 'gemini-2.0-flash',
-    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    defaultModel: 'gemini-2.5-pro-preview-06-05',
+    models: ['gemini-2.5-pro-preview-06-05', 'gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
   },
   VOXTRAL: {
     label: 'Mistral Voxtral',
@@ -189,7 +189,37 @@ export const PROVIDER_TYPES: Record<AIProviderType, {
     requiresBaseUrl: true,
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.mistral.ai/v1',
-    defaultModel: 'voxtral-tts',
-    models: ['voxtral-tts', 'voxtral-tts-latest'],
+    defaultModel: 'voxtral-mini-tts-latest',
+    models: ['voxtral-mini-tts-latest', 'voxtral-mini-tts-2603'],
+  },
+  DASHSCOPE: {
+    label: 'DashScope (Alibaba)',
+    description: 'Qwen Max, Qwen Plus, Qwen Turbo — Alibaba Cloud AI',
+    icon: 'Mic',
+    requiresBaseUrl: true,
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultModel: 'qwen-max',
+    models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-long', 'qwen3-max', 'qwen3-coder-plus', 'qwen3-omni-flash', 'qwen-vl-max', 'qwen3-vl-plus', 'qwen3-vl-flash'],
+  },
+  DEEPSEEK: {
+    label: 'DeepSeek',
+    description: 'DeepSeek Chat (V3), DeepSeek Reasoner (R1)',
+    icon: 'Brain',
+    requiresBaseUrl: false,
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.deepseek.com/v1',
+    defaultModel: 'deepseek-chat',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+  },
+  CEREBRAS: {
+    label: 'Cerebras',
+    description: 'Llama 4 Scout, Llama 3.3/3.1 — inference ultra-rapide',
+    icon: 'Cpu',
+    requiresBaseUrl: true,
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.cerebras.ai/v1',
+    defaultModel: 'llama-4-scout-17b-16e-instruct',
+    models: ['llama-4-scout-17b-16e-instruct', 'llama-3.3-70b', 'llama3.1-8b', 'llama3.1-70b'],
   },
 }
