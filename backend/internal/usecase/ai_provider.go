@@ -427,6 +427,14 @@ func (uc *AIProviderUseCase) TestConnection(ctx context.Context, claims appdb.Se
                 } else {
                         message = providerName + " : chat completion de test réussi (model=" + model + ")"
                 }
+        } else if providerType == "MISTRAL" {
+                // Mistral: OpenAI-compatible /chat/completions endpoint.
+                if testErr := testChatCompletion(baseURL, apiKey, model); testErr != nil {
+                        success = false
+                        message = "Échec : " + testErr.Error()
+                } else {
+                        message = providerName + " : chat completion de test réussi (model=" + model + ")"
+                }
         } else if providerType == "DEEPSEEK" || providerType == "CEREBRAS" {
                 // DeepSeek and Cerebras use OpenAI-compatible /chat/completions.
                 if testErr := testChatCompletion(baseURL, apiKey, model); testErr != nil {
@@ -706,10 +714,10 @@ func ValidateProviderInput(name, provider, baseURL, apiKey, model string) error 
         }
         upper := strings.ToUpper(strings.TrimSpace(provider))
         switch upper {
-        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL", "DASHSCOPE", "DEEPSEEK", "CEREBRAS":
+        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL", "DASHSCOPE", "DEEPSEEK", "CEREBRAS", "MISTRAL":
                 // OK
         default:
-                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS)", provider)
+                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, MISTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS)", provider)
         }
         if baseURL != "" {
                 if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {

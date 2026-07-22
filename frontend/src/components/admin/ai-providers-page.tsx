@@ -137,7 +137,7 @@ const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
   },
   OPENAI_COMPATIBLE: {
     label: 'OpenAI-Compatible',
-    description: 'Groq, Together, Ollama, Mistral...',
+    description: 'Groq, Together, Ollama — API OpenAI-compatible',
     icon: Plug,
     color: '#f59e0b',
     bgClass: 'bg-warning/10',
@@ -179,6 +179,18 @@ const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
     borderClass: 'border-cyan-500/30',
     gradientClass: 'from-cyan-500 via-cyan-500 to-teal-500',
     defaultCapability: 'tts',
+  },
+  // ─── Mistral (chat) — API Mistral directe ───
+  MISTRAL: {
+    label: 'Mistral AI',
+    description: 'Mistral Large, Small, Codestral — chat',
+    icon: Sparkles,
+    color: '#6366f1',
+    bgClass: 'bg-indigo-500/10',
+    textClass: 'text-indigo-600 dark:text-indigo-400',
+    borderClass: 'border-indigo-500/30',
+    gradientClass: 'from-indigo-500 via-indigo-500 to-violet-500',
+    defaultCapability: 'chat',
   },
   // ─── Nouveaux providers (alignement backend ValidateProviderInput) ───
   DASHSCOPE: {
@@ -248,6 +260,12 @@ const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
     'gemini-2.0-flash', 'gemini-2.0-flash-lite',
     'gemini-1.5-pro', 'gemini-1.5-flash',
   ],
+  // ─── Mistral AI ───
+  MISTRAL: [
+    'mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest',
+    'codestral-latest', 'open-mistral-nemo',
+    'open-mixtral-8x22b', 'open-mixtral-8x7b', 'open-mistral-7b',
+  ],
   // ─── Voxtral (TTS) ───
   VOXTRAL: ['voxtral-mini-tts-latest', 'voxtral-mini-tts-2603'],
   // ─── DashScope (Alibaba Cloud) ───
@@ -271,6 +289,7 @@ const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
   OPENAI_COMPATIBLE: 'https://api.groq.com/openai/v1',
   ANTHROPIC: 'https://api.anthropic.com/v1',
   GOOGLE: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  MISTRAL: 'https://api.mistral.ai/v1',
   VOXTRAL: 'https://api.mistral.ai/v1',
   DASHSCOPE: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   DEEPSEEK: 'https://api.deepseek.com/v1',
