@@ -47,6 +47,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CodingQuestionStudent } from '@/components/coding/code-editor'
+import { WebcamCapture } from '@/components/passation/webcam-capture'
 import { type CodingLanguage, type CodingAnswer, type TestResult, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
 import { useOfflineSubmission } from '@/hooks/use-offline-submission'
 import { cacheAnswer, getCachedAnswers, clearCachedAnswers, saveExamSnapshot, getExamSnapshot, isSnapshotFresh, clearExamSnapshot } from '@/lib/exam-answers-cache'
@@ -266,6 +267,18 @@ export function PassationPage() {
   const [isFullscreenBlocked, setIsFullscreenBlocked] = useState(false)
   const [lastCaptureTime, setLastCaptureTime] = useState<Date | null>(null)
   const [showCaptureFlash, setShowCaptureFlash] = useState(false)
+
+  // ─── Identity photo state (verificationIdentite) ────────────────────
+  const [identityPhotoRequired, setIdentityPhotoRequired] = useState(false)
+  const [identityPhotoCaptured, setIdentityPhotoCaptured] = useState(false)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [identityPhotoSkipped, setIdentityPhotoSkipped] = useState(false)
+
+  // ─── Tab switch counter (PROCTORING-FIX-2) ─────────────────────────────
+  // Compteur dédié pour les changements d'onglet, indépendant du compteur
+  // global d'alertes. Permet d'appliquer le seuil nbOngletsMax séparément.
+  const [tabSwitchCount, setTabSwitchCount] = useState(0)
+  const tabSwitchCountRef = useRef(0)
 
   // ─── Submit result state ──────────────────────────────────────────────────
   const [submitResult, setSubmitResult] = useState<{
@@ -1109,10 +1122,16 @@ export function PassationPage() {
 
   // ─── Anti-cheat: Fullscreen exit detection (with penalty) ─────────────
   // E2E-TEST-FIX : bypass en mode test pour permettre l'automatisation.
+  // PROCTORING-FIX-1 : proctoringActif est le master switch — si désactivé,
+  // aucune détection anti-fraude n'est active (sauf fullscreen obligatoire
+  // qui reste actif car c'est une exigence de base de l'épreuve).
   useEffect(() => {
     // E2E-TEST-FIX : en mode test, ne pas activer la détection plein écran.
     if (process.env.NEXT_PUBLIC_TEST_MODE === 'true') return
-    if (phase !== 'in-exam' || !securityConfig.detectionFullscreen) return
+    if (phase !== 'in-exam') return
+    // PROCTORING-FIX-1 : la détection plein écran reste active même si proctoringActif=false
+    // car c'est une exigence fondamentale de l'épreuve (pas optionnelle).
+    if (!securityConfig.detectionFullscreen) return
 
     function handleFullscreenChange() {
       if (!document.fullscreenElement) {
@@ -1162,26 +1181,46 @@ export function PassationPage() {
   }, [phase, securityConfig.detectionFullscreen, logAlert])
 
   // ─── Anti-cheat: Tab switch detection (conditional) ───────────────────
+  // PROCTORING-FIX-1 : nécessite proctoringActif=true pour activer.
+  // PROCTORING-FIX-2 : compteur dédié tabSwitchCount comparé à nbOngletsMax.
   useEffect(() => {
-    if (phase !== 'in-exam' || !securityConfig.detectionOnglet) return
+    if (phase !== 'in-exam') return
+    // PROCTORING-FIX-1 : si proctoringActif=false, pas de détection d'onglet
+    if (!securityConfig.proctoringActif) return
+    if (!securityConfig.detectionOnglet) return
 
     function handleVisibilityChange() {
       if (document.hidden) {
         const timestamp = new Date().toLocaleTimeString('fr-FR')
         logAlert('TAB_SWITCH', `Changement d'onglet à ${timestamp}`)
+        // PROCTORING-FIX-2 : incrémenter le compteur dédié
+        setTabSwitchCount((prev) => {
+          const newCount = prev + 1
+          tabSwitchCountRef.current = newCount
+          const config = securityConfigRef.current
+          // Vérifier le seuil dédié nbOngletsMax
+          if (newCount >= config.nbOngletsMax && config.autoSubmitOnViolation && !isAutoSubmittingRef.current) {
+            setAutoSubmitReason('violations')
+            setShowViolationDialog(true)
+          }
+          return newCount
+        })
       } else {
-        // Returning to tab — show warning
+        // Returning to tab — show warning with count
         setShowTabSwitchWarning(true)
       }
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [phase, securityConfig.detectionOnglet, logAlert])
+  }, [phase, securityConfig.proctoringActif, securityConfig.detectionOnglet, logAlert])
 
   // ─── Anti-cheat: Right-click prevention (conditional) ─────────────────
+  // PROCTORING-FIX-1 : nécessite proctoringActif=true pour activer.
   useEffect(() => {
-    if (phase !== 'in-exam' || !securityConfig.blocageClicDroit) return
+    if (phase !== 'in-exam') return
+    if (!securityConfig.proctoringActif) return
+    if (!securityConfig.blocageClicDroit) return
 
     function handleContextMenu(e: MouseEvent) {
       e.preventDefault()
@@ -1192,6 +1231,9 @@ export function PassationPage() {
   }, [phase, securityConfig.blocageClicDroit])
 
   // ─── Anti-cheat: Keyboard shortcuts prevention (enhanced) ─────────────
+  // PROCTORING-FIX-1 : la détection DevTools (F12, Ctrl+Shift+I) reste
+  // toujours active (sécurité de base). Les blocages optionnels (copie,
+  // impression) nécessitent proctoringActif=true.
   useEffect(() => {
     if (phase !== 'in-exam') return
 
@@ -1200,12 +1242,13 @@ export function PassationPage() {
 
       // Block Ctrl+C, Ctrl+U (if blocageCopie) — always block these
       // Block Ctrl+V (if blocageCopie) — but allow in code editors for CODE questions
+      // PROCTORING-FIX-1 : blocageCopie nécessite proctoringActif=true
       const isInCodeEditor = !!(e.target as HTMLElement)?.closest?.('.monaco-editor, .code-editor-container')
-      if (config.blocageCopie && e.ctrlKey && (e.key === 'c' || e.key === 'u')) {
+      if (config.proctoringActif && config.blocageCopie && e.ctrlKey && (e.key === 'c' || e.key === 'u')) {
         e.preventDefault()
         if (e.key === 'c') logAlert('COPY_ATTEMPT', 'Ctrl+C')
       }
-      if (config.blocageCopie && e.ctrlKey && e.key === 'v' && !isInCodeEditor) {
+      if (config.proctoringActif && config.blocageCopie && e.ctrlKey && e.key === 'v' && !isInCodeEditor) {
         e.preventDefault()
         logAlert('PASTE_ATTEMPT', 'Ctrl+V')
       }
@@ -1229,7 +1272,8 @@ export function PassationPage() {
       }
 
       // Block PrintScreen + Ctrl+P (blocageImpression)
-      if (config.blocageImpression) {
+      // PROCTORING-FIX-1 : blocageImpression nécessite proctoringActif=true
+      if (config.proctoringActif && config.blocageImpression) {
         if (e.key === 'PrintScreen') {
           e.preventDefault()
           // Clear clipboard to prevent screenshot paste
@@ -1283,8 +1327,10 @@ export function PassationPage() {
   }, [phase, logAlert])
 
   // ─── Anti-cheat: Inactivity detection (conditional) ───────────────────
+  // PROCTORING-FIX-1 : nécessite proctoringActif=true pour activer.
   useEffect(() => {
     if (phase !== 'in-exam') return
+    if (!securityConfig.proctoringActif) return
     const maxInactive = securityConfig.tempsInactiviteMax
     if (maxInactive <= 0) return
 
@@ -1331,8 +1377,11 @@ export function PassationPage() {
   }, [phase, securityConfig.tempsInactiviteMax, logAlert])
 
   // ─── Periodic screenshot capture ───────────────────────────────────────
+  // PROCTORING-FIX-1 : nécessite proctoringActif=true pour activer.
   useEffect(() => {
-    if (phase !== 'in-exam' || !securityConfig.captureEcran) return
+    if (phase !== 'in-exam') return
+    if (!securityConfig.proctoringActif) return
+    if (!securityConfig.captureEcran) return
 
     const interval = securityConfig.intervalleCaptureEcran * 1000
     if (interval <= 0) return
@@ -1455,8 +1504,9 @@ export function PassationPage() {
   }, [])
 
   // ─── Paste handler for QRC/TRS (conditional) ──────────────────────────
+  // PROCTORING-FIX-1 : blocageColler nécessite proctoringActif=true.
   const handlePastePrevent = useCallback((e: React.ClipboardEvent) => {
-    if (!securityConfig.blocageCopie) return
+    if (!securityConfig.proctoringActif || !securityConfig.blocageCopie) return
     e.preventDefault()
     logAlert('PASTE_ATTEMPT')
     toast.warning('Coller désactivé', {
@@ -1484,34 +1534,40 @@ export function PassationPage() {
         highlight: true,
       })
     }
-    if (securityConfig.detectionOnglet) {
-      rules.push({ icon: Eye, text: 'Toute sortie de l\'onglet sera enregistrée' })
+    if (securityConfig.proctoringActif && securityConfig.detectionOnglet) {
+      rules.push({ icon: Eye, text: `Toute sortie de l'onglet sera enregistrée (max ${securityConfig.nbOngletsMax} changements autorisés)` })
     }
-    if (securityConfig.blocageCopie) {
+    if (securityConfig.proctoringActif && securityConfig.blocageCopie) {
       rules.push({ icon: ClipboardPaste, text: 'Le copier-coller est désactivé pour les questions à réponse courte' })
     }
-    if (securityConfig.blocageClicDroit) {
+    if (securityConfig.proctoringActif && securityConfig.blocageClicDroit) {
       rules.push({ icon: MousePointerClick, text: 'Le clic droit est désactivé pendant l\'épreuve' })
     }
-    if (securityConfig.blocageImpression) {
+    if (securityConfig.proctoringActif && securityConfig.blocageImpression) {
       rules.push({ icon: Printer, text: 'Les touches Impr. écran et l\'outil de capture Windows sont désactivés' })
     }
-    if (securityConfig.captureEcran) {
+    if (securityConfig.proctoringActif && securityConfig.captureEcran) {
       rules.push({
         icon: Camera,
         text: `Des captures d'écran périodiques seront effectuées toutes les ${securityConfig.intervalleCaptureEcran} secondes`,
       })
     }
+    if (securityConfig.proctoringActif && securityConfig.verificationIdentite) {
+      rules.push({
+        icon: Camera,
+        text: 'Une photo d\'identité via webcam sera prise avant le début de l\'épreuve',
+      })
+    }
     rules.push({ icon: Save, text: 'Les réponses sont sauvegardées automatiquement toutes les 30 secondes' })
     rules.push({ icon: Clock, text: 'L\'épreuve sera soumise automatiquement à la fin du temps imparti' })
-    if (securityConfig.autoSubmitOnViolation) {
+    if (securityConfig.proctoringActif && securityConfig.autoSubmitOnViolation) {
       rules.push({
         icon: ShieldAlert,
         text: `Après ${securityConfig.nbAlertesMax} alertes de sécurité, l'épreuve sera soumise automatiquement`,
         highlight: true,
       })
     }
-    if (securityConfig.tempsInactiviteMax > 0) {
+    if (securityConfig.proctoringActif && securityConfig.tempsInactiviteMax > 0) {
       rules.push({
         icon: Timer,
         text: `Toute inactivité de plus de ${securityConfig.tempsInactiviteMax} secondes sera signalée`,
@@ -1520,6 +1576,109 @@ export function PassationPage() {
 
     return rules
   })()
+
+  // ─── Identity photo upload handler (verificationIdentite) ──────────
+  const handleIdentityPhotoCapture = useCallback(async (base64Image: string) => {
+    if (!epreuveId) return
+    setIsUploadingPhoto(true)
+    try {
+      const res = await fetch('/api/sessions/identity-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          epreuveId,
+          photoType: 'pre-exam',
+          image: base64Image,
+        }),
+      })
+      if (!res.ok) {
+        throw new Error('Erreur lors de l\'envoi de la photo')
+      }
+      setIdentityPhotoCaptured(true)
+      toast.success('Photo d\'identité enregistrée', {
+        description: 'Votre photo a été enregistrée avec succès.',
+      })
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible d\'enregistrer la photo d\'identité',
+      })
+    } finally {
+      setIsUploadingPhoto(false)
+    }
+  }, [epreuveId])
+
+  const handleIdentityPhotoSkip = useCallback(() => {
+    setIdentityPhotoSkipped(true)
+    toast.warning('Photo d\'identité non fournie', {
+      description: 'Vous n\'avez pas fourni de photo d\'identité. Cela sera signalé.',
+    })
+  }, [])
+
+  // ─── Mid-exam identity photo capture ────────────────────────────────
+  const midExamPhotoRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    // Only capture mid-exam photos if verificationIdentite AND captureEcran are enabled
+    if (phase !== 'in-exam' || !securityConfig.proctoringActif || !securityConfig.verificationIdentite || !securityConfig.captureEcran) {
+      if (midExamPhotoRef.current) {
+        clearInterval(midExamPhotoRef.current)
+        midExamPhotoRef.current = null
+      }
+      return
+    }
+
+    // Capture identity photo every 5 minutes during exam
+    const interval = setInterval(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: 320, height: 240 },
+          audio: false,
+        })
+        const video = document.createElement('video')
+        video.srcObject = stream
+        await video.play()
+        // Small delay for the camera to warm up
+        await new Promise((r) => setTimeout(r, 300))
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth || 320
+        canvas.height = video.videoHeight || 240
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.translate(canvas.width, 0)
+          ctx.scale(-1, 1)
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        }
+        // Stop camera immediately
+        stream.getTracks().forEach((t) => t.stop())
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+        // Upload in background (non-blocking)
+        if (sessionRef.current?.id && epreuveId) {
+          fetch('/api/sessions/identity-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              epreuveId,
+              sessionId: sessionRef.current.id,
+              photoType: 'mid-exam',
+              image: dataUrl,
+            }),
+          }).catch(() => { /* non-blocking */ })
+        }
+      } catch {
+        // Camera may be unavailable — log silently
+      }
+    }, 5 * 60 * 1000) // Every 5 minutes
+
+    midExamPhotoRef.current = interval
+    return () => {
+      clearInterval(interval)
+      midExamPhotoRef.current = null
+    }
+  }, [phase, securityConfig.proctoringActif, securityConfig.verificationIdentite, securityConfig.captureEcran, epreuveId])
+
+  // ─── Compute whether identity photo is required ──────────────────────
+  const identityPhotoRequiredNow = securityConfig.proctoringActif && securityConfig.verificationIdentite
+  const canStartExam = consentAccepted && (!identityPhotoRequiredNow || identityPhotoCaptured || identityPhotoSkipped)
 
   // ─── Computed: answered questions count ────────────────────────────────
   const answeredCount = questions.filter((q) => {
@@ -1644,6 +1803,41 @@ export function PassationPage() {
               </div>
             )}
 
+            {/* Identity photo capture (verificationIdentite) */}
+            {identityPhotoRequiredNow && !identityPhotoCaptured && !identityPhotoSkipped && (
+              <div className="rounded-lg border border-info/40 bg-info/5 p-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <Camera className="h-5 w-5 text-info shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-info">
+                      Vérification d&apos;identité requise
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Une photo d&apos;identité est nécessaire avant de commencer l&apos;épreuve. Cette photo sera utilisée pour vérifier votre identité pendant l&apos;examen.
+                    </p>
+                  </div>
+                </div>
+                <WebcamCapture
+                  onCapture={handleIdentityPhotoCapture}
+                  onSkip={handleIdentityPhotoSkip}
+                  skipLabel="Continuer sans photo (sera signalé)"
+                  isUploading={isUploadingPhoto}
+                />
+              </div>
+            )}
+            {identityPhotoRequiredNow && identityPhotoCaptured && (
+              <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3">
+                <CheckCircle2 className="h-4 w-4 text-success-text" />
+                <span className="text-sm text-success-text">Photo d&apos;identité enregistrée avec succès</span>
+              </div>
+            )}
+            {identityPhotoRequiredNow && identityPhotoSkipped && !identityPhotoCaptured && (
+              <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                <span className="text-sm text-warning">Photo d&apos;identité non fournie — cela sera signalé à l&apos;enseignant</span>
+              </div>
+            )}
+
             {/* Consent checkbox */}
             <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-success/10/50 p-4  ">
               <Checkbox
@@ -1654,14 +1848,19 @@ export function PassationPage() {
               />
               <Label htmlFor="consent" className="text-sm font-normal cursor-pointer leading-relaxed">
                 J&apos;accepte les règles de l&apos;épreuve et je m&apos;engage à la réaliser de manière honnête et autonome.
-                J&apos;ai compris que toute sortie du mode plein écran à partir de la 2ème tentative entraînera une pénalité.
+                {securityConfig.proctoringActif && securityConfig.detectionFullscreen && (
+                  <> J&apos;ai compris que toute sortie du mode plein écran à partir de la 2ème tentative entraînera une pénalité.</>
+                )}
+                {!securityConfig.proctoringActif && securityConfig.detectionFullscreen && (
+                  <> Le mode plein écran est requis pendant l&apos;épreuve.</>
+                )}
               </Label>
             </div>
 
             {/* Start button */}
             <Button
               onClick={startExam}
-              disabled={!consentAccepted || isStarting}
+              disabled={!canStartExam || isStarting}
               className="w-full  text-white h-11 text-base"
               size="lg"
             >
@@ -1669,6 +1868,11 @@ export function PassationPage() {
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Démarrage en cours...
+                </>
+              ) : identityPhotoRequiredNow && !identityPhotoCaptured && !identityPhotoSkipped ? (
+                <>
+                  <Camera className="h-5 w-5 mr-2" />
+                  Photo d&apos;identité requise
                 </>
               ) : (
                 <>
@@ -1814,6 +2018,21 @@ export function PassationPage() {
                 </div>
                 <p className="text-xs text-muted-foreground ml-6">
                   Les alertes ont été communiquées à votre enseignant.
+                </p>
+              </div>
+            )}
+
+            {/* Rapport de fraude notice when rapportFraude is enabled and alerts > 0 */}
+            {securityConfig.rapportFraude && totalAlertCount > 0 && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+                <div className="flex items-center gap-2">
+                  <FileWarning className="h-4 w-4 text-warning" />
+                  <p className="text-sm font-semibold text-warning">
+                    Rapport de fraude généré
+                  </p>
+                </div>
+                <p className="text-xs text-warning ml-6">
+                  Un rapport de fraude a été généré pour cette session et sera transmis à votre enseignant.
                 </p>
               </div>
             )}
@@ -2779,6 +2998,15 @@ export function PassationPage() {
             <DialogDescription>
               Vous avez quitté l&apos;onglet de l&apos;épreuve. Ce comportement a été enregistré et signalé.
               Veuillez rester sur cet onglet pendant toute la durée de l&apos;épreuve.
+              {/* PROCTORING-FIX-2 : afficher le compteur d'onglets vs nbOngletsMax */}
+              {securityConfig.proctoringActif && securityConfig.detectionOnglet && (
+                <span className="block mt-2 font-medium">
+                  Changements d&apos;onglet : {tabSwitchCount}/{securityConfig.nbOngletsMax} autorisé{securityConfig.nbOngletsMax !== 1 ? 's' : ''}
+                  {tabSwitchCount >= securityConfig.nbOngletsMax && (
+                    <span className="text-destructive"> — Seuil dépassé !</span>
+                  )}
+                </span>
+              )}
               {securityConfig.autoSubmitOnViolation && (
                 <> Il vous reste {Math.max(0, securityConfig.nbAlertesMax - totalAlertCount)} alerte{Math.max(0, securityConfig.nbAlertesMax - totalAlertCount) !== 1 ? 's' : ''} avant la soumission automatique.</>
               )}
