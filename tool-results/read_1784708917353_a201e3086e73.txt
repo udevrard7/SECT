@@ -1,0 +1,2002 @@
+     1→-- CreateSchema
+     2→CREATE SCHEMA IF NOT EXISTS "public";
+     3→
+     4→-- CreateEnum
+     5→CREATE TYPE "Role" AS ENUM ('ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT');
+     6→
+     7→-- CreateEnum
+     8→CREATE TYPE "TypeQuestion" AS ENUM ('QCU', 'QCM', 'QRC', 'REFLEXION', 'TRS', 'CODE');
+     9→
+    10→-- CreateEnum
+    11→CREATE TYPE "Difficulte" AS ENUM ('FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT');
+    12→
+    13→-- CreateEnum
+    14→CREATE TYPE "StatutAnalyse" AS ENUM ('EN_ATTENTE', 'EN_COURS', 'ANALYSE', 'ERREUR');
+    15→
+    16→-- CreateEnum
+    17→CREATE TYPE "ModeGeneration" AS ENUM ('MANUELLE', 'IA_ASSISTEE');
+    18→
+    19→-- CreateEnum
+    20→CREATE TYPE "StatutEpreuve" AS ENUM ('BROUILLON', 'PLANIFIEE', 'EN_COURS', 'TERMINEE', 'CLOTUREE');
+    21→
+    22→-- CreateEnum
+    23→CREATE TYPE "StatutSession" AS ENUM ('NON_COMMENCEE', 'EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'ABSENT', 'NON_SOUMIS');
+    24→
+    25→-- CreateEnum
+    26→CREATE TYPE "StatutAbonnement" AS ENUM ('ESSAI', 'ACTIF', 'SUSPENDU', 'EXPIRE', 'RESILIE');
+    27→
+    28→-- CreateEnum
+    29→CREATE TYPE "TypePlan" AS ENUM ('GRATUIT', 'ESSENTIEL', 'PROFESSIONNEL', 'ENTREPRISE');
+    30→
+    31→-- CreateEnum
+    32→CREATE TYPE "NiveauEtude" AS ENUM ('L1', 'L2', 'L3', 'M1', 'M2', 'DOCTORAT');
+    33→
+    34→-- CreateEnum
+    35→CREATE TYPE "TypeSeance" AS ENUM ('CM', 'TD', 'TP');
+    36→
+    37→-- CreateEnum
+    38→CREATE TYPE "StatutAffectation" AS ENUM ('PROVISOIRE', 'VALIDEE', 'PUBLIEE');
+    39→
+    40→-- CreateEnum
+    41→CREATE TYPE "SeverityAlerte" AS ENUM ('CRITICAL', 'WARNING', 'INFO');
+    42→
+    43→-- CreateEnum
+    44→CREATE TYPE "TypeAlerte" AS ENUM ('PERFORMANCE', 'FRAUDE', 'SYSTEME', 'RAPPEL', 'CUSTOM');
+    45→
+    46→-- CreateEnum
+    47→CREATE TYPE "StatutDevoir" AS ENUM ('BROUILLON', 'PUBLIE', 'FERME', 'ARCHIVE');
+    48→
+    49→-- CreateEnum
+    50→CREATE TYPE "StatutSoumission" AS ENUM ('BROUILLON', 'SOUMIS', 'CORRIGE', 'RETOURNE');
+    51→
+    52→-- CreateEnum
+    53→CREATE TYPE "SessionExamen" AS ENUM ('NORMALE', 'RATTRAPAGE', 'SPECIALE', 'EXCEPTIONNELLE', 'DIFFERE');
+    54→
+    55→-- CreateEnum
+    56→CREATE TYPE "TypeSessionSpeciale" AS ENUM ('RATTRAPAGE', 'EXCEPTIONNELLE', 'DIFFERE');
+    57→
+    58→-- CreateEnum
+    59→CREATE TYPE "CategorieBadge" AS ENUM ('EVALUATION', 'CORRECTION', 'IA', 'ENGAGEMENT', 'EXCELLENCE', 'PEDAGOGIE', 'GESTION');
+    60→
+    61→-- CreateEnum
+    62→CREATE TYPE "NiveauBadge" AS ENUM ('BRONZE', 'ARGENT', 'OR', 'DIAMANT');
+    63→
+    64→-- CreateEnum
+    65→CREATE TYPE "StatutValidation" AS ENUM ('EN_COURS', 'VALIDEE', 'NON_VALIDEE');
+    66→
+    67→-- CreateEnum
+    68→CREATE TYPE "TypeCertificat" AS ENUM ('STANDARD', 'AVANCE', 'EXPERT');
+    69→
+    70→-- CreateEnum
+    71→CREATE TYPE "StatutCertificat" AS ENUM ('EMIS', 'REVOQUE', 'EXPIRE');
+    72→
+    73→-- CreateTable
+    74→CREATE TABLE "User" (
+    75→    "id" TEXT NOT NULL,
+    76→    "email" TEXT NOT NULL,
+    77→    "name" TEXT NOT NULL,
+    78→    "password" TEXT NOT NULL,
+    79→    "role" "Role" NOT NULL DEFAULT 'ETUDIANT',
+    80→    "etablissementId" TEXT,
+    81→    "filiereId" TEXT,
+    82→    "image" TEXT,
+    83→    "actif" BOOLEAN NOT NULL DEFAULT true,
+    84→    "derniereConnexion" TIMESTAMP(3),
+    85→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    86→    "updatedAt" TIMESTAMP(3) NOT NULL,
+    87→    "lockedUntil" TIMESTAMP(3),
+    88→    "loginAttempts" INTEGER NOT NULL DEFAULT 0,
+    89→    "matricule" TEXT,
+    90→    "mustChangePwd" BOOLEAN NOT NULL DEFAULT false,
+    91→    "niveau" "NiveauEtude",
+    92→
+    93→    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+    94→);
+    95→
+    96→-- CreateTable
+    97→CREATE TABLE "Etablissement" (
+    98→    "id" TEXT NOT NULL,
+    99→    "nom" TEXT NOT NULL,
+   100→    "type" TEXT,
+   101→    "ville" TEXT,
+   102→    "pays" TEXT DEFAULT 'France',
+   103→    "adresse" TEXT,
+   104→    "telephone" TEXT,
+   105→    "email" TEXT,
+   106→    "siteWeb" TEXT,
+   107→    "logo" TEXT,
+   108→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   109→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   110→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   111→    "exempleMatricule" TEXT,
+   112→    "formatMatricule" TEXT,
+   113→    "regexMatricule" TEXT,
+   114→    "certWatermarkText" TEXT DEFAULT 'ORIGINAL',
+   115→    "certWatermarkEnabled" BOOLEAN NOT NULL DEFAULT true,
+   116→    "certWatermarkOpacity" DOUBLE PRECISION NOT NULL DEFAULT 0.04,
+   117→    "certWatermarkColor" TEXT DEFAULT '#1B3A5C',
+   118→    "certWatermarkPattern" TEXT DEFAULT 'diamond',
+   119→
+   120→    CONSTRAINT "Etablissement_pkey" PRIMARY KEY ("id")
+   121→);
+   122→
+   123→-- CreateTable
+   124→CREATE TABLE "Filiere" (
+   125→    "id" TEXT NOT NULL,
+   126→    "nom" TEXT NOT NULL,
+   127→    "code" TEXT,
+   128→    "etablissementId" TEXT NOT NULL,
+   129→    "responsableId" TEXT,
+   130→    "description" TEXT,
+   131→    "nbEtudiants" INTEGER,
+   132→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   133→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   134→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   135→
+   136→    CONSTRAINT "Filiere_pkey" PRIMARY KEY ("id")
+   137→);
+   138→
+   139→-- CreateTable
+   140→CREATE TABLE "EnseignantFiliere" (
+   141→    "id" TEXT NOT NULL,
+   142→    "enseignantId" TEXT NOT NULL,
+   143→    "filiereId" TEXT NOT NULL,
+   144→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   145→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   146→    "niveau" "NiveauEtude" NOT NULL,
+   147→
+   148→    CONSTRAINT "EnseignantFiliere_pkey" PRIMARY KEY ("id")
+   149→);
+   150→
+   151→-- CreateTable
+   152→CREATE TABLE "UniteEnseignement" (
+   153→    "id" TEXT NOT NULL,
+   154→    "code" TEXT NOT NULL,
+   155→    "nom" TEXT NOT NULL,
+   156→    "description" TEXT,
+   157→    "filiereId" TEXT NOT NULL,
+   158→    "niveau" "NiveauEtude" NOT NULL,
+   159→    "niveaux" TEXT,
+   160→    "semestre" INTEGER,
+   161→    "creditsECTS" INTEGER,
+   162→    "volumeHeuresCM" INTEGER NOT NULL DEFAULT 0,
+   163→    "volumeHeuresTD" INTEGER NOT NULL DEFAULT 0,
+   164→    "volumeHeuresTP" INTEGER NOT NULL DEFAULT 0,
+   165→    "obligatoire" BOOLEAN NOT NULL DEFAULT true,
+   166→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   167→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   168→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   169→
+   170→    CONSTRAINT "UniteEnseignement_pkey" PRIMARY KEY ("id")
+   171→);
+   172→
+   173→-- CreateTable
+   174→CREATE TABLE "UniteEnseignementFiliere" (
+   175→    "id" TEXT NOT NULL,
+   176→    "uniteEnseignementId" TEXT NOT NULL,
+   177→    "filiereId" TEXT NOT NULL,
+   178→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   179→
+   180→    CONSTRAINT "UniteEnseignementFiliere_pkey" PRIMARY KEY ("id")
+   181→);
+   182→
+   183→-- CreateTable
+   184→CREATE TABLE "Affectation" (
+   185→    "id" TEXT NOT NULL,
+   186→    "enseignantId" TEXT NOT NULL,
+   187→    "uniteEnseignementId" TEXT NOT NULL,
+   188→    "typeSeance" "TypeSeance" NOT NULL DEFAULT 'CM',
+   189→    "groupe" TEXT,
+   190→    "volumeHeures" DOUBLE PRECISION NOT NULL,
+   191→    "anneeUniversitaire" TEXT NOT NULL DEFAULT '2024-2025',
+   192→    "statut" "StatutAffectation" NOT NULL DEFAULT 'PROVISOIRE',
+   193→    "commentaire" TEXT,
+   194→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   195→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   196→
+   197→    CONSTRAINT "Affectation_pkey" PRIMARY KEY ("id")
+   198→);
+   199→
+   200→-- CreateTable
+   201→CREATE TABLE "AuditLog" (
+   202→    "id" TEXT NOT NULL,
+   203→    "userId" TEXT,
+   204→    "userEmail" TEXT,
+   205→    "action" TEXT NOT NULL,
+   206→    "entite" TEXT NOT NULL,
+   207→    "entiteId" TEXT,
+   208→    "details" TEXT,
+   209→    "adresseIp" TEXT,
+   210→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   211→
+   212→    CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
+   213→);
+   214→
+   215→-- CreateTable
+   216→CREATE TABLE "Document" (
+   217→    "id" TEXT NOT NULL,
+   218→    "ownerId" TEXT NOT NULL,
+   219→    "nomFichier" TEXT NOT NULL,
+   220→    "cheminStockage" TEXT NOT NULL,
+   221→    "tailleFichier" INTEGER,
+   222→    "typeMime" TEXT,
+   223→    "statutAnalyse" "StatutAnalyse" NOT NULL DEFAULT 'EN_ATTENTE',
+   224→    "themesDetectes" TEXT,
+   225→    "conceptsCles" TEXT,
+   226→    "volumeEstime" TEXT,
+   227→    "contenuTexte" TEXT,
+   228→    "dateUpload" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   229→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   230→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   231→    "deletedAt" TIMESTAMP(3),
+   232→    "erreurAnalyse" TEXT,
+   233→    "resumeAnalyse" TEXT,
+   234→    "uniteEnseignementId" TEXT,
+   235→
+   236→    CONSTRAINT "Document_pkey" PRIMARY KEY ("id")
+   237→);
+   238→
+   239→-- CreateTable
+   240→CREATE TABLE "Question" (
+   241→    "id" TEXT NOT NULL,
+   242→    "documentId" TEXT,
+   243→    "auteurId" TEXT,
+   244→    "type" "TypeQuestion" NOT NULL,
+   245→    "enonce" TEXT NOT NULL,
+   246→    "propositions" TEXT,
+   247→    "reponseCorrecte" TEXT,
+   248→    "explication" TEXT,
+   249→    "difficulte" "Difficulte" NOT NULL DEFAULT 'MOYEN',
+   250→    "themes" TEXT,
+   251→    "tags" TEXT,
+   252→    "scoreQualite" DOUBLE PRECISION,
+   253→    "validee" BOOLEAN NOT NULL DEFAULT false,
+   254→    "langue" TEXT NOT NULL DEFAULT 'fr',
+   255→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   256→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   257→    "deletedAt" TIMESTAMP(3),
+   258→
+   259→    CONSTRAINT "Question_pkey" PRIMARY KEY ("id")
+   260→);
+   261→
+   262→-- CreateTable
+   263→CREATE TABLE "Epreuve" (
+   264→    "id" TEXT NOT NULL,
+   265→    "enseignantId" TEXT NOT NULL,
+   266→    "titre" TEXT NOT NULL,
+   267→    "description" TEXT,
+   268→    "duree" INTEGER NOT NULL,
+   269→    "dateDebut" TIMESTAMP(3) NOT NULL,
+   270→    "dateFin" TIMESTAMP(3) NOT NULL,
+   271→    "melangeQuestions" BOOLEAN NOT NULL DEFAULT true,
+   272→    "melangePropositions" BOOLEAN NOT NULL DEFAULT true,
+   273→    "blocageRetour" BOOLEAN NOT NULL DEFAULT false,
+   274→    "statut" "StatutEpreuve" NOT NULL DEFAULT 'BROUILLON',
+   275→    "groupesCibles" TEXT,
+   276→    "contenu" JSONB,
+   277→    "filiereId" TEXT,
+   278→    "uniteEnseignementId" TEXT,
+   279→    "niveau" "NiveauEtude",
+   280→    "sessionExamen" "SessionExamen" NOT NULL DEFAULT 'NORMALE',
+   281→    "anneeAcademiqueId" TEXT,
+   282→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   283→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   284→    "deletedAt" TIMESTAMP(3),
+   285→    "proctoringActif" BOOLEAN NOT NULL DEFAULT false,
+   286→    "verificationIdentite" BOOLEAN NOT NULL DEFAULT false,
+   287→    "generationMode" "ModeGeneration" NOT NULL DEFAULT 'MANUELLE',
+   288→    "isTemplate" BOOLEAN NOT NULL DEFAULT false,
+   289→    "noteTotal" DOUBLE PRECISION NOT NULL DEFAULT 20,
+   290→    "clotureeAt" TIMESTAMP(3),
+   291→    "clotureeAutomatiquement" BOOLEAN NOT NULL DEFAULT false,
+   292→    "raisonCloture" TEXT,
+   293→    "clotureePar" TEXT,
+   294→    "delaiGrace" INTEGER NOT NULL DEFAULT 3,
+   295→    "etudiantsAutorises" TEXT,
+   296→    "epreuveOrigineId" TEXT,
+   297→
+   298→    CONSTRAINT "Epreuve_pkey" PRIMARY KEY ("id")
+   299→);
+   300→
+   301→-- CreateTable
+   302→CREATE TABLE "EpreuveQuestion" (
+   303→    "id" TEXT NOT NULL,
+   304→    "epreuveId" TEXT NOT NULL,
+   305→    "questionId" TEXT NOT NULL,
+   306→    "bareme" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+   307→    "ordre" INTEGER NOT NULL DEFAULT 0,
+   308→
+   309→    CONSTRAINT "EpreuveQuestion_pkey" PRIMARY KEY ("id")
+   310→);
+   311→
+   312→-- CreateTable
+   313→CREATE TABLE "EpreuveDocument" (
+   314→    "id" TEXT NOT NULL,
+   315→    "epreuveId" TEXT NOT NULL,
+   316→    "documentId" TEXT NOT NULL,
+   317→
+   318→    CONSTRAINT "EpreuveDocument_pkey" PRIMARY KEY ("id")
+   319→);
+   320→
+   321→-- CreateTable
+   322→CREATE TABLE "SessionPassation" (
+   323→    "id" TEXT NOT NULL,
+   324→    "etudiantId" TEXT NOT NULL,
+   325→    "epreuveId" TEXT NOT NULL,
+   326→    "statut" "StatutSession" NOT NULL DEFAULT 'NON_COMMENCEE',
+   327→    "dateDebut" TIMESTAMP(3),
+   328→    "dateFin" TIMESTAMP(3),
+   329→    "score" DOUBLE PRECISION,
+   330→    "logEvents" TEXT,
+   331→    "alertes" INTEGER NOT NULL DEFAULT 0,
+   332→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   333→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   334→    "propositionMappings" TEXT,
+   335→    "penalite" DOUBLE PRECISION NOT NULL DEFAULT 0,
+   336→
+   337→    CONSTRAINT "SessionPassation_pkey" PRIMARY KEY ("id")
+   338→);
+   339→
+   340→-- CreateTable
+   341→CREATE TABLE "Reponse" (
+   342→    "id" TEXT NOT NULL,
+   343→    "sessionId" TEXT NOT NULL,
+   344→    "questionId" TEXT NOT NULL,
+   345→    "contenu" TEXT,
+   346→    "score" DOUBLE PRECISION,
+   347→    "commentaire" TEXT,
+   348→    "noteIA" DOUBLE PRECISION,
+   349→    "justificationIA" TEXT,
+   350→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   351→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   352→
+   353→    CONSTRAINT "Reponse_pkey" PRIMARY KEY ("id")
+   354→);
+   355→
+   356→-- CreateTable
+   357→CREATE TABLE "Alerte" (
+   358→    "id" TEXT NOT NULL,
+   359→    "titre" TEXT NOT NULL,
+   360→    "description" TEXT NOT NULL,
+   361→    "severity" "SeverityAlerte" NOT NULL DEFAULT 'INFO',
+   362→    "type" "TypeAlerte" NOT NULL DEFAULT 'CUSTOM',
+   363→    "lue" BOOLEAN NOT NULL DEFAULT false,
+   364→    "resolu" BOOLEAN NOT NULL DEFAULT false,
+   365→    "filiereId" TEXT,
+   366→    "epreuveId" TEXT,
+   367→    "userId" TEXT,
+   368→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   369→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   370→
+   371→    CONSTRAINT "Alerte_pkey" PRIMARY KEY ("id")
+   372→);
+   373→
+   374→-- CreateTable
+   375→CREATE TABLE "Resultat" (
+   376→    "id" TEXT NOT NULL,
+   377→    "sessionId" TEXT NOT NULL,
+   378→    "scoreFinal" DOUBLE PRECISION NOT NULL,
+   379→    "detailParQuestion" TEXT,
+   380→    "dateCorrection" TIMESTAMP(3),
+   381→    "dateRetour" TIMESTAMP(3),
+   382→    "commentaires" TEXT,
+   383→    "exporte" BOOLEAN NOT NULL DEFAULT false,
+   384→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   385→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   386→    "totalPossible" DOUBLE PRECISION NOT NULL DEFAULT 20,
+   387→
+   388→    CONSTRAINT "Resultat_pkey" PRIMARY KEY ("id")
+   389→);
+   390→
+   391→-- CreateTable
+   392→CREATE TABLE "Plan" (
+   393→    "id" TEXT NOT NULL,
+   394→    "nom" TEXT NOT NULL,
+   395→    "type" "TypePlan" NOT NULL,
+   396→    "prixMensuel" DOUBLE PRECISION NOT NULL,
+   397→    "prixAnnuel" DOUBLE PRECISION,
+   398→    "nbEtablissementsMax" INTEGER NOT NULL,
+   399→    "nbFilieresMax" INTEGER NOT NULL,
+   400→    "nbEnseignantsMax" INTEGER NOT NULL,
+   401→    "nbEtudiantsMax" INTEGER NOT NULL,
+   402→    "nbQuestionsMax" INTEGER NOT NULL,
+   403→    "nbEvaluationsMois" INTEGER NOT NULL,
+   404→    "iaGeneration" BOOLEAN NOT NULL DEFAULT true,
+   405→    "iaCorrection" BOOLEAN NOT NULL DEFAULT false,
+   406→    "proctoring" BOOLEAN NOT NULL DEFAULT false,
+   407→    "exportPDF" BOOLEAN NOT NULL DEFAULT true,
+   408→    "support" TEXT NOT NULL DEFAULT 'email',
+   409→    "description" TEXT,
+   410→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   411→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   412→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   413→
+   414→    CONSTRAINT "Plan_pkey" PRIMARY KEY ("id")
+   415→);
+   416→
+   417→-- CreateTable
+   418→CREATE TABLE "Abonnement" (
+   419→    "id" TEXT NOT NULL,
+   420→    "etablissementId" TEXT NOT NULL,
+   421→    "planId" TEXT NOT NULL,
+   422→    "statut" "StatutAbonnement" NOT NULL DEFAULT 'ESSAI',
+   423→    "dateDebut" TIMESTAMP(3) NOT NULL,
+   424→    "dateFin" TIMESTAMP(3),
+   425→    "periodeEssaiJours" INTEGER NOT NULL DEFAULT 14,
+   426→    "modePaiement" TEXT,
+   427→    "referencePaiement" TEXT,
+   428→    "montantPaye" DOUBLE PRECISION NOT NULL DEFAULT 0,
+   429→    "renouvellementAuto" BOOLEAN NOT NULL DEFAULT true,
+   430→    "notes" TEXT,
+   431→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   432→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   433→
+   434→    CONSTRAINT "Abonnement_pkey" PRIMARY KEY ("id")
+   435→);
+   436→
+   437→-- CreateTable
+   438→CREATE TABLE "EtablissementAccess" (
+   439→    "id" TEXT NOT NULL,
+   440→    "adminId" TEXT NOT NULL,
+   441→    "etablissementId" TEXT NOT NULL,
+   442→    "motif" TEXT NOT NULL,
+   443→    "statut" TEXT NOT NULL DEFAULT 'EN_ATTENTE',
+   444→    "dateDebut" TIMESTAMP(3),
+   445→    "dateFin" TIMESTAMP(3),
+   446→    "approuvePar" TEXT,
+   447→    "commentaire" TEXT,
+   448→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   449→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   450→
+   451→    CONSTRAINT "EtablissementAccess_pkey" PRIMARY KEY ("id")
+   452→);
+   453→
+   454→-- CreateTable
+   455→CREATE TABLE "SecuritySettings" (
+   456→    "id" TEXT NOT NULL,
+   457→    "etablissementId" TEXT NOT NULL,
+   458→    "proctoringActif" BOOLEAN NOT NULL DEFAULT false,
+   459→    "detectionCopie" BOOLEAN NOT NULL DEFAULT true,
+   460→    "detectionOnglet" BOOLEAN NOT NULL DEFAULT true,
+   461→    "detectionFullscreen" BOOLEAN NOT NULL DEFAULT true,
+   462→    "blocageCopie" BOOLEAN NOT NULL DEFAULT true,
+   463→    "blocageClicDroit" BOOLEAN NOT NULL DEFAULT true,
+   464→    "blocageImpression" BOOLEAN NOT NULL DEFAULT true,
+   465→    "verificationIdentite" BOOLEAN NOT NULL DEFAULT false,
+   466→    "tempsInactiviteMax" INTEGER NOT NULL DEFAULT 120,
+   467→    "nbOngletsMax" INTEGER NOT NULL DEFAULT 3,
+   468→    "nbAlertesMax" INTEGER NOT NULL DEFAULT 5,
+   469→    "autoSubmitOnViolation" BOOLEAN NOT NULL DEFAULT false,
+   470→    "captureEcran" BOOLEAN NOT NULL DEFAULT false,
+   471→    "rapportFraude" BOOLEAN NOT NULL DEFAULT true,
+   472→    "seuilSimilarite" DOUBLE PRECISION NOT NULL DEFAULT 0.85,
+   473→    "penaliteFullscreenExit" INTEGER NOT NULL DEFAULT 5,
+   474→    "fullscreenObligatoire" BOOLEAN NOT NULL DEFAULT true,
+   475→    "intervalleCaptureEcran" INTEGER NOT NULL DEFAULT 60,
+   476→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   477→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   478→
+   479→    CONSTRAINT "SecuritySettings_pkey" PRIMARY KEY ("id")
+   480→);
+   481→
+   482→-- CreateTable
+   483→CREATE TABLE "Devoir" (
+   484→    "id" TEXT NOT NULL,
+   485→    "titre" TEXT NOT NULL,
+   486→    "description" TEXT,
+   487→    "consignes" TEXT,
+   488→    "uniteEnseignementId" TEXT NOT NULL,
+   489→    "enseignantId" TEXT NOT NULL,
+   490→    "typeSeance" "TypeSeance" NOT NULL DEFAULT 'TD',
+   491→    "datePublication" TIMESTAMP(3),
+   492→    "dateLimite" TIMESTAMP(3) NOT NULL,
+   493→    "noteMax" DOUBLE PRECISION NOT NULL DEFAULT 20,
+   494→    "renduFichiers" TEXT,
+   495→    "soumissionGroupe" BOOLEAN NOT NULL DEFAULT false,
+   496→    "nbMaxFichiers" INTEGER NOT NULL DEFAULT 10,
+   497→    "tailleMaxFichier" INTEGER NOT NULL DEFAULT 52428800,
+   498→    "statut" "StatutDevoir" NOT NULL DEFAULT 'BROUILLON',
+   499→    "anneeUniversitaire" TEXT NOT NULL DEFAULT '2024-2025',
+   500→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   501→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   502→    "deletedAt" TIMESTAMP(3),
+   503→
+   504→    CONSTRAINT "Devoir_pkey" PRIMARY KEY ("id")
+   505→);
+   506→
+   507→-- CreateTable
+   508→CREATE TABLE "GrilleEvaluation" (
+   509→    "id" TEXT NOT NULL,
+   510→    "devoirId" TEXT NOT NULL,
+   511→    "criteres" TEXT NOT NULL,
+   512→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   513→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   514→
+   515→    CONSTRAINT "GrilleEvaluation_pkey" PRIMARY KEY ("id")
+   516→);
+   517→
+   518→-- CreateTable
+   519→CREATE TABLE "Invitation" (
+   520→    "id" TEXT NOT NULL,
+   521→    "token" TEXT NOT NULL,
+   522→    "email" TEXT NOT NULL,
+   523→    "role" "Role" NOT NULL,
+   524→    "name" TEXT,
+   525→    "etablissementId" TEXT,
+   526→    "filiereId" TEXT,
+   527→    "expiresAt" TIMESTAMP(3) NOT NULL,
+   528→    "used" BOOLEAN NOT NULL DEFAULT false,
+   529→    "usedAt" TIMESTAMP(3),
+   530→    "createdById" TEXT NOT NULL,
+   531→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   532→
+   533→    CONSTRAINT "Invitation_pkey" PRIMARY KEY ("id")
+   534→);
+   535→
+   536→-- CreateTable
+   537→CREATE TABLE "PasswordReset" (
+   538→    "id" TEXT NOT NULL,
+   539→    "token" TEXT NOT NULL,
+   540→    "userId" TEXT NOT NULL,
+   541→    "expiresAt" TIMESTAMP(3) NOT NULL,
+   542→    "used" BOOLEAN NOT NULL DEFAULT false,
+   543→    "usedAt" TIMESTAMP(3),
+   544→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   545→
+   546→    CONSTRAINT "PasswordReset_pkey" PRIMARY KEY ("id")
+   547→);
+   548→
+   549→-- CreateTable
+   550→CREATE TABLE "PlatformSettings" (
+   551→    "id" TEXT NOT NULL DEFAULT 'default',
+   552→    "settings" TEXT NOT NULL,
+   553→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   554→
+   555→    CONSTRAINT "PlatformSettings_pkey" PRIMARY KEY ("id")
+   556→);
+   557→
+   558→-- CreateTable
+   559→CREATE TABLE "Soumission" (
+   560→    "id" TEXT NOT NULL,
+   561→    "devoirId" TEXT NOT NULL,
+   562→    "etudiantId" TEXT NOT NULL,
+   563→    "groupeId" TEXT,
+   564→    "contenuTexte" TEXT,
+   565→    "fichiersSoumis" TEXT,
+   566→    "commentaireEtudiant" TEXT,
+   567→    "statut" "StatutSoumission" NOT NULL DEFAULT 'BROUILLON',
+   568→    "renduAt" TIMESTAMP(3),
+   569→    "note" DOUBLE PRECISION,
+   570→    "commentaireEnseignant" TEXT,
+   571→    "noteIA" DOUBLE PRECISION,
+   572→    "justificationIA" TEXT,
+   573→    "rapportPlagiat" TEXT,
+   574→    "historiqueVersions" TEXT,
+   575→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   576→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   577→
+   578→    CONSTRAINT "Soumission_pkey" PRIMARY KEY ("id")
+   579→);
+   580→
+   581→-- CreateTable
+   582→CREATE TABLE "Facture" (
+   583→    "id" TEXT NOT NULL,
+   584→    "numero" TEXT NOT NULL,
+   585→    "abonnementId" TEXT NOT NULL,
+   586→    "etablissementId" TEXT NOT NULL,
+   587→    "montantHt" DOUBLE PRECISION NOT NULL,
+   588→    "tva" DOUBLE PRECISION NOT NULL DEFAULT 20.0,
+   589→    "montantTtc" DOUBLE PRECISION NOT NULL,
+   590→    "statut" TEXT NOT NULL DEFAULT 'EN_ATTENTE',
+   591→    "dateEmission" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   592→    "dateEcheance" TIMESTAMP(3) NOT NULL,
+   593→    "datePaiement" TIMESTAMP(3),
+   594→    "modePaiement" TEXT,
+   595→    "referencePaiement" TEXT,
+   596→    "lignes" TEXT NOT NULL,
+   597→    "notes" TEXT,
+   598→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   599→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   600→
+   601→    CONSTRAINT "Facture_pkey" PRIMARY KEY ("id")
+   602→);
+   603→
+   604→-- CreateTable
+   605→CREATE TABLE "NotificationAdmin" (
+   606→    "id" TEXT NOT NULL,
+   607→    "type" TEXT NOT NULL,
+   608→    "titre" TEXT NOT NULL,
+   609→    "message" TEXT NOT NULL,
+   610→    "destinataireId" TEXT,
+   611→    "destinataireRole" TEXT,
+   612→    "lu" BOOLEAN NOT NULL DEFAULT false,
+   613→    "actionUrl" TEXT,
+   614→    "actionLabel" TEXT,
+   615→    "priorite" TEXT NOT NULL DEFAULT 'NORMALE',
+   616→    "categorie" TEXT NOT NULL DEFAULT 'SYSTEME',
+   617→    "icone" TEXT,
+   618→    "expireLe" TIMESTAMP(3),
+   619→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   620→
+   621→    CONSTRAINT "NotificationAdmin_pkey" PRIMARY KEY ("id")
+   622→);
+   623→
+   624→-- CreateTable
+   625→CREATE TABLE "MonitoringEvent" (
+   626→    "id" TEXT NOT NULL,
+   627→    "type" TEXT NOT NULL,
+   628→    "severite" TEXT NOT NULL DEFAULT 'INFO',
+   629→    "message" TEXT NOT NULL,
+   630→    "details" TEXT,
+   631→    "source" TEXT,
+   632→    "duree" INTEGER,
+   633→    "statut" TEXT NOT NULL DEFAULT 'ACTIF',
+   634→    "resoluLe" TIMESTAMP(3),
+   635→    "resoluPar" TEXT,
+   636→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   637→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   638→
+   639→    CONSTRAINT "MonitoringEvent_pkey" PRIMARY KEY ("id")
+   640→);
+   641→
+   642→-- CreateTable
+   643→CREATE TABLE "IpWhitelist" (
+   644→    "id" TEXT NOT NULL,
+   645→    "adresseIp" TEXT NOT NULL,
+   646→    "description" TEXT,
+   647→    "etablissementId" TEXT,
+   648→    "creePar" TEXT,
+   649→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   650→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   651→
+   652→    CONSTRAINT "IpWhitelist_pkey" PRIMARY KEY ("id")
+   653→);
+   654→
+   655→-- CreateTable
+   656→CREATE TABLE "AIProviderConfig" (
+   657→    "id" TEXT NOT NULL,
+   658→    "name" TEXT NOT NULL,
+   659→    "provider" TEXT NOT NULL,
+   660→    "baseUrl" TEXT,
+   661→    "apiKey" TEXT,
+   662→    "model" TEXT,
+   663→    "temperature" DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+   664→    "maxTokens" INTEGER NOT NULL DEFAULT 4096,
+   665→    "isActive" BOOLEAN NOT NULL DEFAULT false,
+   666→    "priority" INTEGER NOT NULL DEFAULT 99,
+   667→    "extraConfig" TEXT,
+   668→    "capability" TEXT,   -- DASHSCOPE-AUDIO-1 : 'chat' (défaut), 'tts', 'audio', 'transcription'
+   669→    "lastTestAt" TIMESTAMP(3),
+   670→    "lastTestOk" BOOLEAN,
+   671→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   672→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   673→
+   674→    CONSTRAINT "AIProviderConfig_pkey" PRIMARY KEY ("id")
+   675→);
+   676→
+   677→-- CreateTable
+   678→CREATE TABLE "AnneeAcademique" (
+   679→    "id" TEXT NOT NULL,
+   680→    "libelle" TEXT NOT NULL,
+   681→    "dateDebut" TIMESTAMP(3) NOT NULL,
+   682→    "dateFin" TIMESTAMP(3) NOT NULL,
+   683→    "etablissementId" TEXT NOT NULL,
+   684→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   685→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   686→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   687→
+   688→    CONSTRAINT "AnneeAcademique_pkey" PRIMARY KEY ("id")
+   689→);
+   690→
+   691→-- CreateTable
+   692→CREATE TABLE "SessionSpeciale" (
+   693→    "id" TEXT NOT NULL,
+   694→    "epreuveOrigineId" TEXT NOT NULL,
+   695→    "epreuveDeriveeId" TEXT NOT NULL,
+   696→    "type" "TypeSessionSpeciale" NOT NULL,
+   697→    "motif" TEXT NOT NULL,
+   698→    "justificatif" TEXT,
+   699→    "etudiantsCibles" TEXT NOT NULL,
+   700→    "estPartielle" BOOLEAN NOT NULL DEFAULT false,
+   701→    "questionsSelectionnees" TEXT,
+   702→    "creeParId" TEXT NOT NULL,
+   703→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   704→
+   705→    CONSTRAINT "SessionSpeciale_pkey" PRIMARY KEY ("id")
+   706→);
+   707→
+   708→-- CreateTable
+   709→CREATE TABLE "BadgeDefinition" (
+   710→    "id" TEXT NOT NULL,
+   711→    "cle" TEXT NOT NULL,
+   712→    "titre" TEXT NOT NULL,
+   713→    "description" TEXT NOT NULL,
+   714→    "icone" TEXT NOT NULL,
+   715→    "categorie" "CategorieBadge" NOT NULL,
+   716→    "roleCible" "Role",
+   717→    "niveaux" "NiveauBadge"[],
+   718→    "actif" BOOLEAN NOT NULL DEFAULT true,
+   719→    "ordre" INTEGER NOT NULL DEFAULT 0,
+   720→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   721→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   722→
+   723→    CONSTRAINT "BadgeDefinition_pkey" PRIMARY KEY ("id")
+   724→);
+   725→
+   726→-- CreateTable
+   727→CREATE TABLE "BadgeProgression" (
+   728→    "id" TEXT NOT NULL,
+   729→    "userId" TEXT NOT NULL,
+   730→    "badgeDefinitionId" TEXT NOT NULL,
+   731→    "niveauActuel" "NiveauBadge" NOT NULL DEFAULT 'BRONZE',
+   732→    "valeurActuelle" INTEGER NOT NULL DEFAULT 0,
+   733→    "valeurPalier" INTEGER NOT NULL DEFAULT 1,
+   734→    "valeurProchain" INTEGER,
+   735→    "debloque" BOOLEAN NOT NULL DEFAULT false,
+   736→    "dateObtention" TIMESTAMP(3),
+   737→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   738→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   739→
+   740→    CONSTRAINT "BadgeProgression_pkey" PRIMARY KEY ("id")
+   741→);
+   742→
+   743→-- CreateTable
+   744→CREATE TABLE "ValidationUE" (
+   745→    "id" TEXT NOT NULL,
+   746→    "etudiantId" TEXT NOT NULL,
+   747→    "uniteEnseignementId" TEXT NOT NULL,
+   748→    "anneeAcademiqueId" TEXT,
+   749→    "statut" "StatutValidation" NOT NULL DEFAULT 'EN_COURS',
+   750→    "moyenneUE" DOUBLE PRECISION NOT NULL DEFAULT 0,
+   751→    "noteNormale" DOUBLE PRECISION,
+   752→    "noteRattrapage" DOUBLE PRECISION,
+   753→    "noteFinale" DOUBLE PRECISION NOT NULL DEFAULT 0,
+   754→    "nbEpreuvesTotal" INTEGER NOT NULL DEFAULT 0,
+   755→    "nbEpreuvesCompletees" INTEGER NOT NULL DEFAULT 0,
+   756→    "dateValidation" TIMESTAMP(3),
+   757→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   758→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   759→
+   760→    CONSTRAINT "ValidationUE_pkey" PRIMARY KEY ("id")
+   761→);
+   762→
+   763→-- CreateTable
+   764→CREATE TABLE "Certificat" (
+   765→    "id" TEXT NOT NULL,
+   766→    "codeVerification" TEXT NOT NULL,
+   767→    "etudiantId" TEXT NOT NULL,
+   768→    "validationUEId" TEXT NOT NULL,
+   769→    "type" "TypeCertificat" NOT NULL,
+   770→    "intitule" TEXT NOT NULL,
+   771→    "mention" TEXT,
+   772→    "noteFinale" DOUBLE PRECISION NOT NULL,
+   773→    "etablissementNom" TEXT NOT NULL,
+   774→    "etablissementLogo" TEXT,
+   775→    "etablissementVille" TEXT,
+   776→    "etablissementPays" TEXT,
+   777→    "filiereNom" TEXT NOT NULL,
+   778→    "filiereCode" TEXT,
+   779→    "ueCode" TEXT NOT NULL,
+   780→    "ueNom" TEXT NOT NULL,
+   781→    "creditsECTS" INTEGER,
+   782→    "etudiantNom" TEXT NOT NULL,
+   783→    "etudiantMatricule" TEXT,
+   784→    "etudiantNiveau" TEXT,
+   785→    "sessionType" TEXT NOT NULL DEFAULT 'NORMALE',
+   786→    "anneeAcademique" TEXT,
+   787→    "dateEmission" TIMESTAMP(3) NOT NULL,
+   788→    "emetteParId" TEXT NOT NULL,
+   789→    "pdfUrl" TEXT,
+   790→    "statut" "StatutCertificat" NOT NULL DEFAULT 'EMIS',
+   791→    "dateRevocation" TIMESTAMP(3),
+   792→    "raisonRevocation" TEXT,
+   793→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   794→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   795→
+   796→    CONSTRAINT "Certificat_pkey" PRIMARY KEY ("id")
+   797→);
+   798→
+   799→-- CreateTable
+   800→CREATE TABLE "AIFailoverEvent" (
+   801→    "id" TEXT NOT NULL,
+   802→    "providerId" TEXT,
+   803→    "providerName" TEXT,
+   804→    "eventType" TEXT NOT NULL,
+   805→    "fromProvider" TEXT,
+   806→    "toProvider" TEXT,
+   807→    "reason" TEXT NOT NULL,
+   808→    "errorDetails" TEXT,
+   809→    "resolved" BOOLEAN NOT NULL DEFAULT false,
+   810→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   811→
+   812→    CONSTRAINT "AIFailoverEvent_pkey" PRIMARY KEY ("id")
+   813→);
+   814→
+   815→-- CreateTable
+   816→CREATE TABLE "PushSubscription" (
+   817→    "id" TEXT NOT NULL,
+   818→    "userId" TEXT NOT NULL,
+   819→    "endpoint" TEXT NOT NULL,
+   820→    "p256dh" TEXT NOT NULL,
+   821→    "auth" TEXT NOT NULL,
+   822→    "userAgent" TEXT,
+   823→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   824→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   825→
+   826→    CONSTRAINT "PushSubscription_pkey" PRIMARY KEY ("id")
+   827→);
+   828→
+   829→-- CreateTable
+   830→CREATE TABLE "Chapter" (
+   831→    "id" TEXT NOT NULL,
+   832→    "documentId" TEXT NOT NULL,
+   833→    "titre" TEXT NOT NULL,
+   834→    "ordre" INTEGER NOT NULL DEFAULT 0,
+   835→    "contenu" TEXT,
+   836→    "sujets" TEXT,
+   837→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   838→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   839→
+   840→    CONSTRAINT "Chapter_pkey" PRIMARY KEY ("id")
+   841→);
+   842→
+   843→-- CreateTable
+   844→CREATE TABLE "ChatThread" (
+   845→    "id" TEXT NOT NULL,
+   846→    "userId" TEXT NOT NULL,
+   847→    "documentId" TEXT NOT NULL,
+   848→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   849→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   850→
+   851→    CONSTRAINT "ChatThread_pkey" PRIMARY KEY ("id")
+   852→);
+   853→
+   854→-- CreateTable
+   855→CREATE TABLE "ChatMessage" (
+   856→    "id" TEXT NOT NULL,
+   857→    "threadId" TEXT NOT NULL,
+   858→    "role" TEXT NOT NULL,
+   859→    "content" TEXT NOT NULL,
+   860→    "citations" TEXT,
+   861→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   862→
+   863→    CONSTRAINT "ChatMessage_pkey" PRIMARY KEY ("id")
+   864→);
+   865→
+   866→-- CreateTable
+   867→CREATE TABLE "ReviewItem" (
+   868→    "id" TEXT NOT NULL,
+   869→    "userId" TEXT NOT NULL,
+   870→    "chapterId" TEXT,
+   871→    "questionId" TEXT,
+   872→    "interval" INTEGER NOT NULL DEFAULT 0,
+   873→    "easeFactor" DOUBLE PRECISION NOT NULL DEFAULT 2.5,
+   874→    "repetitions" INTEGER NOT NULL DEFAULT 0,
+   875→    "lastReviewedAt" TIMESTAMP(3),
+   876→    "nextReviewAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   877→    "masteryLevel" DOUBLE PRECISION NOT NULL DEFAULT 0,
+   878→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   879→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   880→
+   881→    CONSTRAINT "ReviewItem_pkey" PRIMARY KEY ("id")
+   882→);
+   883→
+   884→-- CreateTable
+   885→CREATE TABLE "Flashcard" (
+   886→    "id" TEXT NOT NULL,
+   887→    "chapterId" TEXT,
+   888→    "documentId" TEXT,
+   889→    "recto" TEXT NOT NULL,
+   890→    "verso" TEXT NOT NULL,
+   891→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   892→
+   893→    CONSTRAINT "Flashcard_pkey" PRIMARY KEY ("id")
+   894→);
+   895→
+   896→-- CreateTable
+   897→CREATE TABLE "StudySession" (
+   898→    "id" TEXT NOT NULL,
+   899→    "userId" TEXT NOT NULL,
+   900→    "documentId" TEXT,
+   901→    "chapterIds" TEXT,
+   902→    "titre" TEXT,
+   903→    "dateDebut" TIMESTAMP(3) NOT NULL,
+   904→    "dureeMin" INTEGER NOT NULL DEFAULT 30,
+   905→    "statut" TEXT NOT NULL DEFAULT 'PLANIFIEE',
+   906→    "rappelEnvoye" BOOLEAN NOT NULL DEFAULT false,
+   907→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   908→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   909→
+   910→    CONSTRAINT "StudySession_pkey" PRIMARY KEY ("id")
+   911→);
+   912→
+   913→-- CreateTable
+   914→CREATE TABLE "HelpThread" (
+   915→    "id" TEXT NOT NULL,
+   916→    "documentId" TEXT NOT NULL,
+   917→    "chapterId" TEXT,
+   918→    "etudiantId" TEXT NOT NULL,
+   919→    "enseignantId" TEXT,
+   920→    "statut" TEXT NOT NULL DEFAULT 'OUVERT',
+   921→    "sujet" TEXT NOT NULL,
+   922→    "passageContext" TEXT,
+   923→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   924→    "updatedAt" TIMESTAMP(3) NOT NULL,
+   925→
+   926→    CONSTRAINT "HelpThread_pkey" PRIMARY KEY ("id")
+   927→);
+   928→
+   929→-- CreateTable
+   930→CREATE TABLE "HelpMessage" (
+   931→    "id" TEXT NOT NULL,
+   932→    "threadId" TEXT NOT NULL,
+   933→    "auteurId" TEXT NOT NULL,
+   934→    "role" TEXT NOT NULL,
+   935→    "content" TEXT NOT NULL,
+   936→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   937→
+   938→    CONSTRAINT "HelpMessage_pkey" PRIMARY KEY ("id")
+   939→);
+   940→
+   941→-- CreateTable
+   942→CREATE TABLE "PracticeAttempt" (
+   943→    "id" TEXT NOT NULL,
+   944→    "userId" TEXT NOT NULL,
+   945→    "questionId" TEXT NOT NULL,
+   946→    "documentId" TEXT,
+   947→    "chapterId" TEXT,
+   948→    "reponse" TEXT,
+   949→    "score" DOUBLE PRECISION,
+   950→    "feedback" TEXT,
+   951→    "correct" BOOLEAN,
+   952→    "dureeSec" INTEGER,
+   953→    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   954→
+   955→    CONSTRAINT "PracticeAttempt_pkey" PRIMARY KEY ("id")
+   956→);
+   957→
+   958→-- CreateIndex
+   959→CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+   960→
+   961→-- CreateIndex
+   962→CREATE UNIQUE INDEX "User_matricule_key" ON "User"("matricule");
+   963→
+   964→-- CreateIndex
+   965→CREATE INDEX "User_etablissementId_idx" ON "User"("etablissementId");
+   966→
+   967→-- CreateIndex
+   968→CREATE INDEX "User_filiereId_idx" ON "User"("filiereId");
+   969→
+   970→-- CreateIndex
+   971→CREATE UNIQUE INDEX "Etablissement_nom_key" ON "Etablissement"("nom");
+   972→
+   973→-- CreateIndex
+   974→CREATE INDEX "Filiere_etablissementId_idx" ON "Filiere"("etablissementId");
+   975→
+   976→-- CreateIndex
+   977→CREATE INDEX "Filiere_responsableId_idx" ON "Filiere"("responsableId");
+   978→
+   979→-- CreateIndex
+   980→CREATE UNIQUE INDEX "Filiere_nom_etablissementId_key" ON "Filiere"("nom", "etablissementId");
+   981→
+   982→-- CreateIndex
+   983→CREATE INDEX "EnseignantFiliere_filiereId_idx" ON "EnseignantFiliere"("filiereId");
+   984→
+   985→-- CreateIndex
+   986→CREATE UNIQUE INDEX "EnseignantFiliere_enseignantId_filiereId_niveau_key" ON "EnseignantFiliere"("enseignantId", "filiereId", "niveau");
+   987→
+   988→-- CreateIndex
+   989→CREATE INDEX "UniteEnseignement_filiereId_idx" ON "UniteEnseignement"("filiereId");
+   990→
+   991→-- CreateIndex
+   992→CREATE UNIQUE INDEX "UniteEnseignement_code_filiereId_key" ON "UniteEnseignement"("code", "filiereId");
+   993→
+   994→-- CreateIndex
+   995→CREATE INDEX "UniteEnseignementFiliere_filiereId_idx" ON "UniteEnseignementFiliere"("filiereId");
+   996→
+   997→-- CreateIndex
+   998→CREATE UNIQUE INDEX "UniteEnseignementFiliere_uniteEnseignementId_filiereId_key" ON "UniteEnseignementFiliere"("uniteEnseignementId", "filiereId");
+   999→
+  1000→-- CreateIndex
+  1001→CREATE INDEX "Affectation_uniteEnseignementId_idx" ON "Affectation"("uniteEnseignementId");
+  1002→
+  1003→-- CreateIndex
+  1004→CREATE UNIQUE INDEX "Affectation_enseignantId_uniteEnseignementId_typeSeance_gro_key" ON "Affectation"("enseignantId", "uniteEnseignementId", "typeSeance", "groupe", "anneeUniversitaire");
+  1005→
+  1006→-- CreateIndex
+  1007→CREATE INDEX "Document_ownerId_idx" ON "Document"("ownerId");
+  1008→
+  1009→-- CreateIndex
+  1010→CREATE INDEX "Document_uniteEnseignementId_idx" ON "Document"("uniteEnseignementId");
+  1011→
+  1012→-- CreateIndex
+  1013→CREATE INDEX "Question_documentId_idx" ON "Question"("documentId");
+  1014→
+  1015→-- CreateIndex
+  1016→CREATE INDEX "Epreuve_filiereId_niveau_sessionExamen_idx" ON "Epreuve"("filiereId", "niveau", "sessionExamen");
+  1017→
+  1018→-- CreateIndex
+  1019→CREATE INDEX "Epreuve_enseignantId_statut_idx" ON "Epreuve"("enseignantId", "statut");
+  1020→
+  1021→-- CreateIndex
+  1022→CREATE INDEX "Epreuve_anneeAcademiqueId_idx" ON "Epreuve"("anneeAcademiqueId");
+  1023→
+  1024→-- CreateIndex
+  1025→CREATE INDEX "Epreuve_epreuveOrigineId_idx" ON "Epreuve"("epreuveOrigineId");
+  1026→
+  1027→-- CreateIndex
+  1028→CREATE INDEX "Epreuve_uniteEnseignementId_idx" ON "Epreuve"("uniteEnseignementId");
+  1029→
+  1030→-- CreateIndex
+  1031→CREATE INDEX "EpreuveQuestion_questionId_idx" ON "EpreuveQuestion"("questionId");
+  1032→
+  1033→-- CreateIndex
+  1034→CREATE UNIQUE INDEX "EpreuveQuestion_epreuveId_questionId_key" ON "EpreuveQuestion"("epreuveId", "questionId");
+  1035→
+  1036→-- CreateIndex
+  1037→CREATE INDEX "EpreuveDocument_documentId_idx" ON "EpreuveDocument"("documentId");
+  1038→
+  1039→-- CreateIndex
+  1040→CREATE UNIQUE INDEX "EpreuveDocument_epreuveId_documentId_key" ON "EpreuveDocument"("epreuveId", "documentId");
+  1041→
+  1042→-- CreateIndex
+  1043→CREATE INDEX "SessionPassation_epreuveId_idx" ON "SessionPassation"("epreuveId");
+  1044→
+  1045→-- CreateIndex
+  1046→CREATE INDEX "SessionPassation_etudiantId_idx" ON "SessionPassation"("etudiantId");
+  1047→
+  1048→-- CreateIndex
+  1049→CREATE UNIQUE INDEX "Reponse_sessionId_questionId_key" ON "Reponse"("sessionId", "questionId");
+  1050→
+  1051→-- CreateIndex
+  1052→CREATE INDEX "Alerte_epreuveId_idx" ON "Alerte"("epreuveId");
+  1053→
+  1054→-- CreateIndex
+  1055→CREATE INDEX "Alerte_filiereId_idx" ON "Alerte"("filiereId");
+  1056→
+  1057→-- CreateIndex
+  1058→CREATE INDEX "Alerte_userId_idx" ON "Alerte"("userId");
+  1059→
+  1060→-- CreateIndex
+  1061→CREATE UNIQUE INDEX "Resultat_sessionId_key" ON "Resultat"("sessionId");
+  1062→
+  1063→-- CreateIndex
+  1064→CREATE UNIQUE INDEX "Plan_nom_key" ON "Plan"("nom");
+  1065→
+  1066→-- CreateIndex
+  1067→CREATE INDEX "Abonnement_etablissementId_idx" ON "Abonnement"("etablissementId");
+  1068→
+  1069→-- CreateIndex
+  1070→CREATE INDEX "Abonnement_planId_idx" ON "Abonnement"("planId");
+  1071→
+  1072→-- CreateIndex
+  1073→CREATE INDEX "EtablissementAccess_etablissementId_idx" ON "EtablissementAccess"("etablissementId");
+  1074→
+  1075→-- CreateIndex
+  1076→CREATE UNIQUE INDEX "EtablissementAccess_adminId_etablissementId_key" ON "EtablissementAccess"("adminId", "etablissementId");
+  1077→
+  1078→-- CreateIndex
+  1079→CREATE UNIQUE INDEX "SecuritySettings_etablissementId_key" ON "SecuritySettings"("etablissementId");
+  1080→
+  1081→-- CreateIndex
+  1082→CREATE INDEX "Devoir_enseignantId_idx" ON "Devoir"("enseignantId");
+  1083→
+  1084→-- CreateIndex
+  1085→CREATE INDEX "Devoir_uniteEnseignementId_idx" ON "Devoir"("uniteEnseignementId");
+  1086→
+  1087→-- CreateIndex
+  1088→CREATE UNIQUE INDEX "GrilleEvaluation_devoirId_key" ON "GrilleEvaluation"("devoirId");
+  1089→
+  1090→-- CreateIndex
+  1091→CREATE UNIQUE INDEX "Invitation_token_key" ON "Invitation"("token");
+  1092→
+  1093→-- CreateIndex
+  1094→CREATE INDEX "Invitation_email_idx" ON "Invitation"("email");
+  1095→
+  1096→-- CreateIndex
+  1097→CREATE INDEX "Invitation_token_idx" ON "Invitation"("token");
+  1098→
+  1099→-- CreateIndex
+  1100→CREATE INDEX "Invitation_createdById_idx" ON "Invitation"("createdById");
+  1101→
+  1102→-- CreateIndex
+  1103→CREATE INDEX "Invitation_etablissementId_idx" ON "Invitation"("etablissementId");
+  1104→
+  1105→-- CreateIndex
+  1106→CREATE INDEX "Invitation_filiereId_idx" ON "Invitation"("filiereId");
+  1107→
+  1108→-- CreateIndex
+  1109→CREATE UNIQUE INDEX "PasswordReset_token_key" ON "PasswordReset"("token");
+  1110→
+  1111→-- CreateIndex
+  1112→CREATE INDEX "PasswordReset_token_idx" ON "PasswordReset"("token");
+  1113→
+  1114→-- CreateIndex
+  1115→CREATE INDEX "PasswordReset_userId_idx" ON "PasswordReset"("userId");
+  1116→
+  1117→-- CreateIndex
+  1118→CREATE INDEX "Soumission_etudiantId_idx" ON "Soumission"("etudiantId");
+  1119→
+  1120→-- CreateIndex
+  1121→CREATE UNIQUE INDEX "Soumission_devoirId_etudiantId_key" ON "Soumission"("devoirId", "etudiantId");
+  1122→
+  1123→-- CreateIndex
+  1124→CREATE UNIQUE INDEX "Facture_numero_key" ON "Facture"("numero");
+  1125→
+  1126→-- CreateIndex
+  1127→CREATE INDEX "Facture_abonnementId_idx" ON "Facture"("abonnementId");
+  1128→
+  1129→-- CreateIndex
+  1130→CREATE INDEX "Facture_etablissementId_idx" ON "Facture"("etablissementId");
+  1131→
+  1132→-- CreateIndex
+  1133→CREATE INDEX "NotificationAdmin_destinataireId_idx" ON "NotificationAdmin"("destinataireId");
+  1134→
+  1135→-- CreateIndex
+  1136→CREATE UNIQUE INDEX "IpWhitelist_adresseIp_key" ON "IpWhitelist"("adresseIp");
+  1137→
+  1138→-- CreateIndex
+  1139→CREATE INDEX "IpWhitelist_etablissementId_idx" ON "IpWhitelist"("etablissementId");
+  1140→
+  1141→-- CreateIndex
+  1142→CREATE UNIQUE INDEX "AIProviderConfig_name_key" ON "AIProviderConfig"("name");
+  1143→
+  1144→-- CreateIndex
+  1145→CREATE INDEX "AnneeAcademique_etablissementId_idx" ON "AnneeAcademique"("etablissementId");
+  1146→
+  1147→-- CreateIndex
+  1148→CREATE UNIQUE INDEX "AnneeAcademique_libelle_etablissementId_key" ON "AnneeAcademique"("libelle", "etablissementId");
+  1149→
+  1150→-- CreateIndex
+  1151→CREATE INDEX "SessionSpeciale_epreuveOrigineId_idx" ON "SessionSpeciale"("epreuveOrigineId");
+  1152→
+  1153→-- CreateIndex
+  1154→CREATE INDEX "SessionSpeciale_epreuveDeriveeId_idx" ON "SessionSpeciale"("epreuveDeriveeId");
+  1155→
+  1156→-- CreateIndex
+  1157→CREATE INDEX "SessionSpeciale_creeParId_idx" ON "SessionSpeciale"("creeParId");
+  1158→
+  1159→-- CreateIndex
+  1160→CREATE INDEX "SessionSpeciale_type_idx" ON "SessionSpeciale"("type");
+  1161→
+  1162→-- CreateIndex
+  1163→CREATE UNIQUE INDEX "BadgeDefinition_cle_key" ON "BadgeDefinition"("cle");
+  1164→
+  1165→-- CreateIndex
+  1166→CREATE INDEX "BadgeProgression_userId_idx" ON "BadgeProgression"("userId");
+  1167→
+  1168→-- CreateIndex
+  1169→CREATE INDEX "BadgeProgression_badgeDefinitionId_idx" ON "BadgeProgression"("badgeDefinitionId");
+  1170→
+  1171→-- CreateIndex
+  1172→CREATE INDEX "BadgeProgression_debloque_idx" ON "BadgeProgression"("debloque");
+  1173→
+  1174→-- CreateIndex
+  1175→CREATE UNIQUE INDEX "BadgeProgression_userId_badgeDefinitionId_key" ON "BadgeProgression"("userId", "badgeDefinitionId");
+  1176→
+  1177→-- CreateIndex
+  1178→CREATE INDEX "ValidationUE_etudiantId_idx" ON "ValidationUE"("etudiantId");
+  1179→
+  1180→-- CreateIndex
+  1181→CREATE INDEX "ValidationUE_uniteEnseignementId_idx" ON "ValidationUE"("uniteEnseignementId");
+  1182→
+  1183→-- CreateIndex
+  1184→CREATE INDEX "ValidationUE_statut_idx" ON "ValidationUE"("statut");
+  1185→
+  1186→-- CreateIndex
+  1187→CREATE INDEX "ValidationUE_anneeAcademiqueId_idx" ON "ValidationUE"("anneeAcademiqueId");
+  1188→
+  1189→-- CreateIndex
+  1190→CREATE UNIQUE INDEX "ValidationUE_etudiantId_uniteEnseignementId_anneeAcademique_key" ON "ValidationUE"("etudiantId", "uniteEnseignementId", "anneeAcademiqueId");
+  1191→
+  1192→-- CreateIndex
+  1193→CREATE UNIQUE INDEX "Certificat_codeVerification_key" ON "Certificat"("codeVerification");
+  1194→
+  1195→-- CreateIndex
+  1196→CREATE INDEX "Certificat_etudiantId_idx" ON "Certificat"("etudiantId");
+  1197→
+  1198→-- CreateIndex
+  1199→CREATE INDEX "Certificat_codeVerification_idx" ON "Certificat"("codeVerification");
+  1200→
+  1201→-- CreateIndex
+  1202→CREATE INDEX "Certificat_type_idx" ON "Certificat"("type");
+  1203→
+  1204→-- CreateIndex
+  1205→CREATE INDEX "Certificat_statut_idx" ON "Certificat"("statut");
+  1206→
+  1207→-- CreateIndex
+  1208→CREATE INDEX "Certificat_emetteParId_idx" ON "Certificat"("emetteParId");
+  1209→
+  1210→-- CreateIndex
+  1211→CREATE INDEX "Certificat_validationUEId_idx" ON "Certificat"("validationUEId");
+  1212→
+  1213→-- CreateIndex
+  1214→CREATE UNIQUE INDEX "PushSubscription_endpoint_key" ON "PushSubscription"("endpoint");
+  1215→
+  1216→-- CreateIndex
+  1217→CREATE INDEX "PushSubscription_userId_idx" ON "PushSubscription"("userId");
+  1218→
+  1219→-- CreateIndex
+  1220→CREATE INDEX "Chapter_documentId_idx" ON "Chapter"("documentId");
+  1221→
+  1222→-- CreateIndex
+  1223→CREATE INDEX "ChatThread_userId_idx" ON "ChatThread"("userId");
+  1224→
+  1225→-- CreateIndex
+  1226→CREATE INDEX "ChatThread_documentId_idx" ON "ChatThread"("documentId");
+  1227→
+  1228→-- CreateIndex
+  1229→CREATE UNIQUE INDEX "ChatThread_userId_documentId_key" ON "ChatThread"("userId", "documentId");
+  1230→
+  1231→-- CreateIndex
+  1232→CREATE INDEX "ChatMessage_threadId_idx" ON "ChatMessage"("threadId");
+  1233→
+  1234→-- CreateIndex
+  1235→CREATE INDEX "ReviewItem_userId_nextReviewAt_idx" ON "ReviewItem"("userId", "nextReviewAt");
+  1236→
+  1237→-- CreateIndex
+  1238→CREATE INDEX "ReviewItem_chapterId_idx" ON "ReviewItem"("chapterId");
+  1239→
+  1240→-- CreateIndex
+  1241→CREATE UNIQUE INDEX "ReviewItem_userId_chapterId_key" ON "ReviewItem"("userId", "chapterId");
+  1242→
+  1243→-- CreateIndex
+  1244→CREATE UNIQUE INDEX "ReviewItem_userId_questionId_key" ON "ReviewItem"("userId", "questionId");
+  1245→
+  1246→-- CreateIndex
+  1247→CREATE INDEX "Flashcard_chapterId_idx" ON "Flashcard"("chapterId");
+  1248→
+  1249→-- CreateIndex
+  1250→CREATE INDEX "Flashcard_documentId_idx" ON "Flashcard"("documentId");
+  1251→
+  1252→-- CreateIndex
+  1253→CREATE INDEX "StudySession_userId_dateDebut_idx" ON "StudySession"("userId", "dateDebut");
+  1254→
+  1255→-- CreateIndex
+  1256→CREATE INDEX "StudySession_documentId_idx" ON "StudySession"("documentId");
+  1257→
+  1258→-- CreateIndex
+  1259→CREATE INDEX "HelpThread_documentId_idx" ON "HelpThread"("documentId");
+  1260→
+  1261→-- CreateIndex
+  1262→CREATE INDEX "HelpThread_etudiantId_idx" ON "HelpThread"("etudiantId");
+  1263→
+  1264→-- CreateIndex
+  1265→CREATE INDEX "HelpThread_enseignantId_idx" ON "HelpThread"("enseignantId");
+  1266→
+  1267→-- CreateIndex
+  1268→CREATE INDEX "HelpMessage_threadId_idx" ON "HelpMessage"("threadId");
+  1269→
+  1270→-- CreateIndex
+  1271→CREATE INDEX "HelpMessage_auteurId_idx" ON "HelpMessage"("auteurId");
+  1272→
+  1273→-- CreateIndex
+  1274→CREATE INDEX "PracticeAttempt_userId_idx" ON "PracticeAttempt"("userId");
+  1275→
+  1276→-- CreateIndex
+  1277→CREATE INDEX "PracticeAttempt_questionId_idx" ON "PracticeAttempt"("questionId");
+  1278→
+  1279→-- CreateIndex
+  1280→CREATE INDEX "PracticeAttempt_documentId_idx" ON "PracticeAttempt"("documentId");
+  1281→
+  1282→-- CreateIndex
+  1283→CREATE INDEX "PracticeAttempt_chapterId_idx" ON "PracticeAttempt"("chapterId");
+  1284→
+  1285→-- AddForeignKey
+  1286→ALTER TABLE "User" ADD CONSTRAINT "User_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1287→
+  1288→-- AddForeignKey
+  1289→ALTER TABLE "User" ADD CONSTRAINT "User_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1290→
+  1291→-- AddForeignKey
+  1292→ALTER TABLE "Filiere" ADD CONSTRAINT "Filiere_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1293→
+  1294→-- AddForeignKey
+  1295→ALTER TABLE "Filiere" ADD CONSTRAINT "Filiere_responsableId_fkey" FOREIGN KEY ("responsableId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1296→
+  1297→-- AddForeignKey
+  1298→ALTER TABLE "EnseignantFiliere" ADD CONSTRAINT "EnseignantFiliere_enseignantId_fkey" FOREIGN KEY ("enseignantId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1299→
+  1300→-- AddForeignKey
+  1301→ALTER TABLE "EnseignantFiliere" ADD CONSTRAINT "EnseignantFiliere_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1302→
+  1303→-- AddForeignKey
+  1304→ALTER TABLE "UniteEnseignement" ADD CONSTRAINT "UniteEnseignement_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1305→
+  1306→-- AddForeignKey
+  1307→ALTER TABLE "UniteEnseignementFiliere" ADD CONSTRAINT "UniteEnseignementFiliere_uniteEnseignementId_fkey" FOREIGN KEY ("uniteEnseignementId") REFERENCES "UniteEnseignement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1308→
+  1309→-- AddForeignKey
+  1310→ALTER TABLE "UniteEnseignementFiliere" ADD CONSTRAINT "UniteEnseignementFiliere_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1311→
+  1312→-- AddForeignKey
+  1313→ALTER TABLE "Affectation" ADD CONSTRAINT "Affectation_enseignantId_fkey" FOREIGN KEY ("enseignantId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1314→
+  1315→-- AddForeignKey
+  1316→ALTER TABLE "Affectation" ADD CONSTRAINT "Affectation_uniteEnseignementId_fkey" FOREIGN KEY ("uniteEnseignementId") REFERENCES "UniteEnseignement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1317→
+  1318→-- AddForeignKey
+  1319→ALTER TABLE "Document" ADD CONSTRAINT "Document_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1320→
+  1321→-- AddForeignKey
+  1322→ALTER TABLE "Document" ADD CONSTRAINT "Document_uniteEnseignementId_fkey" FOREIGN KEY ("uniteEnseignementId") REFERENCES "UniteEnseignement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1323→
+  1324→-- AddForeignKey
+  1325→ALTER TABLE "Question" ADD CONSTRAINT "Question_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1326→
+  1327→-- AddForeignKey
+  1328→ALTER TABLE "Epreuve" ADD CONSTRAINT "Epreuve_enseignantId_fkey" FOREIGN KEY ("enseignantId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1329→
+  1330→-- AddForeignKey
+  1331→ALTER TABLE "Epreuve" ADD CONSTRAINT "Epreuve_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1332→
+  1333→-- AddForeignKey
+  1334→ALTER TABLE "Epreuve" ADD CONSTRAINT "Epreuve_uniteEnseignementId_fkey" FOREIGN KEY ("uniteEnseignementId") REFERENCES "UniteEnseignement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1335→
+  1336→-- AddForeignKey
+  1337→ALTER TABLE "Epreuve" ADD CONSTRAINT "Epreuve_anneeAcademiqueId_fkey" FOREIGN KEY ("anneeAcademiqueId") REFERENCES "AnneeAcademique"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1338→
+  1339→-- AddForeignKey
+  1340→ALTER TABLE "Epreuve" ADD CONSTRAINT "Epreuve_epreuveOrigineId_fkey" FOREIGN KEY ("epreuveOrigineId") REFERENCES "Epreuve"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1341→
+  1342→-- AddForeignKey
+  1343→ALTER TABLE "EpreuveQuestion" ADD CONSTRAINT "EpreuveQuestion_epreuveId_fkey" FOREIGN KEY ("epreuveId") REFERENCES "Epreuve"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1344→
+  1345→-- AddForeignKey
+  1346→ALTER TABLE "EpreuveQuestion" ADD CONSTRAINT "EpreuveQuestion_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "Question"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1347→
+  1348→-- AddForeignKey
+  1349→ALTER TABLE "EpreuveDocument" ADD CONSTRAINT "EpreuveDocument_epreuveId_fkey" FOREIGN KEY ("epreuveId") REFERENCES "Epreuve"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1350→
+  1351→-- AddForeignKey
+  1352→ALTER TABLE "EpreuveDocument" ADD CONSTRAINT "EpreuveDocument_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1353→
+  1354→-- AddForeignKey
+  1355→ALTER TABLE "SessionPassation" ADD CONSTRAINT "SessionPassation_epreuveId_fkey" FOREIGN KEY ("epreuveId") REFERENCES "Epreuve"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1356→
+  1357→-- AddForeignKey
+  1358→ALTER TABLE "SessionPassation" ADD CONSTRAINT "SessionPassation_etudiantId_fkey" FOREIGN KEY ("etudiantId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1359→
+  1360→-- AddForeignKey
+  1361→ALTER TABLE "Reponse" ADD CONSTRAINT "Reponse_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "SessionPassation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1362→
+  1363→-- AddForeignKey
+  1364→ALTER TABLE "Alerte" ADD CONSTRAINT "Alerte_epreuveId_fkey" FOREIGN KEY ("epreuveId") REFERENCES "Epreuve"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1365→
+  1366→-- AddForeignKey
+  1367→ALTER TABLE "Alerte" ADD CONSTRAINT "Alerte_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1368→
+  1369→-- AddForeignKey
+  1370→ALTER TABLE "Alerte" ADD CONSTRAINT "Alerte_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1371→
+  1372→-- AddForeignKey
+  1373→ALTER TABLE "Resultat" ADD CONSTRAINT "Resultat_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "SessionPassation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1374→
+  1375→-- AddForeignKey
+  1376→ALTER TABLE "Abonnement" ADD CONSTRAINT "Abonnement_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1377→
+  1378→-- AddForeignKey
+  1379→ALTER TABLE "Abonnement" ADD CONSTRAINT "Abonnement_planId_fkey" FOREIGN KEY ("planId") REFERENCES "Plan"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1380→
+  1381→-- AddForeignKey
+  1382→ALTER TABLE "EtablissementAccess" ADD CONSTRAINT "EtablissementAccess_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1383→
+  1384→-- AddForeignKey
+  1385→ALTER TABLE "EtablissementAccess" ADD CONSTRAINT "EtablissementAccess_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1386→
+  1387→-- AddForeignKey
+  1388→ALTER TABLE "SecuritySettings" ADD CONSTRAINT "SecuritySettings_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1389→
+  1390→-- AddForeignKey
+  1391→ALTER TABLE "Devoir" ADD CONSTRAINT "Devoir_enseignantId_fkey" FOREIGN KEY ("enseignantId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1392→
+  1393→-- AddForeignKey
+  1394→ALTER TABLE "Devoir" ADD CONSTRAINT "Devoir_uniteEnseignementId_fkey" FOREIGN KEY ("uniteEnseignementId") REFERENCES "UniteEnseignement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1395→
+  1396→-- AddForeignKey
+  1397→ALTER TABLE "GrilleEvaluation" ADD CONSTRAINT "GrilleEvaluation_devoirId_fkey" FOREIGN KEY ("devoirId") REFERENCES "Devoir"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1398→
+  1399→-- AddForeignKey
+  1400→ALTER TABLE "Invitation" ADD CONSTRAINT "Invitation_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1401→
+  1402→-- AddForeignKey
+  1403→ALTER TABLE "Invitation" ADD CONSTRAINT "Invitation_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1404→
+  1405→-- AddForeignKey
+  1406→ALTER TABLE "Invitation" ADD CONSTRAINT "Invitation_filiereId_fkey" FOREIGN KEY ("filiereId") REFERENCES "Filiere"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1407→
+  1408→-- AddForeignKey
+  1409→ALTER TABLE "PasswordReset" ADD CONSTRAINT "PasswordReset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1410→
+  1411→-- AddForeignKey
+  1412→ALTER TABLE "Soumission" ADD CONSTRAINT "Soumission_devoirId_fkey" FOREIGN KEY ("devoirId") REFERENCES "Devoir"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1413→
+  1414→-- AddForeignKey
+  1415→ALTER TABLE "Soumission" ADD CONSTRAINT "Soumission_etudiantId_fkey" FOREIGN KEY ("etudiantId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1416→
+  1417→-- AddForeignKey
+  1418→ALTER TABLE "Facture" ADD CONSTRAINT "Facture_abonnementId_fkey" FOREIGN KEY ("abonnementId") REFERENCES "Abonnement"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1419→
+  1420→-- AddForeignKey
+  1421→ALTER TABLE "Facture" ADD CONSTRAINT "Facture_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1422→
+  1423→-- AddForeignKey
+  1424→ALTER TABLE "NotificationAdmin" ADD CONSTRAINT "NotificationAdmin_destinataireId_fkey" FOREIGN KEY ("destinataireId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1425→
+  1426→-- AddForeignKey
+  1427→ALTER TABLE "IpWhitelist" ADD CONSTRAINT "IpWhitelist_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1428→
+  1429→-- AddForeignKey
+  1430→ALTER TABLE "AnneeAcademique" ADD CONSTRAINT "AnneeAcademique_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1431→
+  1432→-- AddForeignKey
+  1433→ALTER TABLE "SessionSpeciale" ADD CONSTRAINT "SessionSpeciale_epreuveOrigineId_fkey" FOREIGN KEY ("epreuveOrigineId") REFERENCES "Epreuve"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1434→
+  1435→-- AddForeignKey
+  1436→ALTER TABLE "SessionSpeciale" ADD CONSTRAINT "SessionSpeciale_epreuveDeriveeId_fkey" FOREIGN KEY ("epreuveDeriveeId") REFERENCES "Epreuve"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1437→
+  1438→-- AddForeignKey
+  1439→ALTER TABLE "SessionSpeciale" ADD CONSTRAINT "SessionSpeciale_creeParId_fkey" FOREIGN KEY ("creeParId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1440→
+  1441→-- AddForeignKey
+  1442→ALTER TABLE "BadgeProgression" ADD CONSTRAINT "BadgeProgression_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1443→
+  1444→-- AddForeignKey
+  1445→ALTER TABLE "BadgeProgression" ADD CONSTRAINT "BadgeProgression_badgeDefinitionId_fkey" FOREIGN KEY ("badgeDefinitionId") REFERENCES "BadgeDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1446→
+  1447→-- AddForeignKey
+  1448→ALTER TABLE "ValidationUE" ADD CONSTRAINT "ValidationUE_etudiantId_fkey" FOREIGN KEY ("etudiantId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1449→
+  1450→-- AddForeignKey
+  1451→ALTER TABLE "ValidationUE" ADD CONSTRAINT "ValidationUE_uniteEnseignementId_fkey" FOREIGN KEY ("uniteEnseignementId") REFERENCES "UniteEnseignement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1452→
+  1453→-- AddForeignKey
+  1454→ALTER TABLE "ValidationUE" ADD CONSTRAINT "ValidationUE_anneeAcademiqueId_fkey" FOREIGN KEY ("anneeAcademiqueId") REFERENCES "AnneeAcademique"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1455→
+  1456→-- AddForeignKey
+  1457→ALTER TABLE "Certificat" ADD CONSTRAINT "Certificat_etudiantId_fkey" FOREIGN KEY ("etudiantId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1458→
+  1459→-- AddForeignKey
+  1460→ALTER TABLE "Certificat" ADD CONSTRAINT "Certificat_validationUEId_fkey" FOREIGN KEY ("validationUEId") REFERENCES "ValidationUE"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1461→
+  1462→-- AddForeignKey
+  1463→ALTER TABLE "Certificat" ADD CONSTRAINT "Certificat_emetteParId_fkey" FOREIGN KEY ("emetteParId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  1464→
+  1465→-- AddForeignKey
+  1466→ALTER TABLE "PushSubscription" ADD CONSTRAINT "PushSubscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1467→
+  1468→-- AddForeignKey
+  1469→ALTER TABLE "Chapter" ADD CONSTRAINT "Chapter_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1470→
+  1471→-- AddForeignKey
+  1472→ALTER TABLE "ChatThread" ADD CONSTRAINT "ChatThread_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1473→
+  1474→-- AddForeignKey
+  1475→ALTER TABLE "ChatThread" ADD CONSTRAINT "ChatThread_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1476→
+  1477→-- AddForeignKey
+  1478→ALTER TABLE "ChatMessage" ADD CONSTRAINT "ChatMessage_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "ChatThread"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1479→
+  1480→-- AddForeignKey
+  1481→ALTER TABLE "ReviewItem" ADD CONSTRAINT "ReviewItem_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1482→
+  1483→-- AddForeignKey
+  1484→ALTER TABLE "ReviewItem" ADD CONSTRAINT "ReviewItem_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1485→
+  1486→-- AddForeignKey
+  1487→ALTER TABLE "ReviewItem" ADD CONSTRAINT "ReviewItem_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "Question"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1488→
+  1489→-- AddForeignKey
+  1490→ALTER TABLE "Flashcard" ADD CONSTRAINT "Flashcard_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1491→
+  1492→-- AddForeignKey
+  1493→ALTER TABLE "Flashcard" ADD CONSTRAINT "Flashcard_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1494→
+  1495→-- AddForeignKey
+  1496→ALTER TABLE "StudySession" ADD CONSTRAINT "StudySession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1497→
+  1498→-- AddForeignKey
+  1499→ALTER TABLE "StudySession" ADD CONSTRAINT "StudySession_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1500→
+  1501→-- AddForeignKey
+  1502→ALTER TABLE "HelpThread" ADD CONSTRAINT "HelpThread_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1503→
+  1504→-- AddForeignKey
+  1505→ALTER TABLE "HelpThread" ADD CONSTRAINT "HelpThread_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1506→
+  1507→-- AddForeignKey
+  1508→ALTER TABLE "HelpThread" ADD CONSTRAINT "HelpThread_etudiantId_fkey" FOREIGN KEY ("etudiantId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1509→
+  1510→-- AddForeignKey
+  1511→ALTER TABLE "HelpThread" ADD CONSTRAINT "HelpThread_enseignantId_fkey" FOREIGN KEY ("enseignantId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1512→
+  1513→-- AddForeignKey
+  1514→ALTER TABLE "HelpMessage" ADD CONSTRAINT "HelpMessage_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "HelpThread"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1515→
+  1516→-- AddForeignKey
+  1517→ALTER TABLE "HelpMessage" ADD CONSTRAINT "HelpMessage_auteurId_fkey" FOREIGN KEY ("auteurId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1518→
+  1519→-- AddForeignKey
+  1520→ALTER TABLE "PracticeAttempt" ADD CONSTRAINT "PracticeAttempt_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1521→
+  1522→-- AddForeignKey
+  1523→ALTER TABLE "PracticeAttempt" ADD CONSTRAINT "PracticeAttempt_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "Question"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  1524→
+  1525→-- AddForeignKey
+  1526→ALTER TABLE "PracticeAttempt" ADD CONSTRAINT "PracticeAttempt_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  1527→
+  1528→-- ============================================================
+  1529→-- Migration 000005 — Fonction + triggers updated_at
+  1530→-- ============================================================
+  1531→-- Prisma gère @updatedAt côté client (JS). Le backend Go n'utilisera
+  1532→-- pas Prisma : on délègue donc la mise à jour de "updatedAt" à un
+  1533→-- trigger PostgreSQL qui s'exécute automatiquement sur chaque UPDATE.
+  1534→--
+  1535→-- La fonction est idempotent (CREATE OR REPLACE) et safe à ré-exécuter.
+  1536→-- Les triggers utilisent `FOR EACH STATEMENT` (et non ROW) pour rester
+  1537→-- performants même sur les updates bulk ; la colonne updatedAt est
+  1538→-- juste mise à CURRENT_TIMESTAMP.
+  1539→-- ============================================================
+  1540→
+  1541→CREATE OR REPLACE FUNCTION public.set_updated_at()
+  1542→RETURNS TRIGGER AS $$
+  1543→BEGIN
+  1544→  -- For statement-level trigger, update the NEW row's updatedAt
+  1545→  NEW."updatedAt" = CURRENT_TIMESTAMP;
+  1546→  RETURN NEW;
+  1547→END;
+  1548→$$ LANGUAGE plpgsql;
+  1549→
+  1550→-- ============================================================
+  1551→-- Création des triggers FOR EACH ROW sur toutes les tables ayant
+  1552→-- une colonne "updatedAt" (31 tables identifiées dans le schéma)
+  1553→-- ============================================================
+  1554→
+  1555→DO $$
+  1556→DECLARE
+  1557→  t text;
+  1558→BEGIN
+  1559→  FOR t IN
+  1560→    SELECT table_name
+  1561→    FROM information_schema.columns
+  1562→    WHERE table_schema = 'public'
+  1563→      AND column_name = 'updatedAt'
+  1564→    ORDER BY table_name
+  1565→  LOOP
+  1566→    EXECUTE format(
+  1567→      'CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();',
+  1568→      t
+  1569→    );
+  1570→    -- Drop & recreate pour idempotence (si le trigger existe déjà)
+  1571→    EXECUTE format(
+  1572→      'DROP TRIGGER IF EXISTS trg_set_updated_at ON public.%I; CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();',
+  1573→      t, t
+  1574→    );
+  1575→  END LOOP;
+  1576→END
+  1577→$$;
+  1578→-- ============================================================
+  1579→-- Migration 000006 — Row Level Security (Option A : claims de session)
+  1580→-- ============================================================
+  1581→--
+  1582→-- Stratégie : "claims-based RLS"
+  1583→--
+  1584→-- Le backend Go pose, au début de chaque transaction, des claims via :
+  1585→--   SELECT set_config('app.claims.user_id', $1, true);
+  1586→--   SELECT set_config('app.claims.role', $2, true);
+  1587→--   SELECT set_config('app.claims.etablissement_id', $3, true);  -- NULL pour ADMIN
+  1588→--
+  1589→-- Le paramètre `true` (is_local) scope les claims à la transaction
+  1590→-- courante — ils sont automatiquement nettoyés en fin de transaction.
+  1591→--
+  1592→-- Hiérarchie des rôles :
+  1593→--   ADMIN       — Propriétaire PaaS. NON lié à un établissement.
+  1594→--                 Accès aux tables plateforme uniquement (Plan, PlatformSettings,
+  1595→--                 IpWhitelist, Facture, MonitoringEvent, AIProviderConfig, ...).
+  1596→--                 Accès aux données d'un établissement UNIQUEMENT si une entrée
+  1597→--                 existe dans "EtablissementAccess" (autorisation explicite).
+  1598→--   RESPONSABLE — Gère SON établissement (via etablissementId).
+  1599→--   ENSEIGNANT  — Ses propres données + données de ses étudiants/filières.
+  1600→--   ETUDIANT    — Ses propres données uniquement.
+  1601→--
+  1602→-- Note technique : neondb_owner est le propriétaire des tables. En PostgreSQL,
+  1603→-- le propriétaire bypass RLS sauf si FORCE ROW LEVEL SECURITY est activé.
+  1604→-- On active donc FORCE sur toutes les tables pour que les policies s'appliquent
+  1605→-- même via neondb_owner (qui n'est PAS superuser sur Neon).
+  1606→-- ============================================================
+  1607→
+  1608→
+  1609→-- ============================================================
+  1610→-- SECTION 1 — Fonctions helper (lecture des claims de session)
+  1611→-- ============================================================
+  1612→
+  1613→-- Retourne l'ID utilisateur courant (depuis le claim), ou NULL si non défini.
+  1614→CREATE OR REPLACE FUNCTION public.current_user_id()
+  1615→RETURNS TEXT
+  1616→LANGUAGE sql STABLE
+  1617→AS $$
+  1618→  SELECT NULLIF(current_setting('app.claims.user_id', true), '')::text;
+  1619→$$;
+  1620→
+  1621→-- Retourne le rôle courant (ADMIN / RESPONSABLE / ENSEIGNANT / ETUDIANT), ou NULL.
+  1622→CREATE OR REPLACE FUNCTION public.current_role_claim()
+  1623→RETURNS TEXT
+  1624→LANGUAGE sql STABLE
+  1625→AS $$
+  1626→  SELECT NULLIF(current_setting('app.claims.role', true), '')::text;
+  1627→$$;
+  1628→
+  1629→-- Retourne l'ID établissement courant, ou NULL (notamment pour ADMIN).
+  1630→CREATE OR REPLACE FUNCTION public.current_etablissement_id()
+  1631→RETURNS TEXT
+  1632→LANGUAGE sql STABLE
+  1633→AS $$
+  1634→  SELECT NULLIF(current_setting('app.claims.etablissement_id', true), '')::text;
+  1635→$$;
+  1636→
+  1637→-- Vrai si l'utilisateur courant a le rôle ADMIN.
+  1638→CREATE OR REPLACE FUNCTION public.is_admin()
+  1639→RETURNS BOOLEAN
+  1640→LANGUAGE sql STABLE
+  1641→AS $$
+  1642→  SELECT current_role_claim() = 'ADMIN';
+  1643→$$;
+  1644→
+  1645→-- Vrai si l'utilisateur courant a le rôle RESPONSABLE.
+  1646→CREATE OR REPLACE FUNCTION public.is_responsable()
+  1647→RETURNS BOOLEAN
+  1648→LANGUAGE sql STABLE
+  1649→AS $$
+  1650→  SELECT current_role_claim() = 'RESPONSABLE';
+  1651→$$;
+  1652→
+  1653→-- Vrai si l'utilisateur courant a le rôle ENSEIGNANT.
+  1654→CREATE OR REPLACE FUNCTION public.is_enseignant()
+  1655→RETURNS BOOLEAN
+  1656→LANGUAGE sql STABLE
+  1657→AS $$
+  1658→  SELECT current_role_claim() = 'ENSEIGNANT';
+  1659→$$;
+  1660→
+  1661→-- Vrai si l'utilisateur courant a le rôle ETUDIANT.
+  1662→CREATE OR REPLACE FUNCTION public.is_etudiant()
+  1663→RETURNS BOOLEAN
+  1664→LANGUAGE sql STABLE
+  1665→AS $$
+  1666→  SELECT current_role_claim() = 'ETUDIANT';
+  1667→$$;
+  1668→
+  1669→-- Vrai si l'ADMIN courant a une autorisation d'accès EXPLICITE ET ACTIVE à l'établissement
+  1670→-- donné (statut=APPROUVE + dans la plage de dates). Les autres rôles n'utilisent pas cette
+  1671→-- fonction (ils sont scoppés par leur propre etablissementId).
+  1672→-- Alignée sur le repository Go CheckAccess (internal/repository/etablissement_access.go).
+  1673→CREATE OR REPLACE FUNCTION public.admin_has_etablissement_access(p_etablissement_id TEXT)
+  1674→RETURNS BOOLEAN
+  1675→LANGUAGE sql STABLE
+  1676→AS $$
+  1677→  SELECT EXISTS (
+  1678→    SELECT 1 FROM "EtablissementAccess"
+  1679→    WHERE "adminId" = current_user_id()
+  1680→      AND "etablissementId" = p_etablissement_id
+  1681→      AND "statut" = 'APPROUVE'
+  1682→      AND ("dateDebut" IS NULL OR "dateDebut" <= CURRENT_TIMESTAMP)
+  1683→      AND ("dateFin" IS NULL OR "dateFin" >= CURRENT_TIMESTAMP)
+  1684→  );
+  1685→$$;
+  1686→
+  1687→-- Vrai si l'utilisateur courant appartient à l'établissement donné.
+  1688→-- Pour ADMIN, vérifie l'autorisation explicite via EtablissementAccess.
+  1689→-- Pour les autres rôles, compare avec le claim etablissement_id.
+  1690→CREATE OR REPLACE FUNCTION public.belongs_to_etablissement(p_etablissement_id TEXT)
+  1691→RETURNS BOOLEAN
+  1692→LANGUAGE sql STABLE
+  1693→AS $$
+  1694→  SELECT
+  1695→    CASE
+  1696→      WHEN is_admin() THEN admin_has_etablissement_access(p_etablissement_id)
+  1697→      ELSE current_etablissement_id() = p_etablissement_id
+  1698→    END;
+  1699→$$;
+  1700→
+  1701→
+  1702→-- ============================================================
+  1703→-- SECTION 2 — Activation + FORCE RLS sur toutes les tables
+  1704→-- ============================================================
+  1705→-- FORCE est nécessaire car neondb_owner est propriétaire des tables
+  1706→-- et bypasserait RLS sinon. Avec FORCE, même le propriétaire est soumis
+  1707→-- aux policies (mais les superusers bypassent toujours — Neon n'en a pas
+  1708→-- pour notre rôle d'app).
+  1709→
+  1710→DO $$
+  1711→DECLARE
+  1712→  t text;
+  1713→BEGIN
+  1714→  FOR t IN
+  1715→    SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+  1716→  LOOP
+  1717→    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
+  1718→    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY;', t);
+  1719→  END LOOP;
+  1720→END
+  1721→$$;
+  1722→-- ============================================================
+  1723→-- Migration 000007 — Policies RLS par table (Option A)
+  1724→-- ============================================================
+  1725→--
+  1726→-- Policies organisées par groupe d'accès. Chaque policy utilise les
+  1727→-- fonctions helper définies dans 000006 :
+  1728→--   current_user_id(), current_role_claim(), current_etablissement_id()
+  1729→--   is_admin(), is_responsable(), is_enseignant(), is_etudiant()
+  1730→--   belongs_to_etablissement(eta_id), admin_has_etablissement_access(eta_id)
+  1731→--
+  1732→-- Rappel PostgreSQL : pour une même commande (SELECT/INSERT/...), les
+  1733→-- policies multiples sont combinées par OR. Entre commandes différentes
+  1734→-- (ex: SELECT vs INSERT), elles sont indépendantes.
+  1735→--
+  1736→-- Convention de nommage : "{Table}_{operation}" (ex: "User_select")
+  1737→-- ============================================================
+  1738→
+  1739→
+  1740→-- ============================================================
+  1741→-- GROUPE 1 — Tables plateforme (ADMIN uniquement)
+  1742→-- ============================================================
+  1743→-- L'ADMIN est propriétaire PaaS. Ces tables ne contiennent aucune
+  1744→-- donnée établissement. Seul l'ADMIN peut y accéder.
+  1745→-- (Pas de policy = deny all pour les autres rôles, car RLS est activé.)
+  1746→
+  1747→-- Plan (plans tarifaires SaaS)
+  1748→CREATE POLICY "Plan_all_admin" ON "Plan"
+  1749→  FOR ALL TO neondb_owner
+  1750→  USING (is_admin())
+  1751→  WITH CHECK (is_admin());
+  1752→
+  1753→-- PlatformSettings (paramètres globaux de la plateforme)
+  1754→CREATE POLICY "PlatformSettings_all_admin" ON "PlatformSettings"
+  1755→  FOR ALL TO neondb_owner
+  1756→  USING (is_admin())
+  1757→  WITH CHECK (is_admin());
+  1758→
+  1759→-- AIProviderConfig (configuration des providers IA — clé API, etc.)
+  1760→CREATE POLICY "AIProviderConfig_all_admin" ON "AIProviderConfig"
+  1761→  FOR ALL TO neondb_owner
+  1762→  USING (is_admin())
+  1763→  WITH CHECK (is_admin());
+  1764→
+  1765→-- AIFailoverEvent (événements de bascule IA — écriture système, lecture ADMIN)
+  1766→CREATE POLICY "AIFailoverEvent_select_admin" ON "AIFailoverEvent"
+  1767→  FOR SELECT TO neondb_owner
+  1768→  USING (is_admin());
+  1769→CREATE POLICY "AIFailoverEvent_insert_system" ON "AIFailoverEvent"
+  1770→  FOR INSERT TO neondb_owner
+  1771→  WITH CHECK (true);  -- écriture par le backend (système)
+  1772→
+  1773→-- MonitoringEvent (événements de monitoring — écriture système, lecture ADMIN)
+  1774→CREATE POLICY "MonitoringEvent_select_admin" ON "MonitoringEvent"
+  1775→  FOR SELECT TO neondb_owner
+  1776→  USING (is_admin());
+  1777→CREATE POLICY "MonitoringEvent_insert_system" ON "MonitoringEvent"
+  1778→  FOR INSERT TO neondb_owner
+  1779→  WITH CHECK (true);
+  1780→
+  1781→-- NotificationAdmin (notifications destinées aux ADMIN)
+  1782→CREATE POLICY "NotificationAdmin_all_admin" ON "NotificationAdmin"
+  1783→  FOR ALL TO neondb_owner
+  1784→  USING (is_admin())
+  1785→  WITH CHECK (is_admin());
+  1786→
+  1787→
+  1788→-- ============================================================
+  1789→-- GROUPE 2 — Tables plateforme avec scoping établissement
+  1790→-- ============================================================
+  1791→
+  1792→-- IpWhitelist (liste blanche IP — par établissement)
+  1793→CREATE POLICY "IpWhitelist_select" ON "IpWhitelist"
+  1794→  FOR SELECT TO neondb_owner
+  1795→  USING (
+  1796→    is_admin()
+  1797→    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1798→  );
+  1799→CREATE POLICY "IpWhitelist_modify" ON "IpWhitelist"
+  1800→  FOR ALL TO neondb_owner
+  1801→  USING (
+  1802→    is_admin()
+  1803→    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1804→  )
+  1805→  WITH CHECK (
+  1806→    is_admin()
+  1807→    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1808→  );
+  1809→
+  1810→-- Facture (factures par établissement)
+  1811→CREATE POLICY "Facture_select" ON "Facture"
+  1812→  FOR SELECT TO neondb_owner
+  1813→  USING (
+  1814→    is_admin()
+  1815→    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1816→  );
+  1817→CREATE POLICY "Facture_modify_admin" ON "Facture"
+  1818→  FOR ALL TO neondb_owner
+  1819→  USING (is_admin())
+  1820→  WITH CHECK (is_admin());
+  1821→
+  1822→-- Abonnement (abonnements par établissement)
+  1823→CREATE POLICY "Abonnement_select" ON "Abonnement"
+  1824→  FOR SELECT TO neondb_owner
+  1825→  USING (
+  1826→    is_admin()
+  1827→    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1828→  );
+  1829→CREATE POLICY "Abonnement_modify_admin" ON "Abonnement"
+  1830→  FOR ALL TO neondb_owner
+  1831→  USING (is_admin())
+  1832→  WITH CHECK (is_admin());
+  1833→
+  1834→-- BadgeDefinition (définitions de badges — lisibles par tous, gérées par ADMIN/RESPONSABLE)
+  1835→CREATE POLICY "BadgeDefinition_select_all" ON "BadgeDefinition"
+  1836→  FOR SELECT TO neondb_owner
+  1837→  USING (true);
+  1838→CREATE POLICY "BadgeDefinition_modify_admin" ON "BadgeDefinition"
+  1839→  FOR ALL TO neondb_owner
+  1840→  USING (is_admin() OR is_responsable())
+  1841→  WITH CHECK (is_admin() OR is_responsable());
+  1842→
+  1843→
+  1844→-- ============================================================
+  1845→-- GROUPE 3 — Tables établissement core
+  1846→-- ============================================================
+  1847→
+  1848→-- Etablissement (l'établissement lui-même)
+  1849→CREATE POLICY "Etablissement_select" ON "Etablissement"
+  1850→  FOR SELECT TO neondb_owner
+  1851→  USING (
+  1852→    -- ADMIN : uniquement les établissements autorisés via EtablissementAccess
+  1853→    (is_admin() AND admin_has_etablissement_access("id"))
+  1854→    -- RESPONSABLE / ENSEIGNANT / ETUDIANT : leur propre établissement
+  1855→    OR (NOT is_admin() AND "id" = current_etablissement_id())
+  1856→  );
+  1857→CREATE POLICY "Etablissement_modify_responsable" ON "Etablissement"
+  1858→  FOR UPDATE TO neondb_owner
+  1859→  USING (is_responsable() AND "id" = current_etablissement_id())
+  1860→  WITH CHECK (is_responsable() AND "id" = current_etablissement_id());
+  1861→
+  1862→-- EtablissementAccess (autorisations d'accès ADMIN → établissement)
+  1863→CREATE POLICY "EtablissementAccess_select" ON "EtablissementAccess"
+  1864→  FOR SELECT TO neondb_owner
+  1865→  USING (
+  1866→    is_admin()  -- ADMIN voit ses propres autorisations
+  1867→    OR (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1868→  );
+  1869→CREATE POLICY "EtablissementAccess_modify_admin" ON "EtablissementAccess"
+  1870→  FOR ALL TO neondb_owner
+  1871→  USING (is_admin())
+  1872→  WITH CHECK (is_admin());
+  1873→
+  1874→-- SecuritySettings (paramètres de sécurité par établissement)
+  1875→CREATE POLICY "SecuritySettings_select" ON "SecuritySettings"
+  1876→  FOR SELECT TO neondb_owner
+  1877→  USING (
+  1878→    (is_admin() AND admin_has_etablissement_access("etablissementId"))
+  1879→    OR (NOT is_admin() AND "etablissementId" = current_etablissement_id())
+  1880→  );
+  1881→CREATE POLICY "SecuritySettings_modify_responsable" ON "SecuritySettings"
+  1882→  FOR ALL TO neondb_owner
+  1883→  USING (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1884→  WITH CHECK (is_responsable() AND "etablissementId" = current_etablissement_id());
+  1885→
+  1886→-- AnneeAcademique (années académiques par établissement)
+  1887→CREATE POLICY "AnneeAcademique_select" ON "AnneeAcademique"
+  1888→  FOR SELECT TO neondb_owner
+  1889→  USING (
+  1890→    (is_admin() AND admin_has_etablissement_access("etablissementId"))
+  1891→    OR (NOT is_admin() AND "etablissementId" = current_etablissement_id())
+  1892→  );
+  1893→CREATE POLICY "AnneeAcademique_modify_responsable" ON "AnneeAcademique"
+  1894→  FOR ALL TO neondb_owner
+  1895→  USING (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1896→  WITH CHECK (is_responsable() AND "etablissementId" = current_etablissement_id());
+  1897→
+  1898→
+  1899→-- ============================================================
+  1900→-- GROUPE 4 — Structure académique (étab-scoped + enseignant)
+  1901→-- ============================================================
+  1902→
+  1903→-- Filiere
+  1904→CREATE POLICY "Filiere_select" ON "Filiere"
+  1905→  FOR SELECT TO neondb_owner
+  1906→  USING (
+  1907→    (is_admin() AND admin_has_etablissement_access("etablissementId"))
+  1908→    OR (NOT is_admin() AND "etablissementId" = current_etablissement_id())
+  1909→  );
+  1910→CREATE POLICY "Filiere_modify_responsable" ON "Filiere"
+  1911→  FOR ALL TO neondb_owner
+  1912→  USING (is_responsable() AND "etablissementId" = current_etablissement_id())
+  1913→  WITH CHECK (is_responsable() AND "etablissementId" = current_etablissement_id());
+  1914→
+  1915→-- UniteEnseignement (scopée par filière → établissement)
+  1916→CREATE POLICY "UniteEnseignement_select" ON "UniteEnseignement"
+  1917→  FOR SELECT TO neondb_owner
+  1918→  USING (
+  1919→    (is_admin() AND admin_has_etablissement_access(
+  1920→      (SELECT "etablissementId" FROM "Filiere" WHERE "id" = "UniteEnseignement"."filiereId")
+  1921→    ))
+  1922→    OR (NOT is_admin() AND EXISTS (
+  1923→      SELECT 1 FROM "Filiere" f
+  1924→      WHERE f."id" = "UniteEnseignement"."filiereId"
+  1925→        AND f."etablissementId" = current_etablissement_id()
+  1926→    ))
+  1927→  );
+  1928→CREATE POLICY "UniteEnseignement_modify_responsable" ON "UniteEnseignement"
+  1929→  FOR ALL TO neondb_owner
+  1930→  USING (is_responsable() AND EXISTS (
+  1931→    SELECT 1 FROM "Filiere" f
+  1932→    WHERE f."id" = "UniteEnseignement"."filiereId"
+  1933→      AND f."etablissementId" = current_etablissement_id()
+  1934→  ))
+  1935→  WITH CHECK (is_responsable() AND EXISTS (
+  1936→    SELECT 1 FROM "Filiere" f
+  1937→    WHERE f."id" = "UniteEnseignement"."filiereId"
+  1938→      AND f."etablissementId" = current_etablissement_id()
+  1939→  ));
+  1940→
+  1941→-- UniteEnseignementFiliere (table de liaison)
+  1942→CREATE POLICY "UniteEnseignementFiliere_select" ON "UniteEnseignementFiliere"
+  1943→  FOR SELECT TO neondb_owner
+  1944→  USING (
+  1945→    (is_admin() AND admin_has_etablissement_access(
+  1946→      (SELECT f."etablissementId" FROM "Filiere" f WHERE f."id" = "UniteEnseignementFiliere"."filiereId")
+  1947→    ))
+  1948→    OR (NOT is_admin() AND EXISTS (
+  1949→      SELECT 1 FROM "Filiere" f
+  1950→      WHERE f."id" = "UniteEnseignementFiliere"."filiereId"
+  1951→        AND f."etablissementId" = current_etablissement_id()
+  1952→    ))
+  1953→  );
+  1954→CREATE POLICY "UniteEnseignementFiliere_modify_responsable" ON "UniteEnseignementFiliere"
+  1955→  FOR ALL TO neondb_owner
+  1956→  USING (is_responsable() AND EXISTS (
+  1957→    SELECT 1 FROM "Filiere" f
+  1958→    WHERE f."id" = "UniteEnseignementFiliere"."filiereId"
+  1959→      AND f."etablissementId" = current_etablissement_id()
+  1960→  ))
+  1961→  WITH CHECK (is_responsable() AND EXISTS (
+  1962→    SELECT 1 FROM "Filiere" f
+  1963→    WHERE f."id" = "UniteEnseignementFiliere"."filiereId"
+  1964→      AND f."etablissementId" = current_etablissement_id()
+  1965→  ));
+  1966→
+  1967→-- EnseignantFiliere (assignations enseignant ↔ filière)
+  1968→CREATE POLICY "EnseignantFiliere_select" ON "EnseignantFiliere"
+  1969→  FOR SELECT TO neondb_owner
+  1970→  USING (
+  1971→    -- ENSEIGNANT : ses propres assignations
+  1972→    (is_enseignant() AND "enseignantId" = current_user_id())
+  1973→    -- RESPONSABLE : assignations de son établissement
+  1974→    OR (is_responsable() AND EXISTS (
+  1975→      SELECT 1 FROM "Filiere" f
+  1976→      WHERE f."id" = "EnseignantFiliere"."filiereId"
+  1977→        AND f."etablissementId" = current_etablissement_id()
+  1978→    ))
+  1979→    -- ADMIN : via accès autorisé
+  1980→    OR (is_admin() AND EXISTS (
+  1981→      SELECT 1 FROM "Filiere" f
+  1982→      WHERE f."id" = "EnseignantFiliere"."filiereId"
+  1983→        AND admin_has_etablissement_access(f."etablissementId")
+  1984→    ))
+  1985→    -- ETUDIANT : filières de son établissement
+  1986→    OR (is_etudiant() AND EXISTS (
+  1987→      SELECT 1 FROM "Filiere" f
+  1988→      WHERE f."id" = "EnseignantFiliere"."filiereId"
+  1989→        AND f."etablissementId" = current_etablissement_id()
+  1990→    ))
+  1991→  );
+  1992→CREATE POLICY "EnseignantFiliere_modify_responsable" ON "EnseignantFiliere"
+  1993→  FOR ALL TO neondb_owner
+  1994→  USING (is_responsable() AND EXISTS (
+  1995→    SELECT 1 FROM "Filiere" f
+  1996→    WHERE f."id" = "EnseignantFiliere"."filiereId"
+  1997→      AND f."etablissementId" = current_etablissement_id()
+  1998→  ))
+  1999→  WITH CHECK (is_responsable() AND EXISTS (
+  2000→    SELECT 1 FROM "Filiere" f
+
+[showing lines 1-2000 of 2924; use offset=2001 with limit to continue reading]

@@ -1,0 +1,767 @@
+     1→'use client'
+     2→
+     3→// ═══════════════════════════════════════════════════════════════════════════
+     4→// SECT-ETABLISSEMENT-AUDIT-1 : AuditTab — onglet "Audit" de la page Paramètres
+     5→// établissement (ResponsableParametresPage).
+     6→//
+     7→// Permet à un RESPONSABLE de consulter l'intégralité du journal d'audit de SON
+     8→// établissement (le backend filtre via RLS + defense-in-depth sur
+     9→// claims.EtablissementID). Le composant :
+    10→//   - charge lazy (TanStack Query, enabled=!!etablissementId)
+    11→//   - expose 5 filtres : action, entité, recherche texte, plage de dates,
+    12→//     auto-refresh 30s
+    13→//   - affiche un tableau responsive (Date / Acteur / Action / Entité / Détails
+    14→//     collapsible / Raison / IP) avec pagination 20/page
+    15→//   - gère les états loading (skeleton), empty, error (retry)
+    16→//
+    17→// Helpers partagés (AuditLogItem, getActionBadge, getActionIcon,
+    18→// getEntityLabel, formatLogDate, formatRelativeDate, parseJsonSafe) sont
+    19→// importés depuis @/lib/audit-helpers — également consommés par LogsPage admin.
+    20→//
+    21→// Palette Savane EdTech : bg-success / text-success-text / bg-info / bg-warning
+    22→// / bg-destructive. Aucune couleur indigo/bleu.
+    23→// ═══════════════════════════════════════════════════════════════════════════
+    24→
+    25→import { useState, useEffect, useMemo } from 'react'
+    26→import { useQuery, useQueryClient } from '@tanstack/react-query'
+    27→import {
+    28→  FileSearch,
+    29→  Search,
+    30→  Filter,
+    31→  ChevronLeft,
+    32→  ChevronRight,
+    33→  ChevronDown,
+    34→  ChevronUp,
+    35→  Clock,
+    36→  RefreshCw,
+    37→  AlertCircle,
+    38→  Ban,
+    39→  LogIn,
+    40→  ShieldAlert,
+    41→} from 'lucide-react'
+    42→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    43→import { Button } from '@/components/ui/button'
+    44→import { Input } from '@/components/ui/input'
+    45→import { Label } from '@/components/ui/label'
+    46→import { Switch } from '@/components/ui/switch'
+    47→import {
+    48→  Select,
+    49→  SelectContent,
+    50→  SelectItem,
+    51→  SelectTrigger,
+    52→  SelectValue,
+    53→} from '@/components/ui/select'
+    54→import {
+    55→  Table,
+    56→  TableBody,
+    57→  TableCell,
+    58→  TableHead,
+    59→  TableHeader,
+    60→  TableRow,
+    61→} from '@/components/ui/table'
+    62→import {
+    63→  Collapsible,
+    64→  CollapsibleContent,
+    65→  CollapsibleTrigger,
+    66→} from '@/components/ui/collapsible'
+    67→import {
+    68→  Tooltip,
+    69→  TooltipContent,
+    70→  TooltipTrigger,
+    71→} from '@/components/ui/tooltip'
+    72→import { PulseSkeleton } from '@/components/ds'
+    73→import {
+    74→  type AuditLogItem,
+    75→  getActionBadge,
+    76→  getActionIcon,
+    77→  getEntityLabel,
+    78→  formatLogDate,
+    79→  formatRelativeDate,
+    80→  parseJsonSafe,
+    81→} from '@/lib/audit-helpers'
+    82→
+    83→// ─── Props ───
+    84→
+    85→interface AuditTabProps {
+    86→  /** ID de l'établissement actif (responsable) ou sélectionné (admin). */
+    87→  etablissementId: string
+    88→}
+    89→
+    90→// ─── Constantes ───
+    91→
+    92→const LIMIT = 20
+    93→
+    94→/**
+    95→ * ACTION_OPTIONS — liste statique des actions auditées exposées au RESPONSABLE.
+    96→ * Couvre les actions auth (LOGIN/LOGOUT/etc.) + accès (ACCESS_REVOKED*) + la
+    97→ * nouvelle action SIGNUP_LINK_REVOKED. Le label est en français.
+    98→ */
+    99→const ACTION_OPTIONS: { value: string; label: string }[] = [
+   100→  { value: 'LOGIN', label: 'Connexion' },
+   101→  { value: 'LOGIN_FAILED', label: 'Échec connexion' },
+   102→  { value: 'LOGIN_LOCKED', label: 'Compte verrouillé' },
+   103→  { value: 'LOGOUT', label: 'Déconnexion' },
+   104→  { value: 'TOKEN_REFRESHED', label: 'Refresh token' },
+   105→  { value: 'CHANGE_PASSWORD', label: 'Changement mot de passe' },
+   106→  { value: 'PASSWORD_RESET', label: 'Réinitialisation mot de passe' },
+   107→  { value: 'ACCESS_REVOKED', label: 'Accès révoqué' },
+   108→  { value: 'ACCESS_REVOKED_SELF', label: 'Expiration accès' },
+   109→  { value: 'SIGNUP_LINK_CREATED', label: 'Création de lien d\'inscription' },
+   110→  { value: 'SIGNUP_LINK_REVOKED', label: 'Révocation de lien d\'inscription' },
+   111→]
+   112→
+   113→/**
+   114→ * ENTITY_OPTIONS — entités filtrables pour un RESPONSABLE (scope restreint vs
+   115→ * admin qui peut voir toutes les entités). On se limite aux entités
+   116→ * Establishment-scoped.
+   117→ */
+   118→const ENTITY_OPTIONS: { value: string; label: string }[] = [
+   119→  { value: 'User', label: 'Utilisateur' },
+   120→  { value: 'Etablissement', label: 'Établissement' },
+   121→  { value: 'EtablissementAccess', label: 'Accès établissement' },
+   122→  { value: 'StudentSignupLink', label: 'Lien d\'inscription étudiante' },
+   123→  { value: 'RegistrationEvent', label: 'Événement d\'inscription' },
+   124→  { value: 'SecuritySettings', label: 'Paramètres sécurité' },
+   125→  { value: 'IpWhitelist', label: 'Liste blanche IP' },
+   126→]
+   127→
+   128→// ─── Helpers locaux ───
+   129→
+   130→/** getInitials — 1ère lettre de l'email pour l'avatar. */
+   131→function getInitials(email: string | null): string {
+   132→  if (!email) return '?'
+   133→  return email[0].toUpperCase()
+   134→}
+   135→
+   136→/** isMobile — détection responsive pour décider du rendu timeline vs table. */
+   137→function useIsMobile(): boolean {
+   138→  const [isMobile, setIsMobile] = useState(false)
+   139→  useEffect(() => {
+   140→    const mq = window.matchMedia('(max-width: 639px)')
+   141→    const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
+   142→      setIsMobile('matches' in e ? e.matches : false)
+   143→    }
+   144→    onChange(mq)
+   145→    mq.addEventListener('change', onChange)
+   146→    return () => mq.removeEventListener('change', onChange)
+   147→  }, [])
+   148→  return isMobile
+   149→}
+   150→
+   151→// ─── Composant principal ───
+   152→
+   153→export function AuditTab({ etablissementId }: AuditTabProps) {
+   154→  const isMobile = useIsMobile()
+   155→  const queryClient = useQueryClient()
+   156→
+   157→  // ─── Filtres ───
+   158→  const [action, setAction] = useState<string>('all')
+   159→  const [entite, setEntite] = useState<string>('all')
+   160→  const [search, setSearch] = useState<string>('')
+   161→  const [dateFrom, setDateFrom] = useState<string>('')
+   162→  const [dateTo, setDateTo] = useState<string>('')
+   163→  const [page, setPage] = useState<number>(1)
+   164→
+   165→  // ─── Auto-refresh (30s) ───
+   166→  const [autoRefresh, setAutoRefresh] = useState<boolean>(false)
+   167→
+   168→  // ─── Ligne expandée (détails JSON) ───
+   169→  const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
+   170→
+   171→  // ─── Query ───
+   172→  const logsQuery = useQuery<{ logs: AuditLogItem[]; total: number; page: number; limit: number }>({
+   173→    queryKey: [
+   174→      'responsable-audit-logs',
+   175→      etablissementId,
+   176→      action,
+   177→      entite,
+   178→      search,
+   179→      dateFrom,
+   180→      dateTo,
+   181→      page,
+   182→    ],
+   183→    queryFn: async () => {
+   184→      const params = new URLSearchParams()
+   185→      if (action && action !== 'all') params.set('action', action)
+   186→      if (entite && entite !== 'all') params.set('entite', entite)
+   187→      if (search) params.set('search', search)
+   188→      if (dateFrom) params.set('dateFrom', dateFrom)
+   189→      if (dateTo) params.set('dateTo', dateTo)
+   190→      params.set('page', page.toString())
+   191→      params.set('limit', LIMIT.toString())
+   192→
+   193→      const res = await fetch(
+   194→        `/api/etablissements/${etablissementId}/audit-logs?${params.toString()}`,
+   195→        { credentials: 'same-origin' }
+   196→      )
+   197→      if (!res.ok) {
+   198→        const err = await res.json().catch(() => ({}))
+   199→        throw new Error(err?.error ?? 'Erreur lors du chargement du journal d\'audit')
+   200→      }
+   201→      const data = await res.json()
+   202→      return {
+   203→        logs: (data.logs ?? []) as AuditLogItem[],
+   204→        total: data.total ?? 0,
+   205→        page: data.page ?? page,
+   206→        limit: data.limit ?? LIMIT,
+   207→      }
+   208→    },
+   209→    enabled: !!etablissementId,
+   210→    staleTime: 60 * 1000,
+   211→    refetchOnWindowFocus: false,
+   212→    refetchInterval: autoRefresh ? 30_000 : false,
+   213→    refetchIntervalInBackground: false,
+   214→  })
+   215→
+   216→  const logs = logsQuery.data?.logs ?? []
+   217→  const total = logsQuery.data?.total ?? 0
+   218→  const isLoading = logsQuery.isLoading
+   219→  const isError = logsQuery.isError
+   220→  const error = logsQuery.error
+   221→
+   222→  // ─── Reset pagination quand les filtres changent ───
+   223→  // Le React Compiler le flagge comme `set-state-in-effect` car `page` est dans
+   224→  // le queryKey. La logique est correcte (reset de pagination sur changement de
+   225→  // filtre) — disable ciblé, même pattern que logs-page.tsx.
+   226→  useEffect(() => {
+   227→    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset pagination on filter change, pattern original
+   228→    setPage(1)
+   229→  }, [action, entite, search, dateFrom, dateTo])
+   230→
+   231→  const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+   232→
+   233→  // ─── Stats (page courante uniquement, comme admin LogsPage) ───
+   234→  const stats = useMemo(() => {
+   235→    const loginCount = logs.filter(
+   236→      (l) => l.action === 'LOGIN' || l.action === 'LOGIN_MATRICULE'
+   237→    ).length
+   238→    const revokeCount = logs.filter(
+   239→      (l) =>
+   240→        l.action === 'SIGNUP_LINK_REVOKED' ||
+   241→        l.action === 'ACCESS_REVOKED' ||
+   242→        l.action === 'ACCESS_REVOKED_SELF'
+   243→    ).length
+   244→    const failedCount = logs.filter(
+   245→      (l) => l.action === 'LOGIN_FAILED' || l.action === 'LOGIN_LOCKED'
+   246→    ).length
+   247→    return { total, loginCount, revokeCount, failedCount }
+   248→  }, [logs, total])
+   249→
+   250→  const handleRetry = () => {
+   251→    queryClient.invalidateQueries({ queryKey: ['responsable-audit-logs', etablissementId] })
+   252→  }
+   253→
+   254→  // ─── Rendu d'une ligne (timeline card pour mobile, TableRow pour desktop) ───
+   255→  const renderLogRow = (log: AuditLogItem) => {
+   256→    const details = parseJsonSafe(log.details)
+   257→    const isExpanded = expandedLogId === log.id
+   258→    const detailEntries =
+   259→      details && typeof details === 'object'
+   260→        ? Object.entries(details as Record<string, unknown>)
+   261→        : []
+   262→
+   263→    if (isMobile) {
+   264→      // ─── Mobile : timeline cards (comme admin LogsPage) ───
+   265→      return (
+   266→        <Card key={log.id} className={`transition-all ${isExpanded ? 'ring-1 ring-success/40' : ''}`}>
+   267→          <CardContent className="p-4">
+   268→            <div className="flex items-start gap-3">
+   269→              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted shrink-0">
+   270→                {getActionIcon(log.action)}
+   271→              </div>
+   272→              <div className="flex-1 min-w-0">
+   273→                <div className="flex flex-col gap-1">
+   274→                  <div className="flex items-center gap-2 flex-wrap">
+   275→                    {getActionBadge(log.action)}
+   276→                    <span className="text-sm font-medium">{getEntityLabel(log.entite)}</span>
+   277→                  </div>
+   278→                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   279→                    <Clock className="h-3 w-3" />
+   280→                    <Tooltip>
+   281→                      <TooltipTrigger asChild>
+   282→                        <span>{formatRelativeDate(log.createdAt)}</span>
+   283→                      </TooltipTrigger>
+   284→                      <TooltipContent>{formatLogDate(log.createdAt)}</TooltipContent>
+   285→                    </Tooltip>
+   286→                    {log.adresseIp && (
+   287→                      <span className="font-mono">• IP : {log.adresseIp}</span>
+   288→                    )}
+   289→                  </div>
+   290→                  <div className="mt-1 flex items-center gap-2">
+   291→                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text font-mono shrink-0">
+   292→                      {getInitials(log.userEmail)}
+   293→                    </div>
+   294→                    <span className="text-sm truncate">
+   295→                      {log.userEmail ?? 'Système'}
+   296→                    </span>
+   297→                  </div>
+   298→                  {log.reason && (
+   299→                    <p className="mt-1 text-xs italic text-muted-foreground">
+   300→                      Raison : {log.reason}
+   301→                    </p>
+   302→                  )}
+   303→                  {log.details && (
+   304→                    <Collapsible
+   305→                      open={isExpanded}
+   306→                      onOpenChange={(open) => setExpandedLogId(open ? log.id : null)}
+   307→                    >
+   308→                      <CollapsibleTrigger asChild>
+   309→                        <Button
+   310→                          variant="ghost"
+   311→                          size="sm"
+   312→                          className="mt-1 h-7 text-xs text-success-text"
+   313→                          aria-label={isExpanded ? 'Masquer les détails' : 'Voir les détails'}
+   314→                        >
+   315→                          {isExpanded ? (
+   316→                            <>
+   317→                              <ChevronUp className="h-3 w-3 mr-1" />
+   318→                              Masquer
+   319→                            </>
+   320→                          ) : (
+   321→                            <>
+   322→                              <ChevronDown className="h-3 w-3 mr-1" />
+   323→                              Voir les détails
+   324→                            </>
+   325→                          )}
+   326→                        </Button>
+   327→                      </CollapsibleTrigger>
+   328→                      <CollapsibleContent>
+   329→                        <div className="mt-2 rounded-lg bg-muted p-3 overflow-x-auto">
+   330→                          {detailEntries.length > 0 ? (
+   331→                            <dl className="text-xs space-y-1">
+   332→                              {detailEntries.map(([key, value]) => (
+   333→                                <div key={key} className="flex gap-2">
+   334→                                  <dt className="font-medium text-muted-foreground shrink-0">{key}:</dt>
+   335→                                  <dd className="font-mono break-all">{String(value)}</dd>
+   336→                                </div>
+   337→                              ))}
+   338→                            </dl>
+   339→                          ) : (
+   340→                            <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+   341→                              {String(details)}
+   342→                            </pre>
+   343→                          )}
+   344→                        </div>
+   345→                      </CollapsibleContent>
+   346→                    </Collapsible>
+   347→                  )}
+   348→                </div>
+   349→              </div>
+   350→            </div>
+   351→          </CardContent>
+   352→        </Card>
+   353→      )
+   354→    }
+   355→
+   356→    // ─── Desktop : TableRow ───
+   357→    return (
+   358→      <>
+   359→        <TableRow
+   360→          key={log.id}
+   361→          className="cursor-pointer hover:bg-muted/50"
+   362→          onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+   363→        >
+   364→          <TableCell className="whitespace-nowrap text-sm">
+   365→            <div className="flex flex-col">
+   366→              <span className="font-medium">{formatLogDate(log.createdAt)}</span>
+   367→              <span className="text-xs text-muted-foreground">{formatRelativeDate(log.createdAt)}</span>
+   368→            </div>
+   369→          </TableCell>
+   370→          <TableCell className="text-sm">
+   371→            <div className="flex items-center gap-2 min-w-[160px]">
+   372→              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text font-mono shrink-0">
+   373→                {getInitials(log.userEmail)}
+   374→              </div>
+   375→              <Tooltip>
+   376→                <TooltipTrigger asChild>
+   377→                  <span className="truncate max-w-[180px]">
+   378→                    {log.userEmail ?? 'Système'}
+   379→                  </span>
+   380→                </TooltipTrigger>
+   381→                {log.userEmail && (
+   382→                  <TooltipContent>{log.userEmail}</TooltipContent>
+   383→                )}
+   384→              </Tooltip>
+   385→            </div>
+   386→          </TableCell>
+   387→          <TableCell>{getActionBadge(log.action)}</TableCell>
+   388→          <TableCell className="text-sm">{getEntityLabel(log.entite)}</TableCell>
+   389→          <TableCell className="text-sm max-w-[260px]">
+   390→            {log.reason ? (
+   391→              <p className="italic text-muted-foreground truncate" title={log.reason}>
+   392→                « {log.reason} »
+   393→              </p>
+   394→            ) : detailEntries.length > 0 ? (
+   395→              <span className="text-xs text-muted-foreground truncate inline-block max-w-full">
+   396→                {detailEntries.slice(0, 2).map(([k, v]) => `${k}: ${String(v)}`).join(' • ')}
+   397→                {detailEntries.length > 2 && ' …'}
+   398→              </span>
+   399→            ) : (
+   400→              <span className="text-xs text-muted-foreground">—</span>
+   401→            )}
+   402→          </TableCell>
+   403→          <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+   404→            {log.adresseIp ?? '—'}
+   405→          </TableCell>
+   406→          <TableCell className="text-right">
+   407→            {log.details && (
+   408→              <Button
+   409→                variant="ghost"
+   410→                size="sm"
+   411→                className="h-7 text-xs"
+   412→                aria-label={isExpanded ? 'Masquer les détails' : 'Voir les détails'}
+   413→                onClick={(e) => {
+   414→                  e.stopPropagation()
+   415→                  setExpandedLogId(isExpanded ? null : log.id)
+   416→                }}
+   417→              >
+   418→                {isExpanded ? (
+   419→                  <>
+   420→                    <ChevronUp className="h-3 w-3 mr-1" />
+   421→                    Masquer
+   422→                  </>
+   423→                ) : (
+   424→                  <>
+   425→                    <ChevronDown className="h-3 w-3 mr-1" />
+   426→                    Détails
+   427→                  </>
+   428→                )}
+   429→              </Button>
+   430→            )}
+   431→          </TableCell>
+   432→        </TableRow>
+   433→        {isExpanded && log.details && (
+   434→          <TableRow key={`${log.id}-details`} className="bg-muted/30 hover:bg-muted/30">
+   435→            <TableCell colSpan={7} className="p-4">
+   436→              <div className="rounded-lg bg-muted p-3 overflow-x-auto">
+   437→                {detailEntries.length > 0 ? (
+   438→                  <dl className="text-xs space-y-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+   439→                    {detailEntries.map(([key, value]) => (
+   440→                      <div key={key} className="flex gap-2">
+   441→                        <dt className="font-medium text-muted-foreground shrink-0">{key}:</dt>
+   442→                        <dd className="font-mono break-all">{String(value)}</dd>
+   443→                      </div>
+   444→                    ))}
+   445→                  </dl>
+   446→                ) : (
+   447→                  <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+   448→                    {String(details)}
+   449→                  </pre>
+   450→                )}
+   451→              </div>
+   452→              {log.reason && (
+   453→                <p className="mt-2 text-xs italic text-muted-foreground">
+   454→                  Raison journalisée : « {log.reason} »
+   455→                </p>
+   456→              )}
+   457→              {log.adresseIp && (
+   458→                <p className="mt-1 text-xs text-muted-foreground">
+   459→                  Adresse IP : <span className="font-mono">{log.adresseIp}</span>
+   460→                </p>
+   461→              )}
+   462→            </TableCell>
+   463→          </TableRow>
+   464→        )}
+   465→      </>
+   466→    )
+   467→  }
+   468→
+   469→  return (
+   470→    <div className="space-y-6">
+   471→      {/* ─── Stats Row (4 KPI) ─── */}
+   472→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   473→        <Card className="border-l-4 border-l-primary">
+   474→          <CardContent className="flex items-center gap-3 p-4">
+   475→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+   476→              <FileSearch className="h-5 w-5 text-success-text" />
+   477→            </div>
+   478→            <div>
+   479→              <p className="text-xs text-muted-foreground">Total (filtré)</p>
+   480→              <p className="text-xl font-bold font-mono tabular-nums">{stats.total}</p>
+   481→            </div>
+   482→          </CardContent>
+   483→        </Card>
+   484→        <Card className="border-l-4 border-l-primary">
+   485→          <CardContent className="flex items-center gap-3 p-4">
+   486→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+   487→              <LogIn className="h-5 w-5 text-warning" />
+   488→            </div>
+   489→            <div>
+   490→              <p className="text-xs text-muted-foreground">Connexions (page)</p>
+   491→              <p className="text-xl font-bold font-mono tabular-nums">{stats.loginCount}</p>
+   492→            </div>
+   493→          </CardContent>
+   494→        </Card>
+   495→        <Card className="border-l-4 border-l-primary">
+   496→          <CardContent className="flex items-center gap-3 p-4">
+   497→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+   498→              <Ban className="h-5 w-5 text-destructive" />
+   499→            </div>
+   500→            <div>
+   501→              <p className="text-xs text-muted-foreground">Révocations (page)</p>
+   502→              <p className="text-xl font-bold font-mono tabular-nums">{stats.revokeCount}</p>
+   503→            </div>
+   504→          </CardContent>
+   505→        </Card>
+   506→        <Card className="border-l-4 border-l-primary">
+   507→          <CardContent className="flex items-center gap-3 p-4">
+   508→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+   509→              <ShieldAlert className="h-5 w-5 text-destructive" />
+   510→            </div>
+   511→            <div>
+   512→              <p className="text-xs text-muted-foreground">Échecs (page)</p>
+   513→              <p className="text-xl font-bold font-mono tabular-nums">{stats.failedCount}</p>
+   514→            </div>
+   515→          </CardContent>
+   516→        </Card>
+   517→      </div>
+   518→
+   519→      {/* ─── Filters Card ─── */}
+   520→      <Card>
+   521→        <CardHeader className="pb-3">
+   522→          <CardTitle className="flex items-center gap-2 font-display text-base">
+   523→            <Filter className="h-4 w-4 text-success-text" />
+   524→            Filtres
+   525→          </CardTitle>
+   526→          <CardDescription className="text-xs">
+   527→            Affinez la liste des événements d&apos;audit de votre établissement.
+   528→          </CardDescription>
+   529→        </CardHeader>
+   530→        <CardContent className="space-y-3">
+   531→          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+   532→            <div className="space-y-1.5 flex-1 min-w-[160px]">
+   533→              <Label htmlFor="audit-filter-action" className="text-xs">Action</Label>
+   534→              <Select value={action} onValueChange={setAction}>
+   535→                <SelectTrigger id="audit-filter-action" className="w-full">
+   536→                  <SelectValue placeholder="Toutes les actions" />
+   537→                </SelectTrigger>
+   538→                <SelectContent className="max-h-80">
+   539→                  <SelectItem value="all">Toutes les actions</SelectItem>
+   540→                  {ACTION_OPTIONS.map((opt) => (
+   541→                    <SelectItem key={opt.value} value={opt.value}>
+   542→                      {opt.label}
+   543→                    </SelectItem>
+   544→                  ))}
+   545→                </SelectContent>
+   546→              </Select>
+   547→            </div>
+   548→            <div className="space-y-1.5 flex-1 min-w-[160px]">
+   549→              <Label htmlFor="audit-filter-entite" className="text-xs">Entité</Label>
+   550→              <Select value={entite} onValueChange={setEntite}>
+   551→                <SelectTrigger id="audit-filter-entite" className="w-full">
+   552→                  <SelectValue placeholder="Toutes les entités" />
+   553→                </SelectTrigger>
+   554→                <SelectContent className="max-h-80">
+   555→                  <SelectItem value="all">Toutes les entités</SelectItem>
+   556→                  {ENTITY_OPTIONS.map((opt) => (
+   557→                    <SelectItem key={opt.value} value={opt.value}>
+   558→                      {opt.label}
+   559→                    </SelectItem>
+   560→                  ))}
+   561→                </SelectContent>
+   562→              </Select>
+   563→            </div>
+   564→            <div className="space-y-1.5 flex-1 min-w-[200px]">
+   565→              <Label htmlFor="audit-filter-search" className="text-xs">Recherche (email / IP)</Label>
+   566→              <div className="relative">
+   567→                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+   568→                <Input
+   569→                  id="audit-filter-search"
+   570→                  placeholder="user@etab.edu ou 1.2.3.4"
+   571→                  value={search}
+   572→                  onChange={(e) => setSearch(e.target.value)}
+   573→                  className="pl-9"
+   574→                  aria-label="Rechercher dans le journal d'audit"
+   575→                />
+   576→              </div>
+   577→            </div>
+   578→            <div className="space-y-1.5">
+   579→              <Label htmlFor="audit-filter-date-from" className="text-xs">Date début</Label>
+   580→              <Input
+   581→                id="audit-filter-date-from"
+   582→                type="date"
+   583→                value={dateFrom}
+   584→                onChange={(e) => setDateFrom(e.target.value)}
+   585→                className="w-full lg:w-[150px]"
+   586→              />
+   587→            </div>
+   588→            <div className="space-y-1.5">
+   589→              <Label htmlFor="audit-filter-date-to" className="text-xs">Date fin</Label>
+   590→              <Input
+   591→                id="audit-filter-date-to"
+   592→                type="date"
+   593→                value={dateTo}
+   594→                onChange={(e) => setDateTo(e.target.value)}
+   595→                className="w-full lg:w-[150px]"
+   596→              />
+   597→            </div>
+   598→          </div>
+   599→
+   600→          {/* ─── Auto-refresh toggle ─── */}
+   601→          <div className="flex items-center justify-between gap-3 pt-1 border-t">
+   602→            <div className="flex items-center gap-2">
+   603→              <Switch
+   604→                id="audit-auto-refresh"
+   605→                checked={autoRefresh}
+   606→                onCheckedChange={setAutoRefresh}
+   607→                aria-label="Activer l'auto-actualisation toutes les 30 secondes"
+   608→              />
+   609→              <Label htmlFor="audit-auto-refresh" className="text-xs flex items-center gap-1 cursor-pointer">
+   610→                <RefreshCw className={`h-3 w-3 ${autoRefresh ? 'animate-spin text-success-text' : 'text-muted-foreground'}`} />
+   611→                Auto-actualisation (30s)
+   612→              </Label>
+   613→            </div>
+   614→            <Button
+   615→              variant="ghost"
+   616→              size="sm"
+   617→              onClick={() => queryClient.invalidateQueries({ queryKey: ['responsable-audit-logs', etablissementId] })}
+   618→              aria-label="Rafraîchir manuellement le journal d'audit"
+   619→            >
+   620→              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+   621→              Rafraîchir
+   622→            </Button>
+   623→          </div>
+   624→        </CardContent>
+   625→      </Card>
+   626→
+   627→      {/* ─── Audit log table ─── */}
+   628→      <Card>
+   629→        <CardHeader>
+   630→          <CardTitle className="flex items-center gap-2 font-display">
+   631→            <FileSearch className="h-5 w-5 text-success-text" />
+   632→            Journal d&apos;audit
+   633→            <span className="ml-1 inline-flex items-center justify-center rounded-full bg-success/15 text-success-text text-xs font-medium px-2 py-0.5">
+   634→              {total} événement{total > 1 ? 's' : ''}
+   635→            </span>
+   636→          </CardTitle>
+   637→          <CardDescription>
+   638→            Liste chronologique (la plus récente en premier) des actions
+   639→            effectuées par les utilisateurs de votre établissement.
+   640→          </CardDescription>
+   641→        </CardHeader>
+   642→        <CardContent>
+   643→          {/* ─── Loading state ─── */}
+   644→          {isLoading && (
+   645→            <div className="space-y-3">
+   646→              {Array.from({ length: 5 }).map((_, i) => (
+   647→                <div key={i} className="flex items-start gap-4 p-3 rounded-lg border">
+   648→                  <PulseSkeleton className="h-9 w-9" variant="circle" />
+   649→                  <div className="flex-1 space-y-2">
+   650→                    <PulseSkeleton className="h-4 w-48" />
+   651→                    <PulseSkeleton className="h-3 w-32" />
+   652→                  </div>
+   653→                  <PulseSkeleton className="h-6 w-20" />
+   654→                </div>
+   655→              ))}
+   656→            </div>
+   657→          )}
+   658→
+   659→          {/* ─── Error state ─── */}
+   660→          {!isLoading && isError && (
+   661→            <div className="flex flex-col items-center justify-center py-12 text-center">
+   662→              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+   663→                <AlertCircle className="h-8 w-8 text-destructive" />
+   664→              </div>
+   665→              <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">
+   666→                Erreur lors du chargement du journal d&apos;audit.
+   667→              </h3>
+   668→              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+   669→                {error instanceof Error ? error.message : 'Veuillez réessayer dans quelques instants.'}
+   670→              </p>
+   671→              <Button
+   672→                variant="outline"
+   673→                size="sm"
+   674→                className="mt-4"
+   675→                onClick={handleRetry}
+   676→                aria-label="Réessayer le chargement du journal d'audit"
+   677→              >
+   678→                <RefreshCw className="h-4 w-4 mr-2" />
+   679→                Réessayer
+   680→              </Button>
+   681→            </div>
+   682→          )}
+   683→
+   684→          {/* ─── Empty state ─── */}
+   685→          {!isLoading && !isError && logs.length === 0 && (
+   686→            <div className="flex flex-col items-center justify-center py-12 text-center">
+   687→              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+   688→                <FileSearch className="h-8 w-8 text-success-text" />
+   689→              </div>
+   690→              <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">
+   691→                Aucun événement d&apos;audit pour cet établissement.
+   692→              </h3>
+   693→              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+   694→                Les actions des utilisateurs de votre établissement (connexions,
+   695→                créations et révocations de liens, modifications de paramètres…)
+   696→                apparaîtront ici.
+   697→              </p>
+   698→            </div>
+   699→          )}
+   700→
+   701→          {/* ─── Data rendering ─── */}
+   702→          {!isLoading && !isError && logs.length > 0 && (
+   703→            isMobile ? (
+   704→              <div className="space-y-3">
+   705→                {logs.map(renderLogRow)}
+   706→              </div>
+   707→            ) : (
+   708→              <div className="overflow-x-auto max-h-[36rem] overflow-y-auto rounded-md border">
+   709→                <Table>
+   710→                  <TableHeader className="sticky top-0 bg-card z-10">
+   711→                    <TableRow>
+   712→                      <TableHead className="font-display whitespace-nowrap">Date</TableHead>
+   713→                      <TableHead className="font-display whitespace-nowrap">Acteur</TableHead>
+   714→                      <TableHead className="font-display whitespace-nowrap">Action</TableHead>
+   715→                      <TableHead className="font-display whitespace-nowrap">Entité</TableHead>
+   716→                      <TableHead className="font-display whitespace-nowrap">Détails / Raison</TableHead>
+   717→                      <TableHead className="font-display whitespace-nowrap">IP</TableHead>
+   718→                      <TableHead className="text-right font-display whitespace-nowrap">Actions</TableHead>
+   719→                    </TableRow>
+   720→                  </TableHeader>
+   721→                  <TableBody>
+   722→                    {logs.map(renderLogRow)}
+   723→                  </TableBody>
+   724→                </Table>
+   725→              </div>
+   726→            )
+   727→          )}
+   728→
+   729→          {/* ─── Pagination ─── */}
+   730→          {!isLoading && !isError && logs.length > 0 && totalPages > 1 && (
+   731→            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-4 pt-3 border-t">
+   732→              <p className="text-xs text-muted-foreground font-mono tabular-nums">
+   733→                {((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, total)} sur {total} entrée{total > 1 ? 's' : ''}
+   734→              </p>
+   735→              <div className="flex items-center gap-2">
+   736→                <Button
+   737→                  variant="outline"
+   738→                  size="sm"
+   739→                  disabled={page <= 1}
+   740→                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+   741→                  aria-label="Page précédente"
+   742→                >
+   743→                  <ChevronLeft className="h-4 w-4" />
+   744→                  Précédent
+   745→                </Button>
+   746→                <span className="text-sm font-medium font-mono tabular-nums">
+   747→                  Page {page} sur {totalPages}
+   748→                </span>
+   749→                <Button
+   750→                  variant="outline"
+   751→                  size="sm"
+   752→                  disabled={page >= totalPages}
+   753→                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   754→                  aria-label="Page suivante"
+   755→                >
+   756→                  Suivant
+   757→                  <ChevronRight className="h-4 w-4" />
+   758→                </Button>
+   759→              </div>
+   760→            </div>
+   761→          )}
+   762→        </CardContent>
+   763→      </Card>
+   764→    </div>
+   765→  )
+   766→}
+   767→
