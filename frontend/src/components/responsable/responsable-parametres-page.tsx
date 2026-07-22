@@ -891,6 +891,8 @@ export function ResponsableParametresPage() {
       toast.success('Sécurité mise à jour', {
         description: 'Les paramètres de sécurité ont été sauvegardés.',
       })
+      // SECU-SYNC-FIX : invalidate admin security-settings cache too
+      queryClient.invalidateQueries({ queryKey: ['security-settings'] })
     } catch (err) {
       toast.error('Erreur de sauvegarde', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',

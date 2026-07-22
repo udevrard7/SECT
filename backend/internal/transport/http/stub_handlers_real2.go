@@ -20,6 +20,10 @@ import (
 // 1. GET /api/security-settings — SecuritySettings (1 row en DB)
 // ──────────────────────────────────────────────────────────────────────────
 
+// SECU-SYNC-FIX : GET /api/security-settings — retourne TOUS les settings
+// (avant : 1 seul objet → tableau vide côté frontend).
+// ADMIN PaaS/SaaS voit TOUT (RLS migration 000102 : is_admin() sans restriction).
+// Inclut l'établissement associé pour l'overview table de la page /securite.
 func (s *Server) securitySettingsGetReal(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok || claims.UserID == "" {
@@ -27,80 +31,80 @@ func (s *Server) securitySettingsGetReal(w http.ResponseWriter, r *http.Request)
                 return
         }
 
+        type etabInfo struct {
+                ID     string  `json:"id"`
+                Nom    string  `json:"nom"`
+                Type   *string `json:"type"`
+                Ville  *string `json:"ville"`
+                Actif  bool    `json:"actif"`
+        }
         type secSettings struct {
-                ID                    string  `json:"id"`
-                EtablissementID       string  `json:"etablissementId"`
-                ProctoringActif      bool    `json:"proctoringActif"`
-                DetectionCopie       bool    `json:"detectionCopie"`
-                DetectionOnglet      bool    `json:"detectionOnglet"`
-                DetectionFullscreen  bool    `json:"detectionFullscreen"`
-                BlocageCopie         bool    `json:"blocageCopie"`
-                BlocageClicDroit     bool    `json:"blocageClicDroit"`
-                BlocageImpression    bool    `json:"blocageImpression"`
-                VerificationIdentite bool    `json:"verificationIdentite"`
-                TempsInactiviteMax   int     `json:"tempsInactiviteMax"`
-                NbOngletsMax         int     `json:"nbOngletsMax"`
-                NbAlertesMax         int     `json:"nbAlertesMax"`
-                AutoSubmitOnViolation bool   `json:"autoSubmitOnViolation"`
-                CaptureEcran         bool    `json:"captureEcran"`
-                RapportFraude        bool    `json:"rapportFraude"`
-                SeuilSimilarite      float64 `json:"seuilSimilarite"`
-                PenaliteFullscreenExit int   `json:"penaliteFullscreenExit"`
-                FullscreenObligatoire bool   `json:"fullscreenObligatoire"`
-                IntervalleCaptureEcran int   `json:"intervalleCaptureEcran"`
+                ID                    string    `json:"id"`
+                EtablissementID       string    `json:"etablissementId"`
+                ProctoringActif       bool      `json:"proctoringActif"`
+                DetectionCopie        bool      `json:"detectionCopie"`
+                DetectionOnglet       bool      `json:"detectionOnglet"`
+                DetectionFullscreen   bool      `json:"detectionFullscreen"`
+                BlocageCopie          bool      `json:"blocageCopie"`
+                BlocageClicDroit      bool      `json:"blocageClicDroit"`
+                BlocageImpression     bool      `json:"blocageImpression"`
+                VerificationIdentite  bool      `json:"verificationIdentite"`
+                TempsInactiviteMax    int       `json:"tempsInactiviteMax"`
+                NbOngletsMax          int       `json:"nbOngletsMax"`
+                NbAlertesMax          int       `json:"nbAlertesMax"`
+                AutoSubmitOnViolation bool      `json:"autoSubmitOnViolation"`
+                CaptureEcran          bool      `json:"captureEcran"`
+                RapportFraude         bool      `json:"rapportFraude"`
+                SeuilSimilarite       float64   `json:"seuilSimilarite"`
+                PenaliteFullscreenExit int      `json:"penaliteFullscreenExit"`
+                FullscreenObligatoire bool      `json:"fullscreenObligatoire"`
+                IntervalleCaptureEcran int      `json:"intervalleCaptureEcran"`
+                Etablissement         *etabInfo `json:"etablissement,omitempty"`
         }
 
-        result := &secSettings{}
-        found := false
+        results := []secSettings{}
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                // Scope par etablissementId si fourni, sinon prendre le 1er
-                etabID := r.URL.Query().Get("etablissementId")
-                var row pgx.Row
-                if etabID != "" {
-                        row = tx.QueryRow(r.Context(), `
-                                SELECT "id", "etablissementId", "proctoringActif", "detectionCopie",
-                                       "detectionOnglet", "detectionFullscreen", "blocageCopie",
-                                       "blocageClicDroit", "blocageImpression", "verificationIdentite",
-                                       "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
-                                       "autoSubmitOnViolation", "captureEcran", "rapportFraude",
-                                       "seuilSimilarite", "penaliteFullscreenExit", "fullscreenObligatoire",
-                                       "intervalleCaptureEcran"
-                                FROM "SecuritySettings" WHERE "etablissementId" = $1
-                        `, etabID)
-                } else {
-                        row = tx.QueryRow(r.Context(), `
-                                SELECT "id", "etablissementId", "proctoringActif", "detectionCopie",
-                                       "detectionOnglet", "detectionFullscreen", "blocageCopie",
-                                       "blocageClicDroit", "blocageImpression", "verificationIdentite",
-                                       "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
-                                       "autoSubmitOnViolation", "captureEcran", "rapportFraude",
-                                       "seuilSimilarite", "penaliteFullscreenExit", "fullscreenObligatoire",
-                                       "intervalleCaptureEcran"
-                                FROM "SecuritySettings" ORDER BY "updatedAt" DESC LIMIT 1
-                        `)
+                // Retourner TOUTES les config (pour l'overview ADMIN).
+                rows, err := tx.Query(r.Context(), `
+                        SELECT ss."id", ss."etablissementId", ss."proctoringActif", ss."detectionCopie",
+                               ss."detectionOnglet", ss."detectionFullscreen", ss."blocageCopie",
+                               ss."blocageClicDroit", ss."blocageImpression", ss."verificationIdentite",
+                               ss."tempsInactiviteMax", ss."nbOngletsMax", ss."nbAlertesMax",
+                               ss."autoSubmitOnViolation", ss."captureEcran", ss."rapportFraude",
+                               ss."seuilSimilarite", ss."penaliteFullscreenExit", ss."fullscreenObligatoire",
+                               ss."intervalleCaptureEcran",
+                               e."id", e."nom", e."type", e."ville", e."actif"
+                        FROM "SecuritySettings" ss
+                        LEFT JOIN "Etablissement" e ON e."id" = ss."etablissementId"
+                        ORDER BY ss."updatedAt" DESC
+                `)
+                if err != nil {
+                        return nil // pas de config = tableau vide
                 }
-                err := row.Scan(
-                        &result.ID, &result.EtablissementID, &result.ProctoringActif, &result.DetectionCopie,
-                        &result.DetectionOnglet, &result.DetectionFullscreen, &result.BlocageCopie,
-                        &result.BlocageClicDroit, &result.BlocageImpression, &result.VerificationIdentite,
-                        &result.TempsInactiviteMax, &result.NbOngletsMax, &result.NbAlertesMax,
-                        &result.AutoSubmitOnViolation, &result.CaptureEcran, &result.RapportFraude,
-                        &result.SeuilSimilarite, &result.PenaliteFullscreenExit, &result.FullscreenObligatoire,
-                        &result.IntervalleCaptureEcran,
-                )
-                if err == nil {
-                        found = true
+                defer rows.Close()
+
+                for rows.Next() {
+                        s := secSettings{}
+                        ei := etabInfo{}
+                        if err := rows.Scan(
+                                &s.ID, &s.EtablissementID, &s.ProctoringActif, &s.DetectionCopie,
+                                &s.DetectionOnglet, &s.DetectionFullscreen, &s.BlocageCopie,
+                                &s.BlocageClicDroit, &s.BlocageImpression, &s.VerificationIdentite,
+                                &s.TempsInactiviteMax, &s.NbOngletsMax, &s.NbAlertesMax,
+                                &s.AutoSubmitOnViolation, &s.CaptureEcran, &s.RapportFraude,
+                                &s.SeuilSimilarite, &s.PenaliteFullscreenExit, &s.FullscreenObligatoire,
+                                &s.IntervalleCaptureEcran,
+                                &ei.ID, &ei.Nom, &ei.Type, &ei.Ville, &ei.Actif,
+                        ); err == nil {
+                                s.Etablissement = &ei
+                                results = append(results, s)
+                        }
                 }
                 return nil
         })
 
-        if !found {
-                w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(map[string]any{"settings": map[string]any{}})
-                return
-        }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"settings": result})
+        json.NewEncoder(w).Encode(map[string]any{"securitySettings": results})
 }
 
 // ──────────────────────────────────────────────────────────────────────────

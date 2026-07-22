@@ -643,7 +643,7 @@ func (s *Server) securitySettingsByEtablissement(w http.ResponseWriter, r *http.
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// PARAMETRES-FIX-P1+P4+P5 : updateSecuritySettingsByEtablissement
+// PARAMETRES-FIX-P1+P4+P5 + SECU-SYNC-FIX : updateSecuritySettingsByEtablissement
 // PATCH /api/security-settings/etablissement/{id}
 //
 // P1 (CRITICAL) : avant, le frontend appelait PATCH /api/security-settings/{configId}
@@ -654,6 +654,12 @@ func (s *Server) securitySettingsByEtablissement(w http.ResponseWriter, r *http.
 // P4 (HIGH) : check applicatif d'appartenance (RESPONSABLE doit posséder l'étab,
 // ADMIN doit avoir un EtablissementAccess valide). Cohérent avec le module
 // /etablissements (fix E1/E6).
+// SECU-SYNC-FIX (CRITICAL) : ADMIN PaaS/SaaS propriétaire de la plateforme doit
+// pouvoir modifier les settings de TOUT établissement via /securite. Le check
+// admin_has_etablissement_access bloquait l'ADMIN sans accès APPROUVE → 403.
+// Aligné sur Etablissement_select (migration 000028) où ADMIN voit tout sans
+// condition. On retire le check applicatif pour ADMIN ; la RLS (migration 000102)
+// autorise is_admin() sans restriction.
 // ──────────────────────────────────────────────────────────────────────────
 
 func (s *Server) updateSecuritySettingsByEtablissement(w http.ResponseWriter, r *http.Request) {
@@ -756,16 +762,10 @@ func (s *Server) updateSecuritySettingsByEtablissement(w http.ResponseWriter, r 
 
         result := secSettings{EtablissementID: etabID}
         errTx := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                // P4 : check admin_has_etablissement_access pour ADMIN.
-                if role == domain.RoleAdmin {
-                        var hasAccess bool
-                        if err := tx.QueryRow(r.Context(), `SELECT admin_has_etablissement_access($1)`, etabID).Scan(&hasAccess); err != nil {
-                                return fmt.Errorf("check admin access: %w", err)
-                        }
-                        if !hasAccess {
-                                return &domain.UnauthorizedError{Message: "accès non autorisé à cet établissement"}
-                        }
-                }
+                // SECU-SYNC-FIX : ADMIN PaaS/SaaS a accès à TOUT établissement.
+                // Le check admin_has_etablissement_access est retiré (RLS migration 000102
+                // autorise is_admin() sans restriction). RESPONSABLE est déjà vérifié
+                // en amont (claims.EtablissementID == etabID).
 
                 // P5 : upsert — vérifier si une config existe déjà pour cet établissement.
                 var existingID string
