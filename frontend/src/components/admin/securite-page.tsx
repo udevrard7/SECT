@@ -347,7 +347,10 @@ export function SecuritePage() {
 
     try {
       setSaving(true)
-      const res = await fetch(`/api/security-settings/${settings.id}`, {
+      // ADMIN-SECURITE-FIX : utiliser selectedEtablissementId (route correcte)
+      // au lieu de settings.id (route PATCH /api/security-settings/{configId} inexistante → 404).
+      // La seule route PATCH existante est /api/security-settings/etablissement/{etabId}.
+      const res = await fetch(`/api/security-settings/etablissement/${selectedEtablissementId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -554,12 +557,17 @@ export function SecuritePage() {
               <CardContent className="space-y-3">
                 <ToggleRow
                   id="proctoring-actif"
-                  label="Proctoring actif"
-                  description="Active la surveillance vidéo et le suivi en temps réel des candidats pendant les évaluations"
+                  label="Proctoring actif (master switch)"
+                  description="Active toutes les détections anti-fraude (onglet, copie, capture, inactivité). Si désactivé, seul le mode plein écran reste actif."
                   checked={settings.proctoringActif}
                   onCheckedChange={(v) => updateField('proctoringActif', v)}
                   icon={MonitorSmartphone}
                 />
+                {!settings.proctoringActif && (
+                  <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+                    ⚠️ Proctoring désactivé — les options ci-dessous seront ignorées pendant les évaluations. Seul le plein écran restera actif.
+                  </div>
+                )}
                 <ToggleRow
                   id="detection-copie"
                   label="Détection de copier/coller"
