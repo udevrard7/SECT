@@ -25,12 +25,12 @@ import {
   AlertCircle,
   FileText,
   LifeBuoy,
+  Hourglass,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -81,6 +81,7 @@ interface AccessRecord {
   statut: 'EN_ATTENTE' | 'APPROUVE' | 'REFUSE' | 'EXPIRE'
   dateDebut: string | null
   dateFin: string | null
+  dureeValiditeHeures: number | null // DUREE-VALIDITE-24H : durée souhaitée par l'ADMIN en heures (1,2,4,6,8,12,24)
   commentaire: string | null
   approuvePar: string | null
   createdAt: string
@@ -291,10 +292,11 @@ export function AccesEtablissementsPage() {
   const [assistanceLoadingId, setAssistanceLoadingId] = useState<string | null>(null)
 
   // ─── Form state ───
+  // DUREE-VALIDITE-24H : remplace formDateDebut/formDateFin par un Select dropdown
+  // pour la durée souhaitée (1h, 2h, 4h, 6h, 8h, 12h, 24h). Max 24h.
   const [formEtablissementId, setFormEtablissementId] = useState('')
   const [formMotif, setFormMotif] = useState('')
-  const [formDateDebut, setFormDateDebut] = useState('')
-  const [formDateFin, setFormDateFin] = useState('')
+  const [formDureeValiditeHeures, setFormDureeValiditeHeures] = useState('')
   const [formCommentaire, setFormCommentaire] = useState('')
 
   // ─── Stats ───
@@ -429,34 +431,34 @@ export function AccesEtablissementsPage() {
   }
 
   // ─── Submit access request ───
+  // DUREE-VALIDITE-24H : envoi de dureeValiditeHeures au lieu de dateDebut/dateFin.
+  // L'ADMIN sélectionne une durée prédéfinie (1h-24h) via dropdown.
+  // Le RESPONSABLE décide de la durée réellement accordée lors de l'approbation.
   const handleSubmitRequest = async () => {
-    if (!formEtablissementId || !formMotif || !user?.id) {
+    if (!formEtablissementId || !formMotif || !formDureeValiditeHeures || !user?.id) {
       toast.error('Champs manquants', {
-        description: 'L\'établissement et le motif sont obligatoires.',
+        description: 'L\'établissement, le motif et la durée de validité sont obligatoires.',
       })
       return
     }
 
     setIsSubmitting(true)
     try {
-      // ACCES-ETABLISSEMENTS-FIX : convertir les dates "YYYY-MM-DD" (input type=date)
-      // en RFC3339 "YYYY-MM-DDT00:00:00Z" car le backend Go décode *time.Time qui
-      // attend le format RFC3339. Sans conversion, json.Decoder échoue → 400 "JSON invalide".
-      const toRFC3339 = (d: string): string | null => {
-        if (!d) return null
-        return `${d}T00:00:00Z`
+      const body: Record<string, unknown> = {
+        adminId: user.id,
+        etablissementId: formEtablissementId,
+        motif: formMotif,
+        commentaire: formCommentaire || null,
+      }
+      // DUREE-VALIDITE-24H : envoyer dureeValiditeHeures (la durée souhaitée par l'ADMIN).
+      // Le backend stocke cette valeur pour que le RESPONSABLE puisse la voir lors de l'approbation.
+      if (formDureeValiditeHeures) {
+        body.dureeValiditeHeures = parseInt(formDureeValiditeHeures, 10)
       }
       const res = await fetch('/api/etablissement-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          adminId: user.id,
-          etablissementId: formEtablissementId,
-          motif: formMotif,
-          dateDebut: toRFC3339(formDateDebut),
-          dateFin: toRFC3339(formDateFin),
-          commentaire: formCommentaire || null,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -481,8 +483,7 @@ export function AccesEtablissementsPage() {
       // Reset form
       setFormEtablissementId('')
       setFormMotif('')
-      setFormDateDebut('')
-      setFormDateFin('')
+      setFormDureeValiditeHeures('')
       setFormCommentaire('')
       setActiveTab('mes-autorisations')
       await refreshData()
@@ -500,8 +501,8 @@ export function AccesEtablissementsPage() {
     // Pre-fill the form with the same etablissement and motif
     setFormEtablissementId(record.etablissementId)
     setFormMotif(record.motif)
-    setFormDateDebut('')
-    setFormDateFin('')
+    // DUREE-VALIDITE-24H : pré-remplir la durée avec la valeur de la demande précédente
+    setFormDureeValiditeHeures(record.dureeValiditeHeures ? String(record.dureeValiditeHeures) : '')
     setFormCommentaire('')
     setActiveTab('demander-acces')
     toast.info('Renouvellement', {
@@ -636,8 +637,8 @@ export function AccesEtablissementsPage() {
                       <TableHead className="font-display">Établissement</TableHead>
                       <TableHead className="font-display">Motif</TableHead>
                       <TableHead className="font-display">Statut</TableHead>
-                      <TableHead className="font-display">Date début</TableHead>
-                      <TableHead className="font-display">Date fin</TableHead>
+                      <TableHead className="font-display">Durée souhaitée</TableHead>
+                      <TableHead className="font-display">Validité</TableHead>
                       <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -678,8 +679,17 @@ export function AccesEtablissementsPage() {
                               )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm">{formatDate(record.dateDebut)}</TableCell>
-                        <TableCell className="text-sm">{formatDate(record.dateFin)}</TableCell>
+                        <TableCell className="text-sm">
+                          {/* DUREE-VALIDITE-24H : afficher la durée souhaitée par l'ADMIN */}
+                          {record.dureeValiditeHeures ? `${record.dureeValiditeHeures}h` : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="space-y-0.5">
+                            {record.dateDebut && <span>Début : {formatDate(record.dateDebut)}</span>}
+                            {record.dateFin && <span>Fin : {formatDate(record.dateFin)}</span>}
+                            {!record.dateDebut && !record.dateFin && <span>En attente d'approbation</span>}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">
                           {record.statut === 'EN_ATTENTE' && (
                             <Button
@@ -842,26 +852,28 @@ export function AccesEtablissementsPage() {
                     </Select>
                   </div>
 
-                  {/* Date range */}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="access-date-debut">Date début (optionnel)</Label>
-                      <Input
-                        id="access-date-debut"
-                        type="date"
-                        value={formDateDebut}
-                        onChange={(e) => setFormDateDebut(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="access-date-fin">Date fin (optionnel)</Label>
-                      <Input
-                        id="access-date-fin"
-                        type="date"
-                        value={formDateFin}
-                        onChange={(e) => setFormDateFin(e.target.value)}
-                      />
-                    </div>
+                  {/* DUREE-VALIDITE-24H : Select dropdown pour la durée souhaitée (max 24h) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="access-duree">Durée de validité souhaitée *</Label>
+                    <Select value={formDureeValiditeHeures} onValueChange={setFormDureeValiditeHeures}>
+                      <SelectTrigger id="access-duree">
+                        <SelectValue placeholder="Sélectionner une durée" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 heure</SelectItem>
+                        <SelectItem value="2">2 heures</SelectItem>
+                        <SelectItem value="4">4 heures</SelectItem>
+                        <SelectItem value="6">6 heures</SelectItem>
+                        <SelectItem value="8">8 heures</SelectItem>
+                        <SelectItem value="12">12 heures</SelectItem>
+                        <SelectItem value="24">24 heures (max)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {formDureeValiditeHeures
+                        ? `Durée indicative — le responsable décidera de la durée réellement accordée lors de l'approbation.`
+                        : 'Sélectionnez la durée d\'accès souhaitée. Le responsable pourra ajuster cette durée lors de l\'approbation.'}
+                    </p>
                   </div>
 
                   {/* Commentaire */}
@@ -995,12 +1007,12 @@ export function AccesEtablissementsPage() {
                         </Badge>
                       </div>
 
-                      {/* Access expiration */}
+                      {/* Access expiration — DUREE-VALIDITE-24H : afficher heure d'expiration */}
                       {etab.access?.dateFin && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Calendar className="h-3.5 w-3.5" />
+                          <Hourglass className="h-3.5 w-3.5" />
                           <span>
-                            Accès jusqu&apos;au {formatDate(etab.access.dateFin)}
+                            Accès jusqu&apos;au {new Date(etab.access.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       )}

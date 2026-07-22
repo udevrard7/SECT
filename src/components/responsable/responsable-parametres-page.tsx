@@ -176,6 +176,7 @@ interface AccessRecord {
   statut: 'EN_ATTENTE' | 'APPROUVE' | 'REFUSE' | 'EXPIRE'
   dateDebut: string | null
   dateFin: string | null
+  dureeValiditeHeures: number | null // DUREE-VALIDITE-24H : durée souhaitée par l'ADMIN (1-24h)
   commentaire: string | null
   approuvePar: string | null
   createdAt: string
@@ -594,12 +595,13 @@ export function ResponsableParametresPage() {
 
   // ACCESS-WORKFLOW-UI : état pour les dialogues d'approbation/refus/révocation
   // des demandes d'accès ADMIN. approveTarget + approveDuree pour le sélecteur
-  // de durée (7/30/90/365 jours ou Illimité) ; refuseTarget + refuseCommentaire
-  // pour le motif de refus ; revokeTarget pour la confirmation de révocation.
+  // de durée en heures (1,2,4,6,8,12,24) — DUREE-VALIDITE-24H : max 24h.
+  // refuseTarget + refuseCommentaire pour le motif de refus ;
+  // revokeTarget pour la confirmation de révocation.
   const [approveTarget, setApproveTarget] = useState<AccessRecord | null>(null)
   const [refuseTarget, setRefuseTarget] = useState<AccessRecord | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<AccessRecord | null>(null)
-  const [approveDuree, setApproveDuree] = useState('30')
+  const [approveDuree, setApproveDuree] = useState('4') // DUREE-VALIDITE-24H : défaut 4h
   const [refuseCommentaire, setRefuseCommentaire] = useState('')
   const [approving, setApproving] = useState(false)
   const [refusing, setRefusing] = useState(false)
@@ -969,17 +971,16 @@ export function ResponsableParametresPage() {
   }
 
   // ─── Approve access request (ACCESS-WORKFLOW-UI) ───
-  // Le backend Update() accepte {statut: APPROUVE, dureeAccesJours: 30} et
-  // auto-calcule dateFin = now() + duree. Pour "Illimité" (dureeAccesJours=0
-  // ou absent), dateFin reste null → pas d'expiration automatique.
+  // DUREE-VALIDITE-24H : le backend Update() accepte {statut: APPROUVE, dureeAccesHeures: 4}
+  // et auto-calcule dateFin = now() + heures. La durée est limitée à max 24h.
   const handleApprove = async () => {
     if (!approveTarget) return
     setApproving(true)
     try {
       const body: Record<string, unknown> = { statut: 'APPROUVE' }
-      // dureeAccesJours: 0 = "Illimité" → on n'envoie pas le champ (dateFin=null).
-      if (approveDuree !== '0') {
-        body.dureeAccesJours = parseInt(approveDuree, 10)
+      // DUREE-VALIDITE-24H : dureeAccesHeures (1-24h). Le backend calcule dateFin automatiquement.
+      if (approveDuree) {
+        body.dureeAccesHeures = parseInt(approveDuree, 10)
       }
       const res = await fetch(`/api/etablissement-access/${approveTarget.id}`, {
         method: 'PATCH',
@@ -2154,8 +2155,8 @@ export function ResponsableParametresPage() {
                             <TableHead className="font-display">Admin</TableHead>
                             <TableHead className="font-display">Motif</TableHead>
                             <TableHead className="font-display">Statut</TableHead>
-                            <TableHead className="font-display">Date début</TableHead>
-                            <TableHead className="font-display">Date fin</TableHead>
+                            <TableHead className="font-display">Durée souhaitée</TableHead>
+                            <TableHead className="font-display">Validité</TableHead>
                             <TableHead className="text-right font-display">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -2192,8 +2193,17 @@ export function ResponsableParametresPage() {
                                     )}
                                 </div>
                               </TableCell>
-                              <TableCell className="text-sm">{formatAccessDate(record.dateDebut)}</TableCell>
-                              <TableCell className="text-sm">{formatAccessDate(record.dateFin)}</TableCell>
+                              <TableCell className="text-sm">
+                                {/* DUREE-VALIDITE-24H : afficher la durée souhaitée par l'ADMIN */}
+                                {record.dureeValiditeHeures ? `${record.dureeValiditeHeures}h` : '—'}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                <div className="space-y-0.5">
+                                  {record.dateDebut && <span className="text-xs">Début : {formatAccessDate(record.dateDebut)}</span>}
+                                  {record.dateFin && <span className="text-xs">Fin : {formatAccessDate(record.dateFin)}</span>}
+                                  {!record.dateDebut && !record.dateFin && <span className="text-xs text-muted-foreground">En attente</span>}
+                                </div>
+                              </TableCell>
                               <TableCell className="text-right">
                                 {record.statut === 'EN_ATTENTE' && (
                                   <div className="flex justify-end gap-1">
@@ -2293,30 +2303,35 @@ export function ResponsableParametresPage() {
               <DialogDescription>
                 Choisissez la durée d&apos;accès pour{' '}
                 <strong>{approveTarget?.admin?.name ?? approveTarget?.admin?.email ?? 'cet admin'}</strong>.
+                {approveTarget?.dureeValiditeHeures && (
+                  <> L&apos;admin a demandé <strong>{approveTarget.dureeValiditeHeures}h</strong>.</>
+                )}
                 À l&apos;expiration, l&apos;accès sera automatiquement révoqué.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
               <div className="space-y-2">
-                <Label htmlFor="approve-duree">Durée d&apos;accès</Label>
+                <Label htmlFor="approve-duree">Durée d&apos;accès accordée (max 24h)</Label>
                 <Select value={approveDuree} onValueChange={setApproveDuree}>
                   <SelectTrigger id="approve-duree">
                     <SelectValue placeholder="Sélectionner une durée" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="7">7 jours</SelectItem>
-                    <SelectItem value="30">30 jours</SelectItem>
-                    <SelectItem value="90">90 jours</SelectItem>
-                    <SelectItem value="365">365 jours</SelectItem>
-                    <SelectItem value="0">Illimité</SelectItem>
+                    <SelectItem value="1">1 heure</SelectItem>
+                    <SelectItem value="2">2 heures</SelectItem>
+                    <SelectItem value="4">4 heures</SelectItem>
+                    <SelectItem value="6">6 heures</SelectItem>
+                    <SelectItem value="8">8 heures</SelectItem>
+                    <SelectItem value="12">12 heures</SelectItem>
+                    <SelectItem value="24">24 heures (max)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {approveDuree === '0'
-                    ? 'Accès illimité : aucune date d&apos;expiration ne sera définie.'
-                    : `L&apos;accès expirera approximativement le ${new Date(
-                        Date.now() + parseInt(approveDuree, 10) * 24 * 60 * 60 * 1000
-                      ).toLocaleDateString('fr-FR')}.`}
+                  L&apos;accès expirera automatiquement à {' '}
+                  {new Date(
+                    Date.now() + parseInt(approveDuree || '4', 10) * 60 * 60 * 1000
+                  ).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.
+                  {' '}La durée d&apos;accès est limitée à 24h maximum (accès temporaire assistance/audit).
                 </p>
               </div>
             </div>
