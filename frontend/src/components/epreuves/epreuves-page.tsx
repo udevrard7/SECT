@@ -1321,6 +1321,11 @@ function SessionsTab() {
  const [dateEditTarget, setDateEditTarget] = useState<SessionEpreuve | null>(null)
  const [dateEditDebut, setDateEditDebut] = useState('')
  const [dateEditFin, setDateEditFin] = useState('')
+ const [dateEditSaving, setDateEditSaving] = useState(false)
+ // EPREUVES-DATES-FIX : garde-fou auto-calc. Quand l'utilisateur ne modifie
+ // que la date de début, on décale automatiquement la fin pour préserver la
+ // durée de l'épreuve. L'utilisateur peut toujours surcharger la fin manuellement.
+ const [dateEditAutoFin, setDateEditAutoFin] = useState(true)
 
  // Session spéciale dialog
  const [sessionSpecialeDialogOpen, setSessionSpecialeDialogOpen] = useState(false)
@@ -1677,31 +1682,133 @@ function SessionsTab() {
  return () => clearInterval(interval)
  }, [monitoringDialogOpen, monitoringEpreuve])
 
- const openDateEdit = (epreuve: SessionEpreuve) => {
- setDateEditTarget(epreuve)
- const toLocal = (d: string) => { const dt = new Date(d); const offset = dt.getTimezoneOffset(); const local = new Date(dt.getTime() - offset * 60000); return local.toISOString().slice(0, 16) }
- setDateEditDebut(toLocal(epreuve.dateDebut))
- setDateEditFin(toLocal(epreuve.dateFin))
+ // EPREUVES-DATES-FIX : convertit une date ISO/UTC en valeur compatible
+ // <input type="datetime-local"> (YYYY-MM-DDTHH:mm en heure locale).
+ const toLocalInput = (d: string) => {
+   const dt = new Date(d)
+   const offset = dt.getTimezoneOffset()
+   const local = new Date(dt.getTime() - offset * 60000)
+   return local.toISOString().slice(0, 16)
  }
 
- const handleEditDates = () => {
- if (!dateEditTarget) return
- const edit = async () => {
- try {
- const res = await fetch(`/api/epreuves/${dateEditTarget.id}`, {
- method:'PATCH',
- headers: {'Content-Type':'application/json' },
- body: JSON.stringify({ dateDebut: dateEditDebut, dateFin: dateEditFin }),
- })
- if (!res.ok) throw new Error('Erreur')
- toast.success('Dates mises à jour')
- setDateEditTarget(null)
- await refreshSessions()
- } catch {
- toast.error('Erreur lors de la mise à jour des dates')
+ // EPREUVES-DATES-FIX : convertit une valeur datetime-local (YYYY-MM-DDTHH:mm)
+ // en ISO string RFC3339 UTC pour l'API backend. Corrige le bug historique où
+ // la valeur brute était envoyée telle quelle → "format ISO invalide" côté Go
+ // (time.Parse(time.RFC3339, "2025-01-15T14:30") échoue sans secondes ni tz).
+ const toRFC3339 = (datetimeLocalValue: string): string => {
+   // new Date("2025-01-15T14:30") est interprété en heure locale du navigateur.
+   const d = new Date(datetimeLocalValue)
+   return d.toISOString() // ex: "2025-01-15T13:30:00.000Z" (UTC)
  }
+
+ // EPREUVES-DATES-FIX : presets rapides pour le dialog de modification des dates.
+ // Calculés à l'ouverture du dialog pour rester pertinents.
+ const buildDatePresets = () => {
+   const now = new Date()
+   const presets: { label: string; getDebut: () => Date }[] = []
+   const roundToNextQuarter = (d: Date) => {
+     const r = new Date(d)
+     r.setSeconds(0, 0)
+     const min = r.getMinutes()
+     r.setMinutes(min + (15 - (min % 15)) % 15)
+     return r
+   }
+   const startOfTomorrow = () => { const d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d }
+   const startOfTomorrowAfternoon = () => { const d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(14, 0, 0, 0); return d }
+   const startOfMonday = () => {
+     const d = new Date(now)
+     const day = d.getDay() // 0 = dimanche
+     const diff = day === 0 ? 1 : day === 1 ? 7 : 8 - day // prochain lundi
+     d.setDate(d.getDate() + diff)
+     d.setHours(8, 0, 0, 0)
+     return d
+   }
+   presets.push({ label: 'Maintenant', getDebut: () => roundToNextQuarter(now) })
+   presets.push({ label: 'Dans 1 h', getDebut: () => new Date(now.getTime() + 60 * 60 * 1000) })
+   presets.push({ label: 'Demain 08 h', getDebut: startOfTomorrow })
+   presets.push({ label: 'Demain 14 h', getDebut: startOfTomorrowAfternoon })
+   presets.push({ label: 'Lundi 08 h', getDebut: startOfMonday })
+   return presets
  }
- edit()
+
+ const openDateEdit = (epreuve: SessionEpreuve) => {
+   setDateEditTarget(epreuve)
+   setDateEditDebut(toLocalInput(epreuve.dateDebut))
+   setDateEditFin(toLocalInput(epreuve.dateFin))
+   setDateEditAutoFin(true)
+   setDateEditSaving(false)
+ }
+
+ // EPREUVES-DATES-FIX : quand l'utilisateur change la date de début et que
+ // l'auto-calc est actif, on décale la fin pour préserver la durée originelle.
+ const handleDebutChange = (newDebut: string) => {
+   setDateEditDebut(newDebut)
+   if (dateEditAutoFin && dateEditTarget && newDebut) {
+     const oldDebut = new Date(dateEditTarget.dateDebut)
+     const oldFin = new Date(dateEditTarget.dateFin)
+     const dureeMs = oldFin.getTime() - oldDebut.getTime()
+     const newFin = new Date(new Date(newDebut).getTime() + dureeMs)
+     setDateEditFin(toLocalInput(newFin.toISOString()))
+   }
+ }
+
+ // EPREUVES-DATES-FIX : applique un preset — calcule début + fin (début + durée).
+ const applyDatePreset = (getDebut: () => Date) => {
+   if (!dateEditTarget) return
+   const newDebut = getDebut()
+   const oldDebut = new Date(dateEditTarget.dateDebut)
+   const oldFin = new Date(dateEditTarget.dateFin)
+   const dureeMs = Math.max(oldFin.getTime() - oldDebut.getTime(), (dateEditTarget.duree || 60) * 60 * 1000)
+   const newFin = new Date(newDebut.getTime() + dureeMs)
+   setDateEditDebut(toLocalInput(newDebut.toISOString()))
+   setDateEditFin(toLocalInput(newFin.toISOString()))
+ }
+
+ // EPREUVES-DATES-FIX : validation temps réel du formulaire.
+ const dateEditValidation = useMemo(() => {
+   if (!dateEditDebut || !dateEditFin) return { valid: false, reason: 'Renseignez les deux dates' }
+   const debut = new Date(dateEditDebut)
+   const fin = new Date(dateEditFin)
+   if (isNaN(debut.getTime()) || isNaN(fin.getTime())) return { valid: false, reason: 'Date invalide' }
+   if (fin.getTime() <= debut.getTime()) return { valid: false, reason: 'La fin doit être après le début' }
+   const dureeMin = Math.round((fin.getTime() - debut.getTime()) / 60000)
+   return { valid: true, reason: '', dureeMin }
+ }, [dateEditDebut, dateEditFin])
+
+ const handleEditDates = async () => {
+   if (!dateEditTarget) return
+   if (!dateEditValidation.valid) {
+     toast.error('Formulaire invalide', { description: dateEditValidation.reason })
+     return
+   }
+   setDateEditSaving(true)
+   try {
+     // EPREUVES-DATES-FIX : conversion datetime-local → RFC3339 UTC.
+     const payload = {
+       dateDebut: toRFC3339(dateEditDebut),
+       dateFin: toRFC3339(dateEditFin),
+     }
+     const res = await fetch(`/api/epreuves/${dateEditTarget.id}`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify(payload),
+     })
+     if (!res.ok) {
+       const errData = await res.json().catch(() => ({}))
+       throw new Error(errData.error || errData.message || `Erreur ${res.status}`)
+     }
+     toast.success('Dates mises à jour', {
+       description: `${formatDateTime(dateEditDebut)} → ${formatDateTime(dateEditFin)}`,
+     })
+     setDateEditTarget(null)
+     await refreshSessions()
+   } catch (err) {
+     toast.error('Erreur lors de la mise à jour des dates', {
+       description: err instanceof Error ? err.message : 'Réessayez ultérieurement',
+     })
+   } finally {
+     setDateEditSaving(false)
+   }
  }
 
  // PDF export for SessionsTab
@@ -1813,6 +1920,9 @@ function SessionsTab() {
  <Send className="h-3.5 w-3.5" /> Publier
  </Button>
  {pdfDropdown}
+ <Button variant="outline" size="sm" onClick={() => openDateEdit(epreuve)}>
+ <CalendarDays className="h-3.5 w-3.5" /> Dates
+ </Button>
  <Button variant="outline" size="sm" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget(epreuve)}>
  <Trash2 className="h-3.5 w-3.5" /> Supprimer
  </Button>
@@ -2763,25 +2873,139 @@ function SessionsTab() {
  </AlertDialogContent>
  </AlertDialog>
 
- {/* Date Edit Dialog */}
- <Dialog open={!!dateEditTarget} onOpenChange={(open) => { if (!open) setDateEditTarget(null) }}>
- <DialogContent className="sm:max-w-md">
+ {/* Date Edit Dialog — EPREUVES-DATES-FIX : formulaire enrichi avec presets, auto-calc durée, validation temps réel */}
+ <Dialog open={!!dateEditTarget} onOpenChange={(open) => { if (!open && !dateEditSaving) setDateEditTarget(null) }}>
+ <DialogContent className="sm:max-w-lg">
  <DialogHeader>
- <DialogTitle>Modifier les dates</DialogTitle>
+ <DialogTitle className="flex items-center gap-2">
+ <CalendarDays className="h-5 w-5 text-info" />
+ Modifier les dates et heures
+ </DialogTitle>
+ <DialogDescription>
+ {dateEditTarget && (
+ <>Pour l'épreuve <span className="font-semibold text-foreground">« {dateEditTarget.titre} »</span></>
+ )}
+ </DialogDescription>
  </DialogHeader>
- <div className="space-y-4 py-4">
+
+ {dateEditTarget && (
+ <div className="space-y-4 py-2">
+ {/* Statut + durée configurée */}
+ <div className="flex flex-wrap items-center gap-2 text-xs">
+ <Badge variant="outline" className={
+ dateEditTarget.statut === 'BROUILLON' ? 'border-muted-foreground/30 text-muted-foreground' :
+ dateEditTarget.statut === 'PLANIFIEE' ? 'border-info/40 text-info' :
+ dateEditTarget.statut === 'EN_COURS' ? 'border-success/40 text-success-text' :
+ 'border-muted-foreground/30 text-muted-foreground'
+ }>
+ {dateEditTarget.statut === 'BROUILLON' && <Edit3 className="h-3 w-3" />}
+ {dateEditTarget.statut === 'PLANIFIEE' && <Calendar className="h-3 w-3" />}
+ {dateEditTarget.statut === 'EN_COURS' && <Activity className="h-3 w-3" />}
+ {dateEditTarget.statut === 'TERMINEE' && <CheckCircle2 className="h-3 w-3" />}
+ {dateEditTarget.statut === 'CLOTUREE' && <Lock className="h-3 w-3" />}
+ {dateEditTarget.statut}
+ </Badge>
+ <Badge variant="outline" className="border-warning/40 text-warning">
+ <Clock className="h-3 w-3" /> Durée configurée : {dateEditTarget.duree} min
+ </Badge>
+ </div>
+
+ {/* Dates actuelles (référence) */}
+ <div className="rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+ <span className="font-medium text-foreground">Actuellement :</span>{' '}
+ {formatDateTime(dateEditTarget.dateDebut)} → {formatDateTime(dateEditTarget.dateFin)}
+ </div>
+
+ {/* Presets rapides */}
  <div className="space-y-2">
- <Label>Date début</Label>
- <Input type="datetime-local" value={dateEditDebut} onChange={(e) => setDateEditDebut(e.target.value)} />
+ <Label className="text-xs text-muted-foreground">Démarrage rapide</Label>
+ <div className="flex flex-wrap gap-2">
+ {buildDatePresets().map((p) => (
+ <Button
+ key={p.label}
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-7 text-xs"
+ onClick={() => applyDatePreset(p.getDebut)}
+ >
+ {p.label}
+ </Button>
+ ))}
  </div>
- <div className="space-y-2">
- <Label>Date fin</Label>
- <Input type="datetime-local" value={dateEditFin} onChange={(e) => setDateEditFin(e.target.value)} />
  </div>
+
+ {/* Date début */}
+ <div className="space-y-1.5">
+ <Label className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Date et heure de début</Label>
+ <Input
+ type="datetime-local"
+ value={dateEditDebut}
+ onChange={(e) => handleDebutChange(e.target.value)}
+ className={dateEditValidation.valid === false && dateEditDebut ? 'border-destructive' : ''}
+ />
  </div>
- <DialogFooter>
- <Button variant="outline" onClick={() => setDateEditTarget(null)}>Annuler</Button>
- <Button className="bg-success/60 hover:bg-success/70" onClick={handleEditDates}>Enregistrer</Button>
+
+ {/* Auto-calc toggle */}
+ <div className="flex items-center gap-2 text-xs">
+ <Checkbox
+ id="auto-fin"
+ checked={dateEditAutoFin}
+ onCheckedChange={(v) => setDateEditAutoFin(v === true)}
+ className="h-3.5 w-3.5"
+ />
+ <label htmlFor="auto-fin" className="text-muted-foreground cursor-pointer select-none">
+ Ajuster automatiquement la fin quand je change le début (préserve la durée)
+ </label>
+ </div>
+
+ {/* Date fin */}
+ <div className="space-y-1.5">
+ <Label className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Date et heure de fin</Label>
+ <Input
+ type="datetime-local"
+ value={dateEditFin}
+ onChange={(e) => { setDateEditFin(e.target.value); setDateEditAutoFin(false) }}
+ className={dateEditValidation.valid === false && dateEditFin ? 'border-destructive' : ''}
+ />
+ </div>
+
+ {/* Durée calculée + validation */}
+ {dateEditValidation.valid ? (
+ <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success-text">
+ <CheckCircle2 className="h-4 w-4" />
+ <span>
+ Nouvelle durée : <strong>{Math.floor(dateEditValidation.dureeMin! / 60)}h{String(dateEditValidation.dureeMin! % 60).padStart(2, '0')}</strong>
+ {' '}({dateEditValidation.dureeMin!} min)
+ {dateEditTarget.duree && dateEditValidation.dureeMin! !== dateEditTarget.duree && (
+ <span className="text-warning ml-2">— diffère de la durée configurée ({dateEditTarget.duree} min)</span>
+ )}
+ </span>
+ </div>
+ ) : (
+ <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+ <AlertTriangle className="h-4 w-4" />
+ <span>{dateEditValidation.reason}</span>
+ </div>
+ )}
+ </div>
+ )}
+
+ <DialogFooter className="gap-2">
+ <Button variant="outline" onClick={() => setDateEditTarget(null)} disabled={dateEditSaving}>
+ Annuler
+ </Button>
+ <Button
+ className="bg-success/60 hover:bg-success/70"
+ onClick={handleEditDates}
+ disabled={!dateEditValidation.valid || dateEditSaving}
+ >
+ {dateEditSaving ? (
+ <><Loader2 className="h-4 w-4 animate-spin" /> Enregistrement…</>
+ ) : (
+ <><Check className="h-4 w-4" /> Enregistrer</>
+ )}
+ </Button>
  </DialogFooter>
  </DialogContent>
  </Dialog>
