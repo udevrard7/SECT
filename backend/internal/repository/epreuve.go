@@ -15,6 +15,35 @@ import (
         "github.com/udevrard7/sect/backend/internal/domain"
 )
 
+// parseEpreuveDate parse une date soumise par le client de manière tolérante.
+// Accepte :
+//   - RFC3339 strict          : "2025-01-15T14:30:00Z" / "2025-01-15T14:30:00+02:00"
+//   - datetime-local HTML     : "2025-01-15T14:30" (sans secondes ni timezone —
+//     format produit nativement par <input type="datetime-local">)
+//   - datetime-local + secondes: "2025-01-15T14:30:00"
+//
+// EPREUVES-DATES-FIX : sans cette tolérance, le frontend qui envoie la valeur
+// brute d'un <input type="datetime-local"> déclenche l'erreur 422
+// "format ISO invalide" et rend impossible toute modification de dates.
+// Les valeurs sans timezone sont interprétées en temps local du serveur.
+var epreuveDateLayouts = []string{
+        time.RFC3339,
+        "2006-01-02T15:04:05",
+        "2006-01-02T15:04",
+}
+
+func parseEpreuveDate(field, raw string) (time.Time, error) {
+        var lastErr error
+        for _, layout := range epreuveDateLayouts {
+                t, err := time.ParseInLocation(layout, raw, time.Local)
+                if err == nil {
+                        return t, nil
+                }
+                lastErr = err
+        }
+        return time.Time{}, &domain.ValidationError{Field: field, Message: "format de date invalide : " + lastErr.Error()}
+}
+
 // EpreuveRepository implémente domain.EpreuveRepository.
 type EpreuveRepository struct {
         pool *pgxpool.Pool
@@ -870,19 +899,53 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
         if input.Duree != nil {
                 addSet("duree", *input.Duree)
         }
+        // EPREUVES-DATES-FIX : parser tolérant (accepte datetime-local HTML + RFC3339).
+        // On mémorise les dates parsées pour valider la cohérence dateFin > dateDebut.
+        var parsedDebut *time.Time
+        var parsedFin *time.Time
         if input.DateDebut != nil {
-                d, err := time.Parse(time.RFC3339, *input.DateDebut)
+                d, err := parseEpreuveDate("dateDebut", *input.DateDebut)
                 if err != nil {
-                        return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
+                        return nil, err
                 }
+                parsedDebut = &d
                 addSet("dateDebut", d)
         }
         if input.DateFin != nil {
-                d, err := time.Parse(time.RFC3339, *input.DateFin)
+                d, err := parseEpreuveDate("dateFin", *input.DateFin)
                 if err != nil {
-                        return nil, &domain.ValidationError{Field: "dateFin", Message: "format ISO invalide"}
+                        return nil, err
                 }
+                parsedFin = &d
                 addSet("dateFin", d)
+        }
+        // EPREUVES-DATES-FIX : cohérence dateFin > dateDebut. On compare les valeurs
+        // soumises (ou à défaut les valeurs existantes) pour empêcher une fenêtre
+        // d'examen négative. On évite un SELECT supplémentaire si les deux dates
+        // sont fournies (cas le plus courant via le dialog de modification).
+        if parsedDebut != nil || parsedFin != nil {
+                debut := parsedDebut
+                fin := parsedFin
+                if debut == nil || fin == nil {
+                        // L'un des deux n'est pas fourni : récupérer la valeur existante.
+                        var existingDebut, existingFin time.Time
+                        err := tx.QueryRow(ctx, `SELECT "dateDebut", "dateFin" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, id).Scan(&existingDebut, &existingFin)
+                        if err != nil {
+                                if err == pgx.ErrNoRows {
+                                        return nil, &domain.NotFoundError{Entity: "Epreuve", ID: id}
+                                }
+                                return nil, fmt.Errorf("fetch existing dates: %w", err)
+                        }
+                        if debut == nil {
+                                debut = &existingDebut
+                        }
+                        if fin == nil {
+                                fin = &existingFin
+                        }
+                }
+                if !fin.After(*debut) {
+                        return nil, &domain.ValidationError{Field: "dateFin", Message: "la date de fin doit être postérieure à la date de début"}
+                }
         }
         if input.MelangeQuestions != nil {
                 addSet("melangeQuestions", *input.MelangeQuestions)
