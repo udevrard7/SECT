@@ -45,6 +45,37 @@ Base de données : Neon PostgreSQL (eu-central-1)
 
 ### Score final : ✅ 18/18 options fonctionnelles (vs 11/18 avant)
 
+---
+
+## Session du 2026-07-22 — FIX-SIM-ETAB: Bug Epreuve.etablissementId inexistant
+
+### Task ID: FIX-SIM-ETAB
+
+**Commit**: `cadb124` — poussé vers GitHub → déploiement auto Vercel + Render
+
+### Bug identifié :
+Le backend démarrait avec l'erreur :
+```
+ERROR: column e.etablissementId does not exist (SQLSTATE 42703)
+```
+dans le Similarity Worker. Deux fichiers référencaient `e."etablissementId"` sur la table `Epreuve`, mais cette colonne n'existe pas. L'établissement est accessible uniquement via `Filiere.etablissementId` (Epreuve → Filiere → Etablissement).
+
+### Corrections :
+1. **similarity_worker.go** (ligne 104-120) : `LEFT JOIN + COALESCE(f.etablissementId, e.etablissementId)` → `JOIN Filiere + f.etablissementId` uniquement. Ajout de `f.etablissementId IS NOT NULL` pour exclure les épreuves sans filière.
+
+2. **downgrade_email.go** (ligne 61) : `SELECT count(*) FROM "Epreuve" WHERE "etablissementId" = $1` → `JOIN "Filiere" f ON f."id" = e."filiereId" WHERE f."etablissementId" = $1`.
+
+### Résultat :
+- Similarity Worker fonctionne correctement — trouvé 5 épreuves qualifiées (vs crash avant)
+- Backend démarré sans erreur sur Neon DB
+- Agent Browser : page d'accueil et login fonctionnelles
+
+### Environnement restauré (session continuée) :
+- Go 1.24.1 réinstallé dans `/home/z/go-sdk/go/`
+- Backend daemonizé via `start-stop-daemon` (PID persistant)
+- Frontend daemonizé via `start-stop-daemon` (PID persistant)
+- Neon DB migration version : 101 (toutes les nouvelles tables créées)
+
 ## Session du 2026-07-21 — Mise en place environnement de développement
 
 ### Task ID: SECT-ENV-SETUP-1
