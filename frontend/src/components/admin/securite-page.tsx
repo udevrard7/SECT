@@ -384,8 +384,9 @@ export function SecuritePage() {
         description: `Les paramètres de sécurité ont été mis à jour pour ${settings.etablissement?.nom || "l'établissement"}.`,
       })
 
-      // Refresh overview
+      // SECU-SYNC-FIX : refresh overview + invalidate responsable cache
       refreshAllSettings()
+      queryClient.invalidateQueries({ queryKey: ['responsable-security-settings', selectedEtablissementId] })
     } catch (err) {
       toast.error('Erreur de sauvegarde', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue',
