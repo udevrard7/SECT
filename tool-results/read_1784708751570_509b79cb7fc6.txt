@@ -1,0 +1,959 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Shield,
+     7→  Save,
+     8→  Eye,
+     9→  Lock,
+    10→  AlertTriangle,
+    11→  ClipboardCheck,
+    12→  MonitorSmartphone,
+    13→  MousePointerClick,
+    14→  Printer,
+    15→  UserCheck,
+    16→  Timer,
+    17→  AppWindow,
+    18→  BellRing,
+    19→  Send,
+    20→  FileSearch,
+    21→  BarChart3,
+    22→  Loader2,
+    23→  Building2,
+    24→  CheckCircle2,
+    25→  XCircle,
+    26→  Settings2,
+    27→  Camera,
+    28→} from 'lucide-react'
+    29→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    30→import { Button } from '@/components/ui/button'
+    31→import { Label } from '@/components/ui/label'
+    32→import { Switch } from '@/components/ui/switch'
+    33→import { Slider } from '@/components/ui/slider'
+    34→import { Separator } from '@/components/ui/separator'
+    35→import { Badge } from '@/components/ui/badge'
+    36→import {
+    37→  Select,
+    38→  SelectContent,
+    39→  SelectItem,
+    40→  SelectTrigger,
+    41→  SelectValue,
+    42→} from '@/components/ui/select'
+    43→import {
+    44→  Table,
+    45→  TableBody,
+    46→  TableCell,
+    47→  TableHead,
+    48→  TableHeader,
+    49→  TableRow,
+    50→} from '@/components/ui/table'
+    51→import {
+    52→  Tooltip,
+    53→  TooltipContent,
+    54→  TooltipProvider,
+    55→  TooltipTrigger,
+    56→} from '@/components/ui/tooltip'
+    57→import { toast } from 'sonner'
+    58→import { useAuthStore } from '@/stores/auth-store'
+    59→
+    60→// ─── Types ───
+    61→
+    62→interface Etablissement {
+    63→  id: string
+    64→  nom: string
+    65→  type: string | null
+    66→  ville: string | null
+    67→  actif: boolean
+    68→  _count?: { filieres: number; users: number }
+    69→}
+    70→
+    71→interface SecuritySettings {
+    72→  id: string
+    73→  etablissementId: string
+    74→  proctoringActif: boolean
+    75→  detectionCopie: boolean
+    76→  detectionOnglet: boolean
+    77→  detectionFullscreen: boolean
+    78→  captureEcran: boolean
+    79→  blocageCopie: boolean
+    80→  blocageClicDroit: boolean
+    81→  blocageImpression: boolean
+    82→  verificationIdentite: boolean
+    83→  tempsInactiviteMax: number
+    84→  nbOngletsMax: number
+    85→  nbAlertesMax: number
+    86→  autoSubmitOnViolation: boolean
+    87→  rapportFraude: boolean
+    88→  seuilSimilarite: number
+    89→  penaliteFullscreenExit: number
+    90→  fullscreenObligatoire: boolean
+    91→  intervalleCaptureEcran: number
+    92→  etablissement?: {
+    93→    id: string
+    94→    nom: string
+    95→    type: string | null
+    96→    ville: string | null
+    97→    actif: boolean
+    98→  }
+    99→}
+   100→
+   101→// ─── Default settings ───
+   102→
+   103→const DEFAULT_SETTINGS: Omit<SecuritySettings, 'id' | 'etablissementId' | 'etablissement'> = {
+   104→  proctoringActif: false,
+   105→  detectionCopie: true,
+   106→  detectionOnglet: true,
+   107→  detectionFullscreen: true,
+   108→  captureEcran: false,
+   109→  blocageCopie: true,
+   110→  blocageClicDroit: true,
+   111→  blocageImpression: true,
+   112→  verificationIdentite: false,
+   113→  tempsInactiviteMax: 120,
+   114→  nbOngletsMax: 3,
+   115→  nbAlertesMax: 5,
+   116→  autoSubmitOnViolation: false,
+   117→  rapportFraude: true,
+   118→  seuilSimilarite: 0.85,
+   119→  penaliteFullscreenExit: 5,
+   120→  fullscreenObligatoire: true,
+   121→  intervalleCaptureEcran: 60,
+   122→}
+   123→
+   124→// ─── Toggle Row Component ───
+   125→
+   126→function ToggleRow({
+   127→  id,
+   128→  label,
+   129→  description,
+   130→  checked,
+   131→  onCheckedChange,
+   132→  disabled = false,
+   133→  icon: Icon,
+   134→}: {
+   135→  id: string
+   136→  label: string
+   137→  description: string
+   138→  checked: boolean
+   139→  onCheckedChange: (checked: boolean) => void
+   140→  disabled?: boolean
+   141→  icon: React.ComponentType<{ className?: string }>
+   142→}) {
+   143→  return (
+   144→    <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors ${checked ? 'border-success/30 bg-success/5' : 'border-border'} ${disabled ? 'opacity-50' : ''}`}>
+   145→      <div className="flex items-start gap-3 flex-1 min-w-0">
+   146→        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? 'bg-success/10 text-success-text' : 'bg-muted text-muted-foreground'}`}>
+   147→          <Icon className="h-4 w-4" />
+   148→        </div>
+   149→        <div className="space-y-0.5 min-w-0">
+   150→          <Label htmlFor={id} className="text-sm font-medium cursor-pointer">
+   151→            {label}
+   152→          </Label>
+   153→          <p className="text-xs text-muted-foreground leading-relaxed">
+   154→            {description}
+   155→          </p>
+   156→        </div>
+   157→      </div>
+   158→      <Switch
+   159→        id={id}
+   160→        checked={checked}
+   161→        onCheckedChange={onCheckedChange}
+   162→        disabled={disabled}
+   163→      />
+   164→    </div>
+   165→  )
+   166→}
+   167→
+   168→// ─── Slider Row Component ───
+   169→
+   170→function SliderRow({
+   171→  id,
+   172→  label,
+   173→  description,
+   174→  value,
+   175→  onValueChange,
+   176→  min,
+   177→  max,
+   178→  step = 1,
+   179→  formatValue,
+   180→  icon: Icon,
+   181→}: {
+   182→  id: string
+   183→  label: string
+   184→  description: string
+   185→  value: number
+   186→  onValueChange: (value: number) => void
+   187→  min: number
+   188→  max: number
+   189→  step?: number
+   190→  formatValue?: (value: number) => string
+   191→  icon: React.ComponentType<{ className?: string }>
+   192→}) {
+   193→  const displayValue = formatValue ? formatValue(value) : String(value)
+   194→
+   195→  return (
+   196→    <div className="rounded-lg border p-4 space-y-3">
+   197→      <div className="flex items-center gap-3">
+   198→        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
+   199→          <Icon className="h-4 w-4" />
+   200→        </div>
+   201→        <div className="flex-1 min-w-0">
+   202→          <div className="flex items-center justify-between gap-2">
+   203→            <Label htmlFor={id} className="text-sm font-medium">
+   204→              {label}
+   205→            </Label>
+   206→            <Badge variant="secondary" className="bg-info/10 text-info font-mono tabular-nums text-xs">
+   207→              {displayValue}
+   208→            </Badge>
+   209→          </div>
+   210→          <p className="text-xs text-muted-foreground mt-0.5">
+   211→            {description}
+   212→          </p>
+   213→        </div>
+   214→      </div>
+   215→      <Slider
+   216→        id={id}
+   217→        value={[value]}
+   218→        onValueChange={([val]) => onValueChange(val)}
+   219→        min={min}
+   220→        max={max}
+   221→        step={step}
+   222→        className="w-full"
+   223→      />
+   224→      <div className="flex justify-between text-xs text-muted-foreground font-mono tabular-nums">
+   225→        <span>{formatValue ? formatValue(min) : min}</span>
+   226→        <span>{formatValue ? formatValue(max) : max}</span>
+   227→      </div>
+   228→    </div>
+   229→  )
+   230→}
+   231→
+   232→// ─── Main Component ───
+   233→
+   234→export function SecuritePage() {
+   235→  const { user } = useAuthStore()
+   236→  const queryClient = useQueryClient()
+   237→
+   238→  // Data state
+   239→  const [etablissements, setEtablissements] = useState<Etablissement[]>([])
+   240→  const [selectedEtablissementId, setSelectedEtablissementId] = useState<string>('')
+   241→  const [settings, setSettings] = useState<SecuritySettings | null>(null)
+   242→  const [allSettings, setAllSettings] = useState<SecuritySettings[]>([])
+   243→
+   244→  // Loading states
+   245→  const [loadingSettings, setLoadingSettings] = useState(false)
+   246→  const [saving, setSaving] = useState(false)
+   247→
+   248→  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+   249→  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+   250→  // instantanée. Les 2 ressources de mount-time fetching sont migrées vers
+   251→  // useQuery. Le loadSettings réactif à selectedEtablissementId reste en
+   252→  // useEffect (pattern différent : pas un mount-time fetch).
+   253→  const etablissementsQuery = useQuery<{ etablissements: Etablissement[] }>({
+   254→    queryKey: ['etablissements'],
+   255→    queryFn: async () => {
+   256→      const res = await fetch('/api/etablissements')
+   257→      if (!res.ok) throw new Error('Failed to fetch etablissements')
+   258→      return res.json()
+   259→    },
+   260→    staleTime: 60 * 1000,
+   261→    refetchOnWindowFocus: false,
+   262→  })
+   263→
+   264→  const loadingEtablissements = etablissementsQuery.isLoading
+   265→
+   266→  // Sync query data to local state (préserve l'API interne basée sur
+   267→  // setEtablissements utilisée ailleurs dans le composant).
+   268→  useEffect(() => {
+   269→    if (etablissementsQuery.data) {
+   270→      setEtablissements(etablissementsQuery.data.etablissements || [])
+   271→    }
+   272→  }, [etablissementsQuery.data])
+   273→
+   274→  // Toast sur erreur de chargement (équivalent du catch du fetch original).
+   275→  useEffect(() => {
+   276→    if (etablissementsQuery.error) {
+   277→      toast.error('Erreur', { description: 'Impossible de charger les établissements' })
+   278→    }
+   279→  }, [etablissementsQuery.error])
+   280→
+   281→  const allSettingsQuery = useQuery<{ securitySettings: SecuritySettings[] }>({
+   282→    queryKey: ['security-settings'],
+   283→    queryFn: async () => {
+   284→      const res = await fetch('/api/security-settings')
+   285→      if (!res.ok) throw new Error('Failed to fetch security settings')
+   286→      return res.json()
+   287→    },
+   288→    staleTime: 60 * 1000,
+   289→    refetchOnWindowFocus: false,
+   290→  })
+   291→
+   292→  // Sync query data to local state.
+   293→  useEffect(() => {
+   294→    if (allSettingsQuery.data) {
+   295→      setAllSettings(allSettingsQuery.data.securitySettings || [])
+   296→    }
+   297→  }, [allSettingsQuery.data])
+   298→
+   299→  // Helper pour invalider le cache après mutation (save).
+   300→  const refreshAllSettings = () =>
+   301→    queryClient.invalidateQueries({ queryKey: ['security-settings'] })
+   302→
+   303→  // ─── Compute stats ───
+   304→
+   305→  const statsProctoring = allSettings.filter((s) => s.proctoringActif).length
+   306→  const statsVerifIdentite = allSettings.filter((s) => s.verificationIdentite).length
+   307→  // Simulated monthly fraud alerts count (based on alert thresholds)
+   308→  const statsAlertesFraude = allSettings.reduce((acc, s) => acc + (s.autoSubmitOnViolation ? Math.floor(s.nbAlertesMax * 0.6) : 0), 0)
+   309→
+   310→  // ─── Load settings for selected etablissement ───
+   311→
+   312→  useEffect(() => {
+   313→    if (!selectedEtablissementId) {
+   314→      setSettings(null)
+   315→      return
+   316→    }
+   317→
+   318→    async function loadSettings() {
+   319→      try {
+   320→        setLoadingSettings(true)
+   321→        const res = await fetch(`/api/security-settings/etablissement/${selectedEtablissementId}`)
+   322→        if (!res.ok) throw new Error('Failed to fetch')
+   323→        const data = await res.json()
+   324→        setSettings(data.securitySettings)
+   325→      } catch {
+   326→        toast.error('Erreur', { description: 'Impossible de charger les paramètres de sécurité' })
+   327→        setSettings(null)
+   328→      } finally {
+   329→        setLoadingSettings(false)
+   330→      }
+   331→    }
+   332→
+   333→    loadSettings()
+   334→  }, [selectedEtablissementId])
+   335→
+   336→  // ─── Update a single field ───
+   337→
+   338→  const updateField = <K extends keyof SecuritySettings>(key: K, value: SecuritySettings[K]) => {
+   339→    if (!settings) return
+   340→    setSettings({ ...settings, [key]: value })
+   341→  }
+   342→
+   343→  // ─── Save settings ───
+   344→
+   345→  const handleSave = async () => {
+   346→    if (!settings) return
+   347→
+   348→    try {
+   349→      setSaving(true)
+   350→      // ADMIN-SECURITE-FIX : utiliser selectedEtablissementId (route correcte)
+   351→      // au lieu de settings.id (route PATCH /api/security-settings/{configId} inexistante → 404).
+   352→      // La seule route PATCH existante est /api/security-settings/etablissement/{etabId}.
+   353→      const res = await fetch(`/api/security-settings/etablissement/${selectedEtablissementId}`, {
+   354→        method: 'PATCH',
+   355→        headers: { 'Content-Type': 'application/json' },
+   356→        body: JSON.stringify({
+   357→          proctoringActif: settings.proctoringActif,
+   358→          detectionCopie: settings.detectionCopie,
+   359→          detectionOnglet: settings.detectionOnglet,
+   360→          detectionFullscreen: settings.detectionFullscreen,
+   361→          captureEcran: settings.captureEcran,
+   362→          blocageCopie: settings.blocageCopie,
+   363→          blocageClicDroit: settings.blocageClicDroit,
+   364→          blocageImpression: settings.blocageImpression,
+   365→          verificationIdentite: settings.verificationIdentite,
+   366→          tempsInactiviteMax: settings.tempsInactiviteMax,
+   367→          nbOngletsMax: settings.nbOngletsMax,
+   368→          nbAlertesMax: settings.nbAlertesMax,
+   369→          autoSubmitOnViolation: settings.autoSubmitOnViolation,
+   370→          rapportFraude: settings.rapportFraude,
+   371→          seuilSimilarite: settings.seuilSimilarite,
+   372→          penaliteFullscreenExit: settings.penaliteFullscreenExit,
+   373→          fullscreenObligatoire: settings.fullscreenObligatoire,
+   374→          intervalleCaptureEcran: settings.intervalleCaptureEcran,
+   375→        }),
+   376→      })
+   377→
+   378→      if (!res.ok) {
+   379→        const errData = await res.json()
+   380→        throw new Error(errData.error || 'Erreur lors de la sauvegarde')
+   381→      }
+   382→
+   383→      toast.success('Paramètres sauvegardés', {
+   384→        description: `Les paramètres de sécurité ont été mis à jour pour ${settings.etablissement?.nom || "l'établissement"}.`,
+   385→      })
+   386→
+   387→      // Refresh overview
+   388→      refreshAllSettings()
+   389→    } catch (err) {
+   390→      toast.error('Erreur de sauvegarde', {
+   391→        description: err instanceof Error ? err.message : 'Une erreur est survenue',
+   392→      })
+   393→    } finally {
+   394→      setSaving(false)
+   395→    }
+   396→  }
+   397→
+   398→  // ─── Navigate to a specific etablissement from the overview table ───
+   399→
+   400→  const handleSelectFromTable = (etabId: string) => {
+   401→    setSelectedEtablissementId(etabId)
+   402→    window.scrollTo({ top: 0, behavior: 'smooth' })
+   403→  }
+   404→
+   405→  return (
+   406→    <TooltipProvider>
+   407→      <div className="space-y-6">
+   408→        {/* ─── Header ─── */}
+   409→        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
+   410→          <div>
+   411→            <h1 className="text-2xl font-bold tracking-tight md:text-3xl font-display flex items-center gap-2">
+   412→              <Shield className="h-7 w-7 text-success-text" />
+   413→              Sécurité des Évaluations
+   414→            </h1>
+   415→            <p className="mt-1 text-sm text-muted-foreground">
+   416→              Configurez les paramètres anti-fraude et de surveillance
+   417→            </p>
+   418→          </div>
+   419→          {user && (
+   420→            <Badge variant="outline" className="w-fit text-xs">
+   421→              <Lock className="h-3 w-3 mr-1" />
+   422→              {user.role === 'ADMIN' ? 'Administrateur' : user.role}
+   423→            </Badge>
+   424→          )}
+   425→        </div>
+   426→
+   427→        {/* ─── Stats Cards ─── */}
+   428→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+   429→          <Card className="border-l-4 border-l-primary">
+   430→            <CardContent className="p-4 sm:p-6">
+   431→              <div className="flex items-center gap-3">
+   432→                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success-text">
+   433→                  <Eye className="h-5 w-5" />
+   434→                </div>
+   435→                <div>
+   436→                  <p className="text-2xl font-bold text-success-text font-mono tabular-nums">
+   437→                    {statsProctoring}
+   438→                  </p>
+   439→                  <p className="text-xs text-muted-foreground">
+   440→                    Établissements avec proctoring
+   441→                  </p>
+   442→                </div>
+   443→              </div>
+   444→            </CardContent>
+   445→          </Card>
+   446→
+   447→          <Card className="border-l-4 border-l-primary">
+   448→            <CardContent className="p-4 sm:p-6">
+   449→              <div className="flex items-center gap-3">
+   450→                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
+   451→                  <UserCheck className="h-5 w-5" />
+   452→                </div>
+   453→                <div>
+   454→                  <p className="text-2xl font-bold text-info font-mono tabular-nums">
+   455→                    {statsVerifIdentite}
+   456→                  </p>
+   457→                  <p className="text-xs text-muted-foreground">
+   458→                    Établissements avec vérif. identité
+   459→                  </p>
+   460→                </div>
+   461→              </div>
+   462→            </CardContent>
+   463→          </Card>
+   464→
+   465→          <Card className="border-l-4 border-l-primary">
+   466→            <CardContent className="p-4 sm:p-6">
+   467→              <div className="flex items-center gap-3">
+   468→                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
+   469→                  <AlertTriangle className="h-5 w-5" />
+   470→                </div>
+   471→                <div>
+   472→                  <p className="text-2xl font-bold text-warning font-mono tabular-nums">
+   473→                    {statsAlertesFraude}
+   474→                  </p>
+   475→                  <p className="text-xs text-muted-foreground">
+   476→                    Alertes fraude ce mois
+   477→                  </p>
+   478→                </div>
+   479→              </div>
+   480→            </CardContent>
+   481→          </Card>
+   482→        </div>
+   483→
+   484→        {/* ─── Établissement Selector ─── */}
+   485→        <Card>
+   486→          <CardContent className="p-4 sm:p-6">
+   487→            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+   488→              <div className="flex-1 space-y-2">
+   489→                <Label className="text-sm font-medium flex items-center gap-2">
+   490→                  <Building2 className="h-4 w-4 text-success-text" />
+   491→                  Sélectionner un établissement
+   492→                </Label>
+   493→                <Select
+   494→                  value={selectedEtablissementId}
+   495→                  onValueChange={setSelectedEtablissementId}
+   496→                  disabled={loadingEtablissements}
+   497→                >
+   498→                  <SelectTrigger className="w-full">
+   499→                    <SelectValue placeholder={
+   500→                      loadingEtablissements
+   501→                        ? 'Chargement...'
+   502→                        : 'Choisir un établissement...'
+   503→                    } />
+   504→                  </SelectTrigger>
+   505→                  <SelectContent>
+   506→                    {etablissements
+   507→                      .filter((e) => e.actif)
+   508→                      .map((e) => (
+   509→                        <SelectItem key={e.id} value={e.id}>
+   510→                          {e.nom}
+   511→                          {e.ville ? ` — ${e.ville}` : ''}
+   512→                          {e.type ? ` (${e.type})` : ''}
+   513→                        </SelectItem>
+   514→                      ))}
+   515→                  </SelectContent>
+   516→                </Select>
+   517→                <p className="text-xs text-muted-foreground">
+   518→                  Si aucun paramètre n&apos;existe pour cet établissement, les valeurs par défaut seront créées automatiquement.
+   519→                </p>
+   520→              </div>
+   521→              {selectedEtablissementId && settings && (
+   522→                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   523→                  <Badge variant="secondary" className="bg-success/10 text-success-text">
+   524→                    Configuré
+   525→                  </Badge>
+   526→                </div>
+   527→              )}
+   528→            </div>
+   529→          </CardContent>
+   530→        </Card>
+   531→
+   532→        {/* ─── Loading Spinner ─── */}
+   533→        {loadingSettings && (
+   534→          <div className="flex items-center justify-center py-12">
+   535→            <Loader2 className="h-8 w-8 animate-spin text-success-text" />
+   536→            <span className="ml-3 text-sm text-muted-foreground">Chargement des paramètres...</span>
+   537→          </div>
+   538→        )}
+   539→
+   540→        {/* ─── Security Settings Panel ─── */}
+   541→        {!loadingSettings && settings && (
+   542→          <div className="space-y-6">
+   543→
+   544→            {/* ─── Section A: Surveillance & Détection ─── */}
+   545→            <Card>
+   546→              <CardHeader>
+   547→                <CardTitle className="flex items-center gap-2 text-lg font-display">
+   548→                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success-text">
+   549→                    <Eye className="h-4 w-4" />
+   550→                  </div>
+   551→                  Surveillance & Détection
+   552→                </CardTitle>
+   553→                <CardDescription>
+   554→                  Activez les mécanismes de surveillance et de détection de comportement suspect
+   555→                </CardDescription>
+   556→              </CardHeader>
+   557→              <CardContent className="space-y-3">
+   558→                <ToggleRow
+   559→                  id="proctoring-actif"
+   560→                  label="Proctoring actif (master switch)"
+   561→                  description="Active toutes les détections anti-fraude (onglet, copie, capture, inactivité). Si désactivé, seul le mode plein écran reste actif."
+   562→                  checked={settings.proctoringActif}
+   563→                  onCheckedChange={(v) => updateField('proctoringActif', v)}
+   564→                  icon={MonitorSmartphone}
+   565→                />
+   566→                {!settings.proctoringActif && (
+   567→                  <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+   568→                    ⚠️ Proctoring désactivé — les options ci-dessous seront ignorées pendant les évaluations. Seul le plein écran restera actif.
+   569→                  </div>
+   570→                )}
+   571→                <ToggleRow
+   572→                  id="detection-copie"
+   573→                  label="Détection de copier/coller"
+   574→                  description="Détecte les tentatives de copier/coller pendant l'évaluation et les signale comme alerte"
+   575→                  checked={settings.detectionCopie}
+   576→                  onCheckedChange={(v) => updateField('detectionCopie', v)}
+   577→                  icon={ClipboardCheck}
+   578→                />
+   579→                <ToggleRow
+   580→                  id="detection-onglet"
+   581→                  label="Détection de changement d'onglet"
+   582→                  description="Surveille les changements d'onglet ou de fenêtre du navigateur pendant l'évaluation"
+   583→                  checked={settings.detectionOnglet}
+   584→                  onCheckedChange={(v) => updateField('detectionOnglet', v)}
+   585→                  icon={AppWindow}
+   586→                />
+   587→                <ToggleRow
+   588→                  id="detection-fullscreen"
+   589→                  label="Détection de sortie plein écran"
+   590→                  description="Détecte si le candidat quitte le mode plein écran imposé pendant l'évaluation"
+   591→                  checked={settings.detectionFullscreen}
+   592→                  onCheckedChange={(v) => updateField('detectionFullscreen', v)}
+   593→                  icon={MonitorSmartphone}
+   594→                />
+   595→                {settings.detectionFullscreen && (
+   596→                  <>
+   597→                    <ToggleRow
+   598→                      id="fullscreen-obligatoire"
+   599→                      label="Plein écran obligatoire"
+   600→                      description="Bloque l'épreuve si l'étudiant n'est pas en plein écran — il doit revenir en plein écran pour continuer"
+   601→                      checked={settings.fullscreenObligatoire}
+   602→                      onCheckedChange={(v) => updateField('fullscreenObligatoire', v)}
+   603→                      icon={MonitorSmartphone}
+   604→                    />
+   605→                    <SliderRow
+   606→                      id="penalite-fullscreen-exit"
+   607→                      label="Pénalité par sortie plein écran"
+   608→                      description="Points retirés à la note de l'étudiant à chaque sortie du plein écran à partir de la 2ème tentative"
+   609→                      value={settings.penaliteFullscreenExit}
+   610→                      onValueChange={(v) => updateField('penaliteFullscreenExit', v)}
+   611→                      min={0}
+   612→                      max={10}
+   613→                      step={1}
+   614→                      formatValue={(v) => `-${v} pts`}
+   615→                      icon={AlertTriangle}
+   616→                    />
+   617→                  </>
+   618→                )}
+   619→                <ToggleRow
+   620→                  id="capture-ecran"
+   621→                  label="Capture d'écran périodique"
+   622→                  description="Effectue des captures d'écran automatiques à intervalle régulier pendant l'évaluation"
+   623→                  checked={settings.captureEcran}
+   624→                  onCheckedChange={(v) => updateField('captureEcran', v)}
+   625→                  icon={Camera}
+   626→                />
+   627→                {settings.captureEcran && (
+   628→                  <SliderRow
+   629→                    id="intervalle-capture-ecran"
+   630→                    label="Intervalle des captures"
+   631→                    description="Fréquence des captures d'écran automatiques en secondes"
+   632→                    value={settings.intervalleCaptureEcran}
+   633→                    onValueChange={(v) => updateField('intervalleCaptureEcran', v)}
+   634→                    min={30}
+   635→                    max={300}
+   636→                    step={10}
+   637→                    formatValue={(v) => `${v}s`}
+   638→                    icon={Timer}
+   639→                  />
+   640→                )}
+   641→              </CardContent>
+   642→            </Card>
+   643→
+   644→            {/* ─── Section B: Blocage & Protection ─── */}
+   645→            <Card>
+   646→              <CardHeader>
+   647→                <CardTitle className="flex items-center gap-2 text-lg font-display">
+   648→                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info/10 text-info">
+   649→                    <Lock className="h-4 w-4" />
+   650→                  </div>
+   651→                  Blocage & Protection
+   652→                </CardTitle>
+   653→                <CardDescription>
+   654→                  Bloquez les actions non autorisées pour sécuriser le déroulement des évaluations
+   655→                </CardDescription>
+   656→              </CardHeader>
+   657→              <CardContent className="space-y-3">
+   658→                <ToggleRow
+   659→                  id="blocage-copie"
+   660→                  label="Blocage du copier/coller"
+   661→                  description="Empêche complètement les opérations de copier, couper et coller dans la page d'évaluation"
+   662→                  checked={settings.blocageCopie}
+   663→                  onCheckedChange={(v) => updateField('blocageCopie', v)}
+   664→                  icon={ClipboardCheck}
+   665→                />
+   666→                <ToggleRow
+   667→                  id="blocage-clic-droit"
+   668→                  label="Blocage du clic droit"
+   669→                  description="Désactive le menu contextuel du clic droit pour empêcher l'inspection et la copie"
+   670→                  checked={settings.blocageClicDroit}
+   671→                  onCheckedChange={(v) => updateField('blocageClicDroit', v)}
+   672→                  icon={MousePointerClick}
+   673→                />
+   674→                <ToggleRow
+   675→                  id="blocage-impression"
+   676→                  label="Blocage de l'impression écran"
+   677→                  description="Bloque les touches d'impression écran (PrtScn) et les raccourcis de capture système"
+   678→                  checked={settings.blocageImpression}
+   679→                  onCheckedChange={(v) => updateField('blocageImpression', v)}
+   680→                  icon={Printer}
+   681→                />
+   682→                <ToggleRow
+   683→                  id="verification-identite"
+   684→                  label="Vérification d'identité"
+   685→                  description="Exige une vérification d'identité (photo ou pièce d'identité) avant le début de l'évaluation"
+   686→                  checked={settings.verificationIdentite}
+   687→                  onCheckedChange={(v) => updateField('verificationIdentite', v)}
+   688→                  icon={UserCheck}
+   689→                />
+   690→              </CardContent>
+   691→            </Card>
+   692→
+   693→            {/* ─── Section C: Seuils & Alertes ─── */}
+   694→            <Card>
+   695→              <CardHeader>
+   696→                <CardTitle className="flex items-center gap-2 text-lg font-display">
+   697→                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10 text-warning">
+   698→                    <BellRing className="h-4 w-4" />
+   699→                  </div>
+   700→                  Seuils & Alertes
+   701→                </CardTitle>
+   702→                <CardDescription>
+   703→                  Configurez les seuils de tolérance et les actions automatiques en cas de violation
+   704→                </CardDescription>
+   705→              </CardHeader>
+   706→              <CardContent className="space-y-4">
+   707→                <SliderRow
+   708→                  id="temps-inactivite-max"
+   709→                  label="Temps d'inactivité max"
+   710→                  description="Durée maximale d'inactivité avant déclenchement d'une alerte (en secondes)"
+   711→                  value={settings.tempsInactiviteMax}
+   712→                  onValueChange={(v) => updateField('tempsInactiviteMax', v)}
+   713→                  min={30}
+   714→                  max={300}
+   715→                  step={10}
+   716→                  formatValue={(v) => `${v}s`}
+   717→                  icon={Timer}
+   718→                />
+   719→                <SliderRow
+   720→                  id="nb-onglets-max"
+   721→                  label="Nb changements onglet max"
+   722→                  description="Nombre maximal de changements d'onglet autorisés avant déclenchement d'une alerte"
+   723→                  value={settings.nbOngletsMax}
+   724→                  onValueChange={(v) => updateField('nbOngletsMax', v)}
+   725→                  min={1}
+   726→                  max={10}
+   727→                  step={1}
+   728→                  icon={AppWindow}
+   729→                />
+   730→                <SliderRow
+   731→                  id="nb-alertes-max"
+   732→                  label="Nb alertes max avant soumission auto"
+   733→                  description="Nombre d'alertes cumulées déclenchant la soumission automatique de l'évaluation"
+   734→                  value={settings.nbAlertesMax}
+   735→                  onValueChange={(v) => updateField('nbAlertesMax', v)}
+   736→                  min={1}
+   737→                  max={15}
+   738→                  step={1}
+   739→                  icon={AlertTriangle}
+   740→                />
+   741→                <ToggleRow
+   742→                  id="auto-submit-violation"
+   743→                  label="Soumission automatique en cas de violation"
+   744→                  description="Soumet automatiquement l'évaluation lorsque le nombre maximal d'alertes est atteint"
+   745→                  checked={settings.autoSubmitOnViolation}
+   746→                  onCheckedChange={(v) => updateField('autoSubmitOnViolation', v)}
+   747→                  icon={Send}
+   748→                />
+   749→              </CardContent>
+   750→            </Card>
+   751→
+   752→            {/* ─── Section D: Analyse & Rapports ─── */}
+   753→            <Card>
+   754→              <CardHeader>
+   755→                <CardTitle className="flex items-center gap-2 text-lg font-display">
+   756→                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info/10 text-info">
+   757→                    <BarChart3 className="h-4 w-4" />
+   758→                  </div>
+   759→                  Analyse & Rapports
+   760→                </CardTitle>
+   761→                <CardDescription>
+   762→                  Paramètres d&apos;analyse de similarité et de génération de rapports de fraude
+   763→                </CardDescription>
+   764→              </CardHeader>
+   765→              <CardContent className="space-y-4">
+   766→                <ToggleRow
+   767→                  id="rapport-fraude"
+   768→                  label="Rapport de fraude"
+   769→                  description="Génère un rapport détaillé des comportements suspects pour chaque session d'évaluation"
+   770→                  checked={settings.rapportFraude}
+   771→                  onCheckedChange={(v) => updateField('rapportFraude', v)}
+   772→                  icon={FileSearch}
+   773→                />
+   774→                <SliderRow
+   775→                  id="seuil-similarite"
+   776→                  label="Seuil de similarité"
+   777→                  description="Seuil de similarité pour la détection de copie entre les réponses des étudiants (0.50 = tolérant, 1.00 = strict)"
+   778→                  value={settings.seuilSimilarite}
+   779→                  onValueChange={(v) => updateField('seuilSimilarite', v)}
+   780→                  min={0.5}
+   781→                  max={1.0}
+   782→                  step={0.05}
+   783→                  formatValue={(v) => v.toFixed(2)}
+   784→                  icon={ClipboardCheck}
+   785→                />
+   786→
+   787→                {/* Similarity explanation */}
+   788→                <div className="rounded-lg border border-info/30 bg-info/5 p-4">
+   789→                  <h4 className="text-sm font-semibold text-info mb-2 flex items-center gap-2">
+   790→                    <FileSearch className="h-4 w-4" />
+   791→                    Interprétation du seuil de similarité
+   792→                  </h4>
+   793→                  <ul className="text-sm text-info/80 space-y-1">
+   794→                    <li>• <strong>0.50 – 0.65</strong> : Tolérant — détecte les similarités évidentes uniquement</li>
+   795→                    <li>• <strong>0.70 – 0.85</strong> : Équilibré — bon compromis entre faux positifs et détection</li>
+   796→                    <li>• <strong>0.90 – 1.00</strong> : Strict — signale les réponses très similaires uniquement</li>
+   797→                  </ul>
+   798→                  <p className="mt-2 text-xs text-info/80 font-mono tabular-nums">
+   799→                    Seuil actuel : <strong>{settings.seuilSimilarite.toFixed(2)}</strong> — {
+   800→                      settings.seuilSimilarite < 0.7 ? 'Tolérant' :
+   801→                      settings.seuilSimilarite < 0.9 ? 'Équilibré' : 'Strict'
+   802→                    }
+   803→                  </p>
+   804→                </div>
+   805→              </CardContent>
+   806→            </Card>
+   807→
+   808→            {/* ─── Save Button ─── */}
+   809→            <div className="flex justify-end">
+   810→              <Button
+   811→                className="bg-success hover:bg-success/90 min-w-[180px]"
+   812→                onClick={handleSave}
+   813→                disabled={saving}
+   814→                size="lg"
+   815→              >
+   816→                {saving ? (
+   817→                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   818→                ) : (
+   819→                  <Save className="h-4 w-4 mr-2" />
+   820→                )}
+   821→                Sauvegarder
+   822→              </Button>
+   823→            </div>
+   824→          </div>
+   825→        )}
+   826→
+   827→        {/* ─── No selection message ─── */}
+   828→        {!loadingSettings && !selectedEtablissementId && (
+   829→          <Card className="border-dashed">
+   830→            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+   831→              <Settings2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
+   832→              <h3 className="text-lg font-medium text-muted-foreground font-display tracking-tight">Aucun établissement sélectionné</h3>
+   833→              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+   834→                Choisissez un établissement ci-dessus pour configurer ses paramètres de sécurité anti-fraude.
+   835→              </p>
+   836→            </CardContent>
+   837→          </Card>
+   838→        )}
+   839→
+   840→        {/* ─── All Establishments Overview Table ─── */}
+   841→        <Card>
+   842→          <CardHeader>
+   843→            <CardTitle className="flex items-center gap-2 text-lg font-display">
+   844→              <Building2 className="h-5 w-5 text-success-text" />
+   845→              Vue d&apos;ensemble des établissements
+   846→            </CardTitle>
+   847→            <CardDescription>
+   848→              Aperçu rapide des paramètres de sécurité de tous les établissements
+   849→            </CardDescription>
+   850→          </CardHeader>
+   851→          <CardContent>
+   852→            {allSettings.length === 0 ? (
+   853→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   854→                <Shield className="h-10 w-10 text-muted-foreground/30 mb-3" />
+   855→                <p className="text-sm text-muted-foreground">
+   856→                  Aucun paramètre de sécurité configuré. Sélectionnez un établissement pour commencer.
+   857→                </p>
+   858→              </div>
+   859→            ) : (
+   860→              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+   861→                <Table>
+   862→                  <TableHeader>
+   863→                    <TableRow>
+   864→                      <TableHead className="font-display">Établissement</TableHead>
+   865→                      <TableHead className="font-display text-center">Proctoring</TableHead>
+   866→                      <TableHead className="font-display text-center">Vérif. identité</TableHead>
+   867→                      <TableHead className="font-display text-center">Blocage copie</TableHead>
+   868→                      <TableHead className="font-display text-center">Seuil similarité</TableHead>
+   869→                      <TableHead className="font-display text-right">Actions</TableHead>
+   870→                    </TableRow>
+   871→                  </TableHeader>
+   872→                  <TableBody>
+   873→                    {allSettings.map((s) => (
+   874→                      <TableRow key={s.id}>
+   875→                        <TableCell className="font-medium">
+   876→                          <div className="flex flex-col">
+   877→                            <span>{s.etablissement?.nom || '—'}</span>
+   878→                            {s.etablissement?.ville && (
+   879→                              <span className="text-xs text-muted-foreground">{s.etablissement.ville}</span>
+   880→                            )}
+   881→                          </div>
+   882→                        </TableCell>
+   883→                        <TableCell className="text-center">
+   884→                          <Tooltip>
+   885→                            <TooltipTrigger asChild>
+   886→                              <span>
+   887→                                {s.proctoringActif ? (
+   888→                                  <CheckCircle2 className="h-5 w-5 text-success-text inline-block" />
+   889→                                ) : (
+   890→                                  <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
+   891→                                )}
+   892→                              </span>
+   893→                            </TooltipTrigger>
+   894→                            <TooltipContent>
+   895→                              {s.proctoringActif ? 'Proctoring activé' : 'Proctoring désactivé'}
+   896→                            </TooltipContent>
+   897→                          </Tooltip>
+   898→                        </TableCell>
+   899→                        <TableCell className="text-center">
+   900→                          <Tooltip>
+   901→                            <TooltipTrigger asChild>
+   902→                              <span>
+   903→                                {s.verificationIdentite ? (
+   904→                                  <CheckCircle2 className="h-5 w-5 text-info inline-block" />
+   905→                                ) : (
+   906→                                  <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
+   907→                                )}
+   908→                              </span>
+   909→                            </TooltipTrigger>
+   910→                            <TooltipContent>
+   911→                              {s.verificationIdentite ? 'Vérification activée' : 'Vérification désactivée'}
+   912→                            </TooltipContent>
+   913→                          </Tooltip>
+   914→                        </TableCell>
+   915→                        <TableCell className="text-center">
+   916→                          <Tooltip>
+   917→                            <TooltipTrigger asChild>
+   918→                              <span>
+   919→                                {s.blocageCopie ? (
+   920→                                  <CheckCircle2 className="h-5 w-5 text-warning inline-block" />
+   921→                                ) : (
+   922→                                  <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
+   923→                                )}
+   924→                              </span>
+   925→                            </TooltipTrigger>
+   926→                            <TooltipContent>
+   927→                              {s.blocageCopie ? 'Blocage activé' : 'Blocage désactivé'}
+   928→                            </TooltipContent>
+   929→                          </Tooltip>
+   930→                        </TableCell>
+   931→                        <TableCell className="text-center">
+   932→                          <Badge variant="secondary" className="font-mono tabular-nums text-xs">
+   933→                            {s.seuilSimilarite.toFixed(2)}
+   934→                          </Badge>
+   935→                        </TableCell>
+   936→                        <TableCell className="text-right font-mono tabular-nums">
+   937→                          <Button
+   938→                            variant="ghost"
+   939→                            size="sm"
+   940→                            onClick={() => handleSelectFromTable(s.etablissementId)}
+   941→                            className="text-success-text hover:bg-success/10"
+   942→                          >
+   943→                            <Settings2 className="h-4 w-4 mr-1" />
+   944→                            Configurer
+   945→                          </Button>
+   946→                        </TableCell>
+   947→                      </TableRow>
+   948→                    ))}
+   949→                  </TableBody>
+   950→                </Table>
+   951→              </div>
+   952→            )}
+   953→          </CardContent>
+   954→        </Card>
+   955→      </div>
+   956→    </TooltipProvider>
+   957→  )
+   958→}
+   959→

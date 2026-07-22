@@ -1,0 +1,1610 @@
+     1→// Package http — implémentation des stubs restants (STUBS-FIX-2).
+     2→package http
+     3→
+     4→import (
+     5→        "encoding/json"
+     6→        "fmt"
+     7→        "log/slog"
+     8→        "net/http"
+     9→        "strings"
+    10→        "time"
+    11→
+    12→        "github.com/go-chi/chi/v5"
+    13→        "github.com/google/uuid"
+    14→        "github.com/jackc/pgx/v5"
+    15→        appdb "github.com/udevrard7/sect/backend/internal/db"
+    16→        "github.com/udevrard7/sect/backend/internal/middleware"
+    17→)
+    18→
+    19→// ──────────────────────────────────────────────────────────────────────────
+    20→// 1. GET /api/security-settings — SecuritySettings (1 row en DB)
+    21→// ──────────────────────────────────────────────────────────────────────────
+    22→
+    23→func (s *Server) securitySettingsGetReal(w http.ResponseWriter, r *http.Request) {
+    24→        claims, ok := middleware.ClaimsFromContext(r.Context())
+    25→        if !ok || claims.UserID == "" {
+    26→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+    27→                return
+    28→        }
+    29→
+    30→        type secSettings struct {
+    31→                ID                    string  `json:"id"`
+    32→                EtablissementID       string  `json:"etablissementId"`
+    33→                ProctoringActif      bool    `json:"proctoringActif"`
+    34→                DetectionCopie       bool    `json:"detectionCopie"`
+    35→                DetectionOnglet      bool    `json:"detectionOnglet"`
+    36→                DetectionFullscreen  bool    `json:"detectionFullscreen"`
+    37→                BlocageCopie         bool    `json:"blocageCopie"`
+    38→                BlocageClicDroit     bool    `json:"blocageClicDroit"`
+    39→                BlocageImpression    bool    `json:"blocageImpression"`
+    40→                VerificationIdentite bool    `json:"verificationIdentite"`
+    41→                TempsInactiviteMax   int     `json:"tempsInactiviteMax"`
+    42→                NbOngletsMax         int     `json:"nbOngletsMax"`
+    43→                NbAlertesMax         int     `json:"nbAlertesMax"`
+    44→                AutoSubmitOnViolation bool   `json:"autoSubmitOnViolation"`
+    45→                CaptureEcran         bool    `json:"captureEcran"`
+    46→                RapportFraude        bool    `json:"rapportFraude"`
+    47→                SeuilSimilarite      float64 `json:"seuilSimilarite"`
+    48→                PenaliteFullscreenExit int   `json:"penaliteFullscreenExit"`
+    49→                FullscreenObligatoire bool   `json:"fullscreenObligatoire"`
+    50→                IntervalleCaptureEcran int   `json:"intervalleCaptureEcran"`
+    51→        }
+    52→
+    53→        result := &secSettings{}
+    54→        found := false
+    55→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+    56→                // Scope par etablissementId si fourni, sinon prendre le 1er
+    57→                etabID := r.URL.Query().Get("etablissementId")
+    58→                var row pgx.Row
+    59→                if etabID != "" {
+    60→                        row = tx.QueryRow(r.Context(), `
+    61→                                SELECT "id", "etablissementId", "proctoringActif", "detectionCopie",
+    62→                                       "detectionOnglet", "detectionFullscreen", "blocageCopie",
+    63→                                       "blocageClicDroit", "blocageImpression", "verificationIdentite",
+    64→                                       "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
+    65→                                       "autoSubmitOnViolation", "captureEcran", "rapportFraude",
+    66→                                       "seuilSimilarite", "penaliteFullscreenExit", "fullscreenObligatoire",
+    67→                                       "intervalleCaptureEcran"
+    68→                                FROM "SecuritySettings" WHERE "etablissementId" = $1
+    69→                        `, etabID)
+    70→                } else {
+    71→                        row = tx.QueryRow(r.Context(), `
+    72→                                SELECT "id", "etablissementId", "proctoringActif", "detectionCopie",
+    73→                                       "detectionOnglet", "detectionFullscreen", "blocageCopie",
+    74→                                       "blocageClicDroit", "blocageImpression", "verificationIdentite",
+    75→                                       "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
+    76→                                       "autoSubmitOnViolation", "captureEcran", "rapportFraude",
+    77→                                       "seuilSimilarite", "penaliteFullscreenExit", "fullscreenObligatoire",
+    78→                                       "intervalleCaptureEcran"
+    79→                                FROM "SecuritySettings" ORDER BY "updatedAt" DESC LIMIT 1
+    80→                        `)
+    81→                }
+    82→                err := row.Scan(
+    83→                        &result.ID, &result.EtablissementID, &result.ProctoringActif, &result.DetectionCopie,
+    84→                        &result.DetectionOnglet, &result.DetectionFullscreen, &result.BlocageCopie,
+    85→                        &result.BlocageClicDroit, &result.BlocageImpression, &result.VerificationIdentite,
+    86→                        &result.TempsInactiviteMax, &result.NbOngletsMax, &result.NbAlertesMax,
+    87→                        &result.AutoSubmitOnViolation, &result.CaptureEcran, &result.RapportFraude,
+    88→                        &result.SeuilSimilarite, &result.PenaliteFullscreenExit, &result.FullscreenObligatoire,
+    89→                        &result.IntervalleCaptureEcran,
+    90→                )
+    91→                if err == nil {
+    92→                        found = true
+    93→                }
+    94→                return nil
+    95→        })
+    96→
+    97→        if !found {
+    98→                w.Header().Set("Content-Type", "application/json")
+    99→                json.NewEncoder(w).Encode(map[string]any{"settings": map[string]any{}})
+   100→                return
+   101→        }
+   102→        w.Header().Set("Content-Type", "application/json")
+   103→        json.NewEncoder(w).Encode(map[string]any{"settings": result})
+   104→}
+   105→
+   106→// ──────────────────────────────────────────────────────────────────────────
+   107→// 2. GET /api/surveillance/stats — stub supprimé (SURVEILLANCE-FIX-2 S11).
+   108→// Remplacé par surveillanceStatsV2 dans surveillance_handlers_v2.go.
+   109→// ──────────────────────────────────────────────────────────────────────────
+   110→
+   111→// ──────────────────────────────────────────────────────────────────────────
+   112→// 3. GET /api/etudiants — User (ETUDIANT) avec filiere + niveau
+   113→// ──────────────────────────────────────────────────────────────────────────
+   114→
+   115→func (s *Server) etudiantsListReal(w http.ResponseWriter, r *http.Request) {
+   116→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   117→        if !ok || claims.UserID == "" {
+   118→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   119→                return
+   120→        }
+   121→
+   122→        type etudiant struct {
+   123→                ID          string  `json:"id"`
+   124→                Name        string  `json:"name"`
+   125→                Email       string  `json:"email"`
+   126→                Matricule   *string `json:"matricule,omitempty"`
+   127→                Actif       bool    `json:"actif"`
+   128→                FiliereID   *string `json:"filiereId,omitempty"`
+   129→                Niveau      *string `json:"niveau,omitempty"`
+   130→                Filiere     *struct {
+   131→                        ID  string `json:"id"`
+   132→                        Nom string `json:"nom"`
+   133→                } `json:"filiere,omitempty"`
+   134→        }
+   135→
+   136→        result := []etudiant{}
+   137→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   138→                search := r.URL.Query().Get("search")
+   139→                filiereID := r.URL.Query().Get("filiereId")
+   140→                limit := 100
+   141→                if l := r.URL.Query().Get("limit"); l != "" {
+   142→                        if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 500 {
+   143→                                limit = n
+   144→                        }
+   145→                }
+   146→
+   147→                var args []any
+   148→                argIdx := 1
+   149→                var where []string
+   150→                where = append(where, `u."role" = 'ETUDIANT'`)
+   151→                if search != "" {
+   152→                        where = append(where, fmt.Sprintf(`(u."name" ILIKE $%d OR u."email" ILIKE $%d OR u."matricule" ILIKE $%d)`, argIdx, argIdx, argIdx))
+   153→                        args = append(args, "%"+search+"%")
+   154→                        argIdx++
+   155→                }
+   156→                if filiereID != "" {
+   157→                        where = append(where, fmt.Sprintf(`u."filiereId" = $%d`, argIdx))
+   158→                        args = append(args, filiereID)
+   159→                        argIdx++
+   160→                }
+   161→
+   162→                query := fmt.Sprintf(`
+   163→                        SELECT u."id", u."name", u."email", u."matricule", u."actif",
+   164→                               u."filiereId", u."niveau", f."id", f."nom"
+   165→                        FROM "User" u
+   166→                        LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
+   167→                        WHERE %s
+   168→                        ORDER BY u."name"
+   169→                        LIMIT $%d
+   170→                `, joinStringsArr(where, " AND "), argIdx)
+   171→                args = append(args, limit)
+   172→
+   173→                rows, err := tx.Query(r.Context(), query, args...)
+   174→                if err != nil {
+   175→                        return err
+   176→                }
+   177→                defer rows.Close()
+   178→                for rows.Next() {
+   179→                        e := etudiant{}
+   180→                        var filID, filNom *string
+   181→                        if err := rows.Scan(&e.ID, &e.Name, &e.Email, &e.Matricule, &e.Actif,
+   182→                                &e.FiliereID, &e.Niveau, &filID, &filNom); err != nil {
+   183→                                return err
+   184→                        }
+   185→                        if filID != nil && filNom != nil {
+   186→                                e.Filiere = &struct {
+   187→                                        ID  string `json:"id"`
+   188→                                        Nom string `json:"nom"`
+   189→                                }{ID: *filID, Nom: *filNom}
+   190→                        }
+   191→                        result = append(result, e)
+   192→                }
+   193→                return rows.Err()
+   194→        })
+   195→
+   196→        w.Header().Set("Content-Type", "application/json")
+   197→        json.NewEncoder(w).Encode(map[string]any{
+   198→                "etudiants": result,
+   199→                "total":     len(result),
+   200→        })
+   201→}
+   202→
+   203→// ──────────────────────────────────────────────────────────────────────────
+   204→// 4. GET /api/factures — Facture (0 row, mais endpoint réel pour futures données)
+   205→// ──────────────────────────────────────────────────────────────────────────
+   206→
+   207→func (s *Server) facturesListReal(w http.ResponseWriter, r *http.Request) {
+   208→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   209→        if !ok || claims.UserID == "" {
+   210→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   211→                return
+   212→        }
+   213→
+   214→        // FACTURATION-FIX-F5 : structure complète attendue par le frontend
+   215→        // (montantHt/tva/montantTtc, numero, dateEmission/dateEcheance, lignes,
+   216→        // abonnement nested avec plan, etablissement nested).
+   217→        type ligneFacture struct {
+   218→                Description string  `json:"description"`
+   219→                Montant     float64 `json:"montant"`
+   220→        }
+   221→        type planRef struct {
+   222→                ID          string   `json:"id"`
+   223→                Nom         string   `json:"nom"`
+   224→                Type        string   `json:"type"`
+   225→                PrixMensuel float64  `json:"prixMensuel"`
+   226→                PrixAnnuel  *float64 `json:"prixAnnuel,omitempty"`
+   227→        }
+   228→        type abonnementRef struct {
+   229→                ID     string  `json:"id"`
+   230→                Statut string  `json:"statut"`
+   231→                Plan   planRef `json:"plan"`
+   232→        }
+   233→        type etablissementRef struct {
+   234→                ID        string  `json:"id"`
+   235→                Nom       string  `json:"nom"`
+   236→                Ville     *string `json:"ville,omitempty"`
+   237→                Email     *string `json:"email,omitempty"`
+   238→                Type      *string `json:"type,omitempty"`
+   239→                Pays      *string `json:"pays,omitempty"`
+   240→                Telephone *string `json:"telephone,omitempty"`
+   241→                Adresse   *string `json:"adresse,omitempty"`
+   242→        }
+   243→        type facture struct {
+   244→                ID                string          `json:"id"`
+   245→                Numero            string          `json:"numero"`
+   246→                AbonnementID      string          `json:"abonnementId"`
+   247→                EtablissementID   string          `json:"etablissementId"`
+   248→                MontantHt         float64         `json:"montantHt"`
+   249→                Tva               float64         `json:"tva"`
+   250→                MontantTtc        float64         `json:"montantTtc"`
+   251→                Statut            string          `json:"statut"`
+   252→                DateEmission      string          `json:"dateEmission"`
+   253→                DateEcheance      string          `json:"dateEcheance"`
+   254→                DatePaiement      *string         `json:"datePaiement,omitempty"`
+   255→                ModePaiement      *string         `json:"modePaiement,omitempty"`
+   256→                ReferencePaiement *string         `json:"referencePaiement,omitempty"`
+   257→                Lignes            []ligneFacture  `json:"lignes"`
+   258→                Notes             *string         `json:"notes,omitempty"`
+   259→                Abonnement        *abonnementRef  `json:"abonnement,omitempty"`
+   260→                Etablissement     *etablissementRef `json:"etablissement,omitempty"`
+   261→        }
+   262→
+   263→        // Lecture du paramètre limit (default 100, max 200).
+   264→        limit := 100
+   265→        if l := r.URL.Query().Get("limit"); l != "" {
+   266→                if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 200 {
+   267→                        limit = n
+   268→                }
+   269→        }
+   270→        etabID := r.URL.Query().Get("etablissementId")
+   271→
+   272→        result := []facture{}
+   273→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   274→                var rows pgx.Rows
+   275→                var err error
+   276→                if etabID != "" {
+   277→                        rows, err = tx.Query(r.Context(), `
+   278→                                SELECT f."id", f."numero", f."abonnementId", f."etablissementId",
+   279→                                       f."montantHt", f."tva", f."montantTtc", f."statut",
+   280→                                       f."dateEmission", f."dateEcheance", f."datePaiement",
+   281→                                       f."modePaiement", f."referencePaiement", f."lignes", f."notes",
+   282→                                       a."id", a."statut"::text,
+   283→                                       p."id", p."nom", p."type"::text, p."prixMensuel", p."prixAnnuel",
+   284→                                       e."id", e."nom", e."ville", e."email", e."type", e."pays", e."telephone", e."adresse"
+   285→                                FROM "Facture" f
+   286→                                LEFT JOIN "Abonnement" a ON a."id" = f."abonnementId"
+   287→                                LEFT JOIN "Plan" p ON p."id" = a."planId"
+   288→                                LEFT JOIN "Etablissement" e ON e."id" = f."etablissementId"
+   289→                                WHERE f."etablissementId" = $1
+   290→                                ORDER BY f."dateEmission" DESC
+   291→                                LIMIT $2
+   292→                        `, etabID, limit)
+   293→                } else {
+   294→                        rows, err = tx.Query(r.Context(), `
+   295→                                SELECT f."id", f."numero", f."abonnementId", f."etablissementId",
+   296→                                       f."montantHt", f."tva", f."montantTtc", f."statut",
+   297→                                       f."dateEmission", f."dateEcheance", f."datePaiement",
+   298→                                       f."modePaiement", f."referencePaiement", f."lignes", f."notes",
+   299→                                       a."id", a."statut"::text,
+   300→                                       p."id", p."nom", p."type"::text, p."prixMensuel", p."prixAnnuel",
+   301→                                       e."id", e."nom", e."ville", e."email", e."type", e."pays", e."telephone", e."adresse"
+   302→                                FROM "Facture" f
+   303→                                LEFT JOIN "Abonnement" a ON a."id" = f."abonnementId"
+   304→                                LEFT JOIN "Plan" p ON p."id" = a."planId"
+   305→                                LEFT JOIN "Etablissement" e ON e."id" = f."etablissementId"
+   306→                                ORDER BY f."dateEmission" DESC
+   307→                                LIMIT $1
+   308→                        `, limit)
+   309→                }
+   310→                if err != nil {
+   311→                        return nil
+   312→                }
+   313→                defer rows.Close()
+   314→                for rows.Next() {
+   315→                        f := facture{}
+   316→                        var dateEmission, dateEcheance time.Time
+   317→                        var datePaiement *time.Time
+   318→                        var lignesJSON string
+   319→                        var aboID, aboStatut, planID, planNom, planType *string
+   320→                        var planPrix *float64
+   321→                        var planAnnuel *float64
+   322→                        var etabID2, etabNom, etabVille, etabEmail, etabType, etabPays, etabTel, etabAdr *string
+   323→                        if err := rows.Scan(
+   324→                                &f.ID, &f.Numero, &f.AbonnementID, &f.EtablissementID,
+   325→                                &f.MontantHt, &f.Tva, &f.MontantTtc, &f.Statut,
+   326→                                &dateEmission, &dateEcheance, &datePaiement,
+   327→                                &f.ModePaiement, &f.ReferencePaiement, &lignesJSON, &f.Notes,
+   328→                                &aboID, &aboStatut,
+   329→                                &planID, &planNom, &planType, &planPrix, &planAnnuel,
+   330→                                &etabID2, &etabNom, &etabVille, &etabEmail, &etabType, &etabPays, &etabTel, &etabAdr,
+   331→                        ); err != nil {
+   332→                                continue
+   333→                        }
+   334→                        f.DateEmission = dateEmission.UTC().Format(time.RFC3339)
+   335→                        f.DateEcheance = dateEcheance.UTC().Format(time.RFC3339)
+   336→                        if datePaiement != nil {
+   337→                                ts := datePaiement.UTC().Format(time.RFC3339)
+   338→                                f.DatePaiement = &ts
+   339→                        }
+   340→                        // Désérialiser lignes (JSON text → []ligneFacture).
+   341→                        f.Lignes = []ligneFacture{}
+   342→                        if lignesJSON != "" {
+   343→                                var lignes []ligneFacture
+   344→                                if json.Unmarshal([]byte(lignesJSON), &lignes) == nil {
+   345→                                        f.Lignes = lignes
+   346→                                }
+   347→                        }
+   348→                        // Abonnement nested.
+   349→                        if aboID != nil {
+   350→                                plan := planRef{}
+   351→                                if planID != nil {
+   352→                                        plan.ID = *planID
+   353→                                }
+   354→                                if planNom != nil {
+   355→                                        plan.Nom = *planNom
+   356→                                }
+   357→                                if planType != nil {
+   358→                                        plan.Type = *planType
+   359→                                }
+   360→                                if planPrix != nil {
+   361→                                        plan.PrixMensuel = *planPrix
+   362→                                }
+   363→                                plan.PrixAnnuel = planAnnuel
+   364→                                aboStatutStr := ""
+   365→                                if aboStatut != nil {
+   366→                                        aboStatutStr = *aboStatut
+   367→                                }
+   368→                                f.Abonnement = &abonnementRef{
+   369→                                        ID:     *aboID,
+   370→                                        Statut: aboStatutStr,
+   371→                                        Plan:   plan,
+   372→                                }
+   373→                        }
+   374→                        // Etablissement nested.
+   375→                        if etabID2 != nil && etabNom != nil {
+   376→                                f.Etablissement = &etablissementRef{
+   377→                                        ID:        *etabID2,
+   378→                                        Nom:       *etabNom,
+   379→                                        Ville:     etabVille,
+   380→                                        Email:     etabEmail,
+   381→                                        Type:      etabType,
+   382→                                        Pays:      etabPays,
+   383→                                        Telephone: etabTel,
+   384→                                        Adresse:   etabAdr,
+   385→                                }
+   386→                        }
+   387→                        result = append(result, f)
+   388→                }
+   389→                return rows.Err()
+   390→        })
+   391→
+   392→        w.Header().Set("Content-Type", "application/json")
+   393→        json.NewEncoder(w).Encode(map[string]any{
+   394→                "factures": result,
+   395→                "total":    len(result),
+   396→        })
+   397→}
+   398→
+   399→// ──────────────────────────────────────────────────────────────────────────
+   400→// 5. GET /api/monitoring — MonitoringEvent (0 row)
+   401→// ──────────────────────────────────────────────────────────────────────────
+   402→
+   403→func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
+   404→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   405→        if !ok || claims.UserID == "" {
+   406→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   407→                return
+   408→        }
+   409→
+   410→        // MONITORING-FIX-M1 : structure complète avec les vraies colonnes DB
+   411→        // (severite, statut, details, source, duree, resoluLe, resoluPar).
+   412→        // Avant : le handler utilisait "severity"/"resolved" (colonnes inexistantes)
+   413→        // → crash silencieux (return nil) → {events:[]} même si la table avait des données.
+   414→        type event struct {
+   415→                ID        string  `json:"id"`
+   416→                Type      string  `json:"type"`
+   417→                Severite  string  `json:"severite"`
+   418→                Message   string  `json:"message"`
+   419→                Details   *string `json:"details,omitempty"`
+   420→                Source    *string `json:"source,omitempty"`
+   421→                Duree     *int    `json:"duree,omitempty"`
+   422→                Statut    string  `json:"statut"`
+   423→                ResoluLe  *string `json:"resoluLe,omitempty"`
+   424→                ResoluPar *string `json:"resoluPar,omitempty"`
+   425→                CreatedAt string  `json:"createdAt"`
+   426→                UpdatedAt string  `json:"updatedAt"`
+   427→        }
+   428→
+   429→        // MONITORING-FIX-M5 : filtres type/severite/statut (paramètres bindés).
+   430→        // Avant : les query params étaient ignorés → la liste affichait tous les events.
+   431→        typeFilter := r.URL.Query().Get("type")
+   432→        severiteFilter := r.URL.Query().Get("severite")
+   433→        statutFilter := r.URL.Query().Get("statut")
+   434→        limit := 100
+   435→        if l := r.URL.Query().Get("limit"); l != "" {
+   436→                if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 500 {
+   437→                        limit = n
+   438→                }
+   439→        }
+   440→
+   441→        result := []event{}
+   442→        var activeCount, criticalCount, errorCount int
+   443→
+   444→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   445→                // MONITORING-LAZY-CLEANUP : suppression des événements RESOLU de plus de 24h.
+   446→                // Approche B (lazy cleanup à la lecture) : le nettoyage se déclenche quand un
+   447→                // admin consulte /monitoring. Avantages : pas de cron à maintenir, compatible
+   448→                // Render free tier (le backend peut dormir), DB propre, atomicité garantie
+   449→                // (DELETE + SELECT dans la même transaction → l'admin ne voit jamais les lignes
+   450→                // expirées). L'index partiel (migration 000031) sur (statut, updatedAt) accélère
+   451→                // le DELETE. On log le nombre de lignes supprimées pour audit.
+   452→                if tag, err := tx.Exec(r.Context(), `
+   453→                        DELETE FROM "MonitoringEvent"
+   454→                        WHERE "statut" = 'RESOLU' AND "updatedAt" < NOW() - INTERVAL '24 hours'
+   455→                `); err == nil && tag.RowsAffected() > 0 {
+   456→                        slog.Info("monitoring: cleanup événements RESOLU > 24h",
+   457→                                "deleted", tag.RowsAffected(),
+   458→                                "triggered_by", claims.UserID,
+   459→                        )
+   460→                }
+   461→
+   462→                // Construire la clause WHERE dynamique.
+   463→                var whereClauses []string
+   464→                var args []any
+   465→                argIdx := 1
+   466→                if typeFilter != "" {
+   467→                        whereClauses = append(whereClauses, fmt.Sprintf(`"type" = $%d`, argIdx))
+   468→                        args = append(args, typeFilter)
+   469→                        argIdx++
+   470→                }
+   471→                if severiteFilter != "" {
+   472→                        whereClauses = append(whereClauses, fmt.Sprintf(`"severite" = $%d`, argIdx))
+   473→                        args = append(args, severiteFilter)
+   474→                        argIdx++
+   475→                }
+   476→                if statutFilter != "" {
+   477→                        whereClauses = append(whereClauses, fmt.Sprintf(`"statut" = $%d`, argIdx))
+   478→                        args = append(args, statutFilter)
+   479→                        argIdx++
+   480→                }
+   481→                whereClause := ""
+   482→                if len(whereClauses) > 0 {
+   483→                        whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
+   484→                }
+   485→
+   486→                // SELECT avec les vraies colonnes.
+   487→                args = append(args, limit)
+   488→                query := fmt.Sprintf(`
+   489→                        SELECT "id", "type", "severite", "message", "details", "source", "duree",
+   490→                               "statut", "resoluLe", "resoluPar", "createdAt", "updatedAt"
+   491→                        FROM "MonitoringEvent"
+   492→                        %s
+   493→                        ORDER BY "createdAt" DESC
+   494→                        LIMIT $%d
+   495→                `, whereClause, argIdx)
+   496→
+   497→                rows, err := tx.Query(r.Context(), query, args...)
+   498→                if err != nil {
+   499→                        return nil
+   500→                }
+   501→                defer rows.Close()
+   502→                for rows.Next() {
+   503→                        e := event{}
+   504→                        var createdAt, updatedAt time.Time
+   505→                        var resoluLe *time.Time
+   506→                        if err := rows.Scan(&e.ID, &e.Type, &e.Severite, &e.Message, &e.Details,
+   507→                                &e.Source, &e.Duree, &e.Statut, &resoluLe, &e.ResoluPar,
+   508→                                &createdAt, &updatedAt); err == nil {
+   509→                                e.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+   510→                                e.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+   511→                                if resoluLe != nil {
+   512→                                        ts := resoluLe.UTC().Format(time.RFC3339)
+   513→                                        e.ResoluLe = &ts
+   514→                                }
+   515→                                result = append(result, e)
+   516→                        }
+   517→                }
+   518→
+   519→                // MONITORING-FIX-M4 : calculer les stats (activeCount, criticalCount, errorCount).
+   520→                // Avant : le backend ne retournait pas "stats" → le frontend affichait
+   521→                // toujours {activeCount: 0, criticalCount: 0, errorCount: 0}.
+   522→                // On compte sur TOUS les events (pas seulement les filtrés) pour des stats globales.
+   523→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF'`).Scan(&activeCount)
+   524→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF' AND "severite" = 'CRITICAL'`).Scan(&criticalCount)
+   525→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF' AND "severite" = 'ERROR'`).Scan(&errorCount)
+   526→
+   527→                return nil
+   528→        })
+   529→
+   530→        w.Header().Set("Content-Type", "application/json")
+   531→        json.NewEncoder(w).Encode(map[string]any{
+   532→                "events": result,
+   533→                "total":  len(result),
+   534→                "stats": map[string]int{
+   535→                        "activeCount":   activeCount,
+   536→                        "criticalCount": criticalCount,
+   537→                        "errorCount":    errorCount,
+   538→                },
+   539→        })
+   540→}
+   541→
+   542→// ──────────────────────────────────────────────────────────────────────────
+   543→// 6. GET /api/ip-whitelist — IpWhitelist (0 row)
+   544→// ──────────────────────────────────────────────────────────────────────────
+   545→
+   546→func (s *Server) ipWhitelistListReal(w http.ResponseWriter, r *http.Request) {
+   547→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   548→        if !ok || claims.UserID == "" {
+   549→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   550→                return
+   551→        }
+   552→
+   553→        // PARAMETRES-FIX-P7 : filtre par etablissementId (paramètre bindé, anti-injection).
+   554→        // Avant : le handler ignorait le query param ?etablissementId=X → un ADMIN voyait
+   555→        // toutes les IPs de tous les établissements mélangées.
+   556→        etabID := r.URL.Query().Get("etablissementId")
+   557→
+   558→        type ipEntry struct {
+   559→                ID             string  `json:"id"`
+   560→                AdresseIP      string  `json:"adresseIp"`
+   561→                Description    *string `json:"description,omitempty"`
+   562→                EtablissementID *string `json:"etablissementId,omitempty"`
+   563→                Actif          bool    `json:"actif"`
+   564→                CreatedAt      string  `json:"createdAt"`
+   565→        }
+   566→
+   567→        result := []ipEntry{}
+   568→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   569→                var rows pgx.Rows
+   570→                var err error
+   571→                if etabID != "" {
+   572→                        // PARAMETRES-FIX-P1 (bindé) : filtre par établissement.
+   573→                        rows, err = tx.Query(r.Context(), `
+   574→                                SELECT "id", "adresseIp", "description", "etablissementId", "actif", "createdAt"
+   575→                                FROM "IpWhitelist"
+   576→                                WHERE "etablissementId" = $1
+   577→                                ORDER BY "createdAt" DESC
+   578→                        `, etabID)
+   579→                } else {
+   580→                        rows, err = tx.Query(r.Context(), `
+   581→                                SELECT "id", "adresseIp", "description", "etablissementId", "actif", "createdAt"
+   582→                                FROM "IpWhitelist"
+   583→                                ORDER BY "createdAt" DESC
+   584→                        `)
+   585→                }
+   586→                if err != nil {
+   587→                        return nil
+   588→                }
+   589→                defer rows.Close()
+   590→                for rows.Next() {
+   591→                        ip := ipEntry{}
+   592→                        var createdAt time.Time
+   593→                        if err := rows.Scan(&ip.ID, &ip.AdresseIP, &ip.Description, &ip.EtablissementID, &ip.Actif, &createdAt); err == nil {
+   594→                                ip.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+   595→                                result = append(result, ip)
+   596→                        }
+   597→                }
+   598→                return nil
+   599→        })
+   600→
+   601→        w.Header().Set("Content-Type", "application/json")
+   602→        // PARAMETRES-FIX-P9 : clé "entries" (et non "ips") pour matcher le type frontend
+   603→        // IpWhitelistEntry[] attendu par responsable-parametres-page.tsx.
+   604→        json.NewEncoder(w).Encode(map[string]any{
+   605→                "entries": result,
+   606→                "total":   len(result),
+   607→        })
+   608→}
+   609→
+   610→// ──────────────────────────────────────────────────────────────────────────
+   611→// PARAMETRES-FIX-P2 : mutations IpWhitelist (POST/PATCH/DELETE).
+   612→// Avant : seules les GET étaient déclarées → ajout/toggle/suppression IP
+   613→// retournaient 404. RLS policy IpWhitelist_modify filtre par etablissementId
+   614→// + (is_admin() OR is_responsable()).
+   615→// ──────────────────────────────────────────────────────────────────────────
+   616→
+   617→// createIpWhitelist — POST /api/ip-whitelist
+   618→func (s *Server) createIpWhitelist(w http.ResponseWriter, r *http.Request) {
+   619→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   620→        if !ok || claims.UserID == "" {
+   621→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   622→                return
+   623→        }
+   624→
+   625→        var input struct {
+   626→                AdresseIP      string  `json:"adresseIp"`
+   627→                Description    *string `json:"description"`
+   628→                EtablissementID string `json:"etablissementId"`
+   629→        }
+   630→        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+   631→                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+   632→                return
+   633→        }
+   634→        if input.AdresseIP == "" {
+   635→                writeJSONError(w, http.StatusBadRequest, "adresseIp requis")
+   636→                return
+   637→        }
+   638→        if len(input.AdresseIP) > 100 {
+   639→                writeJSONError(w, http.StatusBadRequest, "adresseIp trop long (max 100)")
+   640→                return
+   641→        }
+   642→        if input.EtablissementID == "" {
+   643→                writeJSONError(w, http.StatusBadRequest, "etablissementId requis")
+   644→                return
+   645→        }
+   646→
+   647→        type ipEntry struct {
+   648→                ID              string  `json:"id"`
+   649→                AdresseIP       string  `json:"adresseIp"`
+   650→                Description     *string `json:"description,omitempty"`
+   651→                EtablissementID string  `json:"etablissementId"`
+   652→                Actif           bool    `json:"actif"`
+   653→                CreatedAt       string  `json:"createdAt"`
+   654→        }
+   655→
+   656→        created := ipEntry{}
+   657→        found := false
+   658→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   659→                newID := "ipwl_" + uuid.NewString()
+   660→                var createdAt time.Time
+   661→                err := tx.QueryRow(r.Context(), `
+   662→                        INSERT INTO "IpWhitelist" ("id", "adresseIp", "description", "etablissementId", "creePar", "actif", "createdAt")
+   663→                        VALUES ($1, $2, $3, $4, $5, true, now())
+   664→                        RETURNING "id", "adresseIp", "description", "etablissementId", "actif", "createdAt"
+   665→                `, newID, input.AdresseIP, input.Description, input.EtablissementID, claims.UserID).Scan(
+   666→                        &created.ID, &created.AdresseIP, &created.Description, &created.EtablissementID, &created.Actif, &createdAt,
+   667→                )
+   668→                if err == nil {
+   669→                        created.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+   670→                        found = true
+   671→                }
+   672→                return nil
+   673→        })
+   674→
+   675→        if !found {
+   676→                // RLS a bloqué l'INSERT (établissement non autorisé) ou autre erreur.
+   677→                writeJSONError(w, http.StatusForbidden, "création non autorisée pour cet établissement")
+   678→                return
+   679→        }
+   680→
+   681→        w.Header().Set("Content-Type", "application/json")
+   682→        w.WriteHeader(http.StatusCreated)
+   683→        json.NewEncoder(w).Encode(map[string]any{"entry": created})
+   684→}
+   685→
+   686→// updateIpWhitelist — PATCH /api/ip-whitelist/{id}
+   687→func (s *Server) updateIpWhitelist(w http.ResponseWriter, r *http.Request) {
+   688→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   689→        if !ok || claims.UserID == "" {
+   690→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   691→                return
+   692→        }
+   693→
+   694→        id := chi.URLParam(r, "id")
+   695→        if id == "" {
+   696→                writeJSONError(w, http.StatusBadRequest, "id requis")
+   697→                return
+   698→        }
+   699→
+   700→        var input struct {
+   701→                Actif *bool `json:"actif"`
+   702→        }
+   703→        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+   704→                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+   705→                return
+   706→        }
+   707→        if input.Actif == nil {
+   708→                writeJSONError(w, http.StatusBadRequest, "actif requis (booléen)")
+   709→                return
+   710→        }
+   711→
+   712→        type ipEntry struct {
+   713→                ID              string  `json:"id"`
+   714→                AdresseIP       string  `json:"adresseIp"`
+   715→                Description     *string `json:"description,omitempty"`
+   716→                EtablissementID string  `json:"etablissementId"`
+   717→                Actif           bool    `json:"actif"`
+   718→                CreatedAt       string  `json:"createdAt"`
+   719→        }
+   720→
+   721→        updated := ipEntry{}
+   722→        found := false
+   723→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   724→                var createdAt time.Time
+   725→                err := tx.QueryRow(r.Context(), `
+   726→                        UPDATE "IpWhitelist" SET "actif" = $1 WHERE "id" = $2
+   727→                        RETURNING "id", "adresseIp", "description", "etablissementId", "actif", "createdAt"
+   728→                `, *input.Actif, id).Scan(
+   729→                        &updated.ID, &updated.AdresseIP, &updated.Description, &updated.EtablissementID, &updated.Actif, &createdAt,
+   730→                )
+   731→                if err == nil {
+   732→                        updated.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+   733→                        found = true
+   734→                }
+   735→                return nil
+   736→        })
+   737→
+   738→        if !found {
+   739→                // RLS a bloqué (entry d'un autre établissement) ou ID inexistant.
+   740→                writeJSONError(w, http.StatusNotFound, "entrée non trouvée ou non autorisée")
+   741→                return
+   742→        }
+   743→
+   744→        w.Header().Set("Content-Type", "application/json")
+   745→        json.NewEncoder(w).Encode(map[string]any{"entry": updated})
+   746→}
+   747→
+   748→// deleteIpWhitelist — DELETE /api/ip-whitelist/{id}
+   749→func (s *Server) deleteIpWhitelist(w http.ResponseWriter, r *http.Request) {
+   750→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   751→        if !ok || claims.UserID == "" {
+   752→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   753→                return
+   754→        }
+   755→
+   756→        id := chi.URLParam(r, "id")
+   757→        if id == "" {
+   758→                writeJSONError(w, http.StatusBadRequest, "id requis")
+   759→                return
+   760→        }
+   761→
+   762→        deleted := false
+   763→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   764→                tag, err := tx.Exec(r.Context(), `DELETE FROM "IpWhitelist" WHERE "id" = $1`, id)
+   765→                if err == nil && tag.RowsAffected() > 0 {
+   766→                        deleted = true
+   767→                }
+   768→                return nil
+   769→        })
+   770→
+   771→        if !deleted {
+   772→                // RLS a bloqué (entry d'un autre établissement) ou ID inexistant.
+   773→                writeJSONError(w, http.StatusNotFound, "entrée non trouvée ou non autorisée")
+   774→                return
+   775→        }
+   776→
+   777→        w.Header().Set("Content-Type", "application/json")
+   778→        json.NewEncoder(w).Encode(map[string]string{"message": "entrée supprimée"})
+   779→}
+   780→
+   781→// ──────────────────────────────────────────────────────────────────────────
+   782→// 7. GET /api/corbeille — soft-deleted items (Epreuve + Document + Question + Devoir)
+   783→//
+   784→// CORBEILLE-FIX-2 (P2) :
+   785→//   - C6 : DTO Question avec document nested ({id, nomFichier}) au lieu de flat.
+   786→//   - C7 : DTOs Epreuve/Devoir avec uniteEnseignement nested ({id, code, nom}).
+   787→//   - C8 : dates (dateUpload, dateDebut, dateFin, dateLimite) formatées en RFC3339.
+   788→//   - C11 : LIMIT 200 par type pour éviter payload lourd.
+   789→// ──────────────────────────────────────────────────────────────────────────
+   790→
+   791→func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
+   792→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   793→        if !ok || claims.UserID == "" {
+   794→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   795→                return
+   796→        }
+   797→
+   798→        // C6 : document nested pour Question (au lieu de documentId/documentNom plats).
+   799→        type docRef struct {
+   800→                ID         string `json:"id"`
+   801→                NomFichier string `json:"nomFichier,omitempty"`
+   802→        }
+   803→        // C7 : uniteEnseignement nested pour Epreuve et Devoir.
+   804→        type ueRef struct {
+   805→                ID   string `json:"id"`
+   806→                Code string `json:"code,omitempty"`
+   807→                Nom  string `json:"nom,omitempty"`
+   808→        }
+   809→        type deletedDocument struct {
+   810→                ID            string  `json:"id"`
+   811→                NomFichier    string  `json:"nomFichier"`
+   812→                TailleFichier *int64  `json:"tailleFichier"`
+   813→                TypeMime      *string `json:"typeMime"`
+   814→                DateUpload    string  `json:"dateUpload"`
+   815→                DeletedAt     string  `json:"deletedAt"`
+   816→        }
+   817→        type deletedQuestion struct {
+   818→                ID         string  `json:"id"`
+   819→                Type       string  `json:"type"`
+   820→                Enonce     string  `json:"enonce"`
+   821→                Difficulte string  `json:"difficulte"`
+   822→                Validee    bool    `json:"validee"`
+   823→                DeletedAt  string  `json:"deletedAt"`
+   824→                Document   *docRef `json:"document"`
+   825→        }
+   826→        type deletedEpreuve struct {
+   827→                ID                string  `json:"id"`
+   828→                Titre             string  `json:"titre"`
+   829→                Duree             int     `json:"duree"`
+   830→                Statut            string  `json:"statut"`
+   831→                DateDebut         string  `json:"dateDebut"`
+   832→                DateFin           string  `json:"dateFin"`
+   833→                DeletedAt         string  `json:"deletedAt"`
+   834→                UniteEnseignement *ueRef  `json:"uniteEnseignement"`
+   835→        }
+   836→        type deletedDevoir struct {
+   837→                ID                string  `json:"id"`
+   838→                Titre             string  `json:"titre"`
+   839→                DateLimite        *string `json:"dateLimite"`
+   840→                Statut            string  `json:"statut"`
+   841→                NoteMax           float64 `json:"noteMax"`
+   842→                DeletedAt         string  `json:"deletedAt"`
+   843→                UniteEnseignement *ueRef  `json:"uniteEnseignement"`
+   844→        }
+   845→
+   846→        var documents []deletedDocument
+   847→        var questions []deletedQuestion
+   848→        var epreuves []deletedEpreuve
+   849→        var devoirs []deletedDevoir
+   850→
+   851→        txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   852→                // Epreuves supprimées + LEFT JOIN UniteEnseignement (C7).
+   853→                rows, err := tx.Query(r.Context(), `
+   854→                        SELECT e."id", e."titre", e."duree", e."statut"::text, e."dateDebut", e."dateFin", e."deletedAt",
+   855→                               ue."id", ue."code", ue."nom"
+   856→                        FROM "Epreuve" e
+   857→                        LEFT JOIN "UniteEnseignement" ue ON ue."id" = e."uniteEnseignementId"
+   858→                        WHERE e."deletedAt" IS NOT NULL
+   859→                        ORDER BY e."deletedAt" DESC
+   860→                        LIMIT 200
+   861→                `)
+   862→                if err != nil {
+   863→                        return fmt.Errorf("query epreuves corbeille: %w", err)
+   864→                }
+   865→                defer rows.Close()
+   866→                for rows.Next() {
+   867→                        var e deletedEpreuve
+   868→                        var deletedAt, dateDebut, dateFin time.Time
+   869→                        var ueID, ueCode, ueNom *string
+   870→                        if err := rows.Scan(&e.ID, &e.Titre, &e.Duree, &e.Statut, &dateDebut, &dateFin, &deletedAt, &ueID, &ueCode, &ueNom); err != nil {
+   871→                                return fmt.Errorf("scan epreuve corbeille: %w", err)
+   872→                        }
+   873→                        e.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+   874→                        e.DateDebut = dateDebut.UTC().Format(time.RFC3339) // C8
+   875→                        e.DateFin = dateFin.UTC().Format(time.RFC3339)     // C8
+   876→                        if ueID != nil {
+   877→                                e.UniteEnseignement = &ueRef{ID: *ueID, Code: derefStr(ueCode), Nom: derefStr(ueNom)}
+   878→                        }
+   879→                        epreuves = append(epreuves, e)
+   880→                }
+   881→
+   882→                // Documents supprimés.
+   883→                rows2, err := tx.Query(r.Context(), `
+   884→                        SELECT "id", "nomFichier", "tailleFichier", "typeMime", "dateUpload", "deletedAt"
+   885→                        FROM "Document" WHERE "deletedAt" IS NOT NULL
+   886→                        ORDER BY "deletedAt" DESC
+   887→                        LIMIT 200
+   888→                `)
+   889→                if err != nil {
+   890→                        return fmt.Errorf("query documents corbeille: %w", err)
+   891→                }
+   892→                defer rows2.Close()
+   893→                for rows2.Next() {
+   894→                        var d deletedDocument
+   895→                        var deletedAt, dateUpload time.Time
+   896→                        if err := rows2.Scan(&d.ID, &d.NomFichier, &d.TailleFichier, &d.TypeMime, &dateUpload, &deletedAt); err != nil {
+   897→                                return fmt.Errorf("scan document corbeille: %w", err)
+   898→                        }
+   899→                        d.DateUpload = dateUpload.UTC().Format(time.RFC3339) // C8
+   900→                        d.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+   901→                        documents = append(documents, d)
+   902→                }
+   903→
+   904→                // Questions supprimées + LEFT JOIN Document (C6 : nested).
+   905→                rows3, err := tx.Query(r.Context(), `
+   906→                        SELECT q."id", q."type", q."enonce", q."difficulte"::text, q."validee", q."deletedAt",
+   907→                               doc."id", doc."nomFichier"
+   908→                        FROM "Question" q
+   909→                        LEFT JOIN "Document" doc ON doc."id" = q."documentId"
+   910→                        WHERE q."deletedAt" IS NOT NULL
+   911→                        ORDER BY q."deletedAt" DESC
+   912→                        LIMIT 200
+   913→                `)
+   914→                if err != nil {
+   915→                        return fmt.Errorf("query questions corbeille: %w", err)
+   916→                }
+   917→                defer rows3.Close()
+   918→                for rows3.Next() {
+   919→                        var q deletedQuestion
+   920→                        var deletedAt time.Time
+   921→                        var docID, docNom *string
+   922→                        if err := rows3.Scan(&q.ID, &q.Type, &q.Enonce, &q.Difficulte, &q.Validee, &deletedAt, &docID, &docNom); err != nil {
+   923→                                return fmt.Errorf("scan question corbeille: %w", err)
+   924→                        }
+   925→                        q.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+   926→                        if docID != nil {
+   927→                                q.Document = &docRef{ID: *docID, NomFichier: derefStr(docNom)} // C6
+   928→                        }
+   929→                        questions = append(questions, q)
+   930→                }
+   931→
+   932→                // Devoirs supprimés + LEFT JOIN UniteEnseignement (C7).
+   933→                rows4, err := tx.Query(r.Context(), `
+   934→                        SELECT d."id", d."titre", d."dateLimite", d."statut"::text, d."noteMax", d."deletedAt",
+   935→                               ue."id", ue."code", ue."nom"
+   936→                        FROM "Devoir" d
+   937→                        LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+   938→                        WHERE d."deletedAt" IS NOT NULL
+   939→                        ORDER BY d."deletedAt" DESC
+   940→                        LIMIT 200
+   941→                `)
+   942→                if err != nil {
+   943→                        return fmt.Errorf("query devoirs corbeille: %w", err)
+   944→                }
+   945→                defer rows4.Close()
+   946→                for rows4.Next() {
+   947→                        var dv deletedDevoir
+   948→                        var deletedAt time.Time
+   949→                        var dateLimite *time.Time
+   950→                        var ueID, ueCode, ueNom *string
+   951→                        if err := rows4.Scan(&dv.ID, &dv.Titre, &dateLimite, &dv.Statut, &dv.NoteMax, &deletedAt, &ueID, &ueCode, &ueNom); err != nil {
+   952→                                return fmt.Errorf("scan devoir corbeille: %w", err)
+   953→                        }
+   954→                        dv.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+   955→                        if dateLimite != nil {
+   956→                                ts := dateLimite.UTC().Format(time.RFC3339) // C8
+   957→                                dv.DateLimite = &ts
+   958→                        }
+   959→                        if ueID != nil {
+   960→                                dv.UniteEnseignement = &ueRef{ID: *ueID, Code: derefStr(ueCode), Nom: derefStr(ueNom)}
+   961→                        }
+   962→                        devoirs = append(devoirs, dv)
+   963→                }
+   964→                return nil
+   965→        })
+   966→        if txErr != nil {
+   967→                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+   968→                return
+   969→        }
+   970→
+   971→        // Si nil, retourner un tableau vide (pas null) pour le frontend.
+   972→        if documents == nil {
+   973→                documents = []deletedDocument{}
+   974→        }
+   975→        if questions == nil {
+   976→                questions = []deletedQuestion{}
+   977→        }
+   978→        if epreuves == nil {
+   979→                epreuves = []deletedEpreuve{}
+   980→        }
+   981→        if devoirs == nil {
+   982→                devoirs = []deletedDevoir{}
+   983→        }
+   984→        totalCount := len(documents) + len(questions) + len(epreuves) + len(devoirs)
+   985→
+   986→        w.Header().Set("Content-Type", "application/json")
+   987→        json.NewEncoder(w).Encode(map[string]any{
+   988→                "documents":  documents,
+   989→                "questions":  questions,
+   990→                "epreuves":   epreuves,
+   991→                "devoirs":    devoirs,
+   992→                "totalCount": totalCount,
+   993→        })
+   994→}
+   995→
+   996→// ──────────────────────────────────────────────────────────────────────────
+   997→// 7b. POST /api/corbeille/restore — Restaurer des éléments supprimés
+   998→//
+   999→// CORBEILLE-FIX-2 (P1) :
+  1000→//   - C4 : HTTP 207 Multi-Status si partiel, 409 si total échec, 200 si tout OK.
+  1001→//   - C16 : best-effort conservé (si un item échoue, les autres sont tentés).
+  1002→// ──────────────────────────────────────────────────────────────────────────
+  1003→
+  1004→func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
+  1005→        claims, ok := middleware.ClaimsFromContext(r.Context())
+  1006→        if !ok || claims.UserID == "" {
+  1007→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+  1008→                return
+  1009→        }
+  1010→
+  1011→        var body struct {
+  1012→                Items []struct {
+  1013→                        ID   string `json:"id"`
+  1014→                        Type string `json:"type"` // document | question | epreuve | devoir
+  1015→                } `json:"items"`
+  1016→        }
+  1017→        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+  1018→                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+  1019→                return
+  1020→        }
+  1021→        if len(body.Items) == 0 {
+  1022→                writeJSONError(w, http.StatusBadRequest, "items requis")
+  1023→                return
+  1024→        }
+  1025→
+  1026→        restored := 0
+  1027→        var errors []string
+  1028→        txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+  1029→                for _, item := range body.Items {
+  1030→                        var tableName string
+  1031→                        switch item.Type {
+  1032→                        case "epreuve":
+  1033→                                tableName = "Epreuve"
+  1034→                        case "document":
+  1035→                                tableName = "Document"
+  1036→                        case "question":
+  1037→                                tableName = "Question"
+  1038→                        case "devoir":
+  1039→                                tableName = "Devoir"
+  1040→                        default:
+  1041→                                errors = append(errors, "type inconnu: "+item.Type)
+  1042→                                continue
+  1043→                        }
+  1044→                        // SAFETY: tableName issu d'un switch contrôlé, pas d'une input utilisateur.
+  1045→                        query := fmt.Sprintf(`UPDATE "%s" SET "deletedAt" = NULL, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, tableName)
+  1046→                        tag, err := tx.Exec(r.Context(), query, item.ID)
+  1047→                        if err != nil {
+  1048→                                errors = append(errors, fmt.Sprintf("restore %s %s: %v", item.Type, item.ID, err))
+  1049→                                continue
+  1050→                        }
+  1051→                        if tag.RowsAffected() > 0 {
+  1052→                                restored++
+  1053→                        }
+  1054→                }
+  1055→                return nil
+  1056→        })
+  1057→        if txErr != nil {
+  1058→                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+  1059→                return
+  1060→        }
+  1061→
+  1062→        // C4 : code HTTP selon le résultat.
+  1063→        // - 200 si tout OK (restored == len(items))
+  1064→        // - 207 Multi-Status si partiel (0 < restored < len(items))
+  1065→        // - 409 Conflict si total échec (restored == 0)
+  1066→        statusCode := http.StatusOK
+  1067→        if restored == 0 {
+  1068→                statusCode = http.StatusConflict
+  1069→        } else if restored < len(body.Items) {
+  1070→                statusCode = http.StatusMultiStatus
+  1071→        }
+  1072→
+  1073→        w.Header().Set("Content-Type", "application/json")
+  1074→        w.WriteHeader(statusCode)
+  1075→        json.NewEncoder(w).Encode(map[string]any{
+  1076→                "message":  fmt.Sprintf("%d élément(s) restauré(s)", restored),
+  1077→                "restored": restored,
+  1078→                "errors":   errors,
+  1079→        })
+  1080→}
+  1081→
+  1082→// ──────────────────────────────────────────────────────────────────────────
+  1083→// 7c. DELETE /api/corbeille/purge — Suppression définitive
+  1084→//
+  1085→// CORBEILLE-FIX-2 (P1) :
+  1086→//   - C3 : vérifie FK RESTRICT avant DELETE (SessionPassation pour Epreuve,
+  1087→//     EpreuveQuestion pour Question). Refuse avec erreur claire si dépendances.
+  1088→//   - C4 : HTTP 207 Multi-Status si partiel, 409 si total échec, 200 si tout OK.
+  1089→//   - C5 : supprime aussi l'objet R2 pour les Documents (le fichier était
+  1090→//     conservé au soft-delete, supprimé ici à la purge définitive).
+  1091→// ──────────────────────────────────────────────────────────────────────────
+  1092→
+  1093→func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
+  1094→        claims, ok := middleware.ClaimsFromContext(r.Context())
+  1095→        if !ok || claims.UserID == "" {
+  1096→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+  1097→                return
+  1098→        }
+  1099→
+  1100→        var body struct {
+  1101→                Items []struct {
+  1102→                        ID   string `json:"id"`
+  1103→                        Type string `json:"type"` // document | question | epreuve | devoir
+  1104→                } `json:"items"`
+  1105→        }
+  1106→        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+  1107→                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+  1108→                return
+  1109→        }
+  1110→        if len(body.Items) == 0 {
+  1111→                writeJSONError(w, http.StatusBadRequest, "items requis")
+  1112→                return
+  1113→        }
+  1114→
+  1115→        purged := 0
+  1116→        var errors []string
+  1117→        // C5 : collecter les chemins R2 des documents à purger pour suppression post-commit.
+  1118→        var r2KeysToDelete []string
+  1119→        var r2DocIDs []string
+  1120→
+  1121→        txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+  1122→                for _, item := range body.Items {
+  1123→                        var tableName string
+  1124→                        switch item.Type {
+  1125→                        case "epreuve":
+  1126→                                tableName = "Epreuve"
+  1127→                        case "document":
+  1128→                                tableName = "Document"
+  1129→                        case "question":
+  1130→                                tableName = "Question"
+  1131→                        case "devoir":
+  1132→                                tableName = "Devoir"
+  1133→                        default:
+  1134→                                errors = append(errors, "type inconnu: "+item.Type)
+  1135→                                continue
+  1136→                        }
+  1137→
+  1138→                        // C3 : vérifier FK RESTRICT avant DELETE pour Epreuve et Question.
+  1139→                        if item.Type == "epreuve" {
+  1140→                                var sessionCount int
+  1141→                                err := tx.QueryRow(r.Context(), `SELECT count(*) FROM "SessionPassation" WHERE "epreuveId" = $1`, item.ID).Scan(&sessionCount)
+  1142→                                if err != nil {
+  1143→                                        errors = append(errors, fmt.Sprintf("purge epreuve %s: vérif sessions: %v", item.ID, err))
+  1144→                                        continue
+  1145→                                }
+  1146→                                if sessionCount > 0 {
+  1147→                                        errors = append(errors, fmt.Sprintf("purge epreuve %s impossible: %d session(s) de passation liée(s) — supprimez d'abord les sessions", item.ID, sessionCount))
+  1148→                                        continue
+  1149→                                }
+  1150→                        }
+  1151→                        if item.Type == "question" {
+  1152→                                var eqCount int
+  1153→                                err := tx.QueryRow(r.Context(), `SELECT count(*) FROM "EpreuveQuestion" WHERE "questionId" = $1`, item.ID).Scan(&eqCount)
+  1154→                                if err != nil {
+  1155→                                        errors = append(errors, fmt.Sprintf("purge question %s: vérif epreuveQuestion: %v", item.ID, err))
+  1156→                                        continue
+  1157→                                }
+  1158→                                if eqCount > 0 {
+  1159→                                        errors = append(errors, fmt.Sprintf("purge question %s impossible: utilisée dans %d épreuve(s) — retirez-la des épreuves d'abord", item.ID, eqCount))
+  1160→                                        continue
+  1161→                                }
+  1162→                        }
+  1163→
+  1164→                        // C5 : pour Document, récupérer le chemin R2 avant DELETE.
+  1165→                        if item.Type == "document" {
+  1166→                                var cheminStockage string
+  1167→                                err := tx.QueryRow(r.Context(), `SELECT "cheminStockage" FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, item.ID).Scan(&cheminStockage)
+  1168→                                if err == nil && cheminStockage != "" {
+  1169→                                        r2KeysToDelete = append(r2KeysToDelete, cheminStockage)
+  1170→                                        r2DocIDs = append(r2DocIDs, item.ID)
+  1171→                                }
+  1172→                        }
+  1173→
+  1174→                        // Hard delete. SAFETY: tableName issu d'un switch contrôlé.
+  1175→                        query := fmt.Sprintf(`DELETE FROM "%s" WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, tableName)
+  1176→                        tag, err := tx.Exec(r.Context(), query, item.ID)
+  1177→                        if err != nil {
+  1178→                                errors = append(errors, fmt.Sprintf("purge %s %s: %v", item.Type, item.ID, err))
+  1179→                                continue
+  1180→                        }
+  1181→                        if tag.RowsAffected() > 0 {
+  1182→                                purged++
+  1183→                        }
+  1184→                }
+  1185→                return nil
+  1186→        })
+  1187→        if txErr != nil {
+  1188→                writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+  1189→                return
+  1190→        }
+  1191→
+  1192→        // C5 : suppression best-effort des objets R2 (post-commit, hors transaction).
+  1193→        // On utilise le storage du DocumentUseCase si disponible.
+  1194→        if len(r2KeysToDelete) > 0 && s.documentUC != nil {
+  1195→                ctx := r.Context()
+  1196→                for i, key := range r2KeysToDelete {
+  1197→                        _ = s.documentUC.PurgeR2Object(ctx, key) // best-effort, ignoré si échec
+  1198→                        _ = r2DocIDs[i]                          // docID conservé pour logging futur
+  1199→                }
+  1200→        }
+  1201→
+  1202→        // C4 : code HTTP selon le résultat.
+  1203→        statusCode := http.StatusOK
+  1204→        if purged == 0 {
+  1205→                statusCode = http.StatusConflict
+  1206→        } else if purged < len(body.Items) {
+  1207→                statusCode = http.StatusMultiStatus
+  1208→        }
+  1209→
+  1210→        w.Header().Set("Content-Type", "application/json")
+  1211→        w.WriteHeader(statusCode)
+  1212→        json.NewEncoder(w).Encode(map[string]any{
+  1213→                "message": fmt.Sprintf("%d élément(s) supprimé(s) définitivement", purged),
+  1214→                "purged":  purged,
+  1215→                "errors":  errors,
+  1216→        })
+  1217→}
+  1218→
+  1219→// ──────────────────────────────────────────────────────────────────────────
+  1220→// 8. GET /api/devoirs — Liste enrichie (DTO complet matchant le type TS Devoir)
+  1221→//
+  1222→// FIX (P1-DEVOIRS-1) :
+  1223→//   • Suppression du filtre d."etudiantId" (colonne inexistante → erreur SQL).
+  1224→//   • Pour l'étudiant : le scoping se fait via RLS (policy Devoir_select
+  1225→//     corrigée par migration 000009 : filiere+niveau de l'étudiant).
+  1226→//     Le paramètre ?etudiantId sert uniquement à joindre SA soumission.
+  1227→//   • DTO enrichi : User (enseignant), UniteEnseignement, GrilleEvaluation,
+  1228→//     soumissionCount, et soumission (l'étudiant courant) — matche le type
+  1229→//     Devoir du frontend (devoirs-types.ts) qui accède à ces champs SANS
+  1230→//     optional chaining → crash si absents.
+  1231→// ──────────────────────────────────────────────────────────────────────────
+  1232→
+  1233→func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
+  1234→        claims, ok := middleware.ClaimsFromContext(r.Context())
+  1235→        if !ok || claims.UserID == "" {
+  1236→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+  1237→                return
+  1238→        }
+  1239→
+  1240→        // DTO User (enseignant) — matche { id, name, email } côté frontend
+  1241→        type userDTO struct {
+  1242→                ID    string `json:"id"`
+  1243→                Name  string `json:"name"`
+  1244→                Email string `json:"email"`
+  1245→        }
+  1246→
+  1247→        // DTO UniteEnseignement — matche { id, code, nom, niveau } côté frontend
+  1248→        type ueDTO struct {
+  1249→                ID     string `json:"id"`
+  1250→                Code   string `json:"code"`
+  1251→                Nom    string `json:"nom"`
+  1252→                Niveau string `json:"niveau,omitempty"`
+  1253→        }
+  1254→
+  1255→        // DTO GrilleEvaluation — matche { id, criteres } | null côté frontend
+  1256→        type grilleDTO struct {
+  1257→                ID        string `json:"id"`
+  1258→                Criteres  string `json:"criteres"`
+  1259→        }
+  1260→
+  1261→        // DTO Soumission résumée (pour l'étudiant : sa propre soumission jointe)
+  1262→        type soumissionDTO struct {
+  1263→                ID                   string  `json:"id"`
+  1264→                ContenuTexte         *string `json:"contenuTexte"`
+  1265→                CommentaireEtudiant  *string `json:"commentaireEtudiant"`
+  1266→                Statut               string  `json:"statut"`
+  1267→                RenduAt              *string `json:"renduAt"`
+  1268→                Note                 *float64 `json:"note"`
+  1269→                CommentaireEnseignant *string `json:"commentaireEnseignant"`
+  1270→                NoteIA               *float64 `json:"noteIA"`
+  1271→                JustificationIA      *string `json:"justificationIA"`
+  1272→                CreatedAt            string  `json:"createdAt"`
+  1273→        }
+  1274→
+  1275→        // DTO Devoir complet — matche le type TS Devoir (devoirs-types.ts)
+  1276→        // Tous les champs accédés sans optional chaining par le frontend doivent
+  1277→        // être non-null dans la réponse JSON.
+  1278→        type devoir struct {
+  1279→                ID                 string      `json:"id"`
+  1280→                Titre              string      `json:"titre"`
+  1281→                Description        *string     `json:"description"`
+  1282→                Consignes          *string     `json:"consignes"`
+  1283→                UniteEnseignementID string     `json:"uniteEnseignementId"`
+  1284→                EnseignantID       string      `json:"enseignantId"`
+  1285→                TypeSeance         string      `json:"typeSeance"`
+  1286→                DatePublication    *string     `json:"datePublication"`
+  1287→                DateLimite         string      `json:"dateLimite"`
+  1288→                NoteMax            float64     `json:"noteMax"`
+  1289→                RenduFichiers      *string     `json:"renduFichiers"`
+  1290→                SoumissionGroupe   bool        `json:"soumissionGroupe"`
+  1291→                NbMaxFichiers      int         `json:"nbMaxFichiers"`
+  1292→                TailleMaxFichier   int         `json:"tailleMaxFichier"`
+  1293→                Statut             string      `json:"statut"`
+  1294→                AnneeUniversitaire string      `json:"anneeUniversitaire"`
+  1295→                CreatedAt          string      `json:"createdAt"`
+  1296→                UpdatedAt          string      `json:"updatedAt"`
+  1297→                User               userDTO     `json:"User"`
+  1298→                UniteEnseignement  ueDTO       `json:"UniteEnseignement"`
+  1299→                GrilleEvaluation   *grilleDTO  `json:"GrilleEvaluation"`
+  1300→                SoumissionCount    int         `json:"soumissionCount"`
+  1301→                Soumission         *soumissionDTO `json:"soumission"`
+  1302→        }
+  1303→
+  1304→        result := []devoir{}
+  1305→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+  1306→                enseignantID := r.URL.Query().Get("enseignantId")
+  1307→                etudiantID := r.URL.Query().Get("etudiantId")
+  1308→
+  1309→                var args []any
+  1310→                argIdx := 1
+  1311→                var where []string
+  1312→                where = append(where, `d."deletedAt" IS NULL`)
+  1313→                if enseignantID != "" {
+  1314→                        where = append(where, fmt.Sprintf(`d."enseignantId" = $%d`, argIdx))
+  1315→                        args = append(args, enseignantID)
+  1316→                        argIdx++
+  1317→                }
+  1318→                // ⚠️ Pas de filtre d."etudiantId" : la colonne n'existe pas sur Devoir.
+  1319→                // Le scoping étudiant se fait via RLS (policy Devoir_select corrigée
+  1320→                // par migration 000009). Le paramètre etudiantId sert uniquement à
+  1321→                // joindre la soumission de l'étudiant courant.
+  1322→
+  1323→                // Construction dynamique du LEFT JOIN sur Soumission (étudiant seulement)
+  1324→                soumissionJoin := ""
+  1325→                if etudiantID != "" {
+  1326→                        soumissionJoin = fmt.Sprintf(`LEFT JOIN "Soumission" s ON s."devoirId" = d."id" AND s."etudiantId" = $%d`, argIdx)
+  1327→                        args = append(args, etudiantID)
+  1328→                        argIdx++
+  1329→                }
+  1330→
+  1331→                selectCols := ""
+  1332→                if etudiantID != "" {
+  1333→                        selectCols = `,
+  1334→                                s."id", s."contenuTexte", s."commentaireEtudiant", s."statut"::text,
+  1335→                                s."renduAt", s."note", s."commentaireEnseignant",
+  1336→                                s."noteIA", s."justificationIA", s."createdAt"`
+  1337→                }
+  1338→
+  1339→                query := fmt.Sprintf(`
+  1340→                        SELECT
+  1341→                                d."id", d."titre", d."description", d."consignes",
+  1342→                                d."uniteEnseignementId", d."enseignantId", d."typeSeance"::text,
+  1343→                                d."datePublication", d."dateLimite", d."noteMax",
+  1344→                                d."renduFichiers", d."soumissionGroupe", d."nbMaxFichiers",
+  1345→                                d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
+  1346→                                d."createdAt", d."updatedAt",
+  1347→                                u."id", u."name", u."email",
+  1348→                                ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
+  1349→                                g."id", g."criteres",
+  1350→                                COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)%s
+  1351→                        FROM "Devoir" d
+  1352→                        LEFT JOIN "User" u ON u."id" = d."enseignantId"
+  1353→                        LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+  1354→                        LEFT JOIN "GrilleEvaluation" g ON g."devoirId" = d."id"
+  1355→                        %s
+  1356→                        WHERE %s
+  1357→                        ORDER BY d."createdAt" DESC
+  1358→                        LIMIT 100
+  1359→                `, selectCols, soumissionJoin, joinStringsArr(where, " AND "))
+  1360→
+  1361→                rows, err := tx.Query(r.Context(), query, args...)
+  1362→                if err != nil {
+  1363→                        return nil
+  1364→                }
+  1365→                defer rows.Close()
+  1366→                for rows.Next() {
+  1367→                        d := devoir{}
+  1368→                        var (
+  1369→                                descr, consignes, renduFichiers, datePub                  *string
+  1370→                                dateLimite                                               *time.Time
+  1371→                                createdAt, updatedAt                                     time.Time
+  1372→                                ueNiveau                                                 string
+  1373→                                grilleID, grilleCriteres                                 *string
+  1374→                                sID, sContenu, sComment, sStatut, sCommentEns, sJustifIA *string
+  1375→                                sNote, sNoteIA                                           *float64
+  1376→                                sRenduAt, sCreatedAt                                     *time.Time
+  1377→                        )
+  1378→
+  1379→                        if etudiantID != "" {
+  1380→                                if err := rows.Scan(
+  1381→                                        &d.ID, &d.Titre, &descr, &consignes,
+  1382→                                        &d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
+  1383→                                        &datePub, &dateLimite, &d.NoteMax,
+  1384→                                        &renduFichiers, &d.SoumissionGroupe, &d.NbMaxFichiers,
+  1385→                                        &d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+  1386→                                        &createdAt, &updatedAt,
+  1387→                                        &d.User.ID, &d.User.Name, &d.User.Email,
+  1388→                                        &d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
+  1389→                                        &grilleID, &grilleCriteres,
+  1390→                                        &d.SoumissionCount,
+  1391→                                        &sID, &sContenu, &sComment, &sStatut, &sRenduAt, &sNote, &sCommentEns, &sNoteIA, &sJustifIA, &sCreatedAt,
+  1392→                                ); err != nil {
+  1393→                                        return nil
+  1394→                                }
+  1395→                        } else {
+  1396→                                if err := rows.Scan(
+  1397→                                        &d.ID, &d.Titre, &descr, &consignes,
+  1398→                                        &d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
+  1399→                                        &datePub, &dateLimite, &d.NoteMax,
+  1400→                                        &renduFichiers, &d.SoumissionGroupe, &d.NbMaxFichiers,
+  1401→                                        &d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+  1402→                                        &createdAt, &updatedAt,
+  1403→                                        &d.User.ID, &d.User.Name, &d.User.Email,
+  1404→                                        &d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
+  1405→                                        &grilleID, &grilleCriteres,
+  1406→                                        &d.SoumissionCount,
+  1407→                                ); err != nil {
+  1408→                                        return nil
+  1409→                                }
+  1410→                        }
+  1411→
+  1412→                        d.Description = descr
+  1413→                        d.Consignes = consignes
+  1414→                        d.RenduFichiers = renduFichiers
+  1415→                        if datePub != nil {
+  1416→                                d.DatePublication = datePub
+  1417→                        }
+  1418→                        if dateLimite != nil {
+  1419→                                d.DateLimite = dateLimite.UTC().Format(time.RFC3339)
+  1420→                        }
+  1421→                        d.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+  1422→                        d.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+  1423→                        if ueNiveau != "" {
+  1424→                                d.UniteEnseignement.Niveau = ueNiveau
+  1425→                        }
+  1426→                        if grilleID != nil && grilleCriteres != nil {
+  1427→                                d.GrilleEvaluation = &grilleDTO{ID: *grilleID, Criteres: *grilleCriteres}
+  1428→                        }
+  1429→
+  1430→                        // Soumission de l'étudiant (si applicable)
+  1431→                        if etudiantID != "" && sID != nil {
+  1432→                                s := soumissionDTO{ID: *sID}
+  1433→                                s.ContenuTexte = sContenu
+  1434→                                s.CommentaireEtudiant = sComment
+  1435→                                if sStatut != nil {
+  1436→                                        s.Statut = *sStatut
+  1437→                                }
+  1438→                                if sRenduAt != nil {
+  1439→                                        ts := sRenduAt.UTC().Format(time.RFC3339)
+  1440→                                        s.RenduAt = &ts
+  1441→                                }
+  1442→                                s.Note = sNote
+  1443→                                s.CommentaireEnseignant = sCommentEns
+  1444→                                s.NoteIA = sNoteIA
+  1445→                                s.JustificationIA = sJustifIA
+  1446→                                if sCreatedAt != nil {
+  1447→                                        s.CreatedAt = sCreatedAt.UTC().Format(time.RFC3339)
+  1448→                                }
+  1449→                                d.Soumission = &s
+  1450→                        }
+  1451→
+  1452→                        result = append(result, d)
+  1453→                }
+  1454→                return nil
+  1455→        })
+  1456→
+  1457→        w.Header().Set("Content-Type", "application/json")
+  1458→        json.NewEncoder(w).Encode(map[string]any{
+  1459→                "devoirs": result,
+  1460→                "total":   len(result),
+  1461→        })
+  1462→}
+  1463→
+  1464→
+  1465→// ──────────────────────────────────────────────────────────────────────────
+  1466→// 9. GET /api/devoirs/stats — Devoir stats
+  1467→// ──────────────────────────────────────────────────────────────────────────
+  1468→
+  1469→// BUGFIX (DEVOIRS-ANALYSE-1) : l'ancien endpoint retournait {total, enCours,
+  1470→// corriges} (flat) mais le frontend AnalysisView attend {kpis:{...}, byType:[],
+  1471→// soumissionsByStatut:[], timeline:[], moyenneNotes} → stats.kpis.total →
+  1472→// TypeError → crash de l'onglet Analyses.
+  1473→// Maintenant : retourne le contrat structuré attendu par DevoirStats (TS).
+  1474→func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
+  1475→        claims, ok := middleware.ClaimsFromContext(r.Context())
+  1476→        if !ok || claims.UserID == "" {
+  1477→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+  1478→                return
+  1479→        }
+  1480→
+  1481→        type kpisT struct {
+  1482→                Total                int `json:"total"`
+  1483→                Brouillons           int `json:"brouillons"`
+  1484→                Publies              int `json:"publies"`
+  1485→                Fermes               int `json:"fermes"`
+  1486→                Archives             int `json:"archives"`
+  1487→                TotalSoumissions     int `json:"totalSoumissions"`
+  1488→                SoumissionsEnAttente int `json:"soumissionsEnAttente"`
+  1489→                SoumissionsCorrigees int `json:"soumissionsCorrigees"`
+  1490→                EnRetard             int `json:"enRetard"`
+  1491→        }
+  1492→        type byTypeT struct {
+  1493→                Type  string `json:"type"`
+  1494→                Count int    `json:"count"`
+  1495→                Label string `json:"label"`
+  1496→        }
+  1497→        type soumByStatutT struct {
+  1498→                Statut string `json:"statut"`
+  1499→                Count  int    `json:"count"`
+  1500→                Label  string `json:"label"`
+  1501→        }
+  1502→        type timelineT struct {
+  1503→                Date         string `json:"date"`
+  1504→                Soumissions  int    `json:"soumissions"`
+  1505→        }
+  1506→
+  1507→        stats := struct {
+  1508→                Kpis                kpisT          `json:"kpis"`
+  1509→                ByType              []byTypeT      `json:"byType"`
+  1510→                SoumissionsByStatut []soumByStatutT `json:"soumissionsByStatut"`
+  1511→                Timeline            []timelineT    `json:"timeline"`
+  1512→                MoyenneNotes        *float64       `json:"moyenneNotes"`
+  1513→        }{
+  1514→                ByType:              []byTypeT{},
+  1515→                SoumissionsByStatut: []soumByStatutT{},
+  1516→                Timeline:            []timelineT{},
+  1517→                MoyenneNotes:        nil,
+  1518→        }
+  1519→
+  1520→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+  1521→                // KPIs : compteurs par statut
+  1522→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL`).Scan(&stats.Kpis.Total)
+  1523→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'BROUILLON'`).Scan(&stats.Kpis.Brouillons)
+  1524→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'PUBLIE'`).Scan(&stats.Kpis.Publies)
+  1525→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'FERME'`).Scan(&stats.Kpis.Fermes)
+  1526→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'ARCHIVE'`).Scan(&stats.Kpis.Archives)
+  1527→
+  1528→                // Soumissions
+  1529→                // BUGFIX (DEVOIRS-STATS-FIX-1) : exclure les soumissions des devoirs soft-supprimés
+  1530→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL`).Scan(&stats.Kpis.TotalSoumissions)
+  1531→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."statut"::text = 'SOUMIS'`).Scan(&stats.Kpis.SoumissionsEnAttente)
+  1532→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."statut"::text IN ('CORRIGE','RETOURNE')`).Scan(&stats.Kpis.SoumissionsCorrigees)
+  1533→                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."renduAt" IS NULL AND d."dateLimite" < CURRENT_TIMESTAMP`).Scan(&stats.Kpis.EnRetard)
+  1534→
+  1535→                // byType : répartition par type de séance
+  1536→                rows, err := tx.Query(r.Context(), `SELECT "typeSeance"::text, count(*) FROM "Devoir" WHERE "deletedAt" IS NULL GROUP BY "typeSeance" ORDER BY count(*) DESC`)
+  1537→                if err == nil {
+  1538→                        defer rows.Close()
+  1539→                        typeLabels := map[string]string{"CM": "Cours magistral", "TD": "Travail dirigé", "TP": "Travaux pratiques"}
+  1540→                        for rows.Next() {
+  1541→                                var t string
+  1542→                                var c int
+  1543→                                if err := rows.Scan(&t, &c); err == nil {
+  1544→                                        stats.ByType = append(stats.ByType, byTypeT{Type: t, Count: c, Label: typeLabels[t]})
+  1545→                                }
+  1546→                        }
+  1547→                }
+  1548→
+  1549→                // soumissionsByStatut
+  1550→                rows2, err := tx.Query(r.Context(), `SELECT s."statut"::text, count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL GROUP BY s."statut" ORDER BY count(*) DESC`)
+  1551→                if err == nil {
+  1552→                        defer rows2.Close()
+  1553→                statutLabels := map[string]string{"BROUILLON": "Brouillon", "SOUMIS": "Soumis", "CORRIGE": "Corrigé", "RETOURNE": "Rendu"}
+  1554→                        for rows2.Next() {
+  1555→                                var st string
+  1556→                                var c int
+  1557→                                if err := rows2.Scan(&st, &c); err == nil {
+  1558→                                        stats.SoumissionsByStatut = append(stats.SoumissionsByStatut, soumByStatutT{Statut: st, Count: c, Label: statutLabels[st]})
+  1559→                                }
+  1560→                        }
+  1561→                }
+  1562→
+  1563→                // timeline : 7 derniers jours
+  1564→                rows3, err := tx.Query(r.Context(), `
+  1565→                        SELECT to_char(d::date, 'YYYY-MM-DD') as date,
+  1566→                        (SELECT count(*) FROM "Soumission" s JOIN "Devoir" dv ON dv."id" = s."devoirId" WHERE dv."deletedAt" IS NULL AND date_trunc('day', s."createdAt") = d) as soumissions
+  1567→                        FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') AS d
+  1568→                        ORDER BY d ASC
+  1569→                `)
+  1570→                if err == nil {
+  1571→                        defer rows3.Close()
+  1572→                        for rows3.Next() {
+  1573→                                var dt string
+  1574→                                var sc int
+  1575→                                if err := rows3.Scan(&dt, &sc); err == nil {
+  1576→                                        stats.Timeline = append(stats.Timeline, timelineT{Date: dt, Soumissions: sc})
+  1577→                                }
+  1578→                        }
+  1579→                }
+  1580→
+  1581→                // moyenneNotes
+  1582→                var moy *float64
+  1583→                var moyVal float64
+  1584→                err = tx.QueryRow(r.Context(), `SELECT AVG(s."note") FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."note" IS NOT NULL`).Scan(&moyVal)
+  1585→                if err == nil {
+  1586→                        moy = &moyVal
+  1587→                        stats.MoyenneNotes = moy
+  1588→                }
+  1589→                return nil
+  1590→        })
+  1591→
+  1592→        w.Header().Set("Content-Type", "application/json")
+  1593→        json.NewEncoder(w).Encode(stats)
+  1594→}
+  1595→
+  1596→// ──────────────────────────────────────────────────────────────────────────
+  1597→// Helper: joinStringsArr (évite conflit avec joinStrings de affectation_handlers.go)
+  1598→// ──────────────────────────────────────────────────────────────────────────
+  1599→
+  1600→func joinStringsArr(strs []string, sep string) string {
+  1601→        result := ""
+  1602→        for i, s := range strs {
+  1603→                if i > 0 {
+  1604→                        result += sep
+  1605→                }
+  1606→                result += s
+  1607→        }
+  1608→        return result
+  1609→}
+  1610→
