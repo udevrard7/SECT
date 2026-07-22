@@ -47,6 +47,31 @@ Base de données : Neon PostgreSQL (eu-central-1)
 
 ---
 
+## Session du 2026-07-22 — ADMIN-SECURITE-FIX: Bug sauvegarde Admin + description proctoringActif
+
+### Task ID: ADMIN-SECURITE-FIX
+
+**Commit**: `8a7efe5` — poussé vers GitHub → déploiement auto Vercel + Render
+
+### Bug critique identifié :
+La page Admin `/securite` appelait `PATCH /api/security-settings/{settings.id}` (route inexistante → 404).
+Le backend n'a que `PATCH /api/security-settings/etablissement/{etabId}`.
+Conséquence : **sauvegarde impossible** depuis la page Admin.
+
+### Corrections :
+1. **securite-page.tsx (ligne 350)** : `PATCH /api/security-settings/${settings.id}` → `PATCH /api/security-settings/etablissement/${selectedEtablissementId}` (identique à la page Responsable)
+
+2. **Description proctoringActif** : "Active la surveillance vidéo..." → "Proctoring actif (master switch) — Active toutes les détections anti-fraude... Si désactivé, seul le mode plein écran reste actif." + warning si désactivé (cohérent avec PROCTORING-FIX-1)
+
+### Analyse comparative Admin vs Responsable :
+- Les deux pages lisent/écrivent dans la **même table** `SecuritySettings` (18 options identiques)
+- **Admin** : multi-établissements (dropdown) + vue d'ensemble tableau + stats agrégées
+- **Responsable** : mono-établissement (auto-scoped) + pas de vue d'ensemble
+- Même endpoint backend : `GET/PATCH /api/security-settings/etablissement/{id}`
+- RLS : Admin vérifie `admin_has_etablissement_access()`, Responsable vérifie `claims.EtablissementID == etabID`
+
+---
+
 ## Session du 2026-07-22 — FIX-SIM-ETAB: Bug Epreuve.etablissementId inexistant
 
 ### Task ID: FIX-SIM-ETAB
