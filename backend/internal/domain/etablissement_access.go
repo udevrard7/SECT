@@ -21,17 +21,18 @@ const (
 
 // EtablissementAccess représente une autorisation d'accès ADMIN → établissement.
 type EtablissementAccess struct {
-        ID              string       `json:"id"`
-        AdminID         string       `json:"adminId"`
-        EtablissementID string       `json:"etablissementId"`
-        Motif           string       `json:"motif"`
-        Statut          AccessStatut `json:"statut"`
-        DateDebut       *time.Time   `json:"dateDebut,omitempty"`
-        DateFin         *time.Time   `json:"dateFin,omitempty"`
-        ApprouvePar     *string      `json:"approuvePar,omitempty"`
-        Commentaire     *string      `json:"commentaire,omitempty"`
-        CreatedAt       time.Time    `json:"createdAt"`
-        UpdatedAt       time.Time    `json:"updatedAt"`
+        ID                string       `json:"id"`
+        AdminID           string       `json:"adminId"`
+        EtablissementID   string       `json:"etablissementId"`
+        Motif             string       `json:"motif"`
+        Statut            AccessStatut `json:"statut"`
+        DateDebut         *time.Time   `json:"dateDebut,omitempty"`
+        DateFin           *time.Time   `json:"dateFin,omitempty"`
+        ApprouvePar       *string      `json:"approuvePar,omitempty"`
+        Commentaire       *string      `json:"commentaire,omitempty"`
+        DureeValiditeHeures *int        `json:"dureeValiditeHeures,omitempty"` // DUREE-VALIDITE-24H-V2 : durée souhaitée par l'ADMIN en heures (1,2,3,4,6,8,12,24). Max 24h.
+        CreatedAt         time.Time    `json:"createdAt"`
+        UpdatedAt         time.Time    `json:"updatedAt"`
         // Relations optionnelles
         Admin         *UserRef          `json:"admin,omitempty"`
         Etablissement *EtablissementRef `json:"etablissement,omitempty"`
@@ -46,12 +47,13 @@ type UserRef struct {
 
 // CreateAccessInput pour créer une demande d'accès.
 type CreateAccessInput struct {
-        AdminID         string     `json:"adminId"`
-        EtablissementID string     `json:"etablissementId"`
-        Motif           string     `json:"motif"`
-        DateDebut       *time.Time `json:"dateDebut,omitempty"`
-        DateFin         *time.Time `json:"dateFin,omitempty"`
-        Commentaire     *string    `json:"commentaire,omitempty"`
+        AdminID             string     `json:"adminId"`
+        EtablissementID     string     `json:"etablissementId"`
+        Motif               string     `json:"motif"`
+        DureeValiditeHeures *int       `json:"dureeValiditeHeures,omitempty"` // DUREE-VALIDITE-24H : durée souhaitée en heures (1,2,4,6,8,12,24). Max 24h.
+        DateDebut           *time.Time `json:"dateDebut,omitempty"`
+        DateFin             *time.Time `json:"dateFin,omitempty"`
+        Commentaire         *string    `json:"commentaire,omitempty"`
 }
 
 // UpdateAccessInput pour approuver/refuser/révoquer.
@@ -61,7 +63,11 @@ type UpdateAccessInput struct {
         Commentaire     *string      `json:"commentaire,omitempty"`
         DateDebut       *time.Time   `json:"dateDebut,omitempty"`
         DateFin         *time.Time   `json:"dateFin,omitempty"`
-        DureeAccesJours *int         `json:"dureeAccesJours,omitempty"` // OPTION-B : durée d'accès en jours (7, 30, 90, 365). Si fourni et statut=APPROUVE, dateFin = now() + duree.
+        DureeAccesHeures *int        `json:"dureeAccesHeures,omitempty"` // DUREE-VALIDITE-24H : durée d'accès accordée en heures (1,2,4,6,8,12,24). Max 24h. Si fourni et statut=APPROUVE, dateFin = now() + heures.
+        // DureeAccesJours est déprécié — remplacé par DureeAccesHeures (max 24h).
+        // Conservé pour compatibilité rétroactive avec les anciens clients qui envoient
+        // encore dureeAccesJours. Le usecase convertit jours→heures si nécessaire.
+        DureeAccesJours *int         `json:"dureeAccesJours,omitempty"`
 }
 
 // AccessListParams pour filtrer les demandes d'accès.

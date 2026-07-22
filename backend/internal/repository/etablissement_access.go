@@ -25,13 +25,14 @@ func NewEtablissementAccessRepository(pool *pgxpool.Pool) *EtablissementAccessRe
 }
 
 const columnsAccess = `"id", "adminId", "etablissementId", "motif", "statut",
-        "dateDebut", "dateFin", "approuvePar", "commentaire", "createdAt", "updatedAt"`
+        "dateDebut", "dateFin", "approuvePar", "commentaire", "dureeValiditeHeures", "createdAt", "updatedAt"`
 
 func scanAccess(s scanner) (*domain.EtablissementAccess, error) {
         a := &domain.EtablissementAccess{}
         err := s.Scan(
                 &a.ID, &a.AdminID, &a.EtablissementID, &a.Motif, &a.Statut,
                 &a.DateDebut, &a.DateFin, &a.ApprouvePar, &a.Commentaire,
+                &a.DureeValiditeHeures,
                 &a.CreatedAt, &a.UpdatedAt,
         )
         if err != nil {
@@ -121,9 +122,11 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
 
                 // ADMIN-INCONNU-FIX : plus de LEFT JOIN "User" ici (RLS filtrait l'admin).
                 // Les données admin sont récupérées via fetchAdminRefs ci-dessous.
+                // DUREE-VALIDITE-24H : ea."dureeValiditeHeures" inclus dans SELECT.
                 query := fmt.Sprintf(`
                         SELECT ea."id", ea."adminId", ea."etablissementId", ea."motif", ea."statut",
                                ea."dateDebut", ea."dateFin", ea."approuvePar", ea."commentaire",
+                               ea."dureeValiditeHeures",
                                ea."createdAt", ea."updatedAt",
                                e."id", e."nom"
                         FROM "EtablissementAccess" ea
@@ -142,6 +145,7 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                         err := rows.Scan(
                                 &a.ID, &a.AdminID, &a.EtablissementID, &a.Motif, &a.Statut,
                                 &a.DateDebut, &a.DateFin, &a.ApprouvePar, &a.Commentaire,
+                                &a.DureeValiditeHeures,
                                 &a.CreatedAt, &a.UpdatedAt,
                                 &etabID, &etabNom,
                         )
@@ -270,14 +274,17 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
         }
 
         id := uuid.NewString()
+        // DUREE-VALIDITE-24H : dureeValiditeHeures est stocké dans la DB pour que le
+        // RESPONSABLE puisse voir la durée souhaitée par l'ADMIN lors de l'approbation.
         row := tx.QueryRow(ctx, `
                 INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "motif", "statut",
-                        "dateDebut", "dateFin", "approuvePar", "commentaire", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, 'EN_ATTENTE', $5, $6, NULL, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        "dateDebut", "dateFin", "approuvePar", "commentaire", "dureeValiditeHeures", "createdAt", "updatedAt")
+                VALUES ($1, $2, $3, $4, 'EN_ATTENTE', $5, $6, NULL, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING `+columnsAccess,
                 id, input.AdminID, input.EtablissementID, input.Motif,
                 nullableTimePtr(input.DateDebut), nullableTimePtr(input.DateFin),
-                nullableStrPtr(input.Commentaire))
+                nullableStrPtr(input.Commentaire),
+                nullableIntPtr(input.DureeValiditeHeures))
 
         access, err := scanAccess(row)
         if err != nil {
@@ -542,3 +549,5 @@ func nullableTimePtr(t *time.Time) any {
         }
         return *t
 }
+
+

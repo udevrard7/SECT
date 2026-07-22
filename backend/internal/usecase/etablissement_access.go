@@ -51,6 +51,11 @@ func (uc *AccessUseCase) List(ctx context.Context, claims db.SessionClaims, para
 //   pas créer de demande pour un autre établissement).
 // - ADMIN : force input.AdminID = claims.UserID (ne peut pas créer de demande
 //   au nom d'un autre admin).
+//
+// DUREE-VALIDITE-24H : la durée souhaitée est désormais sélectionnée via
+// dureeValiditeHeures (1, 2, 4, 6, 8, 12 ou 24 heures). Les champs dateDebut/dateFin
+// restent optionnels pour compatibilité, mais le nouveau flow recommande
+// l'utilisation de dureeValiditeHeures.
 func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateAccessInput) (*domain.EtablissementAccess, error) {
         // Validation
         if input.AdminID == "" {
@@ -61,6 +66,12 @@ func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, in
         }
         if input.Motif == "" {
                 return nil, &domain.ValidationError{Field: "motif", Message: "requis"}
+        }
+        // DUREE-VALIDITE-24H-V2 : validation de dureeValiditeHeures.
+        // Ajout de 3h (V2) pour meilleure granularité.
+        validHeures := map[int]bool{1: true, 2: true, 3: true, 4: true, 6: true, 8: true, 12: true, 24: true}
+        if input.DureeValiditeHeures != nil && !validHeures[*input.DureeValiditeHeures] {
+                return nil, &domain.ValidationError{Field: "dureeValiditeHeures", Message: "doit être 1, 2, 3, 4, 6, 8, 12 ou 24 heures"}
         }
         // B-13 : validation des dates si les deux sont fournies.
         if input.DateDebut != nil && input.DateFin != nil && !input.DateFin.After(*input.DateDebut) {
@@ -92,7 +103,7 @@ func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, in
 //   existing.AdminID != claims.UserID pour le rôle ADMIN.
 // - B-8 (HIGH) : validation des transitions de statut (EN_ATTENTE→APPROUVE/REFUSE,
 //   APPROUVE→REFUSE/EXPIRE). Verrou optimiste via repo.Update(ctx, id, existing.Statut, input).
-// - B-10 (MEDIUM) : DureeAccesJours doit être dans {7, 30, 90, 365}.
+// - B-10 (MEDIUM) : DureeAccesHeures doit être dans {1, 2, 4, 6, 8, 12, 24} (max 24h).
 // - E4 (HIGH) : approuvePar est TOUJOURS forcé à claims.UserID (anti-forgery audit).
 // - E9 (MEDIUM) : DateFin > DateDebut si les deux fournis, auto-set DateDebut=now()
 //   si statut=APPROUVE et DateDebut nil.
@@ -181,19 +192,31 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                 now := time.Now()
                 input.DateDebut = &now
         }
-        // B-10 : validation de DureeAccesJours contre l'énumération documentée.
-        if input.DureeAccesJours != nil && *input.DureeAccesJours > 0 {
-                validDurees := map[int]bool{7: true, 30: true, 90: true, 365: true}
-                if !validDurees[*input.DureeAccesJours] {
-                        return nil, &domain.ValidationError{Field: "dureeAccesJours", Message: "doit être 7, 30, 90 ou 365 jours"}
+        // DUREE-VALIDITE-24H-V2 : validation de DureeAccesHeures (remplace DureeAccesJours).
+        // La durée d'accès est désormais limitée à max 24 heures (accès temporaire
+        // assistance/audit/support). Les valeurs valides sont {1, 2, 3, 4, 6, 8, 12, 24}.
+        validHeures := map[int]bool{1: true, 2: true, 3: true, 4: true, 6: true, 8: true, 12: true, 24: true}
+        if input.DureeAccesHeures != nil && *input.DureeAccesHeures > 0 {
+                if !validHeures[*input.DureeAccesHeures] {
+                        return nil, &domain.ValidationError{Field: "dureeAccesHeures", Message: "doit être 1, 2, 3, 4, 6, 8, 12 ou 24 heures (max 24h)"}
                 }
         }
-        // OPTION-B : auto-révocation. Si DureeAccesJours fourni et statut=APPROUVE,
-        // calculer dateFin = now() + duree. La fonction admin_has_etablissement_access()
-        // vérifie déjà dateFin >= now() → l'accès est automatiquement révoqué quand
-        // dateFin expire, sans besoin de job cron.
-        if input.DureeAccesJours != nil && *input.DureeAccesJours > 0 && input.Statut == domain.AccessApprouve {
-                fin := time.Now().Add(time.Duration(*input.DureeAccesJours) * 24 * time.Hour)
+        // Compatibilité rétroactive : si l'ancien client envoye dureeAccesJours,
+        // convertir en DureeAccesHeures (jours * 24) mais limité à max 24h.
+        // Si dureeAccesJours=1 → 24h, sinon → erreur (durée > 24h non autorisée).
+        if input.DureeAccesJours != nil && *input.DureeAccesJours > 0 && (input.DureeAccesHeures == nil || *input.DureeAccesHeures == 0) {
+                if *input.DureeAccesJours > 1 {
+                        return nil, &domain.ValidationError{Field: "dureeAccesJours", Message: "obsolète — utilisez dureeAccesHeures (max 24h). Les durées > 1 jour ne sont plus autorisées."}
+                }
+                // dureeAccesJours=1 → 24h
+                h := 24
+                input.DureeAccesHeures = &h
+        }
+        // DUREE-VALIDITE-24H : calculer dateFin = now() + dureeAccesHeures.
+        // La fonction admin_has_etablissement_access() vérifie dateFin >= now()
+        // → l'accès est automatiquement révoqué quand dateFin expire, sans job cron.
+        if input.DureeAccesHeures != nil && *input.DureeAccesHeures > 0 && input.Statut == domain.AccessApprouve {
+                fin := time.Now().Add(time.Duration(*input.DureeAccesHeures) * time.Hour)
                 input.DateFin = &fin
         }
 
