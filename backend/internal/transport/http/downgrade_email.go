@@ -58,7 +58,8 @@ func (s *Server) sendDowngradeEmail(ctx context.Context, aboID string) {
         err = appdb.WithTx(ctx, s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
                 tx.QueryRow(ctx, `SELECT count(*) FROM "Filiere" WHERE "etablissementId" = $1 AND "actif" = true`, etabID).Scan(&surplus.Filieres)
                 tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE "etablissementId" = $1 AND "role" = 'ETUDIANT' AND "actif" = true`, etabID).Scan(&surplus.Etudiants)
-                tx.QueryRow(ctx, `SELECT count(*) FROM "Epreuve" WHERE "etablissementId" = $1`, etabID).Scan(&surplus.Epreuves)
+                // FIX-SIM-ETAB : Epreuve n'a pas d'etablissementId — JOIN via Filiere
+                tx.QueryRow(ctx, `SELECT count(*) FROM "Epreuve" e JOIN "Filiere" f ON f."id" = e."filiereId" WHERE f."etablissementId" = $1 AND e."deletedAt" IS NULL`, etabID).Scan(&surplus.Epreuves)
                 return nil
         })
         if err != nil {
