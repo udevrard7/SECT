@@ -92,7 +92,9 @@ import type { AIProviderInfo, AIProviderType } from '@/lib/ai-providers/types'
 // ─── Type local étendu ───
 // Le backend supporte 9 providers (ValidateProviderInput) mais types.ts n'en
 // déclare que 6. On étend localement SANS modifier types.ts.
-type LocalProviderType = AIProviderType | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS'
+// AI-PROVIDERS-MODELS-V2 : LocalProviderType est maintenant = AIProviderType
+// (DASHSCOPE, DEEPSEEK, CEREBRAS ajoutés dans types.ts).
+type LocalProviderType = AIProviderType
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROVIDER METADATA — 9 providers (alignement backend exact)
@@ -214,27 +216,53 @@ const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
   },
 }
 
+// AI-PROVIDERS-MODELS-V2 : modèles actualisés (juillet 2025).
+// Chaque fournisseur a SES propres modèles — pas de mélange.
+// Les modèles OPENAI_COMPATIBLE sont ceux accessibles via l'API Groq.
 const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
   ZAI: ['default'],
-  OPENAI: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'],
-  OPENAI_COMPATIBLE: [
-    'gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-nano', 'gpt-5.5',
-    'deepseek-v4-flash', 'deepseek-v4-pro',
-    'grok-4', 'grok-4-20-non-reasoning', 'grok-code-fast-1',
-    'glm-5.1',
-    'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-plus', 'qwen3.6-flash', 'qwen3.6-max-preview',
-    'qwen3.5-plus', 'qwen3.5-flash', 'qwen3.5-omni-flash', 'qwen3.5-omni-plus',
-    'qwen-flash', 'qwen-plus', 'qwen3-max', 'qwen-vl-max',
-    'qwen3-omni-flash', 'qwen3-vl-flash', 'qwen3-vl-plus',
-    'kimi-k2.6',
-    'llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'deepseek-r1-distill-llama-70b', 'qwen-2.5-32b',
+  // ─── OpenAI (API directe) ───
+  OPENAI: [
+    'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
+    'gpt-4o', 'gpt-4o-mini',
+    'o3-mini', 'o1', 'o1-mini',
+    'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo',
   ],
-  ANTHROPIC: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307', 'claude-3-5-haiku-20241022'],
-  GOOGLE: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-lite'],
+  // ─── OpenAI-Compatible (Groq, etc.) ───
+  OPENAI_COMPATIBLE: [
+    'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama-3.1-70b-versatile',
+    'llama-3.2-1b-instant', 'llama-3.2-3b-instant', 'llama-3.2-11b-vision-instant', 'llama-3.2-90b-vision-instant',
+    'mixtral-8x7b-32768', 'gemma2-9b-it',
+    'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b', 'qwen-2.5-32b',
+    'whisper-large-v3', 'distil-whisper-large-v3-en',
+  ],
+  // ─── Anthropic ───
+  ANTHROPIC: [
+    'claude-sonnet-4-20250514',
+    'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229', 'claude-3-haiku-20240307',
+  ],
+  // ─── Google Gemini ───
+  GOOGLE: [
+    'gemini-2.5-pro-preview-06-05', 'gemini-2.5-flash-preview-05-20',
+    'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+    'gemini-1.5-pro', 'gemini-1.5-flash',
+  ],
+  // ─── Voxtral (TTS) ───
   VOXTRAL: ['voxtral-mini-tts-latest', 'voxtral-mini-tts-2603'],
-  DASHSCOPE: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-coder-plus', 'qwen3-omni-flash'],
-  DEEPSEEK: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'],
-  CEREBRAS: ['llama-4-scout-17b-16e-instruct', 'llama3.1-8b', 'llama3.1-70b'],
+  // ─── DashScope (Alibaba Cloud) ───
+  DASHSCOPE: [
+    'qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-long',
+    'qwen3-max', 'qwen3-coder-plus', 'qwen3-omni-flash',
+    'qwen-vl-max', 'qwen3-vl-plus', 'qwen3-vl-flash',
+  ],
+  // ─── DeepSeek ───
+  DEEPSEEK: ['deepseek-chat', 'deepseek-reasoner'],
+  // ─── Cerebras ───
+  CEREBRAS: [
+    'llama-4-scout-17b-16e-instruct',
+    'llama-3.3-70b', 'llama3.1-8b', 'llama3.1-70b',
+  ],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
@@ -477,22 +505,33 @@ export function AIProvidersPage() {
   const activeProvider = activeChatProvider
 
   // ─── Fetch dynamic models from a provider's API ───
+  // AI-PROVIDERS-MODELS-V2 : merge dynamic (API /models) + static (PROVIDER_MODELS).
+  // Si l'API échoue, fallback sur PROVIDER_MODELS[providerType].
   const fetchDynamicModels = useCallback(async (providerId: string) => {
     setIsLoadingModels(true)
     try {
       const res = await fetch(`/api/ai-providers/models?providerId=${providerId}`)
       if (res.ok) {
         const data = await res.json()
-        setDynamicModels(data.models || [])
+        const apiModels: string[] = data.models || []
+        // Merge dynamic + static, déduplication
+        const providerType = (activeProvider?.provider as LocalProviderType) || 'ZAI'
+        const staticModels = PROVIDER_MODELS[providerType] || []
+        const merged = [...new Set([...staticModels, ...apiModels])].sort()
+        setDynamicModels(merged.length > 0 ? merged : staticModels)
       } else {
-        setDynamicModels([])
+        // Fallback : utiliser PROVIDER_MODELS[providerType]
+        const providerType = (activeProvider?.provider as LocalProviderType) || 'ZAI'
+        setDynamicModels(PROVIDER_MODELS[providerType] || [])
       }
     } catch {
-      setDynamicModels([])
+      // Fallback : utiliser PROVIDER_MODELS[providerType]
+      const providerType = (activeProvider?.provider as LocalProviderType) || 'ZAI'
+      setDynamicModels(PROVIDER_MODELS[providerType] || [])
     } finally {
       setIsLoadingModels(false)
     }
-  }, [])
+  }, [activeProvider])
 
   // ─── Quick model switch for the active provider ───
   const handleQuickModelSwitch = async (model: string) => {
@@ -2221,8 +2260,8 @@ export function AIProvidersPage() {
             ) : (
               <div className="text-center py-6">
                 <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Aucun modèle récupéré depuis l&apos;API</p>
-                <p className="text-xs text-muted-foreground mt-1">Utilisez le formulaire d&apos;édition pour saisir un modèle manuellement</p>
+                <p className="text-sm text-muted-foreground">Impossible de charger les modèles</p>
+                <p className="text-xs text-muted-foreground mt-1">Saisissez un modèle manuellement ci-dessous</p>
               </div>
             )}
             <div className="border-t pt-3 space-y-2">
