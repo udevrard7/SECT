@@ -62,3 +62,47 @@ Stage Summary:
 - Bug « impossible de modifier les dates » résolu : le frontend envoie désormais du RFC3339 valide ET le backend tolère les formats datetime-local
 - UX fortement améliorée : presets rapides, auto-calc de la fin, validation temps réel, affichage de la durée calculée, gestion d'erreur précise, bouton sur BROUILLON + PLANIFIEE
 - Aucun risque de régression : le parser tolérant est strictement plus permissif (RFC3339 continue de fonctionner), la validation dateFin>dateDebut est nouvelle mais n'impacte que les cas autrefois silencieusement inconsistants
+
+---
+Task ID: EPREUVES-DATES-FIX-V2
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Correction sémantique du dialog de modification des dates — la date de début/fin définit la FENÊTRE D'OUVERTURE (période de disponibilité avant clôture auto), PAS la durée de passation (qui est fixée à la création de l'épreuve)
+
+Contexte métier (correction apportée par Ulrich) :
+- `dateDebut` + `dateFin` = fenêtre d'ouverture de l'épreuve (période pendant laquelle les étudiants peuvent y accéder). Clôture automatique à `dateFin`.
+- `duree` = durée de passation par étudiant (temps accordé une fois qu'il démarre), définie à la création de l'épreuve, NON modifiée par le dialog de modification des dates.
+- La V1 (EPREUVES-DATES-FIX) avait un auto-calc "préserver la durée" qui mélangeait les deux concepts → confusion UX.
+
+Frontend (frontend/src/components/epreuves/epreuves-page.tsx) :
+- Renommage buildDatePresets → buildStartPresets (presets de début d'ouverture uniquement : Maintenant, Dans 1h, Demain 08h/14h, Lundi 08h)
+- Nouveau buildWindowPresets : presets de durée de fenêtre (+1h, +2h, +4h, +1 jour, +3 jours, +1 semaine) appliqués à fin = début + durée
+- Nouveau applyWindowPreset(windowMs) : calcule la fin depuis le début courant
+- Renommage applyDatePreset → applyStartPreset : préserve la fenêtre d'ouverture originelle (pas la durée de passation)
+- handleDebutChange : auto-calc préserve la fenêtre originelle (écart debut→fin), PAS la durée de passation
+- dateEditValidation : renomme dureeMin → windowMin, ne compare JAMAIS à la durée de passation
+- Nouveau formatWindow(minutes) : affiche "1 h 30", "1 jour 3 h", "2 jours"
+- Refonte UI du dialog :
+  * Titre : "Fenêtre d'ouverture de l'épreuve" (au lieu de "Modifier les dates et heures")
+  * Description : clarifie que c'est la période d'accès, clôture automatique à la fin
+  * Badge "Passation : X min/étudiant" (au lieu de "Durée configurée") avec title explicatif
+  * Encadré "Fenêtre actuelle" affiche les dates + la durée de fenêtre calculée
+  * Section "Démarrage rapide — ouverture" (presets de début)
+  * Label "Date et heure d'ouverture" + texte d'aide "Moment à partir duquel les étudiants peuvent démarrer"
+  * Checkbox "Conserver la même durée de fenêtre quand je change l'ouverture" (au lieu de "préserver la durée")
+  * Label "Date et heure de clôture automatique" + texte d'aide sur la clôture auto
+  * Section "Durée de la fenêtre (depuis l'ouverture)" avec 6 presets (+1h à +1 semaine)
+  * Encart succès : "Fenêtre d'ouverture : Xh Ymin — accessible du ... au ..." (sans comparaison avec la durée de passation)
+  * Encart erreur : "La clôture doit être après l'ouverture"
+  * Note pédagogique (encart info) : explique clairement la différence fenêtre d'ouverture vs durée de passation, avec la durée de passation réelle de l'épreuve
+- Suppression du warning "diffère de la durée configurée" (comparaison non pertinente)
+
+Vérifications qualité :
+- Frontend : tsc --noEmit → 0 erreur sur epreuves-page.tsx ; eslint → 0 erreur 0 warning
+- Backend : inchangé (le fix parser tolérant + validation dateFin>dateDebut de la V1 reste valable et correct)
+- Pas de migration DB
+
+Stage Summary:
+- Sémantique métier correcte : le dialog modifie la fenêtre d'ouverture, pas la durée de passation
+- UX clarifiée : labels, descriptions, note pédagogique, presets séparés (début vs durée de fenêtre)
+- Auto-calc corrigé : préserve la fenêtre originelle (pas la durée de passation)
+- Aucune régression : le fix backend (parser tolérant + validation fin>début) de la V1 reste en place

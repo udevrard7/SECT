@@ -1701,9 +1701,24 @@ function SessionsTab() {
    return d.toISOString() // ex: "2025-01-15T13:30:00.000Z" (UTC)
  }
 
- // EPREUVES-DATES-FIX : presets rapides pour le dialog de modification des dates.
+ // EPREUVES-DATES-FIX-V2 : formate une durée en minutes en chaîne lisible.
+ // "90 min" → "1 h 30", "1500 min" → "1 jour 1 h".
+ const formatWindow = (minutes: number): string => {
+   if (minutes < 60) return `${minutes} min`
+   if (minutes < 1440) {
+     const h = Math.floor(minutes / 60)
+     const m = minutes % 60
+     return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`
+   }
+   const days = Math.floor(minutes / 1440)
+   const remainingH = Math.floor((minutes % 1440) / 60)
+   const dayLabel = `${days} jour${days > 1 ? 's' : ''}`
+   return remainingH === 0 ? dayLabel : `${dayLabel} ${remainingH} h`
+ }
+
+ // EPREUVES-DATES-FIX-V2 : presets de début d'épreuve (moment d'ouverture).
  // Calculés à l'ouverture du dialog pour rester pertinents.
- const buildDatePresets = () => {
+ const buildStartPresets = () => {
    const now = new Date()
    const presets: { label: string; getDebut: () => Date }[] = []
    const roundToNextQuarter = (d: Date) => {
@@ -1731,6 +1746,20 @@ function SessionsTab() {
    return presets
  }
 
+ // EPREUVES-DATES-FIX-V2 : presets de durée de fenêtre d'ouverture.
+ // Appliqués à la fin = début + durée.Indépendants de la durée de passation
+ // (qui est définie à la création de l'épreuve et reste inchangée ici).
+ const buildWindowPresets = () => {
+   return [
+     { label: '+1 h', ms: 60 * 60 * 1000 },
+     { label: '+2 h', ms: 2 * 60 * 60 * 1000 },
+     { label: '+4 h', ms: 4 * 60 * 60 * 1000 },
+     { label: '+1 jour', ms: 24 * 60 * 60 * 1000 },
+     { label: '+3 jours', ms: 3 * 24 * 60 * 60 * 1000 },
+     { label: '+1 semaine', ms: 7 * 24 * 60 * 60 * 1000 },
+   ]
+ }
+
  const openDateEdit = (epreuve: SessionEpreuve) => {
    setDateEditTarget(epreuve)
    setDateEditDebut(toLocalInput(epreuve.dateDebut))
@@ -1739,40 +1768,57 @@ function SessionsTab() {
    setDateEditSaving(false)
  }
 
- // EPREUVES-DATES-FIX : quand l'utilisateur change la date de début et que
- // l'auto-calc est actif, on décale la fin pour préserver la durée originelle.
+ // EPREUVES-DATES-FIX-V2 : auto-calc — quand l'utilisateur change le début,
+ // on décale la fin du même écart pour préserver la **fenêtre d'ouverture**
+ // originelle (période de disponibilité de l'épreuve).
+ // ATTENTION : cela ne concerne PAS la durée de passation par étudiant (champ
+ // `duree`, défini à la création et inchangé par ce formulaire).
  const handleDebutChange = (newDebut: string) => {
    setDateEditDebut(newDebut)
    if (dateEditAutoFin && dateEditTarget && newDebut) {
      const oldDebut = new Date(dateEditTarget.dateDebut)
      const oldFin = new Date(dateEditTarget.dateFin)
-     const dureeMs = oldFin.getTime() - oldDebut.getTime()
-     const newFin = new Date(new Date(newDebut).getTime() + dureeMs)
+     const windowMs = oldFin.getTime() - oldDebut.getTime()
+     const newFin = new Date(new Date(newDebut).getTime() + windowMs)
      setDateEditFin(toLocalInput(newFin.toISOString()))
    }
  }
 
- // EPREUVES-DATES-FIX : applique un preset — calcule début + fin (début + durée).
- const applyDatePreset = (getDebut: () => Date) => {
+ // EPREUVES-DATES-FIX-V2 : applique un preset de début — calcule la fin en
+ // préservant la fenêtre d'ouverture originelle.
+ const applyStartPreset = (getDebut: () => Date) => {
    if (!dateEditTarget) return
    const newDebut = getDebut()
    const oldDebut = new Date(dateEditTarget.dateDebut)
    const oldFin = new Date(dateEditTarget.dateFin)
-   const dureeMs = Math.max(oldFin.getTime() - oldDebut.getTime(), (dateEditTarget.duree || 60) * 60 * 1000)
-   const newFin = new Date(newDebut.getTime() + dureeMs)
+   const windowMs = Math.max(oldFin.getTime() - oldDebut.getTime(), 60 * 60 * 1000) // min 1h
+   const newFin = new Date(newDebut.getTime() + windowMs)
    setDateEditDebut(toLocalInput(newDebut.toISOString()))
    setDateEditFin(toLocalInput(newFin.toISOString()))
  }
 
- // EPREUVES-DATES-FIX : validation temps réel du formulaire.
+ // EPREUVES-DATES-FIX-V2 : applique un preset de durée de fenêtre — calcule
+ // la fin = début + durée choisie. L'utilisateur peut ainsi rapidement ouvrir
+ // l'épreuve sur 2 h, 1 jour, 1 semaine, etc.
+ const applyWindowPreset = (windowMs: number) => {
+   if (!dateEditDebut) return
+   const debut = new Date(dateEditDebut)
+   const newFin = new Date(debut.getTime() + windowMs)
+   setDateEditFin(toLocalInput(newFin.toISOString()))
+   setDateEditAutoFin(false) // l'utilisateur a explicitement choisi une fenêtre
+ }
+
+ // EPREUVES-DATES-FIX-V2 : validation temps réel du formulaire.
+ // Vérifie seulement que fin > début (la fenêtre d'ouverture doit être positive).
+ // Ne compare JAMAIS à la durée de passation — ce sont deux concepts distincts.
  const dateEditValidation = useMemo(() => {
-   if (!dateEditDebut || !dateEditFin) return { valid: false, reason: 'Renseignez les deux dates' }
+   if (!dateEditDebut || !dateEditFin) return { valid: false, reason: 'Renseignez les deux dates', windowMin: 0 }
    const debut = new Date(dateEditDebut)
    const fin = new Date(dateEditFin)
-   if (isNaN(debut.getTime()) || isNaN(fin.getTime())) return { valid: false, reason: 'Date invalide' }
-   if (fin.getTime() <= debut.getTime()) return { valid: false, reason: 'La fin doit être après le début' }
-   const dureeMin = Math.round((fin.getTime() - debut.getTime()) / 60000)
-   return { valid: true, reason: '', dureeMin }
+   if (isNaN(debut.getTime()) || isNaN(fin.getTime())) return { valid: false, reason: 'Date invalide', windowMin: 0 }
+   if (fin.getTime() <= debut.getTime()) return { valid: false, reason: 'La clôture doit être après l\'ouverture', windowMin: 0 }
+   const windowMin = Math.round((fin.getTime() - debut.getTime()) / 60000)
+   return { valid: true, reason: '', windowMin }
  }, [dateEditDebut, dateEditFin])
 
  const handleEditDates = async () => {
@@ -2873,24 +2919,27 @@ function SessionsTab() {
  </AlertDialogContent>
  </AlertDialog>
 
- {/* Date Edit Dialog — EPREUVES-DATES-FIX : formulaire enrichi avec presets, auto-calc durée, validation temps réel */}
+ {/* Date Edit Dialog — EPREUVES-DATES-FIX-V2 : fenêtre d'ouverture (période de disponibilité avant clôture auto) */}
  <Dialog open={!!dateEditTarget} onOpenChange={(open) => { if (!open && !dateEditSaving) setDateEditTarget(null) }}>
  <DialogContent className="sm:max-w-lg">
  <DialogHeader>
  <DialogTitle className="flex items-center gap-2">
  <CalendarDays className="h-5 w-5 text-info" />
- Modifier les dates et heures
+ Fenêtre d&apos;ouverture de l&apos;épreuve
  </DialogTitle>
  <DialogDescription>
  {dateEditTarget && (
- <>Pour l'épreuve <span className="font-semibold text-foreground">« {dateEditTarget.titre} »</span></>
+ <>
+ Pour l&apos;épreuve <span className="font-semibold text-foreground">« {dateEditTarget.titre} »</span>.
+ Définissez la période pendant laquelle les étudiants peuvent accéder à l&apos;épreuve — la clôture est automatique à la fin.
+ </>
  )}
  </DialogDescription>
  </DialogHeader>
 
  {dateEditTarget && (
  <div className="space-y-4 py-2">
- {/* Statut + durée configurée */}
+ {/* Statut + durée de passation (info, non modifiable ici) */}
  <div className="flex flex-wrap items-center gap-2 text-xs">
  <Badge variant="outline" className={
  dateEditTarget.statut === 'BROUILLON' ? 'border-muted-foreground/30 text-muted-foreground' :
@@ -2905,29 +2954,32 @@ function SessionsTab() {
  {dateEditTarget.statut === 'CLOTUREE' && <Lock className="h-3 w-3" />}
  {dateEditTarget.statut}
  </Badge>
- <Badge variant="outline" className="border-warning/40 text-warning">
- <Clock className="h-3 w-3" /> Durée configurée : {dateEditTarget.duree} min
+ <Badge variant="outline" className="border-warning/40 text-warning" title="Durée de passation par étudiant, définie à la création de l'épreuve. Non modifiée par ce formulaire.">
+ <Clock className="h-3 w-3" /> Passation : {dateEditTarget.duree} min/étudiant
  </Badge>
  </div>
 
  {/* Dates actuelles (référence) */}
  <div className="rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
- <span className="font-medium text-foreground">Actuellement :</span>{' '}
+ <span className="font-medium text-foreground">Fenêtre actuelle :</span>{' '}
  {formatDateTime(dateEditTarget.dateDebut)} → {formatDateTime(dateEditTarget.dateFin)}
+ {' '}({formatWindow(Math.round((new Date(dateEditTarget.dateFin).getTime() - new Date(dateEditTarget.dateDebut).getTime()) / 60000))})
  </div>
 
- {/* Presets rapides */}
+ {/* Presets de début d'ouverture */}
  <div className="space-y-2">
- <Label className="text-xs text-muted-foreground">Démarrage rapide</Label>
+ <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+ <Calendar className="h-3 w-3" /> Démarrage rapide — ouverture
+ </Label>
  <div className="flex flex-wrap gap-2">
- {buildDatePresets().map((p) => (
+ {buildStartPresets().map((p) => (
  <Button
  key={p.label}
  type="button"
  variant="outline"
  size="sm"
  className="h-7 text-xs"
- onClick={() => applyDatePreset(p.getDebut)}
+ onClick={() => applyStartPreset(p.getDebut)}
  >
  {p.label}
  </Button>
@@ -2935,15 +2987,16 @@ function SessionsTab() {
  </div>
  </div>
 
- {/* Date début */}
+ {/* Date d'ouverture */}
  <div className="space-y-1.5">
- <Label className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Date et heure de début</Label>
+ <Label className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Date et heure d&apos;ouverture</Label>
  <Input
  type="datetime-local"
  value={dateEditDebut}
  onChange={(e) => handleDebutChange(e.target.value)}
  className={dateEditValidation.valid === false && dateEditDebut ? 'border-destructive' : ''}
  />
+ <p className="text-[11px] text-muted-foreground">Moment à partir duquel les étudiants peuvent démarrer leur passation.</p>
  </div>
 
  {/* Auto-calc toggle */}
@@ -2955,31 +3008,51 @@ function SessionsTab() {
  className="h-3.5 w-3.5"
  />
  <label htmlFor="auto-fin" className="text-muted-foreground cursor-pointer select-none">
- Ajuster automatiquement la fin quand je change le début (préserve la durée)
+ Conserver la même durée de fenêtre quand je change l&apos;ouverture
  </label>
  </div>
 
- {/* Date fin */}
+ {/* Date de clôture */}
  <div className="space-y-1.5">
- <Label className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Date et heure de fin</Label>
+ <Label className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Date et heure de clôture automatique</Label>
  <Input
  type="datetime-local"
  value={dateEditFin}
  onChange={(e) => { setDateEditFin(e.target.value); setDateEditAutoFin(false) }}
  className={dateEditValidation.valid === false && dateEditFin ? 'border-destructive' : ''}
  />
+ <p className="text-[11px] text-muted-foreground">L&apos;épreuve sera automatiquement clôturée à cette date. Les étudiants non terminés seront marqués comme tels.</p>
  </div>
 
- {/* Durée calculée + validation */}
+ {/* Presets de durée de fenêtre */}
+ <div className="space-y-2">
+ <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+ <Clock className="h-3 w-3" /> Durée de la fenêtre (depuis l&apos;ouverture)
+ </Label>
+ <div className="flex flex-wrap gap-2">
+ {buildWindowPresets().map((p) => (
+ <Button
+ key={p.label}
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-7 text-xs"
+ onClick={() => applyWindowPreset(p.ms)}
+ disabled={!dateEditDebut}
+ >
+ {p.label}
+ </Button>
+ ))}
+ </div>
+ </div>
+
+ {/* Fenêtre calculée + validation */}
  {dateEditValidation.valid ? (
- <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success-text">
- <CheckCircle2 className="h-4 w-4" />
+ <div className="flex items-start gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success-text">
+ <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
  <span>
- Nouvelle durée : <strong>{Math.floor(dateEditValidation.dureeMin! / 60)}h{String(dateEditValidation.dureeMin! % 60).padStart(2, '0')}</strong>
- {' '}({dateEditValidation.dureeMin!} min)
- {dateEditTarget.duree && dateEditValidation.dureeMin! !== dateEditTarget.duree && (
- <span className="text-warning ml-2">— diffère de la durée configurée ({dateEditTarget.duree} min)</span>
- )}
+ Fenêtre d&apos;ouverture : <strong>{formatWindow(dateEditValidation.windowMin!)}</strong>
+ <span className="text-success-text/70 ml-1">— l&apos;épreuve sera accessible du {formatDateTime(dateEditDebut)} au {formatDateTime(dateEditFin)}.</span>
  </span>
  </div>
  ) : (
@@ -2988,6 +3061,14 @@ function SessionsTab() {
  <span>{dateEditValidation.reason}</span>
  </div>
  )}
+
+ {/* Note pédagogique : différence fenêtre vs durée de passation */}
+ <div className="flex items-start gap-2 rounded-md border border-info/20 bg-info/5 px-3 py-2 text-[11px] text-muted-foreground">
+ <HelpCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-info" />
+ <span>
+ <strong className="text-foreground">Fenêtre d&apos;ouverture</strong> ≠ <strong className="text-foreground">durée de passation</strong>. La fenêtre définit quand l&apos;épreuve est accessible (ex. du lundi 8h au lundi 10h). Chaque étudiant dispose ensuite de <strong className="text-foreground">{dateEditTarget.duree} min</strong> pour la passer une fois qu&apos;il démarre.
+ </span>
+ </div>
  </div>
  )}
 
