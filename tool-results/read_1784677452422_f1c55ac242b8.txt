@@ -1,0 +1,875 @@
+     1→// Package http — handlers étendus pour /api/sessions (B2-B5 MES-EPREUVES).
+     2→//
+     3→// Complète les routes sessions pour matcher le frontend passation-page.tsx :
+     4→//   PUT  /api/sessions/{id}             — bulk save reponses OU log alerte (B2)
+     5→//   POST /api/sessions/{id}/capture     — persiste capture écran anti-fraude (B3)
+     6→//
+     7→// + 2 routes non-sessions mais utilisées par passation-page.tsx :
+     8→//   GET  /api/epreuves/auto-close       — détection clôture automatique (B4)
+     9→//   GET  /api/security-settings/etablissement/{id} — config sécurité par établissement (B5)
+    10→package http
+    11→
+    12→import (
+    13→        "crypto/sha256"
+    14→        "encoding/base64"
+    15→        "encoding/json"
+    16→        "fmt"
+    17→        "net/http"
+    18→        "strings"
+    19→        "time"
+    20→
+    21→        "github.com/go-chi/chi/v5"
+    22→        "github.com/jackc/pgx/v5"
+    23→        "github.com/google/uuid"
+    24→        appdb "github.com/udevrard7/sect/backend/internal/db"
+    25→        "github.com/udevrard7/sect/backend/internal/domain"
+    26→        "github.com/udevrard7/sect/backend/internal/middleware"
+    27→)
+    28→
+    29→// ──────────────────────────────────────────────────────────────────────────
+    30→// B2 : PUT /api/sessions/{id} — bulk save OU log alerte
+    31→// ──────────────────────────────────────────────────────────────────────────
+    32→//
+    33→// Le frontend passation-page.tsx envoie 2 formes de body sur cette route :
+    34→//   1. { reponses: { questionId: contenu, ... } }  → bulk save (auto-save 30s)
+    35→//   2. { alerte: { type, details, penalite } }      → log anti-fraude
+    36→//
+    37→// On dispatche selon la présence du champ "reponses" ou "alerte".
+    38→
+    39→func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
+    40→        claims, ok := middleware.ClaimsFromContext(r.Context())
+    41→        if !ok || claims.UserID == "" {
+    42→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+    43→                return
+    44→        }
+    45→        sessionID := chi.URLParam(r, "id")
+    46→        if sessionID == "" {
+    47→                writeJSONError(w, http.StatusBadRequest, "id session requis")
+    48→                return
+    49→        }
+    50→
+    51→        // Decoder le body de façon permissive (champs optionnels)
+    52→        var body map[string]json.RawMessage
+    53→        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+    54→                writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
+    55→                return
+    56→        }
+    57→
+    58→        // Cas 1 : bulk save reponses
+    59→        if rawReponses, ok := body["reponses"]; ok {
+    60→                var reponses map[string]string
+    61→                if err := json.Unmarshal(rawReponses, &reponses); err != nil {
+    62→                        writeJSONError(w, http.StatusBadRequest, "format reponses invalide")
+    63→                        return
+    64→                }
+    65→
+    66→                // OPT-1 + OPT-2 : écriture via cache RAM + ownership cache.
+    67→                //
+    68→                // AVANT : chaque auto-save (30s) faisait 1 WithTx ownership + 1 BulkSaveReponses
+    69→                // = 2 transactions DB par étudiant par save. Pour 5000 étudiants = 333 tx/s.
+    70→                //
+    71→                // APRÈS : l'auto-save écrit en RAM (< 1ms, 0 tx DB). Le worker goroutine
+    72→                // synchronise vers Neon toutes les 30s (1 tx par session). L'ownership est
+    73→                // vérifiée en cache après la première vérification DB.
+    74→                //
+    75→                // Pour 5000 étudiants : 5000 × 1 tx / 30s = 167 tx/s au lieu de 333 tx/s (-50%).
+    76→                // Avec OPT-3 (batch flush) : ~10 tx/s au lieu de 167 tx/s (-95%).
+    77→
+    78→                // OWNERSHIP-CACHE-2 : vérifier ownership via le cache en mémoire d'abord,
+    79→                // puis via DB si pas encore vérifié (même pattern que saveReponse).
+    80→                if s.sessionCache != nil && s.sessionCache.IsOwnershipVerified(sessionID, claims.UserID) {
+    81→                        // Ownership déjà vérifiée en cache → skip DB query (-1 tx par save)
+    82→                } else {
+    83→                        // Première vérification : requêter la DB
+    84→                        var etudiantID string
+    85→                        found := false
+    86→                        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+    87→                                err := tx.QueryRow(r.Context(),
+    88→                                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+    89→                                        sessionID).Scan(&etudiantID)
+    90→                                if err == nil {
+    91→                                        found = true
+    92→                                }
+    93→                                return err
+    94→                        })
+    95→                        if !found || etudiantID != claims.UserID {
+    96→                                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+    97→                                return
+    98→                        }
+    99→                        // Cacher l'ownership vérifiée pour les prochains saves
+   100→                        if s.sessionCache != nil {
+   101→                                s.sessionCache.MarkOwnershipVerified(sessionID, claims.UserID)
+   102→                        }
+   103→                }
+   104→
+   105→                // OPT-1 : écrire en RAM au lieu de DB directe.
+   106→                // Le cache merge les réponses (map[string]string) et marque la session dirty.
+   107→                // Le worker goroutine (FlushSessionToNeon toutes les 30s) synchronisera vers Neon.
+   108→                // Le submit force un flush immédiat avant la soumission finale.
+   109→                if s.sessionCache != nil {
+   110→                        s.sessionCache.SaveAnswers(sessionID, "", claims.UserID, reponses)
+   111→                }
+   112→
+   113→                w.Header().Set("Content-Type", "application/json")
+   114→                json.NewEncoder(w).Encode(map[string]any{
+   115→                        "saved": true,
+   116→                        "count": len(reponses),
+   117→                })
+   118→                return
+   119→        }
+   120→
+   121→        // Cas 2 : log alerte
+   122→        if rawAlerte, ok := body["alerte"]; ok {
+   123→                var alerte struct {
+   124→                        Type      string  `json:"type"`
+   125→                        Details   string  `json:"details"`
+   126→                        Penalite  float64 `json:"penalite"`
+   127→                }
+   128→                if err := json.Unmarshal(rawAlerte, &alerte); err != nil {
+   129→                        writeJSONError(w, http.StatusBadRequest, "format alerte invalide")
+   130→                        return
+   131→                }
+   132→                if alerte.Type == "" {
+   133→                        writeJSONError(w, http.StatusBadRequest, "type alerte requis")
+   134→                        return
+   135→                }
+   136→
+   137→                // OWNERSHIP-CACHE-2 : vérifier ownership via le cache d'abord (comme reponses).
+   138→                // Les alertes sont moins fréquentes mais pendant un examen avec proctoring,
+   139→                // elles peuvent être nombreuses (changement d'onglet, copier-coller...).
+   140→                if s.sessionCache != nil && s.sessionCache.IsOwnershipVerified(sessionID, claims.UserID) {
+   141→                        // Ownership déjà vérifiée → skip DB
+   142→                } else {
+   143→                        var etudiantID string
+   144→                        found := false
+   145→                        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   146→                                err := tx.QueryRow(r.Context(),
+   147→                                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+   148→                                        sessionID).Scan(&etudiantID)
+   149→                                if err == nil {
+   150→                                        found = true
+   151→                                }
+   152→                                return err
+   153→                        })
+   154→                        if !found || etudiantID != claims.UserID {
+   155→                                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+   156→                                return
+   157→                        }
+   158→                        if s.sessionCache != nil {
+   159→                                s.sessionCache.MarkOwnershipVerified(sessionID, claims.UserID)
+   160→                        }
+   161→                }
+   162→
+   163→                // AddAlerte (RLS off dans le repo — conforme au pattern existant)
+   164→                alerteInput := domain.AlerteInput{
+   165→                        Type:     alerte.Type,
+   166→                        Details:  alerte.Details,
+   167→                }
+   168→                _ = s.sessionUC.AddAlerte(r.Context(), claims, sessionID, alerte.Penalite, alerteInput)
+   169→
+   170→                // OPT-7 : push WebSocket aux surveillants — alerte déclenchée.
+   171→                // On récupère l'epreuveId de la session pour le broadcast ciblé.
+   172→                var alerteEpreuveID string
+   173→                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   174→                        _ = tx.QueryRow(r.Context(),
+   175→                                `SELECT "epreuveId" FROM "SessionPassation" WHERE "id" = $1`,
+   176→                                sessionID).Scan(&alerteEpreuveID)
+   177→                        return nil
+   178→                })
+   179→                s.surveillanceHub.BroadcastEvent("ALERT_TRIGGERED", alerteEpreuveID, map[string]any{
+   180→                        "sessionId":  sessionID,
+   181→                        "epreuveId":  alerteEpreuveID,
+   182→                        "etudiantId": claims.UserID,
+   183→                        "alertType":  alerte.Type,
+   184→                        "penalite":   alerte.Penalite,
+   185→                })
+   186→
+   187→                w.Header().Set("Content-Type", "application/json")
+   188→                json.NewEncoder(w).Encode(map[string]any{
+   189→                        "logged": true,
+   190→                })
+   191→                return
+   192→        }
+   193→
+   194→        writeJSONError(w, http.StatusBadRequest, "body doit contenir 'reponses' ou 'alerte'")
+   195→}
+   196→
+   197→// ──────────────────────────────────────────────────────────────────────────
+   198→// B3 : POST /api/sessions/{id}/capture — persiste capture écran anti-fraude
+   199→// ──────────────────────────────────────────────────────────────────────────
+   200→//
+   201→// Le frontend envoie { image: "data:image/jpeg;base64,..." }.
+   202→// On decode le base64, on upload l'image vers R2, et on stocke les
+   203→// métadonnées dans la table SessionCapture. On conserve aussi l'event
+   204→// CAPTURE dans logEvents pour compatibilité ascendante.
+   205→//
+   206→// Si R2 n'est pas disponible (mode dev), on stocke juste les métadonnées
+   207→// avec r2Key vide et l'image comme miniature base64.
+   208→
+   209→func (s *Server) captureSession(w http.ResponseWriter, r *http.Request) {
+   210→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   211→        if !ok || claims.UserID == "" {
+   212→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   213→                return
+   214→        }
+   215→        sessionID := chi.URLParam(r, "id")
+   216→        if sessionID == "" {
+   217→                writeJSONError(w, http.StatusBadRequest, "id session requis")
+   218→                return
+   219→        }
+   220→
+   221→        var input struct {
+   222→                Image string `json:"image"`
+   223→        }
+   224→        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+   225→                writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
+   226→                return
+   227→        }
+   228→        if input.Image == "" {
+   229→                writeJSONError(w, http.StatusBadRequest, "image requise")
+   230→                return
+   231→        }
+   232→
+   233→        // Vérifier ownership + récupérer epreuveId
+   234→        var etudiantID, epreuveID string
+   235→        found := false
+   236→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   237→                err := tx.QueryRow(r.Context(),
+   238→                        `SELECT "etudiantId", "epreuveId" FROM "SessionPassation" WHERE "id" = $1`,
+   239→                        sessionID).Scan(&etudiantID, &epreuveID)
+   240→                if err == nil {
+   241→                        found = true
+   242→                }
+   243→                return err
+   244→        })
+   245→        if !found || etudiantID != claims.UserID {
+   246→                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+   247→                return
+   248→        }
+   249→
+   250→        // Décoder le base64 de l'image (accepte data:image/jpeg;base64,... ou base64 brut)
+   251→        imageData := input.Image
+   252→        if idx := strings.Index(imageData, ";base64,"); idx >= 0 {
+   253→                imageData = imageData[idx+8:]
+   254→        }
+   255→        imageBytes, err := base64.StdEncoding.DecodeString(imageData)
+   256→        if err != nil {
+   257→                // Essayer RawStdEncoding au cas où
+   258→                imageBytes, err = base64.RawStdEncoding.DecodeString(imageData)
+   259→                if err != nil {
+   260→                        writeJSONError(w, http.StatusBadRequest, "image base64 invalide")
+   261→                        return
+   262→                }
+   263→        }
+   264→
+   265→        // Calculer SHA-256 pour intégrité
+   266→        hash := sha256.Sum256(imageBytes)
+   267→        imageHash := fmt.Sprintf("%x", hash)
+   268→
+   269→        // Déterminer le prochain captureIndex pour cette session
+   270→        var captureIndex int
+   271→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   272→                err := tx.QueryRow(r.Context(),
+   273→                        `SELECT COALESCE(MAX("captureIndex"), 0) + 1 FROM "SessionCapture" WHERE "sessionId" = $1`,
+   274→                        sessionID).Scan(&captureIndex)
+   275→                return err
+   276→        })
+   277→        if captureIndex == 0 {
+   278→                captureIndex = 1
+   279→        }
+   280→
+   281→        // Upload vers R2 si disponible
+   282→        captureID := uuid.New().String()
+   283→        r2Key := ""
+   284→        var fileSize int
+   285→
+   286→        if s.storage != nil {
+   287→                // Générer la clé R2 : captures/{sessionID}/{timestamp}.jpg
+   288→                ts := time.Now().UTC().Format("20060102-150405.000")
+   289→                r2Key = fmt.Sprintf("captures/%s/%s.jpg", sessionID, ts)
+   290→                fileSize = len(imageBytes)
+   291→
+   292→                _, err := s.storage.Upload(r.Context(), domain.StorageObject{
+   293→                        Key:           r2Key,
+   294→                        Content:       imageBytes,
+   295→                        ContentType:   "image/jpeg",
+   296→                        ContentLength: int64(fileSize),
+   297→                })
+   298→                if err != nil {
+   299→                        // Log l'erreur mais ne pas bloquer la capture — on stocke juste les métadonnées
+   300→                        fmt.Printf("[captureSession] R2 upload failed: %v\n", err)
+   301→                        r2Key = ""
+   302→                        fileSize = 0
+   303→                }
+   304→        }
+   305→
+   306→        // Insérer les métadonnées dans SessionCapture
+   307→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   308→                _, err := tx.Exec(r.Context(),
+   309→                        `INSERT INTO "SessionCapture" ("id", "sessionId", "etudiantId", "epreuveId", "r2Key", "imageHash", "fileSize", "captureIndex", "createdAt")
+   310→                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+   311→                        captureID, sessionID, etudiantID, epreuveID, r2Key, imageHash, fileSize, captureIndex)
+   312→                return err
+   313→        })
+   314→
+   315→        // Logger la capture dans logEvents (append un event CAPTURE)
+   316→        // Compatibilité ascendante : le logEvent CAPTURE reste présent.
+   317→        alerteInput := domain.AlerteInput{
+   318→                Type:    "CAPTURE",
+   319→                Details: fmt.Sprintf("Capture écran #%d prise (hash: %s...)", captureIndex, imageHash[:16]),
+   320→        }
+   321→        _ = s.sessionUC.AddAlerte(r.Context(), claims, sessionID, 0, alerteInput)
+   322→
+   323→        w.Header().Set("Content-Type", "application/json")
+   324→        json.NewEncoder(w).Encode(map[string]any{
+   325→                "captured":     true,
+   326→                "captureId":    captureID,
+   327→                "captureIndex": captureIndex,
+   328→        })
+   329→}
+   330→
+   331→// ──────────────────────────────────────────────────────────────────────────
+   332→// GET /api/sessions/{id}/captures — liste des captures d'une session
+   333→// ──────────────────────────────────────────────────────────────────────────
+   334→//
+   335→// Retourne la liste des captures avec URL présignée R2 (valide 5 minutes).
+   336→// Accès : ENSEIGNANT/ADMIN/RESPONSABLE ou l'étudiant propriétaire.
+   337→
+   338→func (s *Server) listSessionCaptures(w http.ResponseWriter, r *http.Request) {
+   339→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   340→        if !ok || claims.UserID == "" {
+   341→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   342→                return
+   343→        }
+   344→        sessionID := chi.URLParam(r, "id")
+   345→        if sessionID == "" {
+   346→                writeJSONError(w, http.StatusBadRequest, "id session requis")
+   347→                return
+   348→        }
+   349→
+   350→        // Vérifier l'accès : l'étudiant propriétaire OU enseignant/admin/responsable
+   351→        role := domain.Role(claims.Role)
+   352→        isStaff := role == domain.RoleEnseignant || role == domain.RoleAdmin || role == domain.RoleResponsable
+   353→
+   354→        var etudiantID string
+   355→        found := false
+   356→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   357→                err := tx.QueryRow(r.Context(),
+   358→                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+   359→                        sessionID).Scan(&etudiantID)
+   360→                if err == nil {
+   361→                        found = true
+   362→                }
+   363→                return err
+   364→        })
+   365→        if !found {
+   366→                writeJSONError(w, http.StatusNotFound, "session introuvable")
+   367→                return
+   368→        }
+   369→        if !isStaff && etudiantID != claims.UserID {
+   370→                writeJSONError(w, http.StatusForbidden, "accès refusé")
+   371→                return
+   372→        }
+   373→
+   374→        // Récupérer les captures
+   375→        type captureRow struct {
+   376→                ID           string     `json:"id"`
+   377→                R2Key        string     `json:"r2Key"`
+   378→                ImageHash    *string    `json:"imageHash,omitempty"`
+   379→                FileSize     *int       `json:"fileSize,omitempty"`
+   380→                CaptureIndex int        `json:"captureIndex"`
+   381→                CreatedAt    time.Time  `json:"createdAt"`
+   382→        }
+   383→
+   384→        var captures []captureRow
+   385→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   386→                rows, err := tx.Query(r.Context(),
+   387→                        `SELECT "id", "r2Key", "imageHash", "fileSize", "captureIndex", "createdAt"
+   388→                         FROM "SessionCapture"
+   389→                         WHERE "sessionId" = $1
+   390→                         ORDER BY "captureIndex" ASC`,
+   391→                        sessionID)
+   392→                if err != nil {
+   393→                        return err
+   394→                }
+   395→                defer rows.Close()
+   396→                for rows.Next() {
+   397→                        var c captureRow
+   398→                        if err := rows.Scan(&c.ID, &c.R2Key, &c.ImageHash, &c.FileSize, &c.CaptureIndex, &c.CreatedAt); err != nil {
+   399→                                return err
+   400→                        }
+   401→                        captures = append(captures, c)
+   402→                }
+   403→                return rows.Err()
+   404→        })
+   405→
+   406→        // Enrichir avec URL présignées si R2 est disponible
+   407→        type captureResponse struct {
+   408→                ID           string  `json:"id"`
+   409→                URL          string  `json:"url,omitempty"`
+   410→                R2Key        string  `json:"r2Key,omitempty"`
+   411→                ImageHash    *string `json:"imageHash,omitempty"`
+   412→                FileSize     *int    `json:"fileSize,omitempty"`
+   413→                CaptureIndex int     `json:"captureIndex"`
+   414→                CreatedAt    string  `json:"createdAt"`
+   415→        }
+   416→
+   417→        result := make([]captureResponse, 0, len(captures))
+   418→        for _, c := range captures {
+   419→                resp := captureResponse{
+   420→                        ID:           c.ID,
+   421→                        R2Key:        c.R2Key,
+   422→                        ImageHash:    c.ImageHash,
+   423→                        FileSize:     c.FileSize,
+   424→                        CaptureIndex: c.CaptureIndex,
+   425→                        CreatedAt:    c.CreatedAt.UTC().Format(time.RFC3339),
+   426→                }
+   427→                // Générer URL présignée (5 min = 300s) si R2 disponible et clé présente
+   428→                if s.storage != nil && c.R2Key != "" {
+   429→                        url, err := s.storage.PresignURL(r.Context(), c.R2Key, 300)
+   430→                        if err == nil {
+   431→                                resp.URL = url
+   432→                        }
+   433→                }
+   434→                result = append(result, resp)
+   435→        }
+   436→
+   437→        w.Header().Set("Content-Type", "application/json")
+   438→        json.NewEncoder(w).Encode(map[string]any{
+   439→                "captures": result,
+   440→        })
+   441→}
+   442→
+   443→// ──────────────────────────────────────────────────────────────────────────
+   444→// B4 : GET /api/epreuves/auto-close?epreuveId=X — détection clôture auto
+   445→// ──────────────────────────────────────────────────────────────────────────
+   446→//
+   447→// Le frontend poll toutes les 15s pendant l'examen pour détecter :
+   448→//   - si l'épreuve a été clôturée manuellement (clotureeAt non null)
+   449→//   - si la dateFin est dépassée (avec période de grâce)
+   450→//
+   451→// Response: { isClosed, raisonCloture, inGracePeriod, gracePeriodEndsAt }
+   452→
+   453→func (s *Server) epreuveAutoClose(w http.ResponseWriter, r *http.Request) {
+   454→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   455→        if !ok || claims.UserID == "" {
+   456→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   457→                return
+   458→        }
+   459→        epreuveID := r.URL.Query().Get("epreuveId")
+   460→        if epreuveID == "" {
+   461→                writeJSONError(w, http.StatusBadRequest, "epreuveId requis")
+   462→                return
+   463→        }
+   464→
+   465→        var (
+   466→                clotureeAt     *time.Time
+   467→                raisonCloture  *string
+   468→                dateFin        *time.Time
+   469→                delaiGrace     int
+   470→                statut         string
+   471→        )
+   472→        found := false
+   473→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   474→                err := tx.QueryRow(r.Context(), `
+   475→                        SELECT "clotureeAt", "raisonCloture", "dateFin", COALESCE("delaiGrace", 0), "statut"::text
+   476→                        FROM "Epreuve"
+   477→                        WHERE "id" = $1 AND "deletedAt" IS NULL
+   478→                `, epreuveID).Scan(&clotureeAt, &raisonCloture, &dateFin, &delaiGrace, &statut)
+   479→                if err == nil {
+   480→                        found = true
+   481→                }
+   482→                return err
+   483→        })
+   484→        if !found {
+   485→                writeJSONError(w, http.StatusNotFound, "épreuve introuvable")
+   486→                return
+   487→        }
+   488→
+   489→        now := time.Now().UTC()
+   490→        isClosed := false
+   491→        inGracePeriod := false
+   492→        var gracePeriodEndsAt *time.Time
+   493→
+   494→        if clotureeAt != nil {
+   495→                // Clôturée manuellement
+   496→                isClosed = true
+   497→        } else if statut == "CLOTUREE" {
+   498→                isClosed = true
+   499→        } else if dateFin != nil && now.After(*dateFin) {
+   500→                // Date fin dépassée — vérifier période de grâce
+   501→                graceEnd := dateFin.Add(time.Duration(delaiGrace) * time.Minute)
+   502→                if now.Before(graceEnd) {
+   503→                        inGracePeriod = true
+   504→                        gracePeriodEndsAt = &graceEnd
+   505→                } else {
+   506→                        isClosed = true
+   507→                        rc := "Délai dépassé (fin de période + grâce)"
+   508→                        raisonCloture = &rc
+   509→
+   510→                        // BUGFIX (CLOTURE-AUTO) : l'ancien code détectait isClosed=true
+   511→                        // mais ne mettait PAS à jour le statut en DB. L'épreuve restait
+   512→                        // EN_COURS indéfiniment. Maintenant on clôture réellement :
+   513→                        // statut=CLOTUREE, clotureeAt=now, clotureeAutomatiquement=true,
+   514→                        // raisonCloture="Délai dépassé".
+   515→                        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   516→                                _, err := tx.Exec(r.Context(), `
+   517→                                        UPDATE "Epreuve"
+   518→                                        SET "statut" = 'CLOTUREE',
+   519→                                            "clotureeAt" = $2,
+   520→                                            "clotureeAutomatiquement" = true,
+   521→                                            "raisonCloture" = $3,
+   522→                                            "updatedAt" = CURRENT_TIMESTAMP
+   523→                                        WHERE "id" = $1
+   524→                                          AND "statut" IN ('EN_COURS', 'TERMINEE')
+   525→                                `, epreuveID, now, rc)
+   526→                                return err
+   527→                        })
+   528→                }
+   529→        }
+   530→
+   531→        resp := map[string]any{
+   532→                "isClosed":        isClosed,
+   533→                "inGracePeriod":   inGracePeriod,
+   534→        }
+   535→        if raisonCloture != nil {
+   536→                resp["raisonCloture"] = *raisonCloture
+   537→        }
+   538→        if gracePeriodEndsAt != nil {
+   539→                resp["gracePeriodEndsAt"] = gracePeriodEndsAt.UTC().Format(time.RFC3339)
+   540→        }
+   541→
+   542→        w.Header().Set("Content-Type", "application/json")
+   543→        json.NewEncoder(w).Encode(resp)
+   544→}
+   545→
+   546→// ──────────────────────────────────────────────────────────────────────────
+   547→// B5 : GET /api/security-settings/etablissement/{id} — config par établissement
+   548→// ──────────────────────────────────────────────────────────────────────────
+   549→//
+   550→// Le frontend passation-page.tsx fetch cette route pour charger la config
+   551→// anti-fraude de l'établissement de l'étudiant. Le handler existant
+   552→// securitySettingsGetReal retourne déjà les settings de l'établissement du
+   553→// claims courant — on ajoute juste la route paramétrée qui filtre par
+   554→// établissement explicite.
+   555→
+   556→func (s *Server) securitySettingsByEtablissement(w http.ResponseWriter, r *http.Request) {
+   557→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   558→        if !ok || claims.UserID == "" {
+   559→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   560→                return
+   561→        }
+   562→        etabID := chi.URLParam(r, "id")
+   563→        if etabID == "" {
+   564→                writeJSONError(w, http.StatusBadRequest, "id établissement requis")
+   565→                return
+   566→        }
+   567→
+   568→        type secSettings struct {
+   569→                ID                   string  `json:"id"`
+   570→                EtablissementID      string  `json:"etablissementId"`
+   571→                ProctoringActif     bool    `json:"proctoringActif"`
+   572→                DetectionCopie       bool    `json:"detectionCopie"`
+   573→                DetectionOnglet      bool    `json:"detectionOnglet"`
+   574→                DetectionFullscreen  bool    `json:"detectionFullscreen"`
+   575→                BlocageCopie         bool    `json:"blocageCopie"`
+   576→                BlocageClicDroit     bool    `json:"blocageClicDroit"`
+   577→                BlocageImpression    bool    `json:"blocageImpression"`
+   578→                VerificationIdentite bool    `json:"verificationIdentite"`
+   579→                TempsInactiviteMax   int     `json:"tempsInactiviteMax"`
+   580→                NbOngletsMax         int     `json:"nbOngletsMax"`
+   581→                NbAlertesMax         int     `json:"nbAlertesMax"`
+   582→                AutoSubmitOnViolation bool   `json:"autoSubmitOnViolation"`
+   583→                CaptureEcran         bool    `json:"captureEcran"`
+   584→                RapportFraude        bool    `json:"rapportFraude"`
+   585→                SeuilSimilarite      float64 `json:"seuilSimilarite"`
+   586→                PenaliteFullscreenExit float64 `json:"penaliteFullscreenExit"`
+   587→                FullscreenObligatoire bool   `json:"fullscreenObligatoire"`
+   588→                IntervalleCaptureEcran int    `json:"intervalleCaptureEcran"`
+   589→        }
+   590→
+   591→        settings := secSettings{}
+   592→        found := false
+   593→        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   594→                err := tx.QueryRow(r.Context(), `
+   595→                        SELECT
+   596→                                "id", "etablissementId",
+   597→                                "proctoringActif", "detectionCopie", "detectionOnglet", "detectionFullscreen",
+   598→                                "blocageCopie", "blocageClicDroit", "blocageImpression", "verificationIdentite",
+   599→                                "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax", "autoSubmitOnViolation",
+   600→                                "captureEcran", "rapportFraude", "seuilSimilarite",
+   601→                                "penaliteFullscreenExit", "fullscreenObligatoire", "intervalleCaptureEcran"
+   602→                        FROM "SecuritySettings"
+   603→                        WHERE "etablissementId" = $1
+   604→                `, etabID).Scan(
+   605→                        &settings.ID, &settings.EtablissementID,
+   606→                        &settings.ProctoringActif, &settings.DetectionCopie, &settings.DetectionOnglet, &settings.DetectionFullscreen,
+   607→                        &settings.BlocageCopie, &settings.BlocageClicDroit, &settings.BlocageImpression, &settings.VerificationIdentite,
+   608→                        &settings.TempsInactiviteMax, &settings.NbOngletsMax, &settings.NbAlertesMax, &settings.AutoSubmitOnViolation,
+   609→                        &settings.CaptureEcran, &settings.RapportFraude, &settings.SeuilSimilarite,
+   610→                        &settings.PenaliteFullscreenExit, &settings.FullscreenObligatoire, &settings.IntervalleCaptureEcran,
+   611→                )
+   612→                if err == nil {
+   613→                        found = true
+   614→                }
+   615→                return err
+   616→        })
+   617→
+   618→        if !found {
+   619→                // Pas de config pour cet établissement → retourner les defaults
+   620→                // (le frontend a un DEFAULT_SECURITY fallback, mais on retourne 200
+   621→                // avec des valeurs neutres pour éviter le 404)
+   622→                settings = secSettings{
+   623→                        EtablissementID: etabID,
+   624→                        ProctoringActif: false,
+   625→                        TempsInactiviteMax: 300,
+   626→                        NbOngletsMax: 3,
+   627→                        NbAlertesMax: 5,
+   628→                        AutoSubmitOnViolation: true,
+   629→                        SeuilSimilarite: 0.8,
+   630→                        PenaliteFullscreenExit: 5,
+   631→                        FullscreenObligatoire: true,
+   632→                        IntervalleCaptureEcran: 60,
+   633→                }
+   634→        }
+   635→
+   636→        w.Header().Set("Content-Type", "application/json")
+   637→        json.NewEncoder(w).Encode(map[string]any{
+   638→                "securitySettings": settings,
+   639→        })
+   640→}
+   641→
+   642→// ──────────────────────────────────────────────────────────────────────────
+   643→// PARAMETRES-FIX-P1+P4+P5 : updateSecuritySettingsByEtablissement
+   644→// PATCH /api/security-settings/etablissement/{id}
+   645→//
+   646→// P1 (CRITICAL) : avant, le frontend appelait PATCH /api/security-settings/{configId}
+   647→// mais cette route n'existait pas → 404 → sauvegarde impossible.
+   648→// P5 (HIGH) : avant, si pas de config en DB, le GET retournait id="" → le PATCH
+   649→// allait sur /api/security-settings/ (URL vide) → 404. Maintenant : upsert
+   650→// (UPDATE si existe, INSERT sinon) → gère nativement le cas "première config".
+   651→// P4 (HIGH) : check applicatif d'appartenance (RESPONSABLE doit posséder l'étab,
+   652→// ADMIN doit avoir un EtablissementAccess valide). Cohérent avec le module
+   653→// /etablissements (fix E1/E6).
+   654→// ──────────────────────────────────────────────────────────────────────────
+   655→
+   656→func (s *Server) updateSecuritySettingsByEtablissement(w http.ResponseWriter, r *http.Request) {
+   657→        claims, ok := middleware.ClaimsFromContext(r.Context())
+   658→        if !ok || claims.UserID == "" {
+   659→                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+   660→                return
+   661→        }
+   662→        etabID := chi.URLParam(r, "id")
+   663→        if etabID == "" {
+   664→                writeJSONError(w, http.StatusBadRequest, "id établissement requis")
+   665→                return
+   666→        }
+   667→
+   668→        // P4 : check applicatif d'appartenance (au-delà de la RLS).
+   669→        role := domain.Role(claims.Role)
+   670→        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+   671→                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+   672→                return
+   673→        }
+   674→        if role == domain.RoleResponsable && claims.EtablissementID != etabID {
+   675→                writeJSONError(w, http.StatusForbidden, "vous ne pouvez modifier que les paramètres de votre établissement")
+   676→                return
+   677→        }
+   678→        // ADMIN : vérifier admin_has_etablissement_access (via requête DB dans la tx ci-dessous).
+   679→
+   680→        var input struct {
+   681→                ProctoringActif      *bool    `json:"proctoringActif"`
+   682→                DetectionCopie       *bool    `json:"detectionCopie"`
+   683→                DetectionOnglet      *bool    `json:"detectionOnglet"`
+   684→                DetectionFullscreen  *bool    `json:"detectionFullscreen"`
+   685→                CaptureEcran         *bool    `json:"captureEcran"`
+   686→                BlocageCopie         *bool    `json:"blocageCopie"`
+   687→                BlocageClicDroit     *bool    `json:"blocageClicDroit"`
+   688→                BlocageImpression    *bool    `json:"blocageImpression"`
+   689→                VerificationIdentite *bool    `json:"verificationIdentite"`
+   690→                TempsInactiviteMax   *int     `json:"tempsInactiviteMax"`
+   691→                NbOngletsMax         *int     `json:"nbOngletsMax"`
+   692→                NbAlertesMax         *int     `json:"nbAlertesMax"`
+   693→                AutoSubmitOnViolation *bool   `json:"autoSubmitOnViolation"`
+   694→                RapportFraude        *bool    `json:"rapportFraude"`
+   695→                SeuilSimilarite      *float64 `json:"seuilSimilarite"`
+   696→                PenaliteFullscreenExit *int   `json:"penaliteFullscreenExit"`
+   697→                FullscreenObligatoire *bool  `json:"fullscreenObligatoire"`
+   698→                IntervalleCaptureEcran *int  `json:"intervalleCaptureEcran"`
+   699→        }
+   700→        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+   701→                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+   702→                return
+   703→        }
+   704→
+   705→        // Validations (cohérentes avec les bornes des sliders frontend).
+   706→        if input.TempsInactiviteMax != nil && (*input.TempsInactiviteMax < 30 || *input.TempsInactiviteMax > 300) {
+   707→                writeJSONError(w, http.StatusBadRequest, "tempsInactiviteMax doit être entre 30 et 300")
+   708→                return
+   709→        }
+   710→        if input.NbOngletsMax != nil && (*input.NbOngletsMax < 1 || *input.NbOngletsMax > 10) {
+   711→                writeJSONError(w, http.StatusBadRequest, "nbOngletsMax doit être entre 1 et 10")
+   712→                return
+   713→        }
+   714→        if input.NbAlertesMax != nil && (*input.NbAlertesMax < 1 || *input.NbAlertesMax > 15) {
+   715→                writeJSONError(w, http.StatusBadRequest, "nbAlertesMax doit être entre 1 et 15")
+   716→                return
+   717→        }
+   718→        if input.SeuilSimilarite != nil && (*input.SeuilSimilarite < 0.5 || *input.SeuilSimilarite > 1.0) {
+   719→                writeJSONError(w, http.StatusBadRequest, "seuilSimilarite doit être entre 0.5 et 1.0")
+   720→                return
+   721→        }
+   722→        if input.PenaliteFullscreenExit != nil && (*input.PenaliteFullscreenExit < 0 || *input.PenaliteFullscreenExit > 10) {
+   723→                writeJSONError(w, http.StatusBadRequest, "penaliteFullscreenExit doit être entre 0 et 10")
+   724→                return
+   725→        }
+   726→        if input.IntervalleCaptureEcran != nil && (*input.IntervalleCaptureEcran < 30 || *input.IntervalleCaptureEcran > 300) {
+   727→                writeJSONError(w, http.StatusBadRequest, "intervalleCaptureEcran doit être entre 30 et 300")
+   728→                return
+   729→        }
+   730→
+   731→        type secSettings struct {
+   732→                ID                    string  `json:"id"`
+   733→                EtablissementID       string  `json:"etablissementId"`
+   734→                ProctoringActif       bool    `json:"proctoringActif"`
+   735→                DetectionCopie        bool    `json:"detectionCopie"`
+   736→                DetectionOnglet       bool    `json:"detectionOnglet"`
+   737→                DetectionFullscreen   bool    `json:"detectionFullscreen"`
+   738→                BlocageCopie          bool    `json:"blocageCopie"`
+   739→                BlocageClicDroit      bool    `json:"blocageClicDroit"`
+   740→                BlocageImpression     bool    `json:"blocageImpression"`
+   741→                VerificationIdentite  bool    `json:"verificationIdentite"`
+   742→                TempsInactiviteMax    int     `json:"tempsInactiviteMax"`
+   743→                NbOngletsMax          int     `json:"nbOngletsMax"`
+   744→                NbAlertesMax          int     `json:"nbAlertesMax"`
+   745→                AutoSubmitOnViolation bool    `json:"autoSubmitOnViolation"`
+   746→                CaptureEcran          bool    `json:"captureEcran"`
+   747→                RapportFraude         bool    `json:"rapportFraude"`
+   748→                SeuilSimilarite       float64 `json:"seuilSimilarite"`
+   749→                PenaliteFullscreenExit int    `json:"penaliteFullscreenExit"`
+   750→                FullscreenObligatoire bool    `json:"fullscreenObligatoire"`
+   751→                IntervalleCaptureEcran int    `json:"intervalleCaptureEcran"`
+   752→        }
+   753→
+   754→        result := secSettings{EtablissementID: etabID}
+   755→        errTx := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+   756→                // P4 : check admin_has_etablissement_access pour ADMIN.
+   757→                if role == domain.RoleAdmin {
+   758→                        var hasAccess bool
+   759→                        if err := tx.QueryRow(r.Context(), `SELECT admin_has_etablissement_access($1)`, etabID).Scan(&hasAccess); err != nil {
+   760→                                return fmt.Errorf("check admin access: %w", err)
+   761→                        }
+   762→                        if !hasAccess {
+   763→                                return &domain.UnauthorizedError{Message: "accès non autorisé à cet établissement"}
+   764→                        }
+   765→                }
+   766→
+   767→                // P5 : upsert — vérifier si une config existe déjà pour cet établissement.
+   768→                var existingID string
+   769→                err := tx.QueryRow(r.Context(), `SELECT "id" FROM "SecuritySettings" WHERE "etablissementId" = $1`, etabID).Scan(&existingID)
+   770→
+   771→                if err == nil {
+   772→                        // UPDATE la config existante.
+   773→                        return tx.QueryRow(r.Context(), `
+   774→                                UPDATE "SecuritySettings" SET
+   775→                                        "proctoringActif" = COALESCE($2, "proctoringActif"),
+   776→                                        "detectionCopie" = COALESCE($3, "detectionCopie"),
+   777→                                        "detectionOnglet" = COALESCE($4, "detectionOnglet"),
+   778→                                        "detectionFullscreen" = COALESCE($5, "detectionFullscreen"),
+   779→                                        "captureEcran" = COALESCE($6, "captureEcran"),
+   780→                                        "blocageCopie" = COALESCE($7, "blocageCopie"),
+   781→                                        "blocageClicDroit" = COALESCE($8, "blocageClicDroit"),
+   782→                                        "blocageImpression" = COALESCE($9, "blocageImpression"),
+   783→                                        "verificationIdentite" = COALESCE($10, "verificationIdentite"),
+   784→                                        "tempsInactiviteMax" = COALESCE($11, "tempsInactiviteMax"),
+   785→                                        "nbOngletsMax" = COALESCE($12, "nbOngletsMax"),
+   786→                                        "nbAlertesMax" = COALESCE($13, "nbAlertesMax"),
+   787→                                        "autoSubmitOnViolation" = COALESCE($14, "autoSubmitOnViolation"),
+   788→                                        "rapportFraude" = COALESCE($15, "rapportFraude"),
+   789→                                        "seuilSimilarite" = COALESCE($16, "seuilSimilarite"),
+   790→                                        "penaliteFullscreenExit" = COALESCE($17, "penaliteFullscreenExit"),
+   791→                                        "fullscreenObligatoire" = COALESCE($18, "fullscreenObligatoire"),
+   792→                                        "intervalleCaptureEcran" = COALESCE($19, "intervalleCaptureEcran"),
+   793→                                        "updatedAt" = now()
+   794→                                WHERE "etablissementId" = $1
+   795→                                RETURNING "id", "etablissementId", "proctoringActif", "detectionCopie", "detectionOnglet",
+   796→                                        "detectionFullscreen", "blocageCopie", "blocageClicDroit", "blocageImpression",
+   797→                                        "verificationIdentite", "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
+   798→                                        "autoSubmitOnViolation", "captureEcran", "rapportFraude", "seuilSimilarite",
+   799→                                        "penaliteFullscreenExit", "fullscreenObligatoire", "intervalleCaptureEcran"
+   800→                        `, etabID,
+   801→                                input.ProctoringActif, input.DetectionCopie, input.DetectionOnglet, input.DetectionFullscreen,
+   802→                                input.CaptureEcran, input.BlocageCopie, input.BlocageClicDroit, input.BlocageImpression,
+   803→                                input.VerificationIdentite, input.TempsInactiviteMax, input.NbOngletsMax, input.NbAlertesMax,
+   804→                                input.AutoSubmitOnViolation, input.RapportFraude, input.SeuilSimilarite,
+   805→                                input.PenaliteFullscreenExit, input.FullscreenObligatoire, input.IntervalleCaptureEcran,
+   806→                        ).Scan(
+   807→                                &result.ID, &result.EtablissementID, &result.ProctoringActif, &result.DetectionCopie, &result.DetectionOnglet,
+   808→                                &result.DetectionFullscreen, &result.BlocageCopie, &result.BlocageClicDroit, &result.BlocageImpression,
+   809→                                &result.VerificationIdentite, &result.TempsInactiviteMax, &result.NbOngletsMax, &result.NbAlertesMax,
+   810→                                &result.AutoSubmitOnViolation, &result.CaptureEcran, &result.RapportFraude, &result.SeuilSimilarite,
+   811→                                &result.PenaliteFullscreenExit, &result.FullscreenObligatoire, &result.IntervalleCaptureEcran,
+   812→                        )
+   813→                }
+   814→
+   815→                // Pas de config existante (pgx.ErrNoRows) → INSERT (P5 : gère id vide).
+   816→                newID := "secset_" + uuid.NewString()
+   817→                return tx.QueryRow(r.Context(), `
+   818→                        INSERT INTO "SecuritySettings" (
+   819→                                "id", "etablissementId", "proctoringActif", "detectionCopie", "detectionOnglet",
+   820→                                "detectionFullscreen", "captureEcran", "blocageCopie", "blocageClicDroit", "blocageImpression",
+   821→                                "verificationIdentite", "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
+   822→                                "autoSubmitOnViolation", "rapportFraude", "seuilSimilarite",
+   823→                                "penaliteFullscreenExit", "fullscreenObligatoire", "intervalleCaptureEcran",
+   824→                                "createdAt", "updatedAt"
+   825→                        ) VALUES (
+   826→                                $1, $2, COALESCE($3, false), COALESCE($4, true), COALESCE($5, true),
+   827→                                COALESCE($6, true), COALESCE($7, false), COALESCE($8, true), COALESCE($9, true), COALESCE($10, true),
+   828→                                COALESCE($11, false), COALESCE($12, 120), COALESCE($13, 3), COALESCE($14, 5),
+   829→                                COALESCE($15, false), COALESCE($16, true), COALESCE($17, 0.85),
+   830→                                COALESCE($18, 5), COALESCE($19, true), COALESCE($20, 60),
+   831→                                now(), now()
+   832→                        )
+   833→                        RETURNING "id", "etablissementId", "proctoringActif", "detectionCopie", "detectionOnglet",
+   834→                                "detectionFullscreen", "blocageCopie", "blocageClicDroit", "blocageImpression",
+   835→                                "verificationIdentite", "tempsInactiviteMax", "nbOngletsMax", "nbAlertesMax",
+   836→                                "autoSubmitOnViolation", "captureEcran", "rapportFraude", "seuilSimilarite",
+   837→                                "penaliteFullscreenExit", "fullscreenObligatoire", "intervalleCaptureEcran"
+   838→                `, newID, etabID,
+   839→                        input.ProctoringActif, input.DetectionCopie, input.DetectionOnglet, input.DetectionFullscreen,
+   840→                        input.CaptureEcran, input.BlocageCopie, input.BlocageClicDroit, input.BlocageImpression,
+   841→                        input.VerificationIdentite, input.TempsInactiviteMax, input.NbOngletsMax, input.NbAlertesMax,
+   842→                        input.AutoSubmitOnViolation, input.RapportFraude, input.SeuilSimilarite,
+   843→                        input.PenaliteFullscreenExit, input.FullscreenObligatoire, input.IntervalleCaptureEcran,
+   844→                ).Scan(
+   845→                        &result.ID, &result.EtablissementID, &result.ProctoringActif, &result.DetectionCopie, &result.DetectionOnglet,
+   846→                        &result.DetectionFullscreen, &result.BlocageCopie, &result.BlocageClicDroit, &result.BlocageImpression,
+   847→                        &result.VerificationIdentite, &result.TempsInactiviteMax, &result.NbOngletsMax, &result.NbAlertesMax,
+   848→                        &result.AutoSubmitOnViolation, &result.CaptureEcran, &result.RapportFraude, &result.SeuilSimilarite,
+   849→                        &result.PenaliteFullscreenExit, &result.FullscreenObligatoire, &result.IntervalleCaptureEcran,
+   850→                )
+   851→        })
+   852→
+   853→        if errTx != nil {
+   854→                if domainErr, ok := errTx.(*domain.UnauthorizedError); ok {
+   855→                        writeJSONError(w, http.StatusForbidden, domainErr.Error())
+   856→                        return
+   857→                }
+   858→                // RLS a bloqué ou autre erreur SQL.
+   859→                writeJSONError(w, http.StatusForbidden, "mise à jour non autorisée pour cet établissement")
+   860→                return
+   861→        }
+   862→
+   863→        // Vérifier qu'on a bien un ID (sinon l'upsert a échoué silencieusement).
+   864→        if result.ID == "" {
+   865→                writeJSONError(w, http.StatusInternalServerError, "échec de la mise à jour")
+   866→                return
+   867→        }
+   868→
+   869→        w.Header().Set("Content-Type", "application/json")
+   870→        json.NewEncoder(w).Encode(map[string]any{
+   871→                "securitySettings": result,
+   872→                "message":          "Paramètres de sécurité mis à jour",
+   873→        })
+   874→}
+   875→
