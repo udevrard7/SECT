@@ -1,0 +1,88 @@
+# Render — Backend Go SECT API
+services:
+  - type: web
+    name: sect-api
+    runtime: docker
+    rootDir: backend
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ENVIRONMENT
+        value: production
+      # ── Base de données Neon ──
+      - key: NEON_DATABASE_URL
+        sync: false
+      - key: NEON_DIRECT_URL
+        sync: false
+      # ── Authentification ──
+      - key: JWT_SECRET
+        generateValue: true
+      # ── CORS (frontends autorisés) ──
+      - key: CORS_ORIGINS
+        value: "https://sect-app.vercel.app,https://sect-app-git-*.vercel.app"
+      # ── URL publique du frontend (pour liens reset password, etc.) ──
+      - key: APP_BASE_URL
+        value: "https://sect-app.vercel.app"
+      # ── Cloudflare R2 (stockage documents) ──
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: sect-documents
+      - key: R2_ENDPOINT
+        sync: false
+      # ── Resend (emails transactionnels) ──
+      # Priorité Resend > SMTP > LogMailer. Voir backend/internal/mailer.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      # ── SMTP (fallback si Resend non configuré) ──
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # ── GeniusPay (paiement Wave B2C) ──
+      - key: GENIUSPAY_API_KEY
+        sync: false
+      - key: GENIUSPAY_API_SECRET
+        sync: false
+      - key: GENIUSPAY_WEBHOOK_SECRET
+        sync: false
+      - key: GENIUSPAY_BASE_URL
+        sync: false
+      # ── Cloudflare Turnstile (anti-bot endpoints publics : /api/student-signup,
+      # /api/landing-demo). Phase 2 SECT-REG-LINK-PHASE2-BACKEND-1.
+      # Si vide → vérification désactivée (dev mode). Pour activer :
+      # 1. https://dash.cloudflare.com/?to=/:account/turnstile → Add site
+      #    (widget mode "Managed", domain: sect-app.vercel.app)
+      # 2. Copier Site Key + Secret Key → poser dans Render dashboard
+      # 3. Trigger manual deploy (Render auto-deploys on push, mais env vars
+      #    nécessitent un redeploy explicite pour être prises en compte).
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      # ── Web Push VAPID (SECT-NOTIF-VAPID-1) ──
+      # Générer les clés : npx web-push generate-vapid-keys
+      # Si vide → push désactivé (in-app + SSE restent actifs).
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: "mailto:ulrichdouh@gmail.com"

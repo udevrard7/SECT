@@ -1,0 +1,27 @@
+-- 000077_ai_provider_failover_multi_active.up.sql
+-- ============================================================================
+-- Fix FAILOVER-BLOCKED : autoriser plusieurs providers actifs par capability
+-- pour que le failover automatique fonctionne réellement.
+--
+-- Contexte :
+-- La contrainte AIProviderConfig_single_active_per_capability (migration 000035)
+-- limitait à 1 seul provider actif par capability. Or le code de failover
+-- (failover.go → getActiveProvidersForFailover) fait WHERE "isActive" = true
+-- pour récupérer TOUS les providers actifs triés par priorité.
+--
+-- Problème :
+-- Avec 1 seul provider actif, le failover ne trouve qu'1 provider.
+-- Si Mistral tombe → ERREUR directe, pas de bascule vers Groq/Cerebras/DeepSeek.
+--
+-- Fix :
+-- 1. Supprimer la contrainte partial unique (permettre N providers actifs/chat).
+-- 2. Le code Go du failover itère déjà sur tous les providers actifs par priorité.
+-- 3. Le handler aiProviderActivate est modifié pour faire un simple toggle
+--    isActive=true/false au lieu de désactiver tous les autres.
+--
+-- L'admin peut maintenant activer plusieurs providers chat simultanément.
+-- Le failover les essaie dans l'ordre P1→P2→P3... automatiquement.
+-- ============================================================================
+
+-- Supprimer la contrainte qui bloquait le failover
+DROP INDEX IF EXISTS "AIProviderConfig_single_active_per_capability";

@@ -1,0 +1,3597 @@
+'use client'
+
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+ Clock,
+ Calendar,
+ HelpCircle,
+ Users,
+ Edit3,
+ Send,
+ Trash2,
+ Eye,
+ Play,
+ CalendarDays,
+ Activity,
+ Square,
+ BarChart3,
+ Lock,
+ Search,
+ Check,
+ X,
+ Shuffle,
+ Ban,
+ AlertTriangle,
+ Loader2,
+ Trophy,
+ Library,
+ CheckCircle2,
+ Sparkles,
+ Copy,
+ FileText,
+ BookOpen,
+ Hash,
+ ChevronDown,
+ ChevronUp,
+ Layers,
+ SendHorizonal,
+ FileDown,
+ FileCheck2,
+ ClipboardList,
+ GraduationCap,
+ CalendarRange,
+ RotateCcw,
+ LayoutGrid,
+ List,
+} from'lucide-react'
+import { EpreuveGroupedView } from'./epreuve-grouped-view'
+import { OrphanEpreuvesAlert } from'./orphan-epreuves-alert'
+import {
+ type ClassificationTree,
+ type SelectedPath,
+ type GroupByField,
+} from'./classification-types'
+import { useAuthStore } from'@/stores/auth-store'
+import { useRouter } from'next/navigation'
+import { PAGE_ROUTES } from'@/lib/routes'
+import { Card, CardContent } from'@/components/ui/card'
+import { Button } from'@/components/ui/button'
+import { Badge } from'@/components/ui/badge'
+import { Input } from'@/components/ui/input'
+
+import { Label } from'@/components/ui/label'
+import {
+ Dialog,
+ DialogContent,
+ DialogDescription,
+ DialogFooter,
+ DialogHeader,
+ DialogTitle,
+} from'@/components/ui/dialog'
+import {
+ AlertDialog,
+ AlertDialogAction,
+ AlertDialogCancel,
+ AlertDialogContent,
+ AlertDialogDescription,
+ AlertDialogFooter,
+ AlertDialogHeader,
+ AlertDialogTitle,
+} from'@/components/ui/alert-dialog'
+import {
+ Select,
+ SelectContent,
+ SelectItem,
+ SelectTrigger,
+ SelectValue,
+} from'@/components/ui/select'
+import { Separator } from'@/components/ui/separator'
+import { ScrollArea } from'@/components/ui/scroll-area'
+import { Checkbox } from'@/components/ui/checkbox'
+import { Textarea } from'@/components/ui/textarea'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from'@/components/ui/collapsible'
+import {
+ DropdownMenu,
+ DropdownMenuContent,
+ DropdownMenuItem,
+ DropdownMenuLabel,
+ DropdownMenuSeparator,
+ DropdownMenuTrigger,
+} from'@/components/ui/dropdown-menu'
+import { toast } from'sonner'
+
+// ─── Types ───
+
+interface EpreuveContenu {
+ questions: Array<{
+ id: string
+ type: string
+ enonce: string
+ propositions: Array<{ id: string; text: string }> | null
+ reponseCorrecte: string | string[] | null
+ explication: string | null
+ difficulte: string
+ bareme: number
+ }>
+ consignes?: string
+ baremeTotal: number
+}
+
+interface Session {
+ id: string
+ statut: string
+ score: number | null
+ etudiantId: string
+ etudiant?: { id: string; name: string; email: string }
+ alertes?: number
+ reponses?: Array<{ id: string; questionId: string }>
+ logEvents?: unknown
+}
+
+interface EpreuveQuestion {
+ id: string
+ questionId: string
+ bareme: number
+ ordre: number
+ question: { id: string; type: string; enonce: string; difficulte: string }
+}
+
+// Teacher's context from /api/enseignant/context
+interface EnseignantFiliereContext {
+ id: string
+ nom: string
+ code: string | null
+ niveaux: string[]
+ unitesEnseignement: Array<{
+ id: string
+ code: string
+ nom: string
+ niveau: string
+ niveaux: string | null
+ typeSeances: string[]
+ }>
+}
+
+// For the Modèles (Banque) view
+interface ModeleEpreuve {
+ id: string
+ titre: string
+ description: string | null
+ duree: number
+ statut: string
+ generationMode:'MANUELLE' |'IA_ASSISTEE'
+ isTemplate: boolean
+ contenu: EpreuveContenu | null
+ questionCount: number
+ baremeTotal: number
+ noteTotal: number
+ typeDistribution?: Record<string, number>
+ // BUGFIX (DUP-SRCDocs-1) : sourceDocuments peut être absent de la réponse
+ // API (l'Epreuve List du backend ne renvoie pas toujours ce champ).
+ // Marqué optionnel + fallback ?? [] partout où il est utilisé.
+ sourceDocuments?: Array<{ id: string; nomFichier: string }>
+ filiere?: { id: string; nom: string; code: string | null } | null
+ uniteEnseignement?: { id: string; nom: string; code: string | null } | null
+ // BUGFIX (DUPLICATE-UE-1) : l'API renvoie uniteEnseignementId (champ plat,
+ // cf. domain.Epreuve.UniteEnseignementID) et NON un objet imbriqué
+ // uniteEnseignement (aucun JOIN dans List). Le handleDuplicate doit lire
+ // ce champ plat pour transmettre l'UE au backend (usecase exige non vide).
+ uniteEnseignementId?: string | null
+ niveau?: string | null
+ sessionExamen?: string | null
+ anneeAcademiqueId?: string | null
+ sessionCount: number
+ hasContenuFormat: boolean
+ createdAt: string
+ updatedAt: string
+ // Dette technique TS (audit) : index signature pour compatibilité avec
+ // GroupableEpreuve (epreuve-grouped-view.tsx). ModeleEpreuve est structurellement
+ // compatible mais manquait l'index signature [key: string]: unknown.
+ [key: string]: unknown
+}
+
+// For the Sessions view
+interface SessionEpreuve {
+ id: string
+ enseignantId: string
+ titre: string
+ description: string | null
+ duree: number
+ dateDebut: string
+ dateFin: string
+ melangeQuestions: boolean
+ melangePropositions: boolean
+ blocageRetour: boolean
+ statut:'BROUILLON' |'PLANIFIEE' |'EN_COURS' |'TERMINEE' |'CLOTUREE'
+ groupesCibles: string[] | null
+ questions: EpreuveQuestion[]
+ sessions: Session[]
+ contenu: EpreuveContenu | null
+ generationMode: string
+ clotureeAt?: string | null
+ clotureeAutomatiquement?: boolean
+ raisonCloture?: string | null
+ noteTotal?: number
+ delaiGrace?: number
+ createdAt: string
+ // New classification fields
+ niveau?: string | null
+ sessionExamen?: string | null
+ anneeAcademiqueId?: string | null
+ anneeAcademique?: { id: string; libelle: string } | null
+ filiere?: { id: string; nom: string; code: string | null } | null
+ uniteEnseignement?: { id: string; nom: string; code: string | null } | null
+ epreuveOrigineId?: string | null
+ etudiantsAutorises?: string[] | null
+ [key: string]: unknown
+}
+
+type TabId ='modeles' |'sessions'
+
+// ─── Utility functions ───
+
+const TYPE_COLORS: Record<string, string> = {
+ QCU:'bg-info/15 text-info border-info/30',
+ QCM:'bg-warning/15 text-warning border-warning/30',
+ QRC:'bg-success/15 text-success-text border-success/30',
+ REFLEXION:'bg-secondary/15 text-secondary border-secondary/30',
+ CODE:'bg-secondary/15 text-secondary border-secondary/30',
+}
+
+const DIFFICULTE_COLORS: Record<string, string> = {
+ FACILE:'bg-success/10 text-success-text border-success/30',
+ MOYEN:'bg-warning/10 text-warning border-warning/30',
+ DIFFICILE:'bg-warning/10 text-warning border-warning/30',
+ EXPERT:'bg-destructive/10 text-destructive border-destructive/30',
+}
+
+const DIFFICULTE_LABELS: Record<string, string> = {
+ FACILE:'Facile',
+ MOYEN:'Moyen',
+ DIFFICILE:'Difficile',
+ EXPERT:'Expert',
+}
+
+function formatDateTime(date: string | Date): string {
+ const d = typeof date ==='string' ? new Date(date) : date
+ return d.toLocaleDateString('fr-FR', {
+ day:'2-digit', month:'2-digit', year:'numeric',
+ hour:'2-digit', minute:'2-digit',
+ })
+}
+
+function formatDate(date: string | Date): string {
+ const d = typeof date ==='string' ? new Date(date) : date
+ return d.toLocaleDateString('fr-FR', {
+ day:'2-digit', month:'2-digit', year:'numeric',
+ })
+}
+
+function truncateText(text: string, maxLen: number = 120): string {
+ if (text.length <= maxLen) return text
+ return text.slice(0, maxLen).trim() +'...'
+}
+
+const NIVEAU_LABELS: Record<string, string> = {
+ L1:'L1 — Licence 1',
+ L2:'L2 — Licence 2',
+ L3:'L3 — Licence 3',
+ M1:'M1 — Master 1',
+ M2:'M2 — Master 2',
+ DOCTORAT:'Doctorat',
+}
+
+const SESSION_EXAMEN_LABELS: Record<string, string> = {
+ NORMALE:'Normale',
+ RATTRAPAGE:'Rattrapage',
+ SPECIALE:'Spéciale',
+ EXCEPTIONNELLE:'Exceptionnelle',
+ DIFFERE:'Différé',
+}
+
+const SESSION_EXAMEN_COLORS: Record<string, string> = {
+ NORMALE:'bg-success/10 text-success-text border-success/30',
+ RATTRAPAGE:'bg-warning/10 text-warning border-warning/30',
+ SPECIALE:'bg-secondary/10 text-secondary border-secondary/30',
+ EXCEPTIONNELLE:'bg-secondary/10 text-secondary border-secondary/30',
+ DIFFERE:'bg-warning/10 text-warning border-warning/30',
+}
+
+function getStatutLabel(statut: string): string {
+ switch (statut) {
+ case'BROUILLON': return'Brouillon'
+ case'PLANIFIEE': return'Planifiée'
+ case'EN_COURS': return'En cours'
+ case'TERMINEE': return'Terminée'
+ case'CLOTUREE': return'Clôturée'
+ default: return statut
+ }
+}
+
+function getStatutBadge(statut: string) {
+ switch (statut) {
+ case'BROUILLON':
+ return (
+ <Badge variant="outline" className="gap-1 bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+ <Edit3 className="h-3 w-3" /> Brouillon
+ </Badge>
+ )
+ case'PLANIFIEE':
+ return (
+ <Badge variant="outline" className="gap-1 bg-warning/15 text-warning border-warning/30">
+ <Calendar className="h-3 w-3" /> Planifiée
+ </Badge>
+ )
+ case'EN_COURS':
+ return (
+ <Badge variant="outline" className="gap-1 bg-success/15 text-success-text border-success/30">
+ <Activity className="h-3 w-3" /> En cours
+ </Badge>
+ )
+ case'TERMINEE':
+ return (
+ <Badge variant="outline" className="gap-1 bg-info/15 text-info border-info/30">
+ <Check className="h-3 w-3" /> Terminée
+ </Badge>
+ )
+ case'CLOTUREE':
+ return (
+ <Badge variant="outline" className="gap-1 bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800/60 dark:text-gray-400 dark:border-gray-700">
+ <Lock className="h-3 w-3" /> Clôturée
+ </Badge>
+ )
+ default:
+ return <Badge variant="outline">{statut}</Badge>
+ }
+}
+
+// ─── Main Component ───
+
+export function EpreuvesPage() {
+ const user = useAuthStore((s) => s.user)
+ const router = useRouter()
+
+ // Tab state
+ const [activeTab, setActiveTab] = useState<TabId>('sessions')
+
+ return (
+ <div className="space-y-6">
+ {/* ─── Header ─── */}
+ <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+ <div>
+ <h1 className="text-2xl font-bold font-display tracking-tight md:text-3xl">Épreuves</h1>
+ <p className="mt-1 text-sm text-muted-foreground">
+ Gérez vos modèles d&apos;épreuves et planifiez vos sessions d&apos;évaluation
+ </p>
+ </div>
+ <div className="flex gap-2">
+ {activeTab ==='modeles' && (
+ <>
+ <Button
+ variant="outline"
+ className="border-success/40 text-success-text hover:bg-success/10"
+ onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
+ >
+ <Sparkles className="h-4 w-4" />
+ Générer par IA
+ </Button>
+ </>
+ )}
+ 
+ </div>
+ </div>
+
+ {/* ─── Tabs ─── */}
+ <div className="flex border-b">
+ <button
+ type="button"
+ onClick={() => setActiveTab('modeles')}
+ className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
+ activeTab ==='modeles'
+ ?'border-success/70 text-success-text'
+ :'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
+ }`}
+ >
+ <Library className="h-4 w-4" />
+ Modèles
+ <span className="text-xs text-muted-foreground ml-1">Contenu &amp; questions</span>
+ </button>
+ <button
+ type="button"
+ onClick={() => setActiveTab('sessions')}
+ className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
+ activeTab ==='sessions'
+ ?'border-success/70 text-success-text'
+ :'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
+ }`}
+ >
+ <Layers className="h-4 w-4" />
+ Sessions
+ <span className="text-xs text-muted-foreground ml-1">Planification &amp; suivi</span>
+ </button>
+ </div>
+
+ {/* ─── Alert: épreuves sans UE (orphelines) ─── */}
+ <OrphanEpreuvesAlert />
+
+ {/* ─── Tab Content ─── */}
+ {activeTab ==='modeles' && <ModelesTab />}
+ {activeTab ==='sessions' && <SessionsTab />}
+ </div>
+ )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODÈLES TAB (was Banque d'Épreuves)
+// Focus: CONTENT — browse, preview, duplicate, generate, delete
+// ═══════════════════════════════════════════════════════════════
+
+function ModelesTab() {
+ const user = useAuthStore((s) => s.user)
+ const router = useRouter()
+ const queryClient = useQueryClient()
+
+ const [search, setSearch] = useState('')
+ const [debouncedSearch, setDebouncedSearch] = useState('')
+
+ // BUGFIX (QUERY-MIGRATION-1) : migration de useEffect+fetch vers TanStack
+ // Query. Le cache survit au démontage -> 0 refetch au retour, 0 skeleton,
+ // navigation instantanee. Le queryKey inclut debouncedSearch pour refetch
+ // automatique quand la recherche change.
+ const banqueQuery = useQuery<{ epreuves: ModeleEpreuve[] }>({
+  queryKey: ['epreuves-modeles', user?.id, debouncedSearch],
+  queryFn: async () => {
+   const params = new URLSearchParams({ enseignantId: user!.id })
+   if (debouncedSearch) params.set('search', debouncedSearch)
+   const res = await fetch(`/api/epreuves?${params.toString()}`)
+   if (!res.ok) throw new Error('Failed to fetch modeles')
+   return res.json()
+  },
+  enabled: !!user?.id,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+
+ const epreuves = banqueQuery.data?.epreuves ?? []
+ const isLoading = banqueQuery.isLoading
+
+ const refreshModeles = () =>
+  queryClient.invalidateQueries({ queryKey: ['epreuves-modeles', user?.id] })
+
+ // View mode (flat list or grouped) — miroir SessionsTab
+ // UX-IMPROVE : viewMode démarre à 'grouped' (comme SessionsTab).
+ const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped')
+ const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
+
+ // Dialogs
+ const [previewEpreuve, setPreviewEpreuve] = useState<ModeleEpreuve | null>(null)
+ const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
+ const [deleteTarget, setDeleteTarget] = useState<ModeleEpreuve | null>(null)
+ const [duplicateTarget, setDuplicateTarget] = useState<ModeleEpreuve | null>(null)
+ const [duplicateTitre, setDuplicateTitre] = useState('')
+ const [isDuplicating, setIsDuplicating] = useState(false)
+ const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set())
+
+ // Debounce search
+ useEffect(() => {
+ const timer = setTimeout(() => setDebouncedSearch(search), 300)
+ return () => clearTimeout(timer)
+ }, [search])
+
+ const toggleExpand = (id: string) => {
+ setExpandedQuestions((prev) => {
+ const next = new Set(prev)
+ if (next.has(id)) next.delete(id); else next.add(id)
+ return next
+ })
+ }
+
+ const handlePreview = (epreuve: ModeleEpreuve) => {
+ setPreviewEpreuve(epreuve)
+ setExpandedQuestions(new Set())
+ setPreviewDialogOpen(true)
+ }
+
+ const handleDelete = async () => {
+ if (!deleteTarget) return
+ try {
+ const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method:'DELETE' })
+ if (!res.ok) throw new Error('Erreur')
+ toast.success('Modèle supprimé', { description:`"${deleteTarget.titre}" a été déplacé vers la corbeille.` })
+ setDeleteTarget(null)
+ await refreshModeles()
+ } catch (err) {
+ toast.error('Erreur', { description:'Impossible de supprimer.' })
+ }
+ }
+
+ const handleDuplicate = async () => {
+ if (!duplicateTarget || !user?.id) return
+ setIsDuplicating(true)
+ try {
+ // IMPORTANT: transmettre TOUS les champs de classification pour que
+ // la copie conserve la même filière / UE / niveau / session que l'original.
+ // Le backend (usecase Epreuve.Create) exige uniteEnseignementId non vide.
+ const body: Record<string, unknown> = {
+ enseignantId: user.id,
+ titre: duplicateTitre,
+ description: duplicateTarget.description,
+ duree: duplicateTarget.duree,
+ dateDebut: new Date().toISOString(),
+ dateFin: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+ generationMode: duplicateTarget.generationMode,
+ // BUGFIX (DUP-SRCDocs-1) : sourceDocuments peut être undefined (API ne
+ // renvoie pas toujours ce champ). Optional chaining + fallback [] évite
+ // le TypeError: Cannot read properties of undefined (reading 'map').
+ documentIds: duplicateTarget.sourceDocuments?.map((d) => d.id) ?? [],
+ // Classification — récupérée depuis l'épreuve source.
+ // BUGFIX (DUPLICATE-UE-1) : l'API List renvoie uniteEnseignementId (champ
+ // plat) et NON un objet imbriqué uniteEnseignement (aucun JOIN dans le
+ // repository). On lit donc le champ plat en priorité, avec fallback sur
+ // l'objet imbriqué au cas où le backend l'ajouterait plus tard.
+ uniteEnseignementId: duplicateTarget.uniteEnseignementId ?? duplicateTarget.uniteEnseignement?.id ?? null,
+ filiereId: duplicateTarget.filiere?.id ?? null,
+ niveau: duplicateTarget.niveau ?? null,
+ sessionExamen: duplicateTarget.sessionExamen ?? 'NORMALE',
+ anneeAcademiqueId: duplicateTarget.anneeAcademiqueId ?? null,
+ noteTotal: duplicateTarget.noteTotal ?? 20,
+ }
+ if (duplicateTarget.contenu) body.contenu = duplicateTarget.contenu
+
+ const res = await fetch('/api/epreuves', {
+ method:'POST',
+ headers: {'Content-Type':'application/json' },
+ body: JSON.stringify(body),
+ })
+ if (!res.ok) {
+ // Récupérer le vrai message backend pour aider au debug
+ let detail = 'Impossible de dupliquer.'
+ try {
+ const err = await res.json()
+ detail = err?.error || err?.message || detail
+ } catch { /* ignore parse error */ }
+ throw new Error(detail)
+ }
+ toast.success('Modèle dupliqué', { description:`"${duplicateTitre}" a été ajouté.` })
+ setDuplicateTarget(null)
+ await refreshModeles()
+ } catch (err) {
+ const msg = err instanceof Error ? err.message : 'Impossible de dupliquer.'
+ toast.error('Erreur', { description: msg })
+ } finally {
+ setIsDuplicating(false)
+ }
+ }
+
+ const openDuplicate = (epreuve: ModeleEpreuve) => {
+ setDuplicateTarget(epreuve)
+ setDuplicateTitre(`${epreuve.titre} (copie)`)
+ }
+
+ // PDF export
+ const [exportingPdfId, setExportingPdfId] = useState<string | null>(null)
+
+ const handleExportPDF = async (epreuveId: string, type:'sujet' |'corrige' |'feuille-reponses') => {
+ setExportingPdfId(epreuveId)
+ try {
+ // BUGFIX (EPREUVES-PDF-1): générer le PDF côté client (jsPDF) au lieu
+ // d'appeler /api/epreuves/{id}/export-pdf qui n'existe pas (404).
+ // La librairie epreuve-pdf.ts (generateSujetPDF/Corrige/FeuilleReponses)
+ // est déjà disponible côté frontend.
+ const epreuve = epreuves.find((e) => e.id === epreuveId)
+ if (!epreuve) throw new Error('Épreuve introuvable')
+
+ // Construire les données PDF à partir de l'épreuve
+ const contenu = epreuve.contenu as { questions?: any[]; consignes?: string; baremeTotal?: number } | null
+ const questions = (contenu?.questions ?? []).map((q: any) => ({
+   id: q.id ?? '',
+   type: q.type ?? 'QRC',
+   enonce: q.enonce ?? '',
+   propositions: q.propositions ?? null,
+   reponseCorrecte: q.reponseCorrecte ?? null,
+   explication: q.explication ?? null,
+   difficulte: q.difficulte ?? 'Moyen',
+   bareme: q.bareme ?? 1,
+   langage: q.langage,
+   codeInitial: q.codeInitial,
+   fonctionSignature: q.fonctionSignature,
+   testsPublics: q.testsPublics,
+   testsPrives: q.testsPrives,
+ }))
+
+ const pdfData = {
+   id: epreuve.id,
+   titre: epreuve.titre,
+   description: epreuve.description,
+   duree: epreuve.duree,
+   dateDebut: epreuve.updatedAt,
+   dateFin: epreuve.updatedAt,
+   noteTotal: epreuve.noteTotal ?? 20,
+   etablissement: { nom: 'SECT', logo: null, ville: null, pays: null },
+   filiere: epreuve.filiere ? { nom: epreuve.filiere.nom, code: epreuve.filiere.code ?? null } : null,
+   uniteEnseignement: null,
+   questions,
+   consignes: contenu?.consignes ?? null,
+   baremeTotal: contenu?.baremeTotal ?? epreuve.noteTotal ?? 20,
+ }
+
+ // Import dynamique pour éviter de charger jsPDF si pas nécessaire
+ const { generateSujetPDF, generateCorrigePDF, generateFeuilleReponsesPDF, getPDFFilename } = await import('@/lib/pdf/epreuve-pdf')
+
+ let doc
+ if (type === 'sujet') doc = generateSujetPDF(pdfData)
+ else if (type === 'corrige') doc = generateCorrigePDF(pdfData)
+ else doc = generateFeuilleReponsesPDF(pdfData)
+
+ const filename = getPDFFilename(epreuve.titre, type)
+ doc.save(filename)
+ toast.success('PDF téléchargé', { description:`Le document a été généré avec succès.` })
+ } catch (err) {
+ toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de générer le PDF.' })
+ } finally {
+ setExportingPdfId(null)
+ }
+ }
+
+ const renderPropositions = (q: EpreuveContenu['questions'][0]) => {
+ if (!q.propositions || q.propositions.length === 0) return null
+ const correctAnswers = Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte : q.reponseCorrecte ? [q.reponseCorrecte] : []
+ return (
+ <div className="space-y-1.5 mt-2">
+ {q.propositions.map((prop, idx) => {
+ const isCorrect = correctAnswers.includes(prop.id)
+ return (
+ <div key={idx} className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm ${isCorrect ?'bg-success/10 border border-success/30' :'bg-muted/30'}`}>
+ <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold ${isCorrect ?'bg-success/20 text-success-text' :'bg-muted text-muted-foreground'}`}>
+ {String.fromCharCode(65 + idx)}
+ </span>
+ <span className={isCorrect ?'font-medium text-success-text' :''}>
+ {typeof prop ==='string' ? prop : prop.text}
+ </span>
+ {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success-text" />}
+ </div>
+ )
+ })}
+ </div>
+ )
+ }
+
+ const totalEpreuves = epreuves.length
+ const iaEpreuves = epreuves.filter((e) => e.generationMode ==='IA_ASSISTEE').length
+ const manuelleEpreuves = totalEpreuves - iaEpreuves
+ const totalQuestions = epreuves.reduce((sum, e) => sum + e.questionCount, 0)
+
+ // Carte d'un modèle — extraite en fonction pour être réutilisée par le mode grouped
+ const renderModeleCard = (epreuve: ModeleEpreuve) => {
+ const typeEntries = Object.entries(epreuve.typeDistribution ?? {})
+ return (
+ <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
+ <CardContent className="flex flex-col gap-3 p-6">
+ <div className="flex items-start justify-between gap-3">
+ <div className="min-w-0 flex-1">
+ <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
+ {epreuve.description && (
+ <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+ {(epreuve.description ?? "").length > 100 ? epreuve.description.slice(0, 100) +'...' : epreuve.description}
+ </p>
+ )}
+ </div>
+ <Badge variant="outline" className={epreuve.generationMode ==='IA_ASSISTEE' ?'gap-1 bg-info/10 text-info border-info/30' :'gap-1 bg-warning/10 text-warning border-warning/30'}>
+ {epreuve.generationMode ==='IA_ASSISTEE' ? <><Sparkles className="h-3 w-3" /> IA</> : <><Edit3 className="h-3 w-3" /> Manuelle</>}
+ </Badge>
+ </div>
+
+ <div className="flex flex-wrap gap-3">
+ <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
+ <HelpCircle className="h-3 w-3" /> {epreuve.questionCount} question{epreuve.questionCount > 1 ?'s' :''}
+ </Badge>
+ <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
+ <Trophy className="h-3 w-3" /> {epreuve.baremeTotal} pts
+ </Badge>
+ <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
+ <Clock className="h-3 w-3" /> {epreuve.duree} min
+ </Badge>
+ </div>
+
+ {typeEntries.length > 0 && (
+ <div className="flex flex-wrap gap-1.5">
+ {typeEntries.map(([type, count]) => (
+ <Badge key={type} variant="outline" className={`text-[10px] gap-0.5 py-0 ${TYPE_COLORS[type] ||''}`}>
+ {type}: {count}
+ </Badge>
+ ))}
+ </div>
+ )}
+
+ {(epreuve.sourceDocuments ?? []).length > 0 && (
+ <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+ <FileText className="h-3 w-3" />
+ {(epreuve.sourceDocuments ?? []).map((d) => d.nomFichier).join(',')}
+ </div>
+ )}
+
+ {(epreuve.filiere || epreuve.uniteEnseignement) && (
+ <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+ <Hash className="h-3 w-3" />
+ {epreuve.filiere?.nom}{epreuve.filiere && epreuve.uniteEnseignement ?' ·' :''}{epreuve.uniteEnseignement?.nom}
+ </div>
+ )}
+
+ {/* Classification badges for modèles */}
+ <div className="flex flex-wrap gap-1.5">
+ {epreuve.filiere && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-info/10 text-info border-info/30">
+ <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
+ </Badge>
+ )}
+ {epreuve.uniteEnseignement && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-warning/10 text-warning border-warning/30">
+ <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
+ </Badge>
+ )}
+ {epreuve.niveau && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-info/10 text-info border-info/30">
+ <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
+ </Badge>
+ )}
+ {epreuve.sessionExamen && epreuve.sessionExamen !=='NORMALE' && (
+ <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] ||''}`}>
+ <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
+ </Badge>
+ )}
+ </div>
+
+ <div className="text-xs text-muted-foreground">
+ <Calendar className="h-3 w-3 inline mr-1" />
+ Créé le {formatDate(epreuve.createdAt)}
+ </div>
+
+ <Separator />
+
+ <div className="flex flex-wrap gap-2">
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handlePreview(epreuve)}>
+ <Eye className="h-3.5 w-3.5" /> Aperçu
+ </Button>
+ <DropdownMenu>
+ <DropdownMenuTrigger asChild>
+ <Button variant="outline" size="sm" className="border-info/40 text-info hover:bg-info/10" disabled={exportingPdfId === epreuve.id}>
+ {exportingPdfId === epreuve.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+ PDF
+ </Button>
+ </DropdownMenuTrigger>
+ <DropdownMenuContent align="end">
+ <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+ <DropdownMenuSeparator />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id}>
+ <FileDown className="h-4 w-4 mr-2 text-success-text" />
+ <div>
+ <p className="font-medium">Sujet</p>
+ <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+ </div>
+ </DropdownMenuItem>
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'corrige')} disabled={exportingPdfId === epreuve.id}>
+ <FileCheck2 className="h-4 w-4 mr-2 text-warning" />
+ <div>
+ <p className="font-medium">Corrigé type</p>
+ <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+ </div>
+ </DropdownMenuItem>
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'feuille-reponses')} disabled={exportingPdfId === epreuve.id}>
+ <ClipboardList className="h-4 w-4 mr-2 text-info" />
+ <div>
+ <p className="font-medium">Feuille de réponses</p>
+ <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+ </div>
+ </DropdownMenuItem>
+ </DropdownMenuContent>
+ </DropdownMenu>
+ <Button variant="outline" size="sm" onClick={() => openDuplicate(epreuve)}>
+ <Copy className="h-3.5 w-3.5" /> Dupliquer
+ </Button>
+ <Button variant="outline" size="sm" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget(epreuve)}>
+ <Trash2 className="h-3.5 w-3.5" /> Supprimer
+ </Button>
+ </div>
+ </CardContent>
+ </Card>
+ )
+ }
+
+ return (
+ <div className="space-y-6">
+ {/* Stats */}
+ {!isLoading && (
+ <Card className="border-success/30 bg-gradient-to-r from-success/80 to-info/80">
+ <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
+ <div className="flex items-center gap-2">
+ <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/15">
+ <Library className="h-4 w-4 text-success-text" />
+ </div>
+ <div>
+ <p className="text-xs text-muted-foreground">Modèles</p>
+ <p className="text-lg font-bold">{totalEpreuves}</p>
+ </div>
+ </div>
+ <Separator orientation="vertical" className="hidden h-8 sm:block" />
+ <div className="flex items-center gap-2">
+ <Sparkles className="h-4 w-4 text-info" />
+ <span className="text-sm"><span className="font-semibold">{iaEpreuves}</span> <span className="text-muted-foreground">IA</span></span>
+ <span className="text-muted-foreground">·</span>
+ <Edit3 className="h-4 w-4 text-warning" />
+ <span className="text-sm"><span className="font-semibold">{manuelleEpreuves}</span> <span className="text-muted-foreground">manuelles</span></span>
+ </div>
+ <Separator orientation="vertical" className="hidden h-8 sm:block" />
+ <div className="flex items-center gap-2">
+ <HelpCircle className="h-4 w-4 text-info" />
+ <span className="text-sm"><span className="font-semibold">{totalQuestions}</span> <span className="text-muted-foreground">questions</span></span>
+ </div>
+ </CardContent>
+ </Card>
+ )}
+
+ {/* Search + View toggle */}
+ <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+ <div className="relative flex-1 max-w-md">
+ <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+ <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un modèle..." className="pl-9" />
+ {search && (
+ <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')}>
+ <X className="h-3 w-3" />
+ </Button>
+ )}
+ </div>
+ <div className="flex items-center gap-2">
+ {/* View mode toggle — miroir SessionsTab */}
+ <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+ <button
+ type="button"
+ className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+ viewMode ==='flat' ?'bg-background text-foreground shadow-sm' :'text-muted-foreground hover:text-foreground'
+ }`}
+ onClick={() => setViewMode('flat')}
+ >
+ <List className="h-3.5 w-3.5" /> Liste
+ </button>
+ <button
+ type="button"
+ className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+ viewMode ==='grouped' ?'bg-background text-foreground shadow-sm' :'text-muted-foreground hover:text-foreground'
+ }`}
+ onClick={() => setViewMode('grouped')}
+ >
+ <LayoutGrid className="h-3.5 w-3.5" /> Groupé
+ </button>
+ </div>
+ {/* Group by selector (visible en mode grouped) */}
+ {viewMode ==='grouped' && (
+ <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupByField)}>
+ <SelectTrigger className="h-8 w-full sm:w-[160px] text-xs">
+ <SelectValue placeholder="Grouper par" />
+ </SelectTrigger>
+ <SelectContent>
+ <SelectItem value="filiere">Par filière</SelectItem>
+ <SelectItem value="niveau">Par niveau</SelectItem>
+ <SelectItem value="ue">Par UE</SelectItem>
+ <SelectItem value="sessionExamen">Par session</SelectItem>
+ </SelectContent>
+ </Select>
+ )}
+ </div>
+ </div>
+
+ {/* Loading */}
+ {isLoading && (
+ <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+ {Array.from({ length: 4 }).map((_, i) => (
+ <Card key={i} className="animate-pulse">
+ <CardContent className="p-6 space-y-3">
+ <div className="h-5 w-48 rounded bg-muted" />
+ <div className="h-3 w-32 rounded bg-muted" />
+ <div className="flex gap-3"><div className="h-6 w-16 rounded-full bg-muted" /><div className="h-6 w-16 rounded-full bg-muted" /><div className="h-6 w-20 rounded-full bg-muted" /></div>
+ </CardContent>
+ </Card>
+ ))}
+ </div>
+ )}
+
+ {/* Empty */}
+ {!isLoading && epreuves.length === 0 && (
+ <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+ <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+ <Library className="h-10 w-10 text-success-text" />
+ </div>
+ <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucun modèle d&apos;épreuve</h3>
+ <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+ {search
+ ?'Aucun modèle ne correspond à vos critères.'
+ :'Commencez par générer une épreuve via l\'IA ou créez-en une manuellement.'}
+ </p>
+ <div className="mt-6 flex flex-wrap gap-3">
+ <Button
+ variant="outline"
+ className="border-success/40 text-success-text hover:bg-success/10"
+ onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
+ >
+ <Sparkles className="h-4 w-4" />
+ Générer par IA
+ </Button>
+ </div>
+ </div>
+ )}
+
+ {/* List / Grouped */}
+ {!isLoading && epreuves.length > 0 && (
+ viewMode ==='grouped' ? (
+ <EpreuveGroupedView
+ epreuves={epreuves}
+ groupBy={groupBy}
+ renderCard={renderModeleCard}
+ />
+ ) : (
+ <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+ {epreuves.map((epreuve) => renderModeleCard(epreuve))}
+ </div>
+ )
+ )}
+
+ {/* Preview Dialog */}
+ <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+ <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+ <DialogHeader>
+ <DialogTitle className="flex items-center gap-2">
+ <Eye className="h-5 w-5 text-success-text" />
+ Aperçu du modèle
+ </DialogTitle>
+ {previewEpreuve && (
+ <DialogDescription>
+ {previewEpreuve.titre} — {previewEpreuve.questionCount} question(s) · {previewEpreuve.baremeTotal} pts
+ </DialogDescription>
+ )}
+ </DialogHeader>
+
+ {previewEpreuve?.contenu && (
+ <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+ {previewEpreuve.contenu.consignes && (
+ <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+ <p className="text-xs font-semibold text-warning mb-1">Consignes</p>
+ <p className="text-sm text-warning whitespace-pre-wrap">{previewEpreuve.contenu.consignes}</p>
+ </div>
+ )}
+ {previewEpreuve.contenu.questions.map((q, idx) => {
+ const isExpanded = expandedQuestions.has(q.id)
+ return (
+ <Card key={q.id} className="overflow-hidden">
+ <CardContent className="p-4">
+ <div className="flex flex-wrap items-center gap-2 mb-2">
+ <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text">{idx + 1}</span>
+ <Badge variant="outline" className={`text-xs ${TYPE_COLORS[q.type] ||''}`}>{q.type}</Badge>
+ <Badge variant="outline" className={`text-xs ${DIFFICULTE_COLORS[q.difficulte] ||''}`}>{DIFFICULTE_LABELS[q.difficulte] || q.difficulte}</Badge>
+ <Badge variant="secondary" className="text-xs ml-auto">{q.bareme} pt{q.bareme > 1 ?'s' :''}</Badge>
+ </div>
+ <p className="text-sm leading-relaxed whitespace-pre-wrap">{q.enonce}</p>
+ {(q.type ==='QCU' || q.type ==='QCM') && renderPropositions(q)}
+ {(q.type ==='QRC' || q.type ==='REFLEXION') && q.reponseCorrecte && (
+ <div className="mt-2">
+ <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => toggleExpand(q.id)}>
+ {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+ {q.type ==='QRC' ?'Réponse modèle' :'Guide de correction'}
+ </button>
+ {isExpanded && (
+ <div className={`mt-2 rounded-md border p-3 text-sm whitespace-pre-wrap ${q.type ==='QRC' ?'bg-success/10 border-success/30' :'bg-secondary/10 border-secondary/30'}`}>
+ {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
+ </div>
+ )}
+ </div>
+ )}
+ {q.type ==='CODE' && (
+ <div className="mt-2 space-y-2">
+ <div className="flex items-center gap-2">
+ <Badge variant="outline" className="text-[10px] border-secondary/40 text-secondary">
+ {(q as any).langage ||'code'}
+ </Badge>
+ {(q as any).fonctionSignature && (
+ <code className="text-[10px] font-mono text-secondary bg-secondary/10 px-1.5 py-0.5 rounded">
+ {(q as any).fonctionSignature}
+ </code>
+ )}
+ </div>
+ {(q as any).codeInitial && (
+ <pre className="text-[10px] font-mono bg-slate-50 dark:bg-slate-900 p-2 rounded border max-h-32 overflow-y-auto">
+ {(q as any).codeInitial}
+ </pre>
+ )}
+ {(q as any).testsPublics && (q as any).testsPublics.length > 0 && (
+ <div>
+ <p className="text-[10px] font-medium text-muted-foreground mb-1">Tests publics ({(q as any).testsPublics.length})</p>
+ <div className="space-y-0.5">
+ {(q as any).testsPublics.map((t: any, ti: number) => (
+ <div key={ti} className="flex items-center gap-2 text-[10px] font-mono bg-muted/50 rounded px-2 py-1">
+ <span className="text-muted-foreground">{t.nom ||`Test ${ti + 1}`}</span>
+ <span className="text-secondary">→</span>
+ <span>{t.sortieAttendue}</span>
+ </div>
+ ))}
+ </div>
+ </div>
+ )}
+ {q.reponseCorrecte && (
+ <div>
+ <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => toggleExpand(q.id)}>
+ {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+ Solution de référence
+ </button>
+ {isExpanded && (
+ <pre className="mt-1 text-[10px] font-mono bg-success/10 border border-success/30 p-2 rounded max-h-40 overflow-y-auto whitespace-pre-wrap">
+ {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
+ </pre>
+ )}
+ </div>
+ )}
+ </div>
+ )}
+ {q.explication && (
+ <div className="mt-2">
+ <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => toggleExpand(`exp-${q.id}`)}>
+ {expandedQuestions.has(`exp-${q.id}`) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+ Explication
+ </button>
+ {expandedQuestions.has(`exp-${q.id}`) && (
+ <div className="mt-2 rounded-md bg-muted/50 border p-3 text-sm text-muted-foreground">{q.explication}</div>
+ )}
+ </div>
+ )}
+ </CardContent>
+ </Card>
+ )
+ })}
+ </div>
+ )}
+
+ {!previewEpreuve?.contenu && previewEpreuve && (
+ <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground">
+ <div className="text-center">
+ <AlertTriangle className="h-8 w-8 mx-auto text-warning mb-2" />
+ <p className="text-sm font-medium">Format ancien</p>
+ <p className="text-xs mt-1">Ce modèle utilise l&apos;ancien format.</p>
+ </div>
+ </div>
+ )}
+
+ <DialogFooter className="flex-wrap gap-2">
+ {previewEpreuve && (
+ <DropdownMenu>
+ <DropdownMenuTrigger asChild>
+ <Button variant="outline" className="border-info/40 text-info hover:bg-info/10" disabled={exportingPdfId === previewEpreuve.id}>
+ {exportingPdfId === previewEpreuve.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+ Télécharger PDF
+ </Button>
+ </DropdownMenuTrigger>
+ <DropdownMenuContent align="start">
+ <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+ <DropdownMenuSeparator />
+ <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'sujet')} disabled={exportingPdfId === previewEpreuve.id}>
+ <FileDown className="h-4 w-4 mr-2 text-success-text" />
+ <div>
+ <p className="font-medium">Sujet</p>
+ <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+ </div>
+ </DropdownMenuItem>
+ <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'corrige')} disabled={exportingPdfId === previewEpreuve.id}>
+ <FileCheck2 className="h-4 w-4 mr-2 text-warning" />
+ <div>
+ <p className="font-medium">Corrigé type</p>
+ <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+ </div>
+ </DropdownMenuItem>
+ <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'feuille-reponses')} disabled={exportingPdfId === previewEpreuve.id}>
+ <ClipboardList className="h-4 w-4 mr-2 text-info" />
+ <div>
+ <p className="font-medium">Feuille de réponses</p>
+ <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+ </div>
+ </DropdownMenuItem>
+ </DropdownMenuContent>
+ </DropdownMenu>
+ )}
+ <div className="flex-1" />
+ <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>Fermer</Button>
+ {previewEpreuve && (
+ <Button className="bg-success/60 hover:bg-success/70" onClick={() => { setPreviewDialogOpen(false); openDuplicate(previewEpreuve) }}>
+ <Copy className="h-4 w-4" /> Utiliser comme modèle
+ </Button>
+ )}
+ </DialogFooter>
+ </DialogContent>
+ </Dialog>
+
+ {/* Delete Confirmation */}
+ <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+ <AlertDialogContent>
+ <AlertDialogHeader>
+ <AlertDialogTitle>Supprimer ce modèle ?</AlertDialogTitle>
+ <AlertDialogDescription>
+ Le modèle &quot;{deleteTarget?.titre}&quot; sera déplacé vers la corbeille.
+ </AlertDialogDescription>
+ </AlertDialogHeader>
+ <AlertDialogFooter>
+ <AlertDialogCancel>Annuler</AlertDialogCancel>
+ <AlertDialogAction className="bg-destructive/60 hover:bg-destructive/70" onClick={handleDelete}>Supprimer</AlertDialogAction>
+ </AlertDialogFooter>
+ </AlertDialogContent>
+ </AlertDialog>
+
+ {/* Duplicate Dialog */}
+ <Dialog open={!!duplicateTarget} onOpenChange={(open) => { if (!open) setDuplicateTarget(null) }}>
+ <DialogContent className="sm:max-w-md">
+ <DialogHeader>
+ <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5 text-success-text" /> Dupliquer le modèle</DialogTitle>
+ <DialogDescription>Créez une copie de &quot;{duplicateTarget?.titre}&quot;.</DialogDescription>
+ </DialogHeader>
+ <div className="space-y-4 py-4">
+ <div className="space-y-2">
+ <Label htmlFor="duplicate-titre">Titre de la copie</Label>
+ <Input id="duplicate-titre" value={duplicateTitre} onChange={(e) => setDuplicateTitre(e.target.value)} placeholder="Titre" />
+ </div>
+ </div>
+ <DialogFooter>
+ <Button variant="outline" onClick={() => setDuplicateTarget(null)}>Annuler</Button>
+ <Button className="bg-success/60 hover:bg-success/70" onClick={handleDuplicate} disabled={isDuplicating || !duplicateTitre.trim()}>
+ {isDuplicating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Dupliquer
+ </Button>
+ </DialogFooter>
+ </DialogContent>
+ </Dialog>
+ </div>
+ )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SESSIONS TAB (was Mes Épreuves)
+// Focus: DELIVERY — schedule, launch, monitor, grade, close
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Annee Academique type for filter ───
+interface AnneeAcademiqueOption {
+ id: string
+ libelle: string
+ dateDebut: string
+ dateFin: string
+ actif: boolean
+ _count?: { epreuves: number }
+}
+
+function SessionsTab() {
+ const user = useAuthStore((s) => s.user)
+ const router = useRouter()
+ const queryClient = useQueryClient()
+
+ const [statutFilter, setStatutFilter] = useState('TOUS')
+
+ // ─── Advanced filter state ───
+ const [filterAnneeAcademiqueId, setFilterAnneeAcademiqueId] = useState<string>('')
+ const [filterFiliereId, setFilterFiliereId] = useState<string>('')
+ const [filterNiveau, setFilterNiveau] = useState<string>('')
+ const [filterUEId, setFilterUEId] = useState<string>('')
+ const [filterSessionExamen, setFilterSessionExamen] = useState<string>('')
+
+ // ─── Search (mode liste) ───
+ const [sessionsSearch, setSessionsSearch] = useState('')
+ const [debouncedSessionsSearch, setDebouncedSessionsSearch] = useState('')
+
+ // Debounce search (300ms)
+ useEffect(() => {
+ const timer = setTimeout(() => setDebouncedSessionsSearch(sessionsSearch), 300)
+ return () => clearTimeout(timer)
+ }, [sessionsSearch])
+
+ // BUGFIX (QUERY-MIGRATION-1) : migration de useEffect+fetch vers TanStack
+ // Query. Le cache survit au démontage -> 0 refetch au retour, 0 skeleton,
+ // navigation instantanee. Le queryKey inclut tous les filtres + la recherche
+ // debounced pour refetch automatique quand ils changent.
+ const sessionsQuery = useQuery<{ epreuves: SessionEpreuve[] }>({
+  queryKey: [
+   'epreuves-sessions',
+   user?.id,
+   statutFilter,
+   debouncedSessionsSearch,
+   filterAnneeAcademiqueId,
+   filterFiliereId,
+   filterNiveau,
+   filterUEId,
+   filterSessionExamen,
+  ],
+  queryFn: async () => {
+   const params = new URLSearchParams({ enseignantId: user!.id })
+   if (statutFilter !== 'TOUS') params.set('statut', statutFilter)
+   if (debouncedSessionsSearch) params.set('search', debouncedSessionsSearch)
+   if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
+   if (filterFiliereId) params.set('filiereId', filterFiliereId)
+   if (filterNiveau) params.set('niveau', filterNiveau)
+   if (filterUEId) params.set('uniteEnseignementId', filterUEId)
+   if (filterSessionExamen) params.set('sessionExamen', filterSessionExamen)
+   const res = await fetch(`/api/epreuves?${params.toString()}`)
+   if (!res.ok) throw new Error('Failed to fetch sessions')
+   return res.json()
+  },
+  enabled: !!user?.id,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+
+ const epreuves = sessionsQuery.data?.epreuves ?? []
+ const isLoading = sessionsQuery.isLoading
+
+ // Helper pour invalider le cache apres mutation (planifier, status, delete,
+ // edit dates, session speciale). Conserve le comportement historique : on
+ // ne rafraichit PAS la classification tree ici (pas fait avant non plus).
+ const refreshSessions = () =>
+  queryClient.invalidateQueries({ queryKey: ['epreuves-sessions', user?.id] })
+
+ // ─── Advanced filter data ───
+ const [anneesAcademiques, setAnneesAcademiques] = useState<AnneeAcademiqueOption[]>([])
+ const [filterFilieres, setFilterFilieres] = useState<EnseignantFiliereContext[]>([])
+
+ const NIVEAU_OPTIONS = [
+ { value:'L1', label:'L1 — Licence 1' },
+ { value:'L2', label:'L2 — Licence 2' },
+ { value:'L3', label:'L3 — Licence 3' },
+ { value:'M1', label:'M1 — Master 1' },
+ { value:'M2', label:'M2 — Master 2' },
+ { value:'DOCTORAT', label:'Doctorat' },
+ ]
+
+ // Fetch filter options on mount
+ useEffect(() => {
+ if (!user?.id) return
+ const fetchFilterData = async () => {
+ try {
+ // Fetch annees academiques
+ if (user.etablissementId) {
+ const anneesRes = await fetch(`/api/annees-academiques?etablissementId=${user.etablissementId}`)
+ if (anneesRes.ok) {
+ const data = await anneesRes.json()
+ setAnneesAcademiques(Array.isArray(data) ? data : [])
+ }
+ }
+
+ // Fetch filieres from enseignant context
+ const filieresRes = await fetch(`/api/enseignant/context?enseignantId=${user.id}`)
+ if (filieresRes.ok) {
+ const data = await filieresRes.json()
+ setFilterFilieres(data.filieres ?? [])
+ }
+ } catch {
+ // Silently ignore filter data load failures
+ }
+ }
+ fetchFilterData()
+ }, [user?.id, user?.etablissementId])
+
+
+
+ // Planifier dialog
+ const [planifierDialogOpen, setPlanifierDialogOpen] = useState(false)
+ // BUGFIX (QUERY-MIGRATION-1) : modeles chargés via TanStack Query, lazy
+ // (enabled: !!planifierDialogOpen) pour ne pas fetch tant que le dialog
+ // n'est pas ouvert. Cache reuse : 0 refetch si on ferme/rouvre rapidement.
+ const modelesQuery = useQuery<{ epreuves: ModeleEpreuve[] }>({
+  queryKey: ['epreuves-modeles-planifier', user?.id],
+  queryFn: async () => {
+   const res = await fetch(`/api/epreuves?enseignantId=${user!.id}`)
+   if (!res.ok) throw new Error('Failed to fetch modeles')
+   return res.json()
+  },
+  enabled: !!user?.id && planifierDialogOpen,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+ const modeles = modelesQuery.data?.epreuves ?? []
+ const isLoadingModeles = modelesQuery.isLoading
+ const [selectedModeleId, setSelectedModeleId] = useState<string | null>(null)
+ const [planTitre, setPlanTitre] = useState('')
+ const [planDateDebut, setPlanDateDebut] = useState('')
+ const [planDateFin, setPlanDateFin] = useState('')
+ const [planDuree, setPlanDuree] = useState(60)
+ const [planGroupes, setPlanGroupes] = useState('')
+ const [planMelangeQ, setPlanMelangeQ] = useState(true)
+ const [planMelangeP, setPlanMelangeP] = useState(true)
+ const [planBlocageRetour, setPlanBlocageRetour] = useState(false)
+ const [planNoteTotal, setPlanNoteTotal] = useState(20)
+ const [planFiliereId, setPlanFiliereId] = useState<string>('')
+ const [planNiveau, setPlanNiveau] = useState<string>('')
+ const [planUEId, setPlanUEId] = useState<string>('')
+ const [planFilieres, setPlanFilieres] = useState<EnseignantFiliereContext[]>([])
+ const [isLoadingPlanFilieres, setIsLoadingPlanFilieres] = useState(false)
+ const [isSubmitting, setIsSubmitting] = useState(false)
+ const [planSessionExamen, setPlanSessionExamen] = useState<string>('NORMALE')
+ const [planAnneeAcademiqueId, setPlanAnneeAcademiqueId] = useState<string>('')
+
+ // Monitoring dialog
+ const [monitoringEpreuve, setMonitoringEpreuve] = useState<SessionEpreuve | null>(null)
+ const [monitoringDialogOpen, setMonitoringDialogOpen] = useState(false)
+
+ // Delete dialog
+ const [deleteTarget, setDeleteTarget] = useState<SessionEpreuve | null>(null)
+
+ // Confirmation dialog for significant actions
+ const [confirmAction, setConfirmAction] = useState<{ epreuveId: string; action: string; label: string; description: string } | null>(null)
+
+ // Date edit dialog
+ const [dateEditTarget, setDateEditTarget] = useState<SessionEpreuve | null>(null)
+ const [dateEditDebut, setDateEditDebut] = useState('')
+ const [dateEditFin, setDateEditFin] = useState('')
+
+ // Session spéciale dialog
+ const [sessionSpecialeDialogOpen, setSessionSpecialeDialogOpen] = useState(false)
+ const [sessionSpecialeEpreuve, setSessionSpecialeEpreuve] = useState<SessionEpreuve | null>(null)
+
+ // ─── Classification system state ───
+ // UX-IMPROVE : viewMode démarre à 'grouped' au lieu de 'flat'. L'onglet
+ // Sessions s'ouvre directement avec la vue groupée active par défaut.
+ const [viewMode, setViewMode] = useState<'flat' |'grouped'>('grouped')
+ const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
+ const [selectedPath, setSelectedPath] = useState<SelectedPath>({})
+
+ // BUGFIX (QUERY-MIGRATION-1) : classification tree via TanStack Query.
+ // Le tree est construit dans queryFn (pure) puis exposé via .data.
+ // Fallback sur tree vide si la query n'a pas encore de données.
+ const classificationQuery = useQuery<ClassificationTree>({
+  queryKey: ['epreuves-classification', user?.id],
+  queryFn: async () => {
+   const params = new URLSearchParams({ enseignantId: user!.id })
+   const res = await fetch(`/api/epreuves?${params.toString()}`)
+   if (!res.ok) throw new Error('Failed to fetch classification')
+   const data = await res.json()
+   // P2-E7 : construire le tree côté client à partir de data.epreuves[]
+   // (le backend ne retourne pas data.tree — il retourne {epreuves: [...]})
+   const epreuves: any[] = data.epreuves || []
+   const filiereMap = new Map<string, { nom: string; code: string | null; epreuves: any[] }>()
+   let nonClassees = 0
+   for (const ep of epreuves) {
+    const filId = ep.filiereId || ep.filiere?.id
+    if (!filId) { nonClassees++; continue }
+    if (!filiereMap.has(filId)) {
+     filiereMap.set(filId, {
+      nom: ep.filiere?.nom || 'Non classée',
+      code: ep.filiere?.code || null,
+      epreuves: [],
+     })
+    }
+    filiereMap.get(filId)!.epreuves.push(ep)
+   }
+   const filieres = Array.from(filiereMap.entries()).map(([id, f]) => {
+    const niveauMap = new Map<string, any[]>()
+    for (const ep of f.epreuves) {
+     const niv = ep.niveau || 'NON_DEFINI'
+     if (!niveauMap.has(niv)) niveauMap.set(niv, [])
+     niveauMap.get(niv)!.push(ep)
+    }
+    return {
+     id,
+     nom: f.nom,
+     code: f.code,
+     count: f.epreuves.length,
+     niveaux: Array.from(niveauMap.entries()).map(([niveau, eps]) => {
+      const ueMap = new Map<string, { code: string; nom: string; count: number }>()
+      for (const ep of eps) {
+       const ueId = ep.uniteEnseignementId || ep.uniteEnseignement?.id || '__none__'
+       if (!ueMap.has(ueId)) {
+        ueMap.set(ueId, {
+         code: ep.uniteEnseignement?.code || 'N/A',
+         nom: ep.uniteEnseignement?.nom || 'Non classée',
+         count: 0,
+        })
+       }
+       ueMap.get(ueId)!.count++
+      }
+      return { niveau, count: eps.length, unites: Array.from(ueMap.entries()).map(([uid, u]) => ({ id: uid, ...u })) }
+     }),
+    }
+   })
+   return { filieres, nonClassees } as ClassificationTree
+  },
+  enabled: !!user?.id,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+ const classificationTree: ClassificationTree = classificationQuery.data ?? { filieres: [], nonClassees: 0 }
+
+ // Handle sidebar path selection → apply as filters
+ const handleSidebarSelect = (path: SelectedPath) => {
+ setSelectedPath(path)
+ // Apply path as filters
+ if (path.filiereId && path.filiereId !=='__non_classees__') {
+ setFilterFiliereId(path.filiereId)
+ } else if (path.filiereId ==='__non_classees__') {
+ // Show only non-classified: filter for no filiere
+ setFilterFiliereId('')
+ } else {
+ setFilterFiliereId('')
+ }
+ if (path.niveau) setFilterNiveau(path.niveau)
+ else setFilterNiveau('')
+ if (path.uniteId && path.uniteId !=='__none__') setFilterUEId(path.uniteId)
+ else setFilterUEId('')
+ }
+
+
+
+ // Special sessions traceability in monitoring dialog
+ const [specialSessions, setSpecialSessions] = useState<Array<{
+ id: string
+ type: string
+ motif: string
+ estPartielle: boolean
+ createdAt: string
+ etudiantsCibles: string[]
+ questionsSelectionnees: string[]
+ epreuveDerivee: { id: string; titre: string; statut: string; dateDebut: string; dateFin: string; duree: number; sessionExamen: string | null } | null
+ creePar: { id: string; name: string; email: string } | null
+ }>>([])
+ const [isLoadingSpecialSessions, setIsLoadingSpecialSessions] = useState(false)
+ const [specialSessionsOpen, setSpecialSessionsOpen] = useState(false)
+
+ const openPlanifier = () => {
+ resetPlanForm()
+ setPlanifierDialogOpen(true)
+ // BUGFIX (QUERY-MIGRATION-1) : fetchModeles() supprimé. Le modelesQuery
+ // (déclaré plus haut) a `enabled: !!planifierDialogOpen` et se déclenche
+ // automatiquement à l'ouverture du dialog. Le cache est réutilisé si on
+ // ferme/rouvre rapidement (staleTime 60s).
+ fetchPlanFilieres()
+ }
+
+ const fetchPlanFilieres = async () => {
+ if (!user?.id) return
+ setIsLoadingPlanFilieres(true)
+ try {
+ const res = await fetch(`/api/enseignant/context?enseignantId=${user.id}`)
+ if (res.ok) {
+ const data = await res.json()
+ const filieres: EnseignantFiliereContext[] = data.filieres ?? []
+ setPlanFilieres(filieres)
+
+ // Auto-select filière if only one assigned
+ if (filieres.length === 1) {
+ setPlanFiliereId(filieres[0].id)
+ // Auto-select niveau if only one for this filière
+ if (filieres[0].niveaux.length === 1) {
+ setPlanNiveau(filieres[0].niveaux[0])
+ }
+ // Auto-select UE if only one for this filière
+ const ues = filieres[0].unitesEnseignement
+ if (ues.length === 1) {
+ setPlanUEId(ues[0].id)
+ }
+ }
+ }
+ } catch {
+ toast.error('Erreur', { description:'Impossible de charger vos affectations.' })
+ } finally {
+ setIsLoadingPlanFilieres(false)
+ }
+ }
+
+ const resetPlanForm = () => {
+ setSelectedModeleId(null)
+ setPlanTitre('')
+ setPlanDateDebut('')
+ setPlanDateFin('')
+ setPlanDuree(60)
+ setPlanGroupes('')
+ setPlanMelangeQ(true)
+ setPlanMelangeP(true)
+ setPlanBlocageRetour(false)
+ setPlanNoteTotal(20)
+ setPlanFiliereId('')
+ setPlanNiveau('')
+ setPlanUEId('')
+ setPlanSessionExamen('NORMALE')
+ setPlanAnneeAcademiqueId('')
+ }
+
+ const handleSelectModele = (modeleId: string) => {
+ setSelectedModeleId(modeleId)
+ const modele = modeles.find((m) => m.id === modeleId)
+ if (modele) {
+ setPlanTitre(modele.titre)
+ setPlanDuree(modele.duree)
+ setPlanNoteTotal(modele.noteTotal || 20)
+ }
+ }
+
+ const handlePlanifierSubmit = async () => {
+ if (!user?.id || !selectedModeleId) return
+ if (!planTitre || !planDateDebut || !planDateFin) {
+ toast.error('Informations manquantes', { description:'Remplissez tous les champs obligatoires.' })
+ return
+ }
+
+ // Date validation
+ const now = new Date()
+ const debut = new Date(planDateDebut)
+ const fin = new Date(planDateFin)
+ if (debut <= now) {
+ toast.error('Date invalide', { description:'La date de début doit être dans le futur.' })
+ return
+ }
+ if (debut >= fin) {
+ toast.error('Date invalide', { description:'La date de début doit être antérieure à la date de fin.' })
+ return
+ }
+
+ // UE obligatoire : une épreuve sans UE devient orpheline (pas de certificats)
+ if (!planUEId || planUEId ==='__none__') {
+ toast.error('Unité d\'Enseignement requise', {
+ description:'Sélectionnez une UE. Sans UE, les sessions ne produiront aucun certificat.',
+ })
+ return
+ }
+
+ setIsSubmitting(true)
+ try {
+ const modele = modeles.find((m) => m.id === selectedModeleId)
+ const groupes = planGroupes.split(',').map((g) => g.trim()).filter((g) => g.length > 0)
+
+ const body: Record<string, unknown> = {
+ enseignantId: user.id,
+ titre: planTitre,
+ description: modele?.description || null,
+ duree: planDuree,
+ dateDebut: planDateDebut,
+ dateFin: planDateFin,
+ melangeQuestions: planMelangeQ,
+ melangePropositions: planMelangeP,
+ blocageRetour: planBlocageRetour,
+ groupesCibles: groupes.length > 0 ? groupes : null,
+ generationMode: modele?.generationMode ||'MANUELLE',
+ // BUGFIX (DUP-SRCDocs-1) : optional chaining sur sourceDocuments aussi
+ documentIds: modele?.sourceDocuments?.map((d) => d.id) ?? [],
+ noteTotal: planNoteTotal,
+ filiereId: planFiliereId && planFiliereId !=='__all__' ? planFiliereId : null,
+ uniteEnseignementId: planUEId && planUEId !=='__none__' ? planUEId : null,
+ niveau: planNiveau && planNiveau !=='__all__' ? planNiveau : null,
+ sessionExamen: planSessionExamen ||'NORMALE',
+ anneeAcademiqueId: planAnneeAcademiqueId || null,
+ }
+
+ // Copy contenu from the selected modele
+ if (modele?.contenu) {
+ body.contenu = modele.contenu
+ }
+
+ const res = await fetch('/api/epreuves', {
+ method:'POST',
+ headers: {'Content-Type':'application/json' },
+ body: JSON.stringify(body),
+ })
+
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}))
+ throw new Error(errData.error ||'Erreur')
+ }
+
+ toast.success('Session planifiée', { description:`"${planTitre}" a été créée en brouillon.` })
+ setPlanifierDialogOpen(false)
+ resetPlanForm()
+ await refreshSessions()
+ } catch (err) {
+ toast.error('Erreur', { description: err instanceof Error ? err.message :'Une erreur est survenue.' })
+ } finally {
+ setIsSubmitting(false)
+ }
+ }
+
+ // Status actions — P1-E8 : envoyer userId pour cloturer (audit clotureePar)
+ const handleStatusAction = async (epreuveId: string, action: string, successMsg: string) => {
+ try {
+ const body: Record<string, unknown> = { action }
+ // P1-E8 : pour cloturer, envoyer userId pour peupler clotureePar
+ if (action === 'cloturer' && user?.id) {
+ body.userId = user.id
+ }
+ const res = await fetch(`/api/epreuves/${epreuveId}`, {
+ method:'PATCH',
+ headers: {'Content-Type':'application/json' },
+ body: JSON.stringify(body),
+ })
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}))
+ throw new Error(errData.error || 'Erreur')
+ }
+ toast.success(successMsg)
+ await refreshSessions()
+ } catch {
+ toast.error('Erreur', { description:'Impossible d\'effectuer cette action.' })
+ }
+ }
+
+ const handleConfirmAction = () => {
+ if (!confirmAction) return
+ const successMessages: Record<string, string> = {
+ lancer:'Épreuve lancée',
+ terminer:'Épreuve terminée',
+ cloturer:'Épreuve clôturée',
+ }
+ handleStatusAction(confirmAction.epreuveId, confirmAction.action, successMessages[confirmAction.action] ||'Action effectuée')
+ setConfirmAction(null)
+ }
+
+ const handleDelete = async () => {
+ if (!deleteTarget) return
+ try {
+ const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method:'DELETE' })
+ if (!res.ok) throw new Error('Erreur')
+ toast.success('Épreuve déplacée vers la corbeille') // CORBEILLE-FIX C12
+ setDeleteTarget(null)
+ await refreshSessions()
+ } catch {
+ toast.error('Erreur', { description:'Impossible de supprimer.' })
+ }
+ }
+
+ const handleOpenMonitoring = async (epreuve: SessionEpreuve) => {
+ try {
+ const res = await fetch(`/api/epreuves/${epreuve.id}`)
+ if (res.ok) {
+ const data = await res.json()
+ setMonitoringEpreuve(data.epreuve ?? epreuve)
+ } else {
+ setMonitoringEpreuve(epreuve)
+ }
+ } catch {
+ setMonitoringEpreuve(epreuve)
+ }
+ setMonitoringDialogOpen(true)
+ setSpecialSessionsOpen(false)
+ // Fetch special sessions for this epreuve
+ setIsLoadingSpecialSessions(true)
+ try {
+ const ssRes = await fetch(`/api/epreuves/session-speciale?epreuveId=${epreuve.id}`)
+ if (ssRes.ok) {
+ const ssData = await ssRes.json()
+ setSpecialSessions(ssData.sessionsSpeciales ?? [])
+ }
+ } catch {
+ // Silently ignore
+ } finally {
+ setIsLoadingSpecialSessions(false)
+ }
+ }
+
+ // Auto-refresh monitoring data for EN_COURS epreuves
+ useEffect(() => {
+ if (!monitoringDialogOpen || !monitoringEpreuve || monitoringEpreuve.statut !=='EN_COURS') return
+ const interval = setInterval(async () => {
+ try {
+ const res = await fetch(`/api/epreuves/${monitoringEpreuve.id}`)
+ if (res.ok) {
+ const data = await res.json()
+ setMonitoringEpreuve(data.epreuve ?? monitoringEpreuve)
+ }
+ } catch {
+ // Silently ignore refresh failures
+ }
+ }, 10000)
+ return () => clearInterval(interval)
+ }, [monitoringDialogOpen, monitoringEpreuve])
+
+ const openDateEdit = (epreuve: SessionEpreuve) => {
+ setDateEditTarget(epreuve)
+ const toLocal = (d: string) => { const dt = new Date(d); const offset = dt.getTimezoneOffset(); const local = new Date(dt.getTime() - offset * 60000); return local.toISOString().slice(0, 16) }
+ setDateEditDebut(toLocal(epreuve.dateDebut))
+ setDateEditFin(toLocal(epreuve.dateFin))
+ }
+
+ const handleEditDates = () => {
+ if (!dateEditTarget) return
+ const edit = async () => {
+ try {
+ const res = await fetch(`/api/epreuves/${dateEditTarget.id}`, {
+ method:'PATCH',
+ headers: {'Content-Type':'application/json' },
+ body: JSON.stringify({ dateDebut: dateEditDebut, dateFin: dateEditFin }),
+ })
+ if (!res.ok) throw new Error('Erreur')
+ toast.success('Dates mises à jour')
+ setDateEditTarget(null)
+ await refreshSessions()
+ } catch {
+ toast.error('Erreur lors de la mise à jour des dates')
+ }
+ }
+ edit()
+ }
+
+ // PDF export for SessionsTab
+ const [exportingPdfId, setExportingPdfId] = useState<string | null>(null)
+
+ const handleExportPDF = async (epreuveId: string, type:'sujet' |'corrige' |'feuille-reponses') => {
+ setExportingPdfId(epreuveId)
+ try {
+ // BUGFIX (EPREUVES-PDF-1): PDF généré côté client (même logique que Modèles tab)
+ const epreuve = epreuves.find((e) => e.id === epreuveId)
+ if (!epreuve) throw new Error('Épreuve introuvable')
+ const contenu = epreuve.contenu as { questions?: any[]; consignes?: string; baremeTotal?: number } | null
+ const questions = (contenu?.questions ?? []).map((q: any) => ({
+   id: q.id ?? '', type: q.type ?? 'QRC', enonce: q.enonce ?? '',
+   propositions: q.propositions ?? null, reponseCorrecte: q.reponseCorrecte ?? null,
+   explication: q.explication ?? null, difficulte: q.difficulte ?? 'Moyen', bareme: q.bareme ?? 1,
+ }))
+ const pdfData = {
+   id: epreuve.id, titre: epreuve.titre, description: epreuve.description,
+   duree: epreuve.duree, dateDebut: epreuve.dateDebut, dateFin: epreuve.dateFin,
+   noteTotal: epreuve.noteTotal ?? 20,
+   etablissement: { nom: 'SECT', logo: null, ville: null, pays: null },
+   filiere: null, uniteEnseignement: null, questions,
+   consignes: contenu?.consignes ?? null, baremeTotal: contenu?.baremeTotal ?? 20,
+ }
+ const { generateSujetPDF, generateCorrigePDF, generateFeuilleReponsesPDF, getPDFFilename } = await import('@/lib/pdf/epreuve-pdf')
+ let doc
+ if (type === 'sujet') doc = generateSujetPDF(pdfData)
+ else if (type === 'corrige') doc = generateCorrigePDF(pdfData)
+ else doc = generateFeuilleReponsesPDF(pdfData)
+ doc.save(getPDFFilename(epreuve.titre, type))
+ toast.success('PDF téléchargé', { description:'Le document a été généré avec succès.' })
+ } catch (err) {
+ toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de générer le PDF.' })
+ } finally {
+ setExportingPdfId(null)
+ }
+ }
+
+ const [forcingSessionId, setForcingSessionId] = useState<string | null>(null)
+
+ const handleForceSubmission = async (sessionId: string) => {
+ setForcingSessionId(sessionId)
+ try {
+ const res = await fetch(`/api/sessions/${sessionId}`, {
+ method:'PATCH',
+ headers: {'Content-Type':'application/json' },
+ body: JSON.stringify({ action:'soumettre' }),
+ })
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}))
+ throw new Error(errData.error ||'Erreur')
+ }
+ const data = await res.json()
+ toast.success('Soumission forcée', {
+ description: data.message ||`Session soumise — ${data.autoGraded || 0} question(s) corrigée(s) automatiquement`,
+ })
+ if (monitoringEpreuve) await handleOpenMonitoring(monitoringEpreuve)
+ } catch (err) {
+ toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de forcer la soumission.' })
+ } finally {
+ setForcingSessionId(null)
+ }
+ }
+
+ // Render actions
+ const renderActions = (epreuve: SessionEpreuve) => {
+ const pdfDropdown = (
+ <DropdownMenu>
+ <DropdownMenuTrigger asChild>
+ <Button variant="outline" size="sm" className="border-info/40 text-info hover:bg-info/10" disabled={exportingPdfId === epreuve.id}>
+ {exportingPdfId === epreuve.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+ PDF
+ </Button>
+ </DropdownMenuTrigger>
+ <DropdownMenuContent align="end">
+ <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+ <DropdownMenuSeparator />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id}>
+ <FileDown className="h-4 w-4 mr-2 text-success-text" />
+ <div>
+ <p className="font-medium">Sujet</p>
+ <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+ </div>
+ </DropdownMenuItem>
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'corrige')} disabled={exportingPdfId === epreuve.id}>
+ <FileCheck2 className="h-4 w-4 mr-2 text-warning" />
+ <div>
+ <p className="font-medium">Corrigé type</p>
+ <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+ </div>
+ </DropdownMenuItem>
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'feuille-reponses')} disabled={exportingPdfId === epreuve.id}>
+ <ClipboardList className="h-4 w-4 mr-2 text-info" />
+ <div>
+ <p className="font-medium">Feuille de réponses</p>
+ <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+ </div>
+ </DropdownMenuItem>
+ </DropdownMenuContent>
+ </DropdownMenu>
+ )
+
+ switch (epreuve.statut) {
+ case'BROUILLON':
+ return (
+ <div className="flex flex-wrap gap-2">
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleStatusAction(epreuve.id,'publier','Épreuve publiée')}>
+ <Send className="h-3.5 w-3.5" /> Publier
+ </Button>
+ {pdfDropdown}
+ <Button variant="outline" size="sm" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget(epreuve)}>
+ <Trash2 className="h-3.5 w-3.5" /> Supprimer
+ </Button>
+ </div>
+ )
+ case'PLANIFIEE':
+ return (
+ <div className="flex flex-wrap gap-2">
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Eye className="h-3.5 w-3.5" /> Voir
+ </Button>
+ <Button size="sm" className="bg-success/60 hover:bg-success/70" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action:'lancer', label:'Lancer l\'épreuve', description:'Les étudiants pourront commencer cette épreuve. Voulez-vous continuer ?' })}>
+ <Play className="h-3.5 w-3.5" /> Lancer
+ </Button>
+ {pdfDropdown}
+ <Button variant="outline" size="sm" onClick={() => openDateEdit(epreuve)}>
+ <CalendarDays className="h-3.5 w-3.5" /> Dates
+ </Button>
+ </div>
+ )
+ case'EN_COURS':
+ return (
+ <div className="flex flex-wrap gap-2">
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Activity className="h-3.5 w-3.5" /> Suivi
+ </Button>
+ {pdfDropdown}
+ <Button size="sm" className="bg-warning/60 hover:bg-warning/70" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action:'terminer', label:'Terminer l\'épreuve', description:'Toutes les sessions en cours seront terminées. Les étudiants non soumis seront marqués comme tels. Voulez-vous continuer ?' })}>
+ <Square className="h-3.5 w-3.5" /> Terminer
+ </Button>
+ </div>
+ )
+ case'TERMINEE':
+ return (
+ <div className="flex flex-wrap gap-2">
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <BarChart3 className="h-3.5 w-3.5" /> Résultats
+ </Button>
+ {pdfDropdown}
+ <Button variant="outline" size="sm" className="border-warning/40 text-warning hover:bg-warning/10" onClick={() => { setSessionSpecialeEpreuve(epreuve); setSessionSpecialeDialogOpen(true) }}>
+ <RotateCcw className="h-3.5 w-3.5" /> Session spéciale
+ </Button>
+ <Button size="sm" className="bg-success/60 hover:bg-success/70" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action:'cloturer', label:'Clôturer l\'épreuve', description:'Cette action est irréversible. Plus aucune modification ne sera possible. Voulez-vous continuer ?' })}>
+ <Lock className="h-3.5 w-3.5" /> Clôturer
+ </Button>
+ </div>
+ )
+ case'CLOTUREE':
+ return (
+ <div className="flex flex-wrap gap-2">
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Trophy className="h-3.5 w-3.5" /> Résultats
+ </Button>
+ {pdfDropdown}
+ <Button variant="outline" size="sm" className="border-warning/40 text-warning hover:bg-warning/10" onClick={() => { setSessionSpecialeEpreuve(epreuve); setSessionSpecialeDialogOpen(true) }}>
+ <RotateCcw className="h-3.5 w-3.5" /> Session spéciale
+ </Button>
+ </div>
+ )
+ default:
+ return null
+ }
+ }
+
+ // Monitoring stats
+ const getMonitoringStats = (epreuve: SessionEpreuve | null) => {
+ if (!epreuve) return { total: 0, enCours: 0, soumis: 0, absents: 0, nonSoumis: 0, avgScore: 0 }
+ const sessions = epreuve.sessions ?? []
+ const total = sessions.length
+ const enCours = sessions.filter((s) => s.statut ==='EN_COURS').length
+ const soumis = sessions.filter((s) => s.statut ==='SOUMISE' || s.statut ==='CORRIGEE' || s.statut ==='RETOURNEE').length
+ const absents = sessions.filter((s) => s.statut ==='ABSENT').length
+ const nonSoumis = sessions.filter((s) => s.statut ==='NON_SOUMIS').length
+ const withScore = sessions.filter((s) => s.score !== null)
+ const avgScore = withScore.length > 0 ? withScore.reduce((sum, s) => sum + (s.score ?? 0), 0) / withScore.length : 0
+ return { total, enCours, soumis, absents, nonSoumis, avgScore }
+ }
+
+ // Filtered epreuves by statut
+ const filteredEpreuves = statutFilter ==='TOUS'
+ ? epreuves
+ : epreuves.filter((e) => e.statut === statutFilter)
+
+ // Session counts by status
+ const statusCounts = {
+ BROUILLON: epreuves.filter((e) => e.statut ==='BROUILLON').length,
+ PLANIFIEE: epreuves.filter((e) => e.statut ==='PLANIFIEE').length,
+ EN_COURS: epreuves.filter((e) => e.statut ==='EN_COURS').length,
+ TERMINEE: epreuves.filter((e) => e.statut ==='TERMINEE').length,
+ CLOTUREE: epreuves.filter((e) => e.statut ==='CLOTUREE').length,
+ }
+
+ // Render an epreuve card for grouped view
+ const renderEpreuveCard = (epreuve: SessionEpreuve) => {
+ const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
+ const contenuQuestions = contenuData?.questions ?? []
+ const questionCount = (epreuve.questions ?? []).length > 0 ? (epreuve.questions ?? []).length : contenuQuestions.length
+ const pts = (epreuve.questions ?? []).length > 0
+ ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+ : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
+ const sessionCount = epreuve.sessions.length
+ const completedSessions = epreuve.sessions.filter((s) => s.statut ==='SOUMISE' || s.statut ==='CORRIGEE').length
+ const completionRate = sessionCount > 0 ? Math.round((completedSessions / sessionCount) * 100) : 0
+
+ return (
+ <Card className="group transition-shadow hover:shadow-md">
+ <CardContent className="flex flex-col gap-4 p-6">
+ <div className="flex items-start justify-between gap-3">
+ <div className="min-w-0 flex-1">
+ <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
+ {epreuve.description && (
+ <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
+ )}
+ </div>
+ {getStatutBadge(epreuve.statut)}
+ </div>
+ <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+ <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-success-text" /> {epreuve.duree} min</span>
+ <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-info" /> {formatDateTime(epreuve.dateDebut)}</span>
+ </div>
+ <div className="flex flex-wrap gap-3">
+ <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
+ <HelpCircle className="h-3 w-3" /> {questionCount} Q
+ </Badge>
+ <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
+ <Trophy className="h-3 w-3" /> {pts} pts
+ </Badge>
+ {sessionCount > 0 && (
+ <Badge variant="secondary" className="gap-1 bg-warning/10 text-warning">
+ <Users className="h-3 w-3" /> {completedSessions}/{sessionCount} ({completionRate}%)
+ </Badge>
+ )}
+ </div>
+ {/* Classification badges */}
+ {(epreuve.niveau || epreuve.sessionExamen || epreuve.filiere || epreuve.uniteEnseignement || epreuve.epreuveOrigineId) && (
+ <div className="flex flex-wrap gap-1.5">
+ {epreuve.epreuveOrigineId && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-destructive/10 text-destructive border-destructive/30">
+ <RotateCcw className="h-2.5 w-2.5" /> Session spéciale
+ </Badge>
+ )}
+ {epreuve.niveau && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-info/10 text-info border-info/30">
+ <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
+ </Badge>
+ )}
+ {epreuve.sessionExamen && (
+ <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] ||''}`}>
+ <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
+ </Badge>
+ )}
+ {epreuve.filiere && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-info/10 text-info border-info/30">
+ <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
+ </Badge>
+ )}
+ {epreuve.uniteEnseignement && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-warning/10 text-warning border-warning/30">
+ <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
+ </Badge>
+ )}
+ </div>
+ )}
+ <Separator />
+ {renderActions(epreuve)}
+ </CardContent>
+ </Card>
+ )
+ }
+
+ return (
+ <div className="space-y-6">
+ {/* Action bar with view mode toggle */}
+ <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+ <div className="flex items-center gap-3">
+ <p className="text-sm text-muted-foreground">
+ {epreuves.length} session{epreuves.length > 1 ?'s' :''} au total
+ </p>
+ {/* View mode toggle */}
+ <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+ <button
+ type="button"
+ className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+ viewMode ==='flat' ?'bg-background text-foreground shadow-sm' :'text-muted-foreground hover:text-foreground'
+ }`}
+ onClick={() => setViewMode('flat')}
+ >
+ <List className="h-3.5 w-3.5" /> Liste
+ </button>
+ <button
+ type="button"
+ className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+ viewMode ==='grouped' ?'bg-background text-foreground shadow-sm' :'text-muted-foreground hover:text-foreground'
+ }`}
+ onClick={() => setViewMode('grouped')}
+ >
+ <LayoutGrid className="h-3.5 w-3.5" /> Groupé
+ </button>
+ </div>
+ </div>
+ <div className="flex items-center gap-2">
+ {/* Group by selector (visible when grouped mode) */}
+ {viewMode ==='grouped' && (
+ <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupByField)}>
+ <SelectTrigger className="h-8 w-full sm:w-[160px] text-xs">
+ <SelectValue placeholder="Grouper par" />
+ </SelectTrigger>
+ <SelectContent>
+ <SelectItem value="filiere">Par filière</SelectItem>
+ <SelectItem value="niveau">Par niveau</SelectItem>
+ <SelectItem value="ue">Par UE</SelectItem>
+ <SelectItem value="sessionExamen">Par session</SelectItem>
+ <SelectItem value="anneeAcademique">Par année</SelectItem>
+ </SelectContent>
+ </Select>
+ )}
+ <Button className="bg-success/60 hover:bg-success/70" onClick={openPlanifier}>
+ <SendHorizonal className="h-4 w-4" />
+ Planifier une session
+ </Button>
+ </div>
+ </div>
+
+ {/* Search bar (visible en mode liste uniquement) */}
+ {viewMode ==='flat' && (
+ <div className="relative max-w-md">
+ <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+ <Input value={sessionsSearch} onChange={(e) => setSessionsSearch(e.target.value)} placeholder="Rechercher une session..." className="pl-9" />
+ {sessionsSearch && (
+ <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSessionsSearch('')}>
+ <X className="h-3 w-3" />
+ </Button>
+ )}
+ </div>
+ )}
+
+ {/* Status quick filters */}
+ {!isLoading && (
+ <div className="flex flex-wrap gap-2">
+ <Button variant={statutFilter ==='TOUS' ?'default' :'outline'} size="sm" className={statutFilter ==='TOUS' ?'bg-success/60 hover:bg-success/70' :''} onClick={() => setStatutFilter('TOUS')}>
+ Toutes ({epreuves.length})
+ </Button>
+ {statusCounts.BROUILLON > 0 && (
+ <Button variant={statutFilter ==='BROUILLON' ?'default' :'outline'} size="sm" className={statutFilter ==='BROUILLON' ?'bg-gray-600' :''} onClick={() => setStatutFilter('BROUILLON')}>
+ <Edit3 className="h-3 w-3" /> Brouillons ({statusCounts.BROUILLON})
+ </Button>
+ )}
+ {statusCounts.PLANIFIEE > 0 && (
+ <Button variant={statutFilter ==='PLANIFIEE' ?'default' :'outline'} size="sm" className={statutFilter ==='PLANIFIEE' ?'bg-warning/60' :''} onClick={() => setStatutFilter('PLANIFIEE')}>
+ <Calendar className="h-3 w-3" /> Planifiées ({statusCounts.PLANIFIEE})
+ </Button>
+ )}
+ {statusCounts.EN_COURS > 0 && (
+ <Button variant={statutFilter ==='EN_COURS' ?'default' :'outline'} size="sm" className={statutFilter ==='EN_COURS' ?'bg-success/60' :''} onClick={() => setStatutFilter('EN_COURS')}>
+ <Activity className="h-3 w-3" /> En cours ({statusCounts.EN_COURS})
+ </Button>
+ )}
+ {statusCounts.TERMINEE > 0 && (
+ <Button variant={statutFilter ==='TERMINEE' ?'default' :'outline'} size="sm" className={statutFilter ==='TERMINEE' ?'bg-info/60' :''} onClick={() => setStatutFilter('TERMINEE')}>
+ <Check className="h-3 w-3" /> Terminées ({statusCounts.TERMINEE})
+ </Button>
+ )}
+ {statusCounts.CLOTUREE > 0 && (
+ <Button variant={statutFilter ==='CLOTUREE' ?'default' :'outline'} size="sm" className={statutFilter ==='CLOTUREE' ?'bg-gray-600' :''} onClick={() => setStatutFilter('CLOTUREE')}>
+ <Lock className="h-3 w-3" /> Clôturées ({statusCounts.CLOTUREE})
+ </Button>
+ )}
+ </div>
+ )}
+
+ {/* Loading */}
+ {isLoading && (
+ <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+ {Array.from({ length: 4 }).map((_, i) => (
+ <Card key={i} className="animate-pulse">
+ <CardContent className="flex flex-col gap-3 p-6">
+ <div className="flex items-start justify-between"><div className="space-y-2"><div className="h-5 w-48 rounded bg-muted" /><div className="h-3 w-32 rounded bg-muted" /></div><div className="h-6 w-20 rounded-full bg-muted" /></div>
+ <div className="h-3 w-full rounded bg-muted" />
+ <div className="flex gap-4"><div className="h-3 w-16 rounded bg-muted" /><div className="h-3 w-24 rounded bg-muted" /></div>
+ </CardContent>
+ </Card>
+ ))}
+ </div>
+ )}
+
+ {/* Empty */}
+ {!isLoading && filteredEpreuves.length === 0 && (
+ <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+ <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+ <Layers className="h-10 w-10 text-success-text" />
+ </div>
+ <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">
+ {statutFilter !=='TOUS' ?`Aucune session ${getStatutLabel(statutFilter).toLowerCase()}` :'Aucune session planifiée'}
+ </h3>
+ <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+ Planifiez une session d&apos;évaluation à partir d&apos;un modèle existant.
+ </p>
+ <Button className="mt-6 bg-success/60 hover:bg-success/70" onClick={openPlanifier}>
+ <SendHorizonal className="h-4 w-4" />
+ Planifier une session
+ </Button>
+ </div>
+ )}
+
+ {/* ─── Content: Sidebar + Epreuves ─── */}
+ {!isLoading && filteredEpreuves.length > 0 && (
+ <div>
+ {/* Main content */}
+ <div>
+
+ {viewMode ==='grouped' ? (
+ /* Grouped view */
+ <EpreuveGroupedView
+ epreuves={filteredEpreuves}
+ groupBy={groupBy}
+ renderCard={renderEpreuveCard}
+ />
+ ) : (
+ /* Flat list view */
+ <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+ {filteredEpreuves.map((epreuve) => {
+ const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
+ const contenuQuestions = contenuData?.questions ?? []
+ const questionCount = (epreuve.questions ?? []).length > 0 ? (epreuve.questions ?? []).length : contenuQuestions.length
+ const pts = (epreuve.questions ?? []).length > 0
+ ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+ : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
+ const sessionCount = epreuve.sessions.length
+ const completedSessions = epreuve.sessions.filter((s) => s.statut ==='SOUMISE' || s.statut ==='CORRIGEE').length
+ const completionRate = sessionCount > 0 ? Math.round((completedSessions / sessionCount) * 100) : 0
+
+ return (
+ <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
+ <CardContent className="flex flex-col gap-4 p-6">
+ <div className="flex items-start justify-between gap-3">
+ <div className="min-w-0 flex-1">
+ <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
+ {epreuve.description && (
+ <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
+ )}
+ </div>
+ {getStatutBadge(epreuve.statut)}
+ </div>
+
+ <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+ <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-success-text" /> {epreuve.duree} min</span>
+ <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-info" /> {formatDateTime(epreuve.dateDebut)}</span>
+ </div>
+
+ <div className="flex flex-wrap gap-3">
+ <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
+ <HelpCircle className="h-3 w-3" /> {questionCount} question{questionCount > 1 ?'s' :''}
+ </Badge>
+ <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
+ <Trophy className="h-3 w-3" /> {pts} pts
+ </Badge>
+ {sessionCount > 0 && (
+ <Badge variant="secondary" className="gap-1 bg-warning/10 text-warning">
+ <Users className="h-3 w-3" /> {completedSessions}/{sessionCount} soumises{completionRate < 100 ?` (${completionRate}%)` :''}
+ </Badge>
+ )}
+ </div>
+
+ {/* Classification badges */}
+ {(epreuve.niveau || epreuve.sessionExamen || epreuve.anneeAcademique || epreuve.uniteEnseignement || epreuve.filiere || epreuve.epreuveOrigineId) && (
+ <div className="flex flex-wrap gap-1.5">
+ {epreuve.epreuveOrigineId && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-destructive/10 text-destructive border-destructive/30">
+ <RotateCcw className="h-2.5 w-2.5" /> Session spéciale
+ </Badge>
+ )}
+ {epreuve.etudiantsAutorises && epreuve.etudiantsAutorises.length > 0 && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-warning/10 text-warning border-warning/30">
+ <Users className="h-2.5 w-2.5" /> {epreuve.etudiantsAutorises.length} autorisé(s)
+ </Badge>
+ )}
+ {epreuve.niveau && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-info/10 text-info border-info/30">
+ <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
+ </Badge>
+ )}
+ {epreuve.sessionExamen && (
+ <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] ||''}`}>
+ <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
+ </Badge>
+ )}
+ {epreuve.anneeAcademique && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-700">
+ <CalendarRange className="h-2.5 w-2.5" /> {epreuve.anneeAcademique.libelle}
+ </Badge>
+ )}
+ {epreuve.filiere && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-info/10 text-info border-info/30">
+ <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
+ </Badge>
+ )}
+ {epreuve.uniteEnseignement && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-warning/10 text-warning border-warning/30">
+ <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
+ </Badge>
+ )}
+ </div>
+ )}
+
+ {(epreuve.melangeQuestions || epreuve.melangePropositions || epreuve.blocageRetour) && (
+ <div className="flex flex-wrap gap-1.5">
+ {epreuve.melangeQuestions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Questions mélangées</Badge>}
+ {epreuve.melangePropositions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Props mélangées</Badge>}
+ {epreuve.blocageRetour && <Badge variant="outline" className="text-[10px] gap-0.5 py-0 text-destructive"><Ban className="h-2.5 w-2.5" /> Retour bloqué</Badge>}
+ </div>
+ )}
+
+ {/* Auto-closure info */}
+ {epreuve.statut ==='CLOTUREE' && epreuve.clotureeAutomatiquement && (
+ <div className="rounded-md border border-warning/30 bg-warning/10 p-2.5">
+ <div className="flex items-center gap-2 text-xs font-medium text-warning">
+ <Lock className="h-3.5 w-3.5" /> Clôturée automatiquement
+ </div>
+ <p className="text-[11px] text-warning mt-1">
+ {epreuve.raisonCloture ==='TOUS_SOUMIS' ?'Tous les étudiants ont soumis' :'Période de passation terminée'}
+ {epreuve.clotureeAt && (<> — {formatDateTime(epreuve.clotureeAt)}</>)}
+ </p>
+ </div>
+ )}
+
+ <Separator />
+ {renderActions(epreuve)}
+ </CardContent>
+ </Card>
+ )
+ })}
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Planifier Dialog */}
+ <Dialog open={planifierDialogOpen} onOpenChange={(open) => { if (!open) { setPlanifierDialogOpen(false); resetPlanForm() } }}>
+ <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+ <DialogHeader>
+ <DialogTitle className="flex items-center gap-2">
+ <SendHorizonal className="h-5 w-5 text-success-text" />
+ Planifier une session
+ </DialogTitle>
+ <DialogDescription>
+ Sélectionnez un modèle et planifiez les dates de votre session d&apos;évaluation.
+ </DialogDescription>
+ </DialogHeader>
+
+ <div className="flex-1 overflow-y-auto space-y-6 pr-1">
+ {/* Step 1: Select model */}
+ <div className="space-y-3">
+ <Label className="text-sm font-semibold flex items-center gap-2">
+ <Library className="h-4 w-4 text-success-text" />
+ Choisir un modèle
+ </Label>
+ {isLoadingModeles ? (
+ <div className="flex items-center gap-2 text-sm text-muted-foreground">
+ <Loader2 className="h-4 w-4 animate-spin" /> Chargement des modèles...
+ </div>
+ ) : modeles.length === 0 ? (
+ <div className="rounded-lg border border-dashed p-4 text-center">
+ <p className="text-sm text-muted-foreground">Aucun modèle disponible.</p>
+ <Button variant="outline" size="sm" className="mt-2 border-success/40 text-success-text" onClick={() => { setPlanifierDialogOpen(false); router.push(PAGE_ROUTES['questions-ia']) }}>
+ <Sparkles className="h-3 w-3" /> Générer par IA
+ </Button>
+ </div>
+ ) : (
+ <ScrollArea className="max-h-48">
+ <div className="space-y-2">
+ {modeles.map((modele) => (
+ <button
+ key={modele.id}
+ type="button"
+ onClick={() => handleSelectModele(modele.id)}
+ className={`w-full flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+ selectedModeleId === modele.id
+ ?'border-success/40 bg-success/10'
+ :'border-muted hover:border-success/30'
+ }`}
+ >
+ <div className="min-w-0 flex-1">
+ <p className="text-sm font-medium">{modele.titre}</p>
+ <div className="flex items-center gap-2 mt-1">
+ <Badge variant="secondary" className="text-[10px] gap-0.5 py-0">{modele.questionCount} Q</Badge>
+ <Badge variant="secondary" className="text-[10px] gap-0.5 py-0">{modele.baremeTotal} pts</Badge>
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0">{modele.generationMode ==='IA_ASSISTEE' ?'IA' :'Manuelle'}</Badge>
+ </div>
+ </div>
+ {selectedModeleId === modele.id && <CheckCircle2 className="h-4 w-4 text-success-text shrink-0" />}
+ </button>
+ ))}
+ </div>
+ </ScrollArea>
+ )}
+ </div>
+
+ {selectedModeleId && (
+ <>
+ <Separator />
+
+ {/* Step 2: Session parameters */}
+ <div className="space-y-4">
+ <div className="space-y-2">
+ <Label htmlFor="plan-titre">Titre de la session *</Label>
+ <Input id="plan-titre" value={planTitre} onChange={(e) => setPlanTitre(e.target.value)} placeholder="Titre" />
+ </div>
+
+ <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+ <div className="space-y-2">
+ <Label htmlFor="plan-duree">Durée (min) *</Label>
+ <Input id="plan-duree" type="number" min={1} max={600} value={planDuree} onChange={(e) => setPlanDuree(parseInt(e.target.value) || 0)} />
+ </div>
+ <div className="space-y-2">
+ <Label htmlFor="plan-debut">Date début *</Label>
+ <Input id="plan-debut" type="datetime-local" value={planDateDebut} onChange={(e) => setPlanDateDebut(e.target.value)} />
+ </div>
+ <div className="space-y-2">
+ <Label htmlFor="plan-fin">Date fin *</Label>
+ <Input id="plan-fin" type="datetime-local" value={planDateFin} onChange={(e) => setPlanDateFin(e.target.value)} />
+ </div>
+ </div>
+
+ <div className="space-y-2">
+ <Label htmlFor="plan-note-total" className="flex items-center gap-1.5">
+ <Trophy className="h-3.5 w-3.5 text-warning" />
+ Note totale
+ </Label>
+ <Input
+ id="plan-note-total"
+ type="number"
+ min={1}
+ max={1000}
+ step={1}
+ value={planNoteTotal}
+ onChange={(e) => setPlanNoteTotal(Math.max(1, parseFloat(e.target.value) || 20))}
+ />
+ <p className="text-[10px] text-muted-foreground">L&apos;IA répartira le barème pour ce total</p>
+ </div>
+
+ {/* Filière / Niveau / UE — déduits des affectations */}
+ {isLoadingPlanFilieres ? (
+ <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+ <Loader2 className="h-4 w-4 animate-spin" />
+ Chargement de vos affectations...
+ </div>
+ ) : planFilieres.length === 0 ? (
+ <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+ <p className="text-sm text-warning">
+ Aucune affectation trouvée. Veuillez contacter le responsable de filière.
+ </p>
+ </div>
+ ) : (
+ <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+ {/* Filière */}
+ <div className="space-y-2">
+ <Label className="flex items-center gap-1.5">
+ <BookOpen className="h-3.5 w-3.5 text-success-text" />
+ Filière cible
+ {planFilieres.length === 1 && (
+ <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30">Auto</Badge>
+ )}
+ </Label>
+ <Select
+ value={planFiliereId}
+ onValueChange={(val) => {
+ setPlanFiliereId(val)
+ // Reset niveau and UE when filière changes
+ setPlanNiveau('')
+ setPlanUEId('')
+ // Auto-select niveau if only one for this filière
+ const selectedFiliere = planFilieres.find((f) => f.id === val)
+ if (selectedFiliere) {
+ if (selectedFiliere.niveaux.length === 1) {
+ setPlanNiveau(selectedFiliere.niveaux[0])
+ }
+ if (selectedFiliere.unitesEnseignement.length === 1) {
+ setPlanUEId(selectedFiliere.unitesEnseignement[0].id)
+ }
+ }
+ }}
+ >
+ <SelectTrigger>
+ <SelectValue placeholder="Sélectionnez une filière" />
+ </SelectTrigger>
+ <SelectContent>
+ {planFilieres.length > 1 && (
+ <SelectItem value="__all__">Toutes les filières</SelectItem>
+ )}
+ {planFilieres.map((f) => (
+ <SelectItem key={f.id} value={f.id}>
+ {f.nom} {f.code ?`(${f.code})` :''}
+ </SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
+ </div>
+
+ {/* Niveau — filtré par filière */}
+ <div className="space-y-2">
+ <Label className="flex items-center gap-1.5">
+ <Layers className="h-3.5 w-3.5 text-info" />
+ Niveau cible
+ {planFiliereId && planFilieres.find((f) => f.id === planFiliereId)?.niveaux.length === 1 && (
+ <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30">Auto</Badge>
+ )}
+ </Label>
+ <Select value={planNiveau} onValueChange={(val) => { setPlanNiveau(val); setPlanUEId('') }}>
+ <SelectTrigger>
+ <SelectValue placeholder="Sélectionnez un niveau" />
+ </SelectTrigger>
+ <SelectContent>
+ {(() => {
+ // Derive available niveaux from the selected filière (or all filières)
+ const selectedFiliere = planFilieres.find((f) => f.id === planFiliereId)
+ const availableNiveaux = selectedFiliere
+ ? selectedFiliere.niveaux
+ : [...new Set(planFilieres.flatMap((f) => f.niveaux))].sort()
+
+ if (availableNiveaux.length === 0) {
+ return <SelectItem value="__none__" disabled>Aucun niveau disponible</SelectItem>
+ }
+
+ return (
+ <>
+ {availableNiveaux.length > 1 && (
+ <SelectItem value="__all__">Tous les niveaux</SelectItem>
+ )}
+ {availableNiveaux.map((n) => (
+ <SelectItem key={n} value={n}>
+ {NIVEAU_OPTIONS.find((opt) => opt.value === n)?.label || n}
+ </SelectItem>
+ ))}
+ </>
+ )
+ })()}
+ </SelectContent>
+ </Select>
+ </div>
+
+ {/* UE — filtré par filière et niveau */}
+ <div className="space-y-2">
+ <Label className="flex items-center gap-1.5">
+ <Hash className="h-3.5 w-3.5 text-info" />
+ Unité d&apos;enseignement
+ </Label>
+ <Select value={planUEId} onValueChange={setPlanUEId}>
+ <SelectTrigger>
+ <SelectValue placeholder="Sélectionnez une UE" />
+ </SelectTrigger>
+ <SelectContent>
+ {(() => {
+ const selectedFiliere = planFilieres.find((f) => f.id === planFiliereId)
+ if (!selectedFiliere) return <SelectItem value="__none__" disabled>Sélectionnez d&apos;abord une filière</SelectItem>
+
+ // Filter UEs by selected filière and niveau
+ let ues = selectedFiliere.unitesEnseignement
+ if (planNiveau && planNiveau !=='__all__') {
+ ues = ues.filter((ue) => {
+ // Match the UE's primary niveau
+ if (ue.niveau === planNiveau) return true
+ // Also check the shared niveaux JSON
+ if (ue.niveaux) {
+ try {
+ const shared = JSON.parse(ue.niveaux) as string[]
+ if (shared.includes(planNiveau)) return true
+ } catch { /* ignore */ }
+ }
+ return false
+ })
+ }
+
+ if (ues.length === 0) {
+ return <SelectItem value="__none__" disabled>Aucune UE pour cette sélection</SelectItem>
+ }
+
+ return (
+ <>
+ <SelectItem value="__none__">Aucune UE spécifique</SelectItem>
+ {ues.map((ue) => (
+ <SelectItem key={ue.id} value={ue.id}>
+ <span className="flex items-center gap-1.5">
+ <span className="font-medium">{ue.code}</span>
+ <span className="text-muted-foreground">— {ue.nom}</span>
+ <span className="text-[10px] text-muted-foreground">({ue.typeSeances.join('/')})</span>
+ </span>
+ </SelectItem>
+ ))}
+ </>
+ )
+ })()}
+ </SelectContent>
+ </Select>
+ </div>
+ </div>
+ )}
+
+ <div className="space-y-2">
+ <Label htmlFor="plan-groupes">Groupes cibles</Label>
+ <Input id="plan-groupes" value={planGroupes} onChange={(e) => setPlanGroupes(e.target.value)} placeholder="Groupe A, Groupe B..." />
+ </div>
+
+ {/* ─── Session d'examen & Année académique ─── */}
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+ <div className="space-y-2">
+ <Label>Session d'examen</Label>
+ <Select value={planSessionExamen} onValueChange={setPlanSessionExamen}>
+ <SelectTrigger><SelectValue /></SelectTrigger>
+ <SelectContent>
+ <SelectItem value="NORMALE">📋 Normale</SelectItem>
+ <SelectItem value="RATTRAPAGE">🔄 Rattrapage</SelectItem>
+ <SelectItem value="SPECIALE">⭐ Spéciale</SelectItem>
+ <SelectItem value="EXCEPTIONNELLE">⚡ Exceptionnelle</SelectItem>
+ <SelectItem value="DIFFERE">⏳ Différé</SelectItem>
+ </SelectContent>
+ </Select>
+ </div>
+ <div className="space-y-2">
+ <Label>Année académique</Label>
+ <Select value={planAnneeAcademiqueId} onValueChange={setPlanAnneeAcademiqueId}>
+ <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+ <SelectContent>
+ {anneesAcademiques.map((a) => (
+ <SelectItem key={a.id} value={a.id}>{a.libelle}</SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
+ </div>
+ </div>
+
+ <div className="flex flex-wrap gap-4">
+ <label className="flex items-center gap-2 text-sm cursor-pointer">
+ <Checkbox checked={planMelangeQ} onCheckedChange={(checked) => setPlanMelangeQ(checked === true)} />
+ Mélanger les questions
+ </label>
+ <label className="flex items-center gap-2 text-sm cursor-pointer">
+ <Checkbox checked={planMelangeP} onCheckedChange={(checked) => setPlanMelangeP(checked === true)} />
+ Mélanger les propositions
+ </label>
+ <label className="flex items-center gap-2 text-sm cursor-pointer">
+ <Checkbox checked={planBlocageRetour} onCheckedChange={(checked) => setPlanBlocageRetour(checked === true)} />
+ Bloquer le retour
+ </label>
+ </div>
+ </div>
+ </>
+ )}
+ </div>
+
+ <DialogFooter className="mt-4">
+ <Button variant="outline" onClick={() => { setPlanifierDialogOpen(false); resetPlanForm() }}>Annuler</Button>
+ <Button className="bg-success/60 hover:bg-success/70" disabled={!selectedModeleId || !planTitre || !planDateDebut || !planDateFin || isSubmitting} onClick={handlePlanifierSubmit}>
+ {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
+ Créer la session
+ </Button>
+ </DialogFooter>
+ </DialogContent>
+ </Dialog>
+
+ {/* Monitoring Dialog */}
+ <Dialog open={monitoringDialogOpen} onOpenChange={setMonitoringDialogOpen}>
+ <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+ <DialogHeader>
+ <DialogTitle className="flex items-center gap-2">
+ <Activity className="h-5 w-5 text-success-text" />
+ Suivi — {monitoringEpreuve?.titre}
+ </DialogTitle>
+ </DialogHeader>
+ {monitoringEpreuve && (() => {
+ const stats = getMonitoringStats(monitoringEpreuve)
+ return (
+ <div className="flex-1 overflow-y-auto space-y-4">
+ <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+ <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold font-mono tabular-nums">{stats.total}</p></CardContent></Card>
+ <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">En cours</p><p className="text-xl font-bold text-success-text font-mono tabular-nums">{stats.enCours}</p></CardContent></Card>
+ <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Soumises</p><p className="text-xl font-bold text-info font-mono tabular-nums">{stats.soumis}</p></CardContent></Card>
+ <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Moyenne</p><p className="text-xl font-bold font-mono tabular-nums">{stats.avgScore > 0 ? stats.avgScore.toFixed(1) :'—'}</p></CardContent></Card>
+ </div>
+ {(stats.absents > 0 || stats.nonSoumis > 0) && (
+ <div className="flex flex-wrap gap-3">
+ {stats.absents > 0 && (
+ <Badge variant="outline" className="gap-1 bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-700">
+ <Ban className="h-3 w-3" /> {stats.absents} Absent(s)
+ </Badge>
+ )}
+ {stats.nonSoumis > 0 && (
+ <Badge variant="outline" className="gap-1 bg-warning/10 text-warning border-warning/30">
+ <AlertTriangle className="h-3 w-3" /> {stats.nonSoumis} Non soumis
+ </Badge>
+ )}
+ </div>
+ )}
+ <Separator />
+ <div className="space-y-2">
+ <h4 className="text-sm font-semibold">Sessions</h4>
+ {monitoringEpreuve.sessions.length === 0 ? (
+ <p className="text-sm text-muted-foreground">Aucune session enregistrée.</p>
+ ) : (
+ <ScrollArea className="max-h-60">
+ <div className="space-y-2">
+ {monitoringEpreuve.sessions.map((session) => (
+ <div key={session.id} className="flex items-center justify-between rounded-lg border p-3">
+ <div className="min-w-0 flex-1">
+ <p className="text-sm font-medium truncate">{session.etudiant?.name || session.etudiantId}</p>
+ <p className="text-xs text-muted-foreground">{session.etudiant?.email}</p>
+ </div>
+ <div className="flex items-center gap-2">
+ <Badge variant="outline" className="text-xs">{session.statut}</Badge>
+ {session.score !== null && <span className="text-sm font-semibold">{session.score}/{monitoringEpreuve.noteTotal || monitoringEpreuve.questions.reduce((s, q) => s + q.bareme, 0) || 20}</span>}
+ {session.statut ==='EN_COURS' && (
+ <Button
+ variant="outline"
+ size="sm"
+ className="h-7 text-xs border-destructive/40 text-destructive hover:bg-destructive/10"
+ disabled={forcingSessionId === session.id}
+ onClick={() => handleForceSubmission(session.id)}
+ >
+ {forcingSessionId === session.id ? (
+ <><Loader2 className="h-3 w-3 animate-spin" /> En cours...</>
+ ) : ('Forcer'
+ )}
+ </Button>
+ )}
+ </div>
+ </div>
+ ))}
+ </div>
+ </ScrollArea>
+ )}
+ </div>
+
+ {/* Special Sessions Traceability */}
+ <Separator />
+ <Collapsible open={specialSessionsOpen} onOpenChange={setSpecialSessionsOpen}>
+ <CollapsibleTrigger asChild>
+ <Button variant="ghost" size="sm" className="w-full justify-between gap-2 text-warning hover:text-warning">
+ <span className="flex items-center gap-2">
+ <RotateCcw className="h-4 w-4" />
+ Sessions spéciales dérivées
+ {specialSessions.length > 0 && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-warning/10 text-warning border-warning/30">
+ {specialSessions.length}
+ </Badge>
+ )}
+ </span>
+ {specialSessionsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+ </Button>
+ </CollapsibleTrigger>
+ <CollapsibleContent>
+ <div className="mt-2 space-y-2">
+ {isLoadingSpecialSessions ? (
+ <div className="flex items-center justify-center py-4">
+ <Loader2 className="h-5 w-5 animate-spin text-warning" />
+ <span className="ml-2 text-sm text-muted-foreground">Chargement...</span>
+ </div>
+ ) : specialSessions.length === 0 ? (
+ <p className="text-sm text-muted-foreground italic py-2">Aucune session spéciale créée à partir de cette épreuve.</p>
+ ) : (
+ specialSessions.map((ss) => {
+ const typeOption = TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === ss.type)
+ return (
+ <div key={ss.id} className="rounded-lg border p-3 space-y-2">
+ <div className="flex items-start justify-between gap-2">
+ <div className="flex items-center gap-2">
+ <Badge variant="outline" className={typeOption?.color ||''}>
+ {typeOption?.label || ss.type}
+ </Badge>
+ {ss.estPartielle && (
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-warning/10 text-warning border-warning/30">
+ Partielle
+ </Badge>
+ )}
+ </div>
+ <span className="text-[10px] text-muted-foreground shrink-0">
+ {formatDateTime(ss.createdAt)}
+ </span>
+ </div>
+ <p className="text-sm">{ss.motif}</p>
+ <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+ <span className="flex items-center gap-1">
+ <Users className="h-3 w-3" /> {Array.isArray(ss.etudiantsCibles) ? ss.etudiantsCibles.length : 0} étudiant(s)
+ </span>
+ {ss.epreuveDerivee && (
+ <>
+ <span className="text-muted-foreground/40">·</span>
+ <span className="flex items-center gap-1">
+ Épreuve dérivée : <span className="font-medium text-foreground">{ss.epreuveDerivee.titre}</span>
+ </span>
+ <Badge variant="outline" className="text-[9px] py-0">
+ {getStatutLabel(ss.epreuveDerivee.statut)}
+ </Badge>
+ {ss.epreuveDerivee.sessionExamen && (
+ <Badge variant="outline" className={`text-[9px] py-0 ${SESSION_EXAMEN_COLORS[ss.epreuveDerivee.sessionExamen] ||''}`}>
+ {SESSION_EXAMEN_LABELS[ss.epreuveDerivee.sessionExamen] || ss.epreuveDerivee.sessionExamen}
+ </Badge>
+ )}
+ </>
+ )}
+ {ss.creePar && (
+ <>
+ <span className="text-muted-foreground/40">·</span>
+ <span>Créée par {ss.creePar.name}</span>
+ </>
+ )}
+ </div>
+ </div>
+ )
+ })
+ )}
+ </div>
+ </CollapsibleContent>
+ </Collapsible>
+ </div>
+ )
+ })()}
+ <DialogFooter>
+ <Button variant="outline" onClick={() => setMonitoringDialogOpen(false)}>Fermer</Button>
+ </DialogFooter>
+ </DialogContent>
+ </Dialog>
+
+ {/* Delete Dialog */}
+ <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+ <AlertDialogContent>
+ <AlertDialogHeader>
+ <AlertDialogTitle>Supprimer cette session ?</AlertDialogTitle>
+ <AlertDialogDescription>La session &quot;{deleteTarget?.titre}&quot; sera déplacée vers la corbeille.</AlertDialogDescription>
+ </AlertDialogHeader>
+ <AlertDialogFooter>
+ <AlertDialogCancel>Annuler</AlertDialogCancel>
+ <AlertDialogAction className="bg-destructive/60 hover:bg-destructive/70" onClick={handleDelete}>Supprimer</AlertDialogAction>
+ </AlertDialogFooter>
+ </AlertDialogContent>
+ </AlertDialog>
+
+ {/* Confirm Action Dialog (Lancer/Terminer/Clôturer) */}
+ <AlertDialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
+ <AlertDialogContent>
+ <AlertDialogHeader>
+ <AlertDialogTitle>{confirmAction?.label}</AlertDialogTitle>
+ <AlertDialogDescription>{confirmAction?.description}</AlertDialogDescription>
+ </AlertDialogHeader>
+ <AlertDialogFooter>
+ <AlertDialogCancel>Annuler</AlertDialogCancel>
+ <AlertDialogAction className="bg-success/60 hover:bg-success/70" onClick={handleConfirmAction}>Confirmer</AlertDialogAction>
+ </AlertDialogFooter>
+ </AlertDialogContent>
+ </AlertDialog>
+
+ {/* Date Edit Dialog */}
+ <Dialog open={!!dateEditTarget} onOpenChange={(open) => { if (!open) setDateEditTarget(null) }}>
+ <DialogContent className="sm:max-w-md">
+ <DialogHeader>
+ <DialogTitle>Modifier les dates</DialogTitle>
+ </DialogHeader>
+ <div className="space-y-4 py-4">
+ <div className="space-y-2">
+ <Label>Date début</Label>
+ <Input type="datetime-local" value={dateEditDebut} onChange={(e) => setDateEditDebut(e.target.value)} />
+ </div>
+ <div className="space-y-2">
+ <Label>Date fin</Label>
+ <Input type="datetime-local" value={dateEditFin} onChange={(e) => setDateEditFin(e.target.value)} />
+ </div>
+ </div>
+ <DialogFooter>
+ <Button variant="outline" onClick={() => setDateEditTarget(null)}>Annuler</Button>
+ <Button className="bg-success/60 hover:bg-success/70" onClick={handleEditDates}>Enregistrer</Button>
+ </DialogFooter>
+ </DialogContent>
+ </Dialog>
+
+ {/* Session Spéciale Dialog */}
+ <SessionSpecialeDialog
+ open={sessionSpecialeDialogOpen}
+ onOpenChange={setSessionSpecialeDialogOpen}
+ epreuve={sessionSpecialeEpreuve}
+ onSuccess={() => { refreshSessions() }}
+ />
+ </div>
+ )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// QUESTION SELECTOR (grouped by type for Session Spéciale)
+// ═══════════════════════════════════════════════════════════════
+
+const TYPE_LABELS: Record<string, string> = {
+ QCU:'Question à Choix Unique',
+ QCM:'Question à Choix Multiples',
+ QRC:'Question à Réponse Courte',
+ REFLEXION:'Question de Réflexion',
+ CODE:'Question de Code',
+ TRS:'Question de Transfert',
+}
+
+const TYPE_ICONS: Record<string, string> = {
+ QCU:'◉',
+ QCM:'☑',
+ QRC:'✎',
+ REFLEXION:'💡',
+ CODE:'⟨⟩',
+ TRS:'↔',
+}
+
+function QuestionSelector({
+ questions,
+ selectedQuestions,
+ onToggleQuestion,
+ onToggleAllForType,
+}: {
+ questions: Array<{ id: string; type: string; enonce: string; bareme: number; difficulte?: string }>
+ selectedQuestions: Set<string>
+ onToggleQuestion: (id: string) => void
+ onToggleAllForType: (type: string, ids: string[]) => void
+}) {
+ const [expandedTypes, setExpandedTypes] = useState<Set<string>>(() => {
+ // Start with all types expanded
+ const types = new Set<string>()
+ questions.forEach((q) => types.add(q.type))
+ return types
+ })
+
+ // Group questions by type
+ const groupedByType = useMemo(() => {
+ const groups: Record<string, Array<{ id: string; enonce: string; bareme: number; difficulte?: string } & { _originalIdx: number }>> = {}
+ questions.forEach((q, idx) => {
+ if (!groups[q.type]) groups[q.type] = []
+ groups[q.type].push({ ...q, _originalIdx: idx })
+ })
+ return groups
+ }, [questions])
+
+ const typeOrder = Object.keys(groupedByType)
+
+ const toggleTypeExpanded = (type: string) => {
+ setExpandedTypes((prev) => {
+ const next = new Set(prev)
+ if (next.has(type)) next.delete(type)
+ else next.add(type)
+ return next
+ })
+ }
+
+ return (
+ <div className="space-y-2">
+ <div className="flex items-center justify-between">
+ <Label className="text-sm font-semibold">Questions sélectionnées</Label>
+ <Badge variant="outline" className="text-[10px] gap-0.5 py-0">
+ {selectedQuestions.size} / {questions.length}
+ </Badge>
+ </div>
+ {questions.length === 0 ? (
+ <p className="text-sm text-muted-foreground italic">Aucune question disponible dans le contenu de l&apos;épreuve.</p>
+ ) : (
+ <ScrollArea className="h-48 shrink-0">
+ <div className="space-y-2 pr-1">
+ {typeOrder.map((type) => {
+ const typeQuestions = groupedByType[type]
+ const typeIds = typeQuestions.map((q) => q.id)
+ const allSelected = typeIds.every((id) => selectedQuestions.has(id))
+ const selectedInType = typeIds.filter((id) => selectedQuestions.has(id)).length
+ const isExpanded = expandedTypes.has(type)
+
+ return (
+ <div key={type} className="rounded-lg border overflow-hidden">
+ {/* Type header */}
+ <div
+ className="flex items-center gap-2 px-3 py-2 bg-muted/40 cursor-pointer select-none"
+ onClick={() => toggleTypeExpanded(type)}
+ >
+ <span className="text-sm">{isExpanded ?'▾' :'▸'}</span>
+ <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${TYPE_COLORS[type] ||''}`}>
+ {TYPE_ICONS[type] ||'●'} {type}
+ </Badge>
+ <span className="text-xs text-muted-foreground flex-1">{TYPE_LABELS[type] || type}</span>
+ <span className="text-[10px] text-muted-foreground">{selectedInType}/{typeIds.length}</span>
+ <Button
+ variant="ghost"
+ size="sm"
+ className="h-5 text-[10px] px-1.5"
+ onClick={(e) => {
+ e.stopPropagation()
+ onToggleAllForType(type, typeIds)
+ }}
+ >
+ {allSelected ?'Tout désél.' :'Tout sélect.'}
+ </Button>
+ </div>
+
+ {/* Questions in this type */}
+ {isExpanded && (
+ <div className="divide-y divide-border">
+ {typeQuestions.map((q) => (
+ <div
+ key={q.id}
+ className={`flex items-start gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${
+ selectedQuestions.has(q.id)
+ ?'bg-warning/60'
+ :'hover:bg-muted/30'
+ }`}
+ onClick={() => onToggleQuestion(q.id)}
+ >
+ <Checkbox
+ checked={selectedQuestions.has(q.id)}
+ onCheckedChange={() => onToggleQuestion(q.id)}
+ className="mt-0.5 shrink-0"
+ />
+ <div className="flex-1 min-w-0 space-y-1">
+ {/* Header line: index + difficulté (gauche) + bareme (droite) */}
+ <div className="flex items-center gap-1.5 flex-wrap">
+ <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted/60 text-[9px] font-bold text-muted-foreground">
+ {q._originalIdx + 1}
+ </span>
+ {q.difficulte && (
+ <Badge variant="outline" className={`text-[8px] py-0 px-1 shrink-0 ${DIFFICULTE_COLORS[q.difficulte] ||''}`}>
+ {DIFFICULTE_LABELS[q.difficulte] || q.difficulte}
+ </Badge>
+ )}
+ <span className="text-[10px] text-muted-foreground shrink-0 ml-auto whitespace-nowrap">{q.bareme} pts</span>
+ </div>
+ {/* Enoncé: pleine largeur, lisible, avec clamp plus généreux */}
+ <p className="text-xs leading-relaxed line-clamp-3 break-words">{q.enonce}</p>
+ </div>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ )
+ })}
+ </div>
+ </ScrollArea>
+ )}
+ </div>
+ )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SESSION SPÉCIALE DIALOG
+// ═══════════════════════════════════════════════════════════════
+
+const TYPE_SESSION_SPECIALE_OPTIONS = [
+ { value:'RATTRAPAGE', label:'Rattrapage', description:'Session de rattrapage pour étudiants absents', color:'bg-warning/10 text-warning border-warning/30' },
+ { value:'EXCEPTIONNELLE', label:'Exceptionnelle', description:'Session exceptionnelle (force majeure, catastrophe...)', color:'bg-secondary/10 text-secondary border-secondary/30' },
+ { value:'DIFFERE', label:'Différé', description:'Examen différé pour étudiant(s) empêché(s)', color:'bg-warning/10 text-warning border-warning/30' },
+]
+
+function SessionSpecialeDialog({
+ open,
+ onOpenChange,
+ epreuve,
+ onSuccess,
+}: {
+ open: boolean
+ onOpenChange: (open: boolean) => void
+ epreuve: SessionEpreuve | null
+ onSuccess: () => void
+}) {
+ const [step, setStep] = useState(1)
+ const [type, setType] = useState<string>('')
+ const [motif, setMotif] = useState('')
+ const [justificatif, setJustificatif] = useState('')
+ const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set())
+ const [estPartielle, setEstPartielle] = useState(false)
+ const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set())
+ const [dateDebut, setDateDebut] = useState('')
+ const [dateFin, setDateFin] = useState('')
+ const [duree, setDuree] = useState(60)
+ const [delaiGrace, setDelaiGrace] = useState(0)
+ const [melangeQuestions, setMelangeQuestions] = useState(false)
+ const [melangePropositions, setMelangePropositions] = useState(false)
+ const [blocageRetour, setBlocageRetour] = useState(false)
+ const [titre, setTitre] = useState('')
+ const [titreOverride, setTitreOverride] = useState(false)
+ const [isCreating, setIsCreating] = useState(false)
+ // UX-IMPROVE : tracker l'ID de l'épreuve déjà initialisée pour éviter de reset
+ // le formulaire (et perdre la sélection étudiant) quand epreuve change de
+ // référence (re-fetch TanStack Query). Avant, le useEffect dépendait de
+ // [open, epreuve] → à chaque refetch, selectedStudents était reset.
+ const initializedEpreuveIdRef = useRef<string | null>(null)
+ // UX-IMPROVE : fetch de TOUS les étudiants inscrits à la filière+niveau de
+ // l'épreuve (pas seulement ceux avec session existante). Avant, seuls les
+ // étudiants ayant déjà une session apparaissaient — les nouveaux inscrits
+ // ou les absents sans session étaient invisibles.
+ const [allStudents, setAllStudents] = useState<Array<{ id: string; name: string; email: string; matricule?: string; filiereNom?: string }>>([])
+ const [studentsSearch, setStudentsSearch] = useState('')
+
+ // Reset form when dialog opens with a new epreuve
+ useEffect(() => {
+ if (open && epreuve && initializedEpreuveIdRef.current !== epreuve.id) {
+ initializedEpreuveIdRef.current = epreuve.id
+ setStep(1)
+ setType('')
+ setMotif('')
+ setJustificatif('')
+ setEstPartielle(false)
+ setSelectedQuestions(new Set())
+ setDuree(epreuve.duree)
+ setDelaiGrace(epreuve.delaiGrace ?? 0)
+ setMelangeQuestions(epreuve.melangeQuestions)
+ setMelangePropositions(epreuve.melangePropositions)
+ setBlocageRetour(epreuve.blocageRetour)
+ setTitre(`${epreuve.titre} — Session spéciale`)
+ setTitreOverride(false)
+ // Pre-select ABSENT and NON_SOUMIS students
+ const preselected = new Set<string>()
+ ;(epreuve.sessions ?? []).forEach((s) => {
+ if (s.statut ==='ABSENT' || s.statut ==='NON_SOUMIS') {
+ preselected.add(s.etudiantId)
+ }
+ })
+ setSelectedStudents(preselected)
+
+ // UX-FIX : dates par défaut immédiates (now + durée) au lieu de now + 7 jours.
+ // Une session spéciale (rattrapage/différé) est généralement créée pour être
+ // passée rapidement. L'enseignant peut ajuster les dates dans l'étape 3.
+ const now = new Date()
+ const debut = now
+ const fin = new Date(debut.getTime() + epreuve.duree * 60 * 1000)
+ const toLocal = (d: Date) => {
+ const offset = d.getTimezoneOffset()
+ const local = new Date(d.getTime() - offset * 60000)
+ return local.toISOString().slice(0, 16)
+ }
+ setDateDebut(toLocal(debut))
+ setDateFin(toLocal(fin))
+
+ // UX-IMPROVE : fetch tous les étudiants inscrits à la filière+niveau de
+ // l'épreuve. Avant, seuls les étudiants avec session existante apparaissaient.
+ if (epreuve.filiereId && epreuve.niveau) {
+   fetch(`/api/etudiants?filiereId=${epreuve.filiereId}&limit=500`)
+     .then(r => r.ok ? r.json() : { etudiants: [] })
+     .then(d => {
+       const etudiants = d.etudiants || d
+       // Filtrer par niveau si l'épreuve a un niveau défini
+       const filtered = epreuve.niveau
+         ? etudiants.filter((e: { niveau?: string }) => e.niveau === epreuve.niveau)
+         : etudiants
+       setAllStudents(filtered)
+     })
+     .catch(() => setAllStudents([]))
+ } else {
+   setAllStudents([])
+ }
+ }
+ // UX-FIX : reset le ref quand le dialog se ferme pour permettre une
+ // ré-initialisation propre à la prochaine ouverture.
+ if (!open) {
+ initializedEpreuveIdRef.current = null
+ }
+ }, [open, epreuve])
+
+ const toggleStudent = (studentId: string) => {
+ setSelectedStudents((prev) => {
+ const next = new Set(prev)
+ if (next.has(studentId)) next.delete(studentId)
+ else next.add(studentId)
+ return next
+ })
+ }
+
+ const toggleAllStudents = (studentIds: string[]) => {
+ setSelectedStudents((prev) => {
+ const allSelected = studentIds.every((id) => prev.has(id))
+ const next = new Set(prev)
+ if (allSelected) {
+ studentIds.forEach((id) => next.delete(id))
+ } else {
+ studentIds.forEach((id) => next.add(id))
+ }
+ return next
+ })
+ }
+
+ const toggleQuestion = (questionId: string) => {
+ setSelectedQuestions((prev) => {
+ const next = new Set(prev)
+ if (next.has(questionId)) next.delete(questionId)
+ else next.add(questionId)
+ return next
+ })
+ }
+
+ const handleCreate = async () => {
+ if (!epreuve || !type || !motif || motif.length < 5 || selectedStudents.size === 0 || !dateDebut || !dateFin) return
+ setIsCreating(true)
+ try {
+ const body: Record<string, unknown> = {
+ epreuveOrigineId: epreuve.id,
+ type,
+ motif,
+ justificatif: justificatif || undefined,
+ // BUGFIX (E2E-SESSION-SPECIALE) : le backend attend 'etudiants' (pas
+ // 'etudiantsCibles') et 'titre' est REQUIS (pas optionnel).
+ etudiants: Array.from(selectedStudents),
+ estPartielle,
+ questionsSelectionnees: estPartielle && selectedQuestions.size > 0 ? Array.from(selectedQuestions) : undefined,
+ dateDebut: new Date(dateDebut).toISOString(),
+ dateFin: new Date(dateFin).toISOString(),
+ duree: duree || undefined,
+ delaiGrace: delaiGrace || undefined,
+ // BUGFIX : titre toujours fourni (backend l'exige). Si pas d'override,
+ // on génère un titre basé sur l'épreuve source + type de session.
+ titre: titreOverride ? titre : `${epreuve.titre} - ${TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type}`,
+ melangeQuestions,
+ melangePropositions,
+ blocageRetour,
+ }
+ const res = await fetch('/api/epreuves/session-speciale', {
+ method:'POST',
+ headers: {'Content-Type':'application/json' },
+ body: JSON.stringify(body),
+ })
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}))
+ // UX-FIX : message d'erreur explicite avec le code HTTP et le détail.
+ // Avant, le toast était parfois vide (errData.error undefined).
+ const errMsg = errData?.error || `Erreur ${res.status} lors de la création`
+ throw new Error(errMsg)
+ }
+ toast.success('Session spéciale créée', { description:`La session ${TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type} a été créée avec succès.`, duration: 6000 })
+ onOpenChange(false)
+ onSuccess()
+ } catch (err) {
+ // UX-FIX : toast error avec duration longue (8s) pour que l'utilisateur
+ // ait le temps de lire le message. Le dialog reste ouvert pour permettre
+ // de corriger et réessayer.
+ toast.error('Erreur de création', {
+ description: err instanceof Error ? err.message : 'Impossible de créer la session spéciale. Vérifiez les champs et réessayez.',
+ duration: 8000,
+ })
+ } finally {
+ setIsCreating(false)
+ }
+ }
+
+ const canGoNext = () => {
+ switch (step) {
+ case 1: return type !=='' && motif.length >= 5
+ case 2: return selectedStudents.size > 0
+ case 3: return dateDebut !=='' && dateFin !=='' && (!estPartielle || selectedQuestions.size > 0)
+ default: return true
+ }
+ }
+
+ // Get sessions grouped by status for student selection
+ const sessionsByStatus = (() => {
+ if (!epreuve) return {}
+ const grouped: Record<string, Session[]> = {}
+ ;(epreuve.sessions ?? []).forEach((s) => {
+ if (!grouped[s.statut]) grouped[s.statut] = []
+ grouped[s.statut].push(s)
+ })
+ return grouped
+ })()
+
+ const statusOrder = ['ABSENT','NON_SOUMIS','EN_COURS','SOUMISE','CORRIGEE','RETOURNEE']
+ const statusLabels: Record<string, string> = {
+ ABSENT:'Absents',
+ NON_SOUMIS:'Non soumis',
+ EN_COURS:'En cours',
+ SOUMISE:'Soumises',
+ CORRIGEE:'Corrigées',
+ RETOURNEE:'Retournées',
+ }
+ const statusColors: Record<string, string> = {
+ ABSENT:'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+ NON_SOUMIS:'bg-warning/10 text-warning',
+ EN_COURS:'bg-success/10 text-success-text',
+ SOUMISE:'bg-info/10 text-info',
+ CORRIGEE:'bg-info/10 text-info',
+ RETOURNEE:'bg-secondary/10 text-secondary',
+ }
+
+ // Get questions from epreuve contenu
+ const questions = epreuve?.contenu?.questions ?? []
+
+ const stepTitles = ['Type & Motif','Étudiants','Paramètres','Récapitulatif']
+
+ return (
+ <Dialog open={open} onOpenChange={onOpenChange}>
+ <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+ <DialogHeader>
+ <DialogTitle className="flex items-center gap-2">
+ <RotateCcw className="h-5 w-5 text-warning" />
+ Session spéciale
+ </DialogTitle>
+ <DialogDescription>
+ Créer une session spéciale à partir de &laquo; {epreuve?.titre} &raquo;
+ </DialogDescription>
+ </DialogHeader>
+
+ {/* Step indicator — UX-IMPROVE : numéros + meilleur visuel */}
+ <div className="flex items-center gap-1 px-1">
+ {stepTitles.map((title, idx) => (
+ <div key={idx} className="flex-1 flex flex-col items-center">
+ <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
+ idx + 1 < step ? 'bg-warning text-white' :
+ idx + 1 === step ? 'bg-warning text-white ring-4 ring-warning/20' :
+ 'bg-muted text-muted-foreground'
+ }`}>
+ {idx + 1 < step ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+ </div>
+ <p className={`text-[10px] mt-1 truncate ${idx + 1 <= step ?'text-warning font-medium' :'text-muted-foreground'}`}>{title}</p>
+ </div>
+ ))}
+ </div>
+
+ <div className="flex-1 overflow-y-auto pr-1">
+ {/* Step 1: Type & Motif */}
+ {step === 1 && (
+ <div className="space-y-5">
+ <div className="space-y-3">
+ <Label className="text-sm font-semibold">Type de session</Label>
+ <div className="grid grid-cols-1 gap-2">
+ {TYPE_SESSION_SPECIALE_OPTIONS.map((opt) => (
+ <button
+ key={opt.value}
+ type="button"
+ onClick={() => setType(opt.value)}
+ className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-sm ${type === opt.value ?`border-warning/50 ring-2 ring-warning/30 ${opt.color}` :'border-border hover:border-warning/30'}`}
+ >
+ <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${type === opt.value ?'border-warning/60 bg-warning/40' :'border-muted-foreground/30'}`}>
+ {type === opt.value && <Check className="h-3 w-3 text-white" />}
+ </div>
+ <div>
+ <p className="text-sm font-semibold">{opt.label}</p>
+ <p className="text-xs text-muted-foreground mt-0.5">{opt.description}</p>
+ </div>
+ </button>
+ ))}
+ </div>
+ </div>
+
+ <div className="space-y-2">
+ <Label className="text-sm font-semibold">Motif <span className="text-destructive">*</span></Label>
+ <Textarea
+ value={motif}
+ onChange={(e) => setMotif(e.target.value)}
+ placeholder="Décrivez le motif de cette session spéciale (min. 5 caractères)..."
+ className="min-h-20 resize-none"
+ />
+ {motif.length > 0 && motif.length < 5 && (
+ <p className="text-xs text-destructive">Le motif doit contenir au moins 5 caractères.</p>
+ )}
+ </div>
+
+ <div className="space-y-2">
+ <Label className="text-sm font-semibold">Justificatif <span className="text-muted-foreground font-normal">(optionnel)</span></Label>
+ <Input
+ value={justificatif}
+ onChange={(e) => setJustificatif(e.target.value)}
+ placeholder="Référence ou numéro de justificatif..."
+ />
+ </div>
+ </div>
+ )}
+
+ {/* Step 2: Select Students */}
+ {step === 2 && (
+ <div className="space-y-4">
+ <div className="flex items-center justify-between">
+ <Label className="text-sm font-semibold">
+ Étudiants concernés <span className="text-destructive">*</span>
+ </Label>
+ <Badge variant="outline" className="gap-1 bg-warning/10 text-warning border-warning/30">
+ <Users className="h-3 w-3" /> {selectedStudents.size} sélectionné{selectedStudents.size > 1 ?'s' :''}
+ </Badge>
+ </div>
+
+ {/* UX-IMPROVE : barre de recherche dans la liste étudiants */}
+ <div className="relative">
+ <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
+ <Input
+ value={studentsSearch}
+ onChange={(e) => setStudentsSearch(e.target.value)}
+ placeholder="Rechercher par nom, email ou matricule..."
+ className="pl-8 h-9"
+ />
+ </div>
+
+ {/* UX-IMPROVE : affiche TOUS les étudiants inscrits à la filière+niveau,
+     pas seulement ceux avec session existante. */}
+ {allStudents.length === 0 ? (
+ <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-8">
+ <Users className="h-8 w-8 text-muted-foreground/40" />
+ <p className="mt-2 text-sm text-muted-foreground">Aucun étudiant inscrit dans cette filière/niveau.</p>
+ </div>
+ ) : (
+ <>
+ {/* Bouton tout sélectionner/désélectionner */}
+ <div className="flex items-center justify-between">
+ <p className="text-xs text-muted-foreground">{allStudents.length} étudiant{allStudents.length > 1 ?'s' :''} inscrit{allStudents.length > 1 ?'s' :''}</p>
+ <Button
+ variant="ghost"
+ size="sm"
+ className="h-7 text-xs"
+ onClick={() => toggleAllStudents(allStudents.map(s => s.id))}
+ >
+ {allStudents.every(s => selectedStudents.has(s.id)) ? 'Tout désélectionner' : 'Tout sélectionner'}
+ </Button>
+ </div>
+ <ScrollArea className="max-h-80">
+ <div className="space-y-1">
+ {allStudents
+ .filter(s => !studentsSearch ||
+ s.name?.toLowerCase().includes(studentsSearch.toLowerCase()) ||
+ s.email?.toLowerCase().includes(studentsSearch.toLowerCase()) ||
+ s.matricule?.toLowerCase().includes(studentsSearch.toLowerCase()))
+ .map((student) => {
+ // Vérifier si l'étudiant a déjà une session et son statut
+ const existingSession = (epreuve?.sessions ?? []).find(s => s.etudiantId === student.id)
+ const isSelected = selectedStudents.has(student.id)
+ return (
+ <div
+ key={student.id}
+ className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors cursor-pointer ${isSelected ?'border-warning/40 bg-warning/50' :'hover:bg-muted/30'}`}
+ onClick={() => toggleStudent(student.id)}
+ >
+ <Checkbox
+ checked={isSelected}
+ onCheckedChange={() => toggleStudent(student.id)}
+ onClick={(e) => e.stopPropagation()}
+ />
+ <div className="min-w-0 flex-1">
+ <p className="text-sm font-medium truncate">{student.name}</p>
+ <p className="text-xs text-muted-foreground truncate">{student.email}{student.matricule ? ` · ${student.matricule}` : ''}</p>
+ </div>
+ {/* Afficher le statut de session existante si présent */}
+ {existingSession && (
+ <Badge variant="outline" className={`text-[9px] gap-0.5 py-0 ${statusColors[existingSession.statut] ||''}`}>
+ {statusLabels[existingSession.statut] || existingSession.statut}
+ </Badge>
+ )}
+ {existingSession?.score !== null && existingSession?.score !== undefined && (
+ <span className="text-xs text-muted-foreground font-mono">{existingSession.score}/{epreuve?.noteTotal || 20}</span>
+ )}
+ </div>
+ )
+ })}
+ </div>
+ </ScrollArea>
+ </>
+ )}
+ </div>
+ )}
+
+ {/* Step 3: Configure Epreuve Parameters */}
+ {step === 3 && (
+ <div className="space-y-5">
+ {/* Complete vs Partial */}
+ <div className="space-y-3">
+ <Label className="text-sm font-semibold">Portée de la session</Label>
+ <div className="grid grid-cols-2 gap-2">
+ <button
+ type="button"
+ onClick={() => setEstPartielle(false)}
+ className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-all ${!estPartielle ?'border-success/50 ring-2 ring-success/30 bg-success/50' :'hover:border-success/30'}`}
+ >
+ <BookOpen className={`h-5 w-5 ${!estPartielle ?'text-success-text' :'text-muted-foreground'}`} />
+ <span className={`text-sm font-medium ${!estPartielle ?'text-success-text' :''}`}>Épreuve complète</span>
+ <span className="text-[10px] text-muted-foreground">Relancer l&apos;épreuve complète</span>
+ </button>
+ <button
+ type="button"
+ onClick={() => setEstPartielle(true)}
+ className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-all ${estPartielle ?'border-warning/50 ring-2 ring-warning/30 bg-warning/50' :'hover:border-warning/30'}`}
+ >
+ <Layers className={`h-5 w-5 ${estPartielle ?'text-warning' :'text-muted-foreground'}`} />
+ <span className={`text-sm font-medium ${estPartielle ?'text-warning' :''}`}>Partie seulement</span>
+ <span className="text-[10px] text-muted-foreground">Sélectionner des questions</span>
+ </button>
+ </div>
+ </div>
+
+ {/* Question selection for partial */}
+ {estPartielle && (
+ <QuestionSelector
+ questions={questions}
+ selectedQuestions={selectedQuestions}
+ onToggleQuestion={toggleQuestion}
+ onToggleAllForType={(type, ids) => {
+ setSelectedQuestions((prev) => {
+ const next = new Set(prev)
+ const allSelected = ids.every((id) => next.has(id))
+ if (allSelected) {
+ ids.forEach((id) => next.delete(id))
+ } else {
+ ids.forEach((id) => next.add(id))
+ }
+ return next
+ })
+ }}
+ />
+ )}
+
+ {/* Title override */}
+ <div className="space-y-2">
+ <div className="flex items-center gap-2">
+ <Checkbox
+ checked={titreOverride}
+ onCheckedChange={(checked) => setTitreOverride(checked === true)}
+ />
+ <Label className="text-sm">Personnaliser le titre</Label>
+ </div>
+ {titreOverride && (
+ <Input value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Titre de la session spéciale..." />
+ )}
+ </div>
+
+ {/* Date & Duration */}
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div className="space-y-2">
+ <Label className="text-sm font-medium flex items-center gap-1.5">
+ <Calendar className="h-3.5 w-3.5 text-success-text" /> Date début <span className="text-destructive">*</span>
+ </Label>
+ <Input type="datetime-local" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+ </div>
+ <div className="space-y-2">
+ <Label className="text-sm font-medium flex items-center gap-1.5">
+ <Calendar className="h-3.5 w-3.5 text-destructive" /> Date fin <span className="text-destructive">*</span>
+ </Label>
+ <Input type="datetime-local" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+ </div>
+ </div>
+
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div className="space-y-2">
+ <Label className="text-sm font-medium flex items-center gap-1.5">
+ <Clock className="h-3.5 w-3.5 text-info" /> Durée (min)
+ </Label>
+ <Input type="number" value={duree} onChange={(e) => setDuree(Number(e.target.value))} min={1} />
+ </div>
+ <div className="space-y-2">
+ <Label className="text-sm font-medium flex items-center gap-1.5">
+ <Clock className="h-3.5 w-3.5 text-warning" /> Délai de grâce (min)
+ </Label>
+ <Input type="number" value={delaiGrace} onChange={(e) => setDelaiGrace(Number(e.target.value))} min={0} />
+ </div>
+ </div>
+
+ {/* Options */}
+ <div className="space-y-2.5">
+ <Label className="text-sm font-semibold">Options</Label>
+ <div className="space-y-2">
+ <div className="flex items-center gap-2">
+ <Checkbox id="ss-melange-q" checked={melangeQuestions} onCheckedChange={(c) => setMelangeQuestions(c === true)} />
+ <Label htmlFor="ss-melange-q" className="text-sm font-normal cursor-pointer">Mélanger les questions</Label>
+ </div>
+ <div className="flex items-center gap-2">
+ <Checkbox id="ss-melange-p" checked={melangePropositions} onCheckedChange={(c) => setMelangePropositions(c === true)} />
+ <Label htmlFor="ss-melange-p" className="text-sm font-normal cursor-pointer">Mélanger les propositions</Label>
+ </div>
+ <div className="flex items-center gap-2">
+ <Checkbox id="ss-blocage" checked={blocageRetour} onCheckedChange={(c) => setBlocageRetour(c === true)} />
+ <Label htmlFor="ss-blocage" className="text-sm font-normal cursor-pointer">Bloquer le retour en arrière</Label>
+ </div>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* Step 4: Review & Create */}
+ {step === 4 && epreuve && (
+ <div className="space-y-4">
+ <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+ {/* Type & Motif */}
+ <div>
+ <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Type & Motif</p>
+ <div className="mt-1.5 flex items-center gap-2">
+ <Badge variant="outline" className={TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.color ||''}>
+ {TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type}
+ </Badge>
+ </div>
+ <p className="mt-1 text-sm">{motif}</p>
+ {justificatif && (
+ <p className="mt-1 text-xs text-muted-foreground">Justificatif : {justificatif}</p>
+ )}
+ </div>
+
+ <Separator />
+
+ {/* Students */}
+ <div>
+ <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Étudiants</p>
+ <p className="mt-1 text-sm font-medium">{selectedStudents.size} étudiant{selectedStudents.size > 1 ?'s' :''} sélectionné{selectedStudents.size > 1 ?'s' :''}</p>
+ <div className="mt-1.5 flex flex-wrap gap-1">
+ {(epreuve.sessions ?? [])
+ .filter((s) => selectedStudents.has(s.etudiantId))
+ .slice(0, 8)
+ .map((s) => (
+ <Badge key={s.etudiantId} variant="secondary" className="text-[10px]">
+ {s.etudiant?.name || s.etudiantId}
+ </Badge>
+ ))
+ }
+ {selectedStudents.size > 8 && (
+ <Badge variant="secondary" className="text-[10px]">+{selectedStudents.size - 8} autres</Badge>
+ )}
+ </div>
+ </div>
+
+ <Separator />
+
+ {/* Parameters */}
+ <div>
+ <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Paramètres</p>
+ <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+ <div className="text-muted-foreground">Portée</div>
+ <div className="font-medium">{estPartielle ?`Partielle (${selectedQuestions.size} question${selectedQuestions.size > 1 ?'s' :''})` :'Complète'}</div>
+ <div className="text-muted-foreground">Date début</div>
+ <div className="font-medium">{dateDebut ? formatDateTime(dateDebut) :'—'}</div>
+ <div className="text-muted-foreground">Date fin</div>
+ <div className="font-medium">{dateFin ? formatDateTime(dateFin) :'—'}</div>
+ <div className="text-muted-foreground">Durée</div>
+ <div className="font-medium">{duree} min</div>
+ {delaiGrace > 0 && (
+ <>
+ <div className="text-muted-foreground">Délai de grâce</div>
+ <div className="font-medium">{delaiGrace} min</div>
+ </>
+ )}
+ </div>
+ {(melangeQuestions || melangePropositions || blocageRetour) && (
+ <div className="mt-2 flex flex-wrap gap-1.5">
+ {melangeQuestions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Questions mélangées</Badge>}
+ {melangePropositions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Props mélangées</Badge>}
+ {blocageRetour && <Badge variant="outline" className="text-[10px] gap-0.5 py-0 text-destructive"><Ban className="h-2.5 w-2.5" /> Retour bloqué</Badge>}
+ </div>
+ )}
+ </div>
+
+ {titreOverride && titre !== epreuve.titre && (
+ <>
+ <Separator />
+ <div>
+ <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Titre personnalisé</p>
+ <p className="mt-1 text-sm font-medium">{titre}</p>
+ </div>
+ </>
+ )}
+ </div>
+ </div>
+ )}
+ </div>
+
+ <DialogFooter className="flex items-center justify-between gap-2 mt-2">
+ <div className="flex gap-2">
+ {step > 1 && (
+ <Button variant="outline" onClick={() => setStep(step - 1)}>
+ Précédent
+ </Button>
+ )}
+ </div>
+ <div className="flex gap-2">
+ <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+ {step < 4 ? (
+ <Button
+ className="bg-warning/60 hover:bg-warning/70"
+ disabled={!canGoNext()}
+ onClick={() => setStep(step + 1)}
+ >
+ Suivant
+ </Button>
+ ) : (
+ <Button
+ className="bg-warning/60 hover:bg-warning/70"
+ disabled={!canGoNext() || isCreating}
+ onClick={handleCreate}
+ >
+ {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+ Créer la session
+ </Button>
+ )}
+ </div>
+ </DialogFooter>
+ </DialogContent>
+ </Dialog>
+ )
+}
