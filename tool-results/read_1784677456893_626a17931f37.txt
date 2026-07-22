@@ -1,0 +1,936 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback, useMemo } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { motion } from 'framer-motion'
+     6→import {
+     7→  Shield, ShieldAlert, Eye, AlertTriangle, Camera, Monitor, Clock,
+     8→  User, Mail, ChevronDown, ChevronRight, Loader2, Search, ImageOff,
+     9→  X, FileText, Activity, RefreshCw, Download, Flag, Zap, TrendingUp,
+    10→  Users, Bell, CheckCircle2, Radio, BarChart3, Flame, ScanEye,
+    11→} from 'lucide-react'
+    12→import {
+    13→  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
+    14→  Tooltip as RechartsTooltip, CartesianGrid, AreaChart, Area,
+    15→} from 'recharts'
+    16→import { useAuthStore } from '@/stores/auth-store'
+    17→import { Button } from '@/components/ui/button'
+    18→import { Badge } from '@/components/ui/badge'
+    19→import { Input } from '@/components/ui/input'
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select'
+    23→import { ScrollArea } from '@/components/ui/scroll-area'
+    24→import {
+    25→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    26→} from '@/components/ui/dialog'
+    27→import {
+    28→  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+    29→} from '@/components/ui/sheet'
+    30→import {
+    31→  Tabs, TabsList, TabsTrigger, TabsContent,
+    32→} from '@/components/ui/tabs'
+    33→import { Card, CardContent } from '@/components/ui/card'
+    34→import { PulseSkeleton, StatCard } from '@/components/ds'
+    35→import { toast } from 'sonner'
+    36→import {
+    37→  type SurveillanceSession, type EpreuveOption, type SurveillanceStats,
+    38→  type LogEvent, type SeverityLevel, type SessionCapture,
+    39→  getEventTypeLabel, getSeverityLevel, EVENT_LABELS,
+    40→} from '@/lib/surveillance-types'
+    41→import { useSurveillanceWS } from '@/hooks/use-surveillance-ws'
+    42→
+    43→// ─── Local alerte type ───
+    44→interface AlerteItem {
+    45→  id: string
+    46→  titre: string
+    47→  description: string
+    48→  severity: 'CRITICAL' | 'WARNING' | 'INFO'
+    49→  type: 'PERFORMANCE' | 'FRAUDE' | 'SYSTEME' | 'RAPPEL' | 'CUSTOM'
+    50→  lue: boolean
+    51→  resolu: boolean
+    52→  createdAt: string
+    53→  filiere: { id: string; nom: string } | null
+    54→  epreuve: { id: string; titre: string } | null
+    55→  user: { id: string; name: string; email: string } | null
+    56→}
+    57→
+    58→// ─── Utility functions ───
+    59→
+    60→function formatDateTime(date: string | Date | null): string {
+    61→  if (!date) return '—'
+    62→  const d = typeof date === 'string' ? new Date(date) : date
+    63→  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    64→}
+    65→
+    66→function formatRelativeDate(dateStr: string): string {
+    67→  const date = new Date(dateStr)
+    68→  const now = new Date()
+    69→  const diffMs = now.getTime() - date.getTime()
+    70→  const diffMin = Math.floor(diffMs / 60000)
+    71→  const diffH = Math.floor(diffMin / 60)
+    72→  const diffD = Math.floor(diffH / 24)
+    73→  if (diffMin < 1) return "À l'instant"
+    74→  if (diffMin < 60) return `Il y a ${diffMin} min`
+    75→  if (diffH < 24) return `Il y a ${diffH}h`
+    76→  if (diffD < 7) return `Il y a ${diffD}j`
+    77→  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+    78→}
+    79→
+    80→function formatTime(date: string): string {
+    81→  return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    82→}
+    83→
+    84→function getEventTypeIcon(type: string) {
+    85→  const icons: Record<string, React.ReactNode> = {
+    86→    FULLSCREEN_EXIT: <Monitor className="h-3.5 w-3.5" />,
+    87→    TAB_SWITCH: <ScanEye className="h-3.5 w-3.5" />,
+    88→    COPY_ATTEMPT: <FileText className="h-3.5 w-3.5" />,
+    89→    PASTE_ATTEMPT: <FileText className="h-3.5 w-3.5" />,
+    90→    DEVTOOLS_ATTEMPT: <Activity className="h-3.5 w-3.5" />,
+    91→    PRINTSCREEN_ATTEMPT: <Camera className="h-3.5 w-3.5" />,
+    92→    PRINT_ATTEMPT: <FileText className="h-3.5 w-3.5" />,
+    93→    ALT_TAB: <ScanEye className="h-3.5 w-3.5" />,
+    94→    INACTIVITY: <Clock className="h-3.5 w-3.5" />,
+    95→    SCREEN_CAPTURE: <Camera className="h-3.5 w-3.5" />,
+    96→    AUTO_SUBMIT: <CheckCircle2 className="h-3.5 w-3.5" />,
+    97→    MANUAL_SUBMIT: <CheckCircle2 className="h-3.5 w-3.5" />,
+    98→    FORCE_SUBMIT: <AlertTriangle className="h-3.5 w-3.5" />,
+    99→  }
+   100→  return icons[type] || <Bell className="h-3.5 w-3.5" />
+   101→}
+   102→
+   103→function severityClasses(sev: SeverityLevel): string {
+   104→  switch (sev) {
+   105→    case 'high': return 'bg-destructive/15 text-destructive'
+   106→    case 'medium': return 'bg-warning/15 text-warning'
+   107→    case 'low': return 'bg-info/15 text-info'
+   108→    default: return 'bg-muted text-muted-foreground'
+   109→  }
+   110→}
+   111→
+   112→function severityLabel(sev: SeverityLevel): string {
+   113→  return { high: 'Critique', medium: 'Important', low: 'Mineur', info: 'Info' }[sev]
+   114→}
+   115→
+   116→function getStatutLabel(statut: string): string {
+   117→  const labels: Record<string, string> = {
+   118→    NON_COMMENCEE: 'Non commencée', EN_COURS: 'En cours', SOUMISE: 'Soumise',
+   119→    CORRIGEE: 'Corrigée', RETOURNEE: 'Rendue', ABSENT: 'Absent', NON_SOUMIS: 'Non soumis',
+   120→  }
+   121→  return labels[statut] || statut
+   122→}
+   123→
+   124→function getStatutClasses(statut: string): string {
+   125→  const cls: Record<string, string> = {
+   126→    EN_COURS: 'border-success/30 bg-success/10 text-success-text',
+   127→    SOUMISE: 'border-info/30 bg-info/10 text-info',
+   128→    CORRIGEE: 'border-primary/30 bg-primary/10 text-primary-text',
+   129→    RETOURNEE: 'border-primary/30 bg-primary/10 text-primary-text',
+   130→    ABSENT: 'border-destructive/30 bg-destructive/10 text-destructive',
+   131→    NON_SOUMIS: 'border-warning/30 bg-warning/10 text-warning',
+   132→    NON_COMMENCEE: 'border-border bg-muted text-muted-foreground',
+   133→  }
+   134→  return cls[statut] || 'border-border bg-muted text-muted-foreground'
+   135→}
+   136→
+   137→function riskLevelClasses(level: string): { bg: string; text: string; label: string; border: string } {
+   138→  switch (level) {
+   139→    case 'critical': return { bg: 'bg-destructive', text: 'text-destructive', label: 'Critique', border: 'border-l-destructive' }
+   140→    case 'high': return { bg: 'bg-warning', text: 'text-warning', label: 'Élevé', border: 'border-l-warning' }
+   141→    case 'moderate': return { bg: 'bg-info', text: 'text-info', label: 'Modéré', border: 'border-l-info' }
+   142→    default: return { bg: 'bg-success', text: 'text-success-text', label: 'Sûr', border: 'border-l-success' }
+   143→  }
+   144→}
+   145→
+   146→function useDebounce<T>(value: T, delay = 350): T {
+   147→  const [debounced, setDebounced] = useState(value)
+   148→  useEffect(() => {
+   149→    const t = setTimeout(() => setDebounced(value), delay)
+   150→    return () => clearTimeout(t)
+   151→  }, [value, delay])
+   152→  return debounced
+   153→}
+   154→
+   155→// ════════════════════════════════════════════════════════════════
+   156→// COMPOSANT PRINCIPAL
+   157→// ════════════════════════════════════════════════════════════════
+   158→
+   159→export function SurveillancePage() {
+   160→  const { user } = useAuthStore()
+   161→  const queryClient = useQueryClient()
+   162→  const [alertes, setAlertes] = useState<AlerteItem[]>([])
+   163→  const [isLive, setIsLive] = useState(true)
+   164→  // UX-IMPROVE : epreuveId démarre à '' (vide) au lieu de 'all'. Les données
+   165→  // de surveillance ne s'affichent qu'après que l'utilisateur sélectionne une
+   166→  // épreuve ET une date. Avant, toutes les sessions étaient chargées d'un coup
+   167→  // (jusqu'à 200) → scroll infini sur la page.
+   168→  const [epreuveId, setEpreuveId] = useState('')
+   169→  const [selectedDate, setSelectedDate] = useState('')
+   170→  const [severity, setSeverity] = useState('all')
+   171→  const [typeFilter, setTypeFilter] = useState('all')
+   172→  const [searchInput, setSearchInput] = useState('')
+   173→  const debouncedSearch = useDebounce(searchInput)
+   174→  const [activeTab, setActiveTab] = useState<'sessions' | 'analysis' | 'alertes'>('sessions')
+   175→  const [expandedSession, setExpandedSession] = useState<string | null>(null)
+   176→  const [detailSession, setDetailSession] = useState<SurveillanceSession | null>(null)
+   177→  const [screenshotViewer, setScreenshotViewer] = useState<{ events: LogEvent[]; index: number } | null>(null)
+   178→  const [flagging, setFlagging] = useState<string | null>(null)
+   179→  const [capturesViewer, setCapturesViewer] = useState<{ sessionId: string; captures: SessionCapture[]; index: number } | null>(null)
+   180→  const [capturesLoading, setCapturesLoading] = useState(false)
+   181→
+   182→  // ═══════════════════════════════════════════════════════════════
+   183→  // OPT-7 : WebSocket temps réel pour surveillance.
+   184→  // Quand le WS est connecté, le polling est désactivé.
+   185→  // Quand il est déconnecté, on retombe sur le polling 30s (fallback).
+   186→  // ═══════════════════════════════════════════════════════════════
+   187→  const { connectionStatus } = useSurveillanceWS({
+   188→    epreuveIds: epreuveId && epreuveId !== 'all' ? [epreuveId] : [],
+   189→    enabled: isLive && !!user?.id,
+   190→    userId: user?.id,
+   191→  })
+   192→  const isWSConnected = connectionStatus === 'connected'
+   193→
+   194→  // ═══════════════════════════════════════════════════════════════
+   195→  // DATA FETCHING (BUGFIX QUERY-MIGRATION-1 : TanStack Query)
+   196→  // ═══════════════════════════════════════════════════════════════
+   197→  //
+   198→  // NOTE : le queryKey inclut les filtres (epreuveId, severity, typeFilter,
+   199→  // debouncedSearch) car l'API /api/surveillance les prend en query params
+   200→  // (comme les deps du useCallback original). Quand un filtre change, la
+   201→  // query est recréée et refetch automatiquement.
+   202→  //
+   203→  // Polling : refetchInterval: isLive ? 30000 : false. Préserve le bouton
+   204→  // Pause/Live — si isLive est false, aucun refetch. refetchIntervalInBackground:
+   205→  // false arrête le polling si l'onglet est caché (économie réseau).
+   206→  // UX-IMPROVE : la query n'est enabled que si epreuveId ET selectedDate sont
+   207→  // renseignés. Avant, la query se lançait immédiatement avec epreuveId='all'
+   208→  // → toutes les sessions chargées d'un coup.
+   209→  const sessionsQuery = useQuery<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>({
+   210→    queryKey: ['surveillance-sessions', user?.id, epreuveId, selectedDate, severity, typeFilter, debouncedSearch],
+   211→    queryFn: async () => {
+   212→      const params = new URLSearchParams()
+   213→      if (epreuveId) params.set('epreuveId', epreuveId)
+   214→      // UX-IMPROVE : envoyer la date sélectionnée comme plage de 24h.
+   215→      // dateDebut = date 00:00, dateFin = date 23:59:59.
+   216→      if (selectedDate) {
+   217→        params.set('dateDebut', `${selectedDate}T00:00:00Z`)
+   218→        params.set('dateFin', `${selectedDate}T23:59:59Z`)
+   219→      }
+   220→      if (severity !== 'all') params.set('severity', severity)
+   221→      if (typeFilter !== 'all') params.set('type', typeFilter)
+   222→      if (debouncedSearch) params.set('search', debouncedSearch)
+   223→      const res = await fetch(`/api/surveillance?${params.toString()}`)
+   224→      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+   225→      return res.json()
+   226→    },
+   227→    // UX-IMPROVE : enabled seulement si epreuve ET date sont sélectionnés.
+   228→    enabled: !!user?.id && !!epreuveId && !!selectedDate,
+   229→    staleTime: 5 * 1000, // 5s : la surveillance est temps-réel, on accepte un refetch rapide au retour
+   230→    refetchOnWindowFocus: false,
+   231→    refetchInterval: isWSConnected ? false : (isLive ? 30000 : false),
+   232→    refetchIntervalInBackground: false,
+   233→  })
+   234→
+   235→  const sessions = sessionsQuery.data?.sessions ?? []
+   236→  const loading = sessionsQuery.isLoading
+   237→  const error = sessionsQuery.error
+   238→    ? 'Impossible de charger les données de surveillance.'
+   239→    : null
+   240→  // dataUpdatedAt est mis à jour à chaque fetch réussi (initial + polling).
+   241→  const lastRefresh = sessionsQuery.dataUpdatedAt > 0 ? new Date(sessionsQuery.dataUpdatedAt) : null
+   242→
+   243→  // UX-IMPROVE : query séparée pour les options d'épreuves (dropdown). Toujours
+   244→  // enabled (pas besoin de filtres). Utilise optionsOnly=true pour ne pas
+   245→  // fetcher les sessions.
+   246→  const epreuvesQuery = useQuery<{ epreuves: EpreuveOption[] }>({
+   247→    queryKey: ['surveillance-epreuves-options', user?.id],
+   248→    queryFn: async () => {
+   249→      const res = await fetch('/api/surveillance?optionsOnly=true')
+   250→      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+   251→      const data = await res.json()
+   252→      return { epreuves: data.epreuves ?? [] }
+   253→    },
+   254→    enabled: !!user?.id,
+   255→    staleTime: 60 * 1000, // 1min : les options d'épreuves changent rarement
+   256→    refetchOnWindowFocus: false,
+   257→  })
+   258→  const epreuves = epreuvesQuery.data?.epreuves ?? []
+   259→
+   260→  const statsQuery = useQuery<SurveillanceStats>({
+   261→    queryKey: ['surveillance-stats', user?.id],
+   262→    queryFn: async () => {
+   263→      const res = await fetch('/api/surveillance/stats')
+   264→      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+   265→      return res.json()
+   266→    },
+   267→    enabled: !!user?.id,
+   268→    staleTime: 5 * 1000,
+   269→    refetchOnWindowFocus: false,
+   270→    refetchInterval: isWSConnected ? false : (isLive ? 30000 : false),
+   271→    refetchIntervalInBackground: false,
+   272→  })
+   273→
+   274→  const stats = statsQuery.data ?? null
+   275→
+   276→  // Helpers pour invalider le cache après mutation (flag, refresh manuel).
+   277→  const refreshSessions = () =>
+   278→    queryClient.invalidateQueries({ queryKey: ['surveillance-sessions', user?.id] })
+   279→  const refreshStats = () =>
+   280→    queryClient.invalidateQueries({ queryKey: ['surveillance-stats', user?.id] })
+   281→
+   282→  // fetchAlertes conservé tel quel (useCallback + useEffect). Non concerné
+   283→  // par la migration QUERY-MIGRATION-1 (pas de polling, chargement one-shot).
+   284→  const fetchAlertes = useCallback(async () => {
+   285→    if (!user?.id) return
+   286→    try {
+   287→      const res = await fetch('/api/alertes?limit=50')
+   288→      if (!res.ok) return
+   289→      const data = await res.json()
+   290→      setAlertes(data.alertes || [])
+   291→    } catch (err) { console.error('Fetch alertes error:', err) }
+   292→  }, [user?.id])
+   293→
+   294→  useEffect(() => { fetchAlertes() }, [fetchAlertes])
+   295→
+   296→  const handleFlag = async (sessionId: string) => {
+   297→    setFlagging(sessionId)
+   298→    try {
+   299→      const res = await fetch(`/api/surveillance/${sessionId}/flag`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+   300→      const data = await res.json()
+   301→      if (!res.ok) {
+   302→        if (res.status === 409) toast.info('Cette session a déjà été signalée.')
+   303→        else throw new Error(data.error || 'Erreur')
+   304→      } else {
+   305→        toast.success('Session signalée — alerte fraude créée', { description: data.alerte?.titre })
+   306→        // BUGFIX (QUERY-MIGRATION-1) : optimist update via setQueryData sur
+   307→        // le cache TanStack Query. Équivalent fonctionnel du setSessions()
+   308→        // original — l'UI se met à jour instantanément sans attendre le
+   309→        // prochain polling. Si le queryKey actif n'est pas en cache (cas
+   310→        // rare), le callback reçoit undefined et on retourne undefined
+   311→        // (pas d'update, le prochain refetch corrigera).
+   312→        queryClient.setQueryData<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>(
+   313→          ['surveillance-sessions', user?.id, epreuveId, selectedDate, severity, typeFilter, debouncedSearch],
+   314→          (old) => old
+   315→            ? { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, flagged: true } : s)) }
+   316→            : old,
+   317→        )
+   318→        fetchAlertes()
+   319→      }
+   320→    } catch (err) { console.error('Flag error:', err); toast.error('Impossible de signaler la session') }
+   321→    finally { setFlagging(null) }
+   322→  }
+   323→
+   324→  const handleAlerteAction = async (alerteId: string, action: 'marquer_lue' | 'resoudre') => {
+   325→    try {
+   326→      const res = await fetch(`/api/alertes/${alerteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
+   327→      if (!res.ok) throw new Error('Erreur')
+   328→      const data = await res.json()
+   329→      setAlertes((prev) => prev.map((a) => (a.id === alerteId ? data.alerte : a)))
+   330→      toast.success(action === 'resoudre' ? 'Alerte résolue' : 'Alerte marquée comme lue')
+   331→    } catch (err) { console.error('Alerte action error:', err); toast.error('Action impossible') }
+   332→  }
+   333→
+   334→  const handleExportCSV = () => {
+   335→    const rows: string[] = [['Étudiant', 'Email', 'Épreuve', 'Statut', 'Alertes', 'Pénalité', 'Score risque', 'Niveau risque', 'Date début', 'Date fin'].join(';')]
+   336→    for (const s of sessions) {
+   337→      rows.push([(s.etudiant?.name ?? '—'), (s.etudiant?.email ?? ''), (s.epreuve?.titre ?? '—'), s.statut, s.alertes, s.totalPenalite, s.riskScore ?? 0, s.riskLevel ?? 'safe', s.dateDebut ? formatDateTime(s.dateDebut) : '', s.dateFin ? formatDateTime(s.dateFin) : ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+   338→    }
+   339→    const csv = '\ufeff' + rows.join('\n')
+   340→    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+   341→    const url = URL.createObjectURL(blob)
+   342→    const a = document.createElement('a')
+   343→    a.href = url; a.download = `surveillance_${new Date().toISOString().slice(0, 10)}.csv`; a.click()
+   344→    URL.revokeObjectURL(url)
+   345→    toast.success('Export CSV téléchargé')
+   346→  }
+   347→
+   348→  // ─── Load captures from R2 via /api/sessions/{id}/captures ───
+   349→  const handleViewCaptures = async (sessionId: string) => {
+   350→    setCapturesLoading(true)
+   351→    try {
+   352→      const res = await fetch(`/api/sessions/${sessionId}/captures`)
+   353→      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+   354→      const data = await res.json()
+   355→      const captures: SessionCapture[] = data.captures ?? []
+   356→      if (captures.length === 0) {
+   357→        toast.info('Aucune capture disponible pour cette session.')
+   358→        setCapturesLoading(false)
+   359→        return
+   360→      }
+   361→      setCapturesViewer({ sessionId, captures, index: 0 })
+   362→    } catch (err) {
+   363→      console.error('Captures fetch error:', err)
+   364→      toast.error('Impossible de charger les captures.')
+   365→    } finally {
+   366→      setCapturesLoading(false)
+   367→    }
+   368→  }
+   369→
+   370→  const derivedKpis = useMemo(() => {
+   371→    const activeSessions = sessions.filter((s) => s.statut === 'EN_COURS').length
+   372→    const totalAlerts = sessions.reduce((sum, s) => sum + s.alertes, 0)
+   373→    const totalPenalite = sessions.reduce((sum, s) => sum + s.totalPenalite, 0)
+   374→    const flagged = sessions.filter((s) => s.flagged).length
+   375→    return { activeSessions, totalAlerts, totalPenalite, flagged }
+   376→  }, [sessions])
+   377→
+   378→  const kpis = stats?.kpis ?? {
+   379→    totalSessions: sessions.length, activeSessions: derivedKpis.activeSessions,
+   380→    sessionsWithAlerts: sessions.filter((s) => s.alertes > 0).length, totalAlerts: derivedKpis.totalAlerts,
+   381→    totalPenalite: derivedKpis.totalPenalite, flaggedSessions: derivedKpis.flagged, screenshots: 0,
+   382→  }
+   383→  const alertesNonLues = alertes.filter((a) => !a.lue).length
+   384→
+   385→  return (
+   386→    <div className="space-y-6">
+   387→      {/* ─── Hero canonique ─── */}
+   388→      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   389→        <div className="flex items-start gap-3">
+   390→          <div className="relative">
+   391→            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 ds-logo-glow">
+   392→              <ShieldAlert className="h-6 w-6 text-primary-text" />
+   393→            </div>
+   394→            {isLive && (
+   395→              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
+   396→                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+   397→                <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-success border-2 border-background" />
+   398→              </span>
+   399→            )}
+   400→          </div>
+   401→          <div>
+   402→            <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">Surveillance &amp; Alertes</h1>
+   403→            <p className="mt-0.5 text-sm text-muted-foreground">Centre de contrôle anti-fraude en temps réel</p>
+   404→            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+   405→              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${isLive ? (isWSConnected ? 'bg-success/15 text-success-text' : 'bg-warning/15 text-warning') : 'bg-muted text-muted-foreground'}`}>
+   406→                <Radio className="h-3 w-3" />
+   407→                {isLive ? (isWSConnected ? 'Live WS' : 'Live (polling)') : 'Pause'}
+   408→                {isLive && isWSConnected && <span className="h-1.5 w-1.5 rounded-full bg-success" />}
+   409→                {isLive && !isWSConnected && connectionStatus === 'connecting' && <span className="h-1.5 w-1.5 rounded-full bg-warning animate-pulse" />}
+   410→              </span>
+   411→              {lastRefresh && <span className="text-muted-foreground">MAJ : {formatTime(lastRefresh.toISOString())}</span>}
+   412→              {alertesNonLues > 0 && (
+   413→                <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-destructive">
+   414→                  <Bell className="h-3 w-3" />
+   415→                  {alertesNonLues} alerte{alertesNonLues > 1 ? 's' : ''} non lue{alertesNonLues > 1 ? 's' : ''}
+   416→                </span>
+   417→              )}
+   418→            </div>
+   419→          </div>
+   420→        </div>
+   421→        <div className="flex flex-wrap items-center gap-2">
+   422→          <Button variant="outline" size="sm" onClick={() => setIsLive((v) => !v)} className="gap-1.5">
+   423→            {isLive ? <><span className="h-2 w-2 rounded-full bg-success animate-pulse" /> Live</> : <><span className="h-2 w-2 rounded-full bg-muted-foreground" /> Pause</>}
+   424→          </Button>
+   425→          <Button variant="outline" size="sm" onClick={() => { refreshSessions(); refreshStats(); fetchAlertes() }} className="gap-1.5">
+   426→            <RefreshCw className="h-3.5 w-3.5" /> Actualiser
+   427→          </Button>
+   428→          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={sessions.length === 0} className="gap-1.5">
+   429→            <Download className="h-3.5 w-3.5" /> Export CSV
+   430→          </Button>
+   431→        </div>
+   432→      </div>
+   433→
+   434→      {/* ─── KPI Grid ─── */}
+   435→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   436→        <StatCard icon={Monitor} label="Sessions actives" value={kpis.activeSessions} hint={`${kpis.totalSessions} au total`} accent="success" loading={loading} index={0} />
+   437→        <StatCard icon={AlertTriangle} label="Alertes fraude" value={kpis.totalAlerts} hint={`${kpis.sessionsWithAlerts} sessions concernées`} accent="warning" loading={loading} index={1} />
+   438→        <StatCard icon={Zap} label="Pénalités totales" value={kpis.totalPenalite} hint="points déduits" accent="secondary" loading={loading} index={2} />
+   439→        <StatCard icon={Flag} label="Sessions signalées" value={kpis.flaggedSessions} hint={`${kpis.screenshots} captures`} accent="danger" loading={loading} index={3} />
+   440→      </div>
+   441→
+   442→      {/* ─── Onglets ─── */}
+   443→      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'sessions' | 'analysis' | 'alertes')}>
+   444→        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
+   445→          <TabsTrigger value="sessions" className="gap-1.5">
+   446→            <Eye className="h-4 w-4" />
+   447→            <span className="hidden sm:inline">Sessions surveillées</span>
+   448→            <span className="sm:hidden">Sessions</span>
+   449→            {sessions.length > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center bg-primary/15 px-1 text-[10px] font-bold text-primary-text font-mono tabular-nums">{sessions.length}</Badge>}
+   450→          </TabsTrigger>
+   451→          <TabsTrigger value="analysis" className="gap-1.5">
+   452→            <BarChart3 className="h-4 w-4" />
+   453→            <span className="hidden sm:inline">Analyse fraude</span>
+   454→            <span className="sm:hidden">Analyse</span>
+   455→          </TabsTrigger>
+   456→          <TabsTrigger value="alertes" className="gap-1.5">
+   457→            <Bell className="h-4 w-4" />
+   458→            <span className="hidden sm:inline">Alertes système</span>
+   459→            <span className="sm:hidden">Alertes</span>
+   460→            {alertesNonLues > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center bg-destructive/15 px-1 text-[10px] font-bold text-destructive font-mono tabular-nums">{alertesNonLues}</Badge>}
+   461→          </TabsTrigger>
+   462→        </TabsList>
+   463→
+   464→        <TabsContent value="sessions" className="mt-5">
+   465→          <SessionsTab sessions={sessions} epreuves={epreuves} loading={loading} error={error}
+   466→            filters={{ epreuveId, setEpreuveId, selectedDate, setSelectedDate, severity, setSeverity, typeFilter, setTypeFilter, searchInput, setSearchInput }}
+   467→            expandedSession={expandedSession} setExpandedSession={setExpandedSession}
+   468→            onOpenDetail={setDetailSession} onFlag={handleFlag} flagging={flagging}
+   469→            onOpenScreenshot={(events, index) => setScreenshotViewer({ events, index })} />
+   470→        </TabsContent>
+   471→        <TabsContent value="analysis" className="mt-5"><AnalysisTab stats={stats} loading={loading} /></TabsContent>
+   472→        <TabsContent value="alertes" className="mt-5"><AlertesTab alertes={alertes} loading={loading} onAction={handleAlerteAction} /></TabsContent>
+   473→      </Tabs>
+   474→
+   475→      {/* ─── Panneau de détail (Sheet) ─── */}
+   476→      <DetailSheet session={detailSession} onClose={() => setDetailSession(null)} onFlag={handleFlag} flagging={flagging}
+   477→        onOpenScreenshot={(events, index) => setScreenshotViewer({ events, index })}
+   478→        onViewCaptures={handleViewCaptures} capturesLoading={capturesLoading} />
+   479→
+   480→      {/* ─── Visionneuse de captures (ancien logEvents) ─── */}
+   481→      {screenshotViewer && (
+   482→        <ScreenshotViewer events={screenshotViewer.events} index={screenshotViewer.index}
+   483→          onClose={() => setScreenshotViewer(null)}
+   484→          onIndexChange={(index) => setScreenshotViewer({ events: screenshotViewer.events, index })} />
+   485→      )}
+   486→
+   487→      {/* ─── Visionneuse de captures R2 ─── */}
+   488→      {capturesViewer && (
+   489→        <CapturesViewer
+   490→          captures={capturesViewer.captures}
+   491→          index={capturesViewer.index}
+   492→          onClose={() => setCapturesViewer(null)}
+   493→          onIndexChange={(i) => setCapturesViewer({ ...capturesViewer, index: i })}
+   494→        />
+   495→      )}
+   496→    </div>
+   497→  )
+   498→}
+   499→
+   500→// ════════════════════════════════════════════════════════════════
+   501→// SOUS-COMPOSANTS
+   502→// ════════════════════════════════════════════════════════════════
+   503→
+   504→// ─── Sessions Tab ───
+   505→function SessionsTab({ sessions, epreuves, loading, error, filters, expandedSession, setExpandedSession, onOpenDetail, onFlag, flagging, onOpenScreenshot }: {
+   506→  sessions: SurveillanceSession[]; epreuves: EpreuveOption[]; loading: boolean; error: string | null
+   507→  filters: { epreuveId: string; setEpreuveId: (v: string) => void; selectedDate: string; setSelectedDate: (v: string) => void; severity: string; setSeverity: (v: string) => void; typeFilter: string; setTypeFilter: (v: string) => void; searchInput: string; setSearchInput: (v: string) => void }
+   508→  expandedSession: string | null; setExpandedSession: (v: string | null) => void
+   509→  onOpenDetail: (s: SurveillanceSession) => void; onFlag: (id: string) => void; flagging: string | null
+   510→  onOpenScreenshot: (events: LogEvent[], index: number) => void
+   511→}) {
+   512→  // UX-IMPROVE : vérifier si les filtres obligatoires (épreuve + date) sont sélectionnés.
+   513→  const filtersReady = filters.epreuveId !== '' && filters.selectedDate !== ''
+   514→
+   515→  return (
+   516→    <div className="space-y-4">
+   517→      {/* Barre de filtres */}
+   518→      <Card><CardContent className="p-4">
+   519→        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+   520→          <div className="space-y-1.5">
+   521→            <label className="text-xs font-medium text-muted-foreground">Épreuve <span className="text-destructive">*</span></label>
+   522→            <Select value={filters.epreuveId} onValueChange={filters.setEpreuveId}>
+   523→              <SelectTrigger><SelectValue placeholder="Sélectionnez une épreuve" /></SelectTrigger>
+   524→              <SelectContent>{epreuves.map((ep) => (<SelectItem key={ep.id} value={ep.id}>{ep.titre} ({ep.totalAlerts} alertes)</SelectItem>))}</SelectContent>
+   525→            </Select>
+   526→          </div>
+   527→          <div className="space-y-1.5">
+   528→            <label className="text-xs font-medium text-muted-foreground">Date <span className="text-destructive">*</span></label>
+   529→            <Input
+   530→              type="date"
+   531→              value={filters.selectedDate}
+   532→              onChange={(e) => filters.setSelectedDate(e.target.value)}
+   533→              className="w-full"
+   534→            />
+   535→          </div>
+   536→          <div className="space-y-1.5">
+   537→            <label className="text-xs font-medium text-muted-foreground">Sévérité</label>
+   538→            <Select value={filters.severity} onValueChange={filters.setSeverity}>
+   539→              <SelectTrigger><SelectValue placeholder="Toutes sévérités" /></SelectTrigger>
+   540→              <SelectContent><SelectItem value="all">Toutes sévérités</SelectItem><SelectItem value="high">Critique</SelectItem><SelectItem value="medium">Important</SelectItem><SelectItem value="low">Mineur</SelectItem><SelectItem value="info">Info</SelectItem></SelectContent>
+   541→            </Select>
+   542→          </div>
+   543→          <div className="space-y-1.5">
+   544→            <label className="text-xs font-medium text-muted-foreground">Type d&apos;événement</label>
+   545→            <Select value={filters.typeFilter} onValueChange={filters.setTypeFilter}>
+   546→              <SelectTrigger><SelectValue placeholder="Tous les types" /></SelectTrigger>
+   547→              <SelectContent><SelectItem value="all">Tous les types</SelectItem>{Object.entries(EVENT_LABELS).map(([type, label]) => (<SelectItem key={type} value={type}>{label}</SelectItem>))}</SelectContent>
+   548→            </Select>
+   549→          </div>
+   550→          <div className="space-y-1.5">
+   551→            <label className="text-xs font-medium text-muted-foreground">Rechercher un étudiant</label>
+   552→            <div className="relative">
+   553→              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
+   554→              <Input value={filters.searchInput} onChange={(e) => filters.setSearchInput(e.target.value)} placeholder="Nom ou email..." className="pl-8" />
+   555→            </div>
+   556→          </div>
+   557→        </div>
+   558→      </CardContent></Card>
+   559→
+   560→      {/* UX-IMPROVE : prompt de sélection si filtres obligatoires manquants */}
+   561→      {!filtersReady ? (
+   562→        <Card className="border-dashed"><CardContent className="flex flex-col items-center justify-center py-16 text-center">
+   563→          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-info/10"><ScanEye className="h-10 w-10 text-info" /></div>
+   564→          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Sélectionnez une épreuve et une date</h3>
+   565→          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+   566→            Pour consulter les données de surveillance, choisissez d&apos;abord une épreuve et une date dans les filtres ci-dessus.
+   567→            Cela permet de cibler les sessions pertinentes et d&apos;éviter le chargement de toutes les sessions d&apos;un coup.
+   568→          </p>
+   569→        </CardContent></Card>
+   570→      ) : error ? (
+   571→        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>
+   572→      ) : loading ? (
+   573→        <div className="space-y-3">{[1, 2, 3].map((i) => <PulseSkeleton key={i} variant="card" className="h-32" />)}</div>
+   574→      ) : sessions.length === 0 ? (
+   575→        <Card className="border-dashed"><CardContent className="flex flex-col items-center justify-center py-16 text-center">
+   576→          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10"><Shield className="h-10 w-10 text-primary-text" /></div>
+   577→          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucune session à surveiller</h3>
+   578→          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Aucune session trouvée pour cette épreuve à la date sélectionnée.</p>
+   579→        </CardContent></Card>
+   580→      ) : (
+   581→        /* UX-IMPROVE : max-height + scroll au lieu de scroll infini sur la page.
+   582→           La liste fait au max calc(100vh - 400px) — le header + filtres + tabs
+   583→           prennent ~400px. Le scroll est interne à la liste, pas sur la page. */
+   584→        <div className="max-h-[calc(100vh-400px)] space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+   585→          {sessions.map((session, idx) => (
+   586→            <SessionCard key={session.id} session={session} expanded={expandedSession === session.id} onToggle={() => setExpandedSession(expandedSession === session.id ? null : session.id)} onOpenDetail={() => onOpenDetail(session)} onFlag={() => onFlag(session.id)} flagging={flagging === session.id} onOpenScreenshot={onOpenScreenshot} index={idx} />
+   587→          ))}
+   588→        </div>
+   589→      )}
+   590→    </div>
+   591→  )
+   592→}
+   593→
+   594→// ─── Session Card ───
+   595→function SessionCard({ session, expanded, onToggle, onOpenDetail, onFlag, flagging, onOpenScreenshot, index }: {
+   596→  session: SurveillanceSession; expanded: boolean; onToggle: () => void; onOpenDetail: () => void; onFlag: () => void; flagging: boolean
+   597→  onOpenScreenshot: (events: LogEvent[], index: number) => void; index: number
+   598→}) {
+   599→  const risk = riskLevelClasses(session.riskLevel ?? 'safe')
+   600→  const score = session.riskScore ?? 0
+   601→  const isLive = session.statut === 'EN_COURS'
+   602→  return (
+   603→    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.04, 0.4), duration: 0.25 }}>
+   604→      <div className={`overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm hover:shadow-md transition-all ds-lift ${risk.border} border-l-4`}>
+   605→        <div className="p-4">
+   606→          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+   607→            <div className="min-w-0 flex-1">
+   608→              <div className="flex flex-wrap items-center gap-2">
+   609→                <button onClick={onToggle} className="flex items-center gap-1.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={expanded}>
+   610→                  {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+   611→                </button>
+   612→                <h3 className="truncate font-display font-semibold tracking-tight">{(session.etudiant?.name ?? '—')}</h3>
+   613→                <Badge variant="outline" className={`text-xs ${getStatutClasses(session.statut)}`}>
+   614→                  {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-success animate-pulse" />}
+   615→                  {getStatutLabel(session.statut)}
+   616→                </Badge>
+   617→                {session.flagged && (<Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30"><Flag className="mr-1 h-3 w-3" />Signalée</Badge>)}
+   618→              </div>
+   619→              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+   620→                <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{(session.etudiant?.email ?? '')}</span>
+   621→                <span className="inline-flex items-center gap-1"><FileText className="h-3 w-3" />{(session.epreuve?.titre ?? '—')}</span>
+   622→                <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{session.dateDebut ? formatDateTime(session.dateDebut) : '—'}</span>
+   623→              </div>
+   624→            </div>
+   625→            <div className="flex items-center gap-4">
+   626→              <div className="flex items-center gap-3">
+   627→                <div className="text-center"><p className="text-xs text-muted-foreground">Alertes</p><p className="text-lg font-bold font-mono tabular-nums text-warning">{session.alertes}</p></div>
+   628→                <div className="text-center"><p className="text-xs text-muted-foreground">Pénalité</p><p className="text-lg font-bold font-mono tabular-nums text-secondary">{session.totalPenalite}</p></div>
+   629→              </div>
+   630→              <div className="w-28">
+   631→                <div className="mb-1 flex items-center justify-between text-xs"><span className="text-muted-foreground">Risque</span><span className={`font-bold font-mono tabular-nums ${risk.text}`}>{score}</span></div>
+   632→                <div className="relative h-2 overflow-hidden rounded-full bg-muted"><div className={`absolute inset-y-0 left-0 rounded-full ${risk.bg}`} style={{ width: `${score}%` }} /></div>
+   633→                <p className={`mt-0.5 text-center text-xs font-medium ${risk.text}`}>{risk.label}</p>
+   634→              </div>
+   635→            </div>
+   636→          </div>
+   637→          {expanded && (
+   638→            <div className="mt-4 space-y-3 border-t border-border/40 pt-4">
+   639→              <div className="flex flex-wrap items-center gap-2">
+   640→                {session.fraudEvents.length > 0 && (<Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30"><Flame className="mr-1 h-3 w-3" />{session.fraudEvents.length} fraude{session.fraudEvents.length > 1 ? 's' : ''}</Badge>)}
+   641→                {session.screenshotEvents.length > 0 && (<button onClick={() => onOpenScreenshot(session.screenshotEvents, 0)} className="inline-flex" aria-label="Voir les captures"><Badge variant="outline" className="text-xs bg-info/10 text-info border-info/30 hover:bg-info/20"><Camera className="mr-1 h-3 w-3" />{session.screenshotEvents.length} capture{session.screenshotEvents.length > 1 ? 's' : ''}</Badge></button>)}
+   642→                {session.submissionEvents.length > 0 && (<Badge variant="outline" className="text-xs bg-success/10 text-success-text border-success/30"><Activity className="mr-1 h-3 w-3" />{session.submissionEvents.length} soumission{session.submissionEvents.length > 1 ? 's' : ''}</Badge>)}
+   643→              </div>
+   644→              {session.logEvents.length > 0 ? (
+   645→                <div className="space-y-1.5">
+   646→                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Derniers événements</p>
+   647→                  <div className="max-h-48 space-y-1 overflow-y-auto scrollbar-thin pr-2">
+   648→                    {session.logEvents.slice(-8).reverse().map((evt, i) => {
+   649→                      const sev = getSeverityLevel(evt.type)
+   650→                      return (
+   651→                        <div key={i} className="flex items-center gap-2 rounded-md bg-muted/30 px-2 py-1.5 text-xs">
+   652→                          <span className={`inline-flex h-6 w-6 items-center justify-center rounded ${severityClasses(sev)}`}>{getEventTypeIcon(evt.type)}</span>
+   653→                          <span className="font-medium">{getEventTypeLabel(evt.type)}</span>
+   654→                          {evt.penalite ? <span className="text-secondary">-{evt.penalite} pts</span> : null}
+   655→                          <span className="ml-auto text-muted-foreground">{formatTime(evt.timestamp)}</span>
+   656→                        </div>
+   657→                      )
+   658→                    })}
+   659→                  </div>
+   660→                </div>
+   661→              ) : <p className="text-xs text-muted-foreground">Aucun événement enregistré.</p>}
+   662→              <div className="flex flex-wrap gap-2 pt-1">
+   663→                <Button size="sm" variant="outline" onClick={onOpenDetail} className="gap-1.5"><ScanEye className="h-3.5 w-3.5" /> Détails complets</Button>
+   664→                {!session.flagged && (<Button size="sm" variant="outline" onClick={onFlag} disabled={flagging} className="gap-1.5 text-destructive hover:bg-destructive/5 border-destructive/30"><Flag className="h-3.5 w-3.5" /> Signaler</Button>)}
+   665→              </div>
+   666→            </div>
+   667→          )}
+   668→        </div>
+   669→      </div>
+   670→    </motion.div>
+   671→  )
+   672→}
+   673→
+   674→// ─── Analysis Tab ───
+   675→function AnalysisTab({ stats, loading }: { stats: SurveillanceStats | null; loading: boolean }) {
+   676→  if (loading && !stats) return (<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{[1, 2, 3, 4].map((i) => <PulseSkeleton key={i} variant="card" className="h-64" />)}</div>)
+   677→  if (!stats || stats.kpis.totalSessions === 0) return (<Card className="border-dashed"><CardContent className="flex flex-col items-center justify-center py-16 text-center"><BarChart3 className="mb-3 h-12 w-12 text-muted-foreground/50" /><p className="text-muted-foreground">Pas encore assez de données pour l&apos;analyse.</p></CardContent></Card>)
+   678→  const maxFraud = Math.max(...stats.fraudByType.map((f) => f.count), 1)
+   679→  return (
+   680→    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   681→      <Card><CardContent className="p-5">
+   682→        <div className="mb-4 flex items-center gap-2"><Flame className="h-5 w-5 text-destructive" /><h3 className="font-display font-semibold tracking-tight">Répartition des fraudes</h3></div>
+   683→        {stats.fraudByType.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Aucune fraude détectée. 🎉</p> : (
+   684→          <div className="space-y-2.5">{stats.fraudByType.map((f, i) => (
+   685→            <div key={f.type}>
+   686→              <div className="mb-1 flex items-center justify-between text-xs"><span>{f.label}</span><span className="font-bold font-mono tabular-nums text-destructive">{f.count}</span></div>
+   687→              <div className="h-2.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-warning to-destructive" style={{ width: `${(f.count / maxFraud) * 100}%` }} /></div>
+   688→            </div>
+   689→          ))}</div>
+   690→        )}
+   691→      </CardContent></Card>
+   692→      <Card><CardContent className="p-5">
+   693→        <div className="mb-4 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary-text" /><h3 className="font-display font-semibold tracking-tight">Activité (7 jours)</h3></div>
+   694→        <ResponsiveContainer width="100%" height={200}>
+   695→          <AreaChart data={stats.timeline} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+   696→            <defs><linearGradient id="alertsGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#7ED321" stopOpacity={0.4} /><stop offset="95%" stopColor="#7ED321" stopOpacity={0} /></linearGradient></defs>
+   697→            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+   698→            <XAxis dataKey="date" tick={{ fill: 'rgba(100,116,139,0.6)', fontSize: 11 }} tickFormatter={(v) => { const d = new Date(v); return `${d.getDate()}/${d.getMonth() + 1}` }} />
+   699→            <YAxis tick={{ fill: 'rgba(100,116,139,0.6)', fontSize: 11 }} allowDecimals={false} />
+   700→            <RechartsTooltip contentStyle={{ background: 'rgba(255,255,255,0.95)', border: '1px solid rgba(0,0,0,0.1)', borderRadius: '8px', color: '#1e293b' }} labelFormatter={(v) => new Date(v).toLocaleDateString('fr-FR')} />
+   701→            <Area type="monotone" dataKey="alerts" name="Alertes" stroke="#7ED321" strokeWidth={2} fill="url(#alertsGrad)" />
+   702→          </AreaChart>
+   703→        </ResponsiveContainer>
+   704→      </CardContent></Card>
+   705→      <Card className="lg:col-span-2"><CardContent className="p-5">
+   706→        <div className="mb-4 flex items-center gap-2"><Users className="h-5 w-5 text-primary-text" /><h3 className="font-display font-semibold tracking-tight">Top étudiants par alertes</h3></div>
+   707→        {stats.topStudents.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Aucune alerte enregistrée.</p> : (
+   708→          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">{stats.topStudents.map((s, i) => (
+   709→            <div key={s.id} className="flex items-center gap-3 rounded-lg bg-muted/30 p-3">
+   710→              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold font-mono tabular-nums ${i === 0 ? 'bg-gold/20 text-gold' : i === 1 ? 'bg-muted text-muted-foreground' : 'bg-muted/50 text-muted-foreground/70'}`}>{i + 1}</div>
+   711→              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{s.name}</p><p className="truncate text-xs text-muted-foreground">{s.email}</p></div>
+   712→              <div className="text-right"><p className="text-sm font-bold font-mono tabular-nums text-destructive">{s.alertes}</p><p className="text-xs text-secondary">-{s.penalite} pts</p></div>
+   713→            </div>
+   714→          ))}</div>
+   715→        )}
+   716→      </CardContent></Card>
+   717→    </div>
+   718→  )
+   719→}
+   720→
+   721→// ─── Alertes Tab ───
+   722→function AlertesTab({ alertes, loading, onAction }: { alertes: AlerteItem[]; loading: boolean; onAction: (id: string, action: 'marquer_lue' | 'resoudre') => void }) {
+   723→  if (loading && alertes.length === 0) return (<div className="space-y-2">{[1, 2, 3].map((i) => <PulseSkeleton key={i} variant="card" className="h-20" />)}</div>)
+   724→  if (alertes.length === 0) return (<Card className="border-dashed"><CardContent className="flex flex-col items-center justify-center py-16 text-center"><CheckCircle2 className="mb-3 h-12 w-12 text-success-text/60" /><p className="text-muted-foreground">Aucune alerte système.</p></CardContent></Card>)
+   725→  const sevConfig = {
+   726→    CRITICAL: { icon: <AlertTriangle className="h-4 w-4" />, label: 'Critique', classes: 'border-destructive/30 bg-destructive/10 text-destructive' },
+   727→    WARNING: { icon: <AlertTriangle className="h-4 w-4" />, label: 'Attention', classes: 'border-warning/30 bg-warning/10 text-warning' },
+   728→    INFO: { icon: <Bell className="h-4 w-4" />, label: 'Info', classes: 'border-info/30 bg-info/10 text-info' },
+   729→  }
+   730→  return (
+   731→    <div className="space-y-2">{alertes.map((a, idx) => {
+   732→      const cfg = sevConfig[a.severity] ?? sevConfig.INFO
+   733→      return (
+   734→        <motion.div key={a.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(idx * 0.03, 0.3) }}
+   735→          className={`rounded-xl border border-border/60 bg-card p-4 shadow-sm ${!a.lue ? 'border-l-4 border-l-primary' : ''}`}>
+   736→          <div className="flex items-start gap-3">
+   737→            <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${cfg.classes}`}>{cfg.icon}</span>
+   738→            <div className="min-w-0 flex-1">
+   739→              <div className="flex flex-wrap items-center gap-2">
+   740→                <h4 className={`text-sm ${!a.lue ? 'font-bold' : 'font-medium text-muted-foreground'}`}>{a.titre}</h4>
+   741→                {!a.lue && <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
+   742→                {a.resolu && <Badge variant="outline" className="text-xs bg-success/10 text-success-text border-success/30"><CheckCircle2 className="mr-1 h-3 w-3" />Résolue</Badge>}
+   743→              </div>
+   744→              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.description}</p>
+   745→              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground/60">
+   746→                <span>{formatRelativeDate(a.createdAt)}</span>
+   747→                {a.epreuve && <span className="inline-flex items-center gap-1"><FileText className="h-3 w-3" />{a.epreuve.titre}</span>}
+   748→                {a.filiere && <span className="inline-flex items-center gap-1"><User className="h-3 w-3" />{a.filiere.nom}</span>}
+   749→              </div>
+   750→            </div>
+   751→            <div className="flex shrink-0 flex-col gap-1">
+   752→              {!a.lue && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => onAction(a.id, 'marquer_lue')}>Marquer lue</Button>}
+   753→              {!a.resolu && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-success-text hover:bg-success/10" onClick={() => onAction(a.id, 'resoudre')}>Résoudre</Button>}
+   754→            </div>
+   755→          </div>
+   756→        </motion.div>
+   757→      )
+   758→    })}</div>
+   759→  )
+   760→}
+   761→
+   762→// ─── Detail Sheet ───
+   763→function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot, onViewCaptures, capturesLoading }: {
+   764→  session: SurveillanceSession | null; onClose: () => void; onFlag: (id: string) => void; flagging: string | null
+   765→  onOpenScreenshot: (events: LogEvent[], index: number) => void
+   766→  onViewCaptures: (sessionId: string) => void; capturesLoading: boolean
+   767→}) {
+   768→  return (
+   769→    <Sheet open={!!session} onOpenChange={(v) => !v && onClose()}>
+   770→      <SheetContent className="w-full overflow-y-auto scrollbar-thin sm:max-w-2xl">
+   771→        {session && (<>
+   772→          <SheetHeader>
+   773→            <SheetTitle>Détails de surveillance</SheetTitle>
+   774→            <SheetDescription>{(session.etudiant?.name ?? '—')} — {(session.epreuve?.titre ?? '—')}</SheetDescription>
+   775→          </SheetHeader>
+   776→          <div className="mt-6 space-y-5">
+   777→            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+   778→              <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Alertes</p><p className="text-2xl font-bold font-mono tabular-nums text-warning">{session.alertes}</p></CardContent></Card>
+   779→              <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Pénalité</p><p className="text-2xl font-bold font-mono tabular-nums text-secondary">{session.totalPenalite}</p></CardContent></Card>
+   780→              <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Risque</p><p className={`text-2xl font-bold font-mono tabular-nums ${riskLevelClasses(session.riskLevel ?? 'safe').text}`}>{session.riskScore ?? 0}</p></CardContent></Card>
+   781→            </div>
+   782→            <Card><CardContent className="space-y-2 p-4 text-sm">
+   783→              <div className="flex justify-between"><span className="text-muted-foreground">Statut</span><Badge variant="outline" className={getStatutClasses(session.statut)}>{getStatutLabel(session.statut)}</Badge></div>
+   784→              <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span>{(session.etudiant?.email ?? '')}</span></div>
+   785→              <div className="flex justify-between"><span className="text-muted-foreground">Début</span><span>{formatDateTime(session.dateDebut)}</span></div>
+   786→              <div className="flex justify-between"><span className="text-muted-foreground">Fin</span><span>{formatDateTime(session.dateFin)}</span></div>
+   787→              {session.score !== null && <div className="flex justify-between"><span className="text-muted-foreground">Score</span><span className="font-bold text-success-text">{session.score}/20</span></div>}
+   788→            </CardContent></Card>
+   789→            {/* ─── Captures R2 (nouveau) ─── */}
+   790→            <div>
+   791→              <div className="mb-2 flex items-center justify-between">
+   792→                <h4 className="flex items-center gap-2 text-sm font-medium"><Camera className="h-4 w-4 text-info" />Captures d&apos;écran (R2)</h4>
+   793→                <Button size="sm" variant="outline" onClick={() => onViewCaptures(session.id)} disabled={capturesLoading} className="gap-1.5 text-xs">
+   794→                  {capturesLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+   795→                  Voir les captures
+   796→                </Button>
+   797→              </div>
+   798→              <p className="text-xs text-muted-foreground">Les captures sont stockées dans R2 et accessibles via des URL présignées.</p>
+   799→            </div>
+   800→            {session.screenshotEvents.length > 0 && (
+   801→              <div>
+   802→                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium"><Camera className="h-4 w-4 text-info" />Captures (logEvents) ({session.screenshotEvents.length})</h4>
+   803→                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+   804→                  {session.screenshotEvents.slice(0, 12).map((evt, i) => (
+   805→                    <button key={i} onClick={() => onOpenScreenshot(session.screenshotEvents, i)} className="group relative aspect-video overflow-hidden rounded-lg border border-border/60 bg-muted" aria-label={`Capture ${i + 1}`}>
+   806→                      {evt.thumbnail ? <img src={evt.thumbnail} alt={`Capture ${i + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <div className="flex h-full w-full items-center justify-center"><ImageOff className="h-6 w-6 text-muted-foreground/40" /></div>}
+   807→                      <span className="absolute bottom-1 right-1 rounded bg-background/80 px-1 text-xs">{formatTime(evt.timestamp)}</span>
+   808→                    </button>
+   809→                  ))}
+   810→                </div>
+   811→              </div>
+   812→            )}
+   813→            <div>
+   814→              <h4 className="mb-2 flex items-center gap-2 text-sm font-medium"><Activity className="h-4 w-4 text-primary-text" />Journal complet ({session.logEvents.length})</h4>
+   815→              <ScrollArea className="h-72 rounded-lg border border-border/40 bg-muted/20 p-2">
+   816→                <div className="space-y-1.5">
+   817→                  {[...session.logEvents].reverse().map((evt, i) => {
+   818→                    const sev = getSeverityLevel(evt.type)
+   819→                    return (
+   820→                      <div key={i} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-2 text-xs">
+   821→                        <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded ${severityClasses(sev)}`}>{getEventTypeIcon(evt.type)}</span>
+   822→                        <div className="min-w-0 flex-1">
+   823→                          <div className="flex items-center justify-between"><span className="font-medium">{getEventTypeLabel(evt.type)}</span><span className="text-muted-foreground">{formatTime(evt.timestamp)}</span></div>
+   824→                          {evt.details && <p className="mt-0.5 text-muted-foreground">{evt.details}</p>}
+   825→                          {evt.penalite ? <span className="mt-0.5 inline-block text-secondary">Pénalité : -{evt.penalite} pts</span> : null}
+   826→                        </div>
+   827→                      </div>
+   828→                    )
+   829→                  })}
+   830→                </div>
+   831→              </ScrollArea>
+   832→            </div>
+   833→            <div className="flex gap-2 pb-6">
+   834→              {!session.flagged && (<Button onClick={() => onFlag(session.id)} disabled={flagging === session.id} variant="outline" className="flex-1 gap-2 text-destructive hover:bg-destructive/5 border-destructive/30">{flagging === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}Signaler cette session</Button>)}
+   835→            </div>
+   836→          </div>
+   837→        </>)}
+   838→      </SheetContent>
+   839→    </Sheet>
+   840→  )
+   841→}
+   842→
+   843→// ─── Screenshot Viewer ───
+   844→function ScreenshotViewer({ events, index, onClose, onIndexChange }: {
+   845→  events: LogEvent[]; index: number; onClose: () => void; onIndexChange: (index: number) => void
+   846→}) {
+   847→  const current = events[index]
+   848→  if (!current) return null
+   849→  return (
+   850→    <Dialog open onOpenChange={(v) => !v && onClose()}>
+   851→      <DialogContent className="sm:max-w-4xl">
+   852→        <DialogHeader><DialogTitle className="flex items-center justify-between gap-2"><span>Capture {index + 1} / {events.length}</span><span className="text-xs font-normal text-muted-foreground">{current.timestamp && formatDateTime(current.timestamp)}</span></DialogTitle></DialogHeader>
+   853→        <div className="relative flex items-center justify-center">
+   854→          {current.thumbnail ? <img src={current.thumbnail} alt={`Capture ${index + 1}`} className="max-h-[60vh] w-auto rounded-lg border border-border/60" /> : <div className="flex h-64 w-full items-center justify-center rounded-lg border border-border/60 bg-muted"><ImageOff className="h-12 w-12 text-muted-foreground/40" /></div>}
+   855→          {events.length > 1 && (<>
+   856→            <Button size="icon" variant="outline" onClick={() => onIndexChange((index - 1 + events.length) % events.length)} className="absolute left-2" aria-label="Capture précédente"><ChevronRight className="h-4 w-4 rotate-180" /></Button>
+   857→            <Button size="icon" variant="outline" onClick={() => onIndexChange((index + 1) % events.length)} className="absolute right-2" aria-label="Capture suivante"><ChevronRight className="h-4 w-4" /></Button>
+   858→          </>)}
+   859→        </div>
+   860→      </DialogContent>
+   861→    </Dialog>
+   862→  )
+   863→}
+   864→
+   865→// ─── Captures Viewer (R2) ───
+   866→function CapturesViewer({ captures, index, onClose, onIndexChange }: {
+   867→  captures: SessionCapture[]; index: number; onClose: () => void; onIndexChange: (index: number) => void
+   868→}) {
+   869→  const current = captures[index]
+   870→  if (!current) return null
+   871→
+   872→  const formatFileSize = (bytes?: number) => {
+   873→    if (!bytes) return '—'
+   874→    if (bytes < 1024) return `${bytes} o`
+   875→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`
+   876→    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+   877→  }
+   878→
+   879→  return (
+   880→    <Dialog open onOpenChange={(v) => !v && onClose()}>
+   881→      <DialogContent className="sm:max-w-4xl">
+   882→        <DialogHeader>
+   883→          <DialogTitle className="flex items-center justify-between gap-2">
+   884→            <span>Capture #{current.captureIndex} — {index + 1} / {captures.length}</span>
+   885→            <span className="text-xs font-normal text-muted-foreground">
+   886→              {formatDateTime(current.createdAt)}
+   887→              {current.fileSize ? ` • ${formatFileSize(current.fileSize)}` : ''}
+   888→            </span>
+   889→          </DialogTitle>
+   890→        </DialogHeader>
+   891→        <div className="relative flex items-center justify-center">
+   892→          {current.url ? (
+   893→            <img
+   894→              src={current.url}
+   895→              alt={`Capture #${current.captureIndex}`}
+   896→              className="max-h-[60vh] w-auto rounded-lg border border-border/60"
+   897→            />
+   898→          ) : (
+   899→            <div className="flex h-64 w-full flex-col items-center justify-center rounded-lg border border-border/60 bg-muted">
+   900→              <ImageOff className="h-12 w-12 text-muted-foreground/40" />
+   901→              <p className="mt-2 text-xs text-muted-foreground">Image non disponible (R2 non configuré)</p>
+   902→            </div>
+   903→          )}
+   904→          {captures.length > 1 && (<>
+   905→            <Button size="icon" variant="outline" onClick={() => onIndexChange((index - 1 + captures.length) % captures.length)} className="absolute left-2" aria-label="Capture précédente"><ChevronRight className="h-4 w-4 rotate-180" /></Button>
+   906→            <Button size="icon" variant="outline" onClick={() => onIndexChange((index + 1) % captures.length)} className="absolute right-2" aria-label="Capture suivante"><ChevronRight className="h-4 w-4" /></Button>
+   907→          </>)}
+   908→        </div>
+   909→        {/* Thumbnails strip */}
+   910→        {captures.length > 1 && (
+   911→          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+   912→            {captures.map((c, i) => (
+   913→              <button
+   914→                key={c.id}
+   915→                onClick={() => onIndexChange(i)}
+   916→                className={`shrink-0 rounded-md border-2 transition-all ${
+   917→                  i === index ? 'border-primary ring-1 ring-primary/30' : 'border-border/60 opacity-60 hover:opacity-100'
+   918→                }`}
+   919→                aria-label={`Capture #${c.captureIndex}`}
+   920→              >
+   921→                {c.url ? (
+   922→                  <img src={c.url} alt={`Miniature #${c.captureIndex}`} className="h-12 w-20 rounded object-cover" />
+   923→                ) : (
+   924→                  <div className="flex h-12 w-20 items-center justify-center rounded bg-muted">
+   925→                    <Camera className="h-4 w-4 text-muted-foreground/40" />
+   926→                  </div>
+   927→                )}
+   928→              </button>
+   929→            ))}
+   930→          </div>
+   931→        )}
+   932→      </DialogContent>
+   933→    </Dialog>
+   934→  )
+   935→}
+   936→

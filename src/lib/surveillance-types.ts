@@ -123,6 +123,18 @@ export interface SurveillanceFilters {
   dateTo?: string
 }
 
+// ─── Capture d'écran (R2) ───
+
+export interface SessionCapture {
+  id: string
+  url?: string
+  r2Key?: string
+  imageHash?: string
+  fileSize?: number
+  captureIndex: number
+  createdAt: string
+}
+
 // ─── Action de signalement ───
 
 export interface FlagSessionBody {
@@ -200,4 +212,92 @@ export function riskLevelFromScore(
   if (score >= 40) return 'high'
   if (score >= 15) return 'moderate'
   return 'safe'
+}
+
+// ─── Rapport de fraude (GET /api/surveillance/{sessionId}/rapport-fraude) ───
+
+export interface FraudReportEvent {
+  type: string
+  timestamp: string
+  details?: string
+  penalite: number
+  severity: 'high' | 'medium' | 'low' | 'info'
+}
+
+export interface FraudReportCapture {
+  id: string
+  captureIndex: number
+  createdAt: string
+  r2Key: string
+}
+
+export interface FraudReport {
+  session: {
+    id: string
+    statut: string
+    dateDebut?: string
+    dateFin?: string
+    alertes: number
+    penalite: number
+    noteTotal?: number
+    noteMax: number
+  }
+  etudiant: {
+    id: string
+    name: string
+    email: string
+  }
+  epreuve: {
+    id: string
+    titre: string
+    duree: number
+  }
+  events: FraudReportEvent[]
+  summary: {
+    totalAlertes: number
+    totalPenalite: number
+    highSeverity: number
+    mediumSeverity: number
+    lowSeverity: number
+    eventTypeBreakdown: Record<string, number>
+    riskLevel: 'safe' | 'moderate' | 'high' | 'critical'
+    riskScore: number
+  }
+  captures: FraudReportCapture[]
+  rapportFraudeEnabled: boolean
+  /** FIX-5 : rapports de similarité entre copies pour cet étudiant */
+  similarities: SimilarityReport[]
+  generatedAt: string
+}
+
+// ─── Similarité entre copies (FIX-5) ───
+
+export interface QuestionSimilarity {
+  questionId: string
+  type: string
+  similarity: number
+  answerA: string
+  answerB: string
+}
+
+export interface SimilarityReport {
+  id: string
+  sessionA: string
+  sessionB: string
+  etudiantAId: string
+  etudiantBId: string
+  etudiantANom?: string
+  etudiantBNom?: string
+  etudiantAEmail?: string
+  etudiantBEmail?: string
+  globalSimilarity: number
+  questionSimilarities: QuestionSimilarity[]
+  flagged: boolean
+  createdAt: string
+}
+
+export interface SimilarityResponse {
+  reports: SimilarityReport[]
+  seuilSimilarite: number
+  epreuveId: string
 }

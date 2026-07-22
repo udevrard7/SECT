@@ -8,6 +8,43 @@ Base de données : Neon PostgreSQL (eu-central-1)
 
 ---
 
+## Session du 2026-07-21 — PROCTORING-FIX: 6 corrections Surveillance & Détection
+
+### Task IDs: PROCTORING-FIX-1 à PROCTORING-FIX-6
+
+**Commit**: `32f7e3a` — poussé vers GitHub → déploiement auto Vercel + Render
+
+#### PROCTORING-FIX-1: `proctoringActif` — Master switch (HIGH)
+- **Avant** : Toggle décoratif, aucune effet sur les détections
+- **Après** : Toutes les détections anti-fraude nécessitent `proctoringActif=true`
+- Exception : détection fullscreen reste active même sans proctoring (exigence de base)
+
+#### PROCTORING-FIX-2: `nbOngletsMax` — Compteur dédié (HIGH)
+- Compteur `tabSwitchCount` séparé, comparé à `nbOngletsMax`
+- Auto-submit si seuil dépassé et `autoSubmitOnViolation=true`
+
+#### PROCTORING-FIX-3: `captureEcran` — Stockage R2 (MEDIUM)
+- Upload vers R2 + metadata en table `SessionCapture` (migration 000099)
+- API `GET /api/sessions/{id}/captures` avec URLs présignées
+- Frontend : CapturesViewer dans surveillance dashboard
+
+#### PROCTORING-FIX-4: `rapportFraude` — Rapport de fraude (MEDIUM)
+- API `GET /api/surveillance/{sessionId}/rapport-fraude`
+- FraudReportDialog avec jauge de risque SVG + timeline événements
+- Post-exam : notification étudiant si rapport généré
+
+#### PROCTORING-FIX-5: `seuilSimilarite` — Détection similarité (LOW)
+- Table `SimilarityReport` (migration 000100) + worker `similarity_worker.go`
+- Trigram Jaccard (QRC/TRS), exact match (QCU/QCM), token Jaccard (CODE)
+- Frontend : onglet "Similarité copies" avec matrice
+
+#### PROCTORING-FIX-6: `verificationIdentite` — Webcam photo (LOW)
+- Table `IdentityPhoto` (migration 101) + component WebcamCapture
+- Photo obligatoire avant examen + photos périodiques mid-exam
+- Surveillance : section Identité avec vérification enseignant
+
+### Score final : ✅ 18/18 options fonctionnelles (vs 11/18 avant)
+
 ## Session du 2026-07-21 — Mise en place environnement de développement
 
 ### Task ID: SECT-ENV-SETUP-1

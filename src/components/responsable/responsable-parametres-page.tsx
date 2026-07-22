@@ -1560,15 +1560,21 @@ export function ResponsableParametresPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      {/* PROCTORING-FIX-1 : proctoringActif est le master switch */}
                       <ToggleRow
                         id="proctoring-actif"
-                        label="Proctoring actif"
-                        description="Active la surveillance vidéo et le suivi en temps réel des candidats pendant les évaluations"
+                        label="Proctoring actif (master switch)"
+                        description="Active TOUTES les détections anti-fraude pendant les évaluations (onglet, copie, impression, inactivité, captures). Si désactivé, seul le mode plein écran reste actif comme exigence de base."
                         checked={securitySettings.proctoringActif}
                         onCheckedChange={(v) => updateSecurityField('proctoringActif', v)}
                         icon={MonitorSmartphone}
                         accent={accent}
                       />
+                      {!securitySettings.proctoringActif && (
+                        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+                          ⚠️ Proctoring désactivé — les options ci-dessous seront ignorées pendant les évaluations. Seul le plein écran restera actif.
+                        </div>
+                      )}
                       <ToggleRow
                         id="detection-copie"
                         label="Détection de copier/coller"
@@ -1581,7 +1587,7 @@ export function ResponsableParametresPage() {
                       <ToggleRow
                         id="detection-onglet"
                         label="Détection de changement d'onglet"
-                        description="Surveille les changements d'onglet ou de fenêtre du navigateur pendant l'évaluation"
+                        description="Surveille les changements d'onglet ou de fenêtre du navigateur. Le seuil nbOngletsMax déclenche une alerte critique."
                         checked={securitySettings.detectionOnglet}
                         onCheckedChange={(v) => updateSecurityField('detectionOnglet', v)}
                         icon={AppWindow}

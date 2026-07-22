@@ -1,0 +1,1088 @@
+     1→// Package http transporte les handlers HTTP et le routeur chi.
+     2→package http
+     3→
+     4→import (
+     5→        "net/http"
+     6→
+     7→        "github.com/go-chi/chi/v5"
+     8→        chimw "github.com/go-chi/chi/v5/middleware"
+     9→        "github.com/go-chi/cors"
+    10→        "github.com/jackc/pgx/v5/pgxpool"
+    11→        "github.com/udevrard7/sect/backend/internal/ai"
+    12→        "github.com/udevrard7/sect/backend/internal/cache"
+    13→        "github.com/udevrard7/sect/backend/internal/domain"
+    14→        "github.com/udevrard7/sect/backend/internal/geniuspay"
+    15→        "github.com/udevrard7/sect/backend/internal/mailer"
+    16→        "github.com/udevrard7/sect/backend/internal/middleware"
+    17→        "github.com/udevrard7/sect/backend/internal/monitoring"
+    18→        "github.com/udevrard7/sect/backend/internal/notification"
+    19→        "github.com/udevrard7/sect/backend/internal/repository"
+    20→        "github.com/udevrard7/sect/backend/internal/usecase"
+    21→)
+    22→
+    23→// Server holds the HTTP server dependencies.
+    24→type Server struct {
+    25→        router       *chi.Mux
+    26→        dbPool       *pgxpool.Pool
+    27→        userRepo     *repository.UserRepository
+    28→        userUC       *usecase.UserUseCase
+    29→        authUC       *usecase.AuthUseCase
+    30→        etabUC       *usecase.EtablissementUseCase
+    31→        accessUC     *usecase.AccessUseCase
+    32→        filiereUC    *usecase.FiliereUseCase
+    33→        ueUC         *usecase.UEUseCase
+    34→        efUC         *usecase.EnseignantFiliereUseCase
+    35→        anneeUC      *usecase.AnneeUseCase
+    36→        invitationUC *usecase.InvitationUseCase
+    37→        // SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (B2C/B2B).
+    38→        studentSignupLinkUC *usecase.StudentSignupLinkUseCase
+    39→        epreuveUC           *usecase.EpreuveUseCase
+    40→        questionUC          *usecase.QuestionUseCase
+    41→        sessionUC           *usecase.SessionUseCase
+    42→        resultatUC          *usecase.ResultatUseCase
+    43→        documentUC          *usecase.DocumentUseCase
+    44→        certificatUC        *usecase.CertificatUseCase
+    45→        correctionUC        *usecase.CorrectionUseCase
+    46→        examPrepUC          *usecase.ExamPrepUseCase
+    47→        // Messagerie (Task 6) : chat temps réel + IA hybride.
+    48→        messagerieUC  *usecase.MessagerieUseCase
+    49→        messagerieHub *MessagerieHub
+    50→        aiService     *ai.AIService
+    51→        aiProviderUC  *usecase.AIProviderUseCase // BUG #7 fix: usecase pour logique métier AI providers
+    52→        storage       domain.StorageClient
+    53→        // CACHE-RAM-1 : cache en mémoire write-behind pour les sessions d'examen actives.
+    54→        // Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
+    55→        // vers Neon toutes les 30s ; le handler submitSession force un flush immédiat.
+    56→        sessionCache *cache.SessionCache
+    57→        // Monitoring : Event Recorder + Health Checker (audit monitoring 2025)
+    58→        monRecorder      *monitoring.Recorder
+    59→        monHealthChecker *monitoring.HealthChecker
+    60→        // SECT-DEMO-REQUEST : mailer pour l'envoi d'emails depuis les handlers
+    61→        // (demande de démo B2B, etc.) + URL publique du frontend.
+    62→        mailer     mailer.Mailer
+    63→        appBaseURL string
+    64→        // SECT-QUOTA-GUARDS : vérification des quotas IA (génération/correction)
+    65→        // dans les handlers AI avant appel au LLM.
+    66→        quotaChecker domain.QuotaChecker
+    67→        // OPT-7 : hub WebSocket temps réel pour la surveillance.
+    68→        // Remplace le polling TanStack Query (30s) par push immédiat.
+    69→        surveillanceHub *SurveillanceHub
+    70→        // SECT-GENIUSPAY-WAVE : client GeniusPay pour paiement Wave B2C Prof Premium.
+    71→        // Peut être nil si GENIUSPAY_API_KEY non configuré (handlers retournent 503).
+    72→        geniusPay              *geniuspay.Client
+    73→        geniusPayWebhookSecret string
+    74→        // SUBMIT-RATELIMIT-1 (OPT-7) : limite le nombre de submits traités
+    75→        // concurremment. Sous forte charge (pic de fin d'examen), renvoie 202 +
+    76→        // Retry-After au lieu d'attendre et risquer le timeout 30s de Render.
+    77→        // Voir submit_limiter.go.
+    78→        submitLimiter *SubmitLimiter
+    79→        // SECT-REG-LINK-PHASE2-BACKEND-1 : Cloudflare Turnstile pour /api/student-signup.
+    80→        // Peut être nil (vérification désactivée — dev mode). Configuré côté main.go
+    81→        // via WithTurnstile() si TURNSTILE_SECRET_KEY est présent.
+    82→        turnstileVerifier *TurnstileVerifier
+    83→        turnstileSiteKey  string
+    84→        // SECT-ETABLISSEMENT-AUDIT-1 : AuthRepository pour le handler
+    85→        // listEtablissementAuditLogs (lecture du journal d'audit scoped par
+    86→        // établissement). Injecté via NewServer (paramètre ajouté en fin de
+    87→        // signature pour minimiser le diff avec les callers existants).
+    88→        authRepo *repository.AuthRepository
+    89→        // SECT-PROMOTION-BACKEND-1 : usecase de clôture d'année académique.
+    90→        // Expose les 6 endpoints /cloture-annee + /regles-passage + /etudiants/{id}/promote.
+    91→        // Le worker promotion_worker.go (démarré dans main.go) pickup les batches
+    92→        // PENDING créés par POST /cloture-annee et les traite async.
+    93→        promotionUC *usecase.PromotionUseCase
+    94→        // SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : repo pour l'historique des inscriptions
+    95→        // d'un étudiant (GET /api/etudiants/{etudiantId}/inscriptions). RLS via claims
+    96→        // (ETUDIANT self / RESPONSABLE same-etab / ADMIN with etab access).
+    97→        inscriptionRepo *repository.InscriptionRepository
+    98→        // SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications. Injecté via
+    99→        // WithNotificationDispatcher (setter pattern — évite d'étendre la signature
+   100→        // NewServer déjà très longue). nil = pas de notification (dev/tests).
+   101→        notifDispatcher *notification.Dispatcher
+   102→        // SECT-NOTIF-VAPID-1 : clé publique VAPID pour l'endpoint /api/push/vapid-public-key.
+   103→        vapidPublicKey string
+   104→}
+   105→
+   106→// WithNotificationDispatcher injecte le dispatcher de notifications après
+   107→// construction du serveur. Pattern identique à WithGeniusPay / WithTurnstile.
+   108→func (s *Server) WithNotificationDispatcher(d *notification.Dispatcher) *Server {
+   109→        s.notifDispatcher = d
+   110→        return s
+   111→}
+   112→
+   113→// WithVapidPublicKey injecte la clé publique VAPID (SECT-NOTIF-VAPID-1).
+   114→func (s *Server) WithVapidPublicKey(key string) *Server {
+   115→        s.vapidPublicKey = key
+   116→        return s
+   117→}
+   118→
+   119→// NewServer crée et configure le serveur HTTP.
+   120→func NewServer(
+   121→        userRepo *repository.UserRepository,
+   122→        userUC *usecase.UserUseCase,
+   123→        authUC *usecase.AuthUseCase,
+   124→        etabUC *usecase.EtablissementUseCase,
+   125→        accessUC *usecase.AccessUseCase,
+   126→        filiereUC *usecase.FiliereUseCase,
+   127→        ueUC *usecase.UEUseCase,
+   128→        efUC *usecase.EnseignantFiliereUseCase,
+   129→        anneeUC *usecase.AnneeUseCase,
+   130→        invitationUC *usecase.InvitationUseCase,
+   131→        epreuveUC *usecase.EpreuveUseCase,
+   132→        questionUC *usecase.QuestionUseCase,
+   133→        sessionUC *usecase.SessionUseCase,
+   134→        resultatUC *usecase.ResultatUseCase,
+   135→        documentUC *usecase.DocumentUseCase,
+   136→        certificatUC *usecase.CertificatUseCase,
+   137→        correctionUC *usecase.CorrectionUseCase,
+   138→        examPrepUC *usecase.ExamPrepUseCase,
+   139→        messagerieUC *usecase.MessagerieUseCase,
+   140→        messagerieHub *MessagerieHub,
+   141→        surveillanceHub *SurveillanceHub,
+   142→        aiService *ai.AIService,
+   143→        aiProviderUC *usecase.AIProviderUseCase,
+   144→        storage domain.StorageClient,
+   145→        dbPool *pgxpool.Pool,
+   146→        corsOrigins []string,
+   147→        authMiddleware func(http.Handler) http.Handler,
+   148→        monRecorder *monitoring.Recorder,
+   149→        monHealthChecker *monitoring.HealthChecker,
+   150→        mailSvc mailer.Mailer,
+   151→        appBaseURL string,
+   152→        quotaChecker domain.QuotaChecker,
+   153→        // SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (ajouté en fin
+   154→        // de signature pour minimiser le diff avec les callers existants).
+   155→        studentSignupLinkUC *usecase.StudentSignupLinkUseCase,
+   156→        // SECT-ETABLISSEMENT-AUDIT-1 : AuthRepository pour le handler
+   157→        // listEtablissementAuditLogs (lecture du journal d'audit scoped par
+   158→        // établissement). Ajouté en fin de signature pour minimiser le diff.
+   159→        authRepo *repository.AuthRepository,
+   160→        // SECT-PROMOTION-BACKEND-1 : usecase de clôture d'année académique
+   161→        // (ajouté en fin de signature pour minimiser le diff avec les callers
+   162→        // existants). Le worker promotion_worker.go est démarré séparément dans
+   163→        // main.go (pas besoin de l'injecter dans Server — il communique via DB).
+   164→        promotionUC *usecase.PromotionUseCase,
+   165→        // SECT-INSCRIPTION-HISTORY-ENDPOINT-1 : repo pour l'historique des
+   166→        // inscriptions d'un étudiant (ajouté en fin de signature pour minimiser
+   167→        // le diff avec les callers existants).
+   168→        inscriptionRepo *repository.InscriptionRepository,
+   169→) *Server {
+   170→        s := &Server{
+   171→                dbPool:              dbPool,
+   172→                userRepo:            userRepo,
+   173→                userUC:              userUC,
+   174→                authUC:              authUC,
+   175→                etabUC:              etabUC,
+   176→                accessUC:            accessUC,
+   177→                filiereUC:           filiereUC,
+   178→                ueUC:                ueUC,
+   179→                efUC:                efUC,
+   180→                anneeUC:             anneeUC,
+   181→                invitationUC:        invitationUC,
+   182→                studentSignupLinkUC: studentSignupLinkUC,
+   183→                epreuveUC:           epreuveUC,
+   184→                questionUC:          questionUC,
+   185→                sessionUC:           sessionUC,
+   186→                resultatUC:          resultatUC,
+   187→                documentUC:          documentUC,
+   188→                certificatUC:        certificatUC,
+   189→                correctionUC:        correctionUC,
+   190→                examPrepUC:          examPrepUC,
+   191→                messagerieUC:        messagerieUC,
+   192→                messagerieHub:       messagerieHub,
+   193→                surveillanceHub:     surveillanceHub,
+   194→                aiService:           aiService,
+   195→                aiProviderUC:        aiProviderUC,
+   196→                storage:             storage,
+   197→                monRecorder:         monRecorder,
+   198→                monHealthChecker:    monHealthChecker,
+   199→                mailer:              mailSvc,
+   200→                appBaseURL:          appBaseURL,
+   201→                quotaChecker:        quotaChecker,
+   202→                authRepo:            authRepo,
+   203→                promotionUC:         promotionUC,
+   204→                inscriptionRepo:     inscriptionRepo,
+   205→        }
+   206→        // CACHE-RAM-1 : initialiser le cache RAM write-behind.
+   207→        s.sessionCache = cache.NewSessionCache()
+   208→        // SUBMIT-RATELIMIT-1 (OPT-7) : initialise le limiteur de submits depuis env.
+   209→        s.submitLimiter = NewSubmitLimiterFromEnv()
+   210→        s.setupRouter(corsOrigins, authMiddleware)
+   211→        return s
+   212→}
+   213→
+   214→// WithGeniusPay injecte le client GeniusPay + le secret webhook dans le Server.
+   215→// Appelé depuis main.go après NewServer si GENIUSPAY_API_KEY est configuré.
+   216→// SECT-GENIUSPAY-WAVE.
+   217→func (s *Server) WithGeniusPay(client *geniuspay.Client, webhookSecret string) *Server {
+   218→        s.geniusPay = client
+   219→        s.geniusPayWebhookSecret = webhookSecret
+   220→        return s
+   221→}
+   222→
+   223→// WithTurnstile injecte le TurnstileVerifier + la site key publique dans le Server.
+   224→// Appelé depuis main.go après NewServer. Si verifier est nil ou non Enabled(),
+   225→// la vérification Turnstile est skipée côté handler (dev mode).
+   226→// SECT-REG-LINK-PHASE2-BACKEND-1.
+   227→func (s *Server) WithTurnstile(verifier *TurnstileVerifier, siteKey string) *Server {
+   228→        s.turnstileVerifier = verifier
+   229→        s.turnstileSiteKey = siteKey
+   230→        return s
+   231→}
+   232→
+   233→func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+   234→        s.router.ServeHTTP(w, r)
+   235→}
+   236→
+   237→func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Handler) http.Handler) {
+   238→        r := chi.NewRouter()
+   239→
+   240→        // Middlewares globaux
+   241→        // NOTE: chimw.RealIP retiré — on utilise middleware.GetClientIP() qui lit
+   242→        // X-Forwarded-For / X-Real-IP directement (Vercel injecte ces headers).
+   243→        // chimw.RealIP modifie r.RemoteAddr ce qui peut causer des conflits.
+   244→        r.Use(chimw.RequestID)
+   245→        r.Use(chimw.Recoverer)
+   246→        r.Use(chimw.Compress(5)) // OPT-8: gzip compression (level 5 = good ratio/speed balance)
+   247→        // Monitoring middleware : capture erreurs 5xx + panics → MonitoringEvent
+   248→        r.Use(monitoring.Middleware(s.monRecorder, nil))
+   249→        r.Use(cors.Handler(cors.Options{
+   250→                AllowedOrigins:   corsOrigins,
+   251→                AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+   252→                AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Cookie"},
+   253→                ExposedHeaders:   []string{"Link", "Set-Cookie"},
+   254→                AllowCredentials: true,
+   255→                MaxAge:           300,
+   256→        }))
+   257→
+   258→        // Health check (public)
+   259→        // /health pour Render healthCheckPath (sans préfixe /api)
+   260→        // /api/health pour le rewrite Vercel (préfixe /api/* → Go /api/*)
+   261→        r.Get("/health", s.health)
+   262→        r.Get("/api/health", s.health)
+   263→
+   264→        // Auth routes publiques
+   265→        r.Group(func(r chi.Router) {
+   266→                r.Post("/api/auth/login", s.login)
+   267→                r.Post("/api/auth/refresh", s.refresh)
+   268→                r.Post("/api/auth/logout", s.logout)
+   269→                // SELF-SERVICE RESET (000054) : "mot de passe oublié" — 2 endpoints publics.
+   270→                // requestPasswordReset : toujours 200 (anti-énumération).
+   271→                // confirmPasswordReset : valide le token + définit le nouveau mot de passe.
+   272→                r.Post("/api/auth/password-reset", s.requestPasswordReset)
+   273→                r.Post("/api/auth/password-reset/confirm", s.confirmPasswordReset)
+   274→                // SECT-B2C-SOUSCRIPTION-AUTO : souscription B2C publique (enseignant
+   275→                // freelance). Crée auto étab personnel + user ENSEIGNANT + abonnement.
+   276→                r.Post("/api/subscriptions/b2c", s.createB2CSubscription)
+   277→                // SECT-B2B-FACTURATION : self-service B2B (inscription établissement).
+   278→                r.Post("/api/subscriptions/b2b", s.createB2BSubscription)
+   279→                // SECT-B2B-ANTI-ABUS : vérification email + validation admin + liste en attente
+   280→                r.Get("/api/b2b/verify-email", s.verifyB2BEmail)
+   281→                // SECT-B2B-FACTURATION : paiement Wave capitation B2B.
+   282→                r.Post("/api/subscriptions/b2b/{id}/initiate-payment", s.initiateB2BPayment)
+   283→                // SECT-B2C-PAIEMENT : confirmation de paiement (V1 simulation, V2 CinetPay).
+   284→                // Active l'abonnement EN_ATTENTE_PAIEMENT → ACTIF.
+   285→                r.Post("/api/subscriptions/b2c/{id}/confirm-payment", s.confirmB2CPayment)
+   286→                // SECT-GENIUSPAY-WAVE : paiement Wave via GeniusPay (V2, remplace la V1 simulation).
+   287→                // initiate-payment : crée le paiement Wave → retourne paymentUrl pour redirection.
+   288→                // payment-status : polling frontend après retour Wave (active l'abo si completed).
+   289→                // renew : renouvellement d'un abonnement ACTIF (prolonge dateFin de 30j).
+   290→                r.Post("/api/subscriptions/b2c/{id}/initiate-payment", s.initiateB2CPayment)
+   291→                r.Get("/api/subscriptions/b2c/{id}/payment-status", s.getB2CPaymentStatus)
+   292→                r.Post("/api/subscriptions/b2c/{id}/renew", s.renewB2CPayment)
+   293→                // SECT-B2C-EXPIRE : rétrograde un abonnement Premium EXPIRE vers Prof Solo gratuit.
+   294→                r.Post("/api/subscriptions/b2c/{id}/downgrade", s.downgradeB2CToSolo)
+   295→                // Webhook GeniusPay (public, signature HMAC vérifiée dans le handler).
+   296→                // Reçoit payment.success/failed et active l'abonnement de façon idempotente.
+   297→                r.Post("/api/webhooks/geniuspay", s.geniuspayWebhook)
+   298→                // SECT-DEMO-REQUEST : demande de démo B2B depuis le landing page (public).
+   299→                // Envoie un email à l'admin avec les infos du prospect.
+   300→                r.Post("/api/demo-request", s.submitDemoRequest)
+   301→                // ACCESS-ASSISTANCE : mode assistance ADMIN (accès temporaire aux pages RESPONSABLE).
+   302→                r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/assistance-mode", s.enterAssistanceMode)
+   303→                r.With(authMiddleware, middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/exit-assistance-mode", s.exitAssistanceMode)
+   304→        })
+   305→
+   306→        // E1-INVITATIONS — endpoints publics (pas de RequireAuth).
+   307→        // Le token d'invitation sert d'authentification ; la RLS est
+   308→        // désactivée pour ces deux opérations (cf. repository/invitation.go).
+   309→        // Les routes /verify et /accept sont déclarées AVANT le r.Route
+   310→        // authentifié "/api/invitations" pour que chi les traite comme des
+   311→        // routes statiques publiques (la sous-route authentifiée
+   312→        // "/api/invitations/{id}/..." ne les intercepte pas).
+   313→        r.Get("/api/invitations/verify", s.verifyInvitation)
+   314→        r.Post("/api/invitations/accept", s.acceptInvitation)
+   315→
+   316→        // SECT-REG-LINK-B2C-MVP-1 : inscription self-service étudiant via lien direct.
+   317→        // Endpoints PUBLICS (pas de RequireAuth — le token du lien est l'auth).
+   318→        // /verify retourne le contexte (étab, filière, créateur) pour pré-remplir
+   319→        //   le formulaire public /inscription?token=xxx.
+   320→        // POST /api/student-signup crée le User ETUDIANT + incrémente useCount
+   321→        //   atomiquement via la fonction SQL accept_student_signup (SECURITY DEFINER).
+   322→        // Phase 2 (SECT-REG-LINK-PHASE2-BACKEND-1) : rate-limit + Turnstile + audit.
+   323→        r.Get("/api/student-signup/verify", s.verifyStudentSignupLink)
+   324→        r.Post("/api/student-signup", s.acceptStudentSignup)
+   325→
+   326→        // SECT-REG-LINK-PHASE2-BACKEND-1 : site key publique Cloudflare Turnstile.
+   327→        // Endpoint public (le frontend doit pouvoir récupérer la key avant de rendre
+   328→        // le widget, sans auth). Retourne {"siteKey": "..."} ou {"siteKey": ""} si
+   329→        // Turnstile n'est pas configuré (le frontend skip le widget dans ce cas).
+   330→        r.Get("/api/turnstile/site-key", s.getTurnstileSiteKey)
+   331→
+   332→        // Certificats verify (public — no auth required for verification)
+   333→        r.Get("/api/certificats/verify/{code}", s.verifyCertificat)
+   334→
+   335→        // Landing demo (public — pour la section "Démo interactive" du landing page).
+   336→        // Génère un QCM via le provider IA actif en base. Rate-limité par IP.
+   337→        r.Post("/api/landing-demo", s.landingDemo)
+   338→
+   339→        // Routes authentifiées
+   340→        r.Group(func(r chi.Router) {
+   341→                r.Use(authMiddleware)
+   342→
+   343→                // /api/me
+   344→                r.With(middleware.RequireAuth).Get("/api/me", s.me)
+   345→                r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
+   346→
+   347→                // /api/users
+   348→                // ETUDIANTS-FIX-E2 : route /import déclarée AVANT /{id} pour éviter
+   349→                // que chi matche "import" comme un paramètre id. E6 : RequireRole
+   350→                // sur mutations (POST/PATCH/DELETE) pour defense-in-depth.
+   351→                //
+   352→                // SECT-USER-CLEANUP-INFRA-1 : routes /orphans + /cleanup-orphans déclarées
+   353→                // AVANT /{id} pour éviter que chi matche "orphans" comme un id. Les 3
+   354→                // nouvelles routes (orphans, soft-delete, cleanup-orphans) sont ADMIN-only
+   355→                // via RequireRole("ADMIN").
+   356→                r.Route("/api/users", func(r chi.Router) {
+   357→                        r.Use(middleware.RequireAuth)
+   358→                        r.Get("/", s.listUsers)
+   359→
+   360→                        // SECT-USER-CLEANUP-INFRA-1 : routes admin pour la gestion des orphelins.
+   361→                        // Déclarées AVANT /{id} pour éviter le conflit de routing chi.
+   362→                        // - GET /orphans : liste les users orphelins (actif=false, sans étab)
+   363→                        // - POST /cleanup-orphans : purge manuelle des soft-deleted > 90j
+   364→                        // - DELETE /{id}/soft : soft-delete un user (corbeille 90j)
+   365→                        r.Group(func(r chi.Router) {
+   366→                                r.Use(middleware.RequireRole("ADMIN"))
+   367→                                r.Get("/orphans", s.listOrphanUsers)
+   368→                                r.Post("/cleanup-orphans", s.hardDeleteOrphans)
+   369→                                r.Delete("/{id}/soft", s.softDeleteUser)
+   370→                        })
+   371→
+   372→                        r.Get("/{id}", s.getUser)
+   373→                        r.Group(func(r chi.Router) {
+   374→                                // SECT-B2C-SELF-SERVICE : ENSEIGNANT dans étab PERSONNEL peut créer
+   375→                                // des ÉTUDIANTS (la RLS User_insert limite à role='ETUDIANT').
+   376→                                r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "RESPONSABLE", "ADMIN"))
+   377→                                r.Post("/", s.createUser)
+   378→                                r.Post("/import", s.importUsers) // ETUDIANTS-FIX-E2
+   379→                                r.Patch("/{id}", s.updateUser)
+   380→                                r.Delete("/{id}", s.deleteUser)
+   381→                                // ETUDIANTS-FIX-E10 : dependencies pour preview suppression
+   382→                                r.Get("/{id}/dependencies", s.getUserDependencies)
+   383→                                // U5 (CRITICAL) : endpoints admin pour reset password + unlock account.
+   384→                                // Avant ce fix, un user verrouillé était perdu (lockout permanent de fait).
+   385→                                r.Post("/{id}/reset-password", s.resetUserPassword)
+   386→                                r.Post("/{id}/unlock", s.unlockUserAccount)
+   387→                        })
+   388→                })
+   389→
+   390→                // /api/etablissements
+   391→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   392→                // RequireAuth seul → un ETUDIANT pouvait créer/modifier/supprimer des
+   393→                // établissements). Les GET restent ouverts à tous les rôles authentifiés
+   394→                // (RLS filtre les lignes visibles).
+   395→                r.Route("/api/etablissements", func(r chi.Router) {
+   396→                        r.Use(middleware.RequireAuth)
+   397→                        r.Get("/", s.listEtablissements)
+   398→                        r.Get("/{id}", s.getEtablissement)
+   399→                        r.Get("/{id}/annee-courante", s.getCurrentAnnee)
+   400→                        r.Get("/{id}/watermark", s.getWatermark)
+   401→                        // Mutations : ADMIN + RESPONSABLE uniquement.
+   402→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createEtablissement)
+   403→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateEtablissement)
+   404→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteEtablissement)
+   405→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/upload-logo", s.uploadLogo)
+   406→                        // PARAMETRES-FIX-P3 : endpoint dédié pour supprimer le logo.
+   407→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}/logo", s.deleteLogo)
+   408→                        // Migration 000017 : gestion de l'année académique courante.
+   409→                        // SECT-B2C-SELF-SERVICE : le prof B2C peut changer son année courante.
+   410→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/{id}/annee-courante", s.setCurrentAnnee)
+   411→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}/watermark", s.updateWatermark)
+   412→                        // SECT-ETABLISSEMENT-AUDIT-1 : journal d'audit scoped par
+   413→                        // établissement. Le RESPONSABLE ne voit QUE les logs de SON
+   414→                        // étab (defense in depth : check claims.EtablissementID ==
+   415→                        // URLParam("id") dans le handler + RLS via AuditLog_select).
+   416→                        // L'ADMIN bypass (peut consulter n'importe quel étab).
+   417→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Get("/{id}/audit-logs", s.listEtablissementAuditLogs)
+   418→                })
+   419→
+   420→                // /api/etablissement-access
+   421→                // ACCES-ETABLISSEMENTS-FIX-AE3 : RequireRole("ADMIN", "RESPONSABLE") pour
+   422→                // défense en profondeur (le usecase gère les rôles en interne, mais un
+   423→                // ENSEIGNANT/ETUDIANT authentifié ne doit même pas atteindre le usecase).
+   424→                r.Route("/api/etablissement-access", func(r chi.Router) {
+   425→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN", "RESPONSABLE"))
+   426→                        r.Get("/", s.listAccess)
+   427→                        r.Post("/", s.createAccess)
+   428→                        r.Get("/check", s.checkAccess)
+   429→                        r.Get("/authorized-etablissements", s.authorizedEtablissements)
+   430→                        r.Patch("/{id}", s.updateAccess)
+   431→                        // ACCES-ETABLISSEMENTS-FIX-AE1 : annulation d'une demande EN_ATTENTE.
+   432→                        r.Delete("/{id}", s.deleteAccess)
+   433→                })
+   434→
+   435→                // /api/filieres
+   436→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   437→                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des filières).
+   438→                r.Route("/api/filieres", func(r chi.Router) {
+   439→                        r.Use(middleware.RequireAuth)
+   440→                        r.Get("/", s.listFilieres)
+   441→                        r.Get("/export", s.exportFilieres)
+   442→                        r.Get("/{id}/dependencies", s.getFiliereDependencies)
+   443→                        r.Get("/{id}", s.getFiliere)
+   444→                        // Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
+   445→                        // SECT-B2C-SELF-SERVICE : le prof B2C gère ses filières autonomement.
+   446→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createFiliere)
+   447→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/bulk", s.bulkFilieres)
+   448→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateFiliere)
+   449→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteFiliere)
+   450→                })
+   451→
+   452→                // /api/unites-enseignement
+   453→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   454→                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des UE).
+   455→                r.Route("/api/unites-enseignement", func(r chi.Router) {
+   456→                        r.Use(middleware.RequireAuth)
+   457→                        r.Get("/", s.listUEs)
+   458→                        r.Get("/{id}/dependencies", s.getUEDependencies)
+   459→                        r.Get("/{id}", s.getUE)
+   460→                        // Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
+   461→                        // SECT-B2C-SELF-SERVICE : le prof B2C gère ses UE autonomement.
+   462→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createUE)
+   463→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateUE)
+   464→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteUE)
+   465→                })
+   466→
+   467→                // /api/enseignant-filieres
+   468→                // ENSEIGNANTS-FIX-EN6 : RequireRole RESPONSABLE+ADMIN sur mutations
+   469→                // (POST/DELETE). GET ouvert (ENSEIGNANT via RLS auto-scoping).
+   470→                r.Route("/api/enseignant-filieres", func(r chi.Router) {
+   471→                        r.Use(middleware.RequireAuth)
+   472→                        r.Get("/", s.listEnseignantFilieres)
+   473→                        r.Group(func(r chi.Router) {
+   474→                                // SECT-B2C-SELF-SERVICE : ENSEIGNANT B2C peut s'affecter lui-même.
+   475→                                r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "RESPONSABLE", "ADMIN"))
+   476→                                r.Post("/", s.createEnseignantFilieres)
+   477→                                r.Delete("/", s.deleteEnseignantFilieres)
+   478→                        })
+   479→                })
+   480→
+   481→                // /api/affectations (enseignant↔UE) — BUGFIX (PROG-ACAD-2)
+   482→                // AFFECTATIONS-FIX-A4 : séparation GET (lecteur = ENSEIGNANT via
+   483→                // RLS auto-scoping, RESPONSABLE, ADMIN) vs mutations (réservées
+   484→                // RESPONSABLE+ADMIN). Avant, RequireAuth seul → un étudiant
+   485→                // authentifié pouvait appeler POST/PATCH/DELETE (la RLS
+   486→                // rejetait l'INSERT/UPDATE, mais on évite le spam + on log
+   487→                // proprement les accès non autorisés).
+   488→                r.Route("/api/affectations", func(r chi.Router) {
+   489→                        r.Use(middleware.RequireAuth)
+   490→                        r.Get("/", s.listAffectations)
+   491→                        r.Group(func(r chi.Router) {
+   492→                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+   493→                                r.Post("/", s.createAffectation)
+   494→                                r.Patch("/{id}", s.updateAffectation)
+   495→                                r.Delete("/{id}", s.deleteAffectation)
+   496→                                // AFFECTATIONS-FIX-A12 : dependencies pour preview suppression
+   497→                                r.Get("/{id}/dependencies", s.getAffectationDependencies)
+   498→                        })
+   499→                })
+   500→
+   501→                // /api/annees-academiques
+   502→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   503→                // RequireAuth seul → un ETUDIANT pouvait créer des années académiques).
+   504→                r.Route("/api/annees-academiques", func(r chi.Router) {
+   505→                        r.Use(middleware.RequireAuth)
+   506→                        r.Get("/", s.listAnnees)
+   507→                        r.Get("/{id}", s.getAnnee)
+   508→                        // SECT-ANNEE-HARDDELETE-SAFE-1 : dependencies pour preview hard-delete.
+   509→                        // Read-only (5 COUNT agrégés) — RequireAuth suffit, la RLS scoping via
+   510→                        // db.WithTx avec claims user gère le filtrage (is_responsable same-etab).
+   511→                        r.Get("/{id}/dependencies", s.getAnneeDependencies)
+   512→                        // Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
+   513→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
+   514→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)
+   515→                        r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteAnnee)
+   516→                })
+   517→
+   518→                // SECT-PROMOTION-BACKEND-1 — clôture d'année académique.
+   519→                //
+   520→                // 4 endpoints sous /api/etablissements/{etablissementId}/cloture-annee :
+   521→                //   POST   /           → crée un batch PENDING (202 + batchId).
+   522→                //   POST   /preview    → liste étudiants + décision suggérée (sans appliquer).
+   523→                //   GET    /status     → polling progression d'un batch (?batchId=X).
+   524→                //   GET    /batches    → historique des batches de l'étab.
+   525→                //
+   526→                // Auth : RequireAuth + RequireRoleOrPersonalEtab("ADMIN", "RESPONSABLE")
+   527→                // (le prof B2C dans un étab PERSONNEL peut aussi clôturer — cohérent
+   528→                // avec les autres mutations académiques). Le usecase valide en plus le
+   529→                // scoping (RESPONSABLE ne peut agir que sur SON étab).
+   530→                //
+   531→                // Le worker promotion_worker.go (démarré dans main.go) pickup les
+   532→                // batches PENDING toutes les 10s et les traite async via la fonction
+   533→                // SQL cloturer_annee_etudiant (SECURITY DEFINER, bypass RLS).
+   534→                r.Route("/api/etablissements/{etablissementId}/cloture-annee", func(r chi.Router) {
+   535→                        r.Use(middleware.RequireAuth)
+   536→                        r.Use(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"))
+   537→                        r.Post("/", s.runPromotion)                 // 202 Accepted + batchId (async)
+   538→                        r.Post("/preview", s.previewPromotion)      // calcul sans appliquer
+   539→                        r.Post("/run-sync", s.runPromotionSync)     // SECT-CLOTURE-E2E-VERIFY-1 : sync (200 + result)
+   540→                        r.Get("/status", s.getPromotionBatchStatus) // polling
+   541→                        r.Get("/batches", s.listPromotionBatches)   // historique
+   542→                })
+   543→
+   544→                // SECT-PROMOTION-BACKEND-1 — config des seuils de passage par étab.
+   545→                // GET /api/etablissements/{etablissementId}/regles-passage
+   546→                // Retourne seuilMoyennePassage, seuilMoyenneRattrapage,
+   547→                // creditsMinPourcent, regime, limiteRedoublements (ou défauts si non
+   548→                // configuré — cas anormal, le backfill 000087 devrait couvrir).
+   549→                r.With(
+   550→                        middleware.RequireAuth,
+   551→                        middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
+   552→                ).Get("/api/etablissements/{etablissementId}/regles-passage", s.getReglesPassage)
+   553→
+   554→                // SECT-REGLES-PASSAGE-MUTATION-1 — modification des seuils de passage.
+   555→                // PUT /api/etablissements/{etablissementId}/regles-passage
+   556→                // Upsert (INSERT si l'étab n'a pas encore de ligne, UPDATE sinon). Le
+   557→                // usecase valide le rôle (ADMIN/RESPONSABLE — l'ENSEIGNANT B2C est
+   558→                // rejeté même si le middleware RequireRoleOrPersonalEtab le laisse
+   559→                // passer dans son étab personnel) + scoping (RESPONSABLE same-etab).
+   560→                // La RLS ReglesPassage_modify filtre en plus (is_responsable same-etab
+   561→                // uniquement — pas is_admin, defense in depth).
+   562→                r.With(
+   563→                        middleware.RequireAuth,
+   564→                        middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
+   565→                ).Put("/api/etablissements/{etablissementId}/regles-passage", s.updateReglesPassage)
+   566→
+   567→                // SECT-PROMOTION-BACKEND-1 — override individuel hors batch.
+   568→                // POST /api/etudiants/{etudiantId}/promote
+   569→                // Le RESPONSABLE force une décision pour un étudiant (PROMU,
+   570→                // REDOUBLANT, DIPLOME, EXCLU, REORIENTE, QUITTE) avec un motif
+   571→                // optionnel. Appelle cloturer_annee_etudiant avec decisionOverride.
+   572→                // NB : déclaré hors du groupe /api/etudiants (qui n'a que GET /) pour
+   573→                // éviter le conflit de routage chi.
+   574→                r.With(
+   575→                        middleware.RequireAuth,
+   576→                        middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE"),
+   577→                ).Post("/api/etudiants/{etudiantId}/promote", s.promoteStudentManual)
+   578→
+   579→                // SECT-INSCRIPTION-HISTORY-ENDPOINT-1 — historique des années d'un étudiant.
+   580→                // GET /api/etudiants/{etudiantId}/inscriptions
+   581→                // Retourne toutes les Inscription du student (EN_COURS + clôturées) avec
+   582→                // les libellés anneeLibelle + filiereNom JOINés côté SQL (évite N+1 frontend).
+   583→                // Auth : RequireAuth uniquement (la RLS policy Inscription_select filtre déjà
+   584→                // via user_in_my_etab(etudiantId) — ETUDIANT voit son propre historique,
+   585→                // RESPONSABLE/ADMIN voient les étudiants de leur étab). Pas de
+   586→                // RequireRoleOrPersonalEtab : ça exclurait à tort l'étudiant lui-même.
+   587→                r.With(
+   588→                        middleware.RequireAuth,
+   589→                ).Get("/api/etudiants/{etudiantId}/inscriptions", s.listEtudiantInscriptions)
+   590→
+   591→                // E1-INVITATIONS — endpoints authentifiés (RESPONSABLE, ADMIN
+   592→                // pour les mutations ; ENSEIGNANT inclus sur le GET car le
+   593→                // frontend enseignant n'appelle pas /api/invitations, mais la
+   594→                // RLS Invitation_select exclut les ETUDIANT de toute façon).
+   595→                // Verify + accept sont déclarés en public plus haut.
+   596→                r.Route("/api/invitations", func(r chi.Router) {
+   597→                        r.Use(middleware.RequireAuth)
+   598→                        r.Get("/", s.listInvitations)
+   599→                        r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Post("/", s.createInvitation)
+   600→                        r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Patch("/{id}/renvoyer", s.resendInvitation)
+   601→                        r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Delete("/{id}", s.cancelInvitation)
+   602→                })
+   603→
+   604→                // SECT-REG-LINK-B2C-MVP-1 : gestion des liens d'inscription direct étudiant.
+   605→                // Le GET / est ouvert à tous les authentifiés (RLS auto-scoping par createdById).
+   606→                // Les mutations (POST/DELETE) requièrent ADMIN, RESPONSABLE, ou ENSEIGNANT.
+   607→                // SECT-REG-LINK-B2C-MVP-1 (fix RLS) : le check "ENSEIGNANT dans étab PERSONNEL"
+   608→                // est délégué au usecase via la fonction SECURITY DEFINER is_enseignant_in_personal_etab()
+   609→                // (bypass RLS pour son SELECT interne — plus robuste que RequireRoleOrPersonalEtab
+   610→                // qui fait un SELECT direct sur Etablissement filtré par RLS en prod sect_app).
+   611→                //
+   612→                // SECT-REG-LINK-PHASE3-BACKEND-1 : ajout GET /stats (agrégats pour dashboard).
+   613→                // NB : /stats DOIT être déclaré AVANT /{id} pour éviter le conflit de routage
+   614→                // chi (sinon "stats" serait interprété comme un {id} par DELETE /{id}).
+   615→                r.Route("/api/student-signup-links", func(r chi.Router) {
+   616→                        r.Use(middleware.RequireAuth)
+   617→                        r.Get("/", s.listStudentSignupLinks)
+   618→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Get("/stats", s.studentSignupLinkStats)
+   619→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/", s.createStudentSignupLink)
+   620→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Delete("/{id}", s.revokeStudentSignupLink)
+   621→                })
+   622→
+   623→                // /api/epreuves
+   624→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   625→                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des épreuves).
+   626→                r.Route("/api/epreuves", func(r chi.Router) {
+   627→                        r.Use(middleware.RequireAuth)
+   628→                        r.Get("/", s.listEpreuves)
+   629→                        r.Get("/auto-close", s.epreuveAutoClose)          // B4-MES-EPREUVES : clôture auto
+   630→                        r.Get("/orphelines", s.listOrphanEpreuves)        // P2-E3
+   631→                        r.Get("/session-speciale", s.listSessionSpeciale) // P2-E3
+   632→                        r.Get("/{id}", s.getEpreuve)
+   633→                        r.Get("/{id}/questions", s.listEpreuveQuestions)
+   634→                        r.Get("/{id}/status", s.getEpreuveStatus) // IA-WORKER-1 : polling statut génération IA
+   635→                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+   636→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.createEpreuve)
+   637→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/session-speciale", s.createSessionSpeciale)
+   638→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateEpreuve)
+   639→                        // CORBEILLE-FIX C1 : RequireRole sur DELETE epreuves (avant : RequireAuth seul).
+   640→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteEpreuve)
+   641→                        // AI-CONNECT-1 : génération IA d'épreuves via le backend AIService.
+   642→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/generate", s.epreuvesGenerate)
+   643→                })
+   644→
+   645→                // /api/questions
+   646→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   647→                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des questions).
+   648→                r.Route("/api/questions", func(r chi.Router) {
+   649→                        r.Use(middleware.RequireAuth)
+   650→                        r.Get("/", s.listQuestions)
+   651→                        // QUESTIONS-IA-FIX : test-zai consomme des tokens IA.
+   652→                        // Avant : RequireAuth seul → un ETUDIANT pouvait boucler
+   653→                        // dessus et faire exploser la facture. Restreint à ADMIN.
+   654→                        r.With(middleware.RequireRole("ADMIN")).Get("/test-zai", s.testZaiConnection) // P2-Q3
+   655→                        r.Get("/{id}", s.getQuestion)
+   656→                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+   657→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.createQuestion)
+   658→                        // CORBEILLE-FIX C1+C2 : RequireRole + BatchSoftDelete (avant : hard delete).
+   659→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteQuestions)
+   660→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateQuestion)
+   661→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{id}/regenerate", s.regenerateQuestion) // P2-Q2
+   662→                        // CORBEILLE-FIX C1 : RequireRole sur DELETE question (avant : RequireAuth seul).
+   663→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteQuestion)
+   664→                })
+   665→
+   666→                // /api/sessions
+   667→                r.Route("/api/sessions", func(r chi.Router) {
+   668→                        r.Use(middleware.RequireAuth)
+   669→                        r.Get("/", s.listSessions)
+   670→                        r.Post("/", s.startSession)
+   671→                        r.Put("/", s.saveReponse)
+   672→                        r.Put("/{id}", s.updateSessionBulk)   // B2-MES-EPREUVES : bulk save + alerte
+   673→                        r.Patch("/{id}", s.updateSessionBulk) // P2-E4 : alias PATCH pour frontend (force submit)
+   674→                        r.Get("/{id}", s.getSession)
+   675→                        r.Post("/{id}/submit", s.submitSession)
+   676→                        r.Post("/{id}/capture", s.captureSession)   // B3-MES-EPREUVES : capture écran
+   677→                        r.Get("/{id}/captures", s.listSessionCaptures) // R2 captures list (surveillance)
+   678→                })
+   679→
+   680→                // /api/resultats
+   681→                r.Route("/api/resultats", func(r chi.Router) {
+   682→                        r.Use(middleware.RequireAuth)
+   683→                        r.Get("/", s.listResultats)
+   684→                        r.Get("/overview", s.resultatsOverviewRealV2)
+   685→                        r.Get("/etudiant-overview", s.resultatsEtudiantOverview)
+   686→                })
+   687→
+   688→                // /api/messagerie — chat temps réel + IA hybride (Task 6)
+   689→                //
+   690→                // Conversations : liste, détail, création DIRECT, IA privé.
+   691→                // Messages : liste (cursor), envoi, édition, suppression.
+   692→                // Participants : liste, mark-as-read, mute.
+   693→                // Signalements : réservés RESPONSABLE/ADMIN (sous-groupe RequireRole).
+   694→                // SSE stream : /stream pour les events temps réel (message_new, edited,
+   695→                // deleted, read, typing). Le hub est in-memory (pas de Redis) — les
+   696→                // clients reconnectent automatiquement via EventSource natif.
+   697→                r.Route("/api/messagerie", func(r chi.Router) {
+   698→                        // Le propriétaire PaaS (ADMIN) n'a pas accès à la messagerie.
+   699→                        // MESSAGERIE-ADMIN-BLOCK : middleware dédié pour retourner 403 proprement.
+   700→                        r.Use(middleware.RequireAuth)
+   701→                        r.Use(middleware.BlockAdmin)
+   702→                        // Conversations
+   703→                        r.Get("/conversations", s.listConversations)
+   704→                        r.Post("/conversations/ia-private", s.getOrCreateIAPrivate)
+   705→                        r.Post("/conversations/direct", s.createDirect)
+   706→                        r.Get("/conversations/{id}", s.getConversation)
+   707→                        // Messages d'une conversation
+   708→                        r.Get("/conversations/{id}/messages", s.listMessages)
+   709→                        r.Post("/conversations/{id}/messages", s.sendMessage)
+   710→                        // Participants / read / mute
+   711→                        r.Post("/conversations/{id}/lu", s.markAsRead)
+   712→                        r.Patch("/conversations/{id}/mute", s.setMuted)
+   713→                        r.Get("/conversations/{id}/participants", s.listParticipants)
+   714→                        // Gestion conversation : quitter / vider
+   715→                        r.Delete("/conversations/{id}", s.leaveConversation)
+   716→                        r.Post("/conversations/{id}/clear", s.clearConversation)
+   717→                        // Messages (edit / delete / signaler / hide batch)
+   718→                        r.Patch("/messages/{id}", s.editMessage)
+   719→                        r.Delete("/messages/{id}", s.deleteMessage)
+   720→                        r.Post("/messages/{id}/signaler", s.signalMessage)
+   721→                        r.Post("/messages/{id}/reactions", s.toggleReaction)
+   722→                        r.Post("/messages/hide", s.hideMessages)
+   723→                        // SSE stream temps réel
+   724→                        r.Get("/stream", s.messagerieStream)
+   725→                        // Presence : liste des userIDs en ligne (polling 10-15s côté frontend)
+   726→                        r.Get("/presence", s.presence)
+   727→                        // Signalements : réservés RESPONSABLE/ADMIN
+   728→                        r.Group(func(r chi.Router) {
+   729→                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+   730→                                r.Get("/signalements", s.listSignalements)
+   731→                                r.Patch("/signalements/{id}", s.resolveSignalement)
+   732→                        })
+   733→                })
+   734→
+   735→                // /api/documents
+   736→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   737→                // RequireAuth seul → un ETUDIANT pouvait uploader/supprimer des documents).
+   738→                r.Route("/api/documents", func(r chi.Router) {
+   739→                        r.Use(middleware.RequireAuth)
+   740→                        r.Get("/", s.listDocuments)
+   741→                        r.Get("/{id}", s.getDocument)
+   742→                        r.Get("/{id}/download", s.downloadDocument)
+   743→                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+   744→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.uploadDocument)
+   745→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
+   746→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteDocument)
+   747→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{id}/analyze", s.analyzeDocument) // P1-D3
+   748→                })
+   749→
+   750→                // /api/certificats (verify est publique, définie plus haut)
+   751→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   752→                // RequireAuth seul → un ETUDIANT pouvait créer/révoquer des certificats).
+   753→                r.Route("/api/certificats", func(r chi.Router) {
+   754→                        r.Use(middleware.RequireAuth)
+   755→                        r.Get("/", s.listCertificats)
+   756→                        r.Get("/watermark-config", s.getWatermarkConfig) // P3b
+   757→                        r.Get("/{id}", s.getCertificat)
+   758→                        // Mutations : ADMIN + RESPONSABLE uniquement.
+   759→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/watermark-config", s.updateWatermarkConfig) // P3b
+   760→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createCertificat)                       // P3c
+   761→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/{id}/revoquer", s.revokeCertificat)
+   762→                })
+   763→
+   764→                // /api/correction
+   765→                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+   766→                // RequireAuth seul → un ETUDIANT pouvait corriger/noter des copies).
+   767→                r.Route("/api/correction", func(r chi.Router) {
+   768→                        r.Use(middleware.RequireAuth)
+   769→                        r.Get("/", s.listCorrectionSessions)
+   770→                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+   771→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/retourner-batch", s.retournerBatch)
+   772→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{sessionId}/retourner", s.retournerSession)
+   773→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{sessionId}/ai-grade", s.aiGradeSession)       // IA-CORRECTION-1
+   774→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/{sessionId}/ai-grade", s.saveGradeOrFinalize) // P1b-CORRECTION : save grade + finalize
+   775→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{sessionId}/ai-grade-batch", s.batchAiGrade)   // P1b-CORRECTION : batch IA
+   776→                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/reponses/{reponseId}", s.updateReponse)
+   777→                })
+   778→
+   779→                // /api/exam-prep
+   780→                r.Route("/api/exam-prep", func(r chi.Router) {
+   781→                        r.Use(middleware.RequireAuth)
+   782→                        // Dashboard
+   783→                        r.Get("/dashboard", s.examPrepDashboard)
+   784→                        // Documents (student-scoped)
+   785→                        r.Get("/documents", s.listExamPrepDocuments)
+   786→                        // HIGHLIGHT-FLASHCARD-1 — DocumentReader endpoint (contenuTexte + métadonnées).
+   787→                        r.Get("/documents/{id}/read", s.readExamPrepDocument)
+   788→                        // Review (spaced repetition)
+   789→                        r.Get("/review", s.listReviewItems)
+   790→                        r.Post("/review", s.markReviewed)
+   791→                        // HIGHLIGHT-FLASHCARD-1 — Flashcards (highlight to flashcard).
+   792→                        r.Get("/flashcards", s.listFlashcards)
+   793→                        r.Post("/flashcards", s.createFlashcard)
+   794→                        r.Delete("/flashcards/{id}", s.deleteFlashcard)
+   795→                        // Planning (study sessions)
+   796→                        r.Get("/planning", s.listStudySessions)
+   797→                        r.Post("/planning", s.createStudySession)
+   798→                        r.Delete("/planning/{id}", s.deleteStudySession)
+   799→                        // Practice
+   800→                        r.Get("/practice", s.listPracticeAttempts)
+   801→                        // EXAM-PREP-CONNECT-1 - Étape 2b : génération async (202 + PracticeQueue).
+   802→                        // Déclarée AVANT la route paramétrée /practice/{id}/submit pour que chi
+   803→                        // distingue correctement "/practice/generate" (statique) de "/practice/{id}/submit" (param).
+   804→                        r.Post("/practice/generate", s.examPrepGeneratePractice)
+   805→                        r.Post("/practice/{id}/submit", s.submitPractice)
+   806→                        // EXAM-PREP-CONNECT-1 - Étape 3 : Q&A RAG synchrone.
+   807→                        r.Post("/qa", s.examPrepQA)
+   808→                        // QUESTION-BANK-1 — Banque de questions collaborative + cache.
+   809→                        // GET  /question-bank         : liste des questions validées avec votes.
+   810→                        // POST /questions/{id}/vote   : upsert un vote (+1/-1).
+   811→                        // DELETE /questions/{id}/vote : retire le vote (un-vote).
+   812→                        r.Get("/question-bank", s.listQuestionBank)
+   813→                        r.Post("/questions/{id}/vote", s.voteQuestion)
+   814→                        r.Delete("/questions/{id}/vote", s.removeVote)
+   815→                        // AUDIO-LEARNING-1 — Mode Audio-Learning (podcasts de révision).
+   816→                        // POST   /documents/{id}/audio : crée un podcast (202 + AudioGenerationQueue).
+   817→                        // GET    /documents/{id}/audio : liste les podcasts du document.
+   818→                        // GET    /audio/{id}           : récupère un podcast (+ URL présignée si PRET).
+   819→                        r.Post("/documents/{id}/audio", s.generateAudio)
+   820→                        r.Get("/documents/{id}/audio", s.listDocumentAudio)
+   821→                        r.Get("/audio/{id}", s.getAudio)
+   822→                        // AUDIO-DELETE-STUDENT : supprime un podcast (ligne DB + objet R2).
+   823→                        r.Delete("/audio/{id}", s.deleteAudio)
+   824→                        // Help threads
+   825→                        r.Get("/help", s.listHelpThreads)
+   826→                        r.Post("/help", s.createHelpThread)
+   827→                        r.Post("/help/{id}/close", s.closeHelpThread)
+   828→                        r.Delete("/help/{id}", s.deleteHelpThread)
+   829→                        r.Get("/help/{id}/messages", s.listHelpMessages)
+   830→                        r.Post("/help/{id}/messages", s.createHelpMessage)
+   831→                })
+   832→
+   833→                // ── Endpoints stubs (éviter 404 sur le dashboard) ──
+   834→                r.Route("/api/stats", func(r chi.Router) {
+   835→                        r.Use(middleware.RequireAuth)
+   836→                        r.Get("/enseignant", s.statsEnseignant)
+   837→                        r.Get("/etudiant", s.statsEtudiant)
+   838→                        r.Get("/admin", s.statsAdmin)
+   839→                        r.Get("/responsable", s.statsResponsable)
+   840→                })
+   841→
+   842→                r.Route("/api/badges", func(r chi.Router) {
+   843→                        r.Use(middleware.RequireAuth)
+   844→                        r.Get("/", s.badgesList)
+   845→                        r.Post("/", s.badgesList)
+   846→                })
+   847→
+   848→                r.Route("/api/devoirs", func(r chi.Router) {
+   849→                        r.Use(middleware.RequireAuth)
+   850→                        r.Get("/", s.devoirsListReal)
+   851→                        r.Get("/stats", s.devoirsStatsReal)
+   852→
+   853→                        // P2-DEVOIRS-1 : mutations (ENSEIGNANT uniquement)
+   854→                        r.With(middleware.RequireRole("ENSEIGNANT")).Post("/", s.createDevoir)
+   855→                        r.With(middleware.RequireRole("ENSEIGNANT")).Get("/{id}", s.getDevoir)
+   856→                        r.With(middleware.RequireRole("ENSEIGNANT")).Patch("/{id}", s.updateDevoir)
+   857→                        r.With(middleware.RequireRole("ENSEIGNANT")).Delete("/{id}", s.deleteDevoir)
+   858→                })
+   859→
+   860→                // P2-DEVOIRS-2 : soumissions (étudiant crée, enseignant note)
+   861→                r.Route("/api/soumissions", func(r chi.Router) {
+   862→                        r.Use(middleware.RequireAuth)
+   863→                        r.Post("/presign-upload", s.presignUploadSoumission)                                     // P3-DEVOIRS-3 : URL présignée R2
+   864→                        r.Post("/", s.createSoumission)                                                          // ETUDIANT
+   865→                        r.Patch("/{id}", s.updateSoumission)                                                     // ETUDIANT (brouillon) ou ENSEIGNANT (note)
+   866→                        r.With(middleware.RequireRole("ENSEIGNANT")).Post("/{id}/ai-grade", s.aiGradeSoumission) // P4-DEVOIRS-4
+   867→                })
+   868→
+   869→                // P2-DEVOIRS-2 : grilles d'évaluation (ENSEIGNANT)
+   870→                r.Route("/api/grilles-evaluation", func(r chi.Router) {
+   871→                        r.Use(middleware.RequireAuth)
+   872→                        r.Get("/", s.listGrillesEvaluation)
+   873→                        r.With(middleware.RequireRole("ENSEIGNANT")).Post("/", s.createGrilleEvaluation)
+   874→                        r.With(middleware.RequireRole("ENSEIGNANT")).Patch("/{id}", s.updateGrilleEvaluation)
+   875→                })
+   876→
+   877→                r.Route("/api/alertes", func(r chi.Router) {
+   878→                        r.Use(middleware.RequireAuth)
+   879→                        r.Get("/", s.alertesListReal)
+   880→                        // SURVEILLANCE-FIX-2 S7 : route PATCH manquante (marquer lue / résoudre).
+   881→                        r.Patch("/{id}", s.alerteUpdate)
+   882→                        // N5 FIX : batch mark-all-read (1 requête au lieu de N).
+   883→                        r.Post("/mark-all-read", s.alertesMarkAllRead)
+   884→                })
+   885→
+   886→                // SURVEILLANCE-FIX-2 S13 : RequireRole ENSEIGNANT/ADMIN/RESPONSABLE
+   887→                // (avant : RequireAuth seul → un étudiant pouvait lire les sessions).
+   888→                r.Route("/api/surveillance", func(r chi.Router) {
+   889→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE"))
+   890→                        r.Get("/", s.surveillanceListSessions)
+   891→                        r.Get("/stats", s.surveillanceStatsV2)
+   892→                        // SSE-STREAM-1 : Server-Sent Events pour surveillance temps réel
+   893→                        r.Get("/stream", s.surveillanceStream) // SSE endpoint
+   894→                        // OPT-7 : WebSocket temps réel pour surveillance (remplace polling).
+   895→                        r.Get("/ws", s.handleSurveillanceWS)
+   896→                        // SURVEILLANCE-FIX-2 S2 : route POST /{id}/flag manquante.
+   897→                        r.Post("/{id}/flag", s.surveillanceFlagSession)
+   898→                })
+   899→
+   900→                r.Route("/api/corbeille", func(r chi.Router) {
+   901→                        // CORBEILLE-FIX C9 : RequireRole (avant : RequireAuth seul → étudiants
+   902→                        // pouvaient appeler l'API corbeille).
+   903→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE"))
+   904→                        r.Get("/", s.corbeilleListReal)
+   905→                        r.Post("/restore", s.corbeilleRestore)
+   906→                        r.Delete("/purge", s.corbeillePurge)
+   907→                })
+   908→
+   909→                // NOTIFICATIONS-FIX-N7 : RequireRole("ADMIN") sur /admin.
+   910→                // SECT-NOTIF-VAPID-1 : Web Push (VAPID) — endpoints pour l'abonnement PWA.
+   911→                // /vapid-public-key est public (pas d'auth — le frontend a besoin de la clé
+   912→                // avant de s'abonner). /subscribe et /unsubscribe exigent auth.
+   913→                r.Get("/api/push/vapid-public-key", s.vapidPublicKeyHandler)
+   914→                r.Route("/api/push", func(r chi.Router) {
+   915→                        r.Use(middleware.RequireAuth)
+   916→                        r.Post("/subscribe", s.pushSubscribeHandler)
+   917→                        r.Delete("/subscribe", s.pushUnsubscribeHandler)
+   918→                })
+   919→
+   920→                r.Route("/api/notifications", func(r chi.Router) {
+   921→                        r.Use(middleware.RequireAuth)
+   922→                        r.Get("/", s.notificationsListReal)
+   923→                        // N2 FIX : /me — NotificationAdmin destinées au user courant
+   924→                        // (RLS migration 000018 filtre par destinataireId/destinataireRole).
+   925→                        r.Get("/me", s.notificationsMeList)
+   926→                        r.Patch("/me/{id}", s.notificationsMeMarkRead)
+   927→                        // Phase 3 : unified (VIEW), SSE stream, preferences.
+   928→                        r.Get("/unified", s.notificationsUnifiedList)
+   929→                        r.Get("/stream", s.notificationsStream)
+   930→                        r.Get("/preferences", s.notificationsPreferencesGet)
+   931→                        r.Patch("/preferences", s.notificationsPreferencesUpdate)
+   932→                        // /admin : réservé ADMIN, mutations (POST/PATCH/DELETE).
+   933→                        r.With(middleware.RequireRole("ADMIN")).Get("/admin", s.notificationsAdminReal)
+   934→                        r.With(middleware.RequireRole("ADMIN")).Post("/admin", s.createNotificationAdmin)
+   935→                        r.With(middleware.RequireRole("ADMIN")).Post("/admin/mark-all-read", s.markAllReadAdmin)
+   936→                        r.With(middleware.RequireRole("ADMIN")).Patch("/admin/{id}", s.updateNotificationAdmin)
+   937→                        r.With(middleware.RequireRole("ADMIN")).Delete("/admin/{id}", s.deleteNotificationAdmin)
+   938→                        // NOTIFICATIONS-FIX-N8 : suppression en masse des notifications lues.
+   939→                        r.With(middleware.RequireRole("ADMIN")).Delete("/admin", s.deleteAllReadAdmin)
+   940→                })
+   941→
+   942→                // ABONNEMENTS-FIX-A4 : RequireRole("ADMIN") sur toutes les routes
+   943→                // abonnements/plans/factures (SaaS admin only). Avant : RequireAuth seul,
+   944→                // la RLS filtrait mais un ENSEIGNANT/ETUDIANT authentifié pouvait appeler.
+   945→                r.Route("/api/abonnements", func(r chi.Router) {
+   946→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
+   947→                        r.Get("/", s.abonnementsListReal)
+   948→                        // SECT-B2B-ANTI-ABUS : liste des établissements en attente de validation.
+   949→                        r.Get("/pending-b2b", s.listPendingB2B)
+   950→                        // SECT-B2B-ANTI-ABUS : valider un établissement (ESSAI démarre).
+   951→                        r.Post("/b2b/{id}/validate", s.validateB2BEstablishment)
+   952→                        // ABONNEMENTS-FIX-A1 : mutations (POST/PATCH/DELETE).
+   953→                        r.Post("/", s.createAbonnement)
+   954→                        r.Patch("/{id}", s.updateAbonnement)
+   955→                        r.Delete("/{id}", s.deleteAbonnement) // résilier (statut → RESILIE)
+   956→                        // SECT-ABONNEMENT-SOFT-DELETE : soft delete (deletedAt = NOW()),
+   957→                        // seulement si déjà résilié. Masque l'abonnement des listes.
+   958→                        r.Delete("/{id}/hard", s.softDeleteAbonnement)
+   959→                })
+   960→
+   961→                r.Route("/api/factures", func(r chi.Router) {
+   962→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
+   963→                        r.Get("/", s.facturesListReal)
+   964→                        // FACTURATION-FIX-F1+F2+F3+F4 : mutations (POST/GET/{id}/PATCH/DELETE).
+   965→                        r.Post("/", s.createFacture)
+   966→                        r.Get("/{id}", s.getFactureByID)
+   967→                        r.Patch("/{id}", s.updateFacture)
+   968→                        r.Delete("/{id}", s.cancelFacture)
+   969→                })
+   970→
+   971→                r.Route("/api/plans", func(r chi.Router) {
+   972→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
+   973→                        r.Get("/", s.plansListReal)
+   974→                        // ABONNEMENTS-FIX-A2 : mutations (POST/PATCH).
+   975→                        r.Post("/", s.createPlan)
+   976→                        r.Patch("/{id}", s.updatePlan)
+   977→                })
+   978→
+   979→                // CONFIGURATION-FIX-C4 : RequireRole("ADMIN") + route POST (C2).
+   980→                r.Route("/api/platform-settings", func(r chi.Router) {
+   981→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
+   982→                        r.Get("/", s.platformSettingsReal)
+   983→                        r.Post("/", s.updatePlatformSettings)
+   984→                })
+   985→
+   986→                r.Route("/api/ai-providers", func(r chi.Router) {
+   987→                        r.Use(middleware.RequireAuth)
+   988→                        r.With(middleware.RequireRole("ADMIN")).Get("/", s.aiProvidersListReal)
+   989→
+   990→                        // AI-PROVIDERS-1 : 11 endpoints pour la gestion des AI providers.
+   991→                        // Tous réservés ADMIN (clauses r.With explicites ci-dessous).
+   992→                        r.With(middleware.RequireRole("ADMIN")).Post("/", s.aiProviderCreate)
+   993→                        r.With(middleware.RequireRole("ADMIN")).Post("/activate", s.aiProviderActivate)
+   994→                        r.With(middleware.RequireRole("ADMIN")).Post("/priority", s.aiProviderPriority)
+   995→                        r.With(middleware.RequireRole("ADMIN")).Get("/models", s.aiProviderModels)
+   996→
+   997→                        // Sous-route failover (statut, config, health) — ADMIN uniquement.
+   998→                        r.Route("/failover", func(r chi.Router) {
+   999→                                r.Use(middleware.RequireRole("ADMIN"))
+  1000→                                r.Get("/status", s.aiProviderFailoverStatus)
+  1001→                                r.Post("/config", s.aiProviderFailoverConfig)
+  1002→                                r.Get("/health", s.aiProviderFailoverHealth)
+  1003→                                r.Post("/health", s.aiProviderFailoverHealth)
+  1004→                        })
+  1005→
+  1006→                        // Routes paramétrées {id} — déclarées après les routes statiques.
+  1007→                        // Chi distingue automatiquement "/activate" (statique) de "/{id}" (param).
+  1008→                        r.With(middleware.RequireRole("ADMIN")).Get("/{id}", s.aiProviderGet)
+  1009→                        r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.aiProviderUpdate)
+  1010→                        r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.aiProviderDelete)
+  1011→                        r.With(middleware.RequireRole("ADMIN")).Get("/{id}/test", s.aiProviderTest)
+  1012→                        r.With(middleware.RequireRole("ADMIN")).Post("/{id}/test", s.aiProviderTest)
+  1013→                })
+  1014→
+  1015→                // AI-ASSISTANT-1 : endpoint de chat IA pour le frontend.
+  1016→                // Le frontend (BackendAIProvider) envoie POST /api/ai-assistant
+  1017→                // avec { message, context }. Le backend appelle le LLM actif
+  1018→                // (avec failover automatique) et retourne { response, model }.
+  1019→                r.Route("/api/ai-assistant", func(r chi.Router) {
+  1020→                        r.Use(middleware.RequireAuth)
+  1021→                        r.Post("/", s.aiAssistant)
+  1022→                })
+  1023→
+  1024→                // MONITORING-FIX-M7 : RequireRole("ADMIN") sur monitoring + logs.
+  1025→                r.Route("/api/monitoring", func(r chi.Router) {
+  1026→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
+  1027→                        r.Get("/", s.monitoringEventsReal)
+  1028→                        // Bug B2 (audit monitoring) : healthcheck réel des services
+  1029→                        r.Get("/health", s.monitoringHealthCheck)
+  1030→                        // MONITORING-FIX-M2 : mutations (POST/PATCH/DELETE).
+  1031→                        r.Post("/", s.createMonitoringEvent)
+  1032→                        // Action de masse : résoudre/ignorer plusieurs événements en une requête.
+  1033→                        r.Post("/bulk", s.bulkMonitoringEvents)
+  1034→                        r.Patch("/{id}", s.resolveMonitoringEvent)
+  1035→                        r.Delete("/{id}", s.ignoreMonitoringEvent)
+  1036→                })
+  1037→
+  1038→                r.Route("/api/logs", func(r chi.Router) {
+  1039→                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
+  1040→                        r.Get("/", s.logsListReal)
+  1041→                })
+  1042→
+  1043→                // SECURITY-FIX (audit 2025) : RequireRole ADMIN sur les mutations (avant :
+  1044→                // RequireAuth seul → un ETUDIANT pouvait modifier la whitelist IP).
+  1045→                r.Route("/api/ip-whitelist", func(r chi.Router) {
+  1046→                        r.Use(middleware.RequireAuth)
+  1047→                        r.Get("/", s.ipWhitelistListReal)
+  1048→                        // Mutations : ADMIN uniquement.
+  1049→                        r.With(middleware.RequireRole("ADMIN")).Post("/", s.createIpWhitelist)
+  1050→                        r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.updateIpWhitelist)
+  1051→                        r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.deleteIpWhitelist)
+  1052→                })
+  1053→
+  1054→                // SECURITY-FIX (audit 2025) : RequireRole ADMIN+RESPONSABLE sur les mutations
+  1055→                // (avant : RequireAuth seul → un ETUDIANT pouvait modifier les paramètres de sécurité).
+  1056→                r.Route("/api/security-settings", func(r chi.Router) {
+  1057→                        r.Use(middleware.RequireAuth)
+  1058→                        r.Get("/", s.securitySettingsGetReal)
+  1059→                        r.Get("/etablissement/{id}", s.securitySettingsByEtablissement) // B5-MES-EPREUVES
+  1060→                        // Mutations : ADMIN + RESPONSABLE uniquement.
+  1061→                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/etablissement/{id}", s.updateSecuritySettingsByEtablissement)
+  1062→                })
+  1063→
+  1064→                r.Route("/api/enseignant", func(r chi.Router) {
+  1065→                        r.Use(middleware.RequireAuth)
+  1066→                        r.Use(middleware.RequireRole("ENSEIGNANT", "ADMIN")) // P2-M8
+  1067→                        r.Get("/context", s.enseignantContextReal)
+  1068→                        r.Get("/etudiants", s.enseignantEtudiantsReal)
+  1069→                        r.Get("/fiche-notes", s.enseignantFicheNotes) // MES-ETUDIANTS-REFOUND-1
+  1070→                })
+  1071→
+  1072→                r.Route("/api/etudiants", func(r chi.Router) {
+  1073→                        r.Use(middleware.RequireAuth)
+  1074→                        r.Get("/", s.etudiantsListReal)
+  1075→                })
+  1076→
+  1077→                r.Route("/api/validations-ue", func(r chi.Router) {
+  1078→                        r.Use(middleware.RequireAuth)
+  1079→                        r.Get("/", s.validationsUEListReal)
+  1080→                })
+  1081→
+  1082→                // Catch-all pour les routes API non implémentées (évite 404 brut)
+  1083→                r.NotFound(s.apiNotFound)
+  1084→        })
+  1085→
+  1086→        s.router = r
+  1087→}
+  1088→

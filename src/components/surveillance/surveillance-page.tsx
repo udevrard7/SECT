@@ -8,6 +8,7 @@ import {
   User, Mail, ChevronDown, ChevronRight, Loader2, Search, ImageOff,
   X, FileText, Activity, RefreshCw, Download, Flag, Zap, TrendingUp,
   Users, Bell, CheckCircle2, Radio, BarChart3, Flame, ScanEye,
+  Gauge, FileWarning, AlertOctagon, GitCompare, UserCheck,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -30,12 +31,14 @@ import {
 import {
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '@/components/ui/tabs'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PulseSkeleton, StatCard } from '@/components/ds'
 import { toast } from 'sonner'
 import {
   type SurveillanceSession, type EpreuveOption, type SurveillanceStats,
-  type LogEvent, type SeverityLevel,
+  type LogEvent, type SeverityLevel, type SessionCapture,
+  type FraudReport, type FraudReportEvent,
+  type SimilarityReport, type SimilarityResponse,
   getEventTypeLabel, getSeverityLevel, EVENT_LABELS,
 } from '@/lib/surveillance-types'
 import { useSurveillanceWS } from '@/hooks/use-surveillance-ws'
@@ -53,6 +56,21 @@ interface AlerteItem {
   filiere: { id: string; nom: string } | null
   epreuve: { id: string; titre: string } | null
   user: { id: string; name: string; email: string } | null
+}
+
+// ─── Identity photo type (verificationIdentite) ───
+interface IdentityPhotoItem {
+  id: string
+  etudiantId: string
+  epreuveId: string
+  sessionId?: string
+  url?: string
+  r2Key?: string
+  photoType: string
+  imageHash?: string
+  verifiedAt?: string
+  verifiedBy?: string
+  createdAt: string
 }
 
 // ─── Utility functions ───
@@ -171,11 +189,21 @@ export function SurveillancePage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [searchInput, setSearchInput] = useState('')
   const debouncedSearch = useDebounce(searchInput)
-  const [activeTab, setActiveTab] = useState<'sessions' | 'analysis' | 'alertes'>('sessions')
+  const [activeTab, setActiveTab] = useState<'sessions' | 'analysis' | 'alertes' | 'similarite'>('sessions')
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
   const [detailSession, setDetailSession] = useState<SurveillanceSession | null>(null)
   const [screenshotViewer, setScreenshotViewer] = useState<{ events: LogEvent[]; index: number } | null>(null)
   const [flagging, setFlagging] = useState<string | null>(null)
+  const [capturesViewer, setCapturesViewer] = useState<{ sessionId: string; captures: SessionCapture[]; index: number } | null>(null)
+  const [capturesLoading, setCapturesLoading] = useState(false)
+  const [fraudReport, setFraudReport] = useState<FraudReport | null>(null)
+  const [fraudReportLoading, setFraudReportLoading] = useState(false)
+  const [similarityDetail, setSimilarityDetail] = useState<SimilarityReport | null>(null)
+
+  // ─── Identity photos state (verificationIdentite) ──────────────────
+  const [identityPhotos, setIdentityPhotos] = useState<IdentityPhotoItem[]>([])
+  const [identityPhotosLoading, setIdentityPhotosLoading] = useState(false)
+  const [verifyingPhotoId, setVerifyingPhotoId] = useState<string | null>(null)
 
   // ═══════════════════════════════════════════════════════════════
   // OPT-7 : WebSocket temps réel pour surveillance.
@@ -271,6 +299,21 @@ export function SurveillancePage() {
 
   const stats = statsQuery.data ?? null
 
+  // FIX-5 : query pour les rapports de similarité (onglet Similarité)
+  const similarityQuery = useQuery<SimilarityResponse>({
+    queryKey: ['surveillance-similarities', user?.id, epreuveId],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveillance/${epreuveId}/similarities`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    },
+    enabled: !!user?.id && !!epreuveId && epreuveId !== 'all',
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const similarityReports = similarityQuery.data?.reports ?? []
+  const seuilSimilarite = similarityQuery.data?.seuilSimilarite ?? 0.85
+
   // Helpers pour invalider le cache après mutation (flag, refresh manuel).
   const refreshSessions = () =>
     queryClient.invalidateQueries({ queryKey: ['surveillance-sessions', user?.id] })
@@ -329,6 +372,39 @@ export function SurveillancePage() {
     } catch (err) { console.error('Alerte action error:', err); toast.error('Action impossible') }
   }
 
+  // ─── Load identity photos via /api/sessions/{id}/identity-photos ───
+  const handleViewIdentityPhotos = async (sessionId: string) => {
+    setIdentityPhotosLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/identity-photos`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setIdentityPhotos(data.photos ?? [])
+    } catch (err) {
+      console.error('Identity photos fetch error:', err)
+      setIdentityPhotos([])
+    } finally {
+      setIdentityPhotosLoading(false)
+    }
+  }
+
+  // ─── Verify an identity photo ──────────────────────────────────────
+  const handleVerifyIdentityPhoto = async (photoId: string) => {
+    setVerifyingPhotoId(photoId)
+    try {
+      const res = await fetch(`/api/identity-photos/${photoId}/verify`, { method: 'PATCH' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      toast.success('Photo d\'identité vérifiée')
+      // Update local state
+      setIdentityPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, verifiedAt: new Date().toISOString(), verifiedBy: user?.id } : p))
+    } catch (err) {
+      console.error('Verify identity photo error:', err)
+      toast.error('Impossible de vérifier la photo')
+    } finally {
+      setVerifyingPhotoId(null)
+    }
+  }
+
   const handleExportCSV = () => {
     const rows: string[] = [['Étudiant', 'Email', 'Épreuve', 'Statut', 'Alertes', 'Pénalité', 'Score risque', 'Niveau risque', 'Date début', 'Date fin'].join(';')]
     for (const s of sessions) {
@@ -341,6 +417,44 @@ export function SurveillancePage() {
     a.href = url; a.download = `surveillance_${new Date().toISOString().slice(0, 10)}.csv`; a.click()
     URL.revokeObjectURL(url)
     toast.success('Export CSV téléchargé')
+  }
+
+  // ─── Load fraud report via /api/surveillance/{sessionId}/rapport-fraude ───
+  const handleViewFraudReport = async (sessionId: string) => {
+    setFraudReportLoading(true)
+    try {
+      const res = await fetch(`/api/surveillance/${sessionId}/rapport-fraude`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: FraudReport = await res.json()
+      setFraudReport(data)
+    } catch (err) {
+      console.error('Fraud report fetch error:', err)
+      toast.error('Impossible de charger le rapport de fraude.')
+    } finally {
+      setFraudReportLoading(false)
+    }
+  }
+
+  // ─── Load captures from R2 via /api/sessions/{id}/captures ───
+  const handleViewCaptures = async (sessionId: string) => {
+    setCapturesLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/captures`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const captures: SessionCapture[] = data.captures ?? []
+      if (captures.length === 0) {
+        toast.info('Aucune capture disponible pour cette session.')
+        setCapturesLoading(false)
+        return
+      }
+      setCapturesViewer({ sessionId, captures, index: 0 })
+    } catch (err) {
+      console.error('Captures fetch error:', err)
+      toast.error('Impossible de charger les captures.')
+    } finally {
+      setCapturesLoading(false)
+    }
   }
 
   const derivedKpis = useMemo(() => {
@@ -416,8 +530,8 @@ export function SurveillancePage() {
       </div>
 
       {/* ─── Onglets ─── */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'sessions' | 'analysis' | 'alertes')}>
-        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'sessions' | 'analysis' | 'alertes' | 'similarite')}>
+        <TabsList className="grid w-full grid-cols-4 sm:inline-flex sm:w-auto">
           <TabsTrigger value="sessions" className="gap-1.5">
             <Eye className="h-4 w-4" />
             <span className="hidden sm:inline">Sessions surveillées</span>
@@ -428,6 +542,12 @@ export function SurveillancePage() {
             <BarChart3 className="h-4 w-4" />
             <span className="hidden sm:inline">Analyse fraude</span>
             <span className="sm:hidden">Analyse</span>
+          </TabsTrigger>
+          <TabsTrigger value="similarite" className="gap-1.5">
+            <GitCompare className="h-4 w-4" />
+            <span className="hidden sm:inline">Similarité copies</span>
+            <span className="sm:hidden">Similarité</span>
+            {similarityReports.filter(r => r.flagged).length > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center bg-destructive/15 px-1 text-[10px] font-bold text-destructive font-mono tabular-nums">{similarityReports.filter(r => r.flagged).length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="alertes" className="gap-1.5">
             <Bell className="h-4 w-4" />
@@ -445,18 +565,51 @@ export function SurveillancePage() {
             onOpenScreenshot={(events, index) => setScreenshotViewer({ events, index })} />
         </TabsContent>
         <TabsContent value="analysis" className="mt-5"><AnalysisTab stats={stats} loading={loading} /></TabsContent>
+        <TabsContent value="similarite" className="mt-5">
+          <SimilarityTab
+            reports={similarityReports}
+            seuilSimilarite={seuilSimilarite}
+            loading={similarityQuery.isLoading}
+            epreuveId={epreuveId}
+            onOpenDetail={setSimilarityDetail}
+          />
+        </TabsContent>
         <TabsContent value="alertes" className="mt-5"><AlertesTab alertes={alertes} loading={loading} onAction={handleAlerteAction} /></TabsContent>
       </Tabs>
 
       {/* ─── Panneau de détail (Sheet) ─── */}
-      <DetailSheet session={detailSession} onClose={() => setDetailSession(null)} onFlag={handleFlag} flagging={flagging}
-        onOpenScreenshot={(events, index) => setScreenshotViewer({ events, index })} />
+      <DetailSheet session={detailSession} onClose={() => { setDetailSession(null); setIdentityPhotos([]) }} onFlag={handleFlag} flagging={flagging}
+        onOpenScreenshot={(events, index) => setScreenshotViewer({ events, index })}
+        onViewCaptures={handleViewCaptures} capturesLoading={capturesLoading}
+        onViewFraudReport={handleViewFraudReport} fraudReportLoading={fraudReportLoading}
+        onViewIdentityPhotos={handleViewIdentityPhotos} identityPhotos={identityPhotos} identityPhotosLoading={identityPhotosLoading}
+        onVerifyIdentityPhoto={handleVerifyIdentityPhoto} verifyingPhotoId={verifyingPhotoId} />
 
-      {/* ─── Visionneuse de captures ─── */}
+      {/* ─── Visionneuse de captures (ancien logEvents) ─── */}
       {screenshotViewer && (
         <ScreenshotViewer events={screenshotViewer.events} index={screenshotViewer.index}
           onClose={() => setScreenshotViewer(null)}
           onIndexChange={(index) => setScreenshotViewer({ events: screenshotViewer.events, index })} />
+      )}
+
+      {/* ─── Visionneuse de captures R2 ─── */}
+      {capturesViewer && (
+        <CapturesViewer
+          captures={capturesViewer.captures}
+          index={capturesViewer.index}
+          onClose={() => setCapturesViewer(null)}
+          onIndexChange={(i) => setCapturesViewer({ ...capturesViewer, index: i })}
+        />
+      )}
+
+      {/* ─── Rapport de fraude (Dialog) ─── */}
+      {fraudReport && (
+        <FraudReportDialog report={fraudReport} onClose={() => setFraudReport(null)} />
+      )}
+
+      {/* ─── Similarité détail (Dialog) FIX-5 ─── */}
+      {similarityDetail && (
+        <SimilarityDetailDialog report={similarityDetail} seuilSimilarite={seuilSimilarite} onClose={() => setSimilarityDetail(null)} />
       )}
     </div>
   )
@@ -725,9 +878,13 @@ function AlertesTab({ alertes, loading, onAction }: { alertes: AlerteItem[]; loa
 }
 
 // ─── Detail Sheet ───
-function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot }: {
+function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot, onViewCaptures, capturesLoading, onViewFraudReport, fraudReportLoading, onViewIdentityPhotos, identityPhotos, identityPhotosLoading, onVerifyIdentityPhoto, verifyingPhotoId }: {
   session: SurveillanceSession | null; onClose: () => void; onFlag: (id: string) => void; flagging: string | null
   onOpenScreenshot: (events: LogEvent[], index: number) => void
+  onViewCaptures: (sessionId: string) => void; capturesLoading: boolean
+  onViewFraudReport: (sessionId: string) => void; fraudReportLoading: boolean
+  onViewIdentityPhotos: (sessionId: string) => void; identityPhotos: IdentityPhotoItem[]; identityPhotosLoading: boolean
+  onVerifyIdentityPhoto: (photoId: string) => void; verifyingPhotoId: string | null
 }) {
   return (
     <Sheet open={!!session} onOpenChange={(v) => !v && onClose()}>
@@ -750,9 +907,81 @@ function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot }: {
               <div className="flex justify-between"><span className="text-muted-foreground">Fin</span><span>{formatDateTime(session.dateFin)}</span></div>
               {session.score !== null && <div className="flex justify-between"><span className="text-muted-foreground">Score</span><span className="font-bold text-success-text">{session.score}/20</span></div>}
             </CardContent></Card>
+            {/* ─── Captures R2 (nouveau) ─── */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="flex items-center gap-2 text-sm font-medium"><Camera className="h-4 w-4 text-info" />Captures d&apos;écran (R2)</h4>
+                <Button size="sm" variant="outline" onClick={() => onViewCaptures(session.id)} disabled={capturesLoading} className="gap-1.5 text-xs">
+                  {capturesLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                  Voir les captures
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Les captures sont stockées dans R2 et accessibles via des URL présignées.</p>
+            </div>
+            {/* ─── Identité (verificationIdentite) ─── */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="flex items-center gap-2 text-sm font-medium"><UserCheck className="h-4 w-4 text-success-text" />Photos d&apos;identité</h4>
+                <Button size="sm" variant="outline" onClick={() => onViewIdentityPhotos(session.id)} disabled={identityPhotosLoading} className="gap-1.5 text-xs">
+                  {identityPhotosLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+                  Voir les photos
+                </Button>
+              </div>
+              {identityPhotos.length > 0 ? (
+                <div className="space-y-3">
+                  {/* Pre-exam photo (main) */}
+                  {identityPhotos.filter((p) => p.photoType === 'pre-exam').map((photo) => (
+                    <div key={photo.id} className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+                      {photo.url ? (
+                        <img src={photo.url} alt="Photo d'identité pré-examen" className="h-20 w-20 rounded-lg border object-cover" />
+                      ) : (
+                        <div className="flex h-20 w-20 items-center justify-center rounded-lg border bg-muted"><ImageOff className="h-6 w-6 text-muted-foreground/40" /></div>
+                      )}
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/30">Pré-examen</Badge>
+                          {photo.verifiedAt ? (
+                            <Badge variant="outline" className="text-xs bg-success/10 text-success-text border-success/30"><CheckCircle2 className="mr-1 h-3 w-3" />Vérifiée</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/30">En attente</Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{formatDateTime(photo.createdAt)}</p>
+                        {!photo.verifiedAt && (
+                          <Button size="sm" variant="outline" onClick={() => onVerifyIdentityPhoto(photo.id)} disabled={verifyingPhotoId === photo.id} className="mt-1 gap-1 text-xs text-success-text hover:bg-success/5 border-success/30">
+                            {verifyingPhotoId === photo.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
+                            Vérifier l&apos;identité
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Mid-exam photos (thumbnail strip) */}
+                  {identityPhotos.filter((p) => p.photoType === 'mid-exam').length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Photos pendant l&apos;examen ({identityPhotos.filter((p) => p.photoType === 'mid-exam').length})</p>
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {identityPhotos.filter((p) => p.photoType === 'mid-exam').map((photo) => (
+                          <div key={photo.id} className="relative shrink-0">
+                            {photo.url ? (
+                              <img src={photo.url} alt={`Photo ${photo.photoType}`} className="h-14 w-14 rounded-md border object-cover" />
+                            ) : (
+                              <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-muted"><ImageOff className="h-4 w-4 text-muted-foreground/40" /></div>
+                            )}
+                            {photo.verifiedAt && <CheckCircle2 className="absolute -right-1 -top-1 h-3.5 w-3.5 text-success-text" />}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Aucune photo d&apos;identité disponible pour cette session.</p>
+              )}
+            </div>
             {session.screenshotEvents.length > 0 && (
               <div>
-                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium"><Camera className="h-4 w-4 text-info" />Captures ({session.screenshotEvents.length})</h4>
+                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium"><Camera className="h-4 w-4 text-info" />Captures (logEvents) ({session.screenshotEvents.length})</h4>
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {session.screenshotEvents.slice(0, 12).map((evt, i) => (
                     <button key={i} onClick={() => onOpenScreenshot(session.screenshotEvents, i)} className="group relative aspect-video overflow-hidden rounded-lg border border-border/60 bg-muted" aria-label={`Capture ${i + 1}`}>
@@ -784,6 +1013,12 @@ function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot }: {
               </ScrollArea>
             </div>
             <div className="flex gap-2 pb-6">
+              {session.alertes > 0 && (
+                <Button onClick={() => onViewFraudReport(session.id)} disabled={fraudReportLoading} variant="outline" className="flex-1 gap-2 text-warning hover:bg-warning/5 border-warning/30">
+                  {fraudReportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileWarning className="h-4 w-4" />}
+                  Rapport de fraude
+                </Button>
+              )}
               {!session.flagged && (<Button onClick={() => onFlag(session.id)} disabled={flagging === session.id} variant="outline" className="flex-1 gap-2 text-destructive hover:bg-destructive/5 border-destructive/30">{flagging === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}Signaler cette session</Button>)}
             </div>
           </div>
@@ -809,6 +1044,527 @@ function ScreenshotViewer({ events, index, onClose, onIndexChange }: {
             <Button size="icon" variant="outline" onClick={() => onIndexChange((index - 1 + events.length) % events.length)} className="absolute left-2" aria-label="Capture précédente"><ChevronRight className="h-4 w-4 rotate-180" /></Button>
             <Button size="icon" variant="outline" onClick={() => onIndexChange((index + 1) % events.length)} className="absolute right-2" aria-label="Capture suivante"><ChevronRight className="h-4 w-4" /></Button>
           </>)}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Captures Viewer (R2) ───
+function CapturesViewer({ captures, index, onClose, onIndexChange }: {
+  captures: SessionCapture[]; index: number; onClose: () => void; onIndexChange: (index: number) => void
+}) {
+  const current = captures[index]
+  if (!current) return null
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '—'
+    if (bytes < 1024) return `${bytes} o`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span>Capture #{current.captureIndex} — {index + 1} / {captures.length}</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              {formatDateTime(current.createdAt)}
+              {current.fileSize ? ` • ${formatFileSize(current.fileSize)}` : ''}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="relative flex items-center justify-center">
+          {current.url ? (
+            <img
+              src={current.url}
+              alt={`Capture #${current.captureIndex}`}
+              className="max-h-[60vh] w-auto rounded-lg border border-border/60"
+            />
+          ) : (
+            <div className="flex h-64 w-full flex-col items-center justify-center rounded-lg border border-border/60 bg-muted">
+              <ImageOff className="h-12 w-12 text-muted-foreground/40" />
+              <p className="mt-2 text-xs text-muted-foreground">Image non disponible (R2 non configuré)</p>
+            </div>
+          )}
+          {captures.length > 1 && (<>
+            <Button size="icon" variant="outline" onClick={() => onIndexChange((index - 1 + captures.length) % captures.length)} className="absolute left-2" aria-label="Capture précédente"><ChevronRight className="h-4 w-4 rotate-180" /></Button>
+            <Button size="icon" variant="outline" onClick={() => onIndexChange((index + 1) % captures.length)} className="absolute right-2" aria-label="Capture suivante"><ChevronRight className="h-4 w-4" /></Button>
+          </>)}
+        </div>
+        {/* Thumbnails strip */}
+        {captures.length > 1 && (
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            {captures.map((c, i) => (
+              <button
+                key={c.id}
+                onClick={() => onIndexChange(i)}
+                className={`shrink-0 rounded-md border-2 transition-all ${
+                  i === index ? 'border-primary ring-1 ring-primary/30' : 'border-border/60 opacity-60 hover:opacity-100'
+                }`}
+                aria-label={`Capture #${c.captureIndex}`}
+              >
+                {c.url ? (
+                  <img src={c.url} alt={`Miniature #${c.captureIndex}`} className="h-12 w-20 rounded object-cover" />
+                ) : (
+                  <div className="flex h-12 w-20 items-center justify-center rounded bg-muted">
+                    <Camera className="h-4 w-4 text-muted-foreground/40" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Fraud Report Dialog ───
+function FraudReportDialog({ report, onClose }: {
+  report: FraudReport; onClose: () => void
+}) {
+  const { session, etudiant, epreuve, events, summary, captures } = report
+
+  // Risk gauge color
+  const riskGaugeColor = (level: string) => {
+    switch (level) {
+      case 'critical': return 'text-destructive'
+      case 'high': return 'text-warning'
+      case 'moderate': return 'text-info'
+      default: return 'text-success-text'
+    }
+  }
+  const riskGaugeBg = (level: string) => {
+    switch (level) {
+      case 'critical': return 'bg-destructive'
+      case 'high': return 'bg-warning'
+      case 'moderate': return 'bg-info'
+      default: return 'bg-success'
+    }
+  }
+  const riskLabel = (level: string) => {
+    switch (level) {
+      case 'critical': return 'Critique'
+      case 'high': return 'Élevé'
+      case 'moderate': return 'Modéré'
+      default: return 'Sûr'
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto scrollbar-thin">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileWarning className="h-5 w-5 text-warning" />
+            Rapport de fraude
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* ─── Student + Exam info ─── */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><User className="h-4 w-4" />Étudiant</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4 space-y-1 text-sm">
+                <p className="font-medium">{etudiant.name}</p>
+                <p className="text-muted-foreground">{etudiant.email}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><FileText className="h-4 w-4" />Épreuve</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4 space-y-1 text-sm">
+                <p className="font-medium">{epreuve.titre}</p>
+                <p className="text-muted-foreground">Durée : {epreuve.duree} min</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ─── Risk Score Gauge ─── */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-6">
+                <div className="relative flex h-24 w-24 shrink-0 items-center justify-center">
+                  <svg className="h-24 w-24 -rotate-90" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" className="text-muted/30" strokeWidth="8" />
+                    <circle cx="50" cy="50" r="42" fill="none" className={riskGaugeBg(summary.riskLevel)} strokeWidth="8"
+                      strokeDasharray={`${summary.riskScore * 2.64} 264`} strokeLinecap="round" />
+                  </svg>
+                  <span className={`absolute text-2xl font-bold font-mono tabular-nums ${riskGaugeColor(summary.riskLevel)}`}>{summary.riskScore}</span>
+                </div>
+                <div className="space-y-1">
+                  <p className={`text-lg font-bold ${riskGaugeColor(summary.riskLevel)}`}>Risque {riskLabel(summary.riskLevel)}</p>
+                  <p className="text-sm text-muted-foreground">Score de risque calculé sur 100</p>
+                  {!report.rapportFraudeEnabled && (
+                    <p className="text-xs text-warning flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Rapport de fraude non activé dans les paramètres de sécurité</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ─── Summary Stats ─── */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Alertes</p><p className="text-2xl font-bold font-mono tabular-nums text-warning">{summary.totalAlertes}</p></CardContent></Card>
+            <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Pénalité</p><p className="text-2xl font-bold font-mono tabular-nums text-secondary">-{summary.totalPenalite}</p></CardContent></Card>
+            <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Haute sévérité</p><p className="text-2xl font-bold font-mono tabular-nums text-destructive">{summary.highSeverity}</p></CardContent></Card>
+            <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Moyenne sévérité</p><p className="text-2xl font-bold font-mono tabular-nums text-warning">{summary.mediumSeverity}</p></CardContent></Card>
+          </div>
+
+          {/* ─── Event Type Breakdown ─── */}
+          {Object.keys(summary.eventTypeBreakdown).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4" />Répartition par type</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="space-y-2">
+                  {Object.entries(summary.eventTypeBreakdown).sort(([, a], [, b]) => b - a).map(([type, count]) => {
+                    const maxCount = Math.max(...Object.values(summary.eventTypeBreakdown))
+                    return (
+                      <div key={type} className="flex items-center gap-3">
+                        <span className="w-32 shrink-0 text-xs font-medium truncate">{getEventTypeLabel(type)}</span>
+                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full rounded-full ${riskGaugeBg(getSeverityLevel(type) === 'high' ? 'high' : getSeverityLevel(type) === 'medium' ? 'moderate' : 'safe')}`} style={{ width: `${(count / maxCount) * 100}%` }} />
+                        </div>
+                        <span className="text-xs font-bold font-mono tabular-nums">{count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ─── Timeline of Events ─── */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Activity className="h-4 w-4" />Chronologie des événements ({events.length})</CardTitle></CardHeader>
+            <CardContent className="px-4 pb-4">
+              {events.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Aucun événement de fraude enregistré.</p>
+              ) : (
+                <ScrollArea className="max-h-64">
+                  <div className="space-y-1.5">
+                    {[...events].reverse().map((evt, i) => (
+                      <div key={i} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-2 text-xs">
+                        <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded ${severityClasses(evt.severity as SeverityLevel)}`}>{getEventTypeIcon(evt.type)}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{getEventTypeLabel(evt.type)}</span>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className={`text-[10px] px-1.5 ${severityClasses(evt.severity as SeverityLevel)}`}>{evt.severity === 'high' ? 'Critique' : evt.severity === 'medium' ? 'Important' : evt.severity === 'low' ? 'Mineur' : 'Info'}</Badge>
+                              <span className="text-muted-foreground">{evt.timestamp ? formatTime(evt.timestamp) : '—'}</span>
+                            </div>
+                          </div>
+                          {evt.details && <p className="mt-0.5 text-muted-foreground">{evt.details}</p>}
+                          {evt.penalite > 0 && <span className="mt-0.5 inline-block text-secondary">Pénalité : -{evt.penalite} pts</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ─── Captures List ─── */}
+          {captures.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Camera className="h-4 w-4" />Captures d&apos;écran ({captures.length})</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {captures.map((cap) => (
+                    <div key={cap.id} className="flex flex-col items-center rounded-lg border border-border/60 bg-muted/30 p-2 text-center">
+                      <Camera className="h-6 w-6 text-muted-foreground/40" />
+                      <p className="mt-1 text-xs text-muted-foreground">#{cap.captureIndex}</p>
+                      <p className="text-[10px] text-muted-foreground">{cap.createdAt ? formatDateTime(cap.createdAt) : '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ─── Note with penalty ─── */}
+          {session.noteTotal !== undefined && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Note finale (avec pénalité)</p>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold">{session.noteTotal.toFixed(1)}</span>
+                      <span className="text-lg text-muted-foreground">/{session.noteMax}</span>
+                    </div>
+                  </div>
+                  {summary.totalPenalite > 0 && (
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Pénalité appliquée</p>
+                      <p className="text-lg font-bold text-secondary">-{summary.totalPenalite} pts</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ─── Generated at ─── */}
+          <p className="text-center text-xs text-muted-foreground">
+            Rapport généré le {formatDateTime(report.generatedAt)}
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Similarity Tab (FIX-5) ───
+function SimilarityTab({ reports, seuilSimilarite, loading, epreuveId, onOpenDetail }: {
+  reports: SimilarityReport[]; seuilSimilarite: number; loading: boolean; epreuveId: string
+  onOpenDetail: (r: SimilarityReport) => void
+}) {
+  if (!epreuveId || epreuveId === 'all') {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <GitCompare className="mx-auto h-12 w-12 text-muted-foreground/40" />
+          <p className="mt-3 text-sm text-muted-foreground">Sélectionnez une épreuve pour voir les similarités entre copies.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map(i => <PulseSkeleton key={i} className="h-20 w-full rounded-lg" />)}
+      </div>
+    )
+  }
+
+  const flaggedCount = reports.filter(r => r.flagged).length
+
+  return (
+    <div className="space-y-4">
+      {/* ─── KPIs similarité ─── */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Paires analysées</p>
+            <p className="text-2xl font-bold font-mono tabular-nums">{reports.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Paires suspectes</p>
+            <p className="text-2xl font-bold font-mono tabular-nums text-destructive">{flaggedCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="col-span-2 sm:col-span-1">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs text-muted-foreground">Seuil de similarité</p>
+            <p className="text-2xl font-bold font-mono tabular-nums text-warning">{(seuilSimilarite * 100).toFixed(0)}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {reports.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-success-text/60" />
+            <p className="mt-3 text-sm text-muted-foreground">Aucune similarité détectée pour cette épreuve.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Le worker analyse les copies après la clôture de l&apos;épreuve.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {reports.map((report) => {
+            const simPct = (report.globalSimilarity * 100).toFixed(1)
+            const isAboveThreshold = report.flagged
+            return (
+              <motion.div key={report.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md ${isAboveThreshold ? 'border-destructive/50 bg-destructive/5' : 'border-border hover:border-primary/30'}`}
+                  onClick={() => onOpenDetail(report)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-4">
+                      {/* Similarity score circle */}
+                      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center">
+                        <svg className="h-14 w-14 -rotate-90" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" className="text-muted/30" strokeWidth="8" />
+                          <circle cx="50" cy="50" r="42" fill="none"
+                            className={isAboveThreshold ? 'text-destructive' : report.globalSimilarity >= 0.5 ? 'text-warning' : 'text-success'}
+                            strokeWidth="8"
+                            strokeDasharray={`${report.globalSimilarity * 264} 264`}
+                            strokeLinecap="round"
+                            style={{ stroke: 'currentColor' }}
+                          />
+                        </svg>
+                        <span className={`absolute text-sm font-bold font-mono tabular-nums ${isAboveThreshold ? 'text-destructive' : report.globalSimilarity >= 0.5 ? 'text-warning' : 'text-success-text'}`}>
+                          {simPct}%
+                        </span>
+                      </div>
+
+                      {/* Student pair info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium truncate">
+                            {report.etudiantANom || report.etudiantAId.slice(0, 8)} ↔ {report.etudiantBNom || report.etudiantBId.slice(0, 8)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          {isAboveThreshold && (
+                            <Badge variant="destructive" className="text-[10px] px-1.5">Suspect</Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {report.questionSimilarities?.length || 0} questions comparées
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Similarity bar */}
+                      <div className="hidden sm:block w-24">
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${isAboveThreshold ? 'bg-destructive' : report.globalSimilarity >= 0.5 ? 'bg-warning' : 'bg-success'}`}
+                            style={{ width: `${report.globalSimilarity * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Similarity Detail Dialog (FIX-5) ───
+function SimilarityDetailDialog({ report, seuilSimilarite, onClose }: {
+  report: SimilarityReport; seuilSimilarite: number; onClose: () => void
+}) {
+  const isAboveThreshold = report.flagged
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto scrollbar-thin">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <GitCompare className="h-5 w-5 text-warning" />
+            Similarité entre copies
+            {isAboveThreshold && <Badge variant="destructive" className="ml-2">Au-dessus du seuil</Badge>}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* ─── Student pair ─── */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><User className="h-4 w-4" />Étudiant A</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4 space-y-1 text-sm">
+                <p className="font-medium">{report.etudiantANom || '—'}</p>
+                {report.etudiantAEmail && <p className="text-muted-foreground">{report.etudiantAEmail}</p>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2"><User className="h-4 w-4" />Étudiant B</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4 space-y-1 text-sm">
+                <p className="font-medium">{report.etudiantBNom || '—'}</p>
+                {report.etudiantBEmail && <p className="text-muted-foreground">{report.etudiantBEmail}</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ─── Global similarity gauge ─── */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-6">
+                <div className="relative flex h-24 w-24 shrink-0 items-center justify-center">
+                  <svg className="h-24 w-24 -rotate-90" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" className="text-muted/30" strokeWidth="8" />
+                    <circle cx="50" cy="50" r="42" fill="none"
+                      className={isAboveThreshold ? 'text-destructive' : 'text-warning'}
+                      strokeWidth="8"
+                      strokeDasharray={`${report.globalSimilarity * 264} 264`}
+                      strokeLinecap="round"
+                      style={{ stroke: 'currentColor' }}
+                    />
+                  </svg>
+                  <span className={`absolute text-2xl font-bold font-mono tabular-nums ${isAboveThreshold ? 'text-destructive' : 'text-warning'}`}>
+                    {(report.globalSimilarity * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <p className={`text-lg font-bold ${isAboveThreshold ? 'text-destructive' : 'text-warning'}`}>
+                    {isAboveThreshold ? 'Similarité suspecte' : 'Similarité détectée'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Seuil : {(seuilSimilarite * 100).toFixed(0)}% — Similarité globale pondérée par le barème
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ─── Question-by-question breakdown ─── */}
+          {report.questionSimilarities && report.questionSimilarities.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Détail par question ({report.questionSimilarities.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <ScrollArea className="max-h-96">
+                  <div className="space-y-2">
+                    {report.questionSimilarities.map((qs, i) => {
+                      const simPct = (qs.similarity * 100).toFixed(1)
+                      const isHigh = qs.similarity >= seuilSimilarite
+                      const typeLabel: Record<string, string> = {
+                        QCU: 'QCU', QCM: 'QCM', QRC: 'QRC', CODE: 'Code', TRS: 'Transcription', REFLEXION: 'Réflexion'
+                      }
+                      return (
+                        <div key={i} className={`rounded-md border p-3 ${isHigh ? 'border-destructive/50 bg-destructive/5' : 'border-border'}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium">Q{i + 1}</span>
+                              <Badge variant="outline" className="text-[10px] px-1.5">{typeLabel[qs.type] || qs.type}</Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-20 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div className={`h-full rounded-full ${isHigh ? 'bg-destructive' : qs.similarity >= 0.5 ? 'bg-warning' : 'bg-success'}`} style={{ width: `${qs.similarity * 100}%` }} />
+                              </div>
+                              <span className={`text-xs font-bold font-mono tabular-nums ${isHigh ? 'text-destructive' : ''}`}>{simPct}%</span>
+                            </div>
+                          </div>
+                          {(qs.answerA || qs.answerB) && (
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <div className="rounded bg-muted/40 p-2">
+                                <p className="text-[10px] text-muted-foreground mb-0.5">Étudiant A</p>
+                                <p className="text-xs break-words">{qs.answerA || '—'}</p>
+                              </div>
+                              <div className="rounded bg-muted/40 p-2">
+                                <p className="text-[10px] text-muted-foreground mb-0.5">Étudiant B</p>
+                                <p className="text-xs break-words">{qs.answerB || '—'}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </DialogContent>
     </Dialog>
