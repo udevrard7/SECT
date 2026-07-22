@@ -15,6 +15,10 @@
       "destination": "/api/factures/:id/pdf"
     },
     {
+      "source": "/api/epreuves/:id/pdf",
+      "destination": "/api/epreuves/:id/pdf"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://sect-zead.onrender.com/api/:path*"
     }
