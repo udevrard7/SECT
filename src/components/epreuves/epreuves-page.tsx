@@ -732,30 +732,43 @@ function ModelesTab() {
  PDF
  </Button>
  </DropdownMenuTrigger>
- <DropdownMenuContent align="end">
- <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+ <DropdownMenuContent align="end" className="w-56">
+ <DropdownMenuLabel className="flex items-center gap-2">
+ <FileText className="h-3.5 w-3.5" />
+ Exporter en PDF professionnel
+ </DropdownMenuLabel>
  <DropdownMenuSeparator />
- <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id}>
- <FileDown className="h-4 w-4 mr-2 text-success-text" />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-success/10 mr-3">
+ <FileDown className="h-4 w-4 text-success-text" />
+ </div>
  <div>
- <p className="font-medium">Sujet</p>
- <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+ <p className="font-semibold text-sm">Sujet</p>
+ <p className="text-xs text-muted-foreground">Questions + consignes + barème</p>
  </div>
  </DropdownMenuItem>
- <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'corrige')} disabled={exportingPdfId === epreuve.id}>
- <FileCheck2 className="h-4 w-4 mr-2 text-warning" />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'corrige')} disabled={exportingPdfId === epreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-warning/10 mr-3">
+ <FileCheck2 className="h-4 w-4 text-warning" />
+ </div>
  <div>
- <p className="font-medium">Corrigé type</p>
- <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+ <p className="font-semibold text-sm">Corrigé type</p>
+ <p className="text-xs text-muted-foreground">Réponses correctes + explications</p>
  </div>
  </DropdownMenuItem>
- <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'feuille-reponses')} disabled={exportingPdfId === epreuve.id}>
- <ClipboardList className="h-4 w-4 mr-2 text-info" />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'feuille-reponses')} disabled={exportingPdfId === epreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 mr-3">
+ <ClipboardList className="h-4 w-4 text-info" />
+ </div>
  <div>
- <p className="font-medium">Feuille de réponses</p>
- <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+ <p className="font-semibold text-sm">Feuille de réponses</p>
+ <p className="text-xs text-muted-foreground">Grille QCM/QCU + émargement</p>
  </div>
  </DropdownMenuItem>
+ <DropdownMenuSeparator />
+ <div className="px-2 py-1.5 text-xs text-muted-foreground">
+ PDF institutionnel avec logo, filière & niveau
+ </div>
  </DropdownMenuContent>
  </DropdownMenu>
  <Button variant="outline" size="sm" onClick={() => openDuplicate(epreuve)}>
@@ -1039,30 +1052,43 @@ function ModelesTab() {
  Télécharger PDF
  </Button>
  </DropdownMenuTrigger>
- <DropdownMenuContent align="start">
- <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+ <DropdownMenuContent align="start" className="w-56">
+ <DropdownMenuLabel className="flex items-center gap-2">
+ <FileText className="h-3.5 w-3.5" />
+ Exporter en PDF professionnel
+ </DropdownMenuLabel>
  <DropdownMenuSeparator />
- <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'sujet')} disabled={exportingPdfId === previewEpreuve.id}>
- <FileDown className="h-4 w-4 mr-2 text-success-text" />
+ <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'sujet')} disabled={exportingPdfId === previewEpreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-success/10 mr-3">
+ <FileDown className="h-4 w-4 text-success-text" />
+ </div>
  <div>
- <p className="font-medium">Sujet</p>
- <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+ <p className="font-semibold text-sm">Sujet</p>
+ <p className="text-xs text-muted-foreground">Questions + consignes + barème</p>
  </div>
  </DropdownMenuItem>
- <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'corrige')} disabled={exportingPdfId === previewEpreuve.id}>
- <FileCheck2 className="h-4 w-4 mr-2 text-warning" />
+ <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'corrige')} disabled={exportingPdfId === previewEpreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-warning/10 mr-3">
+ <FileCheck2 className="h-4 w-4 text-warning" />
+ </div>
  <div>
- <p className="font-medium">Corrigé type</p>
- <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+ <p className="font-semibold text-sm">Corrigé type</p>
+ <p className="text-xs text-muted-foreground">Réponses correctes + explications</p>
  </div>
  </DropdownMenuItem>
- <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'feuille-reponses')} disabled={exportingPdfId === previewEpreuve.id}>
- <ClipboardList className="h-4 w-4 mr-2 text-info" />
+ <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'feuille-reponses')} disabled={exportingPdfId === previewEpreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 mr-3">
+ <ClipboardList className="h-4 w-4 text-info" />
+ </div>
  <div>
- <p className="font-medium">Feuille de réponses</p>
- <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+ <p className="font-semibold text-sm">Feuille de réponses</p>
+ <p className="text-xs text-muted-foreground">Grille QCM/QCU + émargement</p>
  </div>
  </DropdownMenuItem>
+ <DropdownMenuSeparator />
+ <div className="px-2 py-1.5 text-xs text-muted-foreground">
+ PDF institutionnel avec logo, filière & niveau
+ </div>
  </DropdownMenuContent>
  </DropdownMenu>
  )}
@@ -1744,30 +1770,43 @@ function SessionsTab() {
  PDF
  </Button>
  </DropdownMenuTrigger>
- <DropdownMenuContent align="end">
- <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+ <DropdownMenuContent align="end" className="w-56">
+ <DropdownMenuLabel className="flex items-center gap-2">
+ <FileText className="h-3.5 w-3.5" />
+ Exporter en PDF professionnel
+ </DropdownMenuLabel>
  <DropdownMenuSeparator />
- <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id}>
- <FileDown className="h-4 w-4 mr-2 text-success-text" />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-success/10 mr-3">
+ <FileDown className="h-4 w-4 text-success-text" />
+ </div>
  <div>
- <p className="font-medium">Sujet</p>
- <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+ <p className="font-semibold text-sm">Sujet</p>
+ <p className="text-xs text-muted-foreground">Questions + consignes + barème</p>
  </div>
  </DropdownMenuItem>
- <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'corrige')} disabled={exportingPdfId === epreuve.id}>
- <FileCheck2 className="h-4 w-4 mr-2 text-warning" />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'corrige')} disabled={exportingPdfId === epreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-warning/10 mr-3">
+ <FileCheck2 className="h-4 w-4 text-warning" />
+ </div>
  <div>
- <p className="font-medium">Corrigé type</p>
- <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+ <p className="font-semibold text-sm">Corrigé type</p>
+ <p className="text-xs text-muted-foreground">Réponses correctes + explications</p>
  </div>
  </DropdownMenuItem>
- <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'feuille-reponses')} disabled={exportingPdfId === epreuve.id}>
- <ClipboardList className="h-4 w-4 mr-2 text-info" />
+ <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'feuille-reponses')} disabled={exportingPdfId === epreuve.id} className="py-2.5">
+ <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 mr-3">
+ <ClipboardList className="h-4 w-4 text-info" />
+ </div>
  <div>
- <p className="font-medium">Feuille de réponses</p>
- <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+ <p className="font-semibold text-sm">Feuille de réponses</p>
+ <p className="text-xs text-muted-foreground">Grille QCM/QCU + émargement</p>
  </div>
  </DropdownMenuItem>
+ <DropdownMenuSeparator />
+ <div className="px-2 py-1.5 text-xs text-muted-foreground">
+ PDF institutionnel avec logo, filière & niveau
+ </div>
  </DropdownMenuContent>
  </DropdownMenu>
  )

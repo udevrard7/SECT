@@ -4,13 +4,14 @@
  * Génère le PDF d'une épreuve côté serveur Next.js (via @react-pdf/renderer)
  * en fetchant les données depuis le backend Go.
  *
- * Flow :
+ * Flow V3 :
  *   1. Lit le cookie access_token (auth httpOnly posé par /api/go-auth/login)
- *   2. GET https://sect-zead.onrender.com/api/epreuves/{id} (Bearer token) → epreuve data
- *   3. GET https://sect-zead.onrender.com/api/me (Bearer token) → user context
- *   4. Si user.etablissementId, GET https://sect-zead.onrender.com/api/etablissements/{id} → establishment info
- *   5. Mappe les données → EpreuvePDFData
- *   6. renderEpreuvePDF(data, type) → Buffer PDF
+ *   2. GET backend /api/epreuves/{id} → epreuve data (incluant niveau, sessionExamen)
+ *   3. GET backend /api/me → user context (etablissementId)
+ *   4. Si etablissementId, GET backend /api/etablissements/{id} → establishment info
+ *      (incluant type, logo, watermark config pour B2B branding)
+ *   5. Mappe les données → EpreuvePDFData (V3 avec niveau, sessionExamen, watermark)
+ *   6. renderEpreuvePDF(data, type) → Buffer PDF (multi-page, B2B branding, watermark)
  *   7. Retourne le PDF avec Content-Type: application/pdf + Content-Disposition
  *
  * Sécurité : le token n'est jamais exposé côté client (route server-side).
@@ -92,12 +93,19 @@ export async function GET(
       cache: 'no-store',
     })
 
-    let etablissementInfo: {
-      nom: string
-      logo: string | null
-      ville: string | null
-      pays: string | null
-    } = { nom: 'SECT', logo: null, ville: null, pays: null }
+    // Default etablissement info (B2C fallback)
+    let etablissementInfo: EpreuvePDFData['etablissement'] = {
+      nom: 'SECT',
+      logo: null,
+      ville: null,
+      pays: null,
+      type: 'PERSONNEL',
+      watermarkText: null,
+      watermarkEnabled: false,
+      watermarkOpacity: 0.04,
+      watermarkColor: '#1B3A5C',
+      watermarkPattern: 'diamond',
+    }
 
     if (meRes.ok) {
       const meData = await meRes.json()
@@ -125,17 +133,22 @@ export async function GET(
                 logo,
                 ville: etab.ville ?? null,
                 pays: etab.pays ?? null,
+                type: etab.type || 'PERSONNEL',
+                watermarkText: etab.certWatermarkText ?? null,
+                watermarkEnabled: etab.certWatermarkEnabled ?? false,
+                watermarkOpacity: etab.certWatermarkOpacity ?? 0.04,
+                watermarkColor: etab.certWatermarkColor ?? '#1B3A5C',
+                watermarkPattern: etab.certWatermarkPattern ?? 'diamond',
               }
             }
           }
         } catch {
           // Fallback si fetch établissement échoue
-          etablissementInfo = { nom: 'SECT', logo: null, ville: null, pays: null }
         }
       }
     }
 
-    // 5. Mapper vers EpreuvePDFData
+    // 5. Mapper vers EpreuvePDFData (V3)
     const contenu = epreuve.contenu || { questions: [], consignes: '', baremeTotal: 0 }
 
     const pdfData: EpreuvePDFData = {
@@ -146,6 +159,8 @@ export async function GET(
       dateDebut: epreuve.dateDebut ?? null,
       dateFin: epreuve.dateFin ?? null,
       noteTotal: epreuve.noteTotal ?? null,
+      niveau: epreuve.niveau ?? null,
+      sessionExamen: epreuve.sessionExamen ?? null,
       contenu: {
         questions: contenu.questions || [],
         consignes: contenu.consignes || '',
