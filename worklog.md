@@ -51,6 +51,8 @@ Work Log:
 Stage Summary:
 - Dialog modifie la fenêtre d'ouverture, pas la durée de passation
 - Auto-calc préserve la fenêtre originelle
+- Sémantique métier correcte
+- Aucune régression : le fix backend (parser tolérant + validation fin>début) de la V1 reste en place
 
 ---
 Task ID: SETUP-LOCAL-ENV-1
@@ -99,3 +101,40 @@ Stage Summary:
 - B2B: logo + nom établissement + ville/pays + filière inclus dans le header
 - Server-side generation: token sécurisé, données réelles depuis backend Go
 - Ancien jsPDF conservé (epreuve-pdf.ts) pour compatibilité mais non utilisé
+
+---
+Task ID: EPREUVES-DATES-FIX-V3
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Simplification UI/UX du dialog de modification des dates — formulaire trop long et complexe, améliorer la rapidité d'exécution
+
+Contexte : la V2 (EPREUVES-DATES-FIX-V2) avait accumulé trop d'éléments (note pédagogique, encadré "fenêtre actuelle", textes d'aide, checkbox auto-calc, 11 presets, gros encarts validation) → dialog qui scroll, exécution lente.
+
+Frontend (frontend/src/components/epreuves/epreuves-page.tsx) :
+- Réduction des presets : 5→3 pour le début (Maintenant, Demain 08h, Lundi 08h), 6→4 pour la fenêtre (+1h, +2h, +1 jour, +1 sem.)
+- Auto-calc silencieux : suppression de la checkbox. Remplacée par un bouton-icône (Link2/Link2Off) entre les deux inputs, compact et intuitif. Touche manuelle de la fin → auto-calc OFF automatiquement.
+- Layout compact : deux inputs côte à côte (grid 1fr auto 1fr) avec le toggle au milieu, au lieu de deux inputs empilés avec labels verbeux
+- Suppression des éléments décoratifs :
+  * Note pédagogique (encart info bleu)
+  * Encadré "Fenêtre actuelle" (redondant avec la liste)
+  * Textes d'aide sous les inputs
+  * Badge statut (l'utilisateur sait où il est)
+  * Gros encarts validation (remplacés par une ligne discrète)
+- Header compact : titre "Fenêtre d'ouverture" + badge passation discret à droite + titre épreuve en description tronquée
+- Validation sur une seule ligne (h-5) : "✓ Fenêtre : 2 h" ou "⚠ Clôture avant ouverture"
+- DialogContent sans padding par défaut (p-0) + padding géré manuellement par section pour un contrôle fin
+- Footer compact avec bordure haute, boutons size="sm"
+- Largeur réduite : sm:max-w-md (au lieu de sm:max-w-lg)
+
+Résultat : tout tient dans un seul écran sans scroll, 3 clics suffisent pour modifier les dates (preset début + preset fenêtre + Enregistrer, ou directement éditer les 2 inputs).
+
+Vérifications qualité :
+- Frontend : tsc --noEmit → 0 erreur sur epreuves-page.tsx ; eslint → 0 erreur 0 warning
+- Pas de modification backend
+- Pas de migration DB
+
+Stage Summary:
+- Dialog compact : 1 écran, 3 clics max pour exécuter l'action
+- Auto-calc silencieux via icône link (Link2/Link2Off) au lieu de checkbox
+- Suppression de tous les éléments décoratifs (note, encadré, textes d'aide, gros encarts)
+- Presets réduits aux plus utiles (3 début + 4 fenêtre)
+- Sémantique métier V2 conservée (fenêtre d'ouverture ≠ durée de passation)
