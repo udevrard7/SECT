@@ -31,10 +31,9 @@
  * Design system "Savane EdTech" :
  *   - AUCUNE bordure de page (page blanche, style universitaire classique)
  *   - Fonts : Inter (titres ET corps, sans-serif)
- *   - Palette : BLEU NUIT #1E3A5F (primary text), OR #D4A843 (accent),
- *     LIME #84CC16 + TERRE CUITÉ #C2724E (kente motif)
+ *   - Palette : BLEU NUIT #1E3A5F (primary text), OR #D4A843 (accent)
  *   - Séparateurs : fines lignes horizontales (goldLine) entre sections
- *   - Motif kente : bande tricolore subtile en haut du header et au-dessus du footer
+ *   - SECT-EPREUVE-PDF-CLEANUP-1 : motif kente retiré (demande Ulrich)
  *   - Header : Logo établissement + nom + ville/pays | UE + filière + niveau + durée + date
  *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne fine
  */
@@ -134,9 +133,9 @@ export interface EpreuvePDFData {
 //   - CONSIGNE_*  → or clair/foncé (boîte consignes)
 //   - RED         → red Savane #EF4444
 // Nouvelles constantes :
-//   - LIME        = #84CC16 (vert lime Savane, primary brand)
-//   - TERRE_CUITE = #C2724E (terre cuite Savane, accent chaud)
-//   - KENTE_COLORS = [LIME, TERRE_CUITE, GOLD] (motif kente tricolore)
+//   - LIME        = #84CC16 (vert lime Savane, primary brand) — SECT-EPREUVE-PDF-CLEANUP-1 : supprimé (kente retiré)
+//   - TERRE_CUITE = #C2724E (terre cuite Savane, accent chaud) — SECT-EPREUVE-PDF-CLEANUP-1 : supprimé (kente retiré)
+//   - KENTE_COLORS = [LIME, TERRE_CUITE, GOLD] — SECT-EPREUVE-PDF-CLEANUP-1 : supprimé (kente retiré)
 
 const NAVY = '#1E3A5F'           // was #065F46 — Bleu nuit Savane (primary text)
 const GOLD = '#D4A843'           // was #D97706 — Or africain Savane (accent)
@@ -156,10 +155,9 @@ const CODE_BG = '#F5F5FA'
 const CODE_BORDER = '#A78BFA'
 const LIGHT_GOLD_BG = '#FEF3C7'  // was #FEF9E7 — Or clair pour fonds
 
-// SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : nouvelles constantes Savane pour le motif kente.
-const LIME = '#84CC16'           // Vert lime Savane (primary brand)
-const TERRE_CUITE = '#C2724E'    // Terre cuite Savane (accent chaud)
-const KENTE_COLORS = [LIME, TERRE_CUITE, GOLD]  // Tricolore kente (lime/terre/or)
+// SECT-EPREUVE-PDF-CLEANUP-1 : constantes LIME, TERRE_CUITE, KENTE_COLORS supprimées
+// (KenteBand retiré du document — demande Ulrich). La palette Savane (NAVY/GOLD/etc.)
+// est conservée pour le design system.
 
 const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image> & { alt?: string }>
 
@@ -372,22 +370,8 @@ const styles = StyleSheet.create({
     height: 22,
     backgroundColor: GOLD,
   },
-  // SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande kente tricolore (lime/terre/or).
-  // Remplace l'ancienne déco "ligne + point central + ligne". Bande horizontale
-  // fine (4pt) composée de cellules colorées alternées — référence subtile au
-  // tissu kente africain, sans envahir le document.
-  kenteBand: {
-    flexDirection: 'row',
-    width: '100%',
-    height: 4,
-    marginVertical: 4,
-    borderRadius: 1,
-    overflow: 'hidden',
-  },
-  kenteBandCell: {
-    flex: 1,
-    height: '100%',
-  },
+  // SECT-EPREUVE-PDF-CLEANUP-1 : styles kenteBand + kenteBandCell supprimés
+  // (KenteBand retiré du document — demande Ulrich).
   // Gold separator line
   goldLine: {
     width: '100%',
@@ -941,25 +925,8 @@ function PDFWatermark({ data }: { data: EpreuvePDFData }) {
   )
 }
 
-// ═══ Composant : KenteBand — motif kente tricolore subtil (Savane EdTech) ═══
-
-// SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande horizontale kente (lime/terre/or).
-// Composé de cellules colorées alternées en flex:1 — répartition uniforme quelle
-// que soit la largeur du parent. Bande fine (4pt) pour rester subtile et
-// professionnelle, pas folklorique. Utilisée en bas du header (remplace l'ancienne
-// déco "ligne + point central + ligne") et au-dessus du footer.
-function KenteBand({ cellCount = 36 }: { cellCount?: number }) {
-  return (
-    <View style={styles.kenteBand} wrap={false}>
-      {Array.from({ length: cellCount }).map((_, i) => (
-        <View
-          key={i}
-          style={[styles.kenteBandCell, { backgroundColor: KENTE_COLORS[i % KENTE_COLORS.length] }]}
-        />
-      ))}
-    </View>
-  )
-}
+// SECT-EPREUVE-PDF-CLEANUP-1 : composant KenteBand supprimé (demande Ulrich).
+// Toutes les bandes kente ont été retirées du document.
 
 // ═══ Composant : Header (logo + etab info | UE + filière) — fixed ═══
 
@@ -1053,8 +1020,7 @@ function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: bool
         </View>
       </View>
 
-      {/* ═══ Bande kente tricolore (lime/terre/or) — identité Savane EdTech ═══ */}
-      <KenteBand />
+      {/* SECT-EPREUVE-PDF-CLEANUP-1 : <KenteBand /> retirée du header (demande Ulrich). */}
     </View>
   )
 }
@@ -1068,9 +1034,7 @@ function PDFFooter({ data, isCorrige }: { data: EpreuvePDFData; isCorrige: boole
 
   return (
     <View fixed style={styles.footerContainer}>
-      {/* SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande kente au-dessus du footer
-          (symétrie avec le header — identité africaine subtile). */}
-      <KenteBand />
+      {/* SECT-EPREUVE-PDF-CLEANUP-1 : <KenteBand /> retirée du footer (demande Ulrich). */}
       <View style={styles.footerGoldLine} />
       <View style={styles.footerRow}>
         <Text style={styles.footerLeft}>{label}</Text>

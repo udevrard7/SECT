@@ -868,3 +868,45 @@ Stage Summary:
 - Motif kente subtil ajouté (bande tricolore en bas du header + haut du footer)
 - 12 styles DS unifiés extraits des styles inline
 - Document reste professionnel et lisible, identité africaine subtile
+
+---
+Task ID: SECT-EPREUVE-PDF-CLEANUP-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Supprimer la mention "Épreuve générée par IA à partir de X document(s)" + toutes les bandes kente du document
+
+1. Suppression de la mention IA (frontend/src/components/epreuves/generation-ia-page.tsx) :
+   - Ligne 1027 : description passait `Épreuve générée par IA à partir de ${selectedDocIds.size} document(s)` dans le payload de création d'épreuve
+   - Cette description était ensuite affichée dans le PDF (SujetDocument + CorrigeDocument) via {data.description ? <Text>{data.description}</Text> : null}
+   - Remplacée par description: '' (vide) — l'enseignant pourra saisir sa propre description dans /epreuves
+   - Commentaire ajouté pour expliquer le choix
+
+2. Suppression des bandes kente (frontend/src/lib/pdf/epreuve-pdf-react.tsx) :
+   - Retrait des 2 appels <KenteBand /> :
+     * Celui en bas du PDFHeader (1ère page)
+     * Celui en haut du PDFFooter (chaque page)
+   - Suppression du composant KenteBand (function + commentaire de doc)
+   - Suppression des styles kenteBand + kenteBandCell
+   - Suppression des constantes LIME, TERRE_CUITE, KENTE_COLORS (inutilisées après retrait du composant)
+   - Mise à jour du commentaire d'en-tête du fichier (design system) : mention kente retirée
+   - La palette Savane (NAVY/GOLD/EMERALD/etc.) est conservée pour le design system
+
+Note : les épreuves déjà créées avec l'ancienne description IA gardent leur description en base.
+Seules les nouvelles épreuves générées par IA auront une description vide. Si Ulrich veut
+nettoyer les épreuves existantes, il faudra un script SQL UPDATE (hors scope de cette tâche).
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès
+  * sujet 57959 bytes (vs 66023 avant, -12% — sans kente)
+  * corrige 61067 bytes (vs 69642 avant, -12%)
+  * feuille-reponses 56276 bytes (vs 61239 avant, -8%)
+- tsc --noEmit : 0 erreur
+- eslint sur les 2 fichiers modifiés : 0 erreur 0 warning
+- Plus aucune référence active à KenteBand/KENTE_COLORS/kenteBand/LIME/TERRE_CUITE dans le code (seuls les commentaires de retrait restent pour traçabilité)
+- Pas de modification backend
+
+Stage Summary:
+- Mention "Épreuve générée par IA à partir de X document(s)" supprimée : description vide à la création (enseignant saisit la sienne)
+- Toutes les bandes kente retirées du document (header + footer)
+- Composant KenteBand + styles + constantes LIME/TERRE_CUITE/KENTE_COLORS supprimés (code nettoyé)
+- Palette Savane conservée (bleu nuit + or) — design system intact
+- PDFs ~12% plus légers sans le motif kente
