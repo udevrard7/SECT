@@ -991,3 +991,43 @@ Stage Summary:
 - 404 custom aux couleurs SECT (remplace la page Next.js générique)
 - Architecture respectée : Server/Client components correctement séparés,
   endpoint public sans auth, hook silencieux non bloquant, design cohérent (SECT-RESILIENCE-1: système de résilience complet — page maintenance + error boundaries)
+
+---
+Task ID: SECT-PWA-DESKTOP-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Valorisation de la PWA existante — bouton Installer + guide installation + kiosk examens
+
+Work Log:
+- Audit PWA production (9/9 critères Chrome installabilité, manifest complet, SW actif,
+  display_override window-controls-overlay, 4 shortcuts jumplists, theme-color light/dark)
+- Constat : PWA techniquement parfaite mais invisible pour l'utilisateur (pas de bouton
+  installer, pas de doc, pas de guide kiosk pour les salles d'examen)
+- Action 1 — Bouton "Installer SECT" dans le header :
+  * Hook use-install-prompt.ts : capture beforeinstallprompt, gère cooldown 30j après
+    dismiss, lazy init isInstalled (évite cascading render), appinstalled analytics
+  * Composant InstallButton : bouton ghost discret (icône Download) dans le header
+    entre ThemeToggle et NotificationBell, invisible si déjà installé ou non compatible
+  * Toast feedback (succès/annulation)
+- Action 2 — Page /aide/installation (publique) :
+  * Server Component (metadata SEO) + InstallationClient (Client Component interactif)
+  * 3 sections : Desktop Chrome/Edge, Android, iOS/iPadOS Safari
+  * Bouton "Installer SECT maintenant" (gros CTA) qui s'affiche si navigateur compatible
+  * Messages alternatifs : "déjà installé" ou "suivez les instructions"
+  * /aide ajouté à PUBLIC_PATHS dans proxy.ts
+- Action 3 — Kiosk mode pour salles d'examen B2B :
+  * Script Windows sect-kiosk-windows.bat (Chrome --kiosk --app=URL + options anti-triche)
+  * Script Linux sect-kiosk-linux.sh (détection auto Chrome/Chromium/Firefox)
+  * Page /aide/kiosk-examens : guide B2B complet (avantages, téléchargement scripts,
+    installation Windows/Linux, prérequis, lien vers surveillance anti-fraude SECT)
+  * Lien "Aide & Installation" ajouté dans le menu utilisateur (sidebar-user-card)
+- Tests qualité : tsc --noEmit 0 erreur, eslint 0 erreur sur 8 fichiers
+- Architecture respectée : Server/Client components, PUBLIC_PATHS, design cohérent
+  (kente watermark, primary color, emerald pour B2B)
+
+Stage Summary:
+- La PWA SECT devient visible : bouton Installer dans le header, page d'aide complète,
+  guide kiosk B2B avec scripts téléchargeables
+- 3 nouveaux fichiers publics : /downloads/sect-kiosk-windows.bat, .sh
+- 3 nouvelles routes : /aide/installation, /aide/kiosk-examens (+ /aide dans PUBLIC_PATHS)
+- Aucune modification backend, aucune migration DB — purement frontend
+- ROI maximal : valorise l'investissement PWA existant sans refonte

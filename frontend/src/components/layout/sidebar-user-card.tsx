@@ -188,6 +188,17 @@ export function SidebarUserCard() {
             <Repeat className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span>Changer de compte</span>
           </button>
+
+          {/* SECT-PWA-DESKTOP-1 : lien vers le guide d'installation PWA + kiosk examens */}
+          <a
+            href="/aide/installation"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-foreground/80 hover:bg-muted hover:text-foreground transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <LifeBuoy className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>Aide &amp; Installation</span>
+          </a>
         </div>
 
         <Separator />
