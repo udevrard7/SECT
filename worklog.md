@@ -641,3 +641,39 @@ Stage Summary:
 - Anonymat de la copie préservé sur le papier (identification via session SECT)
 - Sujet et Corrigé inchangés (n'avaient pas ces éléments)
 - Code nettoyé : composants et styles inutilisés supprimés (~50 lignes retirées)
+
+---
+Task ID: SECT-EPREUVE-PDF-ANONYME-2
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Correction ANONYME-1 — restaurer Matricule, Filière, Date, Salle dans la feuille de réponses (garder l'anonymat Nom/Prénom)
+
+Contexte : ANONYME-1 avait supprimé TOUS les champs d'identification. Ulrich veut conserver les champs contextuels (Matricule, Filière, Date, Salle) qui permettent d'identifier la copie après correction, tout en préservant l'anonymat du nom/prénom pour la correction à l'aveugle.
+
+Corrections frontend (epreuve-pdf-react.tsx) :
+1. Recréation du composant StudentInfoFields en version anonymisée :
+   - 2 lignes de 2 champs chacune (layout identique à l'original)
+   - Ligne 1 : Matricule | Filière / Groupe
+   - Ligne 2 : Date | Salle
+   - Nom et Prénom retirés (anonymat préservé pour correction à l'aveugle)
+2. Restauration des styles student* (studentInfoRow, studentField, studentLabel, studentLine)
+3. Réinsertion de <StudentInfoFields /> dans FeuilleReponsesDocument (entre le titre et la grille MCQ)
+
+Logic d'anonymat :
+- Le matricule est un identifiant unique mais pas nominatif → la copie reste anonyme pendant la correction
+- Après correction, le matricule permet de retrouver l'étudiant en base
+- Filière/Date/Salle sont des infos contextuelles (pas d'identification nominative)
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès
+  * sujet 16688 bytes (inchangé)
+  * corrige 19402 bytes (inchangé)
+  * feuille-reponses 13570 bytes (vs 13850 sans aucun champ, +2% — les 4 champs ajoutent peu de bytes)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Feuille de réponses : 4 champs contextuels restaurés (Matricule, Filière, Date, Salle)
+- Anonymat préservé : Nom et Prénom toujours absents (correction à l'aveugle possible)
+- Le matricule permet d'identifier la copie après correction (lien avec session SECT)
+- SignatureBlock reste supprimé (ANONYME-1, pas de réinsertion)
