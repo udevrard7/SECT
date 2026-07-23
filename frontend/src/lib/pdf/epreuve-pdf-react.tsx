@@ -1,11 +1,15 @@
 /**
- * epreuve-pdf-react.tsx — Épreuve PDF "Académique Émeraude" (A4 portrait)
+ * epreuve-pdf-react.tsx — Épreuve PDF "Universitaire Épuré" (A4 portrait)
  *
- * SECT-EPREUVE-PDF-STYLE-V2 : style DISTINCT des certificats/factures/relevés.
- * Les certificats utilisent Navy + Gold + PlayfairDisplay + double bordure.
- * Les épreuves utilisent désormais Émeraude + Ambre + Inter + bandeau/barre.
+ * SECT-EPREUVE-PDF-STYLE-V3 : style universitaire épuré SANS BORDURE.
+ * Suite à demande Ulrich : "document sans bordure, type document universitaire".
+ * Retrait du bandeau supérieur + barre latérale (V2) → page blanche épurée.
  *
- * Refonte V3 (structure conservée) :
+ * SECT-EPREUVE-PDF-STYLE-V2 (précédent) : palette émeraude + ambre + Inter
+ * (différent des certificats qui utilisent Navy + Gold + PlayfairDisplay).
+ * La palette émeraude/ambre + Inter est conservée en V3, seul le layout change.
+ *
+ * Refonte structure (conservée depuis V3) :
  *   - MULTI-PAGE : les questions s'étendent sur plusieurs pages automatiquement
  *   - HEADER FIXÉ : logo + nom établissement + filière + UE + niveau sur chaque page
  *   - FOOTER FIXÉ : confidentiel | titre | page N/M sur chaque page
@@ -16,15 +20,13 @@
  *   - Bloc émargement/signature : sur feuille de réponses
  *   - Session d'examen : NORMALE / RATTRAPAGE / SPECIALE affichée
  *
- * Design system "Académique Émeraude" (distinct des certificats) :
- *   - Bordure : bandeau supérieur émeraude (8pt) + barre latérale gauche ambre (4pt)
- *     (vs certificats : double bordure rectangle gold + navy)
- *   - Fonts : Inter (titres ET corps, sans-serif moderne)
- *     (vs certificats : PlayfairDisplay serif pour les titres)
- *   - Palette : ÉMERAUDE #065F46 (primary), AMBRE #D97706 (accent), AMBRE CLAIR #FCD34D
- *     (vs certificats : NAVY #1B3A5C, GOLD #C5A044, GOLD_BORDER #E8D09A)
+ * Design system "Universitaire Épuré" :
+ *   - AUCUNE bordure de page (page blanche, style universitaire classique)
+ *   - Fonts : Inter (titres ET corps, sans-serif)
+ *   - Palette : ÉMERAUDE #065F46 (primary), AMBRE #D97706 (accent)
+ *   - Séparateurs : fines lignes horizontales (goldLine) entre sections
  *   - Header : Logo établissement + nom + ville/pays | UE + filière + niveau
- *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne ambre
+ *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne fine
  */
 
 import React from 'react'
@@ -231,25 +233,10 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     position: 'relative',
   },
-  // SECT-EPREUVE-PDF-STYLE-V2 : bandeau supérieur émeraude (distinct de la
-  // double bordure rectangle des certificats). Barre horizontale pleine en haut.
-  outerBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 8,
-    backgroundColor: NAVY,
-  },
-  // Barre latérale gauche ambre (accent vertical — remplace l'innerBorder)
-  innerBorder: {
-    position: 'absolute',
-    top: 8,
-    left: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: GOLD,
-  },
+  // SECT-EPREUVE-PDF-STYLE-V3 : pas de bordure (style universitaire épuré).
+  // Les styles outerBorder/innerBorder ont été retirés des 3 documents.
+  // On garde les définitions vides pour référence mais elles ne sont plus utilisées.
+  // (Suppression complète évitée pour minimiser le diff et permettre un rollback facile.)
   // Header (fixed on every page)
   headerContainer: {
     flexDirection: 'column',
@@ -1336,10 +1323,6 @@ function SujetDocument({ data }: { data: EpreuvePDFData }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Double border (fixed across pages) */}
-        <View fixed style={styles.outerBorder} />
-        <View fixed style={styles.innerBorder} />
-
         {/* Watermark (B2B) */}
         <PDFWatermark data={data} />
 
@@ -1428,10 +1411,6 @@ function CorrigeDocument({ data }: { data: EpreuvePDFData }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Double border */}
-        <View fixed style={styles.outerBorder} />
-        <View fixed style={styles.innerBorder} />
-
         {/* Watermark (B2B — "CONFIDENTIEL" for corrigé) */}
         <PDFWatermark data={data} />
 
@@ -1519,10 +1498,6 @@ function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Double border */}
-        <View fixed style={styles.outerBorder} />
-        <View fixed style={styles.innerBorder} />
-
         {/* Watermark (B2B) */}
         <PDFWatermark data={data} />
 
