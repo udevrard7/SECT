@@ -1,31 +1,41 @@
 /**
- * epreuve-pdf-react.tsx — Épreuve PDF "Universitaire Épuré" (A4 portrait)
+ * epreuve-pdf-react.tsx — Épreuve PDF "Savane EdTech" (A4 portrait)
  *
- * SECT-EPREUVE-PDF-STYLE-V3 : style universitaire épuré SANS BORDURE.
- * Suite à demande Ulrich : "document sans bordure, type document universitaire".
- * Retrait du bandeau supérieur + barre latérale (V2) → page blanche épurée.
+ * SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : refonte identité "Savane EdTech".
+ * Nouvelle palette africaine alignée sur /facturation et /abonnements :
+ *   - Vert lime #84CC16 (primary), Terre cuite #C2724E (accent chaud)
+ *   - Bleu nuit #1E3A5F (profondeur), Or #D4A843 (luxe africain)
+ *   - Motif kente subtil en header + footer (3 couleurs alternées)
+ * Suppression des redondances signalées par Ulrich :
+ *   - metadataRow (DURÉE/NOTE TOTAL/DATE/NIVEAU) retiré du Sujet ET du Corrigé
+ *     → ces infos sont déjà dans la ligne métadonnées du header
+ *   - sessionExamen retirée du header (colonne enseignant) → reste UNIQUEMENT
+ *     dans le titleSection (badge session), plus de doublon
  *
- * SECT-EPREUVE-PDF-STYLE-V2 (précédent) : palette émeraude + ambre + Inter
- * (différent des certificats qui utilisent Navy + Gold + PlayfairDisplay).
- * La palette émeraude/ambre + Inter est conservée en V3, seul le layout change.
+ * Évolutions précédentes conservées :
+ *   - SECT-EPREUVE-PDF-STYLE-V3 : style universitaire épuré SANS BORDURE de page
+ *   - SECT-EPREUVE-PDF-HEADER-V5 : header 3 colonnes (logo | institution | enseignant)
+ *   - SECT-EPREUVE-PDF-ANONYME-2 : feuille de réponses anonymisée (Matricule/Filière/Date/Salle)
+ *   - SECT-EPREUVE-PDF-FONT-FIX-1 : Inter (pas de PlayfairDisplay italic)
  *
- * Refonte structure (conservée depuis V3) :
+ * Refonte structure (conservée) :
  *   - MULTI-PAGE : les questions s'étendent sur plusieurs pages automatiquement
- *   - HEADER FIXÉ : logo + nom établissement + filière + UE + niveau sur chaque page
+ *   - HEADER (1ère page) : logo + nom établissement + enseignant + métadonnées
  *   - FOOTER FIXÉ : confidentiel | titre | page N/M sur chaque page
  *   - FILIGRANE (watermark) B2B : texte diagonal configurable (certWatermarkText)
  *   - B2B branding : logo + nom + ville/pays + filière + niveau + session
  *   - B2C (Prof Solo) : branding SECT si pas de logo établissement
- *   - Barème récapitulatif : tableau de synthèse des questions en fin de sujet/corrige
- *   - Bloc émargement/signature : sur feuille de réponses
- *   - Session d'examen : NORMALE / RATTRAPAGE / SPECIALE affichée
+ *   - Barème récapitulatif : tableau de synthèse des questions en fin de corrige
+ *   - Session d'examen : NORMALE / RATTRAPAGE / SPECIALE affichée (titleSection)
  *
- * Design system "Universitaire Épuré" :
+ * Design system "Savane EdTech" :
  *   - AUCUNE bordure de page (page blanche, style universitaire classique)
  *   - Fonts : Inter (titres ET corps, sans-serif)
- *   - Palette : ÉMERAUDE #065F46 (primary), AMBRE #D97706 (accent)
+ *   - Palette : BLEU NUIT #1E3A5F (primary text), OR #D4A843 (accent),
+ *     LIME #84CC16 + TERRE CUITÉ #C2724E (kente motif)
  *   - Séparateurs : fines lignes horizontales (goldLine) entre sections
- *   - Header : Logo établissement + nom + ville/pays | UE + filière + niveau
+ *   - Motif kente : bande tricolore subtile en haut du header et au-dessus du footer
+ *   - Header : Logo établissement + nom + ville/pays | UE + filière + niveau + durée + date
  *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne fine
  */
 
@@ -109,32 +119,47 @@ export interface EpreuvePDFData {
   }
 }
 
-// ═══ Constants — Palette "Académique Émeraude" (SECT-EPREUVE-PDF-STYLE-V2) ═══
-// Palette DISTINCTE des certificats (qui utilisent Navy #1B3A5C + Gold #C5A044 +
-// PlayfairDisplay + double bordure rectangle). Les épreuves utilisent :
-//   - Émeraude profond (primary) + Ambre chaud (accent)
-//   - Police Inter (sans-serif moderne) pour les titres au lieu de PlayfairDisplay
-//   - Bandeau supérieur + barre latérale gauche au lieu de double bordure rectangle
-// Les noms de constantes (NAVY/GOLD/GOLD_BORDER) sont conservés pour éviter de
-// toucher les 100+ références — seules les valeurs changent.
+// ═══ Constants — Palette "Savane EdTech" (SECT-EPREUVE-PDF-SAVANE-EDTECH-1) ═══
+// Palette africaine alignée sur l'identité SECT des pages /facturation et
+// /abonnements. Les valeurs exactes proviennent du SAVANE_COLORS du frontend :
+//   vertLime #84CC16, terreCuite #C2724E, bleuNuit #1E3A5F, or #D4A843.
+//
+// Mapping des constantes (noms conservés pour ne pas casser les 100+ références) :
+//   - NAVY        → bleuNuit #1E3A5F (texte profond, titres, bordures primaires)
+//   - GOLD        → or #D4A843 (accent chaud luxe africain)
+//   - GOLD_BORDER → or clair #E5C97A (bordures légères or)
+//   - EMERALD     → emerald Savane #10B981 (header MCQ, distinct du lime)
+//   - CELL_BG     → lime très clair #F0FBE5 (fonds alternés tableaux)
+//   - GREEN_*     → lime clair/foncé (boîte corrigé)
+//   - CONSIGNE_*  → or clair/foncé (boîte consignes)
+//   - RED         → red Savane #EF4444
+// Nouvelles constantes :
+//   - LIME        = #84CC16 (vert lime Savane, primary brand)
+//   - TERRE_CUITE = #C2724E (terre cuite Savane, accent chaud)
+//   - KENTE_COLORS = [LIME, TERRE_CUITE, GOLD] (motif kente tricolore)
 
-const NAVY = '#065F46'           // was #1B3A5C — Émeraude profond (primary)
-const GOLD = '#D97706'           // was #C5A044 — Ambre chaud (accent)
-const GOLD_BORDER = '#FCD34D'    // was #E8D09A — Ambre clair (borders légers)
+const NAVY = '#1E3A5F'           // was #065F46 — Bleu nuit Savane (primary text)
+const GOLD = '#D4A843'           // was #D97706 — Or africain Savane (accent)
+const GOLD_BORDER = '#E5C97A'    // was #FCD34D — Or clair (borders légers)
 const TEXT_DARK = '#1F2937'
 const TEXT_GRAY = '#6B7280'
 const TEXT_FOOTER = '#4B5563'
 const WHITE = '#FFFFFF'
-const CELL_BG = '#ECFDF5'        // was #F7FAFC — Vert émeraude très clair
-const EMERALD = '#0D9488'        // Teal (pour MCQ header, distinct du primary)
-const RED = '#DC2626'
-const GREEN_BG = '#ECFDF5'
-const GREEN_BORDER = '#059669'
-const CONSIGNE_BG = '#FFFBEB'
-const CONSIGNE_BORDER = '#D97706'
+const CELL_BG = '#F0FBE5'        // was #ECFDF5 — Vert lime très clair (fonds alternés)
+const EMERALD = '#10B981'        // was #0D9488 — Emerald Savane (MCQ header)
+const RED = '#EF4444'            // was #DC2626 — Red Savane
+const GREEN_BG = '#F0FBE5'       // was #ECFDF5 — Lime clair (boîte corrigé)
+const GREEN_BORDER = '#65A30D'   // was #059669 — Lime foncé (border corrigé)
+const CONSIGNE_BG = '#FEF7E6'    // was #FFFBEB — Or très clair (boîte consignes)
+const CONSIGNE_BORDER = '#D4A843'// was #D97706 — Or (border consignes)
 const CODE_BG = '#F5F5FA'
 const CODE_BORDER = '#A78BFA'
-const LIGHT_GOLD_BG = '#FEF3C7'  // was #FEF9E7 — Ambre clair pour fonds
+const LIGHT_GOLD_BG = '#FEF3C7'  // was #FEF9E7 — Or clair pour fonds
+
+// SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : nouvelles constantes Savane pour le motif kente.
+const LIME = '#84CC16'           // Vert lime Savane (primary brand)
+const TERRE_CUITE = '#C2724E'    // Terre cuite Savane (accent chaud)
+const KENTE_COLORS = [LIME, TERRE_CUITE, GOLD]  // Tricolore kente (lime/terre/or)
 
 const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image> & { alt?: string }>
 
@@ -239,11 +264,10 @@ const styles = StyleSheet.create({
   },
   // SECT-EPREUVE-PDF-STYLE-V3 : pas de bordure (style universitaire épuré).
   // Les styles outerBorder/innerBorder ont été retirés des 3 documents.
-  // On garde les définitions vides pour référence mais elles ne sont plus utilisées.
-  // (Suppression complète évitée pour minimiser le diff et permettre un rollback facile.)
   // SECT-EPREUVE-PDF-HEADER-V5 : header 3 colonnes (logo | institution | enseignant)
-  // + séparateur épais + métadonnées avec séparateurs verticaux + déco bas.
-  // Inspiré du modèle universitaire (ISN) fourni par Ulrich.
+  // + séparateur épais + métadonnées avec séparateurs verticaux + bande kente.
+  // SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande kente tricolore (lime/terre/or)
+  // remplace l'ancienne déco "ligne + point central + ligne".
   headerContainer: {
     flexDirection: 'column',
     marginBottom: 10,
@@ -309,12 +333,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 1,
   },
-  headerTeacherSession: {
-    fontSize: 8,
-    color: GOLD,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
+  // SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : headerTeacherSession supprimé
+  // (la session est désormais uniquement dans le titleSection, plus de doublon).
   // Séparateur principal épais (entre ligne 1 et métadonnées)
   headerMainSeparator: {
     width: '100%',
@@ -352,23 +372,21 @@ const styles = StyleSheet.create({
     height: 22,
     backgroundColor: GOLD,
   },
-  // Décoration bas : ligne fine + point central ambre
-  headerBottomDecoration: {
+  // SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande kente tricolore (lime/terre/or).
+  // Remplace l'ancienne déco "ligne + point central + ligne". Bande horizontale
+  // fine (4pt) composée de cellules colorées alternées — référence subtile au
+  // tissu kente africain, sans envahir le document.
+  kenteBand: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
+    width: '100%',
+    height: 4,
+    marginVertical: 4,
+    borderRadius: 1,
+    overflow: 'hidden',
   },
-  headerBottomLine: {
+  kenteBandCell: {
     flex: 1,
-    height: 0.5,
-    backgroundColor: NAVY,
-  },
-  headerBottomDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: GOLD,
-    marginHorizontal: 6,
+    height: '100%',
   },
   // Gold separator line
   goldLine: {
@@ -425,34 +443,10 @@ const styles = StyleSheet.create({
     borderColor: GOLD_BORDER,
     marginBottom: 6,
   },
-  // Metadata row (enhanced)
-  metadataRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: GOLD_BORDER,
-    borderRadius: 3,
-    backgroundColor: CELL_BG,
-  },
-  metaItem: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    flex: 1,
-  },
-  metaLabel: {
-    fontSize: 7,
-    color: TEXT_GRAY,
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  metaValue: {
-    fontSize: 10.5,
-    color: NAVY,
-    fontWeight: 'bold',
-  },
+  // SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : styles metadataRow/metaItem/metaLabel/metaValue
+  // supprimés — la section metadataRow (DURÉE/NOTE TOTAL/DATE/NIVEAU) du Sujet et du
+  // Corrigé a été retirée car ces infos sont déjà dans la ligne métadonnées du header.
+  // (Ds tokens de marges pour uniformiser les wrap containers inline.)
   // Consignes box
   consignesBox: {
     borderWidth: 1,
@@ -841,6 +835,65 @@ const styles = StyleSheet.create({
   // SECT-EPREUVE-PDF-ANONYME-1 : styles signature* (signatureContainer, signatureBlock,
   // signatureLabel, signatureLine, signatureDateLabel) supprimés — SignatureBlock
   // retiré pour préserver l'anonymat des copies.
+  //
+  // SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : DS tokens unifiés.
+  // Les styles ci-dessous extraient les styles inline dispersés dans les composants
+  // (BaremeRecap, StudentInfoFields, MCQGrid, OpenQuestionsSection, CodeSection,
+  // PropositionList, AnswerLines, FeuilleReponsesDocument). Centralisation pour
+  // harmoniser marges / tailles de police / couleurs à travers les 3 documents.
+  // Wrap containers (marges verticales standardisées)
+  wrapMb4: { marginBottom: 4 },
+  wrapMb6: { marginBottom: 6 },
+  wrapMb8: { marginBottom: 8 },
+  wrapMb12: { marginBottom: 12 },
+  wrapMb14: { marginBottom: 14 },
+  // Textes standardisés (feuille de réponses + tests publics code)
+  sectionTitleLg: {
+    fontSize: 12,
+    color: NAVY,
+    fontFamily: 'Inter',
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  sectionTitleMd: {
+    fontSize: 10,
+    color: NAVY,
+    fontFamily: 'Inter',
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  bodyTextItalic: {
+    fontSize: 9,
+    color: TEXT_GRAY,
+    fontStyle: 'italic',
+  },
+  noMcqMessage: {
+    fontSize: 10,
+    color: TEXT_GRAY,
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  testsPublicLabel: {
+    fontSize: 8,
+    color: CODE_BORDER,
+    fontWeight: 'bold',
+    marginBottom: 3,
+  },
+  openQuestionHeader: {
+    fontSize: 10,
+    color: NAVY,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  openQuestionEnonce: {
+    fontSize: 9.5,
+    color: TEXT_DARK,
+    marginBottom: 4,
+  },
+  mcqCircleCellWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // Encouragement message
   encouragementText: {
     fontSize: 10,
@@ -888,12 +941,33 @@ function PDFWatermark({ data }: { data: EpreuvePDFData }) {
   )
 }
 
+// ═══ Composant : KenteBand — motif kente tricolore subtil (Savane EdTech) ═══
+
+// SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande horizontale kente (lime/terre/or).
+// Composé de cellules colorées alternées en flex:1 — répartition uniforme quelle
+// que soit la largeur du parent. Bande fine (4pt) pour rester subtile et
+// professionnelle, pas folklorique. Utilisée en bas du header (remplace l'ancienne
+// déco "ligne + point central + ligne") et au-dessus du footer.
+function KenteBand({ cellCount = 36 }: { cellCount?: number }) {
+  return (
+    <View style={styles.kenteBand} wrap={false}>
+      {Array.from({ length: cellCount }).map((_, i) => (
+        <View
+          key={i}
+          style={[styles.kenteBandCell, { backgroundColor: KENTE_COLORS[i % KENTE_COLORS.length] }]}
+        />
+      ))}
+    </View>
+  )
+}
+
 // ═══ Composant : Header (logo + etab info | UE + filière) — fixed ═══
 
 // SECT-EPREUVE-PDF-HEADER-V5 : header 3 colonnes (logo | institution | enseignant)
-// + séparateur épais + métadonnées avec séparateurs verticaux + déco bas.
+// + séparateur épais + métadonnées avec séparateurs verticaux + bande kente.
 // B2B : logo + nom de l'établissement. B2C : logo SECT + nom de l'application.
-// Inspiré du modèle universitaire fourni par Ulrich.
+// SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : sessionExamen retirée du header (doublon avec
+// le titleSection). Bande kente en bas du header (lime/terre/or) — identité africaine.
 function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: boolean }) {
   const etabLocation = [data.etablissement.ville, data.etablissement.pays].filter(Boolean).join(', ')
   const b2b = isB2B(data.etablissement)
@@ -921,7 +995,7 @@ function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: bool
           <Text style={styles.headerInstYear}>Année universitaire : {getAcademicYear()}</Text>
         </View>
 
-        {/* Colonne droite : Enseignant + session */}
+        {/* Colonne droite : Enseignant */}
         <View style={styles.headerRightCol}>
           {data.enseignant && data.enseignant.name ? (
             <>
@@ -929,9 +1003,9 @@ function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: bool
               <Text style={styles.headerTeacherName}>{data.enseignant.name}</Text>
             </>
           ) : null}
-          {data.sessionExamen && data.sessionExamen !== 'NORMALE' ? (
-            <Text style={styles.headerTeacherSession}>{getSessionLabel(data.sessionExamen)}</Text>
-          ) : null}
+          {/* SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : sessionExamen retirée du header —
+              elle est désormais UNIQUEMENT dans le titleSection (badge session),
+              plus de doublon. */}
         </View>
       </View>
 
@@ -979,12 +1053,8 @@ function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: bool
         </View>
       </View>
 
-      {/* ═══ Décoration bas : ligne + point central + ligne ═══ */}
-      <View style={styles.headerBottomDecoration}>
-        <View style={styles.headerBottomLine} />
-        <View style={styles.headerBottomDot} />
-        <View style={styles.headerBottomLine} />
-      </View>
+      {/* ═══ Bande kente tricolore (lime/terre/or) — identité Savane EdTech ═══ */}
+      <KenteBand />
     </View>
   )
 }
@@ -998,6 +1068,9 @@ function PDFFooter({ data, isCorrige }: { data: EpreuvePDFData; isCorrige: boole
 
   return (
     <View fixed style={styles.footerContainer}>
+      {/* SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : bande kente au-dessus du footer
+          (symétrie avec le header — identité africaine subtile). */}
+      <KenteBand />
       <View style={styles.footerGoldLine} />
       <View style={styles.footerRow}>
         <Text style={styles.footerLeft}>{label}</Text>
@@ -1016,7 +1089,7 @@ function PropositionList({ question }: { question: PDFQuestion }) {
   const isQCU = question.type === 'QCU'
 
   return (
-    <View style={{ marginBottom: 4 }} wrap={false}>
+    <View style={styles.wrapMb4} wrap={false}>
       {question.propositions.map((prop, i) => {
         const letter = String.fromCharCode(65 + i)
         return (
@@ -1040,7 +1113,7 @@ function PropositionList({ question }: { question: PDFQuestion }) {
 
 function AnswerLines({ count }: { count: number }) {
   return (
-    <View style={{ marginBottom: 4 }} wrap={false}>
+    <View style={styles.wrapMb4} wrap={false}>
       {Array.from({ length: count }, (_, i) => (
         <View key={i} style={styles.answerLine} />
       ))}
@@ -1066,7 +1139,7 @@ function CodeSection({ question }: { question: PDFQuestion }) {
       {/* Public tests table */}
       {question.testsPublics && question.testsPublics.length > 0 ? (
         <View style={{ marginTop: 6 }} wrap={false}>
-          <Text style={{ fontSize: 8, color: CODE_BORDER, fontWeight: 'bold', marginBottom: 3 }}>
+          <Text style={styles.testsPublicLabel}>
             Tests publics :
           </Text>
           <View style={styles.testsHeader}>
@@ -1224,7 +1297,7 @@ function BaremeRecap({ questions }: { questions: PDFQuestion[] }) {
   const totalBareme = questions.reduce((sum, q) => sum + q.bareme, 0)
 
   return (
-    <View style={{ marginBottom: 12 }} wrap={false}>
+    <View style={styles.wrapMb12} wrap={false}>
       <Text style={styles.recapTitle}>Récapitulatif du barème</Text>
 
       {/* Header row */}
@@ -1262,7 +1335,7 @@ function BaremeRecap({ questions }: { questions: PDFQuestion[] }) {
 // correction à l'aveugle. Le matricule permet d'identifier la copie après correction.
 function StudentInfoFields() {
   return (
-    <View style={{ marginBottom: 12 }} wrap={false}>
+    <View style={styles.wrapMb12} wrap={false}>
       <View style={styles.studentInfoRow}>
         <View style={styles.studentField}>
           <Text style={styles.studentLabel}>Matricule :</Text>
@@ -1290,7 +1363,7 @@ function StudentInfoFields() {
 function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQuestions: PDFQuestion[] }) {
   if (questions.length === 0) {
     return (
-      <Text style={{ fontSize: 10, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 8 }} wrap={false}>
+      <Text style={styles.noMcqMessage} wrap={false}>
         Aucune question QCM/QCU dans cette épreuve.
       </Text>
     )
@@ -1301,7 +1374,7 @@ function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQue
   const letterColWidth = Math.max(Math.floor((485 - 30 - 50) / maxProps), 30)
 
   return (
-    <View style={{ marginBottom: 14 }} wrap={false}>
+    <View style={styles.wrapMb14} wrap={false}>
       {/* Header row */}
       <View style={styles.mcqHeaderRow}>
         <Text style={[styles.mcqHeaderCell, { width: 30 }]}>N°</Text>
@@ -1323,7 +1396,7 @@ function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQue
             {Array.from({ length: maxProps }, (_, ci) => {
               const hasProp = q.propositions && ci < q.propositions.length
               return (
-                <View key={ci} style={{ width: letterColWidth, alignItems: 'center', justifyContent: 'center' }}>
+                <View key={ci} style={[styles.mcqCircleCellWrap, { width: letterColWidth }]}>
                   {hasProp ? (
                     <View style={styles.mcqCircleCell} />
                   ) : null}
@@ -1341,8 +1414,8 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
   if (questions.length === 0) return null
 
   return (
-    <View style={{ marginBottom: 8 }} wrap>
-      <Text style={{ fontSize: 12, color: NAVY, fontWeight: 'bold', marginBottom: 6 }}>
+    <View style={styles.wrapMb8} wrap>
+      <Text style={styles.sectionTitleLg}>
         Questions ouvertes
       </Text>
       {questions.map((q) => {
@@ -1350,11 +1423,11 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
         const numLines = q.type === 'QRC' ? 5 : 8
 
         return (
-          <View key={q.id} style={{ marginBottom: 12 }} wrap>
-            <Text style={{ fontSize: 10, color: NAVY, fontWeight: 'bold', marginBottom: 2 }} wrap={false}>
+          <View key={q.id} style={styles.wrapMb12} wrap>
+            <Text style={styles.openQuestionHeader} wrap={false}>
               Question {originalIdx + 1} ({getTypeLabel(q.type)} — {q.bareme} pts)
             </Text>
-            <Text style={{ fontSize: 9.5, color: TEXT_DARK, marginBottom: 4 }}>{q.enonce}</Text>
+            <Text style={styles.openQuestionEnonce}>{q.enonce}</Text>
             <AnswerLines count={numLines} />
           </View>
         )
@@ -1371,7 +1444,6 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
 function SujetDocument({ data }: { data: EpreuvePDFData }) {
   const questions = data.contenu.questions || []
   const baremeTotal = data.contenu.baremeTotal ?? data.noteTotal ?? 0
-  const b2b = isB2B(data.etablissement)
 
   return (
     <Document>
@@ -1397,27 +1469,8 @@ function SujetDocument({ data }: { data: EpreuvePDFData }) {
           ) : null}
         </View>
 
-        {/* Metadata */}
-        <View style={styles.metadataRow} wrap={false}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>DURÉE</Text>
-            <Text style={styles.metaValue}>{formatDuration(data.duree)}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>NOTE TOTAL</Text>
-            <Text style={styles.metaValue}>{data.noteTotal ?? baremeTotal} pts</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>DATE</Text>
-            <Text style={styles.metaValue}>{formatDate(data.dateDebut)}</Text>
-          </View>
-          {data.niveau ? (
-            <View style={styles.metaItem}>
-              <Text style={styles.metaLabel}>NIVEAU</Text>
-              <Text style={styles.metaValue}>{data.niveau}</Text>
-            </View>
-          ) : null}
-        </View>
+        {/* SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : metadataRow supprimé (DURÉE/NOTE TOTAL/DATE/NIVEAU)
+            — ces infos sont déjà dans la ligne métadonnées du header, plus de doublon. */}
 
         {/* Consignes */}
         {data.contenu.consignes ? (
@@ -1488,27 +1541,8 @@ function CorrigeDocument({ data }: { data: EpreuvePDFData }) {
           ) : null}
         </View>
 
-        {/* Metadata */}
-        <View style={styles.metadataRow} wrap={false}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>DURÉE</Text>
-            <Text style={styles.metaValue}>{formatDuration(data.duree)}</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>NOTE TOTAL</Text>
-            <Text style={styles.metaValue}>{data.noteTotal ?? baremeTotal} pts</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>DATE</Text>
-            <Text style={styles.metaValue}>{formatDate(data.dateDebut)}</Text>
-          </View>
-          {data.niveau ? (
-            <View style={styles.metaItem}>
-              <Text style={styles.metaLabel}>NIVEAU</Text>
-              <Text style={styles.metaValue}>{data.niveau}</Text>
-            </View>
-          ) : null}
-        </View>
+        {/* SECT-EPREUVE-PDF-SAVANE-EDTECH-1 : metadataRow supprimé (DURÉE/NOTE TOTAL/DATE/NIVEAU)
+            — ces infos sont déjà dans la ligne métadonnées du header, plus de doublon. */}
 
         {/* Consignes */}
         {data.contenu.consignes ? (
@@ -1581,11 +1615,11 @@ function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
 
         {/* Code questions notice */}
         {questions.some(q => q.type === 'CODE') ? (
-          <View style={{ marginBottom: 8 }} wrap={false}>
-            <Text style={{ fontSize: 10, color: NAVY, fontWeight: 'bold', marginBottom: 4 }}>
+          <View style={styles.wrapMb8} wrap={false}>
+            <Text style={styles.sectionTitleMd}>
               Questions de code (programmation)
             </Text>
-            <Text style={{ fontSize: 9, color: TEXT_GRAY, fontStyle: 'italic' }}>
+            <Text style={styles.bodyTextItalic}>
               Les questions de type Code seront rédigées directement sur la plateforme SECT.
               L'espace ci-dessous est réservé pour vos brouillons.
             </Text>
