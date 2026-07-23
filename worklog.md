@@ -742,3 +742,70 @@ Stage Summary:
 - Métadonnées structurées (Filière | UE | Niveau | Durée | Date) avec séparateurs verticaux ambre
 - Décoration bas (ligne + point central) pour un rendu académique professionnel
 - Header sur 1ère page uniquement (non-fixed, conservé de V4)
+
+Task ID: SECT-NOTIF-SEGMENT-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Ciblage par segment d'abonnement pour les notifications admin (B2B/B2C Solo/Premium/établissement)
+
+Work Log:
+- Analyse du système existant : NotificationAdmin (table), createNotificationAdmin (handler),
+  notificationsUnifiedList (handler unified avec RBAC), dispatcher 4-canaux (in-app + SSE + push + email),
+  notification-bell.tsx (frontend). Le système existant supportait destinataireId + destinataireRole
+  mais PAS le ciblage par segment d'abonnement (B2C Solo vs Premium vs B2B).
+- Migration 000104 (appliquée sur Neon, version 103 → 104) :
+  * ADD COLUMN destinataireSegment TEXT (ALL|B2B_RESPONSABLES|B2C_SOLO|B2C_PREMIUM|B2C_ALL|ETABLISSEMENT)
+  * ADD COLUMN destinataireEtablissementId TEXT + FK vers Etablissement (ON DELETE SET NULL)
+  * 2 index (destinataireSegment, destinataireEtablissementId)
+  * DROP + CREATE VIEW NotificationUnified pour exposer les nouveaux champs
+- Backend (notification_mutation_handlers.go) :
+  * notifAdminColumns + notifAdminResponse étendus (2 nouveaux champs)
+  * scanNotifAdmin mis à jour (scan des 2 nouveaux champs)
+  * createNotificationAdmin : validation segment (enum + mutual exclusivity avec destinataireId/Role
+    + ETABLISSEMENT nécessite etabId), INSERT avec nouveaux champs, fanout dispatcher en goroutine
+  * Nouvelle fonction fanoutSegmentNotification : récupère les userIDs du segment via SQL
+    (B2B_RESPONSABLES = RESPONSABLE d'étab non-PERSONNEL, B2C_SOLO = ENSEIGNANT étab PERSONNEL
+    + plan GRATUIT, B2C_PREMIUM = idem + plan PROFESSIONNEL, B2C_ALL = tous ENSEIGNANT étab PERSONNEL,
+    ETABLISSEMENT = users d'un étab précis), déclenche Dispatch (push + SSE + email si URGENT/HAUTE)
+- Backend (stub_handlers_real.go) :
+  * notificationsAdminReal (GET list) : struct notif + SELECT + Scan étendus (2 nouveaux champs)
+- Backend (notification_phase3_handlers.go) :
+  * UnifiedNotif struct étendue (2 nouveaux champs)
+  * Clause RBAC segment : 5 sous-requêtes EXISTS (une par segment) vérifiant l'appartenance du user
+    au segment via User + Etablissement + Abonnement + Plan. Un user voit une notif segmentée SI
+    son profil correspond au segment.
+  * SELECT + Scan étendus (2 nouveaux champs)
+- Frontend (notifications-admin-page.tsx) :
+  * Nouveaux states : formDestinataireSegment, formDestinataireEtablissementId, etablissements
+  * useEffect : charge les établissements quand segment = ETABLISSEMENT (liste déroulante)
+  * Nouveau sélecteur "Audience (segment d'abonnement)" avec 6 options
+  * Sélecteur d'établissement conditionnel (si segment = ETABLISSEMENT)
+  * Envoi des champs dans le body POST (avec logique mutual exclusivity côté front)
+  * Reset des states après submit
+  * Compteur de destinataires enrichi (affiche le segment choisi en clair)
+- Tests qualité :
+  * go vet ./... : 0 erreur
+  * go build ./cmd/api : binaire 27MB OK
+  * tsc --noEmit : 0 erreur TypeScript
+  * eslint notifications-admin-page.tsx : 0 erreur 0 warning
+- Tests fonctionnels (backend local sur port 8090, JWT généré en Python HMAC-SHA256) :
+  * Test 1 : POST /api/notifications/admin avec destinataireSegment=B2B_RESPONSABLES → 201 Created,
+    notif créée avec destinataireSegment dans la réponse ✅
+  * Test 2 : segment invalide → 400 "destinataireSegment invalide (...)" ✅
+  * Test 3 : ETABLISSEMENT sans etabId → 400 "destinataireEtablissementId requis..." ✅
+  * Test 4 : segment + role (mutuellement exclusifs) → 400 "destinataireSegment est mutuellement exclusif..." ✅
+  * Fanout dispatcher déclenché en goroutine (log "notification segment fanout completed")
+- Migration appliquée sur Neon prod : version 104 (dirty=false), colonnes + VIEW + index vérifiés
+- Cleanup : notification de test supprimée de la DB prod
+
+Stage Summary:
+- L'ADMIN PaaS peut désormais diffuser un message ciblé par segment : tous les responsables B2B,
+  tous les profs B2C (Solo+Premium), Prof Solo uniquement, Prof Premium uniquement, ou un
+  établissement précis
+- La notif est persistée UNE fois en DB (avec destinataireSegment) ; le filtrage côté lecture
+  (GET /api/notifications/unified) se base sur des sous-requêtes EXISTS qui vérifient
+  l'appartenance du user au segment
+- Le fanout dispatcher (push Web + SSE temps réel + email si URGENT/HAUTE) est déclenché en
+  goroutine pour tous les users du segment
+- 6 segments supportés : ALL, B2B_RESPONSABLES, B2C_SOLO, B2C_PREMIUM, B2C_ALL, ETABLISSEMENT
+- Architecture respectée : clean architecture (handler → usecase → repository), RLS defense-in-depth,
+  conventional commits français, migration versionnée, worklog à jour (SECT-NOTIF-SEGMENT-1: ciblage par segment d'abonnement pour notifications admin)

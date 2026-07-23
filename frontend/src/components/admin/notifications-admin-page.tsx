@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
@@ -416,11 +416,37 @@ export function NotificationsAdminPage() {
   const [formPriorite, setFormPriorite] = useState('NORMALE')
   const [formCategorie, setFormCategorie] = useState('SYSTEME')
   const [formDestinataireRole, setFormDestinataireRole] = useState('')
+  // SECT-NOTIF-SEGMENT-1 : ciblage par segment d'abonnement (B2B/B2C/étab)
+  const [formDestinataireSegment, setFormDestinataireSegment] = useState('')
+  const [formDestinataireEtablissementId, setFormDestinataireEtablissementId] = useState('')
+  const [etablissements, setEtablissements] = useState<Array<{ id: string; nom: string; type: string | null }>>([])
   const [formExpireLe, setFormExpireLe] = useState('')
   const [formActionUrl, setFormActionUrl] = useState('')
   const [formActionLabel, setFormActionLabel] = useState('')
   const [formIcone, setFormIcone] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // SECT-NOTIF-SEGMENT-1 : charger les établissements quand l'admin sélectionne
+  // le segment ETABLISSEMENT (pour lui proposer une liste déroulante plutôt que
+  // de saisir un ID à la main).
+  useEffect(() => {
+    if (formDestinataireSegment !== 'ETABLISSEMENT' || etablissements.length > 0) {
+      return
+    }
+    fetch('/api/etablissements?limit=100')
+      .then((res) => (res.ok ? res.json() : { etablissements: [], data: [] }))
+      .then((data) => {
+        const list = data.etablissements || data.data || []
+        setEtablissements(list.map((e: { id: string; nom: string; type?: string | null }) => ({
+          id: e.id,
+          nom: e.nom,
+          type: e.type ?? null,
+        })))
+      })
+      .catch(() => {
+        // Non bloquant : l'admin pourra saisir l'ID manuellement
+      })
+  }, [formDestinataireSegment, etablissements.length])
 
   // ─── Template dialog state ───
   const [editTemplateOpen, setEditTemplateOpen] = useState(false)
@@ -579,6 +605,14 @@ export function NotificationsAdminPage() {
       if (formDestinataireRole) {
         body.destinataireRole = formDestinataireRole
       }
+      // SECT-NOTIF-SEGMENT-1 : envoi du segment si défini (mutuellement exclusif avec destinataireRole)
+      if (formDestinataireSegment && formDestinataireSegment !== 'all') {
+        body.destinataireSegment = formDestinataireSegment
+        // Si segment = ETABLISSEMENT, joindre l'ID de l'établissement ciblé
+        if (formDestinataireSegment === 'ETABLISSEMENT' && formDestinataireEtablissementId) {
+          body.destinataireEtablissementId = formDestinataireEtablissementId
+        }
+      }
       if (formExpireLe) {
         body.expireLe = formExpireLe
       }
@@ -612,6 +646,8 @@ export function NotificationsAdminPage() {
       setFormPriorite('NORMALE')
       setFormCategorie('SYSTEME')
       setFormDestinataireRole('')
+      setFormDestinataireSegment('')
+      setFormDestinataireEtablissementId('')
       setFormExpireLe('')
       setFormActionUrl('')
       setFormActionLabel('')
@@ -1270,6 +1306,65 @@ export function NotificationsAdminPage() {
                   </div>
                 </div>
 
+                {/* SECT-NOTIF-SEGMENT-1 : Sélecteur d'audience par segment d'abonnement */}
+                <div className="space-y-2">
+                  <Label>Audience (segment d&apos;abonnement)</Label>
+                  <Select value={formDestinataireSegment} onValueChange={setFormDestinataireSegment}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tous les utilisateurs (aucun segment)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les utilisateurs</SelectItem>
+                      <SelectItem value="B2B_RESPONSABLES">
+                        Responsables B2B (établissements institutionnels)
+                      </SelectItem>
+                      <SelectItem value="B2C_ALL">
+                        Tous les profs B2C (Solo + Premium)
+                      </SelectItem>
+                      <SelectItem value="B2C_SOLO">
+                        Prof Solo uniquement (B2C gratuit)
+                      </SelectItem>
+                      <SelectItem value="B2C_PREMIUM">
+                        Prof Premium uniquement (B2C payant)
+                      </SelectItem>
+                      <SelectItem value="ETABLISSEMENT">
+                        Un établissement précis
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Le segment est mutuellement exclusif avec le rôle. Utilisez-le pour cibler
+                    précisément les profs B2C ou les responsables B2B.
+                  </p>
+                </div>
+
+                {/* SECT-NOTIF-SEGMENT-1 : sélecteur d'établissement si segment = ETABLISSEMENT */}
+                {formDestinataireSegment === 'ETABLISSEMENT' && (
+                  <div className="space-y-2">
+                    <Label>Établissement ciblé</Label>
+                    {etablissements.length > 0 ? (
+                      <Select value={formDestinataireEtablissementId} onValueChange={setFormDestinataireEtablissementId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionner un établissement" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {etablissements.map((e) => (
+                            <SelectItem key={e.id} value={e.id}>
+                              {e.nom} {e.type === 'PERSONNEL' ? '(B2C)' : e.type ? `(${e.type})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="ID de l'établissement (ex: etab_xxx)"
+                        value={formDestinataireEtablissementId}
+                        onChange={(e) => setFormDestinataireEtablissementId(e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+
                 {/* Expiration */}
                 <div className="space-y-2">
                   <Label htmlFor="notif-expire">Date d&apos;expiration</Label>
@@ -1364,9 +1459,23 @@ export function NotificationsAdminPage() {
                   <span>
                     Cette diffusion sera envoyée à :{' '}
                     <span className="font-medium text-foreground">
-                      {formDestinataireRole && formDestinataireRole !== 'all'
-                        ? `Tous les ${formDestinataireRole}`
-                        : 'Tous les utilisateurs'}
+                      {formDestinataireSegment && formDestinataireSegment !== 'all'
+                        ? formDestinataireSegment === 'B2B_RESPONSABLES'
+                          ? 'Tous les responsables B2B'
+                          : formDestinataireSegment === 'B2C_ALL'
+                            ? 'Tous les profs B2C (Solo + Premium)'
+                            : formDestinataireSegment === 'B2C_SOLO'
+                              ? 'Profs Solo uniquement'
+                              : formDestinataireSegment === 'B2C_PREMIUM'
+                                ? 'Profs Premium uniquement'
+                                : formDestinataireSegment === 'ETABLISSEMENT'
+                                  ? formDestinataireEtablissementId
+                                    ? `Membres de l'établissement ${formDestinataireEtablissementId.slice(0, 8)}…`
+                                    : "L'établissement sélectionné"
+                                  : 'Tous les utilisateurs'
+                        : formDestinataireRole && formDestinataireRole !== 'all'
+                          ? `Tous les ${formDestinataireRole}`
+                          : 'Tous les utilisateurs'}
                     </span>
                   </span>
                 </p>
