@@ -29,21 +29,33 @@ SECT est une plateforme complète d'évaluation qui permet aux établissements d
 - **PDF institutionnels** : sujets / corrigés / feuilles de réponses multi-pages avec branding B2B (logo, filière, niveau), watermark, barème récapitulatif, bloc émargement
 - **Performance** : pic de soumission protégé (202 async + submit_limiter + jitter), ~800-1000 étudiants simultanés sur free tier
 
-## Architecture
+## Architecture (monorepo)
 
 ```
 sect/
-├── src/                          # Next.js 16 (frontend) → Vercel
-│   ├── app/                      # App Router (pages + routes API locales PDF)
-│   │   ├── (app)/                # Routes authentifiées (layout group)
-│   │   ├── api/                  # Routes API locales (PDF certs/relevés/factures/épreuves)
-│   │   ├── login/ invitation/ verify/ offline/
-│   ├── components/               # 34 dossiers métier + shadcn/ui (components/ui)
-│   ├── stores/                   # Zustand (auth-store)
-│   ├── hooks/                    # Custom hooks
-│   ├── lib/                      # Utilitaires (pdf, ai-providers, __tests__)
-│   ├── types/                    # Types TypeScript partagés
-│   └── proxy.ts                  # Auth gate + redirect /login
+├── frontend/                     # Next.js 16 (UI) → Vercel
+│   ├── src/
+│   │   ├── app/                  # App Router (pages + routes API locales PDF)
+│   │   │   ├── (app)/            # Routes authentifiées (layout group)
+│   │   │   ├── api/              # Routes API locales (PDF certs/relevés/factures/épreuves)
+│   │   │   ├── login/ invitation/ verify/ offline/
+│   │   ├── components/           # 34 dossiers métier + shadcn/ui (components/ui)
+│   │   ├── stores/               # Zustand (auth-store)
+│   │   ├── hooks/                # Custom hooks
+│   │   ├── lib/                  # Utilitaires (pdf, ai-providers, __tests__)
+│   │   ├── types/                # Types TypeScript partagés
+│   │   └── proxy.ts              # Auth gate + redirect /login
+│   ├── public/                   # Assets statiques (logo, manifest PWA)
+│   ├── e2e/                      # Tests Playwright (auth + facturation)
+│   ├── docs/                     # Documentation frontend (design-system.md)
+│   ├── vercel.json               # Rewrites /api/* → Render + headers sécurité
+│   ├── next.config.ts
+│   ├── tsconfig.json             # TypeScript strict
+│   ├── eslint.config.mjs
+│   ├── tailwind.config.ts
+│   ├── playwright.config.ts
+│   ├── vitest.config.ts
+│   └── package.json
 │
 ├── backend/                      # Go 1.24 (API REST) → Render
 │   ├── cmd/api/                  # Point d'entrée (main.go)
@@ -72,16 +84,8 @@ sect/
 │   ├── Makefile                  # dev / build / migrate-up / sqlc-gen…
 │   └── go.mod
 │
-├── public/                       # Assets statiques (logo, manifest PWA)
-├── e2e/                          # Tests Playwright (auth + facturation)
-├── docs/                         # Documentation (design-system.md)
-├── vercel.json                   # Rewrites /api/* → Render + headers sécurité
-├── render.yaml                   # Config déploiement Render (backend Docker)
-├── eslint.config.mjs             # Linter ESLint (Next.js + React + TypeScript)
-├── tsconfig.json                 # Configuration TypeScript (strict)
-├── tailwind.config.ts            # Tailwind CSS 4 + theme tokens
-├── playwright.config.ts          # Tests E2E
-├── vitest.config.ts              # Tests unitaires
+├── render.yaml                   # Config déploiement Render (backend, rootDir: backend)
+├── vercel.json                   # Config déploiement Vercel (miroir de frontend/vercel.json)
 ├── worklog.md                    # Journal des évolutions (Task IDs SECT-*)
 ├── CONTRIBUTING.md
 ├── LICENSE
@@ -98,7 +102,7 @@ sect/
 | **Stockage fichiers** | Cloudflare R2 (S3-compatible) | Cloudflare | bucket `sect-documents` |
 | **CI/CD** | GitHub → Vercel (auto) + Render (auto) | GitHub | `udevrard7/SECT` |
 
-> Le frontend Vercel agit comme proxy : `vercel.json` réécrit `/api/:path*` vers le backend Render. Les routes `/api/certificats/{id}/pdf`, `/api/etudiants/{id}/releve-notes`, `/api/factures/{id}/pdf` et `/api/epreuves/{id}/pdf` sont servies localement par Next.js (génération PDF côté serveur avec `@react-pdf/renderer`).
+> Le frontend Vercel agit comme proxy : `frontend/vercel.json` réécrit `/api/:path*` vers le backend Render. Les routes `/api/certificats/{id}/pdf`, `/api/etudiants/{id}/releve-notes`, `/api/factures/{id}/pdf` et `/api/epreuves/{id}/pdf` sont servies localement par Next.js (génération PDF côté serveur avec `@react-pdf/renderer`).
 
 ## Sécurité
 
@@ -123,6 +127,7 @@ sect/
 ### Frontend (port 3000)
 
 ```bash
+cd frontend
 bun install
 bun run dev
 ```
@@ -136,7 +141,7 @@ go run ./cmd/api
 
 ### Variables d'environnement
 
-Créer un fichier `.env` à la racine (**jamais committé**, déjà dans `.gitignore`) avec :
+Créer un fichier `.env` dans `backend/` (**jamais committé**, déjà dans `.gitignore`) avec :
 
 ```env
 # Backend
@@ -149,7 +154,7 @@ R2_SECRET_ACCESS_KEY=...
 R2_BUCKET_NAME=sect-documents
 R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com
 
-# Frontend
+# Frontend (dans frontend/.env.local)
 NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
@@ -193,7 +198,7 @@ Le backend expose **222 routes HTTP** réparties sur **40 domaines** (vérifié 
 | Factures | 1 | Factures (+ PDF) |
 | Plans | 1 | Plans tarifaires |
 | Platform-settings | 1 | Paramètres plateforme |
-| AI-providers | 1 | Fournisseurs AI + failover (Z.ai, Mistral, OpenAI-compatible) |
+| AI-providers | 1 | Fournisseurs AI + failover (Z.ai, Mistral, OpenAI-compatible, DASHSCOPE, DEEPSEEK, CEREBRAS) |
 | Monitoring | 1 | Événements de monitoring |
 | Logs | 1 | Logs applicatifs |
 | Ip-whitelist | 1 | Liste blanche IP |
@@ -236,8 +241,8 @@ Le journal complet des évolutions est dans [`worklog.md`](worklog.md). Points m
 
 - **`EPREUVES-DATES-FIX` (V1→V4)** — Correction du bug « impossible de modifier les dates d'une épreuve » (le frontend envoyait le format `datetime-local` HTML au backend Go qui attendait du RFC3339 strict → `time.Parse` échouait). Fix : parser tolérant côté Go + conversion `toRFC3339()` côté front. Refonte UX du dialog « Fenêtre d'ouverture » : presets rapides, auto-calc via icône link, validation temps réel, layout responsive (flex-col sm:flex-row).
 - **`EPREUVES-PDF-V2` / `EPREUVES-PDF-V3`** — Refonte professionnelle des PDFs épreuves (sujet/corrigé/feuille-réponses) avec `@react-pdf/renderer` server-side : multi-page (header/footer fixes sur chaque page), branding B2B (logo + nom établissement + filière + niveau), watermark diagonal configurable, barème récapitulatif, bloc émargement sur la feuille de réponses, badge session (NORMALE/RATTRAPAGE/SPECIALE).
-- **`AI-PROVIDERS-MISTRAL`** — Ajout de Mistral AI comme provider dédié (chat) avec modèles propres + failover. `AIProviderType` étendu, types et metadata mis à jour.
-- **`AI-PROVIDERS-MODELS-V2`** — Modèles actualisés par fournisseur + fallback Model Switcher.
+- **`AI-PROVIDERS-MISTRAL`** — Ajout de Mistral AI comme provider dédié (chat) avec modèles propres + failover. `AIProviderType` étendu.
+- **`AI-PROVIDERS-MODELS-V2`** — Modèles actualisés par fournisseur + nouveaux providers (DASHSCOPE, DEEPSEEK, CEREBRAS) + fallback Model Switcher.
 - **`SECU-SYNC-FIX`** — Fix synchronisation Admin `/securite` ↔ Responsable `/parametres` Sécurité (migration 000102, RLS policies alignées pour ADMIN full access).
 - **`DUREE-VALIDITE-24H`** — Formulaire accès établissements : durée max 24h avec sélection prédéfinie (migration 000103).
 - **`SECT-B2B-VALIDATE-FIX-1`** — Correction du bug `SQLSTATE 42804` sur `validate_b2b_establishment()` (migration 000075).
@@ -245,15 +250,17 @@ Le journal complet des évolutions est dans [`worklog.md`](worklog.md). Points m
 - **`SECT-RENDER-DEPLOY-FIX-1`** — Cohérence `go.mod` (gorilla/websocket) pour le déploiement Render.
 - **Refonte "Savane EdTech"** — Identité visuelle des modules `/facturation`, `/abonnements` (Validation B2B, Plans tarifaires) avec palette DS unifiée, kente strip, GlassModal, animations Framer Motion.
 - **B2B self-service** — Inscription établissements sans intervention admin (`000067`→`000074`) : création Etablissement + RESPONSABLE + abonnement `EN_ATTENTE_VALIDATION`, vérification email par token, validation admin → ESSAI 14j, anti-abus (1 essai/nom, 1 essai/téléphone, flag email non-pro).
+- **`DEVOPS-REPO-CLEANUP`** — Audit DevOps : nettoyage doublons et artefacts sandbox, `.gitignore` professionnel monorepo, structure propre `frontend/` + `backend/`.
 
 ## Qualité & conventions
 
-- **TypeScript strict** sur tout le frontend (5 erreurs possibles → 0 tolérée sur les fichiers modifiés)
-- **ESLint** (Next.js + React + TypeScript rules) — 0 erreur 0 warning sur les fichiers modifiés
+- **TypeScript strict** sur tout le frontend (0 erreur tolérée)
+- **ESLint** (Next.js + React + TypeScript rules) — 0 erreur sur les fichiers modifiés
 - **Go vet** + **go build** obligatoires avant push backend
 - **Conventional Commits** (en français) : `<SCOPE>-<TASK>: description` — exemples : `EPREUVES-DATES-FIX-V4:`, `feat:`, `fix:`
 - **Une seule branche** : `main` (pas de dev/feature branches, déploiement continu auto)
 - **Worklog obligatoire** : chaque tâche append une section dans `worklog.md` avec Task ID, Agent, Work Log, Stage Summary
+- **Structure monorepo** : `frontend/` (Next.js → Vercel) + `backend/` (Go → Render), pas de code à la racine
 
 ## Licence
 

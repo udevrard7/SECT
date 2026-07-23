@@ -1,10 +1,11 @@
 # ============================================================
-# SECT — .gitignore professionnel
-# Couvre : Node/Bun, Next.js, Go, IDE, OS, secrets, sandbox
+# SECT — .gitignore professionnel (monorepo)
+# Structure : frontend/ (Next.js) + backend/ (Go) à la racine
 # ============================================================
 
 # ─── Dependencies ────────────────────────────────────────────
 node_modules/
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,16 +15,16 @@ node_modules/
 !.yarn/versions
 
 # ─── Build outputs ───────────────────────────────────────────
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
+# Next.js (frontend/)
+frontend/.next/
+frontend/out/
+**/next-env.d.ts
+**/*.tsbuildinfo
 
-# Go (backend)
-/backend/bin/
-/backend/api
-/backend/sect-api
+# Go (backend/)
+backend/bin/
+backend/api
+backend/sect-api
 *.exe
 *.exe~
 *.dll
@@ -38,8 +39,11 @@ next-env.d.ts
 
 # ─── Testing ─────────────────────────────────────────────────
 /coverage
+**/coverage
 /playwright-report/
+**/playwright-report/
 /test-results/
+**/test-results/
 /.nyc_output
 
 # ─── Environment & secrets (JAMAIS committer) ────────────────
@@ -76,6 +80,7 @@ desktop.ini
 # ─── Vercel / Render ─────────────────────────────────────────
 .vercel
 .render
+**/.vercel
 
 # ─── Sandboxes & assistants locaux (jamais sur le repo) ─────
 .zscripts/

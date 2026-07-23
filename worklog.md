@@ -291,3 +291,50 @@ Stage Summary:
 - Worklog à jour avec toutes les tâches SECT-* et DEVOPS-*
 - Branche unique main (locale + distante) — conforme à la consigne
 - Aucun secret dans l'historique, dépôt prêt pour exposition professionnelle
+
+---
+Task ID: DEVOPS-REPO-CLEANUP-2-FIX
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD, role DevOps senior)
+Task: CORRECTION de DEVOPS-REPO-CLEANUP-1 — le projet est un MONOREPO (frontend/ + backend/), pas un projet à la racine. Restauration frontend/ et nettoyage correct.
+
+Contexte : Ulrich a signalé que DEVOPS-REPO-CLEANUP-1 avait détruit la structure monorepo en supprimant frontend/ (le vrai dossier frontend Next.js) au profit de src/ racine (qui était en réalité le template du sandbox Z.ai pollué par des commits PDF).
+
+Analyse réelle de la structure :
+- frontend/ = le VRAI frontend Next.js du monorepo (touché par EPREUVES-DATES-FIX V1→V4, AI-PROVIDERS-MISTRAL, AI-PROVIDERS-MODELS-V2, DUREE-VALIDITE-24H, SECU-SYNC-FIX)
+- src/ racine = template du sandbox Z.ai, pollué par les commits EPREUVES-PDF-V2/V3 qui auraient dû aller dans frontend/src/ mais ont été créés à la racine par erreur
+- backend/ = le vrai backend Go (intact, non concerné)
+
+Corrections apportées :
+1. Restauration frontend/ depuis commit b779116 (git checkout b779116 -- frontend/) — 334 fichiers restaurés
+2. Migration des 2 fichiers PDF uniques de src/ vers frontend/src/ :
+   - src/app/api/epreuves/[id]/pdf/route.ts → frontend/src/app/api/epreuves/[id]/pdf/route.ts
+   - src/lib/pdf/epreuve-pdf-react.tsx → frontend/src/lib/pdf/epreuve-pdf-react.tsx
+3. Fusion epreuves-page.tsx (déléguée à subagent MERGE-EPREUVES-PAGE-1) :
+   - Base : frontend/src/components/epreuves/epreuves-page.tsx (avec dialog dates V4)
+   - Appliqué : changements PDF V2/V3 de src/ racine (handleExportPDF server-side + 3 dropdowns PDF professionnels)
+   - Résultat : 0 erreur tsc, 0 erreur eslint sur le fichier fusionné
+4. Synchronisation frontend/vercel.json avec la route /api/epreuves/:id/pdf (manquante)
+5. Suppression de src/ racine + tous les fichiers template sandbox à la racine :
+   - src/ (tout le dossier)
+   - package.json, tsconfig.json, next.config.ts, bun.lock, eslint.config.mjs, tailwind.config.ts, postcss.config.mjs, components.json, playwright.config.ts, vitest.config.ts, vitest.setup.ts, .nvmrc
+   - public/ (doublon avec frontend/public/)
+   - e2e/ (doublon avec frontend/e2e/)
+   - docs/ (doublon avec frontend/docs/)
+6. vercel.json racine synchronisé avec frontend/vercel.json (sécurité déploiement)
+7. .gitignore réécrit pour monorepo (règles ciblent frontend/ et backend/ avec **/ pour node_modules, .next/, etc.)
+8. README.md refondu pour décrire la vraie structure monorepo (frontend/ + backend/, pas de code à la racine)
+
+Vérifications qualité :
+- frontend/ : bun install OK (1067 packages) ; tsc --noEmit → 0 erreur ; eslint src/ → 0 erreur, 1 warning préexistant (use-surveillance-ws.ts)
+- backend/ : go build ./cmd/api → OK (binaire 27 MB) ; go vet ./... → OK
+- Structure racine finale propre : backend/ + frontend/ + render.yaml + vercel.json + README + worklog + LICENSE + CONTRIBUTING + .gitignore
+
+Stage Summary:
+- Structure monorepo restaurée : frontend/ (Next.js Vercel) + backend/ (Go Render), plus de code à la racine
+- frontend/ restauré avec toutes les évolutions (dialog dates V4 + PDF V2/V3 fusionnés)
+- 2 fichiers PDF migrés de src/ vers frontend/src/ (route.ts + epreuve-pdf-react.tsx)
+- src/ racine + template sandbox supprimés (src/, package.json, tsconfig.json, etc.)
+- .gitignore monorepo (règles **/ pour sous-dossiers)
+- README.md reflète la vraie structure monorepo
+- 0 erreur TypeScript, 0 erreur ESLint, go build OK
+- Erreur DEVOPS-REPO-CLEANUP-1 corrigée — mes excuses à Ulrich pour la mauvaise interprétation initiale
