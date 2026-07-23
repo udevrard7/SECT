@@ -710,27 +710,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  // Feuille de réponses specific
-  studentInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  studentField: {
-    flexDirection: 'column',
-    width: '48%',
-  },
-  studentLabel: {
-    fontSize: 10,
-    color: NAVY,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  studentLine: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#CBD5E0',
-    height: 20,
-  },
+  // SECT-EPREUVE-PDF-ANONYME-1 : styles student* (studentInfoRow, studentField,
+  // studentLabel, studentLine) supprimés — StudentInfoFields retiré pour anonymat.
   // MCQ grid
   mcqHeaderRow: {
     flexDirection: 'row',
@@ -780,35 +761,9 @@ const styles = StyleSheet.create({
   mcqAltRow: {
     backgroundColor: CELL_BG,
   },
-  // Signature block
-  signatureContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  signatureBlock: {
-    flexDirection: 'column',
-    width: '45%',
-    alignItems: 'center',
-  },
-  signatureLabel: {
-    fontSize: 9,
-    color: NAVY,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  signatureLine: {
-    width: '100%',
-    borderBottomWidth: 1,
-    borderBottomColor: NAVY,
-    height: 30,
-  },
-  signatureDateLabel: {
-    fontSize: 8,
-    color: TEXT_GRAY,
-    marginTop: 2,
-  },
+  // SECT-EPREUVE-PDF-ANONYME-1 : styles signature* (signatureContainer, signatureBlock,
+  // signatureLabel, signatureLine, signatureDateLabel) supprimés — SignatureBlock
+  // retiré pour préserver l'anonymat des copies.
   // Encouragement message
   encouragementText: {
     fontSize: 10,
@@ -1181,42 +1136,8 @@ function BaremeRecap({ questions }: { questions: PDFQuestion[] }) {
 
 // ═══ Composant : Feuille de réponses ═══
 
-function StudentInfoFields() {
-  return (
-    <View style={{ marginBottom: 12 }} wrap={false}>
-      <View style={styles.studentInfoRow}>
-        <View style={styles.studentField}>
-          <Text style={styles.studentLabel}>Nom :</Text>
-          <View style={styles.studentLine} />
-        </View>
-        <View style={styles.studentField}>
-          <Text style={styles.studentLabel}>Prénom :</Text>
-          <View style={styles.studentLine} />
-        </View>
-      </View>
-      <View style={styles.studentInfoRow}>
-        <View style={styles.studentField}>
-          <Text style={styles.studentLabel}>Matricule :</Text>
-          <View style={styles.studentLine} />
-        </View>
-        <View style={styles.studentField}>
-          <Text style={styles.studentLabel}>Filière / Groupe :</Text>
-          <View style={styles.studentLine} />
-        </View>
-      </View>
-      <View style={styles.studentInfoRow}>
-        <View style={styles.studentField}>
-          <Text style={styles.studentLabel}>Date :</Text>
-          <View style={styles.studentLine} />
-        </View>
-        <View style={styles.studentField}>
-          <Text style={styles.studentLabel}>Salle :</Text>
-          <View style={styles.studentLine} />
-        </View>
-      </View>
-    </View>
-  )
-}
+// SECT-EPREUVE-PDF-ANONYME-1 : StudentInfoFields supprimé pour préserver
+// l'anonymat des copies (champs Nom/Prénom/Matricule/Filière/Date/Salle retirés).
 
 function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQuestions: PDFQuestion[] }) {
   if (questions.length === 0) {
@@ -1294,21 +1215,8 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
   )
 }
 
-function SignatureBlock() {
-  return (
-    <View style={styles.signatureContainer} wrap={false}>
-      <View style={styles.signatureBlock}>
-        <Text style={styles.signatureLabel}>Signature de l'étudiant</Text>
-        <View style={styles.signatureLine} />
-      </View>
-      <View style={styles.signatureBlock}>
-        <Text style={styles.signatureLabel}>Visa de l'enseignant</Text>
-        <View style={styles.signatureLine} />
-        <Text style={styles.signatureDateLabel}>Date : _______________</Text>
-      </View>
-    </View>
-  )
-}
+// SECT-EPREUVE-PDF-ANONYME-1 : SignatureBlock supprimé pour préserver
+// l'anonymat des copies (blocs "Signature de l'étudiant" + "Visa de l'enseignant" retirés).
 
 // ═══ Document : Sujet (multi-page) ═══
 
@@ -1513,8 +1421,8 @@ function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
           ) : null}
         </View>
 
-        {/* Student info */}
-        <StudentInfoFields />
+        {/* SECT-EPREUVE-PDF-ANONYME-1 : StudentInfoFields (Nom/Prénom/Matricule)
+            retiré pour préserver l'anonymat des copies (demande Ulrich). */}
 
         {/* Gold separator */}
         <View style={styles.goldLine} wrap={false} />
@@ -1539,8 +1447,8 @@ function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
         {/* Open questions */}
         <OpenQuestionsSection questions={openQuestions} allQuestions={questions} />
 
-        {/* Signature block */}
-        <SignatureBlock />
+        {/* SECT-EPREUVE-PDF-ANONYME-1 : SignatureBlock (étudiant + enseignant)
+            retiré pour préserver l'anonymat des copies (demande Ulrich). */}
 
         {/* Footer */}
         <PDFFooter data={data} isCorrige={false} />
