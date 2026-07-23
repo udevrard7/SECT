@@ -910,3 +910,30 @@ Stage Summary:
 - Composant KenteBand + styles + constantes LIME/TERRE_CUITE/KENTE_COLORS supprimés (code nettoyé)
 - Palette Savane conservée (bleu nuit + or) — design system intact
 - PDFs ~12% plus légers sans le motif kente
+
+---
+Task ID: SECT-EPREUVE-PDF-UE-NAME
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Header PDF — afficher le nom de l'UE au lieu de son code
+
+Correction frontend (epreuve-pdf-react.tsx) :
+- Ligne 996 : headerMetaValue de la colonne UE affichait data.uniteEnseignement.code
+- Remplacé par data.uniteEnseignement.nom (nom complet de l'UE)
+- Troncature à 25 caractères avec '…' si le nom dépasse (évite de casser le layout — colonne flex:1 ~95px de large)
+- Exemple : 'Algorithmique et Structures de Données Avancées' → 'Algorithmique et Structures…'
+
+Le code de l'UE (data.uniteEnseignement.code) reste disponible dans les données mais n'est plus affiché dans le header. Le nom est plus parlant pour l'étudiant.
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès (avec nom d'UE long de 49 caractères pour tester la troncature)
+  * sujet 57322 bytes
+  * corrige 60277 bytes
+  * feuille-reponses 56311 bytes
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Header PDF : colonne UE affiche maintenant le NOM de l'UE (au lieu du code)
+- Troncature à 25 caractères pour préserver le layout
+- Les 3 documents (sujet/corrige/feuille-reponses) sont concernés (tous utilisent PDFHeader)
