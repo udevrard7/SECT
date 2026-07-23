@@ -207,3 +207,87 @@ Stage Summary:
 - PDF V3 changes enfin déployables
 - frontend/ directory exclu du build (doublon pas utilisé par Vercel)
 - MISTRAL provider type ajouté au système AI (cohérent avec le backend)
+
+---
+Task ID: EPREUVES-DATES-FIX-V4
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Fix débordement du dialog de modification des dates (V3 débordait de la fenêtre modale)
+
+Cause racine du débordement V3 :
+- p-0 sur DialogContent + padding manuel (px-5) cassait le layout par défaut de shadcn (p-6 natif)
+- grid grid-cols-[1fr_auto_1fr] fixe : les <input type="datetime-local"> ont une largeur intrinsèque minimale (~180px) → 2×180 + 32 (toggle) + 16 (gaps) = 408px, limite exacte de sm:max-w-md (~448px - 40px padding = 408px utiles) → débordement
+- Pas de stratégie responsive (mobile vs desktop identiques)
+
+Frontend (frontend/src/components/epreuves/epreuves-page.tsx) :
+- Suppression du p-0 sur DialogContent : on garde le padding p-6 par défaut de shadcn
+- Suppression des paddings manuels (px-5/pt-5/pb-3) et du border-t artificiel sur le footer
+- Layout inputs : flex-col sm:flex-row (empilés sur mobile < 640px, côte à côte sur sm+ ≥ 640px) au lieu de grid fixe → s'adapte à la largeur disponible
+- Inputs : flex-1 + min-w-0 + w-full → flexibles, ne débordent jamais
+- Toggle auto-calc : w-9 h-9 (au lieu de w-8) + shrink-0 → taille tactile OK et ne se compresse pas
+- Icônes : shrink-0 partout (CalendarDays, CheckCircle2, AlertTriangle, Link2/Link2Off) pour empêcher la compression
+- Titre : min-w-0 + truncate sur le span texte pour gérer les longs titres sans pousser le badge
+- Badge durée : shrink-0 + texte réduit « X min » (au lieu de « X min/étudiant ») pour gagner de l'espace
+- DialogHeader/DialogFooter sans classes custom → layout natif shadcn préservé
+
+Résultat : le dialog tient dans la fenêtre modale sur toutes les tailles d'écran :
+- Mobile (< 640px) : inputs empilés verticalement, toggle entre les deux
+- Desktop (≥ 640px) : inputs côte à côte, toggle au milieu
+
+Vérifications qualité :
+- Frontend : tsc --noEmit → 0 erreur sur epreuves-page.tsx ; eslint → 0 erreur 0 warning
+- Pas de modification backend
+- Pas de migration DB
+
+Stage Summary:
+- Dialog ne déborde plus : layout flex-col sm:flex-row responsive
+- Padding natif shadcn restauré (p-6) au lieu du p-0 + padding manuel
+- Tous les éléments flexibles (min-w-0, flex-1, shrink-0) → aucune largeur fixe critique
+- UX conservée : 3 clics max, auto-calc silencieux via icône link, validation discrète
+
+---
+Task ID: DEVOPS-REPO-CLEANUP-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD, role DevOps senior)
+Task: Audit complet du dépôt GitHub, nettoyage des éléments inutiles, branche unique main, mise à jour README + worklog, niveau professionnel
+
+Audit réalisé :
+- Branches : 1 seule (main) locale et distante — conforme à la consigne
+- Historique git : scan secrets sur 50 derniers commits (ghp_/npg_/sk-/AKIA/rnd_/vcp_) → AUCUN secret détecté
+- Gros fichiers : aucun blob anormal dans l'historique récent
+- Fichiers tracked : 1092 → 706 après nettoyage (-35%, -386 fichiers)
+
+Problèmes identifiés et corrigés :
+1. DOUBLON CRITIQUE frontend/ ↔ racine : tout le code Next.js (src/, package.json, tsconfig.json, next.config.ts, bun.lock, e2e/, public/, supabase/) était dupliqué entre la racine et frontend/. Le dossier frontend/ était obsolète (en retard de plusieurs commits : EPREUVES-DATES-FIX V1→V4 et EPREUVES-PDF V2/V3 absents). Vercel build depuis la racine (confirmé par git show des commits récents). Le commit 7d00ed5 "fix TypeScript build errors blocking Vercel deployment" avait dû exclure frontend/ du tsconfig.json racine pour faire passer le build. → Suppression totale de frontend/ (0 fichier unique vérifié par comm -23).
+2. .env TRACKED : le fichier .env était commité et pointait vers /home/z/my-project/db/custom.db (URL sandbox locale, pas Neon). → Retrait du tracking (git rm --cached), fichier conservé localement, ajouté au .gitignore enrichi.
+3. .zscripts/ (7 fichiers dont dev.pid) : scripts + PID du sandbox Z.ai, pas du projet SECT. → Supprimé.
+4. tool-results/ (39 fichiers .txt) : logs de sorties d'outils du sandbox Z.ai. → Supprimé.
+5. agent-ctx/ (2 fichiers .md) : contexte de travail d'agents sandbox Z.ai. → Supprimé.
+6. supabase/ (root, 2 fichiers SQL) : doublon legacy avec frontend/supabase/ (lui-même supprimé avec frontend/). → Supprimé.
+7. start-frontend.sh : script sandbox pointant vers /home/z/my-project. → Supprimé.
+8. .gitignore incomplet : ne couvrait pas les binaires Go, IDE, OS, sandbox folders. → Réécriture complète (catégories : Dependencies, Build outputs Node+Go, Testing, Environment & secrets, Logs & runtime, IDE, Vercel/Render, Sandboxes, Misc).
+9. tsconfig.json : excluait encore "frontend" (inutile après suppression) → nettoyé, exclut maintenant backend/ et e2e/ à la place.
+
+Mise à jour README.md :
+- Structure du dépôt corrigée (suppression de la section frontend/, src/ à la racine)
+- Chiffres exacts : 222 routes (119 GET + 68 POST + 2 PUT + 15 PATCH + 18 DELETE), 103 migrations, version DB 103
+- Mention des routes PDF épreuves (/api/epreuves/{id}/pdf) ajoutées à Vercel
+- Section "Évolutions récentes" enrichie : EPREUVES-DATES-FIX V1→V4, EPREUVES-PDF V2/V3, AI-PROVIDERS-MISTRAL, AI-PROVIDERS-MODELS-V2, SECU-SYNC-FIX, DUREE-VALIDITE-24H
+- Nouvelle section "Qualité & conventions" : TypeScript strict, ESLint, go vet/build, Conventional Commits, branche unique main, worklog obligatoire
+- Migrations récentes notables mises à jour (000099→000103)
+- Badges mis à jour (103 migrations au lieu de 75)
+
+Vérifications qualité :
+- Structure post-nettoyage : 706 fichiers tracked, src/ à la racine est le Next.js, backend/ intact
+- .env correctement ignoré (git check-ignore .env → OK)
+- tsconfig.json nettoyé et cohérent
+- Aucun secret dans l'historique récent
+- Aucune référence à frontend/ dans le code source
+
+Stage Summary:
+- Dépôt nettoyé : 1092 → 706 fichiers tracked (-35%)
+- Structure unique : src/ à la racine (Next.js) + backend/ (Go), plus de doublon frontend/
+- .gitignore professionnel : couvre Node/Bun, Next.js, Go, IDE, OS, secrets, sandboxes
+- .env retiré du tracking (sécurité)
+- README.md reflète l'état actuel (222 routes, 103 migrations, évolutions récentes)
+- Worklog à jour avec toutes les tâches SECT-* et DEVOPS-*
+- Branche unique main (locale + distante) — conforme à la consigne
+- Aucun secret dans l'historique, dépôt prêt pour exposition professionnelle

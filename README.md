@@ -5,7 +5,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
 [![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](https://go.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql)](https://www.postgresql.org)
-[![Migrations](https://img.shields.io/badge/migrations-75-brightgreen)](backend/db/db/migrations)
+[![Migrations](https://img.shields.io/badge/migrations-103-brightgreen)](backend/db/db/migrations)
 [![Vercel](https://img.shields.io/badge/Vercel-Frontend-000?logo=vercel)](https://sect-app.vercel.app)
 [![Render](https://img.shields.io/badge/Render-Backend-46E3B7?logo=render)](https://sect-zead.onrender.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -26,60 +26,63 @@ SECT est une plateforme complète d'évaluation qui permet aux établissements d
 - **Exam-prep** : révision espacée (SM-2), flashcards, planning, pratique, aide étudiant↔enseignant, audio TTS
 - **Messagerie** : salons de classe/promo + DM étudiant↔enseignant avec modération, réactions, signalement
 - **Surveillance** : anti-fraude (stats proctoring, WebSocket temps réel, lockout soumission)
+- **PDF institutionnels** : sujets / corrigés / feuilles de réponses multi-pages avec branding B2B (logo, filière, niveau), watermark, barème récapitulatif, bloc émargement
 - **Performance** : pic de soumission protégé (202 async + submit_limiter + jitter), ~800-1000 étudiants simultanés sur free tier
 
 ## Architecture
 
 ```
 sect/
-├── frontend/                    # Next.js 16 (UI uniquement) → Vercel
-│   ├── src/
-│   │   ├── app/                 # App Router (pages + routes auth shim)
-│   │   │   ├── (app)/           # Routes authentifiées (layout group)
-│   │   │   ├── api/             # Routes API locales (PDF certs/relevés/factures)
-│   │   │   ├── login/ invitation/ verify/ offline/
-│   │   ├── components/          # 34 dossiers métier + shadcn/ui (components/ui)
-│   │   ├── stores/              # Zustand (auth-store)
-│   │   ├── hooks/               # Custom hooks
-│   │   ├── lib/                 # Utilitaires (pdf, ai-providers, __tests__)
-│   │   ├── types/               # Types TypeScript partagés
-│   │   └── proxy.ts             # Auth gate + redirect /login
-│   ├── e2e/                     # Tests Playwright
-│   ├── docs/                    # Documentation frontend
-│   ├── public/                  # Assets statiques (logo, manifest PWA)
-│   ├── supabase/                # Config Supabase (legacy)
-│   ├── vercel.json              # Rewrites /api/* → Render + headers sécurité
-│   ├── playwright.config.ts
-│   └── package.json
+├── src/                          # Next.js 16 (frontend) → Vercel
+│   ├── app/                      # App Router (pages + routes API locales PDF)
+│   │   ├── (app)/                # Routes authentifiées (layout group)
+│   │   ├── api/                  # Routes API locales (PDF certs/relevés/factures/épreuves)
+│   │   ├── login/ invitation/ verify/ offline/
+│   ├── components/               # 34 dossiers métier + shadcn/ui (components/ui)
+│   ├── stores/                   # Zustand (auth-store)
+│   ├── hooks/                    # Custom hooks
+│   ├── lib/                      # Utilitaires (pdf, ai-providers, __tests__)
+│   ├── types/                    # Types TypeScript partagés
+│   └── proxy.ts                  # Auth gate + redirect /login
 │
-├── backend/                     # Go 1.24 (API REST) → Render
-│   ├── cmd/api/                 # Point d'entrée (main.go)
+├── backend/                      # Go 1.24 (API REST) → Render
+│   ├── cmd/api/                  # Point d'entrée (main.go)
+│   ├── cmd/loadtest-submit/      # Outil de load testing (soumission massive)
 │   ├── internal/
-│   │   ├── ai/                  # Intégration LLM (Z.ai / failover providers)
-│   │   ├── cache/               # Cache local en mémoire
-│   │   ├── config/              # Chargement variables d'environnement
-│   │   ├── db/                  # pgxpool + RLS claims (SetClaimsTx, WithTx)
-│   │   ├── domain/              # Entités métier + interfaces repositories
-│   │   ├── usecase/             # Logique métier (auth, CRUD, grading, messagerie…)
-│   │   ├── repository/          # Implémentations pgx (RLS automatique)
-│   │   ├── transport/http/      # Routeur chi + handlers HTTP (40 domaines, 200 routes)
-│   │   ├── middleware/          # Auth (cookie+Bearer), logging, CORS
-│   │   ├── jwt/                 # JWT HMAC-SHA256 (access 15min + refresh 7j)
-│   │   ├── monitoring/          # Événements de monitoring applicatif
-│   │   ├── storage/             # Client Cloudflare R2 (S3)
-│   │   └── worker/              # Workers asynchrones (9 : IA, Correction, Document, Practice, Homework, Audio, AutoClose, Relance, Expire)
-│   ├── db/                      # Couche données
-│   │   ├── db/migrations/       # 75 migrations golang-migrate (000001→000075)
-│   │   ├── db/reference/        # Schéma consolidé (schema.sql, pour sqlc)
-│   │   ├── queries/             # Requêtes sqlc (user.sql)
+│   │   ├── ai/                   # Intégration LLM multi-providers (Z.ai / Mistral / failover)
+│   │   ├── cache/                # Cache local en mémoire
+│   │   ├── config/               # Chargement variables d'environnement
+│   │   ├── db/                   # pgxpool + RLS claims (SetClaimsTx, WithTx)
+│   │   ├── domain/               # Entités métier + interfaces repositories
+│   │   ├── usecase/              # Logique métier (auth, CRUD, grading, messagerie…)
+│   │   ├── repository/           # Implémentations pgx (RLS automatique)
+│   │   ├── transport/http/       # Routeur chi + handlers HTTP (40 domaines, 222 routes)
+│   │   ├── middleware/           # Auth (cookie+Bearer), logging, CORS
+│   │   ├── jwt/                  # JWT HMAC-SHA256 (access 15min + refresh 7j)
+│   │   ├── monitoring/           # Événements de monitoring applicatif
+│   │   ├── storage/              # Client Cloudflare R2 (S3)
+│   │   └── worker/               # Workers asynchrones (9 : IA, Correction, Document, Practice, Homework, Audio, AutoClose, Relance, Expire, Similarity)
+│   ├── db/                       # Couche données
+│   │   ├── db/migrations/        # 103 migrations golang-migrate (000001→000103)
+│   │   ├── db/reference/         # Schéma consolidé (schema.sql, pour sqlc)
+│   │   ├── queries/              # Requêtes sqlc (user.sql)
 │   │   ├── MIGRATIONS_RECONCILIATION.md  # Audit doublons + dérive schema_migrations
 │   │   └── sqlc.yaml
-│   ├── Dockerfile               # Multi-stage (golang:1.24 → alpine:3.20)
-│   ├── Makefile                 # dev / build / migrate-up / sqlc-gen…
+│   ├── Dockerfile                # Multi-stage (golang:1.24 → alpine:3.20)
+│   ├── Makefile                  # dev / build / migrate-up / sqlc-gen…
 │   └── go.mod
 │
-├── render.yaml                  # Config déploiement Render (backend)
-├── worklog.md                   # Journal des évolutions (Task IDs SECT-*)
+├── public/                       # Assets statiques (logo, manifest PWA)
+├── e2e/                          # Tests Playwright (auth + facturation)
+├── docs/                         # Documentation (design-system.md)
+├── vercel.json                   # Rewrites /api/* → Render + headers sécurité
+├── render.yaml                   # Config déploiement Render (backend Docker)
+├── eslint.config.mjs             # Linter ESLint (Next.js + React + TypeScript)
+├── tsconfig.json                 # Configuration TypeScript (strict)
+├── tailwind.config.ts            # Tailwind CSS 4 + theme tokens
+├── playwright.config.ts          # Tests E2E
+├── vitest.config.ts              # Tests unitaires
+├── worklog.md                    # Journal des évolutions (Task IDs SECT-*)
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── .gitignore
@@ -95,7 +98,7 @@ sect/
 | **Stockage fichiers** | Cloudflare R2 (S3-compatible) | Cloudflare | bucket `sect-documents` |
 | **CI/CD** | GitHub → Vercel (auto) + Render (auto) | GitHub | `udevrard7/SECT` |
 
-> Le frontend Vercel agit comme proxy : `vercel.json` réécrit `/api/:path*` vers le backend Render. Les routes `/api/certificats/{id}/pdf`, `/api/etudiants/{id}/releve-notes` et `/api/factures/{id}/pdf` sont servies localement par Next.js (génération PDF côté serveur).
+> Le frontend Vercel agit comme proxy : `vercel.json` réécrit `/api/:path*` vers le backend Render. Les routes `/api/certificats/{id}/pdf`, `/api/etudiants/{id}/releve-notes`, `/api/factures/{id}/pdf` et `/api/epreuves/{id}/pdf` sont servies localement par Next.js (génération PDF côté serveur avec `@react-pdf/renderer`).
 
 ## Sécurité
 
@@ -106,7 +109,7 @@ sect/
 - **Cookies httpOnly** : `access_token` + `refresh_token` (Secure + SameSite=Lax)
 - **CORS** : `AllowCredentials: true`, headers `Cookie` + `Authorization`
 - **IP réelle** : `GetClientIP()` lit `CF-Connecting-IP` → `X-Forwarded-For` → `X-Real-IP`
-- **Aucun secret en clair** dans le code source (tous via env vars)
+- **Aucun secret en clair** dans le code source (tous via env vars, fichier `.env` gitignored)
 
 ## Démarrage rapide
 
@@ -114,12 +117,12 @@ sect/
 
 - [Bun](https://bun.sh/) (frontend)
 - [Go 1.24+](https://go.dev/dl/) (backend)
+- [golang-migrate](https://github.com/golang-migrate/migrate) (migrations DB)
 - PostgreSQL (Neon, Supabase, ou local)
 
 ### Frontend (port 3000)
 
 ```bash
-cd frontend
 bun install
 bun run dev
 ```
@@ -133,12 +136,13 @@ go run ./cmd/api
 
 ### Variables d'environnement
 
-Créer un fichier `.env` à la racine de chaque service avec les variables suivantes :
+Créer un fichier `.env` à la racine (**jamais committé**, déjà dans `.gitignore`) avec :
 
 ```env
 # Backend
 NEON_DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
-JWT_SECRET=votre-secret-jwt
+NEON_DIRECT_URL=postgresql://user:pass@host/db?sslmode=require  # pour les migrations
+JWT_SECRET=votre-secret-jwt-32-caracteres-min
 R2_ACCOUNT_ID=...
 R2_ACCESS_KEY_ID=...
 R2_SECRET_ACCESS_KEY=...
@@ -147,19 +151,13 @@ R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com
 
 # Frontend
 NEXT_PUBLIC_API_URL=http://localhost:8080
-# Variables optionnelles pour le skill Z.ai (chatbot, génération de questions)
-# ZAI_BASE_URL=...
-# ZAI_API_KEY=...
-# ZAI_CHAT_ID=...
-# ZAI_USER_ID=...
-# ZAI_TOKEN=...
 ```
 
-> ⚠️ Ne jamais committer de fichier `.env`. Les secrets vont dans les dashboards Vercel / Render / GitHub Secrets.
+> ⚠️ **Ne jamais committer de fichier `.env`.** Les secrets vont dans les dashboards Vercel / Render / GitHub Secrets. Le `.gitignore` exclut déjà `.env`, `.env.*`, `*.pem`, `*.key`.
 
 ## API
 
-Le backend expose **200 routes HTTP** réparties sur **40 domaines** (dénombrement vérifié depuis `backend/internal/transport/http/router.go` : 107 GET + 60 POST + 2 PUT + 15 PATCH + 16 DELETE) :
+Le backend expose **222 routes HTTP** réparties sur **40 domaines** (vérifié depuis `backend/internal/transport/http/router.go` : 119 GET + 68 POST + 2 PUT + 15 PATCH + 18 DELETE) :
 
 | Domaine | Endpoints | Description |
 |---------|-----------|-------------|
@@ -195,7 +193,7 @@ Le backend expose **200 routes HTTP** réparties sur **40 domaines** (dénombrem
 | Factures | 1 | Factures (+ PDF) |
 | Plans | 1 | Plans tarifaires |
 | Platform-settings | 1 | Paramètres plateforme |
-| AI-providers | 1 | Fournisseurs AI + failover |
+| AI-providers | 1 | Fournisseurs AI + failover (Z.ai, Mistral, OpenAI-compatible) |
 | Monitoring | 1 | Événements de monitoring |
 | Logs | 1 | Logs applicatifs |
 | Ip-whitelist | 1 | Liste blanche IP |
@@ -209,7 +207,7 @@ Le backend expose **200 routes HTTP** réparties sur **40 domaines** (dénombrem
 
 ## Base de données
 
-Statistiques vérifiées sur la base Neon PostgreSQL de production (migration version 75) :
+Statistiques vérifiées sur la base Neon PostgreSQL de production (migration version 103) :
 
 - **63 tables** + **1 vue** (schéma `public`, PascalCase)
 - **28 types enum** (120 valeurs au total)
@@ -218,7 +216,7 @@ Statistiques vérifiées sur la base Neon PostgreSQL de production (migration ve
 - **146 policies RLS** (Row Level Security) sur **62 tables activées**, claims de session posés via `SET LOCAL app.claims.*`
 - **39 triggers** (essentiellement `updated_at` automatique)
 - **76 fonctions** dont **75 `SECURITY DEFINER`** (helpers RLS, invitations, validation B2B, agrégats stats, capitation B2B…)
-- **75 migrations** versionnées dans `backend/db/db/migrations/` (golang-migrate), numérotées `000001`→`000075`, toutes appliquées
+- **103 migrations** versionnées dans `backend/db/db/migrations/` (golang-migrate), numérotées `000001`→`000103`, toutes appliquées
 
 ```bash
 # Appliquer les migrations
@@ -230,17 +228,32 @@ migrate -path db/db/migrations -database "$NEON_DATABASE_URL" up
 
 > ℹ️ Un audit des migrations (doublons historiques 000039/000040 et 000050, réconciliation `schema_migrations`) est documenté dans [`backend/db/MIGRATIONS_RECONCILIATION.md`](backend/db/MIGRATIONS_RECONCILIATION.md).
 >
-> 📋 Migrations récentes notables : `000055` (refonte B2B/B2C + capitation), `000059` (IA usage tracking), `000061` (GeniusPay Wave), `000067`→`000074` (self-service B2B/B2C, facturation, anti-abus, multi-établissements), `000075` (fix `validate_b2b_establishment` — SQLSTATE 42804). Voir `worklog.md` pour le détail des Task IDs `SECT-*`.
+> 📋 Migrations récentes notables : `000055` (refonte B2B/B2C + capitation), `000059` (IA usage tracking), `000061` (GeniusPay Wave), `000067`→`000074` (self-service B2B/B2C, facturation, anti-abus, multi-établissements), `000075` (fix `validate_b2b_establishment`), `000099`→`000101` (session capture, similarity report, identity photo), `000102` (SecuritySettings RLS admin full access), `000103` (durée validité accès 24h). Voir `worklog.md` pour le détail des Task IDs `SECT-*`.
 
 ## Évolutions récentes
 
-Le journal complet des évolutions (Task IDs `SECT-*`) est dans [`worklog.md`](worklog.md). Points marquants :
+Le journal complet des évolutions est dans [`worklog.md`](worklog.md). Points marquants :
 
-- **`SECT-B2B-VALIDATE-FIX-1`** — Correction du bug `SQLSTATE 42804` sur `validate_b2b_establishment()` (la fonction déclarait `o_date_fin timestamp WITHOUT time zone` mais le `RETURN QUERY` final utilisait `NOW() + INTERVAL` qui retourne `timestamptz` → mismatch → impossibilité de valider toute nouvelle inscription B2B éligible). Fix par migration `000075` (cast explicite `(NOW() + INTERVAL '14 days')::timestamp`).
+- **`EPREUVES-DATES-FIX` (V1→V4)** — Correction du bug « impossible de modifier les dates d'une épreuve » (le frontend envoyait le format `datetime-local` HTML au backend Go qui attendait du RFC3339 strict → `time.Parse` échouait). Fix : parser tolérant côté Go + conversion `toRFC3339()` côté front. Refonte UX du dialog « Fenêtre d'ouverture » : presets rapides, auto-calc via icône link, validation temps réel, layout responsive (flex-col sm:flex-row).
+- **`EPREUVES-PDF-V2` / `EPREUVES-PDF-V3`** — Refonte professionnelle des PDFs épreuves (sujet/corrigé/feuille-réponses) avec `@react-pdf/renderer` server-side : multi-page (header/footer fixes sur chaque page), branding B2B (logo + nom établissement + filière + niveau), watermark diagonal configurable, barème récapitulatif, bloc émargement sur la feuille de réponses, badge session (NORMALE/RATTRAPAGE/SPECIALE).
+- **`AI-PROVIDERS-MISTRAL`** — Ajout de Mistral AI comme provider dédié (chat) avec modèles propres + failover. `AIProviderType` étendu, types et metadata mis à jour.
+- **`AI-PROVIDERS-MODELS-V2`** — Modèles actualisés par fournisseur + fallback Model Switcher.
+- **`SECU-SYNC-FIX`** — Fix synchronisation Admin `/securite` ↔ Responsable `/parametres` Sécurité (migration 000102, RLS policies alignées pour ADMIN full access).
+- **`DUREE-VALIDITE-24H`** — Formulaire accès établissements : durée max 24h avec sélection prédéfinie (migration 000103).
+- **`SECT-B2B-VALIDATE-FIX-1`** — Correction du bug `SQLSTATE 42804` sur `validate_b2b_establishment()` (migration 000075).
 - **`SECT-CAPACITY-V2` / `OPT-1`→`OPT-11`** — Optimisations performance pour le pic de soumission : `202 async` + `submit_limiter` (5 slots concurrents), jitter 45s, WebSocket push, gzip, debounce saves, SWR IndexedDB. Capacité mesurée free tier : ~800-1000 étudiants en pic sans perte de données.
 - **`SECT-RENDER-DEPLOY-FIX-1`** — Cohérence `go.mod` (gorilla/websocket) pour le déploiement Render.
 - **Refonte "Savane EdTech"** — Identité visuelle des modules `/facturation`, `/abonnements` (Validation B2B, Plans tarifaires) avec palette DS unifiée, kente strip, GlassModal, animations Framer Motion.
 - **B2B self-service** — Inscription établissements sans intervention admin (`000067`→`000074`) : création Etablissement + RESPONSABLE + abonnement `EN_ATTENTE_VALIDATION`, vérification email par token, validation admin → ESSAI 14j, anti-abus (1 essai/nom, 1 essai/téléphone, flag email non-pro).
+
+## Qualité & conventions
+
+- **TypeScript strict** sur tout le frontend (5 erreurs possibles → 0 tolérée sur les fichiers modifiés)
+- **ESLint** (Next.js + React + TypeScript rules) — 0 erreur 0 warning sur les fichiers modifiés
+- **Go vet** + **go build** obligatoires avant push backend
+- **Conventional Commits** (en français) : `<SCOPE>-<TASK>: description` — exemples : `EPREUVES-DATES-FIX-V4:`, `feat:`, `fix:`
+- **Une seule branche** : `main` (pas de dev/feature branches, déploiement continu auto)
+- **Worklog obligatoire** : chaque tâche append une section dans `worklog.md` avec Task ID, Agent, Work Log, Stage Summary
 
 ## Licence
 
@@ -248,4 +261,4 @@ MIT — Voir le fichier [LICENSE](LICENSE).
 
 ## Auteurs
 
-- **Ulrich EVRARD** — *Propriétaire* — [udevrard7](https://github.com/udevrard7)
+- **Ulrich EVRARD** — *Propriétaire* — [udevrard7](https://github.com/udevrard7) — ulrichdouh@gmail.com

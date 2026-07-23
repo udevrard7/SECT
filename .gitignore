@@ -1,7 +1,10 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ============================================================
+# SECT — .gitignore professionnel
+# Couvre : Node/Bun, Next.js, Go, IDE, OS, secrets, sandbox
+# ============================================================
 
-# dependencies
-node_modules
+# ─── Dependencies ────────────────────────────────────────────
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,45 +13,83 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ─── Build outputs ───────────────────────────────────────────
+# Next.js
 /.next/
 /out/
+next-env.d.ts
+*.tsbuildinfo
 
-# production
+# Go (backend)
+/backend/bin/
+/backend/api
+/backend/sect-api
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Production builds
 /build
+/dist
 
-# misc
-.DS_Store
+# ─── Testing ─────────────────────────────────────────────────
+/coverage
+/playwright-report/
+/test-results/
+/.nyc_output
+
+# ─── Environment & secrets (JAMAIS committer) ────────────────
+.env
+.env.*
+!.env.example
+!.env.sample
 *.pem
+*.key
+secrets.json
 
-# debug
+# ─── Logs & runtime ──────────────────────────────────────────
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-local-*
-.claude
-.z-ai-config
-*.log
 dev.log
 dev.out.log
-test
-prompt
-
 server.log
-# Skills directory
+*.pid
+*.pid.lock
+
+# ─── IDE & éditeurs ──────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Vercel / Render ─────────────────────────────────────────
+.vercel
+.render
+
+# ─── Sandboxes & assistants locaux (jamais sur le repo) ─────
+.zscripts/
+.z-ai-config/
+.claude/
+agent-ctx/
+tool-results/
 /skills/
+mini-services/
+
+# ─── Misc ────────────────────────────────────────────────────
+local-*
+prompt
+test
+.cache/
+*.tmp
+*.bak
