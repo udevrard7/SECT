@@ -1031,3 +1031,42 @@ Stage Summary:
 - 3 nouvelles routes : /aide/installation, /aide/kiosk-examens (+ /aide dans PUBLIC_PATHS)
 - Aucune modification backend, aucune migration DB — purement frontend
 - ROI maximal : valorise l'investissement PWA existant sans refonte
+
+---
+Task ID: SECT-DESKTOP-ARCH-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Document d'architecture SECT Desktop (référence avant code Wails)
+
+Work Log:
+- Production du document d'architecture complet (docs/desktop/ARCHITECTURE.md)
+- 17 sections couvrant tous les aspects opérationnels :
+  1. Vision et objectifs (cas d'usage, métriques, non-objectifs)
+  2. Décisions architecturales (Wails v2 pas v3, thin wrapper, pas de sectcore)
+  3. Arborescence desktop/ (module Go indépendant, internal/, build/, scripts/)
+  4. Communication Wails ↔ Next.js (bindings Go + bridge TS + détection desktop)
+  5. Fonctions Go natives (8 MVP + 7 Phase C, exemples PrintPDF cross-platform)
+  6. Authentification (transparence totale, cookies JWT persistants webview)
+  7. Auto-update (GitHub Releases, latest.json, canaux stable/beta/canary, rollback)
+  8. Code signing (OV vs EV Windows, Apple notarization, stockage secrets, coûts)
+  9. Packaging multi-plateforme (.exe NSIS, .dmg, .AppImage, .deb, .rpm, configs)
+  10. Pipeline CI/CD GitHub Actions (build.yml + release.yml, 3 plateformes, signing)
+  11. Matrice de test (Windows 10/11, macOS 12+, Ubuntu 22.04+, checklist manuelle)
+  12. Métriques adoption (heartbeat anonyme, dashboard, critères décision sectcore)
+  13. Plan de rollback (force_rollback, auto-restore, abandon desktop si < 50 installs)
+  14. Coûts et budget (290-650 €/an, effort 8 jours Phase A+B, ROI estimé)
+  15. Feuille de route (Phase A-E, releases prévues, critères passage D→E)
+  16. Risques et mitigations (techniques, produit, sécurité)
+  17. Glossaire + références + décisions en attente de validation
+- Angles morts traités que l'analyse initiale avait manqués :
+  * Code signing (SmartScreen tue 80% adoption sans signing) — détaillé OV vs EV
+  * Auto-update infrastructure (GitHub Releases + latest.json + canaux + rollback)
+  * Wails v2 (stable) recommandé au lieu de v3 (beta) — justification
+- Document structuré pour validation comité technique avant démarrage Phase A
+
+Stage Summary:
+- Document de référence complet (17 sections, ~750 lignes) pour SECT Desktop
+- Tous les coûts réels chiffrés (signing, Apple, effort dev, ROI)
+- Plan de rollback explicite (abandon desktop possible sans impact web/PWA)
+- Critères mesurables pour décider sectcore (6 mois observation, 6 critères)
+- 8 décisions en attente de validation avant Phase A
+- Aucune ligne de code Wails — purement documentation, prêt à présenter
