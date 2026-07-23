@@ -2905,18 +2905,18 @@ function SessionsTab() {
  </AlertDialogContent>
  </AlertDialog>
 
- {/* Date Edit Dialog — EPREUVES-DATES-FIX-V3 : UI compacte, exécution rapide */}
+ {/* Date Edit Dialog — EPREUVES-DATES-FIX-V4 : layout robuste, responsive, sans débordement */}
  <Dialog open={!!dateEditTarget} onOpenChange={(open) => { if (!open && !dateEditSaving) setDateEditTarget(null) }}>
- <DialogContent className="sm:max-w-md p-0">
- <DialogHeader className="px-5 pt-5 pb-3">
+ <DialogContent className="sm:max-w-md">
+ <DialogHeader>
  <DialogTitle className="flex items-center justify-between gap-2 text-base">
- <span className="flex items-center gap-2">
- <CalendarDays className="h-4 w-4 text-info" />
- Fenêtre d&apos;ouverture
+ <span className="flex items-center gap-2 min-w-0">
+ <CalendarDays className="h-4 w-4 text-info shrink-0" />
+ <span className="truncate">Fenêtre d&apos;ouverture</span>
  </span>
  {dateEditTarget && (
- <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground" title={`Durée de passation par étudiant (définie à la création, non modifiée ici)`}>
- <Clock className="h-3 w-3" /> {dateEditTarget.duree} min/étudiant
+ <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground shrink-0" title={`Durée de passation par étudiant (définie à la création, non modifiée ici)`}>
+ <Clock className="h-3 w-3" /> {dateEditTarget.duree} min
  </Badge>
  )}
  </DialogTitle>
@@ -2928,8 +2928,8 @@ function SessionsTab() {
  </DialogHeader>
 
  {dateEditTarget && (
- <div className="px-5 pb-4 space-y-3">
- {/* Presets de début — ligne compacte */}
+ <div className="space-y-3">
+ {/* Presets de début — ligne compacte, wrap naturel */}
  <div className="flex flex-wrap gap-1.5">
  {buildStartPresets().map((p) => (
  <Button
@@ -2945,37 +2945,37 @@ function SessionsTab() {
  ))}
  </div>
 
- {/* Deux inputs côte à côte avec toggle auto-calc au milieu */}
- <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
- <div className="space-y-1">
+ {/* Deux inputs : empilés sur mobile, côte à côte sur sm+ */}
+ <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+ <div className="flex-1 space-y-1 min-w-0">
  <Label className="text-[11px] text-muted-foreground">Ouverture</Label>
  <Input
  type="datetime-local"
  value={dateEditDebut}
  onChange={(e) => handleDebutChange(e.target.value)}
- className="h-9 text-sm"
+ className="h-9 text-sm w-full"
  />
  </div>
  <button
  type="button"
  onClick={() => setDateEditAutoFin(!dateEditAutoFin)}
  title={dateEditAutoFin ? 'Fin auto-ajustée (cliquer pour détacher)' : 'Fin indépendante (cliquer pour synchroniser)'}
- className={`mb-0.5 h-9 w-8 rounded-md border flex items-center justify-center transition-colors ${
+ className={`h-9 w-9 rounded-md border flex items-center justify-center transition-colors shrink-0 ${
  dateEditAutoFin
  ? 'border-info/40 bg-info/10 text-info hover:bg-info/20'
  : 'border-muted text-muted-foreground hover:bg-muted/50'
  }`}
  aria-label="Toggle synchronisation fin"
  >
- {dateEditAutoFin ? <Link2 className="h-3.5 w-3.5" /> : <Link2Off className="h-3.5 w-3.5" />}
+ {dateEditAutoFin ? <Link2 className="h-4 w-4" /> : <Link2Off className="h-4 w-4" />}
  </button>
- <div className="space-y-1">
+ <div className="flex-1 space-y-1 min-w-0">
  <Label className="text-[11px] text-muted-foreground">Clôture</Label>
  <Input
  type="datetime-local"
  value={dateEditFin}
  onChange={(e) => { setDateEditFin(e.target.value); setDateEditAutoFin(false) }}
- className={`h-9 text-sm ${dateEditValidation.valid === false && dateEditFin ? 'border-destructive' : ''}`}
+ className={`h-9 text-sm w-full ${dateEditValidation.valid === false && dateEditFin ? 'border-destructive' : ''}`}
  />
  </div>
  </div>
@@ -3001,12 +3001,12 @@ function SessionsTab() {
  <div className={`flex items-center gap-1.5 text-xs h-5 ${dateEditValidation.valid ? 'text-success-text' : 'text-destructive'}`}>
  {dateEditValidation.valid ? (
  <>
- <CheckCircle2 className="h-3.5 w-3.5" />
+ <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
  <span>Fenêtre : <strong>{formatWindow(dateEditValidation.windowMin!)}</strong></span>
  </>
  ) : (
  <>
- <AlertTriangle className="h-3.5 w-3.5" />
+ <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
  <span>{dateEditValidation.reason}</span>
  </>
  )}
@@ -3014,7 +3014,7 @@ function SessionsTab() {
  </div>
  )}
 
- <DialogFooter className="px-5 py-3 border-t gap-2">
+ <DialogFooter className="gap-2">
  <Button variant="outline" size="sm" onClick={() => setDateEditTarget(null)} disabled={dateEditSaving}>
  Annuler
  </Button>
