@@ -420,3 +420,42 @@ Stage Summary:
   4. Timeout 90s côté client + messages pédagogiques selon status HTTP
 - Messages d'erreur catégorisés : l'utilisateur sait maintenant si c'est un cold start Render, une session expirée, une épreuve introuvable, ou une erreur de render
 - Validation préventive des données epreuve (titre non vide) avant render pour éviter les crashes silencieux @react-pdf
+
+---
+Task ID: SECT-EPREUVE-PDF-FONT-FIX-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: /epreuves impossible de télécharger Sujet et Corrigé PDF — "@react-pdf/renderer a échoué: Cannot read properties of null (reading 'props')"
+
+Cause racine identifiée par test local (renderEpreuvePDF avec données sample) :
+- Erreur réelle : "Could not resolve font for PlayfairDisplay, fontWeight 400, fontStyle italic"
+- Le style `encouragementText` (utilisé UNIQUEMENT dans SujetDocument pour "Bon courage !") combinait :
+  * fontFamily: 'PlayfairDisplay'
+  * fontStyle: 'italic'
+- Mais PlayfairDisplay n'est enregistrée qu'en fontWeight: 'normal' (pas de variante italic)
+- @react-pdf/renderer v4 lève une erreur fatale quand une font italic est demandée mais non enregistrée
+- L'erreur se transforme en "Cannot read properties of null (reading 'props')" côté serveur (le composant Text devient null après l'échec de résolution font)
+- FeuilleReponses ne plante pas car elle n'utilise pas encouragementText
+
+Test local a confirmé :
+- Avant fix : sujet FAILED (font error), corrige OK, feuille-reponses OK
+- Après fix : sujet OK (27KB), corrige OK (29KB), feuille-reponses OK (19KB)
+
+Corrections frontend (epreuve-pdf-react.tsx) :
+- Style `encouragementText` : changement fontFamily de 'PlayfairDisplay' → 'Inter'
+  * Inter a une variante italic enregistrée (Inter-Italic.ttf)
+  * PlayfairDisplay n'a que Regular (pas d'italic disponible)
+  * Le texte "Bon courage !" reste en italic mais avec Inter au lieu de PlayfairDisplay
+  * Impact visuel minimal (police de corps au lieu de police de titre pour ce petit texte)
+- Commentaire ajouté pour expliquer le choix et éviter toute régression
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès (sujet 27KB + corrige 29KB + feuille-reponses 19KB)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Erreur "Cannot read properties of null (reading 'props')" résolue : cause racine = font PlayfairDisplay italic non enregistrée
+- Sujet PDF téléchargeable maintenant (était le seul à planter à cause du style encouragementText)
+- Corrige et FeuilleReponses fonctionnaient déjà (le Corrige avait un problème de timeout séparé, déjà corrigé par SECT-EPREUVE-PDF-TIMEOUT-FIX-1)
+- Les 3 types de PDF sont maintenant téléchargeables
