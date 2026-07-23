@@ -13,29 +13,40 @@
  * catch{} muet avalait l'erreur → 500 générique. Corrigé en mettant à jour
  * la variable Vercel → https://sect-zead.onrender.com (service actif).
  *
- * Robustesse ajoutée (pour éviter tout retour silencieux à l'avenir) :
- *  1. fetchWithTimeout (AbortController 12s) — consistance avec /session,
- *     évite les hangs infinis si Render est en cold start prolongé.
- *  2. cache: 'no-store' — les POST dynamiques ne doivent JAMAIS être mis en
- *     cache par le fetch instrumenté de Next.js/Vercel.
- *  3. console.error détaillé — l'erreur exacte (name + message + step + API_URL)
- *     est loggée dans les logs Vercel Functions (dashboard Vercel → Logs).
- *  4. Gestion granulaire des codes HTTP :
- *       - 504 Gateway Timeout (AbortError) → serveur auth lent
- *       - 502 Bad Gateway (réseau / non-JSON / fetch failed) → backend injoignable
- *       - 500 (autre) → erreur inattendue
- *     Le frontend login-form.tsx a été mis à jour pour gérer 502/504.
- *  5. Validation : si la réponse backend n'est pas du JSON valide, on retourne
- *     502 (au lieu d'un SyntaxError → 500 muet).
+ * BUGFIX (SECT-LOGIN-TIMEOUT-FIX-1) : erreur récurrente "Le serveur d'authentification
+ * met trop de temps à répondre" sur la page de login.
+ *
+ * Cause racine : le timeout backend était de 12s, mais Render free tier a un
+ * cold start de 30-50s quand le service n'a pas reçu de requête depuis un
+ * moment. Le 1er appel (login) tombait systématiquement sur le cold start →
+ * AbortError à 12s → 504 → erreur utilisateur. Le 2e appel (retry manuel)
+ * passait car le cold start était déjà déclenché.
+ *
+ * Corrections :
+ *  1. Timeout augmenté à 25s (couvre la plupart des cold starts Render).
+ *  2. maxDuration = 30 (autorise Vercel serverless à attendre 30s au lieu du
+ *     défaut 10s en Hobby plan).
+ *  3. Retry automatique au timeout : si le 1er fetch AbortError, on retente
+ *     immédiatement (le cold start est déjà en cours → le 2e passe en ~1-3s).
+ *  4. fetchWithTimeout + cache: 'no-store' + console.error détaillé (inchangés).
+ *  5. Gestion granulaire des codes HTTP (504/502/500) inchangée.
+ *  6. Message d'erreur pédagogique : indique que le serveur démarre et qu'il
+ *     faut patienter, au lieu de juste "réessayer".
  */
 import { NextRequest, NextResponse } from 'next/server'
 
+// SECT-LOGIN-TIMEOUT-FIX-1 : autoriser Vercel à attendre jusqu'à 30s (Hobby
+// plan = 10s par défaut, jusqu'à 60s max configuré). Sans ce maxDuration,
+// Vercel coupe la route serverless à 10s même si AbortController est à 25s.
+export const maxDuration = 30
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-zead.onrender.com'
 
-// Timeout pour l'appel backend : 12s (le cold start Render free peut prendre
-// jusqu'à ~30-50s, mais on ne veut pas bloquer la requête de login trop
-// longtemps — on retourne 504 et l'utilisateur réessaie).
-const BACKEND_TIMEOUT_MS = 12000
+// SECT-LOGIN-TIMEOUT-FIX-1 : 25s pour couvrir le cold start Render free
+// (jusqu'à ~30-50s en pic, mais la majorité des cold starts passent en <20s).
+// Si le 1er fetch timeout, on retry une 2e fois (le cold start est déjà déclenché).
+const BACKEND_TIMEOUT_MS = 25000
+const MAX_RETRIES = 2
 
 /** fetch avec timeout explicite via AbortController. */
 async function fetchWithTimeout(
@@ -55,13 +66,38 @@ async function fetchWithTimeout(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const requestBody = JSON.stringify(body)
 
-    const resp = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      cache: 'no-store', // POST dynamique — ne jamais cacher
-    })
+    // SECT-LOGIN-TIMEOUT-FIX-1 : retry automatique au timeout (cold start Render).
+    // Le 1er fetch déclenche le cold start, le 2e (si AbortError) bénéficie du
+    // service déjà en train de démarrer → passe en ~1-3s.
+    let resp: Response | null = null
+    let lastErr: unknown = null
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        resp = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: requestBody,
+          cache: 'no-store', // POST dynamique — ne jamais cacher
+        })
+        break // succès → on sort de la boucle
+      } catch (err) {
+        lastErr = err
+        const errName = err instanceof Error ? err.name : 'Unknown'
+        // Retry seulement si timeout (AbortError = cold start). Les autres
+        // erreurs (TypeError fetch failed = DNS/réseau mort) ne bénéficieront
+        // pas d'un retry immédiat → on sort directement.
+        if (errName !== 'AbortError' || attempt === MAX_RETRIES) {
+          throw err
+        }
+        console.warn(`[go-auth/login] tentative ${attempt}/${MAX_RETRIES} timeout, retry...`, JSON.stringify({ apiUrl: API_URL }))
+      }
+    }
+
+    if (!resp) {
+      throw lastErr ?? new Error('Aucune réponse backend')
+    }
 
     // Robustesse : si la réponse n'est pas du JSON valide (ex: 404 HTML d'un
     // service Render mort), resp.json() lèverait SyntaxError. On détecte le
@@ -127,10 +163,10 @@ export async function POST(request: NextRequest) {
     const errMsg = err instanceof Error ? err.message : String(err)
     console.error('[go-auth/login] EXCEPTION:', JSON.stringify({ name: errName, message: errMsg, apiUrl: API_URL }))
 
-    // Timeout réseau (AbortError via fetchWithTimeout) → 504 Gateway Timeout
+    // Timeout réseau (AbortError via fetchWithTimeout après retry) → 504
     if (errName === 'AbortError') {
       return NextResponse.json(
-        { error: "Le serveur d'authentification met trop de temps à répondre. Veuillez réessayer." },
+        { error: "Le serveur d'authentification démarre (Render free tier, cold start 30-50s). Patientez 30s puis réessayez." },
         { status: 504 },
       )
     }

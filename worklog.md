@@ -338,3 +338,43 @@ Stage Summary:
 - README.md reflète la vraie structure monorepo
 - 0 erreur TypeScript, 0 erreur ESLint, go build OK
 - Erreur DEVOPS-REPO-CLEANUP-1 corrigée — mes excuses à Ulrich pour la mauvaise interprétation initiale
+
+---
+Task ID: SECT-LOGIN-TIMEOUT-FIX-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Erreur récurrente sur la page de login : "Le serveur d'authentification met trop de temps à répondre. Veuillez réessayer."
+
+Cause racine identifiée :
+- Route /api/go-auth/login/route.ts (Next.js serverless) avec timeout backend de 12s via AbortController
+- Render free tier a un cold start de 30-50s quand le service n'a pas reçu de requête depuis un moment
+- Le 1er appel login tombait systématiquement sur le cold start → AbortError à 12s → 504 → erreur utilisateur frustrante
+- Le 2e appel (retry manuel) passait car le cold start était déjà déclenché par le 1er
+- De plus, sans maxDuration configuré, Vercel Hobby plan coupe la route serverless à 10s (défaut) même si AbortController est à 12s
+
+Corrections frontend :
+
+1. /api/go-auth/login/route.ts :
+   - Timeout backend augmenté : 12s → 25s (couvre la majorité des cold starts Render)
+   - Ajout `export const maxDuration = 30` : autorise Vercel serverless à attendre 30s au lieu du défaut 10s (Hobby supporte jusqu'à 60s)
+   - Retry automatique au timeout (MAX_RETRIES = 2) : si le 1er fetch fait AbortError (cold start), on retente immédiatement. Le 2e appel bénéficie du service déjà en train de démarrer → passe en ~1-3s
+   - Retry seulement si AbortError (pas pour TypeError fetch failed = DNS/réseau mort qui ne bénéficierait pas d'un retry immédiat)
+   - Message d'erreur pédagogique : "Le serveur d'authentification démarre (Render free tier, cold start 30-50s). Patientez 30s puis réessayez." au lieu de juste "réessayer"
+   - Logging console.warn sur retry + console.error détaillé sur exception finale
+
+2. login-form.tsx :
+   - Health check préventif au montage du composant (useEffect) : ping GET /api/health (5s max, non bloquant) pour réveiller le backend Render pendant que l'utilisateur tape ses identifiants
+   - Quand l'utilisateur soumet le formulaire, le backend est déjà chaud → login passe en ~1-2s
+   - Non bloquant : si le ping échoue (cold start > 5s), on ne fait rien (le retry automatique de la route prend le relais)
+
+Vérifications qualité :
+- tsc --noEmit : 0 erreur
+- eslint sur les 2 fichiers modifiés : 0 erreur 0 warning
+- Pas de modification backend (le backend Go répond correctement, c'est juste le cold start qui pose problème)
+
+Stage Summary:
+- Erreur "Le serveur d'authentification met trop de temps" corrigée par 3 mécanismes combinés :
+  1. Warmup préventif au montage du formulaire (ping /health en arrière-plan)
+  2. Timeout backend augmenté à 25s + maxDuration 30s Vercel
+  3. Retry automatique au timeout (cold start Render)
+- Message d'erreur pédagogique si timeout persiste (indique le cold start Render et le délai à patienter)
+- UX attendue : 1er login rapide dans 95% des cas (backend déjà chaud grâce au warmup), retry auto pour les cas restants
