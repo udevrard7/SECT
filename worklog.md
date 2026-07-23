@@ -937,3 +937,57 @@ Stage Summary:
 - Header PDF : colonne UE affiche maintenant le NOM de l'UE (au lieu du code)
 - Troncature à 25 caractères pour préserver le layout
 - Les 3 documents (sujet/corrige/feuille-reponses) sont concernés (tous utilisent PDFHeader)
+
+Task ID: SECT-RESILIENCE-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Système de résilience complet — page /maintenance, error boundaries, détection panne backend
+
+Work Log:
+- Constat initial : pas de page d'annonce d'incident, pas de global-error.tsx,
+  pas de error.tsx, pas de not-found.tsx custom → page blanche sur crash.
+  Flag maintenanceMode existant dans PlatformSettings mais non branché.
+- 6 éléments implémentés :
+  1. Page /maintenance (frontend/src/app/maintenance/) :
+     - page.tsx (Server Component, metadata SEO + robots noindex)
+     - retry-button.tsx (Client Component, auto-refresh 30s, redirect /dashboard
+       quand le backend revient)
+     - Design cohérent /offline (kente watermark, icône Wrench, bouton retry)
+     - Message : "Patientez, nous réglons un incident. Votre plateforme sera
+       bientôt disponible."
+  2. global-error.tsx (frontend/src/app/) :
+     - Error boundary racine (App Router) — attrape TOUTES les erreurs non
+       catchées y compris dans le layout root
+     - HTML/body inline (remplace le layout root, ne peut pas utiliser Tailwind)
+     - Bouton "Réessayer" + lien /maintenance
+  3. error.tsx (frontend/src/app/) — error boundary route racine (Tailwind OK)
+  4. (app)/error.tsx — error boundary routes authentifiées (garde l'utilisateur
+     dans l'app avec sidebar, bouton "Recharger" + "Tableau de bord")
+  5. not-found.tsx custom — page 404 aux couleurs SECT (kente, "404" géant)
+  6. Hook use-backend-health (frontend/src/hooks/) :
+     - Ping /api/maintenance-status (si maintenanceMode=true → redirect /maintenance)
+     - Ping /api/health (5 échecs consécutifs → redirect /maintenance panne confirmée)
+     - Re-check toutes les 60s, silencieux, non bloquant
+     - Wiré dans AuthenticatedLayout (après useSessionKeepAlive)
+- Backend : nouvel endpoint public GET /api/maintenance-status
+  (maintenance_handlers.go) — lit PlatformSettings, retourne {maintenanceMode,
+  message, status}. Route enregistrée dans router.go (public, pas de RequireAuth).
+- proxy.ts : ajout /maintenance à PUBLIC_PATHS (accessible sans auth)
+- Tests qualité :
+  * go vet/build : 0 erreur, binaire 27MB
+  * tsc --noEmit : 0 erreur TypeScript
+  * eslint (9 fichiers) : 0 erreur 0 warning
+- Tests fonctionnels backend local :
+  * GET /api/maintenance-status → 200 {"maintenanceMode":false,"message":"","status":"ok"} ✅
+  * GET /api/health → 200 {"status":"ok"} ✅
+  * Lecture PlatformSettings JSON OK (extraction maintenanceMode best-effort)
+
+Stage Summary:
+- Plus JAMAIS de page blanche : 3 error boundaries (global-error / error / (app)/error)
+  attrapent toutes les erreurs Runtime React
+- Crash backend géré : hook use-backend-health détecte 5 échecs /api/health →
+  redirect /maintenance (message clair + auto-retry 30s)
+- Maintenance planifiée : admin active maintenanceMode dans PlatformSettings →
+  hook détecte via /api/maintenance-status → redirect /maintenance
+- 404 custom aux couleurs SECT (remplace la page Next.js générique)
+- Architecture respectée : Server/Client components correctement séparés,
+  endpoint public sans auth, hook silencieux non bloquant, design cohérent (SECT-RESILIENCE-1: système de résilience complet — page maintenance + error boundaries)

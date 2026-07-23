@@ -336,6 +336,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         // Génère un QCM via le provider IA actif en base. Rate-limité par IP.
         r.Post("/api/landing-demo", s.landingDemo)
 
+        // SECT-RESILIENCE-1 : statut de maintenance public (lu depuis PlatformSettings).
+        // Permet au frontend (hook use-backend-health) de détecter le mode maintenance
+        // planifié + la disponibilité du backend. Endpoint public (pas d'auth) car le
+        // frontend doit pouvoir le requêter avant l'auth (page /login, /maintenance).
+        r.Get("/api/maintenance-status", s.maintenanceStatus)
+
         // Routes authentifiées
         r.Group(func(r chi.Router) {
                 r.Use(authMiddleware)
