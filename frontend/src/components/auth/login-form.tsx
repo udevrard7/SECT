@@ -149,6 +149,30 @@ export function LoginForm() {
     defaultValues: { identifier: '', password: '' },
   })
 
+  // SECT-LOGIN-TIMEOUT-FIX-1 : health check préventif au montage du formulaire.
+  // Render free tier met 30-50s à démarrer (cold start). Si on attend que
+  // l'utilisateur soumette le login pour réveiller le backend, le 1er essai
+  // tombe sur le cold start → timeout → erreur frustrante.
+  // Solution : au montage de la page login, on ping /health (GET léger, 5s max).
+  // Ce ping déclenche le cold start en arrière-plan pendant que l'utilisateur
+  // tape ses identifiants. Quand il soumet, le backend est déjà chaud → login
+  // passe en ~1-2s. Non bloquant : si le ping échoue, on ne fait rien (le
+  // retry automatique de la route /api/go-auth/login prendra le relais).
+  useEffect(() => {
+    const warmup = async () => {
+      try {
+        // GET léger (pas de body, pas d'auth) — 5s max pour ne pas bloquer.
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 5000)
+        await fetch('/api/health', { signal: controller.signal, cache: 'no-store' })
+        clearTimeout(timer)
+      } catch {
+        // Silencieux : c'est juste un warmup, l'erreur sera gérée au login.
+      }
+    }
+    warmup()
+  }, [])
+
   const handleModeChange = useCallback((newMode: LoginMode) => {
     if (newMode === loginMode) return
     setLoginMode(newMode)
