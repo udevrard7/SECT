@@ -809,3 +809,62 @@ Stage Summary:
 - 6 segments supportés : ALL, B2B_RESPONSABLES, B2C_SOLO, B2C_PREMIUM, B2C_ALL, ETABLISSEMENT
 - Architecture respectée : clean architecture (handler → usecase → repository), RLS defense-in-depth,
   conventional commits français, migration versionnée, worklog à jour (SECT-NOTIF-SEGMENT-1: ciblage par segment d'abonnement pour notifications admin)
+
+---
+Task ID: SECT-EPREUVE-PDF-SAVANE-EDTECH-1
+Agent: frontend-styling-expert (delegated by Main Agent)
+Task: Refonte "Savane EdTech" du PDF épreuve + suppression redondances + motif kente + DS unifié
+
+Refonte déléguée à un agent frontend-styling-expert. Analyse + application complète de l'identité "Savane EdTech" (déjà utilisée sur /facturation et /abonnements) aux PDFs épreuves.
+
+1. Palette "Savane EdTech" (constantes renommées en valeurs, noms conservés) :
+   - NAVY : #065F46 → #1E3A5F (Bleu nuit — primary text/titres)
+   - GOLD : #D97706 → #D4A843 (Or africain — accent chaud)
+   - GOLD_BORDER : #FCD34D → #E5C97A (Or clair)
+   - CELL_BG : #ECFDF5 → #F0FBE5 (Lime très clair)
+   - EMERALD : #0D9488 → #10B981 (Emerald Savane — MCQ header)
+   - RED : #DC2626 → #EF4444
+   - GREEN_BORDER : #059669 → #65A30D (Lime foncé — corrigé box)
+   - CONSIGNE_BG/BORDER : #FFFBEB/#D97706 → #FEF7E6/#D4A843
+   - NOUVELLES constantes : LIME #84CC16 (vert lime), TERRE_CUITE #C2724E, KENTE_COLORS [LIME, TERRE_CUITE, GOLD]
+   - Alignement parfait avec SAVANE_COLORS de facturation-page.tsx
+
+2. Redondances supprimées (signalées par Ulrich) :
+   - metadataRow du SujetDocument (DURÉE/NOTE TOTAL/DATE/NIVEAU) supprimé → déjà dans headerMetaRow du PDFHeader
+   - metadataRow du CorrigeDocument supprimé (idem)
+   - sessionExamen du PDFHeader (colonne enseignant) supprimé → désormais UNE SEULE FOIS dans titleSection (badge session)
+   - Variable b2b inutilisée dans SujetDocument retirée
+   - 8 styles obsolètes supprimés (metadataRow, metaItem, metaLabel, metaValue, headerTeacherSession, headerBottomDecoration, headerBottomLine, headerBottomDot)
+
+3. Motif kente (nouveau composant <KenteBand cellCount={36} />) :
+   - Bande horizontale fine (4pt de haut) de 36 cellules flex:1 alternant KENTE_COLORS
+   - Répartition uniforme quelle que soit la largeur du parent
+   - Placée à 2 endroits pour symétrie :
+     * En bas du PDFHeader (1ère page) — remplace l'ancienne déco "ligne + point central + ligne"
+     * En haut du PDFFooter (chaque page) — déco africaine sur toutes les pages
+   - Vérifié visuellement au VLM : "patterned horizontal band featuring kente-like motifs… green, orange/brown, gold/yellow"
+   - Subtil (4pt seulement) — document reste professionnel et lisible
+
+4. Composants DS unifiés (12 nouveaux styles nommés, extraits des styles inline) :
+   - Tokens de marges : wrapMb4, wrapMb6, wrapMb8, wrapMb12, wrapMb14
+   - Textes standardisés : sectionTitleLg (12pt bold NAVY), sectionTitleMd (10pt bold NAVY), bodyTextItalic (9pt italic), noMcqMessage, testsPublicLabel, openQuestionHeader, openQuestionEnonce
+   - Wrap containers : mcqCircleCellWrap
+   - Kente : kenteBand (height:4, marginVertical:4, borderRadius:1, overflow:hidden), kenteBandCell (flex:1)
+   - Refactor appliqué dans PropositionList, AnswerLines, CodeSection, BaremeRecap, StudentInfoFields, MCQGrid, OpenQuestionsSection, FeuilleReponsesDocument (notice code)
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès (données sample B2B UCAD)
+  * sujet 66023 bytes
+  * corrige 69642 bytes
+  * feuille-reponses 61239 bytes
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Vérification visuelle VLM : bande kente visible + métadonnées dans header uniquement (plus de doublon) + badge session uniquement dans titleSection
+- Pas de modification backend
+
+Stage Summary:
+- Palette Savane EdTech appliquée (vert lime + terre cuite + bleu nuit + or) — alignée avec /facturation et /abonnements
+- 3 redondances supprimées (metadataRow Sujet + Corrige + sessionExamen header)
+- Motif kente subtil ajouté (bande tricolore en bas du header + haut du footer)
+- 12 styles DS unifiés extraits des styles inline
+- Document reste professionnel et lisible, identité africaine subtile
