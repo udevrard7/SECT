@@ -1,21 +1,24 @@
 /**
- * epreuve-pdf-react.tsx — Épreuve PDF professionnelle institutionnelle (A4 portrait)
+ * epreuve-pdf-react.tsx — Épreuve PDF professionnelle institutionnelle V3 (A4 portrait)
  *
- * Refonte 2025 : passage de jsPDF (client-side, basique) à @react-pdf/renderer
- * (server-side, design institutionnel navy/gold) pour les 3 types de PDF :
- *   - Sujet (épreuve pour l'étudiant)
- *   - Corrigé type (réponses + explications pour l'enseignant)
- *   - Feuille de réponses (grille QCM/QCU + questions ouvertes)
+ * Refonte 2025 V3 : améliorations majeures par rapport à V2 :
+ *   - MULTI-PAGE : les questions s'étendent sur plusieurs pages automatiquement
+ *   - HEADER FIXÉ : logo + nom établissement + filière + UE + niveau sur chaque page
+ *   - FOOTER FIXÉ : confidentiel | titre | page N/M + ligne gold sur chaque page
+ *   - FILIGRANE (watermark) B2B : texte diagonal configurable (certWatermarkText)
+ *   - B2B branding : logo + nom + ville/pays + filière + niveau + session prominently
+ *   - B2C (Prof Solo) : branding SECT si pas de logo établissement
+ *   - Barème récapitulatif : tableau de synthèse des questions en fin de sujet
+ *   - Bloc émargement/signature : sur feuille de réponses
+ *   - Session d'examen : NORMALE / RATTRAPAGE / SPECIALE affichée
+ *   - Design navy/gold institutionnel identique aux certificats/factures/relevés
  *
- * Design identique aux certificats/factures/relevés existants :
+ * Design system :
  *   - Double bordure (gold 2.5pt + navy 0.5pt)
  *   - Fonts : PlayfairDisplay (titres), Inter (corps)
  *   - Palette : NAVY #1B3A5C, GOLD #C5A044, GOLD_BORDER #E8D09A
- *   - Header : Logo établissement + nom + ville/pays | UE + filière
+ *   - Header : Logo établissement + nom + ville/pays | UE + filière + niveau
  *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne gold
- *
- * B2B : logo + nom établissement + filière affichés
- * B2C (Prof Solo) : branding SECT si pas de logo établissement
  */
 
 import React from 'react'
@@ -31,7 +34,9 @@ const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts')
 
 Font.register({
   family: 'PlayfairDisplay',
-  fonts: [{ src: path.join(FONTS_DIR, 'PlayfairDisplay-Regular.ttf'), fontWeight: 'normal' }],
+  fonts: [
+    { src: path.join(FONTS_DIR, 'PlayfairDisplay-Regular.ttf'), fontWeight: 'normal' },
+  ],
 })
 Font.register({
   family: 'Inter',
@@ -68,11 +73,19 @@ export interface EpreuvePDFData {
   dateDebut: string | null
   dateFin: string | null
   noteTotal: number | null
+  niveau: string | null          // L1/L2/L3/M1/M2/DOCTORAT
+  sessionExamen: string | null   // NORMALE/RATTRAPAGE/SPECIALE/EXCEPTIONNELLE/DIFFERE
   etablissement: {
     nom: string
     logo: string | null
     ville: string | null
     pays: string | null
+    type: string | null           // PERSONNEL (B2C) vs institution (B2B)
+    watermarkText: string | null
+    watermarkEnabled: boolean
+    watermarkOpacity: number
+    watermarkColor: string | null
+    watermarkPattern: string | null
   }
   filiere: { nom: string; code: string | null } | null
   uniteEnseignement: { code: string; nom: string } | null
@@ -102,6 +115,7 @@ const CONSIGNE_BG = '#FFFBEB'
 const CONSIGNE_BORDER = '#D97706'
 const CODE_BG = '#F5F5FA'
 const CODE_BORDER = '#A78BFA'
+const LIGHT_GOLD_BG = '#FEF9E7'
 
 const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image> & { alt?: string }>
 
@@ -135,6 +149,17 @@ function getTypeLabel(type: string): string {
   }
 }
 
+function getTypeShort(type: string): string {
+  switch (type) {
+    case 'QCU': return 'QCU'
+    case 'QCM': return 'QCM'
+    case 'QRC': return 'QRC'
+    case 'REFLEXION': return 'Réfl.'
+    case 'CODE': return 'Code'
+    default: return type
+  }
+}
+
 function getAcademicYear(): string {
   const now = new Date()
   const year = now.getFullYear()
@@ -147,118 +172,205 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60)
 }
 
+function getSessionLabel(session: string | null): string {
+  if (!session) return ''
+  switch (session) {
+    case 'NORMALE': return 'Session Normale'
+    case 'RATTRAPAGE': return 'Session de Rattrapage'
+    case 'SPECIALE': return 'Session Spéciale'
+    case 'EXCEPTIONNELLE': return 'Session Exceptionnelle'
+    case 'DIFFERE': return 'Session Différée'
+    default: return session
+  }
+}
+
+function getNiveauLabel(niveau: string | null): string {
+  if (!niveau) return ''
+  switch (niveau) {
+    case 'L1': return 'Licence 1 (L1)'
+    case 'L2': return 'Licence 2 (L2)'
+    case 'L3': return 'Licence 3 (L3)'
+    case 'M1': return 'Master 1 (M1)'
+    case 'M2': return 'Master 2 (M2)'
+    case 'DOCTORAT': return 'Doctorat'
+    default: return niveau
+  }
+}
+
+function isB2B(etablissement: EpreuvePDFData['etablissement']): boolean {
+  return etablissement.type !== 'PERSONNEL' && etablissement.type !== null
+}
+
 // ═══ Styles ═══
+
+const PAGE_MARGIN_TOP = 52
+const PAGE_MARGIN_BOTTOM = 48
+const PAGE_MARGIN_HORIZONTAL = 50
 
 const styles = StyleSheet.create({
   page: {
     fontFamily: 'Inter',
     fontSize: 10,
     color: TEXT_DARK,
-    paddingTop: 55,
-    paddingBottom: 50,
-    paddingHorizontal: 55,
+    paddingTop: PAGE_MARGIN_TOP,
+    paddingBottom: PAGE_MARGIN_BOTTOM,
+    paddingHorizontal: PAGE_MARGIN_HORIZONTAL,
     backgroundColor: WHITE,
     position: 'relative',
   },
-  // Double border (absolute positioning)
+  // Double border
   outerBorder: {
     position: 'absolute',
-    top: 18,
-    left: 18,
-    right: 18,
-    bottom: 18,
+    top: 14,
+    left: 14,
+    right: 14,
+    bottom: 14,
     borderWidth: 2.5,
     borderColor: GOLD,
+    borderRadius: 2,
   },
   innerBorder: {
     position: 'absolute',
-    top: 24,
-    left: 24,
-    right: 24,
-    bottom: 24,
+    top: 20,
+    left: 20,
+    right: 20,
+    bottom: 20,
     borderWidth: 0.5,
     borderColor: NAVY,
+    borderRadius: 1,
   },
-  // Header
+  // Header (fixed on every page)
+  headerContainer: {
+    flexDirection: 'column',
+    marginBottom: 10,
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
-    minHeight: 50,
+    minHeight: 55,
   },
   headerLeft: {
     flexDirection: 'column',
-    maxWidth: 280,
+    maxWidth: 300,
+    alignItems: 'flex-start',
   },
   headerRight: {
     flexDirection: 'column',
-    maxWidth: 240,
+    maxWidth: 250,
     alignItems: 'flex-end',
   },
+  headerLogo: {
+    width: 90,
+    height: 50,
+    objectFit: 'contain',
+    marginBottom: 3,
+  },
   etabName: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'PlayfairDisplay',
     color: NAVY,
     fontWeight: 'bold',
     marginBottom: 2,
+    letterSpacing: 0.5,
   },
   etabLocation: {
     fontSize: 9,
     color: TEXT_GRAY,
     letterSpacing: 0.5,
-    marginBottom: 2,
+    marginBottom: 1,
   },
   academicYear: {
     fontSize: 8,
     color: TEXT_GRAY,
+    fontStyle: 'italic',
+    marginBottom: 1,
   },
   ueLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: NAVY,
     fontWeight: 'bold',
     marginBottom: 1,
   },
   ueDetail: {
-    fontSize: 8.5,
+    fontSize: 9,
     color: TEXT_GRAY,
     marginBottom: 1,
   },
   filiereLabel: {
-    fontSize: 8.5,
+    fontSize: 9.5,
+    color: NAVY,
+    fontWeight: 'bold',
+    marginBottom: 1,
+  },
+  niveauLabel: {
+    fontSize: 9,
+    color: TEXT_GRAY,
+    marginBottom: 1,
+  },
+  enseignantLabel: {
+    fontSize: 8,
     color: TEXT_GRAY,
   },
   // Gold separator line
   goldLine: {
     width: '100%',
-    height: 1,
+    height: 1.5,
     backgroundColor: GOLD,
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  thinGoldLine: {
+    width: '100%',
+    height: 0.5,
+    backgroundColor: GOLD_BORDER,
+    marginBottom: 6,
   },
   // Title section
   titleSection: {
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   mainTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: 'PlayfairDisplay',
     color: NAVY,
-    letterSpacing: 3,
+    letterSpacing: 4,
     marginBottom: 4,
   },
   subtitleTitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: TEXT_DARK,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  descriptionText: {
+    fontSize: 9,
+    color: TEXT_GRAY,
+    fontStyle: 'italic',
+    textAlign: 'center',
     marginBottom: 4,
   },
-  // Metadata row
+  // Session badge
+  sessionBadge: {
+    fontSize: 9,
+    color: GOLD,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    backgroundColor: LIGHT_GOLD_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 2,
+    borderWidth: 0.5,
+    borderColor: GOLD_BORDER,
+    marginBottom: 6,
+  },
+  // Metadata row (enhanced)
   metadataRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: GOLD_BORDER,
     borderRadius: 3,
@@ -267,16 +379,16 @@ const styles = StyleSheet.create({
   metaItem: {
     flexDirection: 'column',
     alignItems: 'center',
+    flex: 1,
   },
   metaLabel: {
     fontSize: 7,
     color: TEXT_GRAY,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 1,
+    letterSpacing: 1,
+    marginBottom: 2,
   },
   metaValue: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: NAVY,
     fontWeight: 'bold',
   },
@@ -286,53 +398,61 @@ const styles = StyleSheet.create({
     borderColor: CONSIGNE_BORDER,
     borderRadius: 3,
     backgroundColor: CONSIGNE_BG,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    marginBottom: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
   },
   consignesLabel: {
     fontSize: 8,
     color: CONSIGNE_BORDER,
     fontWeight: 'bold',
     letterSpacing: 1,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   consignesText: {
-    fontSize: 9,
+    fontSize: 9.5,
     color: TEXT_DARK,
+    lineHeight: 1.5,
   },
-  // Confidentiel label (for corrigé)
+  // Confidentiel label
   confidentielLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: RED,
     fontWeight: 'bold',
-    letterSpacing: 2,
-    marginBottom: 6,
+    letterSpacing: 3,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   // Summary line
   summaryLine: {
-    fontSize: 8,
+    fontSize: 9,
     color: TEXT_GRAY,
     fontStyle: 'italic',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  // Question container
+  // Question container (wrap enabled for multi-page)
   questionContainer: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   questionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 4,
+    backgroundColor: CELL_BG,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderRadius: 2,
+    borderWidth: 0.5,
+    borderColor: GOLD_BORDER,
   },
   questionTitleLeft: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 6,
+    gap: 8,
   },
   questionNumber: {
-    fontSize: 11,
+    fontSize: 12,
     color: NAVY,
     fontWeight: 'bold',
   },
@@ -341,64 +461,58 @@ const styles = StyleSheet.create({
     color: TEXT_GRAY,
   },
   questionBareme: {
-    fontSize: 9,
-    color: NAVY,
+    fontSize: 10,
+    color: GOLD,
     fontWeight: 'bold',
-    backgroundColor: CELL_BG,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 2,
-    borderWidth: 0.5,
-    borderColor: GOLD_BORDER,
   },
   questionEnonce: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: TEXT_DARK,
-    marginBottom: 4,
-    lineHeight: 1.5,
+    marginBottom: 6,
+    lineHeight: 1.6,
   },
-  // Propositions for QCU/QCM
+  // Propositions
   propositionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 3,
-    paddingLeft: 6,
+    paddingLeft: 8,
   },
   propositionCircle: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 1.5,
     borderColor: NAVY,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 8,
   },
   propositionSquare: {
-    width: 14,
-    height: 14,
+    width: 16,
+    height: 16,
     borderWidth: 1.5,
     borderColor: NAVY,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 8,
   },
   propositionLetter: {
-    fontSize: 7,
+    fontSize: 8,
     color: NAVY,
     fontWeight: 'bold',
   },
   propositionText: {
-    fontSize: 9.5,
+    fontSize: 10,
     color: TEXT_DARK,
     flex: 1,
   },
-  // Answer lines for QRC/REFLEXION
+  // Answer lines
   answerLine: {
     borderBottomWidth: 0.5,
     borderBottomColor: '#CBD5E0',
-    marginBottom: 10,
-    height: 22,
+    marginBottom: 12,
+    height: 24,
   },
   // Code section
   codeSection: {
@@ -406,17 +520,17 @@ const styles = StyleSheet.create({
     borderColor: CODE_BORDER,
     borderRadius: 3,
     backgroundColor: CODE_BG,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 6,
   },
   codeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 5,
   },
   codeLanguage: {
-    fontSize: 8,
+    fontSize: 9,
     color: CODE_BORDER,
     fontWeight: 'bold',
   },
@@ -425,12 +539,11 @@ const styles = StyleSheet.create({
     color: TEXT_GRAY,
   },
   codeBlock: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontFamily: 'Inter',
     color: '#2D3748',
     lineHeight: 1.5,
   },
-  // Tests table header
   testsHeader: {
     flexDirection: 'row',
     backgroundColor: '#7C3AED',
@@ -456,56 +569,70 @@ const styles = StyleSheet.create({
     color: TEXT_DARK,
     flex: 1,
   },
-  // Corrigé answer box (green)
+  // Corrigé answer box
   corrigeBox: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: GREEN_BORDER,
     borderRadius: 3,
     backgroundColor: GREEN_BG,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    marginBottom: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 6,
   },
   corrigeLabel: {
-    fontSize: 8,
+    fontSize: 9,
     color: GREEN_BORDER,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
     marginBottom: 2,
   },
   corrigeText: {
-    fontSize: 9.5,
+    fontSize: 10,
     color: '#276749',
-    lineHeight: 1.4,
+    lineHeight: 1.5,
   },
   // Explication box
   explicationBox: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#8B5CF6',
     borderRadius: 3,
     backgroundColor: '#F5F3FF',
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    marginBottom: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 6,
   },
   explicationLabel: {
-    fontSize: 8,
+    fontSize: 9,
     color: '#7C3AED',
     fontWeight: 'bold',
+    letterSpacing: 0.5,
     marginBottom: 2,
   },
   explicationText: {
-    fontSize: 9.5,
+    fontSize: 10,
     color: '#4C1D95',
-    lineHeight: 1.4,
+    lineHeight: 1.5,
   },
   // Separator between questions
   questionSeparator: {
     width: '100%',
     height: 0.5,
-    backgroundColor: '#E5E7EB',
-    marginBottom: 6,
+    backgroundColor: GOLD_BORDER,
+    marginBottom: 4,
   },
-  // Footer (absolute positioning inside border)
+  // Footer (fixed on every page)
+  footerContainer: {
+    position: 'absolute',
+    bottom: 28,
+    left: PAGE_MARGIN_HORIZONTAL,
+    right: PAGE_MARGIN_HORIZONTAL,
+  },
+  footerGoldLine: {
+    width: '100%',
+    height: 0.5,
+    backgroundColor: GOLD,
+    marginBottom: 4,
+  },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -517,37 +644,83 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   footerCenter: {
-    fontSize: 7,
-    color: TEXT_GRAY,
+    fontSize: 7.5,
+    color: NAVY,
+    fontWeight: 'bold',
   },
   footerRight: {
     fontSize: 7,
     color: TEXT_GRAY,
   },
-  footerGoldLine: {
-    width: '100%',
-    height: 0.5,
-    backgroundColor: GOLD,
-    marginBottom: 4,
-  },
   footerEtabLine: {
-    fontSize: 7,
+    fontSize: 6.5,
     color: TEXT_FOOTER,
     textAlign: 'center',
     marginTop: 2,
+  },
+  // Barème recap table
+  recapTitle: {
+    fontSize: 12,
+    color: NAVY,
+    fontFamily: 'PlayfairDisplay',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  recapHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: NAVY,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 2,
+  },
+  recapHeaderCell: {
+    fontSize: 8,
+    color: WHITE,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  recapRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.5,
+    borderBottomColor: GOLD_BORDER,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  recapCell: {
+    fontSize: 9,
+    color: TEXT_DARK,
+    textAlign: 'center',
+  },
+  recapAltRow: {
+    backgroundColor: CELL_BG,
+  },
+  recapTotalRow: {
+    flexDirection: 'row',
+    backgroundColor: LIGHT_GOLD_BG,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: GOLD,
+    borderRadius: 2,
+  },
+  recapTotalCell: {
+    fontSize: 9,
+    color: NAVY,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   // Feuille de réponses specific
   studentInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   studentField: {
     flexDirection: 'column',
     width: '48%',
   },
   studentLabel: {
-    fontSize: 9,
+    fontSize: 10,
     color: NAVY,
     fontWeight: 'bold',
     marginBottom: 2,
@@ -555,9 +728,9 @@ const styles = StyleSheet.create({
   studentLine: {
     borderBottomWidth: 1,
     borderBottomColor: '#CBD5E0',
-    height: 18,
+    height: 20,
   },
-  // MCQ grid header
+  // MCQ grid
   mcqHeaderRow: {
     flexDirection: 'row',
     backgroundColor: EMERALD,
@@ -576,7 +749,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#E5E7EB',
     paddingHorizontal: 4,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   mcqCell: {
     fontSize: 9,
@@ -584,16 +757,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   mcqCircleCell: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
     borderColor: NAVY,
     alignItems: 'center',
     justifyContent: 'center',
   },
   mcqNumberCell: {
-    fontSize: 9,
+    fontSize: 10,
     color: NAVY,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -606,64 +779,148 @@ const styles = StyleSheet.create({
   mcqAltRow: {
     backgroundColor: CELL_BG,
   },
+  // Signature block
+  signatureContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  signatureBlock: {
+    flexDirection: 'column',
+    width: '45%',
+    alignItems: 'center',
+  },
+  signatureLabel: {
+    fontSize: 9,
+    color: NAVY,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  signatureLine: {
+    width: '100%',
+    borderBottomWidth: 1,
+    borderBottomColor: NAVY,
+    height: 30,
+  },
+  signatureDateLabel: {
+    fontSize: 8,
+    color: TEXT_GRAY,
+    marginTop: 2,
+  },
+  // Encouragement message
+  encouragementText: {
+    fontSize: 10,
+    color: NAVY,
+    fontFamily: 'PlayfairDisplay',
+    textAlign: 'center',
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  // Watermark overlay (B2B)
+  watermarkOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0.04,
+  },
+  watermarkText: {
+    fontSize: 60,
+    color: NAVY,
+    fontWeight: 'bold',
+    letterSpacing: 8,
+    transform: 'rotate(-45deg)',
+  },
 })
 
-// ═══ Composant : Header (logo + etab info | UE + filière) ═══
+// ═══ Composant : Watermark (B2B) ═══
+
+function PDFWatermark({ data }: { data: EpreuvePDFData }) {
+  const etab = data.etablissement
+  if (!etab.watermarkEnabled || !isB2B(etab)) return null
+  const watermarkText = etab.watermarkText || 'ORIGINAL'
+  const watermarkColor = etab.watermarkColor || NAVY
+
+  return (
+    <View style={styles.watermarkOverlay}>
+      <Text style={[styles.watermarkText, { color: watermarkColor }]}>{watermarkText}</Text>
+    </View>
+  )
+}
+
+// ═══ Composant : Header (logo + etab info | UE + filière) — fixed ═══
 
 function PDFHeader({ data }: { data: EpreuvePDFData }) {
   const etabLocation = [data.etablissement.ville, data.etablissement.pays].filter(Boolean).join(', ')
+  const b2b = isB2B(data.etablissement)
 
   return (
-    <View style={styles.headerRow}>
-      {/* Left: Logo + Etablissement */}
-      <View style={styles.headerLeft}>
-        {data.etablissement.logo ? (
-          <PdfImage src={data.etablissement.logo} style={{ width: 80, height: 40, objectFit: 'contain' as const, marginBottom: 3 }} alt="" />
-        ) : (
-          <Text style={styles.etabName}>{data.etablissement.nom}</Text>
-        )}
-        {etabLocation ? <Text style={styles.etabLocation}>{etabLocation}</Text> : null}
-        <Text style={styles.academicYear}>Année universitaire : {getAcademicYear()}</Text>
-      </View>
+    <View fixed style={styles.headerContainer}>
+      <View style={styles.headerRow}>
+        {/* Left: Logo + Etablissement */}
+        <View style={styles.headerLeft}>
+          {data.etablissement.logo ? (
+            <PdfImage src={data.etablissement.logo} style={styles.headerLogo} alt="" />
+          ) : null}
+          <Text style={styles.etabName}>
+            {data.etablissement.nom}
+            {!b2b && !data.etablissement.logo ? ' — Plateforme SECT' : ''}
+          </Text>
+          {etabLocation ? <Text style={styles.etabLocation}>{etabLocation}</Text> : null}
+          <Text style={styles.academicYear}>Année universitaire : {getAcademicYear()}</Text>
+        </View>
 
-      {/* Right: UE + Filière */}
-      <View style={styles.headerRight}>
-        {data.uniteEnseignement && (data.uniteEnseignement.code || data.uniteEnseignement.nom) ? (
-          <React.Fragment>
+        {/* Right: UE + Filière + Niveau */}
+        <View style={styles.headerRight}>
+          {data.uniteEnseignement && (data.uniteEnseignement.code || data.uniteEnseignement.nom) ? (
             <Text style={styles.ueLabel}>
               UE : {data.uniteEnseignement.code}{data.uniteEnseignement.code && data.uniteEnseignement.nom ? ' — ' : ''}{data.uniteEnseignement.nom}
             </Text>
-          </React.Fragment>
-        ) : null}
-        {data.filiere && data.filiere.nom ? (
-          <Text style={styles.filiereLabel}>
-            Filière : {data.filiere.nom}{data.filiere.code ? ` (${data.filiere.code})` : ''}
-          </Text>
-        ) : null}
-        {data.enseignant && data.enseignant.name ? (
-          <Text style={{ fontSize: 8, color: TEXT_GRAY }}>
-            Enseignant : {data.enseignant.name}
-          </Text>
-        ) : null}
+          ) : null}
+          {data.filiere && data.filiere.nom ? (
+            <Text style={styles.filiereLabel}>
+              Filière : {data.filiere.nom}{data.filiere.code ? ` (${data.filiere.code})` : ''}
+            </Text>
+          ) : null}
+          {data.niveau ? (
+            <Text style={styles.niveauLabel}>
+              Niveau : {getNiveauLabel(data.niveau)}
+            </Text>
+          ) : null}
+          {data.sessionExamen && data.sessionExamen !== 'NORMALE' ? (
+            <Text style={{ fontSize: 9, color: GOLD, fontWeight: 'bold' }}>
+              {getSessionLabel(data.sessionExamen)}
+            </Text>
+          ) : null}
+          {data.enseignant && data.enseignant.name ? (
+            <Text style={styles.enseignantLabel}>
+              Enseignant : {data.enseignant.name}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </View>
   )
 }
 
-// ═══ Composant : Footer ═══
+// ═══ Composant : Footer — fixed ═══
 
-function PDFFooter({ data, pageNum, totalPages, isCorrige }: { data: EpreuvePDFData; pageNum: number; totalPages: number; isCorrige: boolean }) {
-  const maxTitleLen = 50
+function PDFFooter({ data, isCorrige }: { data: EpreuvePDFData; isCorrige: boolean }) {
+  const maxTitleLen = 45
   const title = data.titre.length > maxTitleLen ? data.titre.slice(0, maxTitleLen) + '…' : data.titre
-  const label = isCorrige ? 'Corrigé confidentiel' : 'Confidentiel'
+  const label = isCorrige ? 'CORRIGÉ CONFIDENTIEL' : 'CONFIDENTIEL'
 
   return (
-    <View style={{ position: 'absolute', bottom: 30, left: 55, right: 55 }}>
+    <View fixed style={styles.footerContainer}>
       <View style={styles.footerGoldLine} />
       <View style={styles.footerRow}>
         <Text style={styles.footerLeft}>{label}</Text>
         <Text style={styles.footerCenter}>{title}</Text>
-        <Text style={styles.footerRight}>Page {pageNum}/{totalPages}</Text>
+        <Text style={styles.footerRight} render={({ pageNumber, totalPages }) => `Page ${pageNumber}/${totalPages}`} />
       </View>
       <Text style={styles.footerEtabLine}>
         {data.etablissement.nom} · Épreuve générée via SECT — Plateforme d'évaluation IA
@@ -679,7 +936,7 @@ function PropositionList({ question }: { question: PDFQuestion }) {
   const isQCU = question.type === 'QCU'
 
   return (
-    <View style={{ marginBottom: 4 }}>
+    <View style={{ marginBottom: 4 }} wrap={false}>
       {question.propositions.map((prop, i) => {
         const letter = String.fromCharCode(65 + i)
         return (
@@ -703,7 +960,7 @@ function PropositionList({ question }: { question: PDFQuestion }) {
 
 function AnswerLines({ count }: { count: number }) {
   return (
-    <View style={{ marginBottom: 4 }}>
+    <View style={{ marginBottom: 4 }} wrap={false}>
       {Array.from({ length: count }, (_, i) => (
         <View key={i} style={styles.answerLine} />
       ))}
@@ -715,7 +972,7 @@ function CodeSection({ question }: { question: PDFQuestion }) {
   const codeText = question.codeInitial || '// Écrire votre code ici'
 
   return (
-    <View style={styles.codeSection}>
+    <View style={styles.codeSection} wrap={false}>
       <View style={styles.codeHeader}>
         <Text style={styles.codeLanguage}>
           Langage : {question.langage ? question.langage.toUpperCase() : 'CODE'}
@@ -728,7 +985,7 @@ function CodeSection({ question }: { question: PDFQuestion }) {
 
       {/* Public tests table */}
       {question.testsPublics && question.testsPublics.length > 0 ? (
-        <View style={{ marginTop: 6 }}>
+        <View style={{ marginTop: 6 }} wrap={false}>
           <Text style={{ fontSize: 8, color: CODE_BORDER, fontWeight: 'bold', marginBottom: 3 }}>
             Tests publics :
           </Text>
@@ -752,9 +1009,9 @@ function CodeSection({ question }: { question: PDFQuestion }) {
 
 function QuestionSujet({ question, index }: { question: PDFQuestion; index: number }) {
   return (
-    <View style={styles.questionContainer}>
+    <View style={styles.questionContainer} wrap>
       {/* Header: Question N + type | bareme */}
-      <View style={styles.questionHeader}>
+      <View style={styles.questionHeader} wrap={false}>
         <View style={styles.questionTitleLeft}>
           <Text style={styles.questionNumber}>Question {index + 1}</Text>
           <Text style={styles.questionType}>{getTypeLabel(question.type)}</Text>
@@ -803,8 +1060,8 @@ function CorrigeAnswer({ question }: { question: PDFQuestion }) {
       })
 
     return (
-      <View style={styles.corrigeBox}>
-        <Text style={styles.corrigeLabel}>Réponse correcte :</Text>
+      <View style={styles.corrigeBox} wrap={false}>
+        <Text style={styles.corrigeLabel}>✓ Réponse correcte :</Text>
         <Text style={styles.corrigeText}>{correctLabels.join(' ; ')}</Text>
       </View>
     )
@@ -813,10 +1070,10 @@ function CorrigeAnswer({ question }: { question: PDFQuestion }) {
   // QRC/REFLEXION model response
   if (question.type === 'QRC' || question.type === 'REFLEXION') {
     const text = Array.isArray(question.reponseCorrecte) ? question.reponseCorrecte.join('\n') : question.reponseCorrecte
-    const label = question.type === 'QRC' ? 'Réponse modèle :' : 'Guide de correction :'
+    const label = question.type === 'QRC' ? '✓ Réponse modèle :' : '✓ Guide de correction :'
 
     return (
-      <View style={styles.corrigeBox}>
+      <View style={styles.corrigeBox} wrap={false}>
         <Text style={styles.corrigeLabel}>{label}</Text>
         <Text style={styles.corrigeText}>{text}</Text>
       </View>
@@ -830,8 +1087,8 @@ function CorrigeExplanation({ question }: { question: PDFQuestion }) {
   if (!question.explication) return null
 
   return (
-    <View style={styles.explicationBox}>
-      <Text style={styles.explicationLabel}>Explication :</Text>
+    <View style={styles.explicationBox} wrap={false}>
+      <Text style={styles.explicationLabel}>💡 Explication :</Text>
       <Text style={styles.explicationText}>{question.explication}</Text>
     </View>
   )
@@ -839,9 +1096,9 @@ function CorrigeExplanation({ question }: { question: PDFQuestion }) {
 
 function QuestionCorrige({ question, index }: { question: PDFQuestion; index: number }) {
   return (
-    <View style={styles.questionContainer}>
+    <View style={styles.questionContainer} wrap>
       {/* Header */}
-      <View style={styles.questionHeader}>
+      <View style={styles.questionHeader} wrap={false}>
         <View style={styles.questionTitleLeft}>
           <Text style={styles.questionNumber}>Question {index + 1}</Text>
           <Text style={styles.questionType}>{getTypeLabel(question.type)}</Text>
@@ -880,11 +1137,48 @@ function QuestionCorrige({ question, index }: { question: PDFQuestion; index: nu
   )
 }
 
+// ═══ Composant : Barème récapitulatif ═══
+
+function BaremeRecap({ questions }: { questions: PDFQuestion[] }) {
+  if (questions.length === 0) return null
+  const totalBareme = questions.reduce((sum, q) => sum + q.bareme, 0)
+
+  return (
+    <View style={{ marginBottom: 12 }} wrap={false}>
+      <Text style={styles.recapTitle}>Récapitulatif du barème</Text>
+
+      {/* Header row */}
+      <View style={styles.recapHeaderRow}>
+        <Text style={[styles.recapHeaderCell, { flex: 0.5 }]}>N°</Text>
+        <Text style={[styles.recapHeaderCell, { flex: 1.5 }]}>Type</Text>
+        <Text style={[styles.recapHeaderCell, { flex: 3 }]}>Question</Text>
+        <Text style={[styles.recapHeaderCell, { flex: 1 }]}>Barème</Text>
+      </View>
+
+      {/* Body rows */}
+      {questions.map((q, i) => (
+        <View key={q.id || i} style={[styles.recapRow, i % 2 === 1 ? styles.recapAltRow : {}]}>
+          <Text style={[styles.recapCell, { flex: 0.5, fontWeight: 'bold' }]}>{i + 1}</Text>
+          <Text style={[styles.recapCell, { flex: 1.5 }]}>{getTypeShort(q.type)}</Text>
+          <Text style={[styles.recapCell, { flex: 3, fontSize: 8 }]}>{q.enonce.substring(0, 60)}{q.enonce.length > 60 ? '…' : ''}</Text>
+          <Text style={[styles.recapCell, { flex: 1, fontWeight: 'bold' }]}>{q.bareme} pts</Text>
+        </View>
+      ))}
+
+      {/* Total row */}
+      <View style={styles.recapTotalRow}>
+        <Text style={[styles.recapTotalCell, { flex: 5, textAlign: 'right' }]}>TOTAL</Text>
+        <Text style={[styles.recapTotalCell, { flex: 1 }]}>{totalBareme} pts</Text>
+      </View>
+    </View>
+  )
+}
+
 // ═══ Composant : Feuille de réponses ═══
 
 function StudentInfoFields() {
   return (
-    <View style={{ marginBottom: 10 }}>
+    <View style={{ marginBottom: 12 }} wrap={false}>
       <View style={styles.studentInfoRow}>
         <View style={styles.studentField}>
           <Text style={styles.studentLabel}>Nom :</Text>
@@ -905,6 +1199,16 @@ function StudentInfoFields() {
           <View style={styles.studentLine} />
         </View>
       </View>
+      <View style={styles.studentInfoRow}>
+        <View style={styles.studentField}>
+          <Text style={styles.studentLabel}>Date :</Text>
+          <View style={styles.studentLine} />
+        </View>
+        <View style={styles.studentField}>
+          <Text style={styles.studentLabel}>Salle :</Text>
+          <View style={styles.studentLine} />
+        </View>
+      </View>
     </View>
   )
 }
@@ -912,7 +1216,7 @@ function StudentInfoFields() {
 function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQuestions: PDFQuestion[] }) {
   if (questions.length === 0) {
     return (
-      <Text style={{ fontSize: 10, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 8 }}>
+      <Text style={{ fontSize: 10, color: TEXT_GRAY, fontStyle: 'italic', marginBottom: 8 }} wrap={false}>
         Aucune question QCM/QCU dans cette épreuve.
       </Text>
     )
@@ -920,13 +1224,10 @@ function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQue
 
   const maxProps = Math.max(...questions.map((q) => q.propositions?.length || 0), 4)
   const letterCols = Array.from({ length: maxProps }, (_, i) => String.fromCharCode(65 + i))
-
-  // Calculate column widths for the grid
-  // N° (30pt) + Type (50pt) + remaining distributed among letter columns
   const letterColWidth = Math.max(Math.floor((485 - 30 - 50) / maxProps), 30)
 
   return (
-    <View style={{ marginBottom: 12 }}>
+    <View style={{ marginBottom: 14 }} wrap={false}>
       {/* Header row */}
       <View style={styles.mcqHeaderRow}>
         <Text style={[styles.mcqHeaderCell, { width: 30 }]}>N°</Text>
@@ -966,8 +1267,8 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
   if (questions.length === 0) return null
 
   return (
-    <View style={{ marginBottom: 8 }}>
-      <Text style={{ fontSize: 11, color: NAVY, fontWeight: 'bold', marginBottom: 6 }}>
+    <View style={{ marginBottom: 8 }} wrap>
+      <Text style={{ fontSize: 12, color: NAVY, fontWeight: 'bold', marginBottom: 6 }}>
         Questions ouvertes
       </Text>
       {questions.map((q) => {
@@ -975,11 +1276,11 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
         const numLines = q.type === 'QRC' ? 5 : 8
 
         return (
-          <View key={q.id} style={{ marginBottom: 10 }}>
-            <Text style={{ fontSize: 10, color: NAVY, fontWeight: 'bold', marginBottom: 2 }}>
+          <View key={q.id} style={{ marginBottom: 12 }} wrap>
+            <Text style={{ fontSize: 10, color: NAVY, fontWeight: 'bold', marginBottom: 2 }} wrap={false}>
               Question {originalIdx + 1} ({getTypeLabel(q.type)} — {q.bareme} pts)
             </Text>
-            <Text style={{ fontSize: 9, color: TEXT_DARK, marginBottom: 4 }}>{q.enonce}</Text>
+            <Text style={{ fontSize: 9.5, color: TEXT_DARK, marginBottom: 4 }}>{q.enonce}</Text>
             <AnswerLines count={numLines} />
           </View>
         )
@@ -988,76 +1289,116 @@ function OpenQuestionsSection({ questions, allQuestions }: { questions: PDFQuest
   )
 }
 
-// ═══ Document : Sujet ═══
+function SignatureBlock() {
+  return (
+    <View style={styles.signatureContainer} wrap={false}>
+      <View style={styles.signatureBlock}>
+        <Text style={styles.signatureLabel}>Signature de l'étudiant</Text>
+        <View style={styles.signatureLine} />
+      </View>
+      <View style={styles.signatureBlock}>
+        <Text style={styles.signatureLabel}>Visa de l'enseignant</Text>
+        <View style={styles.signatureLine} />
+        <Text style={styles.signatureDateLabel}>Date : _______________</Text>
+      </View>
+    </View>
+  )
+}
+
+// ═══ Document : Sujet (multi-page) ═══
 
 function SujetDocument({ data }: { data: EpreuvePDFData }) {
   const questions = data.contenu.questions || []
   const baremeTotal = data.contenu.baremeTotal ?? data.noteTotal ?? 0
+  const b2b = isB2B(data.etablissement)
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Double border */}
-        <View style={styles.outerBorder} />
-        <View style={styles.innerBorder} />
+        {/* Double border (fixed across pages) */}
+        <View fixed style={styles.outerBorder} />
+        <View fixed style={styles.innerBorder} />
 
-        {/* Header */}
+        {/* Watermark (B2B) */}
+        <PDFWatermark data={data} />
+
+        {/* Header (fixed) */}
         <PDFHeader data={data} />
 
         {/* Gold separator */}
-        <View style={styles.goldLine} />
+        <View style={styles.goldLine} wrap={false} />
 
         {/* Title */}
-        <View style={styles.titleSection}>
+        <View style={styles.titleSection} wrap={false}>
           <Text style={styles.mainTitle}>ÉPREUVE</Text>
           <Text style={styles.subtitleTitle}>{data.titre}</Text>
+          {data.description ? (
+            <Text style={styles.descriptionText}>{data.description}</Text>
+          ) : null}
+          {data.sessionExamen ? (
+            <Text style={styles.sessionBadge}>{getSessionLabel(data.sessionExamen)}</Text>
+          ) : null}
         </View>
 
         {/* Metadata */}
-        <View style={styles.metadataRow}>
+        <View style={styles.metadataRow} wrap={false}>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Durée</Text>
+            <Text style={styles.metaLabel}>DURÉE</Text>
             <Text style={styles.metaValue}>{formatDuration(data.duree)}</Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Note totale</Text>
+            <Text style={styles.metaLabel}>NOTE TOTAL</Text>
             <Text style={styles.metaValue}>{data.noteTotal ?? baremeTotal} pts</Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Date</Text>
+            <Text style={styles.metaLabel}>DATE</Text>
             <Text style={styles.metaValue}>{formatDate(data.dateDebut)}</Text>
           </View>
+          {data.niveau ? (
+            <View style={styles.metaItem}>
+              <Text style={styles.metaLabel}>NIVEAU</Text>
+              <Text style={styles.metaValue}>{data.niveau}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Consignes */}
         {data.contenu.consignes ? (
-          <View style={styles.consignesBox}>
+          <View style={styles.consignesBox} wrap={false}>
             <Text style={styles.consignesLabel}>CONSIGNES</Text>
             <Text style={styles.consignesText}>{data.contenu.consignes}</Text>
           </View>
         ) : null}
 
         {/* Gold separator */}
-        <View style={styles.goldLine} />
+        <View style={styles.goldLine} wrap={false} />
 
         {/* Summary */}
-        <Text style={styles.summaryLine}>
+        <Text style={styles.summaryLine} wrap={false}>
           {questions.length} question{questions.length > 1 ? 's' : ''} — Barème total : {baremeTotal} pts
         </Text>
 
-        {/* Questions */}
+        {/* Questions (wrap across pages) */}
         {questions.map((q, i) => (
           <QuestionSujet key={q.id || i} question={q} index={i} />
         ))}
 
-        {/* Footer */}
-        <PDFFooter data={data} pageNum={1} totalPages={1} isCorrige={false} />
+        {/* Barème récapitulatif */}
+        <BaremeRecap questions={questions} />
+
+        {/* Encouragement */}
+        <Text style={styles.encouragementText} wrap={false}>
+          Bon courage !
+        </Text>
+
+        {/* Footer (fixed) */}
+        <PDFFooter data={data} isCorrige={false} />
       </Page>
     </Document>
   )
 }
 
-// ═══ Document : Corrigé ═══
+// ═══ Document : Corrigé (multi-page) ═══
 
 function CorrigeDocument({ data }: { data: EpreuvePDFData }) {
   const questions = data.contenu.questions || []
@@ -1067,69 +1408,87 @@ function CorrigeDocument({ data }: { data: EpreuvePDFData }) {
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Double border */}
-        <View style={styles.outerBorder} />
-        <View style={styles.innerBorder} />
+        <View fixed style={styles.outerBorder} />
+        <View fixed style={styles.innerBorder} />
+
+        {/* Watermark (B2B — "CONFIDENTIEL" for corrigé) */}
+        <PDFWatermark data={data} />
 
         {/* Header */}
         <PDFHeader data={data} />
 
         {/* CONFIDENTIEL label */}
-        <Text style={styles.confidentielLabel}>CORRIGÉ TYPE — CONFIDENTIEL</Text>
+        <Text style={styles.confidentielLabel} wrap={false}>CORRIGÉ TYPE — CONFIDENTIEL</Text>
 
         {/* Gold separator */}
-        <View style={styles.goldLine} />
+        <View style={styles.goldLine} wrap={false} />
 
         {/* Title */}
-        <View style={styles.titleSection}>
+        <View style={styles.titleSection} wrap={false}>
           <Text style={styles.mainTitle}>CORRIGÉ TYPE</Text>
           <Text style={styles.subtitleTitle}>{data.titre}</Text>
+          {data.description ? (
+            <Text style={styles.descriptionText}>{data.description}</Text>
+          ) : null}
+          {data.sessionExamen ? (
+            <Text style={styles.sessionBadge}>{getSessionLabel(data.sessionExamen)}</Text>
+          ) : null}
         </View>
 
         {/* Metadata */}
-        <View style={styles.metadataRow}>
+        <View style={styles.metadataRow} wrap={false}>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Durée</Text>
+            <Text style={styles.metaLabel}>DURÉE</Text>
             <Text style={styles.metaValue}>{formatDuration(data.duree)}</Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Note totale</Text>
+            <Text style={styles.metaLabel}>NOTE TOTAL</Text>
             <Text style={styles.metaValue}>{data.noteTotal ?? baremeTotal} pts</Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Date</Text>
+            <Text style={styles.metaLabel}>DATE</Text>
             <Text style={styles.metaValue}>{formatDate(data.dateDebut)}</Text>
           </View>
+          {data.niveau ? (
+            <View style={styles.metaItem}>
+              <Text style={styles.metaLabel}>NIVEAU</Text>
+              <Text style={styles.metaValue}>{data.niveau}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Consignes */}
         {data.contenu.consignes ? (
-          <View style={styles.consignesBox}>
+          <View style={styles.consignesBox} wrap={false}>
             <Text style={styles.consignesLabel}>CONSIGNES</Text>
             <Text style={styles.consignesText}>{data.contenu.consignes}</Text>
           </View>
         ) : null}
 
         {/* Gold separator */}
-        <View style={styles.goldLine} />
+        <View style={styles.goldLine} wrap={false} />
 
         {/* Summary */}
-        <Text style={styles.summaryLine}>
+        <Text style={styles.summaryLine} wrap={false}>
           {questions.length} question{questions.length > 1 ? 's' : ''} — Barème total : {baremeTotal} pts
         </Text>
 
-        {/* Questions with answers */}
+        {/* Questions with answers (wrap across pages) */}
         {questions.map((q, i) => (
           <QuestionCorrige key={q.id || i} question={q} index={i} />
         ))}
 
+        {/* Barème récapitulatif */}
+        <BaremeRecap questions={questions} />
+
         {/* Footer */}
-        <PDFFooter data={data} pageNum={1} totalPages={1} isCorrige={true} />
+        <PDFFooter data={data} isCorrige={true} />
       </Page>
     </Document>
   )
 }
 
-// ═══ Document : Feuille de réponses ═══
+// ═══ Document : Feuille de réponses (multi-page) ═══
 
 function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
   const questions = data.contenu.questions || []
@@ -1140,35 +1499,58 @@ function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Double border */}
-        <View style={styles.outerBorder} />
-        <View style={styles.innerBorder} />
+        <View fixed style={styles.outerBorder} />
+        <View fixed style={styles.innerBorder} />
+
+        {/* Watermark (B2B) */}
+        <PDFWatermark data={data} />
 
         {/* Header */}
         <PDFHeader data={data} />
 
         {/* Gold separator */}
-        <View style={styles.goldLine} />
+        <View style={styles.goldLine} wrap={false} />
 
         {/* Title */}
-        <View style={styles.titleSection}>
+        <View style={styles.titleSection} wrap={false}>
           <Text style={styles.mainTitle}>FEUILLE DE RÉPONSES</Text>
           <Text style={styles.subtitleTitle}>{data.titre}</Text>
+          {data.sessionExamen ? (
+            <Text style={styles.sessionBadge}>{getSessionLabel(data.sessionExamen)}</Text>
+          ) : null}
         </View>
 
         {/* Student info */}
         <StudentInfoFields />
 
         {/* Gold separator */}
-        <View style={styles.goldLine} />
+        <View style={styles.goldLine} wrap={false} />
 
         {/* MCQ Grid */}
         <MCQGrid questions={mcqQuestions} allQuestions={questions} />
 
+        {/* Code questions notice */}
+        {questions.some(q => q.type === 'CODE') ? (
+          <View style={{ marginBottom: 8 }} wrap={false}>
+            <Text style={{ fontSize: 10, color: NAVY, fontWeight: 'bold', marginBottom: 4 }}>
+              Questions de code (programmation)
+            </Text>
+            <Text style={{ fontSize: 9, color: TEXT_GRAY, fontStyle: 'italic' }}>
+              Les questions de type Code seront rédigées directement sur la plateforme SECT.
+              L'espace ci-dessous est réservé pour vos brouillons.
+            </Text>
+            <AnswerLines count={6} />
+          </View>
+        ) : null}
+
         {/* Open questions */}
         <OpenQuestionsSection questions={openQuestions} allQuestions={questions} />
 
+        {/* Signature block */}
+        <SignatureBlock />
+
         {/* Footer */}
-        <PDFFooter data={data} pageNum={1} totalPages={1} isCorrige={false} />
+        <PDFFooter data={data} isCorrige={false} />
       </Page>
     </Document>
   )
