@@ -1055,6 +1055,7 @@ export function AccesEtablissementsPage() {
                             statut: 'APPROUVE',
                             dateDebut: etab.access?.dateDebut ?? null,
                             dateFin: etab.access?.dateFin ?? null,
+                            dureeValiditeHeures: null,
                             commentaire: etab.access?.commentaire ?? null,
                             approuvePar: null,
                             createdAt: etab.access?.createdAt ?? new Date().toISOString(),

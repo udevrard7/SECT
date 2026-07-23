@@ -3,7 +3,7 @@
  * All AI providers must implement the AIProvider interface.
  */
 
-export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'VOXTRAL'
+export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'MISTRAL' | 'VOXTRAL'
 
 // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1 : capacité d'un provider IA.
 // - 'chat' : LLM textuel (génération de script, Q&A, etc.) — providers Mistral, ZAI, etc.
@@ -181,6 +181,16 @@ export const PROVIDER_TYPES: Record<AIProviderType, {
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     defaultModel: 'gemini-2.0-flash',
     models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+  },
+  MISTRAL: {
+    label: 'Mistral AI',
+    description: 'Mistral Large, Small, Codestral — chat',
+    icon: 'Sparkles',
+    requiresBaseUrl: false,
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    defaultModel: 'mistral-large-latest',
+    models: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'codestral-latest', 'open-mistral-nemo', 'open-mixtral-8x22b', 'open-mixtral-8x7b', 'open-mistral-7b'],
   },
   VOXTRAL: {
     label: 'Mistral Voxtral',

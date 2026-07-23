@@ -90,8 +90,8 @@ import {
 import type { AIProviderInfo, AIProviderType } from '@/lib/ai-providers/types'
 
 // ─── Type local étendu ───
-// Le backend supporte 9 providers (ValidateProviderInput) mais types.ts n'en
-// déclare que 6. On étend localement SANS modifier types.ts.
+// Le backend supporte 10 providers (ValidateProviderInput) mais types.ts en
+// déclare 7 (incluant MISTRAL depuis EPREUVES-PDF-V3). On étend localement.
 type LocalProviderType = AIProviderType | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -212,6 +212,18 @@ const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
     gradientClass: 'from-gold via-amber-500 to-gold',
     defaultCapability: 'chat',
   },
+  // AI-PROVIDERS-MISTRAL : Mistral AI comme provider dédié (chat)
+  MISTRAL: {
+    label: 'Mistral AI',
+    description: 'Mistral Large, Small, Codestral — chat',
+    icon: Sparkles,
+    color: '#6366f1',
+    bgClass: 'bg-violet-500/10',
+    textClass: 'text-violet-600 dark:text-violet-400',
+    borderClass: 'border-violet-500/30',
+    gradientClass: 'from-violet-500 via-violet-500 to-purple-500',
+    defaultCapability: 'chat',
+  },
 }
 
 const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
@@ -235,6 +247,7 @@ const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
   DASHSCOPE: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-coder-plus', 'qwen3-omni-flash'],
   DEEPSEEK: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'],
   CEREBRAS: ['llama-4-scout-17b-16e-instruct', 'llama3.1-8b', 'llama3.1-70b'],
+  MISTRAL: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'codestral-latest', 'open-mistral-nemo', 'open-mixtral-8x22b', 'open-mixtral-8x7b', 'open-mistral-7b'],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
@@ -247,6 +260,7 @@ const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
   DASHSCOPE: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   DEEPSEEK: 'https://api.deepseek.com/v1',
   CEREBRAS: 'https://api.cerebras.ai/v1',
+  MISTRAL: 'https://api.mistral.ai/v1',
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
