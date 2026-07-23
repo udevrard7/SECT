@@ -138,3 +138,47 @@ Stage Summary:
 - Suppression de tous les éléments décoratifs (note, encadré, textes d'aide, gros encarts)
 - Presets réduits aux plus utiles (3 début + 4 fenêtre)
 - Sémantique métier V2 conservée (fenêtre d'ouverture ≠ durée de passation)
+
+---
+Task ID: EPREUVES-PDF-V3
+Agent: Z.ai Code Assistant (tuteur Ulrich EVRARD)
+Task: Amélioration professionnelle des PDFs épreuves — multi-page, B2B branding, watermark, barème récapitulatif, signature
+
+Work Log:
+- Explored current code: epreuve-pdf-react.tsx (1199 lines, V2 single-page), API route, frontend dropdowns
+- Identified key issues: single-page PDF (all questions crammed on 1 A4), no watermark, no barème recap, no signature block, missing niveau/sessionExamen data
+- Rewrote epreuve-pdf-react.tsx (V3, ~700 lines):
+  * MULTI-PAGE: questions use `wrap` prop → flow across pages naturally
+  * FIXED HEADER: `fixed` prop on PDFHeader → logo + etab name + filiere + niveau on every page
+  * FIXED FOOTER: `fixed` prop on PDFFooter → "Confidentiel" | titre | page N/M on every page
+  * WATERMARK B2B: diagonal text overlay (certWatermarkText, e.g. "ORIGINAL") — only for institutions (type !== PERSONNEL)
+  * B2B BRANDING: logo prominently displayed, establishment name large, full academic context (filière, niveau, sessionExamen)
+  * B2C fallback: "SECT — Plateforme SECT" branding for Prof Solo
+  * SESSION BADGE: NORMALE/RATTRAPAGE/SPECIALE displayed in title section
+  * METADATA: enhanced with DURÉE, NOTE TOTAL, DATE, NIVEAU columns
+  * BARÈME RÉCAPITULATIF: summary table showing all questions with types and points at end of sujet/corrige
+  * SIGNATURE BLOCK: student + teacher emargement on feuille de réponses
+  * CODE NOTICE: explanation for code questions on feuille de réponses
+  * ENCOURAGEMENT: "Bon courage !" at end of sujet
+  * CONSIGNE BOX: enhanced styling with better padding/spacing
+- Updated API route (route.ts):
+  * Added niveau (L1/L2/L3/M1/M2/DOCTORAT) from epreuve data
+  * Added sessionExamen (NORMALE/RATTRAPAGE/SPECIALE) from epreuve data
+  * Added etablissement.type (PERSONNEL vs institution) for B2B detection
+  * Added watermark config: certWatermarkText, certWatermarkEnabled, certWatermarkOpacity, certWatermarkColor, certWatermarkPattern
+- Enhanced frontend PDF dropdown (epreuves-page.tsx):
+  * 3 dropdown instances updated (ModelesTab card, preview dialog, SessionsTab)
+  * Professional styling: icon containers with colored backgrounds, w-56 width
+  * Better descriptions: "Questions + consignes + barème", "Réponses correctes + explications", "Grille QCM/QCU + émargement"
+  * Branding indicator: "PDF institutionnel avec logo, filière & niveau"
+- Lint: 0 errors, 2 pre-existing warnings (not from our changes)
+- Committed as 35d9449 and pushed to GitHub (main branch)
+
+Stage Summary:
+- PDFs now multi-page with fixed header/footer on every page
+- B2B institutions get: logo + name + filière + niveau prominently, watermark overlay (e.g. "ORIGINAL")
+- Barème recapitulatif table at end of sujet and corrige
+- Signature/emargement block on feuille de réponses
+- Session exam type and study level displayed in PDF
+- Frontend dropdown menus more professional with enriched descriptions
+- Deployment triggered: Vercel (frontend) + Render (backend)
