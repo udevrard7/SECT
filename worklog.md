@@ -459,3 +459,48 @@ Stage Summary:
 - Sujet PDF téléchargeable maintenant (était le seul à planter à cause du style encouragementText)
 - Corrige et FeuilleReponses fonctionnaient déjà (le Corrige avait un problème de timeout séparé, déjà corrigé par SECT-EPREUVE-PDF-TIMEOUT-FIX-1)
 - Les 3 types de PDF sont maintenant téléchargeables
+
+---
+Task ID: SECT-EPREUVE-PDF-STYLE-V2
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Créer un style distinct des certificats pour les 3 documents épreuves (sujet/corrige/feuille-reponses)
+
+Contexte : les épreuves PDF utilisaient le même design system que les certificats (Navy + Gold + PlayfairDisplay + double bordure rectangle). Ulrich veut une identité visuelle distincte.
+
+Nouveau design system "Académique Émeraude" (epreuve-pdf-react.tsx) :
+
+1. Palette de couleurs (constantes changées, noms conservés pour éviter 100+ refs) :
+   - NAVY #1B3A5C → #065F46 (Émeraude profond — primary)
+   - GOLD #C5A044 → #D97706 (Ambre chaud — accent)
+   - GOLD_BORDER #E8D09A → #FCD34D (Ambre clair)
+   - CELL_BG #F7FAFC → #ECFDF5 (Vert émeraude très clair)
+   - LIGHT_GOLD_BG #FEF9E7 → #FEF3C7 (Ambre clair pour fonds)
+   - EMERALD #059669 → #0D9488 (Teal, pour MCQ header)
+   - TEXT_DARK/GRAY/FOOTER légèrement ajustés pour cohérence
+
+2. Fonts (différenciation clé des certificats) :
+   - etabName : PlayfairDisplay → Inter (sans-serif)
+   - mainTitle : PlayfairDisplay → Inter bold (sans-serif moderne)
+   - recapTitle : PlayfairDisplay → Inter bold
+   - Les certificats gardent PlayfairDisplay (serif classique) — distinction immédiate
+
+3. Bordures (layout distinct) :
+   - outerBorder : double rectangle gold → bandeau supérieur émeraude (8pt, full width)
+   - innerBorder : rectangle intérieur navy → barre latérale gauche ambre (4pt, full height)
+   - Résultat : "L-shaped" accent moderne au lieu de double bordure classique certificat
+
+4. Commentaire d'en-tête refondu : documente le nouveau design system + comparaison explicite avec les certificats
+
+Approche technique : seules les VALEURS des constantes et styles changent, pas les noms. Les 100+ références dans les composants restent valides (NAVY, GOLD, styles.outerBorder, etc.). Risque minimal, diff ciblé.
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès (sujet 28KB, corrige 32KB, feuille 19KB) avec données sample réalistes (QCU + QCM + QRC + REFLEXION, établissement B2B avec watermark)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Style "Académique Émeraude" créé : Émeraude + Ambre + Inter + bandeau/barre (vs Navy + Gold + PlayfairDisplay + double bordure pour les certificats)
+- 3 différenciateurs visuels majeurs : couleur (émeraude vs navy), police (Inter sans-serif vs PlayfairDisplay serif), bordure (bandeau+barre vs double rectangle)
+- Les 3 documents (sujet/corrige/feuille-reponses) partagent ce nouveau style
+- Aucune régression : test local 3/3 OK, tsc 0 erreur, eslint 0 erreur

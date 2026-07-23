@@ -1,24 +1,30 @@
 /**
- * epreuve-pdf-react.tsx — Épreuve PDF professionnelle institutionnelle V3 (A4 portrait)
+ * epreuve-pdf-react.tsx — Épreuve PDF "Académique Émeraude" (A4 portrait)
  *
- * Refonte 2025 V3 : améliorations majeures par rapport à V2 :
+ * SECT-EPREUVE-PDF-STYLE-V2 : style DISTINCT des certificats/factures/relevés.
+ * Les certificats utilisent Navy + Gold + PlayfairDisplay + double bordure.
+ * Les épreuves utilisent désormais Émeraude + Ambre + Inter + bandeau/barre.
+ *
+ * Refonte V3 (structure conservée) :
  *   - MULTI-PAGE : les questions s'étendent sur plusieurs pages automatiquement
  *   - HEADER FIXÉ : logo + nom établissement + filière + UE + niveau sur chaque page
- *   - FOOTER FIXÉ : confidentiel | titre | page N/M + ligne gold sur chaque page
+ *   - FOOTER FIXÉ : confidentiel | titre | page N/M sur chaque page
  *   - FILIGRANE (watermark) B2B : texte diagonal configurable (certWatermarkText)
- *   - B2B branding : logo + nom + ville/pays + filière + niveau + session prominently
+ *   - B2B branding : logo + nom + ville/pays + filière + niveau + session
  *   - B2C (Prof Solo) : branding SECT si pas de logo établissement
- *   - Barème récapitulatif : tableau de synthèse des questions en fin de sujet
+ *   - Barème récapitulatif : tableau de synthèse des questions en fin de sujet/corrige
  *   - Bloc émargement/signature : sur feuille de réponses
  *   - Session d'examen : NORMALE / RATTRAPAGE / SPECIALE affichée
- *   - Design navy/gold institutionnel identique aux certificats/factures/relevés
  *
- * Design system :
- *   - Double bordure (gold 2.5pt + navy 0.5pt)
- *   - Fonts : PlayfairDisplay (titres), Inter (corps)
- *   - Palette : NAVY #1B3A5C, GOLD #C5A044, GOLD_BORDER #E8D09A
+ * Design system "Académique Émeraude" (distinct des certificats) :
+ *   - Bordure : bandeau supérieur émeraude (8pt) + barre latérale gauche ambre (4pt)
+ *     (vs certificats : double bordure rectangle gold + navy)
+ *   - Fonts : Inter (titres ET corps, sans-serif moderne)
+ *     (vs certificats : PlayfairDisplay serif pour les titres)
+ *   - Palette : ÉMERAUDE #065F46 (primary), AMBRE #D97706 (accent), AMBRE CLAIR #FCD34D
+ *     (vs certificats : NAVY #1B3A5C, GOLD #C5A044, GOLD_BORDER #E8D09A)
  *   - Header : Logo établissement + nom + ville/pays | UE + filière + niveau
- *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne gold
+ *   - Footer : "Confidentiel" | titre épreuve | page N/M + ligne ambre
  */
 
 import React from 'react'
@@ -97,25 +103,32 @@ export interface EpreuvePDFData {
   }
 }
 
-// ═══ Constants ═══
+// ═══ Constants — Palette "Académique Émeraude" (SECT-EPREUVE-PDF-STYLE-V2) ═══
+// Palette DISTINCTE des certificats (qui utilisent Navy #1B3A5C + Gold #C5A044 +
+// PlayfairDisplay + double bordure rectangle). Les épreuves utilisent :
+//   - Émeraude profond (primary) + Ambre chaud (accent)
+//   - Police Inter (sans-serif moderne) pour les titres au lieu de PlayfairDisplay
+//   - Bandeau supérieur + barre latérale gauche au lieu de double bordure rectangle
+// Les noms de constantes (NAVY/GOLD/GOLD_BORDER) sont conservés pour éviter de
+// toucher les 100+ références — seules les valeurs changent.
 
-const NAVY = '#1B3A5C'
-const GOLD = '#C5A044'
-const GOLD_BORDER = '#E8D09A'
-const TEXT_DARK = '#2C3E50'
-const TEXT_GRAY = '#718096'
-const TEXT_FOOTER = '#4A5568'
+const NAVY = '#065F46'           // was #1B3A5C — Émeraude profond (primary)
+const GOLD = '#D97706'           // was #C5A044 — Ambre chaud (accent)
+const GOLD_BORDER = '#FCD34D'    // was #E8D09A — Ambre clair (borders légers)
+const TEXT_DARK = '#1F2937'
+const TEXT_GRAY = '#6B7280'
+const TEXT_FOOTER = '#4B5563'
 const WHITE = '#FFFFFF'
-const CELL_BG = '#F7FAFC'
-const EMERALD = '#059669'
+const CELL_BG = '#ECFDF5'        // was #F7FAFC — Vert émeraude très clair
+const EMERALD = '#0D9488'        // Teal (pour MCQ header, distinct du primary)
 const RED = '#DC2626'
-const GREEN_BG = '#F0FFF4'
-const GREEN_BORDER = '#38A169'
+const GREEN_BG = '#ECFDF5'
+const GREEN_BORDER = '#059669'
 const CONSIGNE_BG = '#FFFBEB'
 const CONSIGNE_BORDER = '#D97706'
 const CODE_BG = '#F5F5FA'
 const CODE_BORDER = '#A78BFA'
-const LIGHT_GOLD_BG = '#FEF9E7'
+const LIGHT_GOLD_BG = '#FEF3C7'  // was #FEF9E7 — Ambre clair pour fonds
 
 const PdfImage = Image as unknown as React.FC<React.ComponentProps<typeof Image> & { alt?: string }>
 
@@ -218,26 +231,24 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     position: 'relative',
   },
-  // Double border
+  // SECT-EPREUVE-PDF-STYLE-V2 : bandeau supérieur émeraude (distinct de la
+  // double bordure rectangle des certificats). Barre horizontale pleine en haut.
   outerBorder: {
     position: 'absolute',
-    top: 14,
-    left: 14,
-    right: 14,
-    bottom: 14,
-    borderWidth: 2.5,
-    borderColor: GOLD,
-    borderRadius: 2,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 8,
+    backgroundColor: NAVY,
   },
+  // Barre latérale gauche ambre (accent vertical — remplace l'innerBorder)
   innerBorder: {
     position: 'absolute',
-    top: 20,
-    left: 20,
-    right: 20,
-    bottom: 20,
-    borderWidth: 0.5,
-    borderColor: NAVY,
-    borderRadius: 1,
+    top: 8,
+    left: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: GOLD,
   },
   // Header (fixed on every page)
   headerContainer: {
@@ -268,7 +279,9 @@ const styles = StyleSheet.create({
   },
   etabName: {
     fontSize: 14,
-    fontFamily: 'PlayfairDisplay',
+    // SECT-EPREUVE-PDF-STYLE-V2 : Inter (sans-serif) au lieu de PlayfairDisplay
+    // (serif) pour se différencier des certificats.
+    fontFamily: 'Inter',
     color: NAVY,
     fontWeight: 'bold',
     marginBottom: 2,
@@ -332,10 +345,13 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 24,
-    fontFamily: 'PlayfairDisplay',
+    // SECT-EPREUVE-PDF-STYLE-V2 : Inter bold (sans-serif moderne) au lieu de
+    // PlayfairDisplay (serif classique des certificats).
+    fontFamily: 'Inter',
     color: NAVY,
-    letterSpacing: 4,
+    letterSpacing: 3,
     marginBottom: 4,
+    fontWeight: 'bold',
   },
   subtitleTitle: {
     fontSize: 14,
@@ -662,7 +678,9 @@ const styles = StyleSheet.create({
   recapTitle: {
     fontSize: 12,
     color: NAVY,
-    fontFamily: 'PlayfairDisplay',
+    // SECT-EPREUVE-PDF-STYLE-V2 : Inter au lieu de PlayfairDisplay.
+    fontFamily: 'Inter',
+    fontWeight: 'bold',
     marginBottom: 6,
     textAlign: 'center',
   },
