@@ -378,3 +378,45 @@ Stage Summary:
   3. Retry automatique au timeout (cold start Render)
 - Message d'erreur pédagogique si timeout persiste (indique le cold start Render et le délai à patienter)
 - UX attendue : 1er login rapide dans 95% des cas (backend déjà chaud grâce au warmup), retry auto pour les cas restants
+
+---
+Task ID: SECT-EPREUVE-PDF-TIMEOUT-FIX-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: /epreuves impossible de télécharger épreuves/corrigés PDF avec erreur "erreur génération PDF"
+
+Cause racine identifiée :
+- Route /api/epreuves/[id]/pdf/route.ts faisait 3 fetchs backend Render consécutifs (epreuve + me + etablissement) SANS timeout ni retry
+- Sur Render free tier cold start (30-50s), le 1er fetch dépassait la limite Vercel serverless de 10s (défaut Hobby plan sans maxDuration)
+- Vercel coupait la route → 500 générique "erreur génération PDF"
+- De plus, le client affichait errData.error (générique "erreur génération PDF") au lieu de errData.detail (vrai message d'erreur + stack)
+
+Corrections frontend :
+
+1. /api/epreuves/[id]/pdf/route.ts :
+   - Ajout export const maxDuration = 60 : autorise Vercel à attendre 60s (Hobby max) au lieu du défaut 10s
+   - Ajout fetchWithTimeout (20s par fetch) + fetchBackendWithRetry (MAX_RETRIES = 2) sur AbortError pour les 3 fetchs backend. Même stratégie que /api/go-auth/login (SECT-LOGIN-TIMEOUT-FIX-1)
+   - Timeout global 90s autour de renderEpreuvePDF via Promise.race (catch les lenteurs @react-pdf/renderer sur cold lambda Vercel)
+   - Messages d'erreur catégorisés : backend timeout (504) vs backend unreachable (502) vs render PDF échec (500 avec detail) vs données invalides (422)
+   - Validation des données epreuve avant render : si titre vide/invalide → 422 avec message clair (au lieu d'un crash @react-pdf silencieux)
+   - Logging détaillé : console.warn sur retry, console.error avec stack sur render échec
+
+2. epreuves-page.tsx (2 handleExportPDF : ModelesTab + SessionsTab) :
+   - Timeout 90s côté client via AbortController (couvre cold start Render + génération PDF)
+   - Affichage du detail (vrai message backend) en priorité au lieu de error générique
+   - Messages pédagogiques selon status HTTP : 504 (cold start), 502 (injoignable), 401 (session expirée), 404 (introuvable)
+   - Message spécifique pour AbortError client (timeout 90s)
+   - Toast "Erreur PDF" avec description actionable
+
+Vérifications qualité :
+- tsc --noEmit : 0 erreur
+- eslint sur les 2 fichiers modifiés : 0 erreur 0 warning
+- Pas de modification backend (le Go répond correctement, c'est le cold start + timeout Vercel qui posait problème)
+
+Stage Summary:
+- Erreur "erreur génération PDF" corrigée par 4 mécanismes combinés :
+  1. maxDuration = 60 sur la route serverless (Vercel Hobby max)
+  2. fetchWithTimeout + retry auto sur les 3 fetchs backend Render
+  3. Timeout 90s sur renderEpreuvePDF (catch les lenteurs @react-pdf)
+  4. Timeout 90s côté client + messages pédagogiques selon status HTTP
+- Messages d'erreur catégorisés : l'utilisateur sait maintenant si c'est un cold start Render, une session expirée, une épreuve introuvable, ou une erreur de render
+- Validation préventive des données epreuve (titre non vide) avant render pour éviter les crashes silencieux @react-pdf

@@ -581,10 +581,29 @@ function ModelesTab() {
  // Appelle /api/epreuves/{id}/pdf?type=... qui génère le PDF côté
  // serveur avec @react-pdf/renderer (design navy/gold, logo établissement,
  // filière, UE) au lieu du jsPDF basique côté client.
- const res = await fetch(`/api/epreuves/${epreuveId}/pdf?type=${type}`)
+ // SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : timeout 90s côté client pour couvrir
+ // le cold start Render + génération PDF @react-pdf/renderer.
+ const controller = new AbortController()
+ const timer = setTimeout(() => controller.abort(), 90000)
+ const res = await fetch(`/api/epreuves/${epreuveId}/pdf?type=${type}`, {
+   signal: controller.signal,
+ })
+ clearTimeout(timer)
  if (!res.ok) {
  const errData = await res.json().catch(() => ({ error: 'Erreur serveur' }))
- throw new Error(errData.error || errData.detail || `Erreur ${res.status}`)
+ // SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : afficher le detail (vrai message) en priorité.
+ // Messages pédagogiques selon le status HTTP.
+ let msg = errData.detail || errData.error || `Erreur ${res.status}`
+ if (res.status === 504) {
+ msg = 'Le serveur d\'évaluation démarre (Render free tier, cold start 30-50s). Patientez 30s puis réessayez.'
+ } else if (res.status === 502) {
+ msg = 'Serveur d\'évaluation injoignable. Vérifiez votre connexion et réessayez.'
+ } else if (res.status === 401) {
+ msg = 'Session expirée. Reconnectez-vous puis réessayez.'
+ } else if (res.status === 404) {
+ msg = 'Épreuve introuvable. Elle a peut-être été supprimée.'
+ }
+ throw new Error(msg)
  }
  const blob = await res.blob()
  // Récupérer le filename depuis Content-Disposition header
@@ -602,7 +621,14 @@ function ModelesTab() {
  URL.revokeObjectURL(url)
  toast.success('PDF téléchargé', { description:`Le document a été généré avec succès.` })
  } catch (err) {
- toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de générer le PDF.' })
+ // SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : message clair pour timeout client (AbortError)
+ const errMsg = err instanceof Error ? err.message : 'Impossible de générer le PDF.'
+ const isAbort = err instanceof Error && err.name === 'AbortError'
+ toast.error('Erreur PDF', {
+ description: isAbort
+ ? 'La génération du PDF a expiré (90s). Le serveur démarre peut-être — réessayez dans 30s.'
+ : errMsg,
+ })
  } finally {
  setExportingPdfId(null)
  }
@@ -1848,10 +1874,26 @@ function SessionsTab() {
  setExportingPdfId(epreuveId)
  try {
  // EPREUVES-PDF-V2 : PDF professionnel institutionnel (server-side).
- const res = await fetch(`/api/epreuves/${epreuveId}/pdf?type=${type}`)
+ // SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : timeout 90s côté client (cold start Render + render PDF).
+ const controller = new AbortController()
+ const timer = setTimeout(() => controller.abort(), 90000)
+ const res = await fetch(`/api/epreuves/${epreuveId}/pdf?type=${type}`, {
+   signal: controller.signal,
+ })
+ clearTimeout(timer)
  if (!res.ok) {
  const errData = await res.json().catch(() => ({ error: 'Erreur serveur' }))
- throw new Error(errData.error || errData.detail || `Erreur ${res.status}`)
+ let msg = errData.detail || errData.error || `Erreur ${res.status}`
+ if (res.status === 504) {
+ msg = 'Le serveur d\'évaluation démarre (Render free tier, cold start 30-50s). Patientez 30s puis réessayez.'
+ } else if (res.status === 502) {
+ msg = 'Serveur d\'évaluation injoignable. Vérifiez votre connexion et réessayez.'
+ } else if (res.status === 401) {
+ msg = 'Session expirée. Reconnectez-vous puis réessayez.'
+ } else if (res.status === 404) {
+ msg = 'Épreuve introuvable. Elle a peut-être été supprimée.'
+ }
+ throw new Error(msg)
  }
  const blob = await res.blob()
  const disposition = res.headers.get('Content-Disposition') || ''
@@ -1867,7 +1909,13 @@ function SessionsTab() {
  URL.revokeObjectURL(url)
  toast.success('PDF téléchargé', { description:'Le document a été généré avec succès.' })
  } catch (err) {
- toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de générer le PDF.' })
+ const errMsg = err instanceof Error ? err.message : 'Impossible de générer le PDF.'
+ const isAbort = err instanceof Error && err.name === 'AbortError'
+ toast.error('Erreur PDF', {
+ description: isAbort
+ ? 'La génération du PDF a expiré (90s). Le serveur démarre peut-être — réessayez dans 30s.'
+ : errMsg,
+ })
  } finally {
  setExportingPdfId(null)
  }

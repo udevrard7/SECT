@@ -20,6 +20,24 @@
  *   - Logging debug ajouté pour diagnostiquer les erreurs runtime sur Vercel
  *   - Fallback robuste si /api/me ou /api/etablissements échouent
  *
+ * SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : erreur récurrente "erreur génération PDF" sur /epreuves.
+ *
+ * Cause racine : la route faisait 3 fetchs backend Render consécutifs (epreuve + me + etablissement)
+ * SANS timeout ni retry. Sur Render free tier cold start (30-50s), le 1er fetch dépassait
+ * la limite Vercel serverless de 10s (défaut Hobby plan) → 500 "erreur génération PDF".
+ *
+ * Corrections :
+ *  1. export const maxDuration = 60 : autorise Vercel à attendre 60s (Hobby max) au lieu
+ *     du défaut 10s. La génération PDF + 3 fetchs backend peut prendre 15-30s sur cold start.
+ *  2. fetchWithTimeout (20s par fetch) + retry automatique (MAX_RETRIES = 2) sur AbortError
+ *     pour les 3 fetchs backend. Même stratégie que /api/go-auth/login (SECT-LOGIN-TIMEOUT-FIX-1).
+ *  3. fetchWithTimeout global (90s) autour de renderEpreuvePDF : @react-pdf/renderer peut
+ *     prendre 10-20s sur un cold lambda Vercel (chargement fonts + yoga-layout).
+ *  4. Messages d'erreur categorisés : backend timeout vs render PDF vs données manquantes.
+ *     Le détail est renvoyé dans `detail` pour aider au diagnostic.
+ *  5. Validation des données epreuve avant render : si contenu.questions est absent ou
+ *     si le titre est vide, on renvoie 422 avec message clair (au lieu d'un crash @react-pdf).
+ *
  * Sécurité : le token n'est jamais exposé côté client (route server-side).
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -27,8 +45,57 @@ import { renderEpreuvePDF, type EpreuvePDFData } from '@/lib/pdf/epreuve-pdf-rea
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+// SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : 60s pour couvrir 3 fetchs backend + génération PDF.
+// Vercel Hobby supporte jusqu'à 60s, Pro jusqu'à 300s. Sans ce maxDuration, Vercel
+// coupe à 10s (défaut) → 500 générique sur Render cold start.
+export const maxDuration = 60
 
 const BACKEND_URL = 'https://sect-zead.onrender.com'
+const BACKEND_FETCH_TIMEOUT_MS = 20000
+const RENDER_PDF_TIMEOUT_MS = 90000
+const MAX_RETRIES = 2
+
+/** fetch avec timeout explicite via AbortController. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = BACKEND_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** fetch backend avec retry automatique au timeout (cold start Render). */
+async function fetchBackendWithRetry(
+  url: string,
+  accessToken: string,
+  label: string,
+  logPrefix: string,
+): Promise<Response> {
+  const headers = {
+    'Authorization': `Bearer ${accessToken}`,
+    'Cookie': `access_token=${accessToken}`,
+  }
+  let lastErr: unknown = null
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fetchWithTimeout(url, { headers, cache: 'no-store' })
+    } catch (err) {
+      lastErr = err
+      const errName = err instanceof Error ? err.name : 'Unknown'
+      if (errName !== 'AbortError' || attempt === MAX_RETRIES) {
+        throw err
+      }
+      console.warn(`${logPrefix} ${label} tentative ${attempt}/${MAX_RETRIES} timeout, retry...`)
+    }
+  }
+  throw lastErr ?? new Error(`${label} : aucune réponse`)
+}
 
 /** Sanitize filename by replacing special characters */
 function sanitizeFilename(name: string): string {
@@ -73,15 +140,31 @@ export async function GET(
       return NextResponse.json({ error: 'authentication required' }, { status: 401 })
     }
 
-    // 2. Fetch l'épreuve depuis le backend Go
+    // 2. Fetch l'épreuve depuis le backend Go (avec timeout + retry)
     console.log(`${logPrefix} Fetch epreuve ${id} depuis backend...`)
-    const epreuveRes = await fetch(`${BACKEND_URL}/api/epreuves/${id}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Cookie': `access_token=${accessToken}`,
-      },
-      cache: 'no-store',
-    })
+    let epreuveRes: Response
+    try {
+      epreuveRes = await fetchBackendWithRetry(
+        `${BACKEND_URL}/api/epreuves/${id}`,
+        accessToken,
+        'epreuve',
+        logPrefix,
+      )
+    } catch (err) {
+      const errName = err instanceof Error ? err.name : 'Unknown'
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error(`${logPrefix} Fetch epreuve ${id} échec: ${errName} - ${errMsg}`)
+      if (errName === 'AbortError') {
+        return NextResponse.json(
+          { error: 'backend timeout', detail: `Le backend met trop de temps à répondre (cold start Render). Réessayez dans 30s.` },
+          { status: 504 }
+        )
+      }
+      return NextResponse.json(
+        { error: 'backend unreachable', detail: `Erreur réseau backend: ${errMsg}` },
+        { status: 502 }
+      )
+    }
 
     if (!epreuveRes.ok) {
       const errText = await epreuveRes.text().catch(() => 'erreur backend')
@@ -100,19 +183,30 @@ export async function GET(
     }
     console.log(`${logPrefix} Epreuve récupérée: "${epreuve.titre}" — ${epreuve.contenu?.questions?.length || 0} questions`)
 
-    // 3. Fetch le user context (pour récupérer l'etablissementId)
+    // SECT-EPREUVE-PDF-TIMEOUT-FIX-1 : validation des données avant render.
+    // Si le titre est vide ou contenu absent, @react-pdf/renderer peut crasher
+    // silencieusement → on renvoie 422 avec message clair.
+    if (!epreuve.titre || typeof epreuve.titre !== 'string') {
+      console.warn(`${logPrefix} Titre epreuve vide/invalide → 422`)
+      return NextResponse.json(
+        { error: 'données epreuve invalides', detail: 'Le titre de l\'épreuve est vide ou invalide.' },
+        { status: 422 }
+      )
+    }
+
+    // 3. Fetch le user context (pour récupérer l'etablissementId) — non bloquant
     console.log(`${logPrefix} Fetch /api/me pour etablissementId...`)
     let meRes: Response
     try {
-      meRes = await fetch(`${BACKEND_URL}/api/me`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Cookie': `access_token=${accessToken}`,
-        },
-        cache: 'no-store',
-      })
+      meRes = await fetchBackendWithRetry(
+        `${BACKEND_URL}/api/me`,
+        accessToken,
+        '/api/me',
+        logPrefix,
+      )
     } catch (meErr) {
-      console.warn(`${logPrefix} /api/me fetch error (réseau): ${meErr instanceof Error ? meErr.message : 'unknown'}`)
+      const errMsg = meErr instanceof Error ? meErr.message : 'unknown'
+      console.warn(`${logPrefix} /api/me fetch error (réseau): ${errMsg} — B2C fallback`)
       meRes = new Response(JSON.stringify({ user: null }), { status: 503 })
     }
 
@@ -134,17 +228,16 @@ export async function GET(
       const meData = await meRes.json()
       const user = meData.user
 
-      // 4. Si l'utilisateur a un etablissementId, fetch l'établissement
+      // 4. Si l'utilisateur a un etablissementId, fetch l'établissement — non bloquant
       if (user?.etablissementId) {
         console.log(`${logPrefix} User etablissementId=${user.etablissementId}, fetch etablissement...`)
         try {
-          const etabRes = await fetch(`${BACKEND_URL}/api/etablissements/${user.etablissementId}`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Cookie': `access_token=${accessToken}`,
-            },
-            cache: 'no-store',
-          })
+          const etabRes = await fetchBackendWithRetry(
+            `${BACKEND_URL}/api/etablissements/${user.etablissementId}`,
+            accessToken,
+            'etablissement',
+            logPrefix,
+          )
 
           if (etabRes.ok) {
             const etabData = await etabRes.json()
@@ -175,7 +268,7 @@ export async function GET(
             console.warn(`${logPrefix} Fetch etablissement ${user.etablissementId} → status ${etabRes.status}`)
           }
         } catch (etabErr) {
-          console.warn(`${logPrefix} Fetch etablissement error: ${etabErr instanceof Error ? etabErr.message : 'unknown'}`)
+          console.warn(`${logPrefix} Fetch etablissement error: ${etabErr instanceof Error ? etabErr.message : 'unknown'} — B2C fallback`)
         }
       } else {
         console.log(`${logPrefix} Pas de etablissementId → B2C fallback (PERSONNEL)`)
@@ -216,9 +309,28 @@ export async function GET(
 
     console.log(`${logPrefix} Données mappées: titre="${pdfData.titre}", niveau=${pdfData.niveau}, session=${pdfData.sessionExamen}, etabType=${pdfData.etablissement.type}, questions=${pdfData.contenu.questions.length}`)
 
-    // 6. Générer le PDF
+    // 6. Générer le PDF (avec timeout global — @react-pdf/renderer peut être lent sur cold lambda)
     console.log(`${logPrefix} renderEpreuvePDF(data, "${type}") — début...`)
-    const pdfBuffer = await renderEpreuvePDF(pdfData, type)
+    let pdfBuffer: Buffer
+    try {
+      const renderPromise = renderEpreuvePDF(pdfData, type)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('renderEpreuvePDF timeout (90s)')), RENDER_PDF_TIMEOUT_MS)
+      })
+      pdfBuffer = await Promise.race([renderPromise, timeoutPromise])
+    } catch (renderErr) {
+      const errName = renderErr instanceof Error ? renderErr.name : 'Unknown'
+      const errMsg = renderErr instanceof Error ? renderErr.message : String(renderErr)
+      console.error(`${logPrefix} renderEpreuvePDF ÉCHEC: ${errName} - ${errMsg}`)
+      console.error(`${logPrefix} Stack: ${renderErr instanceof Error ? renderErr.stack?.substring(0, 800) : 'N/A'}`)
+      return NextResponse.json(
+        {
+          error: 'erreur génération PDF (render)',
+          detail: `@react-pdf/renderer a échoué: ${errMsg}. Si le problème persiste, l'épreuve contient peut-être des données non supportées (logo, question type, etc.).`,
+        },
+        { status: 500 }
+      )
+    }
     console.log(`${logPrefix} PDF généré — ${typeof pdfBuffer}, taille=${pdfBuffer?.length ?? 'N/A'} bytes`)
 
     // 7. Construire le filename selon le type
