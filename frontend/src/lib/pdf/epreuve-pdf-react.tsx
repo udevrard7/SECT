@@ -812,7 +812,10 @@ const styles = StyleSheet.create({
   encouragementText: {
     fontSize: 10,
     color: NAVY,
-    fontFamily: 'PlayfairDisplay',
+    // SECT-EPREUVE-PDF-FONT-FIX-1 : Inter (qui a une variante italic) au lieu
+    // de PlayfairDisplay (qui n'est enregistrée qu'en normal). Sinon @react-pdf
+    // lève "Could not resolve font for PlayfairDisplay italic" → crash du Sujet.
+    fontFamily: 'Inter',
     textAlign: 'center',
     marginBottom: 8,
     fontStyle: 'italic',
