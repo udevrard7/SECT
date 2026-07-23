@@ -655,12 +655,8 @@ const styles = StyleSheet.create({
     fontSize: 7,
     color: TEXT_GRAY,
   },
-  footerEtabLine: {
-    fontSize: 6.5,
-    color: TEXT_FOOTER,
-    textAlign: 'center',
-    marginTop: 2,
-  },
+  // SECT-EPREUVE-PDF-STYLE-V4 : footerEtabLine supprimé (ligne "SECT · Épreuve
+  // générée via SECT" retirée du footer — demande Ulrich).
   // Barème recap table
   recapTitle: {
     fontSize: 12,
@@ -862,12 +858,15 @@ function PDFWatermark({ data }: { data: EpreuvePDFData }) {
 
 // ═══ Composant : Header (logo + etab info | UE + filière) — fixed ═══
 
-function PDFHeader({ data }: { data: EpreuvePDFData }) {
+// SECT-EPREUVE-PDF-STYLE-V4 : PDFHeader accepte une prop `fixed` (défaut false).
+// Quand fixed=false (défaut), le header n'apparaît que sur la 1ère page.
+// Le footer reste fixed=true (pagination sur toutes les pages).
+function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: boolean }) {
   const etabLocation = [data.etablissement.ville, data.etablissement.pays].filter(Boolean).join(', ')
   const b2b = isB2B(data.etablissement)
 
   return (
-    <View fixed style={styles.headerContainer}>
+    <View style={styles.headerContainer} {...(fixed ? { fixed: true } : {})}>
       <View style={styles.headerRow}>
         {/* Left: Logo + Etablissement */}
         <View style={styles.headerLeft}>
@@ -930,9 +929,7 @@ function PDFFooter({ data, isCorrige }: { data: EpreuvePDFData; isCorrige: boole
         <Text style={styles.footerCenter}>{title}</Text>
         <Text style={styles.footerRight} render={({ pageNumber, totalPages }) => `Page ${pageNumber}/${totalPages}`} />
       </View>
-      <Text style={styles.footerEtabLine}>
-        {data.etablissement.nom} · Épreuve générée via SECT — Plateforme d'évaluation IA
-      </Text>
+      {/* SECT-EPREUVE-PDF-STYLE-V4 : ligne "SECT · Épreuve générée via SECT" retirée (demande Ulrich). */}
     </View>
   )
 }
@@ -1387,8 +1384,8 @@ function SujetDocument({ data }: { data: EpreuvePDFData }) {
           <QuestionSujet key={q.id || i} question={q} index={i} />
         ))}
 
-        {/* Barème récapitulatif */}
-        <BaremeRecap questions={questions} />
+        {/* SECT-EPREUVE-PDF-STYLE-V4 : Barème récapitulatif retiré du Sujet —
+            ne figure que sur le Corrigé (demande Ulrich). */}
 
         {/* Encouragement */}
         <Text style={styles.encouragementText} wrap={false}>

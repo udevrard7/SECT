@@ -537,3 +537,39 @@ Stage Summary:
 - Palette émeraude/ambre + Inter conservée (différenciation des certificats maintenue)
 - Séparateurs horizontaux fins (goldLine) conservés entre sections pour la structure visuelle
 - PDFs ~20% plus légers (moins d'éléments graphiques à rendre)
+
+---
+Task ID: SECT-EPREUVE-PDF-STYLE-V4
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: 3 ajustements du PDF épreuve (demande Ulrich)
+
+1. Barème récapitulatif : retirer du Sujet, ne garder que sur le Corrigé
+   - Suppression <BaremeRecap questions={questions} /> du SujetDocument (ligne 1391)
+   - Conservé dans CorrigeDocument (inchangé)
+   - FeuilleReponses n'en avait pas (inchangé)
+
+2. Header (PDFHeader) : unique sur la 1ère page, pas sur toutes les pages
+   - Ajout prop `fixed = false` (défaut) au composant PDFHeader
+   - Spread conditionnel : `{...(fixed ? { fixed: true } : {})}` sur le <View>
+   - Les 3 appels <PDFHeader data={data} /> restent inchangés → header non-fixed par défaut → 1ère page uniquement
+   - Le footer reste fixed (pagination sur toutes les pages, inchangé)
+
+3. Pied de page : retirer la ligne "SECT · Épreuve générée via SECT — Plateforme d'évaluation IA"
+   - Suppression du <Text style={styles.footerEtabLine}> dans PDFFooter
+   - Suppression de la définition de style footerEtabLine (inutilisée)
+   - Le footer ne contient plus que : ligne gold + (CONFIDENTIEL | titre | Page N/M)
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès
+  * sujet 19634 bytes (vs 22787 en V3, -14% — sans BaremeRecap ni header répété)
+  * corrige 23298 bytes (vs 24763 en V3, -6% — sans header répété)
+  * feuille-reponses 16712 bytes (vs 18068 en V3, -8% — sans header répété ni ligne SECT)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Sujet : plus de barème récapitulatif (réservé au Corrigé)
+- Header (logo + établissement + UE + filière + niveau) : uniquement sur la 1ère page (plus de répétition sur les pages suivantes)
+- Footer : ligne "SECT · Épreuve générée via SECT" supprimée (plus que CONFIDENTIEL | titre | pagination)
+- PDFs encore plus légers (header non répété + ligne SECT supprimée)
