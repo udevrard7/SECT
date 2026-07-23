@@ -710,8 +710,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  // SECT-EPREUVE-PDF-ANONYME-1 : styles student* (studentInfoRow, studentField,
-  // studentLabel, studentLine) supprimés — StudentInfoFields retiré pour anonymat.
+  // Feuille de réponses — StudentInfoFields (anonymisé, ANONYME-2)
+  studentInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  studentField: {
+    flexDirection: 'column',
+    width: '48%',
+  },
+  studentLabel: {
+    fontSize: 10,
+    color: NAVY,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  studentLine: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#CBD5E0',
+    height: 20,
+  },
   // MCQ grid
   mcqHeaderRow: {
     flexDirection: 'row',
@@ -1136,8 +1155,36 @@ function BaremeRecap({ questions }: { questions: PDFQuestion[] }) {
 
 // ═══ Composant : Feuille de réponses ═══
 
-// SECT-EPREUVE-PDF-ANONYME-1 : StudentInfoFields supprimé pour préserver
-// l'anonymat des copies (champs Nom/Prénom/Matricule/Filière/Date/Salle retirés).
+// SECT-EPREUVE-PDF-ANONYME-2 : StudentInfoFields restauré en version anonymisée.
+// Seuls les champs contextuels (Matricule, Filière, Date, Salle) sont conservés.
+// Nom et Prénom sont retirés pour préserver l'anonymat de la copie lors de la
+// correction à l'aveugle. Le matricule permet d'identifier la copie après correction.
+function StudentInfoFields() {
+  return (
+    <View style={{ marginBottom: 12 }} wrap={false}>
+      <View style={styles.studentInfoRow}>
+        <View style={styles.studentField}>
+          <Text style={styles.studentLabel}>Matricule :</Text>
+          <View style={styles.studentLine} />
+        </View>
+        <View style={styles.studentField}>
+          <Text style={styles.studentLabel}>Filière / Groupe :</Text>
+          <View style={styles.studentLine} />
+        </View>
+      </View>
+      <View style={styles.studentInfoRow}>
+        <View style={styles.studentField}>
+          <Text style={styles.studentLabel}>Date :</Text>
+          <View style={styles.studentLine} />
+        </View>
+        <View style={styles.studentField}>
+          <Text style={styles.studentLabel}>Salle :</Text>
+          <View style={styles.studentLine} />
+        </View>
+      </View>
+    </View>
+  )
+}
 
 function MCQGrid({ questions, allQuestions }: { questions: PDFQuestion[]; allQuestions: PDFQuestion[] }) {
   if (questions.length === 0) {
@@ -1421,8 +1468,9 @@ function FeuilleReponsesDocument({ data }: { data: EpreuvePDFData }) {
           ) : null}
         </View>
 
-        {/* SECT-EPREUVE-PDF-ANONYME-1 : StudentInfoFields (Nom/Prénom/Matricule)
-            retiré pour préserver l'anonymat des copies (demande Ulrich). */}
+        {/* SECT-EPREUVE-PDF-ANONYME-2 : StudentInfoFields restauré en version anonymisée.
+            Seuls Matricule, Filière, Date, Salle (pas de Nom/Prénom) pour l'anonymat copie. */}
+        <StudentInfoFields />
 
         {/* Gold separator */}
         <View style={styles.goldLine} wrap={false} />
