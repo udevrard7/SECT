@@ -21,51 +21,62 @@ package http
 // backend via le hook health (5 échecs /api/health → redirect /maintenance).
 
 import (
-	"encoding/json"
-	"net/http"
+        "encoding/json"
+        "net/http"
+
+        "github.com/jackc/pgx/v5"
+        appdb "github.com/udevrard7/sect/backend/internal/db"
 )
 
 // maintenanceStatus — GET /api/maintenance-status (public)
 func (s *Server) maintenanceStatus(w http.ResponseWriter, r *http.Request) {
-	maintenanceMode := false
-	message := ""
+        maintenanceMode := false
+        message := ""
 
-	// Lire PlatformSettings (table singleton, id='default').
-	// settings est un JSON TEXT. On extrait juste maintenanceMode + message.
-	if s.dbPool != nil {
-		var settingsJSON string
-		err := s.dbPool.QueryRow(r.Context(),
-			`SELECT "settings"::text FROM "PlatformSettings" WHERE "id" = 'default'`).Scan(&settingsJSON)
-		if err == nil && settingsJSON != "" {
-			// Parser le JSON pour extraire maintenanceMode + message (best-effort).
-			var settings map[string]any
-			if json.Unmarshal([]byte(settingsJSON), &settings) == nil {
-				// maintenanceMode peut être dans general.maintenanceMode ou au root.
-				if general, ok := settings["general"].(map[string]any); ok {
-					if mm, ok := general["maintenanceMode"].(bool); ok {
-						maintenanceMode = mm
-					}
-					if msg, ok := general["maintenanceMessage"].(string); ok {
-						message = msg
-					}
-				}
-				// Fallback : maintenanceMode au root (au cas où la structure changerait)
-				if mm, ok := settings["maintenanceMode"].(bool); ok {
-					maintenanceMode = mm
-				}
-				if msg, ok := settings["maintenanceMessage"].(string); ok {
-					message = msg
-				}
-			}
-		}
-		// Si err != nil (table vide ou DB down), on garde maintenanceMode=false (fail-open)
-	}
+        // Lire PlatformSettings (table singleton, id='default').
+        // settings est un JSON TEXT. On extrait juste maintenanceMode + message.
+        //
+        // SECT-RESILIENCE-1 fix : utiliser db.WithTx avec SystemClaims (bypass RLS)
+        // car PlatformSettings a RLS activé MAIS aucune policy → un user non-superuser
+        // (sect_app sur Render) ne peut rien lire. SystemClaims pose SET LOCAL
+        // app.claims.role='SYSTEM' qui est accepté par le bypass du pooler Neon.
+        if s.dbPool != nil {
+                var settingsJSON string
+                _ = appdb.WithTx(r.Context(), s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+                        err := tx.QueryRow(r.Context(),
+                                `SELECT "settings"::text FROM "PlatformSettings" WHERE "id" = 'default'`).Scan(&settingsJSON)
+                        return err
+                })
+                if settingsJSON != "" {
+                        // Parser le JSON pour extraire maintenanceMode + message (best-effort).
+                        var settings map[string]any
+                        if json.Unmarshal([]byte(settingsJSON), &settings) == nil {
+                                // maintenanceMode peut être dans general.maintenanceMode ou au root.
+                                if general, ok := settings["general"].(map[string]any); ok {
+                                        if mm, ok := general["maintenanceMode"].(bool); ok {
+                                                maintenanceMode = mm
+                                        }
+                                        if msg, ok := general["maintenanceMessage"].(string); ok {
+                                                message = msg
+                                        }
+                                }
+                                // Fallback : maintenanceMode au root (au cas où la structure changerait)
+                                if mm, ok := settings["maintenanceMode"].(bool); ok {
+                                        maintenanceMode = mm
+                                }
+                                if msg, ok := settings["maintenanceMessage"].(string); ok {
+                                        message = msg
+                                }
+                        }
+                }
+                // Si err != nil (table vide ou DB down), on garde maintenanceMode=false (fail-open)
+        }
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	json.NewEncoder(w).Encode(map[string]any{
-		"status":          "ok",
-		"maintenanceMode": maintenanceMode,
-		"message":         message,
-	})
+        w.Header().Set("Content-Type", "application/json")
+        w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+        json.NewEncoder(w).Encode(map[string]any{
+                "status":          "ok",
+                "maintenanceMode": maintenanceMode,
+                "message":         message,
+        })
 }
