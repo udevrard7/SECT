@@ -14,6 +14,12 @@
  *   6. renderEpreuvePDF(data, type) → Buffer PDF (multi-page, B2B branding, watermark)
  *   7. Retourne le PDF avec Content-Type: application/pdf + Content-Disposition
  *
+ * FIX-V3-DEPLOY (2025) : corrections pour déploiement Vercel :
+ *   - @react-pdf/renderer ajouté à serverExternalPackages dans next.config.ts
+ *   - yoga-layout ajouté à serverExternalPackages (ESM-only, nécessite externalisation)
+ *   - Logging debug ajouté pour diagnostiquer les erreurs runtime sur Vercel
+ *   - Fallback robuste si /api/me ou /api/etablissements échouent
+ *
  * Sécurité : le token n'est jamais exposé côté client (route server-side).
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -37,9 +43,12 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logPrefix = '[epreuves/pdf]'
+
   try {
     const { id } = await params
     if (!id) {
+      console.warn(`${logPrefix} id manquant`)
       return NextResponse.json({ error: 'id requis' }, { status: 400 })
     }
 
@@ -48,20 +57,24 @@ export async function GET(
     const validTypes = ['sujet', 'corrige', 'feuille-reponses'] as const
     type EpreuvePdfType = typeof validTypes[number]
     if (!validTypes.includes(typeParam as EpreuvePdfType)) {
+      console.warn(`${logPrefix} type invalide: ${typeParam}`)
       return NextResponse.json(
         { error: `type invalide: ${typeParam}. Valeurs autorisées: sujet, corrige, feuille-reponses` },
         { status: 400 }
       )
     }
     const type = typeParam as EpreuvePdfType
+    console.log(`${logPrefix} Début génération PDF — id=${id}, type=${type}`)
 
     // 1. Lire le cookie access_token
     const accessToken = req.cookies.get('access_token')?.value
     if (!accessToken) {
+      console.warn(`${logPrefix} access_token cookie absent → 401`)
       return NextResponse.json({ error: 'authentication required' }, { status: 401 })
     }
 
     // 2. Fetch l'épreuve depuis le backend Go
+    console.log(`${logPrefix} Fetch epreuve ${id} depuis backend...`)
     const epreuveRes = await fetch(`${BACKEND_URL}/api/epreuves/${id}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -72,6 +85,7 @@ export async function GET(
 
     if (!epreuveRes.ok) {
       const errText = await epreuveRes.text().catch(() => 'erreur backend')
+      console.error(`${logPrefix} Backend epreuve ${id} → status ${epreuveRes.status}: ${errText.substring(0, 200)}`)
       return NextResponse.json(
         { error: `backend error: ${epreuveRes.status}`, detail: errText.substring(0, 200) },
         { status: epreuveRes.status }
@@ -81,17 +95,26 @@ export async function GET(
     const epreuveData = await epreuveRes.json()
     const epreuve = epreuveData.epreuve
     if (!epreuve) {
+      console.error(`${logPrefix} epreuve null dans la réponse backend`)
       return NextResponse.json({ error: 'epreuve introuvable' }, { status: 404 })
     }
+    console.log(`${logPrefix} Epreuve récupérée: "${epreuve.titre}" — ${epreuve.contenu?.questions?.length || 0} questions`)
 
     // 3. Fetch le user context (pour récupérer l'etablissementId)
-    const meRes = await fetch(`${BACKEND_URL}/api/me`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Cookie': `access_token=${accessToken}`,
-      },
-      cache: 'no-store',
-    })
+    console.log(`${logPrefix} Fetch /api/me pour etablissementId...`)
+    let meRes: Response
+    try {
+      meRes = await fetch(`${BACKEND_URL}/api/me`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Cookie': `access_token=${accessToken}`,
+        },
+        cache: 'no-store',
+      })
+    } catch (meErr) {
+      console.warn(`${logPrefix} /api/me fetch error (réseau): ${meErr instanceof Error ? meErr.message : 'unknown'}`)
+      meRes = new Response(JSON.stringify({ user: null }), { status: 503 })
+    }
 
     // Default etablissement info (B2C fallback)
     let etablissementInfo: EpreuvePDFData['etablissement'] = {
@@ -113,6 +136,7 @@ export async function GET(
 
       // 4. Si l'utilisateur a un etablissementId, fetch l'établissement
       if (user?.etablissementId) {
+        console.log(`${logPrefix} User etablissementId=${user.etablissementId}, fetch etablissement...`)
         try {
           const etabRes = await fetch(`${BACKEND_URL}/api/etablissements/${user.etablissementId}`, {
             headers: {
@@ -127,7 +151,10 @@ export async function GET(
             const etab = etabData.etablissement
             if (etab) {
               // Skip SVG logos — can't be rendered in PDF
-              const logo = etab.logo && !etab.logo.includes('image/svg+xml') ? etab.logo : null
+              // Skip data URIs that aren't PNG/JPEG/WebP (only image formats @react-pdf/renderer supports)
+              const logo = etab.logo && !etab.logo.includes('image/svg+xml')
+                ? etab.logo
+                : null
               etablissementInfo = {
                 nom: etab.nom || 'SECT',
                 logo,
@@ -140,12 +167,21 @@ export async function GET(
                 watermarkColor: etab.certWatermarkColor ?? '#1B3A5C',
                 watermarkPattern: etab.certWatermarkPattern ?? 'diamond',
               }
+              console.log(`${logPrefix} Etablissement B2B: "${etab.nom}" — type=${etab.type}, logo=${logo ? 'present' : 'absent'}`)
+            } else {
+              console.warn(`${logPrefix} etablissement null dans la réponse`)
             }
+          } else {
+            console.warn(`${logPrefix} Fetch etablissement ${user.etablissementId} → status ${etabRes.status}`)
           }
-        } catch {
-          // Fallback si fetch établissement échoue
+        } catch (etabErr) {
+          console.warn(`${logPrefix} Fetch etablissement error: ${etabErr instanceof Error ? etabErr.message : 'unknown'}`)
         }
+      } else {
+        console.log(`${logPrefix} Pas de etablissementId → B2C fallback (PERSONNEL)`)
       }
+    } else {
+      console.warn(`${logPrefix} /api/me → status ${meRes.status}, B2C fallback`)
     }
 
     // 5. Mapper vers EpreuvePDFData (V3)
@@ -178,8 +214,12 @@ export async function GET(
       etablissement: etablissementInfo,
     }
 
+    console.log(`${logPrefix} Données mappées: titre="${pdfData.titre}", niveau=${pdfData.niveau}, session=${pdfData.sessionExamen}, etabType=${pdfData.etablissement.type}, questions=${pdfData.contenu.questions.length}`)
+
     // 6. Générer le PDF
+    console.log(`${logPrefix} renderEpreuvePDF(data, "${type}") — début...`)
     const pdfBuffer = await renderEpreuvePDF(pdfData, type)
+    console.log(`${logPrefix} PDF généré — ${typeof pdfBuffer}, taille=${pdfBuffer?.length ?? 'N/A'} bytes`)
 
     // 7. Construire le filename selon le type
     const sanitizedTitre = sanitizeFilename(epreuve.titre || id)
@@ -191,6 +231,7 @@ export async function GET(
     const filename = filenameMap[type]
 
     // 8. Retourner le PDF
+    console.log(`${logPrefix} Retour PDF "${filename}" — OK`)
     return new NextResponse(pdfBuffer as unknown as BodyInit, {
       status: 200,
       headers: {
@@ -200,9 +241,13 @@ export async function GET(
       },
     })
   } catch (err) {
-    console.error('[epreuves/pdf] Error:', err)
+    console.error(`${logPrefix} ERREUR GÉNÉRATION PDF:`, err)
+    // Return detailed error info for debugging (Vercel logs will show this)
+    const errorDetail = err instanceof Error
+      ? `${err.message}\nStack: ${err.stack?.substring(0, 500) || 'N/A'}`
+      : String(err)
     return NextResponse.json(
-      { error: 'erreur génération PDF', detail: err instanceof Error ? err.message : 'unknown' },
+      { error: 'erreur génération PDF', detail: errorDetail },
       { status: 500 }
     )
   }
