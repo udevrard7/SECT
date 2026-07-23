@@ -989,11 +989,16 @@ function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: bool
           </Text>
         </View>
         <View style={styles.headerMetaSeparator} />
-        {/* UE */}
+        {/* UE — SECT-EPREUVE-PDF-UE-NAME : afficher le nom de l'UE au lieu du code (demande Ulrich).
+            Troncature à 25 caractères pour éviter de casser le layout (colonne flex:1 ~95px). */}
         <View style={styles.headerMetaItem}>
           <Text style={styles.headerMetaLabel}>UE</Text>
           <Text style={styles.headerMetaValue}>
-            {data.uniteEnseignement && data.uniteEnseignement.code ? data.uniteEnseignement.code : '—'}
+            {data.uniteEnseignement && data.uniteEnseignement.nom
+              ? (data.uniteEnseignement.nom.length > 25
+                ? data.uniteEnseignement.nom.slice(0, 25) + '…'
+                : data.uniteEnseignement.nom)
+              : '—'}
           </Text>
         </View>
         <View style={styles.headerMetaSeparator} />
