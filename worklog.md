@@ -573,3 +573,32 @@ Stage Summary:
 - Header (logo + établissement + UE + filière + niveau) : uniquement sur la 1ère page (plus de répétition sur les pages suivantes)
 - Footer : ligne "SECT · Épreuve générée via SECT" supprimée (plus que CONFIDENTIEL | titre | pagination)
 - PDFs encore plus légers (header non répété + ligne SECT supprimée)
+
+Task ID: SECT-README-EXPERT-ANALYSIS-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Analyse d'expert complète du système d'examen SECT (toutes fonctionnalités, options de révision, tests effectués) + mise à jour du README
+
+Work Log:
+- Exploration exhaustive du monorepo : router.go (1097 lignes, 222 routes, 40+ domaines), 13 workers, 16 fichiers domain, schéma DB
+- Requête stats réelles sur base Neon prod (via Go + pgx) :
+  * 71 tables (vs 63 annoncées), 30 enums (131 valeurs), 86 fonctions (84 SECURITY DEFINER)
+  * 173 policies RLS sur 67 tables, 39 triggers, 250 index, 130 FK, 553 CHECK, 71 PK, 7 UNIQUE
+  * Migration version 103 (dirty=false)
+  * Row counts : 20 users, 2 etab, 6 epreuves, 30 sessions, 597 reponses, 14 certificats, 7 plans
+- Deep dive exam-prep (révision) : ReviewItem SM-2 (computeSM2Quality 0-5, interval/easeFactor/nextReviewAt), Flashcard (highlight→IA), StudySession (planning), PracticeAttempt (génération async 202), QuestionBank (votes +1/-1, collaborative), Q&A RAG synchrone, HelpThread/HelpMessage (aide étudiant↔enseignant), Audio TTS (Voxtral/DashScope), Dashboard (lacunes par chapitre, stats SRS), 8 onglets frontend
+- Deep dive surveillance : fullscreen obligatoire + pénalité, capture écran 60s, photo identité, similarity worker (plagiat, seuil 0.85), SurveillanceHub WebSocket (events temps réel), SSE fallback, flag manuel, rapport fraude PDF, lockout
+- Deep dive AI : 10 providers (ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, MISTRAL, VOXTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS), capabilities (chat/tts/audio/transcription), ChatWithFailover (cooldown, maxConsecutiveFailures), ChatCompletionStream
+- Deep dive messagerie : 6 ConversationType, salons classe/promo, DM, IA privée, réactions, signalement (4 raisons/4 statuts), SSE stream + présence (heartbeat 45s), mute, clear, edit, soft delete
+- Deep dive SaaS : B2C Solo/Premium (GeniusPay Wave), B2B capitation (900 FCFA/etu/an, plancher 50), self-service (000067-000074), essai 14j, anti-abus, 7 StatutAbonnement, factures TVA PDF
+- Deep dive PDF : 6 générateurs @react-pdf/renderer (sujet, corrigé, feuille réponses, certificat, relevé, fiche notes, facture) avec branding B2B, watermark, multi-page
+- Deep dive notifications : dispatcher 4 canaux (in-app DB + SSE + Web Push VAPID + Email Resend/SMTP), préférences, centre alertes (5 types, 3 severités)
+- Inventaire tests : Vitest (routes, permissions), Playwright E2E (auth + facturation 8 scénarios), 0 fichier _test.go backend
+- Intégration des résultats LOADTEST-PROD-1 (7 paliers, 0 crash, capacité > 1000) dans le README
+- Vérification config prod (Render + Vercel) : SUBMIT_MAX_CONCURRENT=5, DB_MAX_CONNS=100, jitter 45s — tous par défaut code
+- README réécrit (~330 lignes) : 12 sections fonctionnalités détaillées, table API 40+ domaines, modèle de données par entité, section tests & qualité avec tableau de charge, évolutions récentes enrichies (LOADTEST-PROD-1 ajouté)
+
+Stage Summary:
+- README mis à jour avec chiffres DB RÉELS vérifiés sur Neon prod (71 tables, 30 enums, 173 RLS, 86 fonctions) — corrige les anciens chiffres (63/28/146/76)
+- Toutes les fonctionnalités documentées : gestion académique, évaluations, surveillance, exam-prep (deep dive), messagerie, SaaS B2B/B2C, notifications, PDF, dashboards, sécurité, performance, workers
+- Section tests intégrée avec le tableau de charge complet (LOADTEST-PROD-1) et la config prod vérifiée
+- Aucune modification de code, purement documentation — déploiement Vercel/Render déclenché mais sans impact fonctionnel (SECT-README-EXPERT-ANALYSIS-1: analyse d'expert complète + README refondu)
