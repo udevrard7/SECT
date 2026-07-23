@@ -677,3 +677,68 @@ Stage Summary:
 - Anonymat préservé : Nom et Prénom toujours absents (correction à l'aveugle possible)
 - Le matricule permet d'identifier la copie après correction (lien avec session SECT)
 - SignatureBlock reste supprimé (ANONYME-1, pas de réinsertion)
+
+---
+Task ID: SECT-EPREUVE-PDF-HEADER-V5
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Créer un en-tête style universitaire (3 colonnes) pour les 3 documents épreuves — B2B logo établissement / B2C logo SECT
+
+Contexte : Ulrich a fourni une image de référence (en-tête ISN) avec un layout 3 colonnes (logo | institution+devise | enseignant) + séparateur épais + métadonnées avec séparateurs verticaux + déco bas. Analyse VLM de l'image pour extraire le design system.
+
+Nouveau header PDFHeader (epreuve-pdf-react.tsx) :
+
+Structure (inspirée du modèle ISN) :
+1. Ligne 1 (3 colonnes, alignItems: center) :
+   - Colonne gauche (18%) : Logo
+     * B2B : data.etablissement.logo (base64 from backend)
+     * B2C : SECT_LOGO_PATH (public/sect-logo.png) — fallback quand logo etab est null
+     * Taille : 70×70px, objectFit: contain
+   - Colonne centre (47%) : Institution
+     * B2B : nom de l'établissement (data.etablissement.nom)
+     * B2C : "SECT — Plateforme d'évaluation IA"
+     * Localisation (ville, pays) si B2B
+     * Année universitaire (italic)
+   - Colonne droite (35%) : Enseignant
+     * Label "ENSEIGNANT" (small caps, tracking 1.5)
+     * Nom de l'enseignant (bold, emerald)
+     * Session examen si ≠ NORMALE (ambre)
+
+2. Séparateur principal : ligne horizontale épaisse (3px, émeraude)
+
+3. Ligne 2 : Métadonnées (5 items avec séparateurs verticaux ambre 1px)
+   - FILIÈRE | UE | NIVEAU | DURÉE | DATE
+   - Chaque item : label (small caps) + value (bold emerald)
+   - Séparateurs verticaux : 1px × 22px, couleur ambre
+
+4. Décoration bas : ligne fine (0.5px émeraude) + point central (5px ambre) + ligne fine
+
+B2B vs B2C (logique) :
+- B2B (type ≠ PERSONNEL) : logo établissement + nom établissement + ville/pays
+- B2C (type === PERSONNEL) : logo SECT (public/sect-logo.png) + "SECT — Plateforme d'évaluation IA" + pas de localisation
+- Constante SECT_LOGO_PATH ajoutée : path.join(process.cwd(), 'public', 'sect-logo.png')
+- Fallback : data.etablissement.logo || SECT_LOGO_PATH
+
+Styles (18 nouveaux styles header*) :
+- headerContainer, headerRow1, headerLogoCol, headerCenterCol, headerRightCol
+- headerLogo, headerInstName, headerInstLocation, headerInstYear
+- headerTeacherLabel, headerTeacherName, headerTeacherSession
+- headerMainSeparator, headerMetaRow, headerMetaItem, headerMetaLabel, headerMetaValue, headerMetaSeparator
+- headerBottomDecoration, headerBottomLine, headerBottomDot
+
+Anciens styles supprimés : headerRow, headerLeft, headerRight, etabName, etabLocation, academicYear, ueLabel, ueDetail, filiereLabel, niveauLabel, enseignantLabel
+
+Vérifications qualité :
+- Test local : 6/6 PDFs OK (3 types × 2 scénarios B2B/B2C)
+  * B2B : sujet 59KB, corrige 63KB, feuille 57KB (logo + header enrichi)
+  * B2C : sujet 59KB, corrige 62KB, feuille 56KB (logo SECT embarqué)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Header 3 colonnes style universitaire créé (logo | institution | enseignant)
+- B2B : logo + nom établissement + localisation
+- B2C : logo SECT + "SECT — Plateforme d'évaluation IA"
+- Métadonnées structurées (Filière | UE | Niveau | Durée | Date) avec séparateurs verticaux ambre
+- Décoration bas (ligne + point central) pour un rendu académique professionnel
+- Header sur 1ère page uniquement (non-fixed, conservé de V4)

@@ -36,6 +36,10 @@ import {
 } from '@react-pdf/renderer'
 import path from 'path'
 
+// SECT-EPREUVE-PDF-HEADER-V5 : logo SECT pour B2C (Prof Solo sans établissement).
+// Chemin absolu vers public/sect-logo.png — @react-pdf/renderer支持 les file paths.
+const SECT_LOGO_PATH = path.join(process.cwd(), 'public', 'sect-logo.png')
+
 // ═══ Fonts ═══
 
 const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts')
@@ -237,80 +241,134 @@ const styles = StyleSheet.create({
   // Les styles outerBorder/innerBorder ont été retirés des 3 documents.
   // On garde les définitions vides pour référence mais elles ne sont plus utilisées.
   // (Suppression complète évitée pour minimiser le diff et permettre un rollback facile.)
-  // Header (fixed on every page)
+  // SECT-EPREUVE-PDF-HEADER-V5 : header 3 colonnes (logo | institution | enseignant)
+  // + séparateur épais + métadonnées avec séparateurs verticaux + déco bas.
+  // Inspiré du modèle universitaire (ISN) fourni par Ulrich.
   headerContainer: {
     flexDirection: 'column',
     marginBottom: 10,
   },
-  headerRow: {
+  // Ligne 1 : 3 colonnes (logo | institution | enseignant)
+  headerRow1: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    minHeight: 55,
+    alignItems: 'center',
+    minHeight: 70,
   },
-  headerLeft: {
-    flexDirection: 'column',
-    maxWidth: 300,
-    alignItems: 'flex-start',
+  headerLogoCol: {
+    width: '18%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerRight: {
+  headerCenterCol: {
+    width: '47%',
     flexDirection: 'column',
-    maxWidth: 250,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    paddingLeft: 12,
+  },
+  headerRightCol: {
+    width: '35%',
+    flexDirection: 'column',
     alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   headerLogo: {
-    width: 90,
-    height: 50,
+    width: 70,
+    height: 70,
     objectFit: 'contain',
-    marginBottom: 3,
   },
-  etabName: {
-    fontSize: 14,
-    // SECT-EPREUVE-PDF-STYLE-V2 : Inter (sans-serif) au lieu de PlayfairDisplay
-    // (serif) pour se différencier des certificats.
+  headerInstName: {
+    fontSize: 13,
     fontFamily: 'Inter',
     color: NAVY,
     fontWeight: 'bold',
     marginBottom: 2,
     letterSpacing: 0.5,
   },
-  etabLocation: {
-    fontSize: 9,
+  headerInstLocation: {
+    fontSize: 8.5,
     color: TEXT_GRAY,
-    letterSpacing: 0.5,
     marginBottom: 1,
   },
-  academicYear: {
+  headerInstYear: {
     fontSize: 8,
     color: TEXT_GRAY,
     fontStyle: 'italic',
-    marginBottom: 1,
   },
-  ueLabel: {
+  headerTeacherLabel: {
+    fontSize: 7,
+    color: TEXT_GRAY,
+    fontWeight: 'bold',
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  headerTeacherName: {
     fontSize: 11,
     color: NAVY,
     fontWeight: 'bold',
     marginBottom: 1,
   },
-  ueDetail: {
-    fontSize: 9,
-    color: TEXT_GRAY,
-    marginBottom: 1,
+  headerTeacherSession: {
+    fontSize: 8,
+    color: GOLD,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
-  filiereLabel: {
-    fontSize: 9.5,
+  // Séparateur principal épais (entre ligne 1 et métadonnées)
+  headerMainSeparator: {
+    width: '100%',
+    height: 3,
+    backgroundColor: NAVY,
+    marginVertical: 8,
+  },
+  // Ligne 2 : métadonnées (Filière | UE | Niveau | Durée) avec séparateurs verticaux
+  headerMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  headerMetaItem: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerMetaLabel: {
+    fontSize: 6.5,
+    color: TEXT_GRAY,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  headerMetaValue: {
+    fontSize: 9,
     color: NAVY,
     fontWeight: 'bold',
-    marginBottom: 1,
+    textAlign: 'center',
   },
-  niveauLabel: {
-    fontSize: 9,
-    color: TEXT_GRAY,
-    marginBottom: 1,
+  headerMetaSeparator: {
+    width: 1,
+    height: 22,
+    backgroundColor: GOLD,
   },
-  enseignantLabel: {
-    fontSize: 8,
-    color: TEXT_GRAY,
+  // Décoration bas : ligne fine + point central ambre
+  headerBottomDecoration: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  headerBottomLine: {
+    flex: 1,
+    height: 0.5,
+    backgroundColor: NAVY,
+  },
+  headerBottomDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: GOLD,
+    marginHorizontal: 6,
   },
   // Gold separator line
   goldLine: {
@@ -832,57 +890,100 @@ function PDFWatermark({ data }: { data: EpreuvePDFData }) {
 
 // ═══ Composant : Header (logo + etab info | UE + filière) — fixed ═══
 
-// SECT-EPREUVE-PDF-STYLE-V4 : PDFHeader accepte une prop `fixed` (défaut false).
-// Quand fixed=false (défaut), le header n'apparaît que sur la 1ère page.
-// Le footer reste fixed=true (pagination sur toutes les pages).
+// SECT-EPREUVE-PDF-HEADER-V5 : header 3 colonnes (logo | institution | enseignant)
+// + séparateur épais + métadonnées avec séparateurs verticaux + déco bas.
+// B2B : logo + nom de l'établissement. B2C : logo SECT + nom de l'application.
+// Inspiré du modèle universitaire fourni par Ulrich.
 function PDFHeader({ data, fixed = false }: { data: EpreuvePDFData; fixed?: boolean }) {
   const etabLocation = [data.etablissement.ville, data.etablissement.pays].filter(Boolean).join(', ')
   const b2b = isB2B(data.etablissement)
 
+  // SECT-EPREUVE-PDF-HEADER-V5 : logo B2B = logo établissement, logo B2C = SECT logo.
+  const logoSrc = data.etablissement.logo || SECT_LOGO_PATH
+  // Nom affiché : B2B = nom établissement, B2C = "SECT — Plateforme d'évaluation IA"
+  const instName = b2b
+    ? data.etablissement.nom
+    : 'SECT — Plateforme d\'évaluation IA'
+
   return (
     <View style={styles.headerContainer} {...(fixed ? { fixed: true } : {})}>
-      <View style={styles.headerRow}>
-        {/* Left: Logo + Etablissement */}
-        <View style={styles.headerLeft}>
-          {data.etablissement.logo ? (
-            <PdfImage src={data.etablissement.logo} style={styles.headerLogo} alt="" />
-          ) : null}
-          <Text style={styles.etabName}>
-            {data.etablissement.nom}
-            {!b2b && !data.etablissement.logo ? ' — Plateforme SECT' : ''}
-          </Text>
-          {etabLocation ? <Text style={styles.etabLocation}>{etabLocation}</Text> : null}
-          <Text style={styles.academicYear}>Année universitaire : {getAcademicYear()}</Text>
+      {/* ═══ Ligne 1 : 3 colonnes (logo | institution | enseignant) ═══ */}
+      <View style={styles.headerRow1}>
+        {/* Colonne gauche : Logo */}
+        <View style={styles.headerLogoCol}>
+          <PdfImage src={logoSrc} style={styles.headerLogo} alt="" />
         </View>
 
-        {/* Right: UE + Filière + Niveau */}
-        <View style={styles.headerRight}>
-          {data.uniteEnseignement && (data.uniteEnseignement.code || data.uniteEnseignement.nom) ? (
-            <Text style={styles.ueLabel}>
-              UE : {data.uniteEnseignement.code}{data.uniteEnseignement.code && data.uniteEnseignement.nom ? ' — ' : ''}{data.uniteEnseignement.nom}
-            </Text>
-          ) : null}
-          {data.filiere && data.filiere.nom ? (
-            <Text style={styles.filiereLabel}>
-              Filière : {data.filiere.nom}{data.filiere.code ? ` (${data.filiere.code})` : ''}
-            </Text>
-          ) : null}
-          {data.niveau ? (
-            <Text style={styles.niveauLabel}>
-              Niveau : {getNiveauLabel(data.niveau)}
-            </Text>
+        {/* Colonne centre : Institution + localisation + année */}
+        <View style={styles.headerCenterCol}>
+          <Text style={styles.headerInstName}>{instName}</Text>
+          {etabLocation ? <Text style={styles.headerInstLocation}>{etabLocation}</Text> : null}
+          <Text style={styles.headerInstYear}>Année universitaire : {getAcademicYear()}</Text>
+        </View>
+
+        {/* Colonne droite : Enseignant + session */}
+        <View style={styles.headerRightCol}>
+          {data.enseignant && data.enseignant.name ? (
+            <>
+              <Text style={styles.headerTeacherLabel}>ENSEIGNANT</Text>
+              <Text style={styles.headerTeacherName}>{data.enseignant.name}</Text>
+            </>
           ) : null}
           {data.sessionExamen && data.sessionExamen !== 'NORMALE' ? (
-            <Text style={{ fontSize: 9, color: GOLD, fontWeight: 'bold' }}>
-              {getSessionLabel(data.sessionExamen)}
-            </Text>
-          ) : null}
-          {data.enseignant && data.enseignant.name ? (
-            <Text style={styles.enseignantLabel}>
-              Enseignant : {data.enseignant.name}
-            </Text>
+            <Text style={styles.headerTeacherSession}>{getSessionLabel(data.sessionExamen)}</Text>
           ) : null}
         </View>
+      </View>
+
+      {/* ═══ Séparateur principal épais ═══ */}
+      <View style={styles.headerMainSeparator} />
+
+      {/* ═══ Ligne 2 : Métadonnées (Filière | UE | Niveau | Durée) ═══ */}
+      <View style={styles.headerMetaRow}>
+        {/* Filière */}
+        <View style={styles.headerMetaItem}>
+          <Text style={styles.headerMetaLabel}>FILIÈRE</Text>
+          <Text style={styles.headerMetaValue}>
+            {data.filiere && data.filiere.nom ? data.filiere.nom : '—'}
+          </Text>
+        </View>
+        <View style={styles.headerMetaSeparator} />
+        {/* UE */}
+        <View style={styles.headerMetaItem}>
+          <Text style={styles.headerMetaLabel}>UE</Text>
+          <Text style={styles.headerMetaValue}>
+            {data.uniteEnseignement && data.uniteEnseignement.code ? data.uniteEnseignement.code : '—'}
+          </Text>
+        </View>
+        <View style={styles.headerMetaSeparator} />
+        {/* Niveau */}
+        <View style={styles.headerMetaItem}>
+          <Text style={styles.headerMetaLabel}>NIVEAU</Text>
+          <Text style={styles.headerMetaValue}>
+            {data.niveau ? data.niveau : '—'}
+          </Text>
+        </View>
+        <View style={styles.headerMetaSeparator} />
+        {/* Durée */}
+        <View style={styles.headerMetaItem}>
+          <Text style={styles.headerMetaLabel}>DURÉE</Text>
+          <Text style={styles.headerMetaValue}>
+            {data.duree ? formatDuration(data.duree) : '—'}
+          </Text>
+        </View>
+        <View style={styles.headerMetaSeparator} />
+        {/* Date */}
+        <View style={styles.headerMetaItem}>
+          <Text style={styles.headerMetaLabel}>DATE</Text>
+          <Text style={styles.headerMetaValue}>{formatDate(data.dateDebut)}</Text>
+        </View>
+      </View>
+
+      {/* ═══ Décoration bas : ligne + point central + ligne ═══ */}
+      <View style={styles.headerBottomDecoration}>
+        <View style={styles.headerBottomLine} />
+        <View style={styles.headerBottomDot} />
+        <View style={styles.headerBottomLine} />
       </View>
     </View>
   )
