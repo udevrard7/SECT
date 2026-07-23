@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: true,
-  serverExternalPackages: ['unpdf', 'pdfjs-dist', 'mammoth'],
+  serverExternalPackages: ['unpdf', 'pdfjs-dist', 'mammoth', '@react-pdf/renderer', 'yoga-layout'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com' },
