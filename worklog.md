@@ -602,3 +602,42 @@ Stage Summary:
 - Toutes les fonctionnalités documentées : gestion académique, évaluations, surveillance, exam-prep (deep dive), messagerie, SaaS B2B/B2C, notifications, PDF, dashboards, sécurité, performance, workers
 - Section tests intégrée avec le tableau de charge complet (LOADTEST-PROD-1) et la config prod vérifiée
 - Aucune modification de code, purement documentation — déploiement Vercel/Render déclenché mais sans impact fonctionnel (SECT-README-EXPERT-ANALYSIS-1: analyse d'expert complète + README refondu)
+
+---
+Task ID: SECT-EPREUVE-PDF-ANONYME-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Feuille de réponses — supprimer les champs Nom/Prénom et le bloc signature pour préserver l'anonymat des copies
+
+Corrections frontend (epreuve-pdf-react.tsx) :
+
+1. FeuilleReponsesDocument : suppression des 2 appels de composants
+   - <StudentInfoFields /> retiré (champs Nom, Prénom, Matricule, Filière/Groupe, Date, Salle)
+   - <SignatureBlock /> retiré (blocs "Signature de l'étudiant" + "Visa de l'enseignant")
+
+2. Suppression des définitions de composants (inutilisés après retrait des appels)
+   - function StudentInfoFields() (35 lignes)
+   - function SignatureBlock() (14 lignes)
+
+3. Suppression des styles associés (inutilisés)
+   - studentInfoRow, studentField, studentLabel, studentLine
+   - signatureContainer, signatureBlock, signatureLabel, signatureLine, signatureDateLabel
+
+Résultat : la feuille de réponses ne contient plus aucun champ d'identification étudiant.
+L'anonymat de la copie est préservé : seuls le titre de l'épreuve, la grille QCM/QCU,
+l'espace pour les questions ouvertes et les notes de code apparaissent. L'identification
+de l'étudiant se fera via la plateforme SECT (session passation), pas sur le papier.
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès
+  * sujet 17440 bytes (inchangé)
+  * corrige 21915 bytes (inchangé)
+  * feuille-reponses 13850 bytes (vs 16712 avant, -17% — sans champsNom/Prénom ni signatures)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Feuille de réponses anonymisée : plus de champs Nom/Prénom/Matricule ni bloc signature
+- Anonymat de la copie préservé sur le papier (identification via session SECT)
+- Sujet et Corrigé inchangés (n'avaient pas ces éléments)
+- Code nettoyé : composants et styles inutilisés supprimés (~50 lignes retirées)
