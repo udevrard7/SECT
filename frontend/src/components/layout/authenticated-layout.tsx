@@ -13,6 +13,7 @@ import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
 import { getPageIdFromSlug, PAGE_ALLOWED_ROLES, getEffectiveRole } from '@/lib/routes'
 import { useSessionKeepAlive } from '@/hooks/use-session-keepalive'
+import { useBackendHealth } from '@/hooks/use-backend-health'
 import { Loader2 } from 'lucide-react'
 
 export function AuthenticatedLayout({ slug }: { slug: string[] }) {
@@ -31,6 +32,12 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   // l'inactivité (access token 15 min expiré sans refresh) et rend la session
   // résiliente aux erreurs réseau transitoires (cold start Render).
   useSessionKeepAlive()
+
+  // SECT-RESILIENCE-1 : détection de panne backend + mode maintenance.
+  // Si le backend Render est down (5 échecs /api/health consécutifs) ou si
+  // l'admin a activé maintenanceMode, redirige vers /maintenance pour éviter
+  // la page blanche / les loaders infinis.
+  useBackendHealth()
 
   // Hydrater la session au montage si pas déjà authentifié
   useEffect(() => {
