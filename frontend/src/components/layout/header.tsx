@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SidebarControl } from '@/components/layout/sidebar-control'
 import { NotificationBell } from '@/components/layout/notification-bell'
+import { InstallButton } from '@/components/layout/install-button'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { ThemeToggle } from '@/components/ds'
 import { useAuthStore } from '@/stores/auth-store'
@@ -246,6 +247,9 @@ export function AppHeader() {
 
           {/* Theme toggle */}
           <ThemeToggle />
+
+          {/* Installer SECT (PWA) — visible uniquement si le navigateur permet l'installation */}
+          <InstallButton />
 
           {/* Notifications — composant réel connecté aux APIs /api/alertes & /api/notifications/admin */}
           <NotificationBell className="h-9 w-9 rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" />
