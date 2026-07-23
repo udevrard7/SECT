@@ -504,3 +504,36 @@ Stage Summary:
 - 3 différenciateurs visuels majeurs : couleur (émeraude vs navy), police (Inter sans-serif vs PlayfairDisplay serif), bordure (bandeau+barre vs double rectangle)
 - Les 3 documents (sujet/corrige/feuille-reponses) partagent ce nouveau style
 - Aucune régression : test local 3/3 OK, tsc 0 erreur, eslint 0 erreur
+
+---
+Task ID: SECT-EPREUVE-PDF-STYLE-V3
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Retirer les bordures — style "document universitaire épuré" (suite à demande Ulrich)
+
+Contexte : la V2 (SECT-EPREUVE-PDF-STYLE-V2) avait ajouté un bandeau supérieur émeraude + barre latérale ambre. Ulrich veut un document SANS bordure, type document universitaire classique.
+
+Corrections frontend (epreuve-pdf-react.tsx) :
+- Suppression des 3 paires <View fixed style={styles.outerBorder} /> + <View fixed style={styles.innerBorder} /> dans SujetDocument, CorrigeDocument, FeuilleReponsesDocument
+- Suppression des définitions de styles outerBorder et innerBorder (remplacées par un commentaire de référence)
+- Mise à jour du commentaire d'en-tête : nouveau design system "Universitaire Épuré"
+  * AUCUNE bordure de page (page blanche)
+  * Palette émeraude/ambre + Inter conservée (V2)
+  * Séparateurs : fines lignes horizontales (goldLine) entre sections
+  * Style universitaire classique
+
+Approche : suppression ciblée des éléments de bordure uniquement. Le reste du design (palette, fonts, header, footer, questions, watermark, barème recap) est conservé. Diff minimal, risque minimal.
+
+Vérifications qualité :
+- Test local : 3/3 PDFs générés avec succès
+  * sujet 22787 bytes (vs 28132 en V2, -19% — plus léger sans bordures)
+  * corrige 24763 bytes (vs 32531 en V2, -24%)
+  * feuille-reponses 18068 bytes (vs 19851 en V2, -9%)
+- tsc --noEmit : 0 erreur
+- eslint : 0 erreur 0 warning
+- Pas de modification backend
+
+Stage Summary:
+- Bordures supprimées : les 3 documents (sujet/corrige/feuille-reponses) sont maintenant en page blanche épurée, style universitaire classique
+- Palette émeraude/ambre + Inter conservée (différenciation des certificats maintenue)
+- Séparateurs horizontaux fins (goldLine) conservés entre sections pour la structure visuelle
+- PDFs ~20% plus légers (moins d'éléments graphiques à rendre)
