@@ -1280,3 +1280,45 @@ Stage Summary:
 - Roadmap à jour avec statuts réels (Phase A+B+C code livré)
 - Prochaine étape : sélection 5 établissements pilotes + achat certificats signing
 - Aucun impact production (desktop/ isolé)
+
+---
+Task ID: SECT-PWA-STORE-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Packaging PWA pour Microsoft Store (0 €, bypass SmartScreen)
+
+Work Log:
+- Constat utilisateur : chercher solution 0 coût pour distribution Windows desktop
+- Analyse des options :
+  * Self-signed Windows : ❌ FAUX — SmartScreen pire que non signé (rouge au lieu de bleu)
+  * Ad-hoc macOS : ⚠️ Partiel — permet dev mais pas distribution (Gatekeeper bloque)
+  * Azure Trusted Signing : gratuit preview (mais demande d'accès, délai)
+  * SignPath Foundation : gratuit OSS (mais validation 1-2 semaines)
+  * Microsoft Store PWA : gratuit, 0 dev, bypass total SmartScreen ← CHOISI
+- Validation PWA Store compatibility : 11/12 critères ✅
+  (seul "name 38 chars" non bloquant — le nom Store est défini dans Partner Center)
+- Création du dossier windows-store/ :
+  * README.md : guide complet étape par étape (Partner Center → soumission → certification)
+  * pwabuilder-config.json : config PWA Builder (package ID fr.ftci.sect, version 1.0.0.0)
+  * store-listing.json : listing Store bilingue FR+EN (description, keywords, age rating)
+  * scripts/generate-assets.sh : génère 6 icônes Store depuis favicon.png (300x300, 150x150,
+    44x44, 310x310, 310x150, 512x512) via Python PIL ✅ exécuté
+  * scripts/generate-package.sh : génère MSIX via PWA Builder CLI (npx @pwabuilder/pwa-install)
+    + fallback instructions pour pwabuilder.com (web)
+  * assets/ : 6 icônes générées + dossier screenshots/ (à remplir manuellement)
+  * .gitignore : packages/ (MSIX générés non commités)
+- Avantages clés de la solution Store PWA :
+  * 0 € (compte Partner Center gratuit pour apps gratuites)
+  * 0 ligne de code (PWA existante déjà Store-ready)
+  * Bypass total SmartScreen (le Store valide + signe l'app)
+  * Auto-update natif via le Store
+  * Découvrable dans le Store (recherche "éducation")
+  * Installation en 1 clic
+
+Stage Summary:
+- Solution 0 € pour distribution Windows desktop livrée
+- Guide complet 7 étapes : assets → screenshots → MSIX → Partner Center → soumission → certification
+- 6 icônes Store générées depuis favicon SECT
+- Store listing bilingue FR+EN préparé (description, keywords, age rating 13+)
+- Scripts de génération automatisés (CLI + fallback web)
+- Aucun impact production (windows-store/ isolé)
+- Prochaine étape utilisateur : créer compte Partner Center + capturer screenshots

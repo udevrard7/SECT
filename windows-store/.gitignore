@@ -1,0 +1,10 @@
+# SECT Windows Store — .gitignore
+
+# Packages MSIX générés (ne pas committer — trop volumineux)
+packages/
+
+# Screenshots temporaires
+assets/screenshots/*.tmp
+
+# Cache PWA Builder
+.pwabuilder-cache/
