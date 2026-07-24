@@ -19,7 +19,7 @@
 
 // SECT-PWA-AUDIT-1 : bump de version pour forcer l'invalidation du cache
 // après tous les fixes (notifications, alertes, affectations, annee-academique).
-const CACHE_VERSION = 'sect-v5'
+const CACHE_VERSION = 'sect-v6'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
@@ -326,3 +326,21 @@ function openOutboxDB() {
     req.onerror = () => reject(req.error)
   })
 }
+
+// ─── PERIODIC SYNC : tâches périodiques en arrière-plan ───
+// SECT-PWA-MANIFEST-FIX-3 : ajout du handler periodicsync pour PWA Builder.
+// Sert à vérifier périodiquement les mises à jour / notifications en arrière-plan.
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'sect-refresh') {
+    event.waitUntil(
+      caches.open(RUNTIME_CACHE).then((cache) => {
+        // Rafraîchir les pages en cache
+        return cache.keys().then((keys) => {
+          return Promise.allSettled(
+            keys.map((key) => cache.add(key).catch(() => {}))
+          )
+        })
+      })
+    )
+  }
+})
