@@ -38,7 +38,7 @@ homepage: https://sect.ftci.fr
 license: MIT
 depends:
   - libgtk-3-0
-  - libwebkit2gtk-4.1-0
+  - libwebkit2gtk-4.0-0
 files:
   ${BINARY}: /usr/bin/sect-desktop
   ${PROJECT_DIR}/build/linux/sect.desktop: /usr/share/applications/sect-desktop.desktop
