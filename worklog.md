@@ -1120,3 +1120,48 @@ Stage Summary:
 - Phase pilote ajoutée : validation par 5 établissements avant release publique
 - Gouvernance + matrice de décisions = garde-fous contre l'over-engineering
 - Aucune ligne de code Wails — purement documentation, prêt pour validation comité
+
+---
+Task ID: SECT-DESKTOP-PHASE-A-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Phase A — Initialisation dossier desktop/ + Wails + démo webview
+
+Work Log:
+- Installation Wails CLI v2.13.0 (go install github.com/wailsapp/wails/v2/cmd/wails@latest)
+- wails doctor : diagnostic OK (Debian 13, Go 1.25 toolchain, npm 11.16, gcc 14.2)
+  Note : libgtk-3-dev + libwebkit2gtk-4.1-dev non installés sur ce sandbox headless
+  (attendu — le build Go passe quand même, le link webview se ferait au runtime sur poste desktop)
+- Structure desktop/ créée :
+  * main.go (point d'entrée Wails : Title "SECT", 1280x800, min 1024x600, embed frontend/dist)
+  * app.go (Struct App + 3 fonctions natives Phase A : GetAppVersion, GetBackendURL, IsDesktop)
+  * wails.json (config : productName "SECT Desktop", version 0.1.0, companyName FTCI)
+  * go.mod (module github.com/udevrard7/sect/desktop, indépendant de backend/go.mod)
+  * go.sum (83 lignes, 16 deps wails résolues)
+  * frontend/dist/index.html (webview iframe chargeant https://sect-app.vercel.app + écran
+    chargement animé + bridge window.go.sect.* detection)
+  * frontend/package.json + vite.config.ts (config Vite minimale)
+  * Makefile (deps, dev, build, vet, tidy, test, build-windows/macos/linux)
+  * .gitignore (binaires, node_modules, certificats, build artifacts)
+  * README.md (démarrage rapide, structure, état Phase A, fonctions exposées)
+  * internal/{updater,printer,notifier,auth}/.gitkeep (Phase B)
+  * build/{windows,darwin,linux}/.gitkeep (Phase B)
+  * test/{unit,e2e,manual}/.gitkeep (Phase B)
+  * scripts/.gitkeep (Phase B)
+- .gitignore racine mis à jour (desktop/bin/, frontend/node_modules/, etc.)
+- Tests qualité :
+  * go mod tidy : OK (83 lignes go.sum, deps wails résolues)
+  * go vet ./... : 0 erreur ✅
+  * go build : binaire 5.5 Mo généré ✅ (le link webview nécessitera libwebkit au runtime)
+- Architecture respectée :
+  * Module Go indépendant (pas d'import de backend/) — ADR-0003 respecté
+  * Thin wrapper (webview charge SECT, aucune logique métier) — ADR-0003 respecté
+  * 3 fonctions natives Phase A (GetAppVersion, GetBackendURL, IsDesktop) — Phase B pour le reste
+  * URL backend : https://sect-app.vercel.app (configurable dans app.go)
+
+Stage Summary:
+- Phase A livrée : structure desktop/ complète + Wails installé + code compilable
+- Binaire généré (5.5 Mo) — validé par go vet + go build
+- Démo webview (GUI) nécessite un poste desktop (ce sandbox est headless)
+- Aucune logique métier dupliquée (thin wrapper pur)
+- Aucune modification backend/frontend (architecture intacte)
+- Prêt pour Phase B : ajouter PrintPDF, ShowNotification, CheckForUpdates, auto-update, signing

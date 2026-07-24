@@ -98,3 +98,15 @@ test
 .cache/
 *.tmp
 *.bak
+
+# SECT Desktop (Wails)
+desktop/bin/
+desktop/frontend/node_modules/
+desktop/frontend/dist/assets/
+desktop/frontend/wailsjs/
+desktop/frontend/src/bindings.ts
+desktop/vendor/
+desktop/*.exe
+desktop/*.app
+desktop/*.dmg
+desktop/*.AppImage

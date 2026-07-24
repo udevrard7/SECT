@@ -1,0 +1,22 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "SECT Desktop",
+  "outputfilename": "sect-desktop",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Ulrich EVRARD",
+    "email": "ulrichdouh@gmail.com"
+  },
+  "info": {
+    "companyName": "FTCI",
+    "productName": "SECT Desktop",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © 2026 FTCI",
+    "comments": "Système d'Évaluation Casse-Tête — Application Desktop"
+  },
+  "wailsjsdir": "./frontend/src",
+  "version": "0.1.0"
+}
