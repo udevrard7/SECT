@@ -1249,3 +1249,34 @@ Stage Summary:
 - Auto-update silencieux : placeholder Phase B, complet en Phase B tardive
 - Démo GUI : nécessite poste desktop avec libwebkit2gtk
 - Aucun impact production (desktop/ isolé du backend/frontend)
+
+---
+Task ID: SECT-DESKTOP-PHASE-B-CI-FIX
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Fix CI GitHub Actions Build Desktop (3 plateformes) + mettre à jour roadmap
+
+Work Log:
+- Constat : workflow Build Desktop échouait sur 3 plateformes après Phase B+C
+- Fix 1 (commit ff1b494) : Vite build — index.html était dans frontend/dist/ au lieu
+  de frontend/ (point d'entrée Vite standard). Déplacement + frontend/dist/.gitkeep
+- Fix 2 (commit 1363f91) : 2 erreurs résiduelles
+  * Windows : go-toast v2.0.3 utilise le champ 'Body' (pas 'Message')
+    → notifier_windows.go corrigé
+  * Linux : Ubuntu 24.04 fournit libwebkit2gtk-4.1-dev mais Wails v2.13 nécessite 4.0
+    → workflows utilisent ubuntu-22.04 + libwebkit2gtk-4.0-dev
+    → package-linux.sh : dépendance 4.1-0 → 4.0-0
+- Validation CI : Build Desktop réussit sur les 3 plateformes ✅
+  * Windows (windows-latest) : success
+  * macOS (macos-latest, darwin/universal) : success
+  * Linux (ubuntu-22.04) : success
+- Mise à jour docs/desktop/10-roadmap.md :
+  * Phase A marquée ✅ LIVRÉE
+  * Phase B marquée ✅ Code livré (pilotes en attente)
+  * Phase C marquée ✅ Fonctions anticipées
+  * Table releases prévues mis à jour avec statuts
+
+Stage Summary:
+- Pipeline CI/CD Build Desktop 100% fonctionnel (3 plateformes)
+- Roadmap à jour avec statuts réels (Phase A+B+C code livré)
+- Prochaine étape : sélection 5 établissements pilotes + achat certificats signing
+- Aucun impact production (desktop/ isolé)
