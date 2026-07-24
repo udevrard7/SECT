@@ -8,3 +8,7 @@ assets/screenshots/*.tmp
 
 # Cache PWA Builder
 .pwabuilder-cache/
+
+# MSIX staging (généré par generate-msix.py)
+msix/staging/
+msix/packages/

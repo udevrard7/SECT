@@ -1357,3 +1357,41 @@ Stage Summary:
   * Store listing bilingue
   * Scripts de génération MSIX
   * Guide complet 7 étapes
+
+---
+Task ID: SECT-PWA-MSIX-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Génération MSIX autonome (alternative MakeAppx à pwabuilder.com)
+
+Work Log:
+- Constat : @pwabuilder/cli ne génère que des templates, pas de MSIX. L'API web
+  pwabuilder.com n'est pas scriptable (405 sur POST). L'outil web reste utilisable
+  manuellement mais n'est pas automatisable en CI/CD.
+- Solution : génération MSIX autonome avec MakeAppx (Windows SDK) + scripts locaux
+- Création du dossier windows-store/msix/ :
+  * AppxManifest.xml : manifest MSIX complet (Identity fr.ftci.sect v1.0.0.0,
+    DisplayName, VisualElements, Capabilities internetClient+webcam+microphone,
+    TargetDeviceFamily Windows.Desktop 10.0.19041.0+)
+  * generate-msix.py : prépare staging/ (copie manifest + 6 icônes + génère
+    AppInfo.json + index.html redirection + webview-config.json). Marche sur
+    Linux/macOS/Windows. ✅ exécuté — 10 fichiers générés (268 KB)
+  * make-msix.ps1 : script PowerShell qui trouve MakeAppx.exe (Windows SDK)
+    et package staging/ en .msix. Messages d'erreur clairs si SDK manquant.
+  * README.md : documentation complète (2 méthodes, structure, détails techniques,
+    soumission Store, mises à jour, comparaison MakeAppx vs pwabuilder.com)
+- Structure staging/ générée et validée :
+  * AppxManifest.xml (2.8 KB)
+  * AppInfo.json (260 bytes) — metadata app
+  * index.html (1 KB) — redirection vers https://sect-app.vercel.app/dashboard
+  * webview-config.json (167 bytes) — config Edge WebView2
+  * assets/ — 6 icônes MSIX (store-logo, square150, square44, square310, wide310, icon-512)
+- Architecture : thin wrapper PWA (aucun code métier embarqué, conformément à ADR-0003)
+- .gitignore mis à jour : msix/staging/ et msix/packages/ (générés, non commités)
+
+Stage Summary:
+- Génération MSIX 100% autonome, reproductible, versionnée dans le repo
+- 2 méthodes documentées : MakeAppx (local, production) + pwabuilder.com (web, découverte)
+- Script Python multi-plateforme (prépare staging/) + script PowerShell (packaging final)
+- Structure staging/ validée (10 fichiers, 268 KB)
+- Prochaine étape utilisateur : sur Windows, lancer make-msix.ps1 pour générer le .msix
+  → soumettre dans Partner Center
