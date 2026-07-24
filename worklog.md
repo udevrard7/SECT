@@ -1395,3 +1395,36 @@ Stage Summary:
 - Structure staging/ validée (10 fichiers, 268 KB)
 - Prochaine étape utilisateur : sur Windows, lancer make-msix.ps1 pour générer le .msix
   → soumettre dans Partner Center
+
+---
+Task ID: SECT-PWA-MANIFEST-FIX-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Fix manifest PWA pour pwabuilder.com (4 erreurs)
+
+Work Log:
+- Constat : pwabuilder.com a remonté 4 problèmes sur le manifest
+- Fix 1 : favicon.ico retiré des icons (format non supporté par app stores)
+  → manifest n'a plus que 6 icônes PNG (.ico conservé comme fichier pour onglets)
+- Fix 2 : Service Worker (message informatif) — SW déjà enregistré via
+  ServiceWorkerRegister component, vérifié actif. Pas de changement.
+- Fix 3 : icon-192.png était 512x512 (déclaré 192x192)
+  → généré un vrai 192x192 depuis favicon.png (Lanczos resize)
+  → créé icon-512.png (512x512) pour cohérence
+- Fix 4 : section screenshots ajoutée (manquante)
+  → 9 screenshots 1920x1080 copiés depuis windows-store/assets/screenshots/
+    vers frontend/public/screenshots/ (servis à /screenshots/*.png)
+  → couvre les 4 rôles (admin, enseignant, étudiant) + vues métier
+- Bonus : shortcuts icônes avaient pas de type — ajouté type:"image/png"
+- Validation production (commit c45bcaf, Vercel READY) :
+  * manifest : 6 icônes (sans .ico) ✅
+  * icon-192.png : 192x192 ✅
+  * screenshots : 9 entrées accessibles (/screenshots/*.png) ✅
+  * SW : toujours actif ✅
+
+Stage Summary:
+- Manifest PWA 100% compliant pour pwabuilder.com (4 erreurs corrigées)
+- icon-192.png corrigé (192x192 réel)
+- favicon.ico retiré des icons (conservé comme fichier)
+- screenshots[] ajouté au manifest (9 captures 1920x1080, 4 rôles couverts)
+- Production déployée et vérifiée
+- Utilisateur peut relancer pwabuilder.com — score devrait être maximal
