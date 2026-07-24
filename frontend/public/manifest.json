@@ -9,7 +9,7 @@
   "display_override": ["window-controls-overlay", "minimal-ui", "standalone", "browser"],
   "orientation": "portrait-primary",
   "background_color": "#F0F2F5",
-  "theme_color": "#84CC16",
+  "theme_color": "#4F46E5",
   "categories": ["education", "productivity", "business"],
   "lang": "fr-FR",
   "dir": "ltr",
@@ -132,5 +132,40 @@
       "url": "/mes-resultats",
       "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" }]
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"]
+        }
+      ]
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "/dashboard",
+      "accept": {
+        "application/pdf": [".pdf"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+        "text/plain": [".txt"]
+      }
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+sect",
+      "url": "/dashboard?source=%s"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
 }
