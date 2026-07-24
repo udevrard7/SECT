@@ -1,10 +1,10 @@
 {
   "appName": "SECT",
   "appDisplayName": "SECT — Système d'Évaluation Casse-Tête",
-  "publisher": "FTCI",
+  "publisher": "Freelance Technologies CI",
   "publisherId": "CN=FTCI",
   "packageId": "fr.ftci.sect",
-  "version": "1.0.0.0",
+  "version": "1.0.1",
   "pwaUrl": "https://sect-app.vercel.app",
   "manifestUrl": "https://sect-app.vercel.app/manifest.json",
   "startUrl": "/dashboard",
