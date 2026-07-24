@@ -15,38 +15,102 @@
   "dir": "ltr",
   "prefer_related_applications": false,
   "icons": [
-    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" },
     { "src": "/favicon-16x16.png", "sizes": "16x16", "type": "image/png" },
     { "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/dashboard-admin.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Tableau de bord administrateur — vue d'ensemble SaaS"
+    },
+    {
+      "src": "/screenshots/monitoring.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Monitoring système — santé des services en temps réel"
+    },
+    {
+      "src": "/screenshots/dashboard-enseignant.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Espace enseignant — gestion des épreuves"
+    },
+    {
+      "src": "/screenshots/epreuves.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Création d'épreuves — QCU, QCM, questions à réponse courte"
+    },
+    {
+      "src": "/screenshots/correction.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Correction automatique par IA en moins de 2 minutes"
+    },
+    {
+      "src": "/screenshots/surveillance.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Surveillance anti-fraude — détection temps réel"
+    },
+    {
+      "src": "/screenshots/dashboard-etudiant.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Espace étudiant — tableau de bord personnalisé"
+    },
+    {
+      "src": "/screenshots/exam-prep.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Module de révision — répétition espacée SM-2"
+    },
+    {
+      "src": "/screenshots/mes-epreuves.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Mes épreuves — accès aux examens en cours"
+    }
   ],
   "shortcuts": [
     {
       "name": "Tableau de bord",
       "short_name": "Dashboard",
       "url": "/dashboard",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" }]
     },
     {
       "name": "Mes épreuves",
       "short_name": "Épreuves",
       "url": "/mes-epreuves",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" }]
     },
     {
       "name": "Correction",
       "short_name": "Correction",
       "url": "/correction",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" }]
     },
     {
       "name": "Mes résultats",
       "short_name": "Résultats",
       "url": "/mes-resultats",
-      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32" }]
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" }]
     }
   ]
 }
