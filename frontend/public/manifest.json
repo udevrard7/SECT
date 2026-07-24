@@ -167,5 +167,29 @@
   ],
   "launch_handler": {
     "client_mode": "navigate-existing"
-  }
+  },
+  "display_override": ["window-controls-overlay", "tabbed", "minimal-ui", "standalone", "browser"],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "note_taking": {
+    "icons": [
+      { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }
+    ]
+  },
+  "widgets": [
+    {
+      "name": "SECT Notifications",
+      "short_name": "SECT",
+      "description": "Notifications et rappels d'examens SECT",
+      "tag": "sect-notifications",
+      "template": "default",
+      "icons": [
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }
+      ],
+      "data": {
+        "type": "text"
+      }
+    }
+  ]
 }
