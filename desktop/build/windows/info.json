@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "companyName": "FTCI",
+  "productName": "SECT Desktop",
+  "fileVersion": "0.2.0.0",
+  "productVersion": "0.2.0.0",
+  "copyright": "Copyright © 2026 FTCI",
+  "comments": "Système d'Évaluation Casse-Tête — Application Desktop",
+  "originalFilename": "sect-desktop.exe",
+  "internalName": "sect-desktop"
+}
