@@ -1165,3 +1165,87 @@ Stage Summary:
 - Aucune logique métier dupliquée (thin wrapper pur)
 - Aucune modification backend/frontend (architecture intacte)
 - Prêt pour Phase B : ajouter PrintPDF, ShowNotification, CheckForUpdates, auto-update, signing
+
+---
+Task ID: SECT-DESKTOP-PHASE-B-1 + SECT-DESKTOP-PHASE-C-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Phase B + C — Thin Wrapper MVP + Extensions (notifications, impression, auto-update, CI/CD)
+
+Work Log:
+- Phase B.1 — Icônes natives (générées via Python PIL depuis frontend/public/favicon.png 512x512) :
+  * build/windows/icon.ico (59 Ko, multi-résolution 16-256)
+  * build/linux/icon.png (101 Ko, 512x512)
+  * build/darwin/icon.iconset/ (10 fichiers PNG pour iconutil macOS)
+  * build/darwin/generate-icns.sh (script à lancer sur macOS en CI)
+  * build/windows/info.json (métadonnées .exe version 0.2.0)
+  * build/darwin/Info.plist (CFBundleIdentifier fr.ftci.sect.desktop, NSCameraUsageDescription)
+  * build/darwin/entitlements.plist (network.client, files.user-selected)
+  * build/linux/sect.desktop (Desktop entry, Categories=Education;Office)
+
+- Phase B.2 — internal/notifier (notifications cross-platform) :
+  * notifier.go (interface Notifier avec Show(title, body))
+  * notifier_windows.go (go-toast v2, Toast XML Win32)
+  * notifier_darwin.go (osascript display notification)
+  * notifier_linux.go (notify-send libnotify)
+
+- Phase B.3 — internal/printer (impression PDF cross-platform) :
+  * printer.go (interface Printer avec Print, PrintTo, List, GetDefault + struct PrinterInfo)
+  * printer_windows.go (SumatraPDF -print-to-default + wmic pour lister)
+  * printer_darwin.go (lpr + lpstat CUPS)
+  * printer_linux.go (lpr + lpstat CUPS)
+
+- Phase B.4 — internal/updater (auto-update GitHub Releases) :
+  * updater.go (struct Updater, Manifest, Platform, ForceRollback, UpdateInfo)
+  * Check() interroge latest.json, compare version, détecte force_rollback
+  * DownloadAndInstall() — Phase B tardive (placeholder pour l'instant)
+  * Fail-safe : si réseau down, retourne Available=false (ne bloque pas l'app)
+
+- Phase B.5 — app.go étendu (15 fonctions natives exposées au frontend) :
+  * Phase A : GetAppVersion, GetBackendURL, IsDesktop
+  * Phase B : ShowNotification, PrintPDF, PrintBatch, PrintToPrinter,
+             ListPrinters, GetDefaultPrinter, SelectFolder, SaveFile,
+             CheckForUpdates, SetExamMode, QuitAndInstall, OpenExternal
+  * Phase C : OpenFile, DownloadFolder, GetSystemInfo
+  * Sécurité : validatePDFPath (path canonique + whitelist .pdf), rate-limit
+    (PrintBatch max 100, DownloadFolder max 50), audit log slog
+  * SetExamMode : désactive CheckForUpdates pendant examen (principe 4 gouvernance)
+  * Auto-update background : goroutine au Startup, notification native si update dispo
+  * Imports résolus : goruntime (stdlib) + wailsruntime (Wails) pour éviter conflit
+
+- Phase B.6 — Scripts signing (4 scripts bash exécutables) :
+  * sign-windows.sh (signtool + timestamp DigiCert + verify)
+  * notarize-macos.sh (codesign + ditto + notarytool + stapler + spctl)
+  * package-linux.sh (nfpm pour .deb + .rpm avec deps libgtk/libwebkit)
+  * generate-manifest.sh (latest.json format Wails updater, 4 plateformes)
+
+- Phase B.7 — CI/CD GitHub Actions :
+  * .github/workflows/build-desktop.yml (push : build 3 plateformes + upload artifacts)
+  * .github/workflows/release-desktop.yml (tag desktop-v* : build + signing + GitHub Release)
+  * Secrets requis : WINDOWS_CODESIGN_PFX/PASS, APPLE_DEVELOPER_ID/KEY/ID/PASSWORD/TEAM_ID
+  * Skipping signing si secrets non configurés (dev mode)
+
+- Tests qualité :
+  * go mod tidy : OK (deps go-toast, wails résolues)
+  * go vet ./... : 0 erreur ✅
+  * go build : binaire 8.7 Mo généré ✅ (vs 5.5 Mo Phase A, +3.2 Mo fonctions natives)
+  * generate-manifest.sh testé : latest.json valide généré
+
+- Architecture respectée :
+  * Module Go indépendant (pas d'import de backend/) — ADR-0003 respecté
+  * Thin wrapper : aucune logique métier dupliquée — ADR-0003 respecté
+  * Pas de DB locale — ADR-0002 respecté
+  * GitHub Releases pour auto-update — ADR-0004 respecté
+  * Code signing scripts prêts (OV Windows + Apple notarization) — ADR-0005 respecté
+  * Principe 4 gouvernance : SetExamMode désactive update pendant examen
+
+Stage Summary:
+- Phase B + C livrées : 15 fonctions natives cross-platform + scripts signing + CI/CD
+- Binaire 8.7 Mo généré (vs 5.5 Mo Phase A)
+- 11 fichiers Go, 1049 lignes de code
+- 4 scripts bash (signing + packaging + manifest)
+- 2 workflows GitHub Actions (build + release)
+- 0 erreur go vet, 0 erreur build
+- Code signing : scripts prêts, en attente achat certificats (290-390 €/an)
+- Auto-update silencieux : placeholder Phase B, complet en Phase B tardive
+- Démo GUI : nécessite poste desktop avec libwebkit2gtk
+- Aucun impact production (desktop/ isolé du backend/frontend)

@@ -1,7 +1,7 @@
 # SECT Desktop
 
-> Application desktop SECT basée sur Wails v2 (thin wrapper).
-> Phase A — Initialisation (voir [`docs/desktop/10-roadmap.md`](../docs/desktop/10-roadmap.md)).
+> Application desktop SECT basée sur Wails v2.13 (thin wrapper).
+> Phase B + C — Thin Wrapper MVP + Extensions (voir [`docs/desktop/10-roadmap.md`](../docs/desktop/10-roadmap.md)).
 
 ## 🚀 Démarrage rapide
 
@@ -47,89 +47,140 @@ Le binaire est généré dans `build/bin/`.
 ```
 desktop/
 ├── main.go                    # Point d'entrée Wails
-├── app.go                     # Struct App + fonctions natives exposées
+├── app.go                     # Struct App + 15 fonctions natives (Phase B + C)
 ├── wails.json                 # Config Wails
 ├── go.mod / go.sum            # Module Go indépendant
 ├── Makefile                   # make dev / build / vet / tidy
 │
 ├── frontend/                  # Frontend Wails (webview)
-│   ├── dist/                  # Build statique (index.html charge SECT)
-│   ├── src/                   # Bindings générés par Wails (Phase B)
+│   ├── dist/index.html        # Webview chargeant https://sect-app.vercel.app
 │   ├── package.json
 │   └── vite.config.ts
 │
-├── internal/                  # Code Go interne (Phase B)
-│   ├── updater/               # Auto-update (GitHub Releases)
-│   ├── printer/               # Impression native
-│   ├── notifier/              # Notifications OS
-│   └── auth/                  # Cookies JWT
+├── internal/                  # Code Go interne cross-platform
+│   ├── notifier/              # Notifications OS (Win Toast / macOS / Linux notify-send)
+│   │   ├── notifier.go        # Interface
+│   │   ├── notifier_windows.go # go-toast
+│   │   ├── notifier_darwin.go  # osascript
+│   │   └── notifier_linux.go   # notify-send
+│   ├── printer/               # Impression PDF (Win SumatraPDF / macOS lpr / Linux lpr)
+│   │   ├── printer.go         # Interface
+│   │   ├── printer_windows.go  # SumatraPDF + wmic
+│   │   ├── printer_darwin.go   # lpr + lpstat
+│   │   └── printer_linux.go    # lpr + lpstat
+│   └── updater/               # Auto-update GitHub Releases
+│       └── updater.go         # Check + manifest latest.json + force_rollback
 │
-├── build/                     # Configs de build par plateforme (Phase B)
-│   ├── windows/               # icon.ico, info.json, installer NSIS
-│   ├── darwin/                # icon.icns, Info.plist
-│   └── linux/                 # .desktop, icon.png
+├── build/                     # Configs de build par plateforme
+│   ├── windows/               # icon.ico, info.json
+│   ├── darwin/                # Info.plist, entitlements.plist, icon.iconset/
+│   └── linux/                 # sect.desktop, icon.png
 │
-├── scripts/                   # Scripts utilitaires (Phase B)
-├── test/                      # Tests (Phase B)
-│   ├── unit/
-│   ├── e2e/
-│   └── manual/
-└── README.md                  # Ce fichier
+├── scripts/                   # Scripts utilitaires (signing, packaging)
+│   ├── sign-windows.sh        # Signer .exe (signtool)
+│   ├── notarize-macos.sh      # Signer + notarize .app (codesign + notarytool)
+│   ├── package-linux.sh       # Packager .deb + .rpm (nfpm)
+│   └── generate-manifest.sh   # Générer latest.json (auto-update)
+│
+└── test/                      # Tests (à compléter)
+    ├── unit/
+    ├── e2e/
+    └── manual/
 ```
 
-## 🎯 Phase A — État actuel
+## 🎯 Phase B + C — État actuel
 
 | Élément | Statut |
 |---|---|
-| Structure `desktop/` créée | ✅ |
-| `go.mod` + `go.sum` (module indépendant) | ✅ |
-| `wails.json` configuré | ✅ |
-| `main.go` (point d'entrée Wails) | ✅ |
-| `app.go` (3 fonctions natives : GetAppVersion, GetBackendURL, IsDesktop) | ✅ |
-| `frontend/dist/index.html` (webview chargeant SECT) | ✅ |
+| Structure `desktop/` | ✅ Phase A |
+| Wails v2.13.0 installé | ✅ |
+| **Icônes natives** (.ico, .icns, .png) | ✅ Phase B |
+| **Notifications** (Win Toast / macOS / Linux) | ✅ Phase B |
+| **Impression PDF** (PrintPDF, PrintBatch, PrintToPrinter) | ✅ Phase B |
+| **Liste imprimantes** (ListPrinters, GetDefaultPrinter) | ✅ Phase B |
+| **Dialogues fichier** (SelectFolder, SaveFile) | ✅ Phase B |
+| **Auto-update** (CheckForUpdates, manifest GitHub Releases) | ✅ Phase B |
+| **SetExamMode** (désactive update pendant examen) | ✅ Phase B |
+| **OpenExternal** (URL dans navigateur par défaut) | ✅ Phase B |
+| **OpenFile** (ouvrir fichier app par défaut) | ✅ Phase C |
+| **DownloadFolder** (téléchargement massif) | ✅ Phase C |
+| **GetSystemInfo** (debug/support) | ✅ Phase C |
+| **Scripts signing** (Windows, macOS, Linux) | ✅ Phase B |
+| **CI/CD GitHub Actions** (build + release) | ✅ Phase B |
 | `go vet` | ✅ 0 erreur |
-| `go build` | ✅ Binaire 5.5 Mo généré |
-| Wails CLI installé | ✅ v2.13.0 |
+| `go build` | ✅ Binaire 8.7 Mo généré |
 | Démo webview (GUI) | ⏳ Nécessite poste desktop avec GUI |
-| Fonctions natives (PrintPDF, Notif, etc.) | ⏳ Phase B |
-| Auto-update | ⏳ Phase B |
-| Code signing | ⏳ Phase B |
-| CI/CD GitHub Actions | ⏳ Phase B |
+| Code signing réel (certificats) | ⏳ En attente achat (290-390 €/an) |
+| Tests E2E (Playwright sur webview) | ⏳ Phase B tardive |
+| Auto-update silencieux complet | ⏳ Phase B tardive |
 
-## 🔧 Fonctions Go exposées (Phase A)
+## 🔧 Fonctions Go exposées (Phase B + C)
 
+### Phase A — Utilitaires
 | Fonction | Signature | Description |
 |---|---|---|
-| `GetAppVersion` | `() string` | Version courante du desktop (`0.1.0-phase-a`) |
-| `GetBackendURL` | `() string` | URL du backend (`https://sect-app.vercel.app`) |
+| `GetAppVersion` | `() string` | Version courante (`0.2.0-phase-b`) |
+| `GetBackendURL` | `() string` | URL backend (`https://sect-app.vercel.app`) |
 | `IsDesktop` | `() bool` | Détection desktop (toujours `true`) |
 
-Phase B ajoutera : `PrintPDF`, `PrintBatch`, `ShowNotification`, `CheckForUpdates`, `SelectFolder`, `SaveFile`, `QuitAndInstall`.
-→ Voir [`docs/desktop/04-native-api.md`](../docs/desktop/04-native-api.md).
+### Phase B — Notifications
+| Fonction | Signature | Description |
+|---|---|---|
+| `ShowNotification` | `(title, body string) error` | Notification native OS |
+
+### Phase B — Impression
+| Fonction | Signature | Description |
+|---|---|---|
+| `PrintPDF` | `(filePath string) error` | Imprimer PDF (imprimante par défaut, silencieux) |
+| `PrintBatch` | `(filePaths []string) error` | Impression en lot (max 100) |
+| `PrintToPrinter` | `(filePath, printerName string) error` | Imprimer sur imprimante spécifique |
+| `ListPrinters` | `() ([]PrinterInfo, error)` | Liste imprimantes disponibles |
+| `GetDefaultPrinter` | `() (string, error)` | Imprimante par défaut |
+
+### Phase B — Dialogues fichier
+| Fonction | Signature | Description |
+|---|---|---|
+| `SelectFolder` | `(title string) (string, error)` | Boîte dialogue sélection dossier |
+| `SaveFile` | `(content []byte, defaultName string) (string, error)` | Enregistrer fichier (dialogue) |
+
+### Phase B — Auto-update
+| Fonction | Signature | Description |
+|---|---|---|
+| `CheckForUpdates` | `() (*UpdateInfo, error)` | Vérifier mises à jour (désactivé en mode examen) |
+| `SetExamMode` | `(active bool)` | Signaler examen en cours (désactive update check) |
+| `QuitAndInstall` | `() error` | Installer mise à jour (Phase B tardive) |
+
+### Phase B + C — Divers
+| Fonction | Signature | Description |
+|---|---|---|
+| `OpenExternal` | `(url string) error` | Ouvrir URL dans navigateur par défaut |
+| `OpenFile` | `(filePath string) error` | Ouvrir fichier avec app par défaut OS |
+| `DownloadFolder` | `(urls []string, destDir string) (int, error)` | Téléchargement massif (max 50) |
+| `GetSystemInfo` | `() (SystemInfo, error)` | Infos système (OS, arch, CPU, appDir) |
 
 ## 📚 Documentation
 
 - [Architecture handbook](../docs/desktop/README.md)
 - [Installation & Dev](../docs/desktop/02-installation-dev.md)
+- [Native API](../docs/desktop/04-native-api.md)
 - [Roadmap](../docs/desktop/10-roadmap.md)
 - [ADR](../docs/desktop/ADR/)
 
-## 🧪 Tester sur un poste desktop
+## 🔐 Sécurité
 
-Ce sandbox est headless (pas de GUI). Pour tester la démo webview :
+- **Validation bindings** : tous les inputs sont validés côté Go (path canonique, whitelist extensions)
+- **Rate-limit** : `PrintBatch` (max 100), `DownloadFolder` (max 50)
+- **Pas de shell brut** : jamais `exec.Command(input_utilisateur)` sans validation
+- **Audit log** : tous les appels de bindings sont loggés (`slog.Info`)
 
-```bash
-# Sur un poste Linux desktop (avec libwebkit2gtk installé)
-cd desktop
-make deps
-make dev
-# → Une fenêtre s'ouvre, chargeant https://sect-app.vercel.app
-```
+→ Voir [`docs/desktop/05-security.md`](../docs/desktop/05-security.md)
 
 ## 📝 Task IDs
 
-- `SECT-DESKTOP-PHASE-A-1` — Initialisation (ce commit)
+- `SECT-DESKTOP-PHASE-A-1` — Initialisation
+- `SECT-DESKTOP-PHASE-B-1` — Thin Wrapper MVP (ce commit)
+- `SECT-DESKTOP-PHASE-C-1` — Extensions (ce commit)
 
 ---
 
-*Phase A livrée — prêt pour Phase B (thin wrapper MVP).*
+*Phase B + C livrées — prêt pour Phase D (observation 6 mois).*

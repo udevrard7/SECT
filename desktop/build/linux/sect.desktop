@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=SECT Desktop
+Comment=Système d'Évaluation Casse-Tête
+Exec=/usr/bin/sect-desktop %U
+Icon=sect-desktop
+Terminal=false
+Type=Application
+Categories=Education;Office;
+MimeType=application/pdf;
+StartupWMClass=sect-desktop
