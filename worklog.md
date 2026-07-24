@@ -1070,3 +1070,53 @@ Stage Summary:
 - Critères mesurables pour décider sectcore (6 mois observation, 6 critères)
 - 8 décisions en attente de validation avant Phase A
 - Aucune ligne de code Wails — purement documentation, prêt à présenter
+
+---
+Task ID: SECT-DESKTOP-HANDBOOK-1
+Agent: Main Agent (Z.ai Code — tuteur Ulrich EVRARD)
+Task: Refonte documentation desktop en handbook modulaire + ADR (suite analyse équipe)
+
+Work Log:
+- Analyse de l'équipe : le document monolithique ARCHITECTURE.md (1498 lignes) deviendra
+  obsolète et illu. Préférer une documentation vivante modulaire + ADR.
+- Refonte complète de docs/desktop/ :
+  * Suppression de ARCHITECTURE.md (monolithique)
+  * Création de 13 documents modulaires (00-vision à 12-decision-matrix)
+  * Création de 5 ADR (Architecture Decision Records) dans docs/desktop/ADR/
+  * README.md mis à jour comme index navigable
+- Documents modulaires créés :
+  00-vision.md          — Vision, objectifs, non-objectifs, argument produit
+  01-architecture.md    — Vue d'ensemble + diagrammes (composants, séquence, déploiement)
+  02-installation-dev.md — Prérequis, dev local, build, tests, debug
+  03-communication.md   — 2 canaux (API REST + bindings Wails), bridge TS
+  04-native-api.md      — Fonctions Go natives (Phase B + C), exemples cross-platform
+  05-security.md        — Auth transparente, cookies JWT, validation bindings, signing
+  06-auto-update.md     — GitHub Releases, latest.json, canaux, rollback strategy
+  07-code-signing.md    — OV vs EV, Apple notarization, stockage secrets, coûts
+  08-packaging.md       — .exe NSIS, .dmg, .AppImage, .deb, .rpm, configs par OS
+  09-ci-cd.md           — GitHub Actions workflows, secrets, scripts signing
+  10-roadmap.md         — Phase A-E AVEC pilote 5 établissements (ajout équipe)
+  11-governance.md      — 5 principes garde-fous + processus de décision
+  12-decision-matrix.md — Matrice Web vs Desktop par fonctionnalité (ajout équipe)
+- ADR créés (4 sections : contexte, options, décision, conséquences) :
+  0001-use-wails.md          — Wails vs Electron vs Tauri (règle version stable)
+  0002-no-local-database.md  — Pas de DB locale (RLS Neon = source de vérité)
+  0003-single-cloud-backend.md — Thin wrapper, pas de sectcore initialement
+  0004-github-release.md     — GitHub Releases comme serveur d'auto-update
+  0005-code-signing.md       — Signing OV obligatoire (SmartScreen = tueur adoption)
+- Améliorations apportées par l'analyse de l'équipe :
+  * Documentation modulaire (vs monolithique) — maintenable sur le long terme
+  * ADR pour traçabilité des décisions (dans 6 mois, on saura pourquoi)
+  * Phase pilote 5 établissements ajoutée entre Phase B et C
+  * Gouvernance technique (5 principes garde-fous)
+  * Matrice de décisions fonctionnelles (Web vs Desktop par feature)
+  * Règle Wails "dernière version stable" (vs figer v2 ou v3)
+
+Stage Summary:
+- Documentation transformée en Desktop Architecture Handbook professionnel
+- 13 documents modulaires + 5 ADR + README index = 19 fichiers vivants
+- Chaque fichier est ciblé, modifiable indépendamment, ne devient pas obsolète
+- ADR garantissent la traçabilité des décisions arch sur la durée
+- Phase pilote ajoutée : validation par 5 établissements avant release publique
+- Gouvernance + matrice de décisions = garde-fous contre l'over-engineering
+- Aucune ligne de code Wails — purement documentation, prêt pour validation comité
