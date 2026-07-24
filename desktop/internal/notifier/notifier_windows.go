@@ -7,20 +7,20 @@
 package notifier
 
 import (
-	toast "git.sr.ht/~jackmordaunt/go-toast/v2"
+        toast "git.sr.ht/~jackmordaunt/go-toast/v2"
 )
 
 type windowsNotifier struct{}
 
 func newPlatformNotifier() Notifier {
-	return &windowsNotifier{}
+        return &windowsNotifier{}
 }
 
 func (n *windowsNotifier) Show(title, body string) error {
-	notification := toast.Notification{
-		AppID:   "SECT Desktop",
-		Title:   title,
-		Message: body,
-	}
-	return notification.Push()
+        notification := toast.Notification{
+                AppID: "SECT Desktop",
+                Title: title,
+                Body:  body,
+        }
+        return notification.Push()
 }
