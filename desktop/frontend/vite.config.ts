@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 
 // Vite config minimal pour le frontend Wails.
-// En Phase A : pas de build réel (juste un index.html statique dans dist/).
-// En Phase B : on ajoutera les bindings TypeScript générés par Wails.
+// Phase B : index.html à la racine de frontend/ (point d'entrée Vite standard).
+// Vite build génère frontend/dist/ qui est embarqué via go:embed dans main.go.
 export default defineConfig({
   root: '.',
   build: {
