@@ -14,6 +14,12 @@
   "lang": "fr-FR",
   "dir": "ltr",
   "prefer_related_applications": false,
+  "related_applications": [],
+  "iarc_rating_id": "e1e1e1e1-0000-0000-0000-000000000001",
+  "scope_extensions": [
+    { "origin": "https://sect-zead.onrender.com" },
+    { "origin": "https://d660691a2e73198bf41951c45f92e86b.r2.cloudflarestorage.com" }
+  ],
   "icons": [
     { "src": "/favicon-16x16.png", "sizes": "16x16", "type": "image/png" },
     { "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" },
@@ -85,6 +91,20 @@
       "type": "image/png",
       "form_factor": "wide",
       "label": "Mes épreuves — accès aux examens en cours"
+    },
+    {
+      "src": "/screenshots/mobile-admin-dashboard.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Tableau de bord administrateur sur mobile"
+    },
+    {
+      "src": "/screenshots/mobile-exam-prep.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Module de révision SM-2 sur mobile"
     }
   ],
   "shortcuts": [
