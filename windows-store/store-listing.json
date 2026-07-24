@@ -67,5 +67,29 @@
     "keyboardNavigation": true,
     "highContrast": true,
     "captioning": false
+  },
+  "screenshots": {
+    "fr-FR": [
+      { "filename": "assets/screenshots/dashboard-admin.png", "caption": "Tableau de bord administrateur — vue d'ensemble SaaS" },
+      { "filename": "assets/screenshots/monitoring.png", "caption": "Monitoring système — santé des services en temps réel" },
+      { "filename": "assets/screenshots/dashboard-enseignant.png", "caption": "Espace enseignant — gestion des épreuves" },
+      { "filename": "assets/screenshots/epreuves.png", "caption": "Création d'épreuves — QCU, QCM, questions à réponse courte" },
+      { "filename": "assets/screenshots/correction.png", "caption": "Correction automatique par IA en moins de 2 minutes" },
+      { "filename": "assets/screenshots/surveillance.png", "caption": "Surveillance anti-fraude — détection temps réel" },
+      { "filename": "assets/screenshots/dashboard-etudiant.png", "caption": "Espace étudiant — tableau de bord personnalisé" },
+      { "filename": "assets/screenshots/exam-prep.png", "caption": "Module de révision — répétition espacée SM-2" },
+      { "filename": "assets/screenshots/mes-epreuves.png", "caption": "Mes épreuves — accès aux examens en cours" }
+    ],
+    "en-US": [
+      { "filename": "assets/screenshots/dashboard-admin.png", "caption": "Admin dashboard — SaaS overview" },
+      { "filename": "assets/screenshots/monitoring.png", "caption": "System monitoring — real-time service health" },
+      { "filename": "assets/screenshots/dashboard-enseignant.png", "caption": "Teacher space — exam management" },
+      { "filename": "assets/screenshots/epreuves.png", "caption": "Exam creation — MCQ, short-answer questions" },
+      { "filename": "assets/screenshots/correction.png", "caption": "AI-powered automatic grading in under 2 minutes" },
+      { "filename": "assets/screenshots/surveillance.png", "caption": "Anti-fraud proctoring — real-time detection" },
+      { "filename": "assets/screenshots/dashboard-etudiant.png", "caption": "Student space — personalized dashboard" },
+      { "filename": "assets/screenshots/exam-prep.png", "caption": "Revision module — SM-2 spaced repetition" },
+      { "filename": "assets/screenshots/mes-epreuves.png", "caption": "My exams — access to ongoing tests" }
+    ]
   }
 }
