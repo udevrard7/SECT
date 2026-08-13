@@ -40,3 +40,33 @@ Stage Summary:
 - Monorepo: frontend/ (Next.js), backend/ (Go), desktop/ (Wails), windows-store/ (MSIX)
 - Key features: multi-tenant RLS, AI correction, proctoring, SaaS B2B/B2C, PWA
 - 100+ API endpoints, 12+ background workers, WebSocket + SSE real-time
+
+---
+Task ID: 3
+Agent: Main Orchestrator
+Task: Add Kotlin Multiplatform (KMP) mobile module to SECT monorepo
+
+Work Log:
+- Created mobile/ directory with full KMP project structure
+- Configured Gradle 8.14 with Kotlin 2.1.21, Compose 1.8.2, AGP 8.11.0
+- Created shared/ module with Ktor Client 3.1.3, kotlinx.serialization, kotlinx-datetime
+- Mapped all Go domain types 1:1 to Kotlin data classes (User, Epreuve, Session, etc.)
+- Mapped all Go enums 1:1 to Kotlin enums (Role, StatutEpreuve, TypeQuestion, etc.)
+- Implemented 5 API services: AuthApi, UserApi, EpreuveApi, SessionApi, MessagerieApi
+- Created SECTRepository as single entry point for all data operations
+- Implemented TokenCache with expect/actual: EncryptedSharedPreferences (Android), NSUserDefaults (iOS)
+- Created HttpClientFactory with expect/actual: OkHttp (Android), Darwin (iOS)
+- Built androidApp/ with Jetpack Compose: Material 3 theme, navigation, 8 screens
+- Built iosApp/ with SwiftUI: Login, Dashboard, Epreuves, Messagerie, Profile views
+- Added .github/workflows/mobile-ci.yml for Android + iOS CI/CD
+- Updated .gitignore with Gradle, Android, iOS, Kotlin/Native patterns
+- Created comprehensive mobile/README.md
+- Committed as SECT-KMP-1 and pushed to GitHub (main → e85954f)
+
+Stage Summary:
+- Monorepo now: frontend/ (Next.js) + backend/ (Go) + mobile/ (KMP) + desktop/ (Wails)
+- shared/ module: 35 Kotlin files, full API coverage for auth/users/epreuves/sessions/chat
+- androidApp/: Jetpack Compose with Material 3, ready for development
+- iosApp/: SwiftUI views with Shared.framework import
+- CI/CD: Separate GitHub Actions workflow for mobile builds
+- Push to GitHub triggers auto-deploy on Vercel + Render (existing)
