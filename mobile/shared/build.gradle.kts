@@ -4,11 +4,13 @@
 // - Modèles de données (DTOs correspondant aux réponses Go)
 // - Gestion JWT et cache
 // - Repositories (abstraction data layer)
+// - SQLDelight (base SQLite native pour mode offline)
 
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
     id("com.android.library")
+    id("app.cash.sqldelight")
 }
 
 kotlin {
@@ -54,6 +56,10 @@ kotlin {
 
             // Koin DI (shared)
             implementation("io.insert-koin:koin-core:4.1.0-Beta1")
+
+            // SQLDelight (base SQLite native — offline mode)
+            implementation("app.cash.sqldelight:runtime:2.0.2")
+            implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
         }
 
         commonTest.dependencies {
@@ -74,11 +80,17 @@ kotlin {
 
             // Biometric (Face ID / Fingerprint)
             implementation("androidx.biometric:biometric:1.1.0")
+
+            // SQLDelight Android driver
+            implementation("app.cash.sqldelight:android-driver:2.0.2")
         }
 
         iosMain.dependencies {
             // Ktor engine iOS (NSURLSession)
             implementation("io.ktor:ktor-client-darwin:3.1.3")
+
+            // SQLDelight iOS native driver
+            implementation("app.cash.sqldelight:native-driver:2.0.2")
         }
     }
 }
@@ -92,5 +104,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+sqldelight {
+    databases {
+        create("SectDatabase") {
+            packageName.set("com.sect.mobile.shared.database")
+            srcDirs.setFrom(file("src/commonMain/sqldelight/com/sect/mobile/shared/database"))
+        }
     }
 }
