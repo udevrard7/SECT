@@ -48,8 +48,9 @@ kotlin {
             // Coroutines
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
 
-            // Date/Time
+            // Date/Time + serialization
             implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1") // ensure json available for datetime serializers
 
             // Koin DI (shared)
             implementation("io.insert-koin:koin-core:4.1.0-Beta1")

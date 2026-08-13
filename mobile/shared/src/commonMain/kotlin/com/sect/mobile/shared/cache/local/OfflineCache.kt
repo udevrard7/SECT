@@ -4,9 +4,9 @@ package com.sect.mobile.shared.cache.local
 
 import com.sect.mobile.shared.domain.model.Epreuve
 import com.sect.mobile.shared.domain.model.User
+import com.sect.mobile.shared.util.currentTimeMillis
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 
 /**
@@ -46,10 +46,10 @@ class OfflineCache(
     /**
      * Stocker une valeur dans le cache.
      */
-    fun <T> put(key: String, value: T, serializer: (T) -> String = { json.encodeToString(it) }) {
+    fun <T> put(key: String, value: T, serializer: (T) -> String) {
         val entry = CacheEntry(
             data = serializer(value),
-            storedAt = Clock.System.now().toEpochMilliseconds(),
+            storedAt = currentTimeMillis(),
             ttlMs = defaultTtlMs
         )
         store.value = store.value + (key to entry)
@@ -61,7 +61,7 @@ class OfflineCache(
      */
     fun <T> get(key: String, deserializer: (String) -> T): T? {
         val entry = store.value[key] ?: return null
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = currentTimeMillis()
         val isExpired = (now - entry.storedAt) > entry.ttlMs
 
         // Si online et expiré → retourner null (forcer un refresh)
@@ -97,7 +97,7 @@ class OfflineCache(
      */
     fun contains(key: String): Boolean {
         val entry = store.value[key] ?: return false
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = currentTimeMillis()
         return (now - entry.storedAt) <= entry.ttlMs || !_isOnline.value
     }
 

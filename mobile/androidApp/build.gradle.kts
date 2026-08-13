@@ -56,6 +56,9 @@ dependencies {
     // Module partagé KMP
     implementation(project(":shared"))
 
+    // Ktor OkHttp engine (explicit for DI module)
+    implementation("io.ktor:ktor-client-okhttp:3.1.3")
+
     // Jetpack Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
     implementation(composeBom)

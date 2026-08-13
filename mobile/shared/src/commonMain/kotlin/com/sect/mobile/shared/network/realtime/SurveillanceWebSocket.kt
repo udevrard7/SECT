@@ -8,23 +8,13 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import com.sect.mobile.shared.util.currentTimeMillis
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
  * SurveillanceWebSocket gère la connexion WebSocket temps réel
  * avec le hub de surveillance du backend Go.
- *
- * Fonctionnalités :
- * - L'étudiant envoie des alertes de proctoring (tab switch, fullscreen exit)
- * - L'enseignant reçoit les alertes en temps réel
- * - L'étudiant envoie des captures webcam périodiques
- *
- * Protocole (JSON sur WebSocket) :
- * - { "type": "tab_switch", "timestamp": "..." }     — alerte changement d'onglet
- * - { "type": "fullscreen_exit", "timestamp": "..." }  — alerte sortie plein écran
- * - { "type": "webcam_frame", "data": "base64..." }    — capture caméra
- * - { "type": "pong" }                                 — heartbeat réponse
  */
 class SurveillanceWebSocket(
     private val client: HttpClient,
@@ -43,8 +33,6 @@ class SurveillanceWebSocket(
 
     /**
      * Se connecter au WebSocket de surveillance.
-     * @param sessionId ID de la session de passation
-     * @param token JWT access token pour l'authentification
      */
     suspend fun connect(
         sessionId: String,
@@ -91,8 +79,9 @@ class SurveillanceWebSocket(
      * Envoyer une alerte de proctoring.
      */
     suspend fun sendAlert(type: String, details: Map<String, String> = emptyMap()) {
+        val timestamp = currentTimeMillis().toString()
         val msg = buildString {
-            append("""{"type":"$type","timestamp":"${kotlinx.datetime.Clock.System.now()}"""")
+            append("""{"type":"$type","timestamp":"$timestamp"""")
             details.forEach { (k, v) -> append(""","$k":"$v"""") }
             append("}")
         }
@@ -103,7 +92,6 @@ class SurveillanceWebSocket(
      * Envoyer un frame webcam (base64 JPEG).
      */
     suspend fun sendWebcamFrame(base64Jpeg: String) {
-        // Les images sont trop grandes pour le JSON — utiliser binaire
         session?.send(Frame.Binary(true, base64Jpeg.encodeToByteArray()))
     }
 
@@ -113,7 +101,13 @@ class SurveillanceWebSocket(
     fun disconnect() {
         heartbeatJob?.cancel()
         listenJob?.cancel()
-        session?.close()
+        // Close the WebSocket session (non-blocking)
+        val currentSession = session
+        if (currentSession != null) {
+            CoroutineScope(Dispatchers.Default).launch {
+                try { currentSession.close() } catch (_: Exception) { }
+            }
+        }
         session = null
         _connectionState.value = ConnectionState.DISCONNECTED
     }

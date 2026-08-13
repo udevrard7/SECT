@@ -2,6 +2,8 @@
 package com.sect.mobile.android.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -34,7 +36,7 @@ fun SECTNavigation(
         composable(Routes.SPLASH) {
             val authVM: AuthViewModel = koinViewModel()
             SplashScreen(
-                authState = authVM.authState.collectAsState().value,
+                authState = authVM.authState.sectCollectAsState().value,
                 onNavigateToLogin = { navController.navigate(Routes.LOGIN) },
                 onNavigateToDashboard = { navController.navigate(Routes.DASHBOARD) }
             )
@@ -151,5 +153,5 @@ fun SECTNavigation(
 
 // Helper pour collectAsState dans navigation
 @Composable
-private fun <T> kotlinx.coroutines.flow.StateFlow<T>.collectAsState() =
-    androidx.compose.runtime.collectAsState(initial = this.value)
+private fun <T> kotlinx.coroutines.flow.StateFlow<T>.sectCollectAsState(): State<T> =
+    collectAsState(initial = this.value)
