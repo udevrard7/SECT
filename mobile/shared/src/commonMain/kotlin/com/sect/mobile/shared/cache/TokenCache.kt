@@ -49,5 +49,10 @@ interface TokenCache {
 
 /**
  * Factory expect/actual pour créer le cache de tokens approprié à la plateforme.
+ * @deprecated Préférer l'injection via Koin DI (single<TokenCache> { AndroidTokenCache(ctx) })
  */
+@Deprecated(
+    message = "Préférer l'injection Koin DI : single<TokenCache> { AndroidTokenCache(ctx) / IOSTokenCache() }",
+    level = DeprecationLevel.WARNING
+)
 expect fun createTokenCache(): TokenCache

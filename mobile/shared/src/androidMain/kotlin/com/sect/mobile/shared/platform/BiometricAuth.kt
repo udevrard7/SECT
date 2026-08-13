@@ -89,16 +89,10 @@ class AndroidBiometricAuth(private val context: Context) : BiometricAuth {
     }
 }
 
-// Instance singleton — initialisée par l'AndroidApp
-internal var biometricContext: Context? = null
-
-fun initBiometricAuth(context: Context) {
-    biometricContext = context
-}
-
-actual fun createBiometricAuth(): BiometricAuth {
-    val ctx = biometricContext ?: throw IllegalStateException(
-        "BiometricAuth not initialized. Call initBiometricAuth(context) in Application.onCreate()"
-    )
-    return AndroidBiometricAuth(ctx)
-}
+/**
+ * Factory function for Koin DI.
+ * Use in platformModule: single<BiometricAuth> { createBiometricAuth(androidContext()) }
+ *
+ * OLD: actual fun createBiometricAuth() (expect/actual pattern — REMOVED)
+ * NEW: Direct construction via DI — platform module provides the instance
+ */

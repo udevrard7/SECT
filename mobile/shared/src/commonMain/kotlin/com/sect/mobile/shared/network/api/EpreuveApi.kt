@@ -1,7 +1,7 @@
 // SECT Mobile — Service API Epreuves (examens)
 package com.sect.mobile.shared.network.api
 
-import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.data.dto.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -19,7 +19,7 @@ class EpreuveApi(private val client: HttpClient) {
         filiereId: String? = null,
         page: Int = 1,
         limit: Int = 20
-    ): List<Epreuve> {
+    ): List<EpreuveDto> {
         return client.get("/api/epreuves") {
             search?.let { parameter("search", it) }
             statut?.let { parameter("statut", it) }
@@ -33,7 +33,7 @@ class EpreuveApi(private val client: HttpClient) {
      * Obtenir une épreuve par ID.
      * GET /api/epreuves/{id}
      */
-    suspend fun get(id: String): Epreuve {
+    suspend fun get(id: String): EpreuveDto {
         return client.get("/api/epreuves/$id").body()
     }
 
@@ -41,7 +41,7 @@ class EpreuveApi(private val client: HttpClient) {
      * Créer une épreuve.
      * POST /api/epreuves
      */
-    suspend fun create(input: Map<String, Any?>): Epreuve {
+    suspend fun create(input: Map<String, Any?>): EpreuveDto {
         return client.post("/api/epreuves") {
             setBody(input)
         }.body()
@@ -51,7 +51,7 @@ class EpreuveApi(private val client: HttpClient) {
      * Mettre à jour une épreuve.
      * PATCH /api/epreuves/{id}
      */
-    suspend fun update(id: String, input: Map<String, Any?>): Epreuve {
+    suspend fun update(id: String, input: Map<String, Any?>): EpreuveDto {
         return client.patch("/api/epreuves/$id") {
             setBody(input)
         }.body()
@@ -69,7 +69,7 @@ class EpreuveApi(private val client: HttpClient) {
      * Lister les sessions d'une épreuve.
      * GET /api/epreuves/{id}/sessions
      */
-    suspend fun sessions(epreuveId: String): List<SessionPassation> {
+    suspend fun sessions(epreuveId: String): List<SessionPassationDto> {
         return client.get("/api/epreuves/$epreuveId/sessions").body()
     }
 
