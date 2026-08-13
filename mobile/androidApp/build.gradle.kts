@@ -1,0 +1,93 @@
+// SECT Mobile — Android Application (Jetpack Compose)
+// Application Android native utilisant le module :shared
+
+plugins {
+    kotlin("android")
+    kotlin("plugin.compose")
+    id("com.android.application")
+    id("org.jetbrains.compose")
+}
+
+android {
+    namespace = "com.sect.mobile.android"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "ci.sect.app"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "0.1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        debug {
+            isMinifyEnabled = false
+            buildConfigField("String", "API_BASE_URL", "\"https://sect-zead.onrender.com\"")
+        }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    // Module partagé KMP
+    implementation(project(":shared"))
+
+    // Jetpack Compose BOM
+    val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.runtime:runtime")
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.navigation:navigation-compose:2.9.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
+
+    // Material 3 adaptive
+    implementation("androidx.compose.material3.adaptive:adaptive:1.1.0")
+
+    // Koin DI Android
+    implementation("io.insert-koin:koin-android:4.1.0-Beta1")
+    implementation("io.insert-koin:koin-androidx-compose:4.1.0-Beta1")
+
+    // Coil pour images (Compose)
+    implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+    implementation("io.coil-kt.coil3:coil-network-ktor3:3.2.0")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
+
+    // SplashScreen API
+    implementation("androidx.core:core-splashscreen:1.0.1")
+
+    // Debug tooling
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}

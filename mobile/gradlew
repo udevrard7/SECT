@@ -1,0 +1,12 @@
+#!/bin/sh
+# SECT Mobile — Gradle Wrapper Script
+# Auto-download Gradle if not present
+
+APP_BASE_NAME=$(dirname "$0")/gradle
+APP_HOME=$(cd "$(dirname "$0")/.." >/dev/null && pwd)
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+
+exec java \
+  -classpath "$CLASSPATH" \
+  org.gradle.wrapper.GradleWrapperMain \
+  "$@"
