@@ -12,5 +12,5 @@ actual fun createHttpClient(
     refreshHandler: suspend () -> String
 ): HttpClient {
     val client = HttpClient(engine)
-    return configureHttpClient(client, baseUrl, tokenProvider, tokenProvider)
+    return configureHttpClient(client, baseUrl, tokenProvider, refreshHandler)
 }

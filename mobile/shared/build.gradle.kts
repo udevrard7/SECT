@@ -36,6 +36,12 @@ kotlin {
             implementation("io.ktor:ktor-client-auth:3.1.3")
             implementation("io.ktor:ktor-client-logging:3.1.3")
 
+            // WebSocket (surveillance/proctoring temps réel)
+            implementation("io.ktor:ktor-client-websockets:3.1.3")
+
+            // CIO Engine (pour SSE bodyAsChannel)
+            implementation("io.ktor:ktor-client-cio:3.1.3")
+
             // Sérialisation JSON
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
@@ -64,6 +70,9 @@ kotlin {
 
             // Security (EncryptedSharedPreferences pour JWT)
             implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+            // Biometric (Face ID / Fingerprint)
+            implementation("androidx.biometric:biometric:1.1.0")
         }
 
         iosMain.dependencies {

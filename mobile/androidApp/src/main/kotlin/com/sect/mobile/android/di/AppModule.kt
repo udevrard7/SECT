@@ -27,13 +27,25 @@ val appModule = module {
     // ── HttpClient (Ktor + OkHttp) ──
     single<HttpClient> {
         val tokenCache = get<com.sect.mobile.shared.cache.TokenCache>()
+        val authApi = get<AuthApi>()
         createHttpClient(
             engine = OkHttp.create(),
             baseUrl = get<String>(named("apiBaseUrl")),
             tokenProvider = { kotlinx.coroutines.runBlocking { tokenCache.getAccessToken() } },
             refreshHandler = {
-                // TODO: Implémenter le refresh flow via AuthApi
-                ""
+                try {
+                    val refreshToken = kotlinx.coroutines.runBlocking { tokenCache.getRefreshToken() }
+                    if (refreshToken.isNotEmpty()) {
+                        val session = authApi.refresh(refreshToken)
+                        kotlinx.coroutines.runBlocking {
+                            tokenCache.saveAccessToken(session.accessToken)
+                            tokenCache.saveRefreshToken(session.refreshToken)
+                        }
+                        session.accessToken
+                    } else ""
+                } catch (_: Exception) {
+                    ""
+                }
             }
         )
     }
