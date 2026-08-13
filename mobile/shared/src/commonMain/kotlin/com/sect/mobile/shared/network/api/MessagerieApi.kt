@@ -1,7 +1,7 @@
 // SECT Mobile — Service API Messagerie
 package com.sect.mobile.shared.network.api
 
-import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.data.dto.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -13,7 +13,7 @@ class MessagerieApi(private val client: HttpClient) {
      * Lister les conversations.
      * GET /api/messagerie/conversations
      */
-    suspend fun listConversations(): List<Conversation> {
+    suspend fun listConversations(): List<ConversationDto> {
         return client.get("/api/messagerie/conversations").body()
     }
 
@@ -21,7 +21,7 @@ class MessagerieApi(private val client: HttpClient) {
      * Obtenir une conversation par ID.
      * GET /api/messagerie/conversations/{id}
      */
-    suspend fun getConversation(id: String): Conversation {
+    suspend fun getConversation(id: String): ConversationDto {
         return client.get("/api/messagerie/conversations/$id").body()
     }
 
@@ -29,7 +29,7 @@ class MessagerieApi(private val client: HttpClient) {
      * Créer une conversation.
      * POST /api/messagerie/conversations
      */
-    suspend fun createConversation(input: Map<String, Any?>): Conversation {
+    suspend fun createConversation(input: Map<String, Any?>): ConversationDto {
         return client.post("/api/messagerie/conversations") {
             setBody(input)
         }.body()
@@ -43,7 +43,7 @@ class MessagerieApi(private val client: HttpClient) {
         conversationId: String,
         before: String? = null,
         limit: Int = 50
-    ): List<Message> {
+    ): List<MessageDto> {
         return client.get("/api/messagerie/conversations/$conversationId/messages") {
             before?.let { parameter("before", it) }
             parameter("limit", limit)
@@ -54,7 +54,7 @@ class MessagerieApi(private val client: HttpClient) {
      * Envoyer un message.
      * POST /api/messagerie/conversations/{id}/messages
      */
-    suspend fun sendMessage(conversationId: String, contenu: String): Message {
+    suspend fun sendMessage(conversationId: String, contenu: String): MessageDto {
         return client.post("/api/messagerie/conversations/$conversationId/messages") {
             setBody(mapOf("contenu" to contenu))
         }.body()

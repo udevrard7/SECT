@@ -103,3 +103,29 @@ Stage Summary:
 - Mobile module is feature-complete for initial version
 - All 6 priority steps executed in order
 - Vercel + Render auto-deploy triggered by push
+
+---
+Task ID: SECT-KMP-3
+Agent: main-orchestrator
+Task: Execute 5 architectural corrections for SECT KMP mobile (DTO ≠ Domain, MVI pattern, Interface+DI, Security rigor, Proctoring hybrid)
+
+Work Log:
+- Analyzed full KMP codebase (23 commonMain files, 6 androidMain files, 6 iosMain files, Android/iOS app code)
+- Correction 1: Created data/dto/ (8 files with @Serializable DTOs), domain/model/ (8 pure Kotlin files), data/mapper/ (8 mapper files) — Clean Architecture DTO ≠ Domain Model separation
+- Correction 2: Created presentation/state/ (7 MVI state files), presentation/action/ (5 action files), presentation/effect/ (1 effect file), presentation/viewmodel/ (6 shared ViewModels) — MVI pattern with pure Kotlin state machines
+- Correction 3: Converted NotificationService, TimeProvider, HttpClientFactory from expect/actual to Interface + Koin DI (with @Deprecated annotations on old declarations for backward compat)
+- Correction 4: Created PreferencesCache interface for non-sensitive data (theme, language, settings) with strict security rules — TokenCache/Keychain ONLY for secrets
+- Correction 5: Created ProctoringEngine in proctoring/ package (centralized rules engine, alert aggregation, termination logic) — Hybrid domain: shared engine + native drivers
+- Created domain/repository/ interfaces (AuthRepository, SECTRepositoryInterface) for Dependency Inversion
+- Created di/ Koin modules (NetworkModule, DataModule, DomainModule, PresentationModule, PlatformModule)
+- Migrated API layer to return DTOs; created SECTRepositoryImpl with mapper conversions
+- Deprecated old Models.kt, ProctoringService.kt, and expect/actual declarations with migration instructions
+
+Stage Summary:
+- 40+ new files created across data/dto, domain/model, data/mapper, presentation, proctoring, di, platform packages
+- Architecture restructured from monolithic domain/model/Models.kt to Clean Architecture with DTO → Mapper → Domain Model
+- MVI pattern (State/Action/Effect) established in shared/presentation/ — ViewModels are pure Kotlin state machines
+- Proctoring separated into hybrid domain: shared ProctoringEngine (rules) + native drivers (metric collection)
+- Platform abstractions migrated from expect/actual to Interface + DI for testability
+- Security rigor enforced: PreferencesCache (non-sensitive) vs TokenCache (secrets only) with explicit documentation
+- All old declarations marked @Deprecated with migration instructions for smooth transition

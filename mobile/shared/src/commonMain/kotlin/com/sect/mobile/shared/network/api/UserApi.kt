@@ -1,7 +1,7 @@
 // SECT Mobile — Service API Utilisateurs
 package com.sect.mobile.shared.network.api
 
-import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.data.dto.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -19,7 +19,7 @@ class UserApi(private val client: HttpClient) {
         etablissementId: String? = null,
         page: Int = 1,
         limit: Int = 20
-    ): UserListResult {
+    ): UserListResultDto {
         return client.get("/api/users") {
             search?.let { parameter("search", it) }
             role?.let { parameter("role", it) }
@@ -33,7 +33,7 @@ class UserApi(private val client: HttpClient) {
      * Obtenir un utilisateur par ID.
      * GET /api/users/{id}
      */
-    suspend fun get(id: String): User {
+    suspend fun get(id: String): UserDto {
         return client.get("/api/users/$id").body()
     }
 
@@ -41,7 +41,7 @@ class UserApi(private val client: HttpClient) {
      * Créer un utilisateur.
      * POST /api/users
      */
-    suspend fun create(input: CreateUserInput): User {
+    suspend fun create(input: CreateUserInputDto): UserDto {
         return client.post("/api/users") {
             setBody(input)
         }.body()
@@ -51,7 +51,7 @@ class UserApi(private val client: HttpClient) {
      * Mettre à jour un utilisateur.
      * PATCH /api/users/{id}
      */
-    suspend fun update(id: String, input: Map<String, Any?>): User {
+    suspend fun update(id: String, input: Map<String, Any?>): UserDto {
         return client.patch("/api/users/$id") {
             setBody(input)
         }.body()

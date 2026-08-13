@@ -1,14 +1,16 @@
-// SECT Mobile — Notification Service (expect/actual pattern)
-// Push notifications require platform-specific implementations:
-// - Android: Firebase Cloud Messaging (FCM)
-// - iOS:     Apple Push Notification service (APNs)
+// SECT Mobile — [DEPRECATED] Notification Service (expect/actual pattern)
+// MIGRÉ vers interface + Koin DI :
+// - Interface : com.sect.mobile.shared.platform.NotificationService
+// - Android   : com.sect.mobile.shared.platform.AndroidNotificationService (FCM)
+// - iOS       : com.sect.mobile.shared.platform.IOSNotificationService (APNs)
+// - Injection : single<NotificationService> { AndroidNotificationService() / IOSNotificationService() }
+//
+// Ce fichier est conservé pour la compatibilité de compilation avec les actual declarations
+// dans androidMain et iosMain. Il sera supprimé quand la migration DI sera complète.
 package com.sect.mobile.shared.notification
 
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Represents a push notification received by the app.
- */
 data class PushNotification(
     val id: String,
     val title: String,
@@ -17,61 +19,20 @@ data class PushNotification(
     val receivedAt: Long
 )
 
-/**
- * NotificationService — expect/actual for push notifications.
- *
- * Common functionality:
- * - Request notification permission
- * - Subscribe/unsubscribe to topics (e.g., epreuve reminders, message alerts)
- * - Observe incoming notifications as a Flow
- * - Get/set the FCM/APNs device token
- */
+@Deprecated(
+    message = "Utilisez com.sect.mobile.shared.platform.NotificationService (interface) + Koin DI",
+    level = DeprecationLevel.WARNING
+)
 expect class NotificationService() {
-
-    /**
-     * Request notification permission from the OS.
-     * Returns true if permission was granted.
-     */
     suspend fun requestPermission(): Boolean
-
-    /**
-     * Check if notification permission is currently granted.
-     */
     suspend fun hasPermission(): Boolean
-
-    /**
-     * Subscribe to a push notification topic.
-     * Examples: "epreuve-{id}", "messages-{conversationId}", "alerts-{etablissementId}"
-     */
     suspend fun subscribeToTopic(topic: String)
-
-    /**
-     * Unsubscribe from a push notification topic.
-     */
     suspend fun unsubscribeFromTopic(topic: String)
-
-    /**
-     * Observe incoming push notifications.
-     * Used by ViewModels to react to notifications (e.g., show in-app banner).
-     */
     fun observeNotifications(): Flow<PushNotification>
-
-    /**
-     * Get the current device push token (FCM token on Android, APNs token on iOS).
-     * Returns null if not yet generated or permission not granted.
-     */
     suspend fun getDeviceToken(): String?
-
-    /**
-     * Send the device token to the SECT backend for server-side push.
-     * Called after login to register the device for the current user.
-     */
     suspend fun registerDeviceWithBackend(userId: String)
 }
 
-/**
- * Notification topics used across the SECT app.
- */
 object NotificationTopics {
     fun epreuveReminder(epreuveId: String) = "epreuve-$epreuveId"
     fun epreuveResult(epreuveId: String) = "result-$epreuveId"

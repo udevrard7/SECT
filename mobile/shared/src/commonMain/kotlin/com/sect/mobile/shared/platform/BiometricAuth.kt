@@ -1,56 +1,62 @@
-// SECT Mobile — Biometric Auth abstraction (expect/actual)
-// Permet l'authentification biométrique : Face ID, Touch ID, empreinte digitale
 package com.sect.mobile.shared.platform
 
 /**
- * Interface pour l'authentification biométrique.
+ * BiometricAuth — Interface for biometric authentication (DI-based).
  *
- * Android : BiometricPrompt (API 28+) / FingerprintManager (fallback)
- * iOS : LAContext (Face ID / Touch ID)
+ * Replaces the old expect/actual pattern:
+ *   OLD: interface BiometricAuth + expect fun createBiometricAuth()
+ *   NEW: interface BiometricAuth  (provided via Koin platformModule)
  *
- * Utilisation :
- * 1. L'utilisateur se connecte avec email/password (première fois)
- * 2. L'app propose d'activer la biometric pour les connexions suivantes
- * 3. Si activé, le JWT est stocké de manière sécurisée et déverrouillé par biometric
- * 4. Au prochain lancement, l'app demande Face ID/Touch ID au lieu du password
+ * Platform implementations:
+ * - Android: BiometricPrompt (API 28+) / FingerprintManager (fallback)
+ * - iOS:     LAContext (Face ID / Touch ID)
+ *
+ * Usage via Koin:
+ *   val biometricAuth: BiometricAuth = get()
+ *
+ * Security flow:
+ * 1. User logs in with email/password (first time)
+ * 2. App offers to enable biometric for subsequent logins
+ * 3. If enabled, JWT is stored securely and unlocked by biometric
+ * 4. On next launch, app prompts Face ID/Touch ID instead of password
  */
 interface BiometricAuth {
     /**
-     * Vérifier si l'appareil supporte la biométrie.
+     * Check if the device supports biometric authentication.
      */
     suspend fun isAvailable(): BiometricAvailability
 
     /**
-     * Authentifier l'utilisateur via biométrie.
-     * Affiche le prompt système (Face ID, Touch ID, empreinte).
+     * Authenticate the user via biometrics.
+     * Shows the system prompt (Face ID, Touch ID, fingerprint).
      *
-     * @param reason Texte affiché dans le prompt système
-     * @return BiometricResult.Success ou BiometricResult.Failure
+     * @param reason Text displayed in the system prompt
+     * @return BiometricResult.Success or BiometricResult.Failure
      */
     suspend fun authenticate(reason: String): BiometricResult
 
     /**
-     * Activer la connexion biométrique pour l'utilisateur courant.
-     * Stocke un flag + permet le déverrouillage du token par biométrie.
+     * Enable biometric login for the current user.
+     * Stores a flag + allows token unlock by biometric.
      */
     suspend fun enable()
 
     /**
-     * Désactiver la connexion biométrique.
+     * Disable biometric login.
      */
     suspend fun disable()
 
     /**
-     * Vérifier si la biométrie est activée pour l'utilisateur courant.
+     * Check if biometric login is enabled for the current user.
      */
     suspend fun isEnabled(): Boolean
 }
 
 enum class BiometricAvailability {
-    AVAILABLE,           // Biométrie disponible et configurée
-    NOT_AVAILABLE,       // Pas de capteur biométrique
-    NOT_ENROLLED,        // Capteur présent mais aucune biométrie enregistrée
-    HARDWARE_UNSUPPORTED // Appareil trop ancien
+    AVAILABLE,           // Biometric available and configured
+    NOT_AVAILABLE,       // No biometric sensor
+    NOT_ENROLLED,        // Sensor present but no biometrics enrolled
+    HARDWARE_UNSUPPORTED // Device too old
 }
 
 sealed class BiometricResult {
@@ -58,8 +64,3 @@ sealed class BiometricResult {
     data class Failure(val reason: String) : BiometricResult()
     data object Cancelled : BiometricResult()
 }
-
-/**
- * Factory expect/actual pour créer l'implémentation biométrique de la plateforme.
- */
-expect fun createBiometricAuth(): BiometricAuth

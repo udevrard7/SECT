@@ -1,4 +1,6 @@
-// SECT Mobile — Client HTTP Ktor (expect declaration)
+// SECT Mobile — Client HTTP Ktor (DEPRECATED expect declaration)
+// Préférer : com.sect.mobile.shared.platform.HttpClientFactory (interface) + Koin DI
+// Avantage : testabilité (MockHttpClientFactory en tests unitaires)
 package com.sect.mobile.shared.network.client
 
 import io.ktor.client.*
@@ -12,6 +14,11 @@ import io.ktor.client.engine.*
  * @param tokenProvider Fonction qui retourne le JWT access token courant (depuis le cache)
  * @param refreshHandler Fonction pour rafraîchir le token expiré
  */
+@Deprecated(
+    message = "Utilisez com.sect.mobile.shared.platform.HttpClientFactory (interface) + Koin DI",
+    level = DeprecationLevel.WARNING,
+    replaceWith = ReplaceWith("httpClientFactory.create(baseUrl, tokenProvider, refreshHandler)", "com.sect.mobile.shared.platform.HttpClientFactory")
+)
 expect fun createHttpClient(
     engine: HttpClientEngine,
     baseUrl: String,

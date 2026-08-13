@@ -1,7 +1,7 @@
 // SECT Mobile — Service API Session (passation d'épreuves)
 package com.sect.mobile.shared.network.api
 
-import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.data.dto.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -13,7 +13,7 @@ class SessionApi(private val client: HttpClient) {
      * Obtenir ou créer une session de passation pour un étudiant.
      * GET /api/epreuves/{epreuveId}/session
      */
-    suspend fun getOrCreate(epreuveId: String): SessionPassation {
+    suspend fun getOrCreate(epreuveId: String): SessionPassationDto {
         return client.get("/api/epreuves/$epreuveId/session").body()
     }
 
@@ -24,7 +24,7 @@ class SessionApi(private val client: HttpClient) {
     suspend fun submit(
         sessionId: String,
         reponses: List<Map<String, Any?>>
-    ): SessionPassation {
+    ): SessionPassationDto {
         return client.post("/api/sessions/$sessionId/submit") {
             setBody(mapOf("reponses" to reponses))
         }.body()

@@ -1,7 +1,7 @@
 // SECT Mobile — Service API Auth (login, refresh, logout, password reset)
 package com.sect.mobile.shared.network.api
 
-import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.data.dto.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -14,7 +14,7 @@ class AuthApi(private val client: HttpClient) {
      * Login avec email ou matricule.
      * POST /api/auth/login
      */
-    suspend fun login(credentials: Credentials): AuthSession {
+    suspend fun login(credentials: CredentialsDto): AuthSessionDto {
         return client.post("/api/auth/login") {
             setBody(credentials)
         }.body()
@@ -24,7 +24,7 @@ class AuthApi(private val client: HttpClient) {
      * Rafraîchir le JWT access token.
      * POST /api/auth/refresh
      */
-    suspend fun refresh(refreshToken: String): AuthSession {
+    suspend fun refresh(refreshToken: String): AuthSessionDto {
         return client.post("/api/auth/refresh") {
             setBody(mapOf("refreshToken" to refreshToken))
         }.body()
@@ -74,7 +74,7 @@ class AuthApi(private val client: HttpClient) {
      * Obtenir l'utilisateur courant.
      * GET /api/me
      */
-    suspend fun me(): User {
+    suspend fun me(): UserDto {
         return client.get("/api/me").body()
     }
 
@@ -92,7 +92,7 @@ class AuthApi(private val client: HttpClient) {
      * Accepter une invitation.
      * POST /api/invitations/accept
      */
-    suspend fun acceptInvitation(token: String, password: String, name: String): AuthSession {
+    suspend fun acceptInvitation(token: String, password: String, name: String): AuthSessionDto {
         return client.post("/api/invitations/accept") {
             setBody(mapOf("token" to token, "password" to password, "name" to name))
         }.body()

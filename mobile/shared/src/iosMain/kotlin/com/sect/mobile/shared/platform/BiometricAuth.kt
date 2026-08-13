@@ -84,4 +84,10 @@ class IOSBiometricAuth : BiometricAuth {
     }
 }
 
-actual fun createBiometricAuth(): BiometricAuth = IOSBiometricAuth()
+/**
+ * Factory function for Koin DI.
+ * Use in platformModule: single<BiometricAuth> { createBiometricAuth() }
+ *
+ * OLD: actual fun createBiometricAuth() (expect/actual pattern — REMOVED)
+ * NEW: Direct construction via DI — platform module provides the instance
+ */
