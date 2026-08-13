@@ -70,3 +70,36 @@ Stage Summary:
 - iosApp/: SwiftUI views with Shared.framework import
 - CI/CD: Separate GitHub Actions workflow for mobile builds
 - Push to GitHub triggers auto-deploy on Vercel + Render (existing)
+
+---
+Task ID: 4
+Agent: Main Orchestrator
+Task: Execute 6 feature steps for mobile module (ViewModels → Proctoring)
+
+Work Log:
+- Step 1: Created 6 ViewModels (Auth, Dashboard, Epreuve, Passation, Messagerie, Profile)
+  + UiState<T> generic sealed interface
+  + Koin DI module wiring HttpClient → APIs → Repository → ViewModels
+  + Updated all Compose screens to use ViewModels
+- Step 2: Created AutoSaveService with 30s periodic save, dirty tracking, flush-on-submit
+- Step 3: Created SurveillanceWebSocket (Ktor WS client for proctoring alerts)
+  + SSEClient for Server-Sent Events (notifications + chat)
+  + Auto-reconnect on disconnect
+- Step 4: Created BiometricAuth with expect/actual pattern
+  + Android: BiometricPrompt API 28+ (fingerprint, face unlock)
+  + iOS: LAContext (Face ID, Touch ID)
+  + Enable/disable with DataStore/NSUserDefaults
+- Step 5: Created OfflineCache (in-memory, TTL, stale-while-revalidate)
+  + Documented SQLDelight schema for Phase 2 migration
+- Step 6: Created ProctoringService interface + Android implementation
+  + Lifecycle detection (tab switch, app background)
+  + Immersive mode / fullscreen enforcement
+  + Alert severity system (LOW → CRITICAL) with auto-terminate
+  + iOS Swift reference for NotificationCenter + Vision framework
+- Committed as SECT-KMP-2 and pushed to GitHub (main → 69a1fb5)
+
+Stage Summary:
+- 23 files changed, 2576 insertions
+- Mobile module is feature-complete for initial version
+- All 6 priority steps executed in order
+- Vercel + Render auto-deploy triggered by push

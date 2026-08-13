@@ -108,6 +108,16 @@ fun SECTNavigation(
             )
         }
 
+        composable(Routes.CONVERSATION) { backStackEntry ->
+            val conversationId = backStackEntry.arguments?.getString("conversationId") ?: ""
+            val messagerieVM: MessagerieViewModel = koinViewModel()
+            ConversationScreen(
+                conversationId = conversationId,
+                viewModel = messagerieVM,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Routes.PROFILE) {
             val profileVM: ProfileViewModel = koinViewModel()
             ProfileScreen(
@@ -117,7 +127,24 @@ fun SECTNavigation(
         }
 
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            val authVM: AuthViewModel = koinViewModel()
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    authVM.logout()
+                    navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
+                }
+            )
+        }
+
+        composable(Routes.RESULTS) { backStackEntry ->
+            val epreuveId = backStackEntry.arguments?.getString("epreuveId") ?: ""
+            val passationVM: PassationViewModel = koinViewModel()
+            ResultsScreen(
+                epreuveId = epreuveId,
+                viewModel = passationVM,
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }

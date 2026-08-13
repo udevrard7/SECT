@@ -521,12 +521,427 @@ fun ProfileScreen(
     }
 }
 
+// ══════════════════════════════════════════════════
+// SETTINGS SCREEN
+// ══════════════════════════════════════════════════
+
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Paramètres", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("À implémenter : thème, notifications, langues, etc.")
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onLogout: () -> Unit
+) {
+    var isDarkTheme by remember { mutableStateOf(false) }
+    var isBiometricEnabled by remember { mutableStateOf(false) }
+    var isNotificationEnabled by remember { mutableStateOf(true) }
+    var isAutoSaveEnabled by remember { mutableStateOf(true) }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text("Paramètres", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // ── Apparence ──
+        item {
+            Text("Apparence", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Default.DarkMode, "Thème sombre")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Thème sombre")
+                    }
+                    Switch(checked = isDarkTheme, onCheckedChange = { isDarkTheme = it })
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        // ── Sécurité ──
+        item {
+            Text("Sécurité", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Fingerprint, "Biométrie")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Authentification biométrique")
+                            Text("Face ID / Empreinte digitale", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Switch(checked = isBiometricEnabled, onCheckedChange = { isBiometricEnabled = it })
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        // ── Examens ──
+        item {
+            Text("Examens", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Notifications, "Notifications")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Notifications examens")
+                    }
+                    Switch(checked = isNotificationEnabled, onCheckedChange = { isNotificationEnabled = it })
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Save, "Auto-save")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Sauvegarde automatique")
+                            Text("Toutes les 30 secondes pendant l'examen", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Switch(checked = isAutoSaveEnabled, onCheckedChange = { isAutoSaveEnabled = it })
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        // ── Informations ──
+        item {
+            Text("Informations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Info, "Version")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("SECT Mobile v1.0.0")
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Système d'Évaluation Casse-Tête", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(24.dp)) }
+
+        // ── Déconnexion ──
+        item {
+            OutlinedButton(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Default.Logout, "Déconnexion")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Déconnexion")
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════
+// RESULTS SCREEN
+// ══════════════════════════════════════════════════
+
+@Composable
+fun ResultsScreen(
+    epreuveId: String,
+    viewModel: PassationViewModel,
+    onBack: () -> Unit
+) {
+    val session by viewModel.session.collectAsState()
+
+    LaunchedEffect(epreuveId) {
+        // La session est déjà chargée depuis la passation
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Résultats") },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, "Retour")
+                }
+            }
+        )
+
+        when (val s = session) {
+            is UiState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            is UiState.Error -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(s.message, color = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedButton(onClick = onBack) { Text("Retour") }
+                    }
+                }
+            }
+            is UiState.Success -> {
+                val sessionData = s.data
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    // Score principal
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Note obtenue", style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                val note = sessionData.note ?: 0.0
+                                val noteTotal = sessionData.epreuve?.noteTotal ?: 20.0
+                                Text(
+                                    "${"%.1f".format(note)}/$noteTotal",
+                                    style = MaterialTheme.typography.displaySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (note >= noteTotal / 2) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val percentage = if (noteTotal > 0) (note / noteTotal * 100).toInt() else 0
+                                Text("$percentage%", style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // Détails session
+                    item {
+                        Text("Détails de la session", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Statistiques rapides
+                    item {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val reponses = sessionData.reponses ?: emptyList()
+                            val answered = reponses.count { it.contenu != null }
+                            val totalQ = sessionData.epreuve?.questionCount ?: reponses.size
+                            StatCard("Répondu", "$answered/$totalQ", Modifier.weight(1f))
+                            StatCard("Alertes", "${sessionData.proctoringAlerts}", Modifier.weight(1f))
+                            StatCard("Pénalité", "${"%.1f".format(sessionData.penaliteProctoring ?: 0.0)}pt", Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // Détail par question
+                    if (sessionData.reponses?.isNotEmpty() == true) {
+                        item {
+                            Text("Détail par question", style = MaterialTheme.typography.titleMedium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        items(sessionData.reponses!!, key = { it.id }) { reponse ->
+                            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Question ${reponse.questionId.takeLast(4)}",
+                                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                        reponse.contenu?.let {
+                                            Text(it, style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        }
+                                        reponse.feedbackAi?.let {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("IA : $it", style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        val noteQ = reponse.note ?: reponse.noteAi
+                                        if (noteQ != null) {
+                                            Text("${"%.1f".format(noteQ)} pt",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (noteQ > 0) MaterialTheme.colorScheme.primary
+                                                       else MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════
+// CONVERSATION SCREEN
+// ══════════════════════════════════════════════════
+
+@Composable
+fun ConversationScreen(
+    conversationId: String,
+    viewModel: MessagerieViewModel,
+    onBack: () -> Unit
+) {
+    val messages by viewModel.messages.collectAsState()
+    val messageText by viewModel.messageText.collectAsState()
+    val isSending by viewModel.isSending.collectAsState()
+
+    LaunchedEffect(conversationId) { viewModel.selectConversation(conversationId) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Header
+        TopAppBar(
+            title = { Text("Conversation") },
+            navigationIcon = {
+                IconButton(onClick = {
+                    viewModel.backToConversations()
+                    onBack()
+                }) {
+                    Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, "Retour")
+                }
+            }
+        )
+
+        // Messages
+        when (val state = messages) {
+            is UiState.Loading -> {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            is UiState.Error -> {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(state.message, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            is UiState.Success -> {
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
+                    reverseLayout = true
+                ) {
+                    items(state.data, key = { it.id }) { message ->
+                        val isMe = message.expediteurId == viewModel.selectedConversationId.value
+                        MessageBubble(
+                            message = message,
+                            isMe = isMe
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+
+        // Input zone
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            tonalElevation = 3.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = messageText,
+                    onValueChange = { viewModel.onMessageTextChanged(it) },
+                    placeholder = { Text("Écrire un message...") },
+                    modifier = Modifier.weight(1f),
+                    maxLines = 3,
+                    enabled = !isSending
+                )
+                IconButton(
+                    onClick = { viewModel.sendMessage() },
+                    enabled = messageText.isNotBlank() && !isSending
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(androidx.compose.material.icons.Icons.Default.Send, "Envoyer",
+                            tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageBubble(message: com.sect.mobile.shared.domain.model.Message, isMe: Boolean) {
+    val alignment = if (isMe) Alignment.End else Alignment.Start
+    val color = if (isMe) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant
+    val textColor = if (isMe) MaterialTheme.colorScheme.onPrimaryContainer
+                   else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = color,
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                if (!isMe) {
+                    message.expediteur?.name?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                }
+                Text(message.contenu, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    message.createdAt.toString().take(19),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor.copy(alpha = 0.6f)
+                )
+            }
+        }
     }
 }
 
