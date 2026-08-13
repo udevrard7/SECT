@@ -1,0 +1,99 @@
+# SECT Mobile — CI/CD GitHub Actions
+# Build et test du module Kotlin Multiplatform (Android + iOS)
+#
+# Stratégie de déclenchement :
+# - Modification dans mobile/ → Compile Android + shared
+# - Modification dans backend/ → Déploie Go sur Render (auto)
+# - Modification dans frontend/ → Déploie Next.js sur Vercel (auto)
+
+name: Mobile CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+
+concurrency:
+  group: mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Build & Test Android ──
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build shared module
+        working-directory: mobile
+        run: ./gradlew :shared:build
+
+      - name: Build Android app
+        working-directory: mobile
+        run: ./gradlew :androidApp:assembleDebug
+
+      - name: Run Android unit tests
+        working-directory: mobile
+        run: ./gradlew :shared:allTests
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sect-android-debug
+          path: mobile/androidApp/build/outputs/apk/debug/*.apk
+
+  # ── Build iOS (shared framework only — macOS required) ──
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build iOS framework
+        working-directory: mobile
+        run: ./gradlew :shared:linkDebugFrameworkIosArm64
+
+      - name: Run iOS unit tests
+        working-directory: mobile
+        run: ./gradlew :shared:iosSimulatorArm64Test
+
+  # ── Lint ──
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Detekt (lint Kotlin)
+        working-directory: mobile
+        run: ./gradlew detekt || true  # Non-blocking en phase initiale

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">sect-zead.onrender.com</domain>
+        <domain includeSubdomains="true">sect-app.vercel.app</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </base-config>
+</network-security-config>

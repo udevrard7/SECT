@@ -99,6 +99,48 @@ test
 *.tmp
 *.bak
 
+# ─── Kotlin Multiplatform (mobile/) ───────────────────────────
+# Gradle
+mobile/.gradle/
+mobile/**/build/
+mobile/**/!build/
+mobile/local.properties
+mobile/.kotlin/
+*.apk
+*.aab
+*.ipa
+*.dSYM.zip
+*.framework/
+
+# Android
+mobile/androidApp/.gradle/
+mobile/androidApp/build/
+mobile/shared/build/
+mobile/shared/.gradle/
+*.jks
+*.keystore
+keystore.properties
+
+# iOS (Xcode)
+mobile/iosApp/**/*.xcworkspace/
+mobile/iosApp/**/*.xcuserdata/
+mobile/iosApp/**/DerivedData/
+mobile/iosApp/**/build/
+mobile/iosApp/**/.build/
+mobile/iosApp/**/*.pbxuser
+mobile/iosApp/**/*.mode1v3
+mobile/iosApp/**/*.mode2v3
+mobile/iosApp/**/*.perspectivev3
+mobile/iosApp/**/*.xcuserstate
+mobile/iosApp/**/xcshareddata/xcschemes/
+mobile/iosApp/Pods/
+mobile/iosApp/.podfile.lock
+mobile/iosApp/DerivedData/
+
+# Kotlin/Native
+*.klib
+*.knm
+
 # SECT Desktop (Wails)
 desktop/bin/
 desktop/frontend/node_modules/
