@@ -28,7 +28,7 @@ class AndroidBiometricAuth(private val context: Context) : BiometricAuth {
     override suspend fun isAvailable(): BiometricAvailability {
         return when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)) {
             BiometricManager.BIOMETRIC_SUCCESS -> BiometricAvailability.AVAILABLE
-            BiometricManager.BIOMETRIC_ERROR_NO_HW -> BiometricAvailability.NOT_AVAILABLE
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> BiometricAvailability.NOT_AVAILABLE
             BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> BiometricAvailability.NOT_AVAILABLE
             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> BiometricAvailability.NOT_ENROLLED
             else -> BiometricAvailability.HARDWARE_UNSUPPORTED

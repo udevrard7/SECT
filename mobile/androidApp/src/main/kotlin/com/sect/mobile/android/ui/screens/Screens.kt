@@ -2,9 +2,14 @@
 package com.sect.mobile.android.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,7 +21,8 @@ import com.sect.mobile.android.ui.viewmodel.*
 import com.sect.mobile.shared.domain.enum.Role
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
 import com.sect.mobile.shared.domain.model.Epreuve
-import kotlinx.datetime.Clock
+
+@OptIn(ExperimentalMaterial3Api::class)
 
 // ══════════════════════════════════════════════════
 // SPLASH SCREEN
@@ -381,6 +387,7 @@ fun EpreuveDetailScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PassationScreen(
     epreuveId: String,
@@ -680,6 +687,7 @@ fun SettingsScreen(
 // RESULTS SCREEN
 // ══════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResultsScreen(
     epreuveId: String,
@@ -697,7 +705,7 @@ fun ResultsScreen(
             title = { Text("Résultats") },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, "Retour")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour")
                 }
             }
         )
@@ -821,6 +829,7 @@ fun ResultsScreen(
 // CONVERSATION SCREEN
 // ══════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationScreen(
     conversationId: String,
@@ -842,7 +851,7 @@ fun ConversationScreen(
                     viewModel.backToConversations()
                     onBack()
                 }) {
-                    Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, "Retour")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour")
                 }
             }
         )
@@ -901,7 +910,7 @@ fun ConversationScreen(
                     if (isSending) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(androidx.compose.material.icons.Icons.Default.Send, "Envoyer",
+                        Icon(Icons.AutoMirrored.Filled.Send, "Envoyer",
                             tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary
                                    else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -945,6 +954,4 @@ private fun MessageBubble(message: com.sect.mobile.shared.domain.model.Message, 
     }
 }
 
-// Extension pour clickable sur ListItem
-private fun Modifier.clickable(onClick: () -> Unit): Modifier =
-    this.then(androidx.compose.foundation.clickable(onClick = onClick))
+// Extension pour clickable sur ListItem — déjà importé via androidx.compose.foundation.clickable

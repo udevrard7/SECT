@@ -2,9 +2,12 @@
 package com.sect.mobile.shared.domain.model
 
 import com.sect.mobile.shared.domain.enum.*
-import kotlinx.datetime.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+
+// Type alias pour les dates — le backend Go envoie des ISO-8601 strings
+// kotlinx-datetime Instant nécessite un serializer custom; on utilise String pour la compat JSON
+typealias Instant = String
 
 // ──────────────────────────────────────────
 // Auth

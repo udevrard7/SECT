@@ -7,6 +7,8 @@ package com.sect.mobile.shared.network.realtime
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import io.ktor.util.cio.*
+import io.ktor.utils.io.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,19 +17,6 @@ import kotlinx.serialization.json.Json
 
 /**
  * SSE (Server-Sent Events) Client pour recevoir des événements temps réel.
- *
- * Utilisé pour :
- * 1. Messagerie — nouveaux messages dans une conversation
- * 2. Notifications — alertes, résultats de correction, etc.
- *
- * Le backend Go envoie des événements au format SSE standard :
- * ```
- * event: message
- * data: {"id":"...","contenu":"...","expediteurId":"..."}
- *
- * event: notification
- * data: {"type":"correction_complete","epreuveId":"..."}
- * ```
  */
 class SSEClient(
     private val client: HttpClient,
@@ -44,9 +33,6 @@ class SSEClient(
 
     /**
      * Se connecter à un flux SSE.
-     * @param endpoint Path SSE (ex: /api/notifications/events)
-     * @param token JWT access token
-     * @param scope CoroutineScope pour la connexion longue durée
      */
     fun connect(
         endpoint: String,
@@ -69,8 +55,8 @@ class SSEClient(
 
                 _connectionState.value = ConnectionState.CONNECTED
 
-                // Lire le flux SSE ligne par ligne
-                val channel = response.bodyAsChannel()
+                // Lire le flux SSE ligne par ligne via ByteReadChannel
+                val channel: ByteReadChannel = response.bodyAsChannel()
                 var currentEvent = ""
                 var currentData = StringBuilder()
 
