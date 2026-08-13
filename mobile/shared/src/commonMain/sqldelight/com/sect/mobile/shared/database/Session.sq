@@ -1,0 +1,82 @@
+-- SECT Mobile — Session & Answer cache (offline passation)
+-- Stores session data and local answers (auto-save + offline submission)
+
+CREATE TABLE cached_session (
+    id TEXT NOT NULL PRIMARY KEY,
+    etudiant_id TEXT NOT NULL,
+    epreuve_id TEXT NOT NULL,
+    statut TEXT NOT NULL,
+    date_debut TEXT,
+    date_soumission TEXT,
+    temps_restant INTEGER,
+    note REAL,
+    cached_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
+-- Réponses locales (auto-save + offline outbox)
+CREATE TABLE local_reponse (
+    session_id TEXT NOT NULL,
+    question_id TEXT NOT NULL,
+    contenu TEXT NOT NULL,
+    saved_at INTEGER NOT NULL,     -- epoch millis
+    synced INTEGER AS Boolean NOT NULL DEFAULT 0,  -- 0 = pas sync, 1 = sync au backend
+    PRIMARY KEY (session_id, question_id)
+);
+
+-- Index for finding sessions by epreuve
+CREATE INDEX idx_cached_session_epreuve ON cached_session(epreuve_id);
+
+-- Index for unsynced responses (outbox)
+CREATE INDEX idx_local_reponse_session ON local_reponse(session_id);
+
+CREATE INDEX idx_local_reponse_unsynced ON local_reponse(synced)
+WHERE synced = 0;
+
+-- ── Session queries ──
+
+getSession:
+SELECT * FROM cached_session WHERE id = ?;
+
+getSessionByEpreuve:
+SELECT * FROM cached_session WHERE epreuve_id = ? AND etudiant_id = ?;
+
+getActiveSessions:
+SELECT * FROM cached_session WHERE statut = 'EN_COURS' AND etudiant_id = ?;
+
+insertSession:
+INSERT OR REPLACE INTO cached_session
+    (id, etudiant_id, epreuve_id, statut, date_debut, date_soumission,
+     temps_restant, note, cached_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteSession:
+DELETE FROM cached_session WHERE id = ?;
+
+deleteExpiredSessions:
+DELETE FROM cached_session WHERE expires_at <= ?;
+
+-- ── Reponse queries ──
+
+getReponse:
+SELECT * FROM local_reponse WHERE session_id = ? AND question_id = ?;
+
+getReponsesBySession:
+SELECT * FROM local_reponse WHERE session_id = ? ORDER BY saved_at;
+
+getUnsyncedReponses:
+SELECT * FROM local_reponse WHERE synced = 0;
+
+insertReponse:
+INSERT OR REPLACE INTO local_reponse
+    (session_id, question_id, contenu, saved_at, synced)
+VALUES (?, ?, ?, ?, ?);
+
+markReponseSynced:
+UPDATE local_reponse SET synced = 1 WHERE session_id = ? AND question_id = ?;
+
+deleteReponsesBySession:
+DELETE FROM local_reponse WHERE session_id = ?;
+
+deleteSyncedReponses:
+DELETE FROM local_reponse WHERE synced = 1;

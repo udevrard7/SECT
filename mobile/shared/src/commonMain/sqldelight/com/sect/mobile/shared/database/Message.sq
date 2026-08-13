@@ -1,0 +1,77 @@
+-- SECT Mobile — Message cache (offline messaging)
+-- Caches conversations and recent messages for offline access
+
+CREATE TABLE cached_conversation (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    titre TEXT,
+    etablissement_id TEXT,
+    filiere_id TEXT,
+    epreuve_id TEXT,
+    last_message_json TEXT,        -- JSON of last message
+    cached_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
+CREATE TABLE cached_message (
+    id TEXT NOT NULL PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    expediteur_id TEXT NOT NULL,
+    contenu TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expediteur_name TEXT,          -- Denormalized for display
+    cached_at INTEGER NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES cached_conversation(id)
+);
+
+-- Indexes
+CREATE INDEX idx_cached_conversation_expires ON cached_conversation(expires_at);
+
+CREATE INDEX idx_cached_message_conv ON cached_message(conversation_id);
+
+CREATE INDEX idx_cached_message_created ON cached_message(created_at);
+
+-- ── Conversation queries ──
+
+getConversation:
+SELECT * FROM cached_conversation WHERE id = ?;
+
+listConversations:
+SELECT * FROM cached_conversation ORDER BY cached_at DESC;
+
+listValidConversations:
+SELECT * FROM cached_conversation WHERE expires_at > ? ORDER BY cached_at DESC;
+
+insertConversation:
+INSERT OR REPLACE INTO cached_conversation
+    (id, type, titre, etablissement_id, filiere_id, epreuve_id,
+     last_message_json, cached_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteConversation:
+DELETE FROM cached_conversation WHERE id = ?;
+
+deleteExpiredConversations:
+DELETE FROM cached_conversation WHERE expires_at <= ?;
+
+deleteAllConversations:
+DELETE FROM cached_conversation;
+
+-- ── Message queries ──
+
+getMessagesByConversation:
+SELECT * FROM cached_message WHERE conversation_id = ? ORDER BY created_at DESC;
+
+getRecentMessages:
+SELECT * FROM cached_message WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?;
+
+insertMessage:
+INSERT OR REPLACE INTO cached_message
+    (id, conversation_id, expediteur_id, contenu, created_at, expediteur_name, cached_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteMessagesByConversation:
+DELETE FROM cached_message WHERE conversation_id = ?;
+
+deleteOldMessages:
+DELETE FROM cached_message WHERE cached_at < ?;
