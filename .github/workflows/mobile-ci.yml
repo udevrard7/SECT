@@ -223,6 +223,13 @@ jobs:
       - name: 🏗️ Compile Shared.framework (iOS)
         run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --no-daemon
 
+      # ── Copy Shared.framework to expected location ──
+      - name: 📦 Copy Shared.framework to Frameworks/
+        run: |
+          mkdir -p iosApp/Frameworks
+          cp -R shared/build/bin/iosSimulatorArm64/debugFramework/Shared.framework iosApp/Frameworks/
+          echo "✓ Shared.framework copied to iosApp/Frameworks/"
+
       # ── Build iOS App (simulator) ──
       - name: 🏗️ Build iOS App (Simulator)
         run: |
