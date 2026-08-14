@@ -34,7 +34,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "ci.sect.app"
+        applicationId = "com.ftci.sect"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

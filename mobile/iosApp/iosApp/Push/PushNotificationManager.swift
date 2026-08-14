@@ -184,7 +184,7 @@ final class PushNotificationManager: NSObject, UNUserNotificationCenterDelegate 
             "userId": userId,
             "token": token,
             "platform": "ios",
-            "bundleId": Bundle.main.bundleIdentifier ?? "ci.sect.app.ios"
+            "bundleId": Bundle.main.bundleIdentifier ?? "com.ftci.app"
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
