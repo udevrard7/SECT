@@ -9,3 +9,13 @@ extension Color {
     static let sectPurple = Color(red: 0.588, green: 0.345, blue: 0.925)    // #9558EC
     static let sectRed = Color(red: 0.937, green: 0.267, blue: 0.267)       // #EF4444
 }
+
+// Extension ShapeStyle pour permettre .foregroundStyle(.sectGreen)
+extension ShapeStyle where Self == Color {
+    static var sectGreen: Color { .init(sectGreen) }
+    static var sectGreenDark: Color { .init(sectGreenDark) }
+    static var sectOrange: Color { .init(sectOrange) }
+    static var sectBlue: Color { .init(sectBlue) }
+    static var sectPurple: Color { .init(sectPurple) }
+    static var sectRed: Color { .init(sectRed) }
+}

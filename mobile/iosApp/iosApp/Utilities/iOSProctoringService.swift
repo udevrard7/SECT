@@ -15,12 +15,12 @@ class iOSProctoringService: NSObject, ObservableObject {
     private var config: ProctoringConfig?
     private var captureSession: AVCaptureSession?
     private var photoOutput: AVCapturePhotoOutput?
-    private var websocket: SurveillanceWebSocket?
+    private var websocket: Any? = nil
     private var lastCaptureTime: Date = .distantPast
     
     // ── Lifecycle Observers ──
     
-    func start(config: ProctoringConfig, websocket: SurveillanceWebSocket? = nil) {
+    func start(config: ProctoringConfig, websocket: Any? = nil) {
         self.config = config
         self.websocket = websocket
         self.isProctoringActive = true
@@ -234,7 +234,8 @@ class iOSProctoringService: NSObject, ObservableObject {
     // ── Cleanup ──
     
     deinit {
-        stop()
+        // stop() est @MainActor, ne peut pas être appelé dans deinit (non-isolé)
+        // On invalide juste le timer directement
         faceDetectionTimer?.invalidate()
     }
 }

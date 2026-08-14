@@ -61,12 +61,12 @@ struct EpreuveDetailView: View {
                         HStack {
                             Image(systemName: "clock")
                                 .foregroundStyle(.sectGreen)
-                            Text("Début : \(formatInstant(epreuve.dateDebut))")
+                            Text("Début : \(formatString(epreuve.dateDebut))")
                         }
                         HStack {
                             Image(systemName: "clock.badge.checkmark")
                                 .foregroundStyle(.sectBlue)
-                            Text("Fin : \(formatInstant(epreuve.dateFin))")
+                            Text("Fin : \(formatString(epreuve.dateFin))")
                         }
                     }
                     .font(.subheadline)
@@ -148,7 +148,7 @@ struct EpreuveDetailView: View {
         return statut == "EN_COURS" || statut == "PLANIFIEE"
     }
 
-    private func formatInstant(_ instant: Instant) -> String {
+    private func formatString(_ instant: String) -> String {
         let date = Date(timeIntervalSince1970: Double(instant.toEpochMilliseconds()) / 1000.0)
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

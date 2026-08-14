@@ -121,7 +121,7 @@ struct ResultsView: View {
                 HStack {
                     Label("Début", systemImage: "clock")
                     Spacer()
-                    Text(formatInstant(debut))
+                    Text(formatString(debut))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -130,7 +130,7 @@ struct ResultsView: View {
                 HStack {
                     Label("Soumission", systemImage: "checkmark.circle")
                     Spacer()
-                    Text(formatInstant(soumission))
+                    Text(formatString(soumission))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -160,7 +160,7 @@ struct ResultsView: View {
         return .sectRed
     }
 
-    private func formatInstant(_ instant: Instant) -> String {
+    private func formatString(_ instant: String) -> String {
         let date = Date(timeIntervalSince1970: Double(instant.toEpochMilliseconds()) / 1000.0)
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
