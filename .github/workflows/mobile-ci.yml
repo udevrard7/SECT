@@ -248,25 +248,31 @@ jobs:
             | xcpretty
 
       # ── Artefacts ──
+      - name: 📦 Zip iOS App for upload
+        run: |
+          cd iosApp/build/Build/Products/Debug-iphonesimulator
+          zip -r sect-ios-app.zip *.app
+          echo "✓ .app zipped"
+
       - name: 📦 Upload iOS App
         uses: actions/upload-artifact@v4
         with:
           name: sect-ios-simulator
-          path: iosApp/build/Build/Products/Debug-iphonesimulator/*.app
-          retention-days: 7
-          if-no-files-found: warn  # Le .app est un bundle (directory), pas un fichier unique
+          path: iosApp/build/Build/Products/Debug-iphonesimulator/sect-ios-app.zip
+          retention-days: 30
+          if-no-files-found: error
 
       - name: ✅ iOS build terminé
         run: echo "✅ iOS app compiled for simulator"
 
   # ──────────────────────────────────────────────────────────────────────
   # Job 4 : Déploiement Appetize.io (main only)
-  # Upload l'APK vers Appetize.io pour test visuel dans le navigateur
+  # Upload l'APK Android + .app iOS vers Appetize.io pour test visuel
   # ──────────────────────────────────────────────────────────────────────
   deploy-appetize:
     name: 📱 Deploy Appetize.io
     runs-on: ubuntu-latest
-    needs: build-android
+    needs: [build-android, build-ios]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     steps:
@@ -275,7 +281,13 @@ jobs:
         with:
           name: sect-android-release
 
-      - name: 📱 Upload to Appetize.io
+      - name: 📥 Download iOS App artefact
+        uses: actions/download-artifact@v4
+        with:
+          name: sect-ios-simulator
+          path: ios-artifact/
+
+      - name: 📱 Upload Android APK to Appetize.io
         env:
           APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
         run: |
@@ -297,28 +309,66 @@ jobs:
             -F "file=@$APK_FILE" \
             -F "platform=android")
 
-          PUBLIC_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('publicKey',''))" 2>/dev/null || echo "")
+          ANDROID_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('publicKey',''))" 2>/dev/null || echo "")
 
-          if [ -n "$PUBLIC_KEY" ]; then
-            echo "📱 Appetize URL: https://appetize.io/app/$PUBLIC_KEY"
-            echo "APPETIZE_URL=https://appetize.io/app/$PUBLIC_KEY" >> $GITHUB_ENV
+          if [ -n "$ANDROID_KEY" ]; then
+            echo "📱 Android Appetize URL: https://appetize.io/app/$ANDROID_KEY"
+            echo "ANDROID_APPETIZE_URL=https://appetize.io/app/$ANDROID_KEY" >> $GITHUB_ENV
           else
-            echo "⚠️ Failed to get Appetize public key"
+            echo "⚠️ Failed to get Android Appetize public key"
           fi
 
-      - name: 💬 Comment commit with Appetize URL
-        if: env.APPETIZE_URL != ''
+      - name: 📱 Upload iOS App to Appetize.io
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+        run: |
+          ZIP_FILE=$(find ios-artifact/ -name "*.zip" | head -1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "⚠️ No iOS zip found — skipping iOS upload"
+            exit 0
+          fi
+
+          if [ -z "$APPETIZE_API_TOKEN" ]; then
+            echo "⚠️ APPETIZE_API_TOKEN not set — skipping iOS upload"
+            exit 0
+          fi
+
+          RESPONSE=$(curl -s -X POST \
+            "https://api.appetize.io/v1/apps" \
+            -H "Content-Type: multipart/form-data" \
+            -u "$APPETIZE_API_TOKEN:" \
+            -F "file=@$ZIP_FILE" \
+            -F "platform=ios")
+
+          IOS_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('publicKey',''))" 2>/dev/null || echo "")
+
+          if [ -n "$IOS_KEY" ]; then
+            echo "📱 iOS Appetize URL: https://appetize.io/app/$IOS_KEY"
+            echo "IOS_APPETIZE_URL=https://appetize.io/app/$IOS_KEY" >> $GITHUB_ENV
+          else
+            echo "⚠️ Failed to get iOS Appetize public key"
+            echo "Response: $RESPONSE"
+          fi
+
+      - name: 💬 Comment commit with Appetize URLs
+        if: env.ANDROID_APPETIZE_URL != '' || env.IOS_APPETIZE_URL != ''
         uses: actions/github-script@v7
         env:
-          APPETIZE_URL: ${{ env.APPETIZE_URL }}
+          ANDROID_URL: ${{ env.ANDROID_APPETIZE_URL }}
+          IOS_URL: ${{ env.IOS_APPETIZE_URL }}
         with:
           script: |
-            const url = process.env.APPETIZE_URL
+            const android = process.env.ANDROID_URL || ''
+            const ios = process.env.IOS_APPETIZE_URL || ''
+            let body = `📱 **Apps testables sur Appetize.io**\n\n`
+            if (android) body += `🤖 **Android** : ${android}\n`
+            if (ios) body += `🍎 **iOS** : ${ios}\n`
+            body += `\n> Cliquez sur les liens pour tester les apps dans votre navigateur`
             github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               commit_sha: context.sha,
-              body: `📱 **App testable sur Appetize.io**\n\n${url}\n\n> Cliquez pour tester l'app dans votre navigateur`
+              body: body
             })
 
   # ──────────────────────────────────────────────────────────────────────
