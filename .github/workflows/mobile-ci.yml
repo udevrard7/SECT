@@ -228,11 +228,13 @@ jobs:
         run: |
           cd iosApp
           set -o pipefail
+          # Utilise generic/platform=iOS Simulator pour éviter les problèmes
+          # de nom de device (iPhone 16 n'existe pas sur tous les runners)
           xcodebuild build \
             -project iosApp.xcodeproj \
             -scheme iosApp \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
