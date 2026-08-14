@@ -32,6 +32,21 @@
                         isa = PBXBuildFile;
                         fileRef = 8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */;
                 };
+                8A1A2B3C4D5E6F7A8B9C0D72 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D74 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D76 /* EpreuveDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D78 /* EpreuveViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D7A /* KoinRepositoryProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D79 /* KoinRepositoryProvider.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D7C /* KoinStartup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D7B /* KoinStartup.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D7E /* MessagerieViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D80 /* PassationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D82 /* PassationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D84 /* ProfileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D86 /* PushConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D85 /* PushConfig.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D88 /* PushNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D87 /* PushNotificationManager.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D8A /* ResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D8C /* SECTAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D8E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */; };
 /* Framework in Frameworks build phase */
                 8A1A2B3C4D5E6F7A8B9C0D66 /* Shared.framework in Frameworks */ = {
                         isa = PBXBuildFile;
