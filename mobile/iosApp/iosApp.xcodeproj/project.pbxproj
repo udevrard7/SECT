@@ -457,7 +457,7 @@
                                 FRAMEWORK_SEARCH_PATHS = (
                                         "$(inherited)",
                                         "$(PROJECT_DIR)/Frameworks",
-                                        "$(PROJECT_DIR)/../shared/build/bin/iosArm64/debugFramework",
+                                        "$(PROJECT_DIR)/../shared/build/bin/iosSimulatorArm64/debugFramework",
                                         "$(PROJECT_DIR)/../shared/build/bin/iosSimulatorArm64/debugFramework",
                                 );
                                 GCC_PREPROCESSOR_DEFINITIONS = (
@@ -499,7 +499,7 @@
                                 FRAMEWORK_SEARCH_PATHS = (
                                         "$(inherited)",
                                         "$(PROJECT_DIR)/Frameworks",
-                                        "$(PROJECT_DIR)/../shared/build/bin/iosArm64/debugFramework",
+                                        "$(PROJECT_DIR)/../shared/build/bin/iosSimulatorArm64/debugFramework",
                                         "$(PROJECT_DIR)/../shared/build/bin/iosSimulatorArm64/debugFramework",
                                 );
                                 GENERATE_INFOPLIST_FILE = YES;
