@@ -67,11 +67,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
+          # Désactive le cache Gradle build-cache car SQLDelight génère du code
+          # qui doit être régénéré à chaque modification des .sq (sinon FROM-CACHE
+          # retourne l'ancien code généré cassé).
+          cache-disabled: true
 
       - name: 🔍 Compile Shared Module (commonMain + Android + iOS)
-        # clean + compile : force la régénération SQLDelight sans --rerun-tasks
-        # (qui peut casser l'ordre des dépendances de tâches Gradle)
-        run: ./gradlew :shared:clean :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon --no-build-cache
 
       - name: 🧪 Test Shared Module (commonMain)
         run: ./gradlew :shared:allTests --no-daemon
