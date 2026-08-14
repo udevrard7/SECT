@@ -477,7 +477,7 @@
                                         "$(inherited)",
                                         "@executable_path/Frameworks",
                                 );
-                                OTHER_LDFLAGS = "-weak_framework CoreAudioTypes";
+                                OTHER_LDFLAGS = "-framework AudioToolbox";
                                 PRODUCT_BUNDLE_IDENTIFIER = com.ftci.app;
                                 PRODUCT_NAME = "$(TARGET_NAME)";
                                 SWIFT_EMIT_LOC_STRINGS = YES;
@@ -515,7 +515,7 @@
                                         "$(inherited)",
                                         "@executable_path/Frameworks",
                                 );
-                                OTHER_LDFLAGS = "-weak_framework CoreAudioTypes";
+                                OTHER_LDFLAGS = "-framework AudioToolbox";
                                 PRODUCT_BUNDLE_IDENTIFIER = com.ftci.app;
                                 PRODUCT_NAME = "$(TARGET_NAME)";
                                 SWIFT_EMIT_LOC_STRINGS = YES;
