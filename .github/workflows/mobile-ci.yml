@@ -69,7 +69,10 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: 🔍 Compile Shared Module (commonMain + Android + iOS)
-        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
+        # --rerun-tasks : force la régénération SQLDelight (ignore le cache Gradle)
+        # Nécessaire car les .sq ont été modifiés (AS Boolean → INTEGER) et le cache
+        # contenait l'ancien code généré cassé.
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon --rerun-tasks
 
       - name: 🧪 Test Shared Module (commonMain)
         run: ./gradlew :shared:allTests --no-daemon
