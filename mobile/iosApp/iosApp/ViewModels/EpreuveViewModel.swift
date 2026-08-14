@@ -14,7 +14,7 @@ class EpreuveViewModel: ObservableObject {
     @Published var isLoadingDetail = false
     @Published var error: String? = nil
 
-    private let repository = KmpRepositoryProvider.shared.repository()
+    private let repository = KoinRepositoryProvider.shared.repository
     private let pageSize: Int32 = 20
 
     func loadEpreuves() async {

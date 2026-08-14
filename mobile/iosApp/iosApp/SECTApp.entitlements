@@ -2,24 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Keychain Access Groups for secure token storage -->
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)ci.sect.app</string>
-	</array>
+        <!-- Keychain Access Groups for secure token storage -->
+        <key>keychain-access-groups</key>
+        <array>
+                <string>$(AppIdentifierPrefix)ci.sect.app</string>
+        </array>
 
-	<!-- Associated Domains for universal links -->
-	<key>com.apple.developer.associated-domains</key>
-	<array>
-		<string>applinks:sect.ci</string>
-	</array>
+        <!-- Associated Domains for universal links -->
+        <key>com.apple.developer.associated-domains</key>
+        <array>
+                <string>applinks:sect.ci</string>
+        </array>
 
-	<!-- Data Protection -->
-	<key>com.apple.developer.data-protection</key>
-	<string>complete</string>
+        <!-- Data Protection -->
+        <key>com.apple.developer.data-protection</key>
+        <string>complete</string>
 
-	<!-- Push Notifications -->
-	<key>aps-environment</key>
-	<string>development</string>
+        <!-- Push Notifications -->
+        <key>aps-environment</key>
+        <string>production</string>
 </dict>
 </plist>

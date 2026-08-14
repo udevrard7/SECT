@@ -1,0 +1,41 @@
+# SECT Backend — .gitignore
+
+# Environment & secrets (NEVER commit)
+.env
+.env.*
+*.env
+!.env.example
+!.env.sample
+
+# Firebase service account keys
+service-account*.json
+
+# Build outputs
+bin/
+api
+sect-api
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

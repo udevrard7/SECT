@@ -1,0 +1,216 @@
+# ──────────────────────────────────────────────────────────────────────────
+# SECT Mobile — Release Pipeline
+# ──────────────────────────────────────────────────────────────────────────
+# Se déclenche quand un tag v* est poussé (ex: git tag v1.0.0 && git push --tags)
+# Produit:
+#   - app-release.apk signé (Android)
+#   - iOS .ipa (si code signing configuré)
+#   - GitHub Release avec les binaires attachés
+# ──────────────────────────────────────────────────────────────────────────
+
+name: SECT Mobile Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (ex: 1.0.0)'
+        required: true
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+
+jobs:
+  # ── Android Release APK ──
+  release-android:
+    name: 🤖 Release Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ── Secrets → fichiers ──
+      - name: 🔑 Déployer google-services.json
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 -d > androidApp/google-services.json
+
+      - name: 🔐 Déployer keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > androidApp/sect-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=sect-release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: 🏗️ Build Release APK
+        run: ./gradlew :androidApp:assembleRelease --no-daemon
+
+      - name: 📊 APK Info
+        run: |
+          APK=$(find androidApp/build/outputs/apk/release -name "*.apk" | head -1)
+          SIZE=$(du -h "$APK" | cut -f1)
+          echo "📱 APK: $(basename $APK) ($SIZE)"
+          echo "APK_PATH=$APK" >> $GITHUB_ENV
+
+      - name: 📦 Upload APK artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sect-release-apk
+          path: mobile/androidApp/build/outputs/apk/release/*.apk
+          retention-days: 90
+
+  # ── iOS Release ──
+  release-ios:
+    name: 🍎 Release iOS IPA
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 🔑 Déployer GoogleService-Info.plist
+        run: echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}" | base64 -d > iosApp/iosApp/GoogleService-Info.plist
+
+      # ── Code Signing iOS ──
+      # Pour un vrai .ipa signé, il faut installer le certificat Apple Developer
+      # et le provisioning profile. Ce workflow prépare la structure.
+      - name: 🔐 Install Apple Certificate
+        if: secrets.APPLE_CERT_B64 != ''
+        run: |
+          # Créer un keychain temporaire
+          KEYCHAIN=sect-build.keychain
+          security create-keychain -p actions $KEYCHAIN
+          security default-keychain -s $KEYCHAIN
+          security unlock-keychain -p actions $KEYCHAIN
+
+          # Installer le certificat
+          CERT_PATH=$RUNNER_TEMP/sect.p12
+          echo "${{ secrets.APPLE_CERT_B64 }}" | base64 -d > $CERT_PATH
+          security import $CERT_PATH -P "${{ secrets.APPLE_CERT_PASSWORD }}" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN
+          security set-key-partition-list -S apple-tool:,apple: -k actions $KEYCHAIN
+
+      - name: 🔐 Install Provisioning Profile
+        if: secrets.APPLE_PROVISION_PROFILE_B64 != ''
+        run: |
+          PP_DIR=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$PP_DIR"
+          echo "${{ secrets.APPLE_PROVISION_PROFILE_B64 }}" | base64 -d > "$PP_DIR/sect.mobileprovision"
+
+      - name: 🏗️ Compile Shared.framework
+        run: ./gradlew :shared:compileKotlinIosArm64 --no-daemon
+
+      # Build .app pour device (signé) ou simulateur
+      - name: 🏗️ Build iOS App
+        run: |
+          cd iosApp
+          xcodebuild archive \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -sdk iphoneos \
+            -archivePath build/SECT.xcarchive \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.APPLE_PROVISION_UUID }}" \
+            | xcpretty || true
+
+      - name: 📦 Export IPA
+        if: secrets.APPLE_CERT_B64 != ''
+        run: |
+          cd mobile/iosApp
+          xcodebuild -exportArchive \
+            -archivePath build/SECT.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist ExportOptions.plist \
+            | xcpretty || true
+
+      - name: 📦 Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: sect-release-ipa
+          path: mobile/iosApp/build/ipa/*.ipa
+          retention-days: 90
+        if: always()
+
+  # ── GitHub Release ──
+  create-release:
+    name: 🎉 Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [release-android, release-ios]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: sect-release-apk
+          path: release/
+
+      - name: 📥 Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: sect-release-ipa
+          path: release/
+        continue-on-error: true
+
+      - name: 🎉 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SECT Mobile ${{ github.ref_name }}
+          body: |
+            ## 📱 SECT Mobile ${{ github.ref_name }}
+
+            ### Binaires
+            - **Android**: `app-release.apk` — API 26+ (Android 8.0+)
+            - **iOS**: `SECT.ipa` — iOS 16+ (si signé avec certificat Apple)
+
+            ### Installation
+            #### Android
+            1. Téléchargez `app-release.apk`
+            2. Activez "Sources inconnues" dans les paramètres Android
+            3. Installez l'APK
+
+            #### iOS
+            1. L'IPA nécessite un installation via Apple Business Manager ou TestFlight
+            2. Alternativement, installez via Xcode → Window → Devices and Simulators
+
+            ### Test dans le navigateur
+            Glissez l'APK sur [Appetize.io](https://appetize.io) pour tester sans installer.
+          files: |
+            release/*.apk
+            release/*.ipa
+          draft: false
+          prerelease: false

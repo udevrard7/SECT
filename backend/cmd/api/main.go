@@ -289,6 +289,10 @@ func main() {
         // on passe une fonction de broadcast qui l'utilise). Injecté via setter
         // (pattern WithGeniusPay/WithTurnstile) — évite d'étendre NewServer.
         // Le dispatcher est nil-safe côté handlers : si nil, pas de notification.
+
+        // FCM mobile push (canal 5). nil = FCM désactivé (dev mode).
+        fcmSender := notification.NewFCMSender(pool, logger, cfg.FirebaseProjectID, cfg.FirebaseServiceAccountKey)
+
         notifDispatcher := notification.New(pool, mailSvc, logger, func(userID string, event notification.SSEEvent) {
                 // Adaptateur : le hub SSE attend transport/http.SSEEventAdapter,
                 // le dispatcher utilise notification.SSEEvent (pas de dépendance
@@ -298,10 +302,10 @@ func main() {
                         Data:      event.Data,
                         Timestamp: event.Timestamp,
                 })
-        }, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject)
+        }, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, fcmSender)
         server.WithNotificationDispatcher(notifDispatcher)
         server.WithVapidPublicKey(cfg.VAPIDPublicKey)
-        logger.Info("Notification dispatcher configured", "pushEnabled", cfg.VAPIDPublicKey != "")
+        logger.Info("Notification dispatcher configured", "pushEnabled", cfg.VAPIDPublicKey != "", "fcmEnabled", fcmSender != nil)
 
         // SECT-NOTIF-CLOTURE-1 : injecte le dispatcher dans PromotionUseCase
         // pour que la clôture notifie chaque étudiant (promu/redoublant/diplômé).

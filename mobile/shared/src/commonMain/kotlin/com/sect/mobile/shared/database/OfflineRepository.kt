@@ -3,7 +3,7 @@
 package com.sect.mobile.shared.database
 
 import com.sect.mobile.shared.database.SectDatabase
-import com.sect.mobile.shared.util.currentTimeMillis
+import com.sect.mobile.shared.platform.TimeProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
  */
 class OfflineRepository(
     private val database: SectDatabase,
+    private val timeProvider: TimeProvider,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 ) {
     private val userQueries get() = database.cached_userQueries
@@ -38,7 +39,7 @@ class OfflineRepository(
     }
 
     fun getCachedUserIfValid(userId: String): String? {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         return userQueries.getUserIfValid(userId, now).executeAsOneOrNull()?.user_json
     }
 
@@ -47,7 +48,7 @@ class OfflineRepository(
         etablissementId: String?, filiereId: String?, matricule: String?,
         image: String?, userJson: String
     ) {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         userQueries.insertUser(
             id, email, name, role, etablissementId, filiereId, matricule, image,
             userJson, now, now + defaultTtlMs
@@ -61,7 +62,7 @@ class OfflineRepository(
     }
 
     fun getCachedEpreuveIfValid(epreuveId: String): String? {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         return epreuveQueries.getEpreuveIfValid(epreuveId, now).executeAsOneOrNull()?.questions_json
     }
 
@@ -71,7 +72,7 @@ class OfflineRepository(
         proctoringActif: Boolean, filiereId: String?, enseignantId: String,
         questionsJson: String
     ) {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         epreuveQueries.insertEpreuve(
             id, titre, description, duree, dateDebut, dateFin, statut, noteTotal,
             proctoringActif, filiereId, enseignantId, questionsJson, now, now + defaultTtlMs
@@ -91,7 +92,7 @@ class OfflineRepository(
         id: String, etudiantId: String, epreuveId: String, statut: String,
         dateDebut: String?, dateSoumission: String?, tempsRestant: Int?, note: Double?
     ) {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         sessionQueries.insertSession(
             id, etudiantId, epreuveId, statut, dateDebut, dateSoumission,
             tempsRestant, note, now, now + defaultTtlMs
@@ -101,7 +102,7 @@ class OfflineRepository(
     // ── Local Réponses (auto-save + offline outbox) ──
 
     fun saveLocalReponse(sessionId: String, questionId: String, contenu: String) {
-        reponseQueries.insertReponse(sessionId, questionId, contenu, currentTimeMillis(), false)
+        reponseQueries.insertReponse(sessionId, questionId, contenu, timeProvider.currentTimeMillis(), false)
     }
 
     fun getUnsyncedReponses() =
@@ -120,7 +121,7 @@ class OfflineRepository(
         id: String, type: String, titre: String?, etablissementId: String?,
         filiereId: String?, epreuveId: String?, lastMessageJson: String?
     ) {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         conversationQueries.insertConversation(
             id, type, titre, etablissementId, filiereId, epreuveId,
             lastMessageJson, now, now + defaultTtlMs
@@ -138,7 +139,7 @@ class OfflineRepository(
     ) {
         messageQueries.insertMessage(
             id, conversationId, expediteurId, contenu, createdAt,
-            expediteurName, currentTimeMillis()
+            expediteurName, timeProvider.currentTimeMillis()
         )
     }
 
@@ -148,7 +149,7 @@ class OfflineRepository(
     // ── Cache maintenance ──
 
     fun evictExpired() {
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         userQueries.deleteExpiredUsers(now)
         epreuveQueries.deleteExpiredEpreuves(now)
         sessionQueries.deleteExpiredSessions(now)

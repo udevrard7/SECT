@@ -16,7 +16,7 @@ class PassationViewModel: ObservableObject {
     @Published var error: String? = nil
     @Published var isSessionComplete = false
 
-    private let repository = KmpRepositoryProvider.shared.repository()
+    private let repository = KoinRepositoryProvider.shared.repository
     private var timerTask: Task<Void, Never>? = nil
     private var autoSaveTask: Task<Void, Never>? = nil
 

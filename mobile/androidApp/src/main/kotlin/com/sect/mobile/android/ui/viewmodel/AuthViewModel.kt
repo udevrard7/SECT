@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.AuthSession
 import com.sect.mobile.shared.domain.model.User
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
  * 4. Login → credentials → API → cache tokens → Authenticated
  * 5. Logout → révoque refresh token → clear cache → Unauthenticated
  */
-class AuthViewModel(private val repository: SECTRepository) : ViewModel() {
+class AuthViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.CheckingToken)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()

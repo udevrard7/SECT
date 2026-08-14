@@ -8,7 +8,7 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import com.sect.mobile.shared.util.currentTimeMillis
+import com.sect.mobile.shared.platform.TimeProvider
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonObject
 class SurveillanceWebSocket(
     private val client: HttpClient,
     private val baseUrl: String,
+    private val timeProvider: TimeProvider,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -79,7 +80,7 @@ class SurveillanceWebSocket(
      * Envoyer une alerte de proctoring.
      */
     suspend fun sendAlert(type: String, details: Map<String, String> = emptyMap()) {
-        val timestamp = currentTimeMillis().toString()
+        val timestamp = timeProvider.currentTimeMillis().toString()
         val msg = buildString {
             append("""{"type":"$type","timestamp":"$timestamp"""")
             details.forEach { (k, v) -> append(""","$k":"$v"""") }

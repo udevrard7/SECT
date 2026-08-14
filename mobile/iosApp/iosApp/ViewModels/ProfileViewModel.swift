@@ -15,7 +15,7 @@ class ProfileViewModel: ObservableObject {
     @Published var newPassword: String = ""
     @Published var confirmPassword: String = ""
 
-    private let repository = KmpRepositoryProvider.shared.repository()
+    private let repository = KoinRepositoryProvider.shared.repository
 
     // ── Load Profile ──
 

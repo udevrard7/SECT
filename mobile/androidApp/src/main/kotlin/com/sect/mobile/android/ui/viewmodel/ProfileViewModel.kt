@@ -4,13 +4,13 @@ package com.sect.mobile.android.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.User
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class ProfileViewModel(private val repository: SECTRepository) : ViewModel() {
+class ProfileViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
 
     private val _user = MutableStateFlow<UiState<User>>(UiState.Loading)
     val user: StateFlow<UiState<User>> = _user.asStateFlow()

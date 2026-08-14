@@ -19,3 +19,37 @@
 # ── Kotlin Multiplatform ──
 -keep class kotlin.** { *; }
 -dontwarn kotlin.**
+
+# ── Koin DI ──
+-keep class org.koin.** { *; }
+-keep class * { org.koin.core.annotation.* <methods>; }
+-dontwarn org.koin.**
+
+# ── SQLDelight ──
+-keep class app.cash.sqldelight.** { *; }
+-keep class com.sect.mobile.shared.database.** { *; }
+-dontwarn app.cash.sqldelight.**
+
+# ── Kotlin Coroutines (comprehensive) ──
+-keepnames class kotlinx.coroutines.internal.CoroutineExceptionHandlerImpl
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler
+-keepclassmembers class kotlinx.coroutines.** {
+    volatile ***;
+}
+-dontwarn kotlinx.coroutines.**
+
+# ── Firebase ──
+-keepattributes *Annotation*
+-keepclassmembers class * {
+    @com.google.firebase.annotations.FirebasePublicApi <methods>;
+}
+-keep class com.google.firebase.** { *; }
+-dontwarn com.google.firebase.**
+
+# ── AndroidX / Jetpack Compose ──
+-dontwarn androidx.**
+-keep class androidx.compose.** { *; }
+
+# ── Coil (image loading) ──
+-keep class coil3.** { *; }
+-dontwarn coil3.**

@@ -12,7 +12,7 @@ class DashboardViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String? = nil
 
-    private let repository = KmpRepositoryProvider.shared.repository()
+    private let repository = KoinRepositoryProvider.shared.repository
 
     func loadDashboard() async {
         isLoading = true

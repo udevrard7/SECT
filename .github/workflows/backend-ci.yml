@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────
+# SECT Backend — CI Pipeline
+# ──────────────────────────────────────────────────────────────────────────
+# Compile le backend Go, lance les tests, build le Docker image
+# ──────────────────────────────────────────────────────────────────────────
+
+name: SECT Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Build & Test ──
+  build:
+    name: 🐹 Build & Test Go
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐹 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: 📦 Download dependencies
+        run: go mod download
+
+      - name: 🔍 Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: backend
+
+      - name: 🧪 Tests
+        run: go test ./... -v -race -timeout=5m
+        env:
+          NEON_DATABASE_URL: postgres://test:test@localhost:5432/sect_test?sslmode=disable
+
+      - name: 🏗️ Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w" -o sect-api ./cmd/api/
+
+      - name: 📦 Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: sect-backend-linux
+          path: backend/sect-api
+          retention-days: 7
+
+  # ── Database Migration Check ──
+  migrations:
+    name: 🗃️ Vérifier Migrations SQL
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Check migration files
+        run: |
+          # Vérifier que chaque .up.sql a un .down.sql correspondant
+          MISSING=0
+          for UP_FILE in db/db/migrations/*.up.sql; do
+            BASE=$(basename "$UP_FILE" .up.sql)
+            DOWN_FILE="db/db/migrations/${BASE}.down.sql"
+            if [ ! -f "$DOWN_FILE" ]; then
+              echo "❌ Missing down migration for: $UP_FILE"
+              MISSING=1
+            fi
+          done
+          
+          if [ $MISSING -eq 1 ]; then
+            echo "❌ Some migrations are missing down files"
+            exit 1
+          fi
+          
+          COUNT=$(ls db/db/migrations/*.up.sql 2>/dev/null | wc -l)
+          echo "✅ All $COUNT migrations have matching .up.sql and .down.sql files"

@@ -931,6 +931,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Use(middleware.RequireAuth)
                         r.Post("/subscribe", s.pushSubscribeHandler)
                         r.Delete("/subscribe", s.pushUnsubscribeHandler)
+
+                        // Mobile push (FCM/APNs device token registration)
+                        r.Post("/mobile/register", s.mobilePushRegisterHandler)
+                        r.Delete("/mobile/register", s.mobilePushUnregisterHandler)
+                        r.Post("/mobile/topic", s.mobilePushTopicHandler)
                 })
 
                 r.Route("/api/notifications", func(r chi.Router) {

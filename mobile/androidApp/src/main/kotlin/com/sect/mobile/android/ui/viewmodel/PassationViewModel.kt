@@ -7,7 +7,7 @@ import com.sect.mobile.shared.domain.model.Question
 import com.sect.mobile.shared.domain.model.Reponse
 import com.sect.mobile.shared.domain.model.SessionPassation
 import com.sect.mobile.shared.domain.enum.TypeQuestion
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * - Soumission finale
  * - Proctoring (alertes, fullscreen)
  */
-class PassationViewModel(private val repository: SECTRepository) : ViewModel() {
+class PassationViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
 
     // ── État de la session ──
     private val _session = MutableStateFlow<UiState<SessionPassation>>(UiState.Loading)
