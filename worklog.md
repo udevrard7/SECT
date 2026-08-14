@@ -129,3 +129,22 @@ Stage Summary:
 - Platform abstractions migrated from expect/actual to Interface + DI for testability
 - Security rigor enforced: PreferencesCache (non-sensitive) vs TokenCache (secrets only) with explicit documentation
 - All old declarations marked @Deprecated with migration instructions for smooth transition
+
+---
+Task ID: SECT-FCM-BUILD-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Corriger erreur compilation fcm_sender.go introduite par SECT-SECURITY-AUDIT (d03f7b3).
+
+Work Log:
+- Diagnostic : fcm_sender.go:379 rsa.SignPKCS1v15(nil, privateKey, sha256.New, hashed[:]) — sha256.New (func() hash.Hash) au lieu de crypto.Hash
+- Fix : import "crypto" + sha256.New → crypto.SHA256 ; gofmt -w (désalignement tabs préexistant map android/apns)
+- Diff : 5 insertions, 4 suppressions (1 fichier)
+- Validé : go vet 0, go build ./cmd/api 0 (binaire 27MB), gofmt -l vide
+- Commit 9b744ed, push main : d03f7b3..9b744ed
+- Render deploy dep-d9v6dvegekts73dbk89g → LIVE en 58s, health /health HTTP 200 ✓
+- CI backend-ci.yml run #6 : 2 jobs en failure (errcheck 98 erreurs sur 34 fichiers + 7 migrations .up sans .down) — dette préexistante révélée par le nouveau workflow
+
+Stage Summary:
+- Backend en production fonctionnel (bug compilation résolu)
+- CI rouge : errcheck (34 fichiers) + 7 migrations down manquantes (000023, 000024, 000055-000059) — à traiter dans tâches dédiées
+- mobile-release.yml : anomalie trigger (se déclenche sur push main au lieu de tags v* uniquement)
