@@ -1,165 +1,64 @@
 // SECT Mobile — Offline Repository (SQLDelight-backed)
-// Replaces the in-memory OfflineCache with persistent SQLite storage.
+// STUB : implémentation temporairement désactivée (SECT-MOBILE-COMPILE-FIX-3).
+//
+// Les queries SQLDelight (cached_userQueries etc.) ne sont pas accessibles car
+// la génération SQLDelight 2.1.0 + Kotlin 2.1.21 + KMP ne produit pas les
+// properties sur SectDatabase dans la configuration actuelle.
+//
+// Ce fichier sera restauré avec la vraie implémentation une fois le problème
+// de génération SQLDelight résolu (voir SECT-MOBILE-SQLDELIGHT-UPGRADE).
+//
+// Le mode offline n'est pas encore fonctionnel sur mobile — l'app fonctionne
+// en mode online uniquement pour l'instant.
 package com.sect.mobile.shared.database
 
-import com.sect.mobile.shared.database.SectDatabase
 import com.sect.mobile.shared.platform.TimeProvider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 /**
- * OfflineRepository provides typed access to the SQLDelight database
- * for offline-first data access.
+ * OfflineRepository stub — mode offline désactivé temporairement.
  *
- * Cache-aside pattern:
- * 1. Read from SQLite → if present and not expired, return
- * 2. Otherwise, read from API → store in SQLite → return
- * 3. If offline, return cache even if expired (stale-while-revalidate)
+ * Toutes les méthodes retournent null/empty/vide. L'app fonctionne en mode
+ * online uniquement. Sera remplacé par la vraie implémentation SQLDelight.
  */
 class OfflineRepository(
     private val database: SectDatabase,
     private val timeProvider: TimeProvider,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 ) {
-    private val userQueries get() = database.cached_userQueries
-    private val epreuveQueries get() = database.cached_epreuveQueries
-    private val sessionQueries get() = database.cached_sessionQueries
-    private val reponseQueries get() = database.local_reponseQueries
-    private val conversationQueries get() = database.cached_conversationQueries
-    private val messageQueries get() = database.cached_messageQueries
-
-    // Default TTL: 1 hour
-    private val defaultTtlMs: Long = 3_600_000L
-
     // ── User cache ──
-
-    fun getCachedUser(userId: String): String? {
-        return userQueries.getUser(userId).executeAsOneOrNull()?.user_json
-    }
-
-    fun getCachedUserIfValid(userId: String): String? {
-        val now = timeProvider.currentTimeMillis()
-        return userQueries.getUserIfValid(userId, now).executeAsOneOrNull()?.user_json
-    }
-
-    fun putCachedUser(
-        id: String, email: String, name: String, role: String,
-        etablissementId: String?, filiereId: String?, matricule: String?,
-        image: String?, userJson: String
-    ) {
-        val now = timeProvider.currentTimeMillis()
-        userQueries.insertUser(
-            id, email, name, role, etablissementId, filiereId, matricule, image,
-            userJson, now, now + defaultTtlMs
-        )
-    }
+    suspend fun getCachedUser(userId: String): String? = null
+    suspend fun getValidCachedUser(userId: String): String? = null
+    suspend fun cacheUser(userId: String, userJson: String, ttlMs: Long = 3_600_000L) { }
+    suspend fun deleteUser(userId: String) { }
 
     // ── Epreuve cache ──
-
-    fun getCachedEpreuve(epreuveId: String): String? {
-        return epreuveQueries.getEpreuve(epreuveId).executeAsOneOrNull()?.questions_json
-    }
-
-    fun getCachedEpreuveIfValid(epreuveId: String): String? {
-        val now = timeProvider.currentTimeMillis()
-        return epreuveQueries.getEpreuveIfValid(epreuveId, now).executeAsOneOrNull()?.questions_json
-    }
-
-    fun putCachedEpreuve(
-        id: String, titre: String, description: String?, duree: Int,
-        dateDebut: String, dateFin: String, statut: String, noteTotal: Double,
-        proctoringActif: Boolean, filiereId: String?, enseignantId: String,
-        questionsJson: String
-    ) {
-        val now = timeProvider.currentTimeMillis()
-        epreuveQueries.insertEpreuve(
-            id, titre, description, duree, dateDebut, dateFin, statut, noteTotal,
-            proctoringActif, filiereId, enseignantId, questionsJson, now, now + defaultTtlMs
-        )
-    }
-
-    fun listCachedEpreuvesByStatut(statut: String): List<String> {
-        return epreuveQueries.listEpreuvesByStatut(statut).executeAsList().map { it.questions_json }
-    }
+    suspend fun getCachedEpreuve(epreuveId: String): String? = null
+    suspend fun getValidCachedEpreuve(epreuveId: String): String? = null
+    suspend fun cacheEpreuve(epreuveId: String, questionsJson: String, ttlMs: Long = 3_600_000L) { }
+    suspend fun listCachedEpreuvesByStatut(statut: String): List<String> = emptyList()
+    suspend fun deleteEpreuve(epreuveId: String) { }
 
     // ── Session cache ──
+    suspend fun getCachedSession(sessionId: String): String? = null
+    suspend fun cacheSession(sessionJson: String) { }
+    suspend fun deleteSession(sessionId: String) { }
 
-    fun getCachedSession(sessionId: String) =
-        sessionQueries.getSession(sessionId).executeAsOneOrNull()
-
-    fun putCachedSession(
-        id: String, etudiantId: String, epreuveId: String, statut: String,
-        dateDebut: String?, dateSoumission: String?, tempsRestant: Int?, note: Double?
-    ) {
-        val now = timeProvider.currentTimeMillis()
-        sessionQueries.insertSession(
-            id, etudiantId, epreuveId, statut, dateDebut, dateSoumission,
-            tempsRestant, note, now, now + defaultTtlMs
-        )
-    }
-
-    // ── Local Réponses (auto-save + offline outbox) ──
-
-    fun saveLocalReponse(sessionId: String, questionId: String, contenu: String) {
-        reponseQueries.insertReponse(sessionId, questionId, contenu, timeProvider.currentTimeMillis(), false)
-    }
-
-    fun getUnsyncedReponses() =
-        reponseQueries.getUnsyncedReponses().executeAsList()
-
-    fun markReponseSynced(sessionId: String, questionId: String) {
-        reponseQueries.markReponseSynced(sessionId, questionId)
-    }
-
-    fun getReponsesBySession(sessionId: String) =
-        reponseQueries.getReponsesBySession(sessionId).executeAsList()
+    // ── Reponse cache (auto-save + offline outbox) ──
+    suspend fun saveLocalReponse(sessionId: String, questionId: String, contenu: String) { }
+    suspend fun getLocalReponses(sessionId: String): List<String> = emptyList()
+    suspend fun getUnsyncedReponses(): List<String> = emptyList()
+    suspend fun markReponseSynced(sessionId: String, questionId: String) { }
 
     // ── Conversation cache ──
-
-    fun putCachedConversation(
-        id: String, type: String, titre: String?, etablissementId: String?,
-        filiereId: String?, epreuveId: String?, lastMessageJson: String?
-    ) {
-        val now = timeProvider.currentTimeMillis()
-        conversationQueries.insertConversation(
-            id, type, titre, etablissementId, filiereId, epreuveId,
-            lastMessageJson, now, now + defaultTtlMs
-        )
-    }
-
-    fun listCachedConversations() =
-        conversationQueries.listConversations().executeAsList()
+    suspend fun getCachedConversations(): List<String> = emptyList()
+    suspend fun cacheConversation(conversationJson: String) { }
 
     // ── Message cache ──
+    suspend fun getCachedMessages(conversationId: String): List<String> = emptyList()
+    suspend fun cacheMessage(messageJson: String) { }
 
-    fun putCachedMessage(
-        id: String, conversationId: String, expediteurId: String,
-        contenu: String, createdAt: String, expediteurName: String?
-    ) {
-        messageQueries.insertMessage(
-            id, conversationId, expediteurId, contenu, createdAt,
-            expediteurName, timeProvider.currentTimeMillis()
-        )
-    }
-
-    fun getCachedMessages(conversationId: String) =
-        messageQueries.getMessagesByConversation(conversationId).executeAsList()
-
-    // ── Cache maintenance ──
-
-    fun evictExpired() {
-        val now = timeProvider.currentTimeMillis()
-        userQueries.deleteExpiredUsers(now)
-        epreuveQueries.deleteExpiredEpreuves(now)
-        sessionQueries.deleteExpiredSessions(now)
-        conversationQueries.deleteExpiredConversations(now)
-        reponseQueries.deleteSyncedReponses()
-    }
-
-    fun clearAll() {
-        userQueries.deleteAllUsers()
-        epreuveQueries.deleteAllEpreuves()
-        conversationQueries.deleteAllConversations()
-    }
+    // ── Cache management ──
+    suspend fun deleteExpired() { }
+    suspend fun clearAll() { }
 }
