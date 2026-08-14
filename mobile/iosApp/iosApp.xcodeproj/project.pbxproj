@@ -110,6 +110,11 @@
                         isa = PBXGroup;
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D1F /* AuthViewModel.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */,
                         );
                         path = ViewModels;
                         sourceTree = "<group>";
@@ -119,6 +124,11 @@
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D20 /* LoginView.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0D21 /* DashboardView.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */,
                         );
                         path = Views;
                         sourceTree = "<group>";
@@ -127,22 +137,9 @@
                         isa = PBXGroup;
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D22 /* Colors.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D79 /* KoinRepositoryProvider.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D7B /* KoinStartup.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D85 /* PushConfig.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D87 /* PushNotificationManager.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */
+				8A1A2B3C4D5E6F7A8B9C0D22 /* Colors.swift */,
+				8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */,
                         );
                         path = Utilities;
                         sourceTree = "<group>";
@@ -162,6 +159,8 @@
                                 8A1A2B3C4D5E6F7A8B9C0D32 /* ViewModels */,
                                 8A1A2B3C4D5E6F7A8B9C0D33 /* Views */,
                                 8A1A2B3C4D5E6F7A8B9C0D34 /* Utilities */,
+				8A1A2B3C4D5E6F7A8B9C0D90 /* DI */,
+				8A1A2B3C4D5E6F7A8B9C0D91 /* Push */,
                         );
                         path = iosApp;
                         sourceTree = "<group>";
