@@ -33,10 +33,11 @@ func (uc *AccessUseCase) List(ctx context.Context, claims db.SessionClaims, para
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
 
-        if role == domain.RoleResponsable {
+        switch role {
+        case domain.RoleResponsable:
                 // RESPONSABLE ne voit que les demandes de son établissement
                 params.EtablissementID = claims.EtablissementID
-        } else if role == domain.RoleAdmin {
+        case domain.RoleAdmin:
                 // AE4 : forcer adminId à l'utilisateur courant (anti-IDOR).
                 params.AdminID = claims.UserID
         }
@@ -85,9 +86,10 @@ func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, in
         }
 
         // E3 : override ownership pour empêcher le forgery.
-        if role == domain.RoleAdmin {
+        switch role {
+        case domain.RoleAdmin:
                 input.AdminID = claims.UserID
-        } else if role == domain.RoleResponsable {
+        case domain.RoleResponsable:
                 input.EtablissementID = claims.EtablissementID
         }
 
@@ -141,11 +143,12 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
         }
 
         // Ownership check
-        if role == domain.RoleResponsable {
+        switch role {
+        case domain.RoleResponsable:
                 if existing.EtablissementID != claims.EtablissementID {
                         return nil, &domain.UnauthorizedError{Message: "cette demande ne concerne pas votre établissement"}
                 }
-        } else if role == domain.RoleAdmin {
+        case domain.RoleAdmin:
                 // B-2 (CRITICAL) : un ADMIN ne peut pas approuver SA PROPRE demande
                 // (auto-approbation = escalation de privilèges). Le workflow de validation
                 // par RESPONSABLE doit être respecté.
@@ -318,11 +321,12 @@ func (uc *AccessUseCase) Delete(ctx context.Context, claims db.SessionClaims, id
         // Ownership check :
         // - ADMIN : doit être le propriétaire de la demande (adminId == claims.UserID).
         // - RESPONSABLE : la demande doit concerner son établissement.
-        if role == domain.RoleAdmin {
+        switch role {
+        case domain.RoleAdmin:
                 if existing.AdminID != claims.UserID {
                         return &domain.UnauthorizedError{Message: "vous ne pouvez annuler que vos propres demandes"}
                 }
-        } else if role == domain.RoleResponsable {
+        case domain.RoleResponsable:
                 if existing.EtablissementID != claims.EtablissementID {
                         return &domain.UnauthorizedError{Message: "cette demande ne concerne pas votre établissement"}
                 }

@@ -1167,7 +1167,7 @@ func (s *Server) rapportFraudeSession(w http.ResponseWriter, r *http.Request) {
         for _, se := range similarities {
                 var qs []map[string]any
                 if se.QuestionSimRaw != "" {
-                        json.Unmarshal([]byte(se.QuestionSimRaw), &qs)
+                        _ = json.Unmarshal([]byte(se.QuestionSimRaw), &qs)
                 }
                 similaritiesFormatted = append(similaritiesFormatted, map[string]any{
                         "id":                se.ID,
@@ -1334,7 +1334,7 @@ func (s *Server) listSimilarityReports(w http.ResponseWriter, r *http.Request) {
         for _, r2 := range reports {
                 var qs []map[string]any
                 if r2.QuestionSimRaw != "" {
-                        json.Unmarshal([]byte(r2.QuestionSimRaw), &qs)
+                        _ = json.Unmarshal([]byte(r2.QuestionSimRaw), &qs)
                 }
                 formatted = append(formatted, formattedReport{
                         ID:                  r2.ID,

@@ -28,7 +28,6 @@ import (
         "strings"
         "time"
 
-        "github.com/jackc/pgx/v5"
         "github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -229,7 +228,7 @@ func (s *AIService) tryStreamProvider(ctx context.Context, p *ActiveProvider, me
         if err != nil {
                 return nil, fmt.Errorf("appel provider %s: %w", p.Name, err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         if resp.StatusCode >= 400 {
                 respBody, _ := readResponseBody(resp)
@@ -303,88 +302,6 @@ func (s *AIService) tryStreamProvider(ctx context.Context, p *ActiveProvider, me
 
         model := p.Model
         return &ChatResult{Content: content, Model: model}, nil
-}
-
-// getActiveProvider lit la ligne AIProviderConfig active de capability='chat'.
-// MULTI-CAPABILITY : filtre sur COALESCE("capability",'chat')='chat' pour ne
-// jamais retourner un provider tts/audio (Voxtral, etc.) à l'AIService qui ne
-// fait que du chat completion OpenAI-compatible.
-// Claims system-worker posés via set_config('app.claims.*') au début de la
-// transaction : le worker de fond (goroutine sans claims HTTP) peut ainsi
-// lire la config système.
-func (s *AIService) getActiveProvider(ctx context.Context) (*ActiveProvider, error) {
-        tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx) // safe après Commit (no-op)
-
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
-                return nil, fmt.Errorf("set system claims: %w", err)
-        }
-
-        const query = `
-                SELECT "id", "name", "provider",
-                       COALESCE("baseUrl", ''), COALESCE("apiKey", ''), COALESCE("model", ''),
-                       COALESCE("temperature", 0.7), COALESCE("maxTokens", 4096),
-                       COALESCE("extraConfig", '')
-                FROM "AIProviderConfig"
-                WHERE "isActive" = true AND COALESCE("capability", 'chat') = 'chat'
-                ORDER BY "priority" ASC, "createdAt" ASC
-                LIMIT 1`
-
-        p := &ActiveProvider{}
-        err = tx.QueryRow(ctx, query).Scan(
-                &p.ID, &p.Name, &p.Provider,
-                &p.BaseURL, &p.APIKey, &p.Model,
-                &p.Temperature, &p.MaxTokens,
-                &p.ExtraConfig,
-        )
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, fmt.Errorf("aucun provider IA actif dans AIProviderConfig — activez un provider via /api/ai-providers/activate")
-                }
-                return nil, fmt.Errorf("query active provider: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
-        }
-
-        // Bug #2 (CRITICAL) : fusionner extraConfig (ZAI stocke apiKey dans extraConfig).
-        // ApplyExtraConfig ne modifie que si le champ principal est vide.
-        ec := ParseExtraConfig(p.ExtraConfig)
-        if ec.APIKey != "" && p.APIKey == "" {
-                p.APIKey = ec.APIKey
-        }
-        if ec.BaseURL != "" && p.BaseURL == "" {
-                p.BaseURL = ec.BaseURL
-        }
-
-        // Defaults de secours si la DB contient des valeurs nulles / vides.
-        if p.Model == "" {
-                p.Model = "gpt-4o-mini"
-        }
-        if p.MaxTokens <= 0 {
-                p.MaxTokens = 4096
-        }
-        // Validation finale : baseUrl et apiKey requis après fusion extraConfig.
-        if p.BaseURL == "" {
-                return nil, fmt.Errorf("provider %s (%s): baseUrl manquant (vérifiez extraConfig pour ZAI)", p.Name, p.Provider)
-        }
-        if p.APIKey == "" {
-                return nil, fmt.Errorf("provider %s (%s): apiKey manquante (vérifiez extraConfig pour ZAI)", p.Name, p.Provider)
-        }
-
-        return p, nil
-}
-
-// truncate limite la taille d'une chaîne pour les messages d'erreur.
-func truncate(s string, n int) string {
-        if len(s) <= n {
-                return s
-        }
-        return s[:n] + "…"
 }
 
 // newRequestWithContext crée une requête HTTP POST avec body JSON + Bearer auth.

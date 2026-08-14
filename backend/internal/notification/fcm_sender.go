@@ -28,6 +28,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	appdb "github.com/udevrard7/sect/backend/internal/db"
 )
 
 // FCMSender sends push notifications to mobile devices via Firebase Cloud Messaging.
@@ -132,24 +134,32 @@ func (s *FCMSender) SendToTopic(ctx context.Context, topic string, payload map[s
 }
 
 // getDeviceTokens queries the MobileDeviceToken table for a user's devices.
+// Utilise SystemClaims (bypass RLS user) car le FCMSender s'exécute dans le
+// contexte du dispatcher de notifications (worker système), pas d'une requête
+// utilisateur authentifiée — sans claims, RLS bloquerait 100% des SELECT.
 func (s *FCMSender) getDeviceTokens(ctx context.Context, userID string) ([]MobileDeviceToken, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT "id", "userId", "token", "platform", "bundleId", "createdAt", "updatedAt"
-		FROM "MobileDeviceToken"
-		WHERE "userId" = $1 AND "active" = true
-		ORDER BY "updatedAt" DESC`, userID)
+	var tokens []MobileDeviceToken
+	err := appdb.WithTx(ctx, s.pool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT "id", "userId", "token", "platform", "bundleId", "createdAt", "updatedAt"
+			FROM "MobileDeviceToken"
+			WHERE "userId" = $1 AND "active" = true
+			ORDER BY "updatedAt" DESC`, userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var t MobileDeviceToken
+			if err := rows.Scan(&t.ID, &t.UserID, &t.Token, &t.Platform, &t.BundleID, &t.CreatedAt, &t.UpdatedAt); err != nil {
+				continue
+			}
+			tokens = append(tokens, t)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		return nil, err
-	}
-	defer rows.Close()
-
-	var tokens []MobileDeviceToken
-	for rows.Next() {
-		var t MobileDeviceToken
-		if err := rows.Scan(&t.ID, &t.UserID, &t.Token, &t.Platform, &t.BundleID, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			continue
-		}
-		tokens = append(tokens, t)
 	}
 	return tokens, nil
 }
@@ -239,21 +249,22 @@ func (s *FCMSender) sendFCMMessage(ctx context.Context, deviceToken string, topi
 		s.logger.Warn("FCMSender: HTTP request failed", "error", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == 200 {
+	switch resp.StatusCode {
+	case 200:
 		s.logger.Debug("FCMSender: message sent successfully",
 			"token", truncate(deviceToken, 16),
 			"topic", topic,
 			"title", title)
-	} else if resp.StatusCode == 404 {
+	case 404:
 		// Invalid device token — mark as inactive in DB
 		s.logger.Warn("FCMSender: device token not found (404), marking inactive",
 			"token", truncate(deviceToken, 16))
 		if deviceToken != "" {
 			s.markDeviceInactive(ctx, deviceToken)
 		}
-	} else {
+	default:
 		respBody, _ := io.ReadAll(resp.Body)
 		s.logger.Warn("FCMSender: FCM API error",
 			"status", resp.StatusCode,
@@ -404,7 +415,7 @@ func exchangeJWTForToken(ctx context.Context, tokenURI, jwt string) (accessToken
 	if err != nil {
 		return "", 0, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -430,11 +441,15 @@ func exchangeJWTForToken(ctx context.Context, tokenURI, jwt string) (accessToken
 
 // markDeviceInactive marks a device token as inactive in the database
 // when FCM returns 404 (invalid/unregistered token).
+// Utilise SystemClaims (bypass RLS user) — même raison que getDeviceTokens.
 func (s *FCMSender) markDeviceInactive(ctx context.Context, deviceToken string) {
-	_, err := s.pool.Exec(ctx, `
-		UPDATE "MobileDeviceToken"
-		SET "active" = false, "updatedAt" = NOW()
-		WHERE "token" = $1`, deviceToken)
+	err := appdb.WithTx(ctx, s.pool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			UPDATE "MobileDeviceToken"
+			SET "active" = false, "updatedAt" = NOW()
+			WHERE "token" = $1`, deviceToken)
+		return err
+	})
 	if err != nil {
 		s.logger.Warn("FCMSender: failed to mark device inactive",
 			"token", truncate(deviceToken, 16),

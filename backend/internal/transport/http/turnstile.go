@@ -105,7 +105,7 @@ func (v *TurnstileVerifier) Verify(ctx context.Context, token, remoteIP string) 
 	if err != nil {
 		return false, fmt.Errorf("turnstile http call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("turnstile siteverify returned HTTP %d", resp.StatusCode)

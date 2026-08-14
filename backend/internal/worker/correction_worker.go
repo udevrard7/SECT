@@ -146,7 +146,7 @@ func (w *CorrectionWorker) getQuestionAndReponse(ctx context.Context, reponseID 
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var q questionData
         var r reponseData
@@ -176,7 +176,9 @@ func (w *CorrectionWorker) getQuestionAndReponse(ctx context.Context, reponseID 
                 r.Contenu = *contenu
         }
 
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                return nil, nil, fmt.Errorf("commit: %w", err)
+        }
         return &q, &r, nil
 }
 
@@ -285,7 +287,7 @@ func (w *CorrectionWorker) RecoverInterruptedCorrections(ctx context.Context) {
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         // Chercher les réponses QRC/CODE sans noteIA (correction IA en attente)
         rows, err := tx.Query(ctx, `
@@ -320,7 +322,9 @@ func (w *CorrectionWorker) RecoverInterruptedCorrections(ctx context.Context) {
                 }
         }
 
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                w.logger.Error("commit failed", "error", err)
+        }
 
         if recovered > 0 {
                 w.logger.Info("Recovered interrupted corrections", "count", recovered)

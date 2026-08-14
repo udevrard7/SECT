@@ -101,7 +101,7 @@ func (s *Server) createAbonnement(w http.ResponseWriter, r *http.Request) {
                 statut = "ESSAI"
         }
         if !validStatutsAbonnement[statut] {
-                writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("statut invalide (valeurs: ESSAI, ACTIF, SUSPENDU, EXPIRE, RESILIE)"))
+                writeJSONError(w, http.StatusBadRequest, "statut invalide (valeurs: ESSAI, ACTIF, SUSPENDU, EXPIRE, RESILIE)")
                 return
         }
         // Montant default 0.
@@ -168,7 +168,7 @@ func (s *Server) createAbonnement(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"abonnement": created})
+        _ = json.NewEncoder(w).Encode(map[string]any{"abonnement": created})
 }
 
 // updateAbonnement — PATCH /api/abonnements/{id}
@@ -280,7 +280,7 @@ func (s *Server) updateAbonnement(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"abonnement": updated})
+        _ = json.NewEncoder(w).Encode(map[string]any{"abonnement": updated})
 }
 
 // deleteAbonnement — DELETE /api/abonnements/{id} (résilier)
@@ -319,7 +319,7 @@ func (s *Server) deleteAbonnement(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "abonnement résilié"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "abonnement résilié"})
 }
 
 // softDeleteAbonnement — DELETE /api/abonnements/{id}/hard (soft delete)
@@ -377,7 +377,7 @@ func (s *Server) softDeleteAbonnement(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "abonnement supprimé"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "abonnement supprimé"})
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -522,7 +522,7 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"plan": created})
+        _ = json.NewEncoder(w).Encode(map[string]any{"plan": created})
 }
 
 // updatePlan — PATCH /api/plans/{id}
@@ -650,5 +650,5 @@ func (s *Server) updatePlan(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"plan": updated})
+        _ = json.NewEncoder(w).Encode(map[string]any{"plan": updated})
 }

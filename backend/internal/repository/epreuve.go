@@ -836,7 +836,6 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
                 case "cloturer":
                         newStatut = domain.StatutCloturee
                         expectedStatut = domain.StatutTerminee
-                        message = "Épreuve clôturée"
                         clotureePar := ""
                         if input.UserID != nil {
                                 clotureePar = *input.UserID

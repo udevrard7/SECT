@@ -252,7 +252,7 @@ func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, document
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var contenu *string
         err = tx.QueryRow(ctx, `
@@ -262,7 +262,9 @@ func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, document
                 return "", fmt.Errorf("query document content: %w", err)
         }
 
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                return "", fmt.Errorf("commit: %w", err)
+        }
 
         if contenu == nil {
                 return "", nil
@@ -384,7 +386,7 @@ func (w *AudioGenerationWorker) RecoverInterruptedAudioJobs(ctx context.Context)
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         rows, err := tx.Query(ctx, `
                 SELECT "id", "documentId", "userId"
@@ -412,7 +414,10 @@ func (w *AudioGenerationWorker) RecoverInterruptedAudioJobs(ctx context.Context)
                 }
         }
 
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                w.logger.Error("RecoverInterruptedAudioJobs: commit failed", "error", err)
+                return
+        }
 
         if recovered > 0 {
                 w.logger.Info("Recovered interrupted audio jobs", "count", recovered)

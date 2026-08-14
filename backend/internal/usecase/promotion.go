@@ -713,7 +713,7 @@ func (uc *PromotionUseCase) RunPromotionSync(ctx context.Context, claims db.Sess
 		r := input.RunByID
 		runByIDPtr = &r
 	}
-	var batchIDPtr *string = &batch.ID
+	var batchIDPtr = &batch.ID
 
 	for _, etu := range etudiants {
 		var decisionOverride *string

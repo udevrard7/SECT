@@ -97,7 +97,6 @@ func (r *SessionRepository) List(ctx context.Context, params domain.SessionListP
                 if params.EpreuveID != "" {
                         where = append(where, fmt.Sprintf(`"epreuveId" = $%d`, argIdx))
                         args = append(args, params.EpreuveID)
-                        argIdx++
                 }
 
                 whereClause := ""

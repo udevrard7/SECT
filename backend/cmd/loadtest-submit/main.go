@@ -348,7 +348,7 @@ func loginStudents(n int, baseURL, emailBase, password, domain string,
 				errs[idx] = err
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != 200 {
 				b, _ := io.ReadAll(resp.Body)
 				errs[idx] = fmt.Errorf("login %s: %d %s", email, resp.StatusCode, string(b))

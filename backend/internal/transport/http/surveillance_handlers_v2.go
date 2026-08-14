@@ -231,7 +231,6 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		if dateFinFilter != "" {
 			where = append(where, fmt.Sprintf(`e."dateFin" <= $%d`, argIdx))
 			args = append(args, dateFinFilter)
-			argIdx++
 		}
 
 		whereClause := ""
@@ -302,7 +301,6 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		if enseignantID != "" {
 			eWhere = fmt.Sprintf(`WHERE e."enseignantId" = $%d`, eIdx)
 			eArgs = append(eArgs, enseignantID)
-			eIdx++
 		}
 		epreuvesQuery := fmt.Sprintf(`
                         SELECT e."id", e."titre", e."statut"::text, e."dateDebut", e."dateFin",
@@ -543,7 +541,6 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
 		if enseignantID != "" {
 			whereE = fmt.Sprintf(`AND e."enseignantId" = $%d`, argIdx)
 			args = append(args, enseignantID)
-			argIdx++
 		}
 
 		// 1. KPIs globaux

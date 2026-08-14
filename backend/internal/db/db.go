@@ -197,7 +197,7 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, claims SessionClaims, fn fu
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx) // safe à appeler après Commit (no-op)
+        defer func() { _ = tx.Rollback(ctx) }() // safe à appeler après Commit (no-op)
 
         if err := SetClaimsTx(ctx, tx, claims); err != nil {
                 return err

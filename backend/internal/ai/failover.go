@@ -160,7 +160,7 @@ func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*Activ
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 return nil, fmt.Errorf("set system claims: %w", err)
@@ -231,9 +231,9 @@ func (s *AIService) getFailoverConfig(ctx context.Context) FailoverConfig {
         if err != nil {
                 return DefaultFailoverConfig()
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var settingsJSON string
         err = tx.QueryRow(ctx, `SELECT "settings" FROM "PlatformSettings" WHERE "id" = 'ai_failover_config'`).Scan(&settingsJSON)
@@ -266,9 +266,9 @@ func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *Active
         if err != nil {
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         // BUG #9 fix: utiliser FAIL_OVER quand il y a un provider de secours.
         eventType := "FAIL_OVER"
@@ -312,9 +312,9 @@ func (s *AIService) logFailoverSuccessEvent(ctx context.Context, fromProvider *A
         if err != nil {
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         fromName := fromProvider.Name
         toName := toProvider.Name
@@ -357,7 +357,7 @@ func (s *AIService) chatWithProvider(ctx context.Context, p *ActiveProvider, mes
         if err != nil {
                 return nil, fmt.Errorf("appel provider %s: %w", p.Name, err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         respBody, err := readResponseBody(resp)
         if err != nil {

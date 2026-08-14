@@ -167,7 +167,7 @@ func (r *Recorder) writeEvent(evt Event) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Claims system-worker pour bypass RLS (policy insert_system WITH CHECK(true))
 	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {

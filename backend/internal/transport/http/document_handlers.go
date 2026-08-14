@@ -73,7 +73,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
                 writeJSONError(w, http.StatusBadRequest, "fichier 'file' requis")
                 return
         }
-        defer file.Close()
+        defer func() { _ = file.Close() }()
 
         // Lire le contenu du fichier
         content, err := io.ReadAll(file)

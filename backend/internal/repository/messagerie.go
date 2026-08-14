@@ -843,7 +843,7 @@ func (r *MessagerieRepository) ListMessages(ctx context.Context, conversationID 
                         // Page suivante : messages strictement plus anciens que le cursor
                         // (ou créés au même instant mais avec un id inférieur pour
                         // garantir un ordre total).
-                        where += fmt.Sprintf(` AND (m."createdAt" < $2 OR (m."createdAt" = $2 AND m."id" < $3))`)
+                        where += ` AND (m."createdAt" < $2 OR (m."createdAt" = $2 AND m."id" < $3))`
                         args = append(args, *cursorTime, *cursorID)
                 }
                 limitPlus := limit + 1

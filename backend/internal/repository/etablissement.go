@@ -118,7 +118,6 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 		if params.Actif != nil {
 			where = append(where, fmt.Sprintf(`"Etablissement"."actif" = $%d`, argIdx))
 			args = append(args, *params.Actif)
-			argIdx++
 		}
 
 		whereClause := ""
