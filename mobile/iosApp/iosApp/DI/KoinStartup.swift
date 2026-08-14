@@ -12,13 +12,14 @@
 
 import Foundation
 import Shared
+import Koin
 
 /// KoinStartup — One-time Koin DI initialization for iOS.
 ///
 /// Call `KoinStartup.start()` in SECTApp.init() before creating any ViewModel.
 /// Safe to call multiple times — subsequent calls are no-ops.
 enum KoinStartup {
-    
+
     /// Start Koin with iOS platform module + shared modules.
     /// Called once from SECTApp.init().
     static func start() {
@@ -27,30 +28,22 @@ enum KoinStartup {
             print("[Koin] Already started — skipping")
             return
         }
-        
-        do {
-            // Start Koin with: iosPlatformModule (platform) + sharedModules (network → data → domain → presentation)
-            //
-            // The Shared framework exposes:
-            //   iosPlatformModule — iOS-specific singletons (HttpClient, TokenCache, etc.)
-            //   sharedModules — shared DI modules from commonMain
-            //
-            // This mirrors Android's: startKoin { modules(appModule + sharedModules) }
-            let allModules = [IOSPlatformModuleKt.getIosPlatformModule()] + SharedDIHelperKt.sharedModules()
-            
-            try KoinKoin_instance.start(modules: allModules)
-            print("[Koin] Started successfully with \(allModules.count) modules")
-        } catch {
-            // If Koin fails to start, log but don't crash —
-            // the app can still function with lazy resolution errors
-            // which will be caught at the ViewModel level.
-            print("[Koin] ⚠️ Failed to start: \(error)")
-            print("[Koin] ⚠️ Dependency resolution will fail — check module definitions")
-        }
+
+        // Start Koin with: iosPlatformModule (platform) + sharedModules (network → data → domain → presentation)
+        //
+        // The Shared framework exposes:
+        //   IOSPlatformModuleKt.iosPlatformModule — iOS-specific singletons (HttpClient, TokenCache, etc.)
+        //   PlatformModuleKt.sharedModules — shared DI modules from commonMain
+        //
+        // This mirrors Android's: startKoin { modules(appModule + sharedModules) }
+        let allModules = [IOSPlatformModuleKt.iosPlatformModule] + PlatformModuleKt.sharedModules
+
+        KoinCoreKoin_instance.start(modules: allModules)
+        print("[Koin] Started successfully with \(allModules.count) modules")
     }
-    
+
     /// Check if Koin is already running.
     private static func isKoinStarted() -> Bool {
-        return KoinKoin_instance.isStarted()
+        return KoinCoreKoin_instance.isStarted()
     }
 }

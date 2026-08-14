@@ -24,8 +24,9 @@ class EpreuveViewModel: ObservableObject {
             let result = try await repository.listEpreuves(
                 search: searchQuery.isEmpty ? nil : searchQuery,
                 statut: statutFilter,
-                page: Int(currentPage),
-                limit: Int(pageSize)
+                filiereId: nil,
+                page: Int32(currentPage),
+                limit: Int32(pageSize)
             )
             epreuves = result
             totalItems = result.count
@@ -64,8 +65,9 @@ class EpreuveViewModel: ObservableObject {
             let result = try await repository.listEpreuves(
                 search: searchQuery.isEmpty ? nil : searchQuery,
                 statut: statutFilter,
-                page: Int(currentPage),
-                limit: Int(pageSize)
+                filiereId: nil,
+                page: Int32(currentPage),
+                limit: Int32(pageSize)
             )
             epreuves.append(contentsOf: result)
         } catch {

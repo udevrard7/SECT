@@ -41,7 +41,7 @@ class MessagerieViewModel: ObservableObject {
         isLoadingMessages = true
         error = nil
         do {
-            messages = try await repository.listMessages(conversationId: conversation.id)
+            messages = try await repository.listMessages(conversationId: conversation.id, before: nil)
         } catch {
             self.error = error.localizedDescription
         }
@@ -54,7 +54,7 @@ class MessagerieViewModel: ObservableObject {
         do {
             let older = try await repository.listMessages(
                 conversationId: conversation.id,
-                before: oldest.createdAt.toString()
+                before: oldest.createdAt
             )
             messages.insert(contentsOf: older, at: 0)
         } catch {

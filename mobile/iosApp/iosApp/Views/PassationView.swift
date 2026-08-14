@@ -119,7 +119,7 @@ struct PassationView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 4)
         }
-        .background(Color(.systemBarBackground))
+        .background(Color(UIColor.systemBackground))
     }
 
     // ── Answer Input ──
@@ -231,7 +231,8 @@ struct PassationView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(0..<viewModel.questions.count, id: \.self) { index in
-                        let isAnswered = !viewModel.answers[viewModel.questions[index].id].OrNil.isNilOrEmpty
+                        let answer = viewModel.answers[viewModel.questions[index].id] ?? ""
+                        let isAnswered = !answer.isEmpty
                         Circle()
                             .fill(index == viewModel.currentQuestionIndex ? Color.sectGreen :
                                   isAnswered ? Color.sectGreen.opacity(0.4) : Color(.systemGray4))
@@ -263,7 +264,7 @@ struct PassationView: View {
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 8)
-        .background(Color(.systemBarBackground))
+        .background(Color(UIColor.systemBackground))
     }
 }
 
