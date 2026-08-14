@@ -106,7 +106,7 @@ class SECTRepositoryImpl(
 
     override suspend fun startSession(epreuveId: String): SessionPassation = sessionApi.getOrCreate(epreuveId).toDomain()
 
-    override suspend fun submitSession(sessionId: String, reponses: List<Map<String, Any?>>): SessionPassation =
+    override suspend fun submitSession(sessionId: String, reponses: List<Map<String, Any?>>): SubmitResult =
         sessionApi.submit(sessionId, reponses).toDomain()
 
     override suspend fun saveReponse(sessionId: String, questionId: String, contenu: String) =

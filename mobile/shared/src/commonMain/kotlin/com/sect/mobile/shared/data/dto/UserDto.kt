@@ -70,3 +70,37 @@ data class CreateUserInputDto(
     val niveau: String? = null,
     val mustChangePwd: Boolean? = null
 )
+
+// ── Response wrappers (le backend Go retourne des objets wrappés) ──
+
+/**
+ * Réponse de GET /api/users/{id} et PATCH /api/users/{id} : { user: {...} }
+ * (user_handlers.go:115 getUser, user_handlers.go:212 updateUser)
+ */
+@Serializable
+data class UserResponseDto(val user: UserDto)
+
+/**
+ * Réponse de POST /api/users : { user: {...}, temporaryPassword?: "..." }
+ * (user_handlers.go:158-166 createUser — temporaryPassword présent si mdp généré)
+ */
+@Serializable
+data class CreateUserResponseDto(
+    val user: UserDto,
+    val temporaryPassword: String? = null
+)
+
+/**
+ * Réponse de POST /api/users/{id}/reset-password :
+ * { message, temporaryPassword, mustChangePassword: BOOL }
+ * (user_handlers.go:486-490 resetUserPassword)
+ *
+ * Note : `mustChangePassword` est un booléen, incompatible avec l'ancien
+ * `Map<String, String>` qui échouait à le désérialiser.
+ */
+@Serializable
+data class ResetPasswordResponseDto(
+    val message: String,
+    val temporaryPassword: String,
+    val mustChangePassword: Boolean
+)

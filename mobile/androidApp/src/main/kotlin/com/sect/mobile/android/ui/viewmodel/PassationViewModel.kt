@@ -213,12 +213,16 @@ class PassationViewModel(
                 val reponses = _localReponses.value.map { (questionId, contenu) ->
                     mapOf("questionId" to questionId, "contenu" to contenu)
                 }
-                repository.submitSession(sessionId, reponses)
-                _session.value = UiState.Success(
-                    (_session.value as UiState.Success).data.copy(
-                        statut = com.sect.mobile.shared.domain.enum.StatutSession.SOUMISE
-                    )
+                // FIX-API-2 : submitSession retourne maintenant un SubmitResult (et non
+                // un SessionPassation). On récupère la session mise à jour renvoyée par
+                // le backend (statut=SOUMISE ou CORRIGEE + score si auto-graded), avec
+                // un fallback local si le backend ne renvoie pas la session.
+                val result = repository.submitSession(sessionId, reponses)
+                val currentSession = (_session.value as UiState.Success).data
+                val updatedSession = result.session ?: currentSession.copy(
+                    statut = com.sect.mobile.shared.domain.enum.StatutSession.SOUMISE
                 )
+                _session.value = UiState.Success(updatedSession)
             } catch (e: Exception) {
                 _submitError.value = e.message ?: "Erreur lors de la soumission"
             } finally {

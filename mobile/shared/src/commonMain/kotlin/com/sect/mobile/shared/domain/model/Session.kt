@@ -31,3 +31,26 @@ data class Reponse(
     val createdAt: Instant,
     val updatedAt: Instant
 )
+
+/**
+ * SubmitResult — résultat de la soumission d'une session.
+ * Domain model (mirroir du DTO SubmitResultDto / backend domain.SubmitResult, session.go:201-216).
+ *
+ * Contient la session mise à jour + métriques de scoring (score, scénario A/B,
+ * pendingCorrection, etc.). Utilisé par PassationViewModel pour afficher le
+ * résultat de la soumission.
+ */
+data class SubmitResult(
+    val session: SessionPassation? = null,
+    val score: Double = 0.0,
+    val rawScore: Double = 0.0,
+    val penalite: Double = 0.0,
+    val totalPossible: Double = 0.0,
+    val autoGradableTotal: Double = 0.0,
+    val percentage: Int = 0,
+    val autoGraded: Int = 0,
+    val pendingCorrection: Int = 0,
+    val scenario: String = "",
+    val scenarioMessage: String = "",
+    val message: String = ""
+)

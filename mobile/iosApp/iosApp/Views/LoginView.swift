@@ -73,24 +73,42 @@ struct LoginView: View {
 
 // ── Mot de passe oublié ──
 struct PasswordResetView: View {
+    @EnvironmentObject var authVM: AuthViewModel
     @State private var email = ""
     @State private var isSuccess = false
-    
+
     var body: some View {
         Form {
             Section {
                 TextField("Email", text: $email)
                     .textInputAutocapitalization(.never)
-                
-                Button("Envoyer") {
-                    // TODO: appeler repository.requestPasswordReset(email)
-                    isSuccess = true
+
+                Button {
+                    Task {
+                        await authVM.requestPasswordReset(email: email)
+                        if authVM.error == nil {
+                            isSuccess = true
+                        }
+                    }
+                } label: {
+                    if authVM.isLoading {
+                        ProgressView()
+                    } else {
+                        Text("Envoyer")
+                    }
                 }
-                .disabled(email.isEmpty)
+                .disabled(email.isEmpty || authVM.isLoading)
             } header: {
                 Text("Réinitialiser le mot de passe")
             }
-            
+
+            if let error = authVM.error {
+                Section {
+                    Text(error)
+                        .foregroundStyle(.red)
+                }
+            }
+
             if isSuccess {
                 Section {
                     Text("Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.")

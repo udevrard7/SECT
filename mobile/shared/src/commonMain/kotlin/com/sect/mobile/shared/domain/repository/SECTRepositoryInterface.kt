@@ -24,7 +24,7 @@ interface SECTRepositoryInterface : AuthRepository {
 
     // Sessions
     suspend fun startSession(epreuveId: String): SessionPassation
-    suspend fun submitSession(sessionId: String, reponses: List<Map<String, Any?>>): SessionPassation
+    suspend fun submitSession(sessionId: String, reponses: List<Map<String, Any?>>): SubmitResult
     suspend fun saveReponse(sessionId: String, questionId: String, contenu: String)
 
     // Messagerie

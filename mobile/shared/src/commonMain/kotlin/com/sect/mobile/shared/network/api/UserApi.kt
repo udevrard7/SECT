@@ -12,6 +12,9 @@ class UserApi(private val client: HttpClient) {
     /**
      * Lister les utilisateurs (avec filtres/pagination).
      * GET /api/users
+     *
+     * Le backend (user_handlers.go:48 listUsers) retourne directement un
+     * UserListResult (bare) → pas de wrapper.
      */
     suspend fun list(
         search: String? = null,
@@ -31,30 +34,36 @@ class UserApi(private val client: HttpClient) {
 
     /**
      * Obtenir un utilisateur par ID.
-     * GET /api/users/{id}
+     * GET /api/users/{id} — réponse wrappée : { user: {...} }
+     * (user_handlers.go:115 getUser retourne `{"user": user}`)
      */
     suspend fun get(id: String): UserDto {
-        return client.get("/api/users/$id").body()
+        val response: UserResponseDto = client.get("/api/users/$id").body()
+        return response.user
     }
 
     /**
      * Créer un utilisateur.
-     * POST /api/users
+     * POST /api/users — réponse wrappée : { user: {...}, temporaryPassword?: "..." }
+     * (user_handlers.go:158-166 createUser)
      */
     suspend fun create(input: CreateUserInputDto): UserDto {
-        return client.post("/api/users") {
+        val response: CreateUserResponseDto = client.post("/api/users") {
             setBody(input)
         }.body()
+        return response.user
     }
 
     /**
      * Mettre à jour un utilisateur.
-     * PATCH /api/users/{id}
+     * PATCH /api/users/{id} — réponse wrappée : { user: {...} }
+     * (user_handlers.go:212 updateUser retourne `{"user": user}`)
      */
     suspend fun update(id: String, input: Map<String, Any?>): UserDto {
-        return client.patch("/api/users/$id") {
+        val response: UserResponseDto = client.patch("/api/users/$id") {
             setBody(input)
         }.body()
+        return response.user
     }
 
     /**
@@ -76,8 +85,14 @@ class UserApi(private val client: HttpClient) {
     /**
      * Réinitialiser le mot de passe d'un utilisateur (ADMIN).
      * POST /api/users/{id}/reset-password
+     *
+     * Réponse : { message, temporaryPassword, mustChangePassword: BOOL }
+     * (user_handlers.go:486-490 resetUserPassword)
+     *
+     * Note : l'ancienne signature retournait `Map<String, String>` ce qui échouait
+     * à désérialiser le booléen `mustChangePassword`. Le DTO typé corrige ce bug.
      */
-    suspend fun resetPassword(id: String): Map<String, String> {
+    suspend fun resetPassword(id: String): ResetPasswordResponseDto {
         return client.post("/api/users/$id/reset-password").body()
     }
 

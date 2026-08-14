@@ -12,6 +12,9 @@ class EpreuveApi(private val client: HttpClient) {
     /**
      * Lister les épreuves (avec filtres).
      * GET /api/epreuves
+     *
+     * Le backend retourne { epreuves: [...], filieres: [...], total?, page?, limit?, totalPages? }.
+     * On désérialise via EpreuveListResponseDto puis on renvoie uniquement la liste des épreuves.
      */
     suspend fun list(
         search: String? = null,
@@ -20,41 +23,45 @@ class EpreuveApi(private val client: HttpClient) {
         page: Int = 1,
         limit: Int = 20
     ): List<EpreuveDto> {
-        return client.get("/api/epreuves") {
+        val response: EpreuveListResponseDto = client.get("/api/epreuves") {
             search?.let { parameter("search", it) }
             statut?.let { parameter("statut", it) }
             filiereId?.let { parameter("filiereId", it) }
             parameter("page", page)
             parameter("limit", limit)
         }.body()
+        return response.epreuves
     }
 
     /**
      * Obtenir une épreuve par ID.
-     * GET /api/epreuves/{id}
+     * GET /api/epreuves/{id} — réponse wrappée : { epreuve: {...} }
      */
     suspend fun get(id: String): EpreuveDto {
-        return client.get("/api/epreuves/$id").body()
+        val response: EpreuveResponseDto = client.get("/api/epreuves/$id").body()
+        return response.epreuve
     }
 
     /**
      * Créer une épreuve.
-     * POST /api/epreuves
+     * POST /api/epreuves — réponse wrappée : { epreuve: {...}, message }
      */
     suspend fun create(input: Map<String, Any?>): EpreuveDto {
-        return client.post("/api/epreuves") {
+        val response: EpreuveMutationResponseDto = client.post("/api/epreuves") {
             setBody(input)
         }.body()
+        return response.epreuve
     }
 
     /**
      * Mettre à jour une épreuve.
-     * PATCH /api/epreuves/{id}
+     * PATCH /api/epreuves/{id} — réponse wrappée : { epreuve: {...}, message }
      */
     suspend fun update(id: String, input: Map<String, Any?>): EpreuveDto {
-        return client.patch("/api/epreuves/$id") {
+        val response: EpreuveMutationResponseDto = client.patch("/api/epreuves/$id") {
             setBody(input)
         }.body()
+        return response.epreuve
     }
 
     /**
