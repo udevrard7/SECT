@@ -32,7 +32,7 @@ object SharedDIHelper {
      * Called from Swift KoinStartup.start().
      */
     fun startKoin(modules: List<Module>) {
-        KoinPlatform.startKoin(modules = modules)
+        KoinPlatform.startKoin(modules = modules, level = org.koin.core.logger.Level.INFO)
     }
 
     /**
