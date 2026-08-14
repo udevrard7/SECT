@@ -22,7 +22,7 @@
 
 # ── Koin DI ──
 -keep class org.koin.** { *; }
--keep class * { org.koin.core.annotation.* <methods>; }
+-keepclassmembers class * { @org.koin.core.annotation.* <methods>; }
 -dontwarn org.koin.**
 
 # ── SQLDelight ──
@@ -45,6 +45,15 @@
 }
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
+
+# ── Firebase Tink (crypto) — classes optionnelles non incluses ──
+# Tink (utilisé par Firebase pour le chiffrement) référence des classes
+# Google API Client qui ne sont pas toujours présentes. R8 échoue sans ces règles.
+-dontwarn com.google.api.client.**
+-dontwarn com.google.crypto.tink.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
 
 # ── AndroidX / Jetpack Compose ──
 -dontwarn androidx.**
