@@ -5,8 +5,8 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
-import com.google.firebase.ktx.firebase
-import com.google.firebase.messaging.ktx.messaging
+import com.google.firebase.FirebaseApp
+import com.google.firebase.messaging.FirebaseMessaging
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -55,7 +55,7 @@ class AndroidNotificationService(
 
     override suspend fun subscribeToTopic(topic: String) {
         try {
-            com.google.firebase.Firebase.messaging.subscribeToTopic(topic)
+            FirebaseMessaging.getInstance().subscribeToTopic(topic)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         println("[FCM] Subscribed to topic: $topic")
@@ -70,7 +70,7 @@ class AndroidNotificationService(
 
     override suspend fun unsubscribeFromTopic(topic: String) {
         try {
-            com.google.firebase.Firebase.messaging.unsubscribeFromTopic(topic)
+            FirebaseMessaging.getInstance().unsubscribeFromTopic(topic)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         println("[FCM] Unsubscribed from topic: $topic")
@@ -94,7 +94,7 @@ class AndroidNotificationService(
 
         // Otherwise fetch from FCM
         return try {
-            val token = com.google.firebase.Firebase.messaging.token.await()
+            val token = FirebaseMessaging.getInstance().token.await()
             prefs.edit().putString("fcm_token", token).apply()
             token
         } catch (e: Exception) {
