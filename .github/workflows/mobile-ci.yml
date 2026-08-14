@@ -244,6 +244,7 @@ jobs:
             -sdk iphonesimulator \
             -arch arm64 \
             -configuration Debug \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
 
