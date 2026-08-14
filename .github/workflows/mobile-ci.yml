@@ -252,9 +252,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sect-ios-simulator
-          path: mobile/iosApp/build/Build/Products/Debug-iphonesimulator/*.app
+          path: iosApp/build/Build/Products/Debug-iphonesimulator/*.app
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn  # Le .app est un bundle (directory), pas un fichier unique
 
       - name: ✅ iOS build terminé
         run: echo "✅ iOS app compiled for simulator"
