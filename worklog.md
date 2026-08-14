@@ -247,3 +247,31 @@ Stage Summary:
 - ✅ Build Android APK release signé (+ upload artefact + Appetize deploy)
 - ⏳ Build iOS : Shared.framework compile ✅, xcodebuild en cours de fix (simulateur)
 - 7 commits pour résoudre les bugs iOS (Clock, kotlinx-datetime, TokenCache, BiometricAuth, simulator)
+
+---
+Task ID: SECT-MOBILE-FOCUS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Personnaliser l'app mobile pour Enseignant + Étudiant uniquement
+
+Work Log:
+- Investigation backend Go : 60+ endpoints identifiés (auth, épreuves, sessions, correction, messagerie, exam-prep, devoirs, documents, notifications, etc.)
+- Investigation frontend Next.js : navigation Enseignant (6 catégories) + Étudiant (4 catégories), design system "Savane EdTech"
+- Étape 1 (commit 95d524c) : Filtre login
+  - AuthState.RedirectToWeb ajouté
+  - AuthViewModel.handleAuthSuccess() : ADMIN/RESPONSABLE → RedirectToWeb
+  - WebRedirectScreen : écran avec bouton "Ouvrir l'interface web"
+  - Navigation : route WEB_REDIRECT
+- Étape 2 (commit bc54bd0) : Bottom Navigation 4 onglets
+  - Scaffold + NavigationBar (Material 3)
+  - 4 onglets : Accueil, Épreuves, Messages, Profil
+  - Bottom bar s'affiche uniquement sur les 4 onglets principaux
+- Étape 3 (commit 851fd5c) : Role.isMobileUser()
+  - Ajouté au shared/commonMain (utilisable par Android + iOS)
+  - Fix dépendance circulaire AppModule (getKoin lazy)
+
+Stage Summary:
+- ✅ Filtre login : ADMIN/RESPONSABLE redirigés vers web
+- ✅ Bottom Navigation : 4 onglets (Accueil, Épreuves, Messages, Profil)
+- ✅ Role.isMobileUser() : shared KMP (Android + iOS)
+- ✅ Dépendance circulaire fixée (AppModule)
+- ⏳ CI : à vérifier (quota GitHub Actions pouvait être épuisé)
