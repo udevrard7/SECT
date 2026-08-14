@@ -1,12 +1,13 @@
 // SECT Mobile — DashboardViewModel (stats, raccourcis, épreuves à venir)
+// SECT-MOBILE-FOCUS : adaptatif enseignant / étudiant
 package com.sect.mobile.android.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Epreuve
-import com.sect.mobile.shared.domain.model.SessionPassation
 import com.sect.mobile.shared.domain.model.User
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
+import com.sect.mobile.shared.domain.enum.Role
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,11 +22,14 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
     private val _upcomingEpreuves = MutableStateFlow<UiState<List<Epreuve>>>(UiState.Loading)
     val upcomingEpreuves: StateFlow<UiState<List<Epreuve>>> = _upcomingEpreuves.asStateFlow()
 
-    private val _recentSessions = MutableStateFlow<UiState<List<SessionPassation>>>(UiState.Loading)
-    val recentSessions: StateFlow<UiState<List<SessionPassation>>> = _recentSessions.asStateFlow()
-
     private val _stats = MutableStateFlow(DashboardStats())
     val stats: StateFlow<DashboardStats> = _stats.asStateFlow()
+
+    val isEnseignant: Boolean
+        get() = _user.value?.role == Role.ENSEIGNANT
+
+    val isEtudiant: Boolean
+        get() = _user.value?.role == Role.ETUDIANT
 
     init {
         loadDashboard()
@@ -33,48 +37,71 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
 
     fun loadDashboard() {
         viewModelScope.launch {
-            // Charger l'utilisateur courant
             try {
                 _user.value = repository.getCurrentUser()
             } catch (_: Exception) { }
 
-            // Charger les épreuves à venir (PLANIFIEE ou EN_COURS)
-            launch {
-                try {
-                    val epreuves = repository.listEpreuves(statut = "PLANIFIEE", limit = 5)
-                    val enCours = repository.listEpreuves(statut = "EN_COURS", limit = 5)
-                    _upcomingEpreuves.value = UiState.Success(epreuves + enCours)
-                } catch (e: Exception) {
-                    _upcomingEpreuves.value = UiState.Error(e.message ?: "Erreur")
-                }
-            }
+            val role = _user.value?.role
 
-            // Charger les sessions récentes (TODO: endpoint dédié)
-            launch {
-                try {
-                    // Placeholder — l'API devra supporter un endpoint /api/me/sessions
-                    _recentSessions.value = UiState.Success(emptyList())
-                } catch (e: Exception) {
-                    _recentSessions.value = UiState.Error(e.message ?: "Erreur")
-                }
+            when (role) {
+                Role.ENSEIGNANT -> loadEnseignantDashboard()
+                Role.ETUDIANT -> loadEtudiantDashboard()
+                else -> { /* ADMIN/RESPONSABLE ne devrait pas être ici */ }
             }
+        }
+    }
 
-            // Calculer les stats rapides
-            launch {
-                try {
-                    val allEpreuves = repository.listEpreuves(limit = 100)
-                    _stats.value = DashboardStats(
-                        totalEpreuves = allEpreuves.size,
-                        enCours = allEpreuves.count { it.statut == StatutEpreuve.EN_COURS },
-                        planifiees = allEpreuves.count { it.statut == StatutEpreuve.PLANIFIEE },
-                        terminees = allEpreuves.count { it.statut == StatutEpreuve.TERMINEE }
-                    )
-                } catch (_: Exception) { }
+    /**
+     * Dashboard enseignant :
+     * - Épreuves EN_COURS (à surveiller)
+     * - Épreuves PLANIFIEES (à venir)
+     * - Stats (total, en cours, planifiées)
+     */
+    private suspend fun loadEnseignantDashboard() {
+        launch {
+            try {
+                val enCours = repository.listEpreuves(search = nil(), statut = "EN_COURS", filiereId = nil(), page = 1, limit = 10)
+                val planifiees = repository.listEpreuves(search = nil(), statut = "PLANIFIEE", filiereId = nil(), page = 1, limit = 5)
+                _upcomingEpreuves.value = UiState.Success(enCours + planifiees)
+                _stats.value = DashboardStats(
+                    totalEpreuves = enCours.size + planifiees.size,
+                    enCours = enCours.size,
+                    planifiees = planifiees.size,
+                    terminees = 0
+                )
+            } catch (e: Exception) {
+                _upcomingEpreuves.value = UiState.Error(e.message ?: "Erreur")
+            }
+        }
+    }
+
+    /**
+     * Dashboard étudiant :
+     * - Épreuves à venir (PLANIFIEE / EN_COURS)
+     * - Stats (à venir, terminées)
+     */
+    private suspend fun loadEtudiantDashboard() {
+        launch {
+            try {
+                val enCours = repository.listEpreuves(search = nil(), statut = "EN_COURS", filiereId = nil(), page = 1, limit = 10)
+                val planifiees = repository.listEpreuves(search = nil(), statut = "PLANIFIEE", filiereId = nil(), page = 1, limit = 5)
+                _upcomingEpreuves.value = UiState.Success(enCours + planifiees)
+                _stats.value = DashboardStats(
+                    totalEpreuves = enCours.size + planifiees.size,
+                    enCours = enCours.size,
+                    planifiees = planifiees.size,
+                    terminees = 0
+                )
+            } catch (e: Exception) {
+                _upcomingEpreuves.value = UiState.Error(e.message ?: "Erreur")
             }
         }
     }
 
     fun refresh() = loadDashboard()
+
+    /** Helper pour passer nil aux paramètres optionnels String? */
+    private fun nil(): String? = null
 }
 
 data class DashboardStats(
