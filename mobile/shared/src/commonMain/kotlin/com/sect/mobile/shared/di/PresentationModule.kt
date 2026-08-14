@@ -3,30 +3,23 @@ package com.sect.mobile.shared.di
 import org.koin.dsl.module
 
 /**
- * Koin module for presentation layer: ViewModels.
+ * Koin module for presentation layer.
  *
- * NOTE: Shared ViewModels are a future goal (Correction 6).
- * Currently, ViewModels are platform-specific:
- * - Android: com.sect.mobile.android.ui.viewmodel.* (using androidx.lifecycle.ViewModel)
- * - iOS:     Swift ViewModels observing shared state
+ * Historiquement, ce module devait contenir des ViewModels partagés (MVI :
+ * State + Action + Effect). Après audit (SECT-MOBILE-CLEANUP-1), ces VMs
+ * partagés n'étaient jamais instanciés — Android et iOS implémentent chacun
+ * leur propre version. Le code mort (773 lignes, 19 fichiers) a été supprimé.
  *
- * When ViewModels are migrated to shared (using Kotlin Multiplatform ViewModel
- * or a shared state holder), they will be declared here as factories:
+ * Le module est conservé (vide) car référencé dans sharedModules. Si une
+ * future migration vers des VMs partagés (ex: via moko-mvvm ou un holder
+ * d'état commun) est entreprise, les factory Koin iront ici.
  *
- * ```
- * factory { AuthViewModel(get()) }
- * factory { DashboardViewModel(get()) }
- * factory { EpreuveViewModel(get()) }
- * factory { PassationViewModel(get(), get()) }
- * factory { MessagerieViewModel(get()) }
- * factory { ProfileViewModel(get()) }
- * ```
- *
- * For now, platform-specific DI modules provide their own ViewModels:
- * - Android: AppModule in androidApp/di/
- * - iOS:     iOSDIKit in iosApp/
+ * Architecture actuelle :
+ * - shared : domain/ + data/ + platform/ (interfaces) + notification/
+ * - Android : androidx.lifecycle.ViewModel dans androidApp/ui/viewmodel/
+ * - iOS : ObservableObject dans iosApp/ViewModels/
+ * - Les deux plateformes consomment SECTRepositoryInterface via Koin
  */
 val presentationModule = module {
-    // Shared ViewModels will be declared here after migration (Correction 6).
-    // Currently, each platform provides its own ViewModel DI.
+    // Réservé pour une future migration vers des ViewModels partagés.
 }
