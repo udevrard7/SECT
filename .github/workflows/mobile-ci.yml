@@ -5,16 +5,13 @@
 #
 # Flux : Code Source → GitHub Actions → Binaires → Appetize.io
 #
-# ┌──────────────────┐     ┌──────────────────────────┐     ┌────────────────┐
-# │  Vous écrivez    │     │ GitHub Actions compile   │     │ Artefacts      │
-# │  du code source7     │────►│ sur serveurs Linux + Mac │────►│ .apk + .app   │
-# │  (Kotlin/Swift)  │Push │ → tests → lint → build   │     │ → Appetize.io │
-# └──────────────────┘     └──────────────────────────┘     └────────────────┘
+#   Code Source → GitHub Actions (Linux + macOS) → APK + .app → Appetize
+#   (Kotlin/Swift)  Push → tests → compile → build → artefacts
 #
 # Triggers:
-#   - push sur main/développ>          → full build + deploy
-#   - pull_request sur main     → vérification (lint + test)
-#   - tag v*                    → release build (signé)
+#   - push sur main/develop    → full build + deploy Appetize
+#   - pull_request sur main    → vérification (compile + tests)
+#   - tag v*                   → release build (signé)
 # ──────────────────────────────────────────────────────────────────────────
 
 name: SECT Mobile CI
@@ -30,7 +27,7 @@ on:
     branches: [main]
     paths:
       - 'mobile/**'
-  workflow_dispatch: # Permet de lancer manuellement depuis GitHub
+  workflow_dispatch:
 
 concurrency:
   group: mobile-ci-${{ github.ref }}
@@ -43,8 +40,7 @@ env:
 jobs:
   # ──────────────────────────────────────────────────────────────────────
   # Job 1 : Vérification du module partagé KMP
-  # Serveur Linux — compile le shared module pour vérifier
-  # que les targets Android + iOS sont valides
+  # Serveur Linux — compile le shared module + tests unitaires
   # ──────────────────────────────────────────────────────────────────────
   verify-shared:
     name: 🧪 Vérifier Shared KMP
@@ -67,18 +63,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
-          # Désactive le cache Gradle build-cache car SQLDelight génère du code
-          # qui doit être régénéré à chaque modification des .sq (sinon FROM-CACHE
-          # retourne l'ancien code généré cassé).
-          cache-disabled: true
 
-      - name: 🔍 Compile Shared Module (commonMain + Android + iOS)
-        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon --no-build-cache
+      - name: 🔍 Compile Shared Module (Android + iOS targets)
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
 
       - name: 🧪 Test Shared Module (commonMain)
         run: ./gradlew :shared:allTests --no-daemon
-        # Les tests iOS tournent sur le runner macOS du job build-ios
-        # Ce job ne fait que valider la compilation shared
 
       - name: ✅ Shared module vérifié
         run: echo "✅ Shared KMP module compiles and passes tests"
@@ -110,33 +100,40 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       # ── Firebase Config ──
-      # Le fichier google-services.json est requis pour compiler avec FCM.
-      # Il est stocké comme secret GitHub (base64 encodé).
       - name: 🔑 Déployer google-services.json
+        env:
+          GS_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
-          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" ]; then
-            echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 -d > androidApp/google-services.json
+          if [ -n "$GS_JSON_B64" ]; then
+            echo "$GS_JSON_B64" | base64 -d > androidApp/google-services.json
             echo "✅ google-services.json déployé"
           else
-            echo "⚠️ GOOGLE_SERVICES_JSON_B64 secret not set — using placeholder"
+            echo "⚠️ GOOGLE_SERVICES_JSON_B64 secret not set — build FCM will fail"
           fi
 
       # ── Keystore (release signing) ──
-      # Le keystore et ses credentials sont stockés comme secrets GitHub.
       - name: 🔐 Déployer keystore release
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
-            echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > androidApp/sect-release.jks
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > androidApp/sect-release.jks
             echo "✅ Keystore déployé"
+          else
+            echo "⚠️ ANDROID_KEYSTORE_B64 not set — release APK won't be signed"
           fi
 
       - name: 📝 Créer keystore.properties
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cat > keystore.properties <<EOF
           storeFile=sect-release.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storePassword=$KS_PASS
+          keyAlias=$KS_ALIAS
+          keyPassword=$KEY_PASS
           EOF
           echo "✅ keystore.properties créé"
 
@@ -181,13 +178,12 @@ jobs:
 
   # ──────────────────────────────────────────────────────────────────────
   # Job 3 : Build iOS App
-  # Serveur macOS (fourni par GitHub) — compile le .app
-  # GitHub fournit des runners macOS avec Xcode préinstallé
-  # Artefact : SECT.app (simulateur) ou .ipa (device)
+  # Serveur macOS — compile le .app pour simulateur
+  # Artefact : SECT.app (simulateur iOS)
   # ──────────────────────────────────────────────────────────────────────
   build-ios:
     name: 🍎 Build iOS App
-    runs-on: macos-14  # macOS Sonoma + Xcode 15+
+    runs-on: macos-14
     needs: verify-shared
     defaults:
       run:
@@ -206,34 +202,29 @@ jobs:
       - name: 🐘 Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: 🍎 Select Xcode (latest)
-        # Utilise xcode-select natif au lieu de maxim-loburenko/setup-xcode
-        # (action supprimée du GitHub Marketplace)
+      - name: 🍎 Select Xcode
         run: sudo xcode-select -s "$(xcode-select -p)" && xcodebuild -version
 
       # ── Firebase Config ──
       - name: 🔑 Déployer GoogleService-Info.plist
+        env:
+          GS_PLIST_B64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}
         run: |
-          if [ -n "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}" ]; then
-            echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}" | base64 -d > iosApp/iosApp/GoogleService-Info.plist
+          if [ -n "$GS_PLIST_B64" ]; then
+            echo "$GS_PLIST_B64" | base64 -d > iosApp/iosApp/GoogleService-Info.plist
             echo "✅ GoogleService-Info.plist déployé"
           else
-            echo "⚠️ GOOGLE_SERVICE_INFO_PLIST_B64 secret not set — using placeholder"
+            echo "⚠️ GOOGLE_SERVICE_INFO_PLIST_B64 not set — push notifications won't work"
           fi
 
-      # ── Compile Shared.framework ──
-      # Le module KMP doit être compilé en Shared.framework pour iOS
-      - name: 🏗️ Compile Shared.framework (iOS simulator)
-        run: ./gradlew :shared:compileKotlinIosSimulatorArm64 --no-daemon
+      # ── Compile Shared.framework (iOS simulator) ──
+      - name: 🏗️ Compile Shared.framework (iOS)
+        run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --no-daemon
 
       # ── Build iOS App (simulator) ──
-      # Note: Pour un build device réellement signé, il faut un certificat Apple
-      # Developer + provisioning profile. Ce workflow produit un build simulateur.
       - name: 🏗️ Build iOS App (Simulator)
         run: |
           cd iosApp
-          # Build pour simulateur (pas besoin de code signing)
-          # xcpretty formate la sortie ; en cas d'échec, le pipe échoue via PIPESTATUS
           set -o pipefail
           xcodebuild build \
             -project iosApp.xcodeproj \
@@ -243,7 +234,6 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
-        # xcpretty est préinstallé sur les runners GitHub macOS
 
       # ── Artefacts ──
       - name: 📦 Upload iOS App
@@ -252,13 +242,13 @@ jobs:
           name: sect-ios-simulator
           path: mobile/iosApp/build/Build/Products/Debug-iphonesimulator/*.app
           retention-days: 7
-          if-no-files-found: error  # Échoue si le build n'a pas produit d'artefact
+          if-no-files-found: error
 
       - name: ✅ iOS build terminé
         run: echo "✅ iOS app compiled for simulator"
 
   # ──────────────────────────────────────────────────────────────────────
-  # Job 4 : Déploiement Appetize.io (optionnel)
+  # Job 4 : Déploiement Appetize.io (main only)
   # Upload l'APK vers Appetize.io pour test visuel dans le navigateur
   # ──────────────────────────────────────────────────────────────────────
   deploy-appetize:
@@ -266,7 +256,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-android
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    # Ne s'exécute que sur push vers main (pas les PRs)
 
     steps:
       - name: 📥 Download APK artefact
@@ -286,11 +275,9 @@ jobs:
 
           if [ -z "$APPETIZE_API_TOKEN" ]; then
             echo "⚠️ APPETIZE_API_TOKEN not set — skipping Appetize upload"
-            echo "Set it in GitHub Settings → Secrets and variables → Actions"
             exit 0
           fi
 
-          # Upload l'APK vers Appetize.io
           RESPONSE=$(curl -s -X POST \
             "https://api.appetize.io/v1/apps" \
             -H "Content-Type: multipart/form-data" \
@@ -298,31 +285,32 @@ jobs:
             -F "file=@$APK_FILE" \
             -F "platform=android")
 
-          # Extraire l'URL publique
           PUBLIC_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('publicKey',''))" 2>/dev/null || echo "")
 
           if [ -n "$PUBLIC_KEY" ]; then
-            echo "📱 Appetize URL: https://appet%20etize.io/app/$PUBLIC_KEY"
+            echo "📱 Appetize URL: https://appetize.io/app/$PUBLIC_KEY"
             echo "APPETIZE_URL=https://appetize.io/app/$PUBLIC_KEY" >> $GITHUB_ENV
           else
             echo "⚠️ Failed to get Appetize public key"
           fi
 
-      - name: 💬 Comment PR with Appetize URL
+      - name: 💬 Comment commit with Appetize URL
         if: env.APPETIZE_URL != ''
         uses: actions/github-script@v7
+        env:
+          APPETIZE_URL: ${{ env.APPETIZE_URL }}
         with:
           script: |
+            const url = process.env.APPETIZE_URL
             github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               commit_sha: context.sha,
-              body: `📱 **App testable sur Appetize.io**\n\n${process.env.APPETIZE_URL}\n\n> Cliquez pour tester l'app dans votre navigateur`
+              body: `📱 **App testable sur Appetize.io**\n\n${url}\n\n> Cliquez pour tester l'app dans votre navigateur`
             })
 
   # ──────────────────────────────────────────────────────────────────────
   # Job 5 : Summary
-  # Résume les résultats de tous les jobs
   # ──────────────────────────────────────────────────────────────────────
   summary:
     name: 📋 Summary
@@ -344,14 +332,3 @@ jobs:
           echo "### 📦 Artefacts disponibles" >> $GITHUB_STEP_SUMMARY
           echo "- \`sect-android-release\` — APK signé (Android 8+, API 26+)" >> $GITHUB_STEP_SUMMARY
           echo "- \`sect-ios-simulator\` — .app simulateur (iOS 16+)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔑 Secrets GitHub requis" >> $GITHUB_STEP_SUMMARY
-          echo "| Secret | Description |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`GOOGLE_SERVICES_JSON_B64\` | Firebase Android config (base64) |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`GOOGLE_SERVICE_INFO_PLIST_B64\` | Firebase iOS config (base64) |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`ANDROID_KEYSTORE_B64\` | Keystore release (base64) |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`ANDROID_KEYSTORE_PASSWORD\` | Mot de passe keystore |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`ANDROID_KEY_ALIAS\` | Alias clé signing |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`ANDROID_KEY_PASSWORD\` | Mot de passe clé |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`APPETIZE_API_TOKEN\` | Token API Appetize.io (optionnel) |" >> $GITHUB_STEP_SUMMARY
