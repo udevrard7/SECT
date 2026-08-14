@@ -5,13 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Conversation
 import com.sect.mobile.shared.domain.model.Message
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class MessagerieViewModel(private val repository: SECTRepository) : ViewModel() {
+class MessagerieViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
 
     // ── Conversations ──
     private val _conversations = MutableStateFlow<UiState<List<Conversation>>>(UiState.Loading)

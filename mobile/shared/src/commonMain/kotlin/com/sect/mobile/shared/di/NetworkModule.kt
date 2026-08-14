@@ -19,4 +19,5 @@ val networkModule = module {
     single<EpreuveApi> { EpreuveApi(get()) }
     single<SessionApi> { SessionApi(get()) }
     single<MessagerieApi> { MessagerieApi(get()) }
+    single { PushApi(get()) }
 }

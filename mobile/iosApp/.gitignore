@@ -1,0 +1,19 @@
+# SECT iOS App — .gitignore
+
+# Firebase (contains project-specific keys — never commit real secrets)
+GoogleService-Info.plist
+
+# Fastlane
+FastlaneApiKey.json
+
+# Xcode
+xcuserdata/
+*.xcworkspace
+DerivedData/
+build/
+Pods/
+Podfile.lock
+
+# Environment
+.env
+.env.*

@@ -12,7 +12,22 @@ import com.sect.mobile.shared.network.api.*
  * Architecture :
  * - UI (Compose/SwiftUI) → ViewModel → SECTRepository → Api + Cache
  * - Les ViewModels ne connaissent jamais les détails HTTP ou de cache
+ *
+ * @deprecated Use SECTRepositoryImpl (which implements SECTRepositoryInterface and uses mappers)
+ *             instead. This legacy class returns DTOs directly typed as Domain models,
+ *             which breaks when DTOs and Domain models diverge.
+ *             The iOS KmpRepositoryProvider still references this class and will be
+ *             migrated in a follow-up task.
  */
+@Deprecated(
+    message = "Use SECTRepositoryImpl (implements SECTRepositoryInterface with mappers). " +
+             "This class returns DTOs as Domain models without mapping.",
+    level = DeprecationLevel.WARNING,
+    replaceWith = ReplaceWith(
+        "SECTRepositoryImpl(authApi, userApi, epreuveApi, sessionApi, messagerieApi, tokenCache)",
+        "com.sect.mobile.shared.data.repository.SECTRepositoryImpl"
+    )
+)
 class SECTRepository(
     private val authApi: AuthApi,
     private val userApi: UserApi,

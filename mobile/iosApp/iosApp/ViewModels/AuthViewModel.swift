@@ -9,8 +9,14 @@ class AuthViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String? = nil
     
-    private let repository = KmpRepositoryProvider.shared.repository()
-    private let tokenCache = KmpRepositoryProvider.shared.tokenCache
+    private let repository = KoinRepositoryProvider.shared.repository
+    
+    init() {
+        // Pre-load tokens from Keychain into in-memory cache
+        // so the synchronous tokenProvider closure in the HttpClient
+        // can return them without any semaphore / deadlock risk.
+        Task { await KoinRepositoryProvider.shared.initializeTokens() }
+    }
     
     func login(identifier: String, password: String) async {
         isLoading = true
@@ -19,6 +25,12 @@ class AuthViewModel: ObservableObject {
             let session = try await repository.login(identifier: identifier, password: password)
             currentUser = session.user
             isAuthenticated = true
+            // Update in-memory token cache so subsequent Ktor requests
+            // pick up the new access token synchronously.
+            KoinRepositoryProvider.shared.updateCachedTokens(
+                accessToken: session.accessToken,
+                refreshToken: session.refreshToken
+            )
         } catch {
             self.error = error.localizedDescription
         }
@@ -31,6 +43,8 @@ class AuthViewModel: ObservableObject {
         } catch { }
         currentUser = nil
         isAuthenticated = false
+        // Wipe in-memory tokens so Ktor no longer sends stale credentials.
+        KoinRepositoryProvider.shared.clearCachedTokens()
     }
     
     func checkAuth() async {
@@ -51,71 +65,5 @@ class AuthViewModel: ObservableObject {
             self.error = error.localizedDescription
         }
         isLoading = false
-    }
-}
-
-// ── Provider singleton pour le repository KMP ──
-class KmpRepositoryProvider {
-    static let shared = KmpRepositoryProvider()
-    
-    private let _tokenCache = createTokenCache()
-    var tokenCache: TokenCache { _tokenCache }
-    
-    private lazy var _client: HttpClient = {
-        createHttpClient(
-            engine: DarwinClientEngine(),
-            baseUrl: "https://sect-zead.onrender.com",
-            tokenProvider: { [weak self] in
-                // Token provider — retourne le JWT access token courant
-                guard let self = self else { return "" }
-                return DispatchQueue.global().sync {
-                    // Utilise runBlocking équivalent pour obtenir le token de façon synchrone
-                    // Le TokenCache iOS est synchrone via Keychain
-                    var token = ""
-                    let semaphore = DispatchSemaphore(value: 0)
-                    Task {
-                        token = await self._tokenCache.getAccessToken()
-                        semaphore.signal()
-                    }
-                    semaphore.wait()
-                    return token
-                }
-            },
-            refreshHandler: { [weak self] in
-                // Refresh handler — utilise le refresh token pour obtenir un nouveau access token
-                guard let self = self else { return "" }
-                do {
-                    let refreshToken = await self._tokenCache.getRefreshToken()
-                    if refreshToken.isEmpty { return "" }
-                    
-                    // Créer un AuthApi temporaire pour le refresh
-                    let authApi = AuthApi(client: self._client)
-                    let session = try await authApi.refresh(refreshToken: refreshToken)
-                    
-                    // Sauvegarder les nouveaux tokens
-                    await self._tokenCache.saveAccessToken(session.accessToken)
-                    await self._tokenCache.saveRefreshToken(session.refreshToken)
-                    
-                    return session.accessToken
-                } catch {
-                    return ""
-                }
-            }
-        )
-    }()
-    
-    private lazy var _repository: SECTRepository = {
-        SECTRepository(
-            authApi: AuthApi(client: _client),
-            userApi: UserApi(client: _client),
-            epreuveApi: EpreuveApi(client: _client),
-            sessionApi: SessionApi(client: _client),
-            messagerieApi: MessagerieApi(client: _client),
-            tokenCache: _tokenCache
-        )
-    }()
-    
-    func repository() -> SECTRepository {
-        return _repository
     }
 }

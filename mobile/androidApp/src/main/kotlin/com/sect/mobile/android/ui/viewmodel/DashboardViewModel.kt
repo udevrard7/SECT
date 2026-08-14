@@ -7,13 +7,13 @@ import com.sect.mobile.shared.domain.model.Epreuve
 import com.sect.mobile.shared.domain.model.SessionPassation
 import com.sect.mobile.shared.domain.model.User
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class DashboardViewModel(private val repository: SECTRepository) : ViewModel() {
+class DashboardViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
 
     private val _user = MutableStateFlow<User?>(null)
     val user: StateFlow<User?> = _user.asStateFlow()

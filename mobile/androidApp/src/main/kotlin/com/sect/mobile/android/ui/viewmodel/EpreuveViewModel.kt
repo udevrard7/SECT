@@ -6,13 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Epreuve
 import com.sect.mobile.shared.domain.model.Question
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class EpreuveViewModel(private val repository: SECTRepository) : ViewModel() {
+class EpreuveViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
 
     // ── Liste d'épreuves ──
     private val _epreuves = MutableStateFlow<UiState<List<Epreuve>>>(UiState.Loading)

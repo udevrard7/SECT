@@ -13,7 +13,7 @@ class MessagerieViewModel: ObservableObject {
     @Published var isSendingMessage = false
     @Published var error: String? = nil
 
-    private let repository = KmpRepositoryProvider.shared.repository()
+    private let repository = KoinRepositoryProvider.shared.repository
     private let pageSize: Int = 20
 
     // ── Conversations ──

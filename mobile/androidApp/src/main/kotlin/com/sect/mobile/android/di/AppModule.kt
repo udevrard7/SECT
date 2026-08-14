@@ -1,84 +1,102 @@
-// SECT Mobile — Dependency Injection (Koin)
+// SECT Mobile — Dependency Injection (Koin) — Android platform module only
 package com.sect.mobile.android.di
 
 import com.sect.mobile.android.ui.viewmodel.*
-import com.sect.mobile.shared.cache.createTokenCache
-import com.sect.mobile.shared.network.api.*
-import com.sect.mobile.shared.network.client.createHttpClient
-import com.sect.mobile.shared.repository.SECTRepository
+import com.sect.mobile.shared.cache.TokenCache
+import com.sect.mobile.shared.data.cache.AndroidPreferencesCache
+import com.sect.mobile.shared.data.cache.PreferencesCache
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.network.api.AuthApi
+import com.sect.mobile.shared.platform.AndroidBiometricAuth
+import com.sect.mobile.shared.platform.AndroidHttpClientFactory
+import com.sect.mobile.shared.platform.AndroidNotificationService
+import com.sect.mobile.shared.platform.AndroidTimeProvider
+import com.sect.mobile.shared.platform.BiometricAuth
+import com.sect.mobile.shared.platform.HttpClientFactory
+import com.sect.mobile.shared.platform.NotificationService
+import com.sect.mobile.shared.platform.TimeProvider
+import com.sect.mobile.shared.cache.AndroidTokenCache
 import io.ktor.client.*
-import io.ktor.client.engine.okhttp.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
+import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
 /**
- * Module Koin pour l'application SECT Android.
+ * Android platform-specific Koin module.
  *
- * Injection en cascade :
- * HttpClient → APIs → Repository → ViewModels
+ * This module provides ONLY platform-specific singletons and Android ViewModels.
+ * Shared DI (networkModule, dataModule, domainModule, presentationModule) is
+ * loaded from sharedModules in SECTApplication.kt.
+ *
+ * Platform singletons provided:
+ * - HttpClient (Ktor with OkHttp engine)
+ * - TokenCache (EncryptedSharedPreferences)
+ * - TimeProvider (System.currentTimeMillis)
+ * - HttpClientFactory (OkHttp-based)
+ * - NotificationService (FCM adapter)
+ * - BiometricAuth (BiometricPrompt API 28+)
+ * - PreferencesCache (DataStore<Preferences>)
+ * - CoroutineScope (Main dispatcher + SupervisorJob)
+ *
+ * Load order:
+ *   appModule (platform) → sharedModules (network → data → domain → presentation)
  */
 val appModule = module {
     // ── Configuration ──
     single<String>(named("apiBaseUrl")) {
-        // En debug: configurable via BuildConfig, en prod: Render
         "https://sect-zead.onrender.com"
     }
 
-    // ── HttpClient (Ktor + OkHttp) ──
+    // ── Platform-specific singletons ──
+
+    single<HttpClientFactory> { AndroidHttpClientFactory() }
+
     single<HttpClient> {
-        val tokenCache = get<com.sect.mobile.shared.cache.TokenCache>()
-        val authApi = get<AuthApi>()
-        createHttpClient(
-            engine = OkHttp.create(),
+        val factory = get<HttpClientFactory>()
+        val tokenCache = get<TokenCache>()
+        val apiAuthApi = get<AuthApi>()
+        factory.create(
             baseUrl = get<String>(named("apiBaseUrl")),
-            tokenProvider = { kotlinx.coroutines.runBlocking { tokenCache.getAccessToken() } },
+            tokenProvider = { runBlocking { tokenCache.getAccessToken() } },
             refreshHandler = {
                 try {
-                    val refreshToken = kotlinx.coroutines.runBlocking { tokenCache.getRefreshToken() }
-                    if (refreshToken.isNotEmpty()) {
-                        val session = authApi.refresh(refreshToken)
-                        kotlinx.coroutines.runBlocking {
-                            tokenCache.saveAccessToken(session.accessToken)
-                            tokenCache.saveRefreshToken(session.refreshToken)
+                    val rt = runBlocking { tokenCache.getRefreshToken() }
+                    if (rt.isNotEmpty()) {
+                        val dto = apiAuthApi.refresh(rt)
+                        runBlocking {
+                            tokenCache.saveAccessToken(dto.accessToken)
+                            tokenCache.saveRefreshToken(dto.refreshToken)
                         }
-                        session.accessToken
+                        dto.accessToken
                     } else ""
-                } catch (_: Exception) {
-                    ""
-                }
+                } catch (_: Exception) { "" }
             }
         )
     }
 
-    // ── Token Cache ──
-    single<com.sect.mobile.shared.cache.TokenCache> { createTokenCache() }
+    single<TokenCache> { AndroidTokenCache(androidContext()) }
 
-    // ── API Services ──
-    single<AuthApi> { AuthApi(get()) }
-    single<UserApi> { UserApi(get()) }
-    single<EpreuveApi> { EpreuveApi(get()) }
-    single<SessionApi> { SessionApi(get()) }
-    single<MessagerieApi> { MessagerieApi(get()) }
+    single<TimeProvider> { AndroidTimeProvider() }
 
-    // ── Repository ──
-    single<SECTRepository> {
-        SECTRepository(
-            authApi = get(),
-            userApi = get(),
-            epreuveApi = get(),
-            sessionApi = get(),
-            messagerieApi = get(),
-            tokenCache = get()
-        )
-    }
+    single<NotificationService> { AndroidNotificationService(androidContext()) }
 
-    // ── ViewModels ──
-    viewModel { AuthViewModel(get()) }
-    viewModel { DashboardViewModel(get()) }
-    viewModel { EpreuveViewModel(get()) }
-    viewModel { PassationViewModel(get()) }
-    viewModel { MessagerieViewModel(get()) }
-    viewModel { ProfileViewModel(get()) }
+    single<BiometricAuth> { AndroidBiometricAuth(androidContext()) }
+
+    single<PreferencesCache> { AndroidPreferencesCache(androidContext()) }
+
+    single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
+
+    // ── Android ViewModels (depend on SECTRepositoryInterface, not SECTRepository) ──
+    viewModel { AuthViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { DashboardViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { EpreuveViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { PassationViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { MessagerieViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { ProfileViewModel(get<SECTRepositoryInterface>()) }
 }
 
 // Helper for named qualifiers

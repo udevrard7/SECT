@@ -4,7 +4,7 @@ package com.sect.mobile.shared.cache.local
 
 import com.sect.mobile.shared.domain.model.Epreuve
 import com.sect.mobile.shared.domain.model.User
-import com.sect.mobile.shared.util.currentTimeMillis
+import com.sect.mobile.shared.platform.TimeProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
@@ -29,6 +29,7 @@ import kotlinx.serialization.json.Json
  * 3. Si offline, retourner le cache même si expiré (stale-while-revalidate)
  */
 class OfflineCache(
+    private val timeProvider: TimeProvider,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
     private val defaultTtlMs: Long = 3_600_000L // 1 heure par défaut
 ) {
@@ -49,7 +50,7 @@ class OfflineCache(
     fun <T> put(key: String, value: T, serializer: (T) -> String) {
         val entry = CacheEntry(
             data = serializer(value),
-            storedAt = currentTimeMillis(),
+            storedAt = timeProvider.currentTimeMillis(),
             ttlMs = defaultTtlMs
         )
         store.value = store.value + (key to entry)
@@ -61,7 +62,7 @@ class OfflineCache(
      */
     fun <T> get(key: String, deserializer: (String) -> T): T? {
         val entry = store.value[key] ?: return null
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         val isExpired = (now - entry.storedAt) > entry.ttlMs
 
         // Si online et expiré → retourner null (forcer un refresh)
@@ -97,7 +98,7 @@ class OfflineCache(
      */
     fun contains(key: String): Boolean {
         val entry = store.value[key] ?: return false
-        val now = currentTimeMillis()
+        val now = timeProvider.currentTimeMillis()
         return (now - entry.storedAt) <= entry.ttlMs || !_isOnline.value
     }
 
