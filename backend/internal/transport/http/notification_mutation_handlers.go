@@ -212,7 +212,7 @@ func (s *Server) createNotificationAdmin(w http.ResponseWriter, r *http.Request)
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"notification": created})
+        _ = json.NewEncoder(w).Encode(map[string]any{"notification": created})
 }
 
 // fanoutSegmentNotification récupère les userIDs du segment et déclenche le
@@ -400,7 +400,7 @@ func (s *Server) updateNotificationAdmin(w http.ResponseWriter, r *http.Request)
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"notification": updated})
+        _ = json.NewEncoder(w).Encode(map[string]any{"notification": updated})
 }
 
 // deleteNotificationAdmin — DELETE /api/notifications/admin/{id}
@@ -433,7 +433,7 @@ func (s *Server) deleteNotificationAdmin(w http.ResponseWriter, r *http.Request)
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "notification supprimée"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "notification supprimée"})
 }
 
 // markAllReadAdmin — POST /api/notifications/admin/mark-all-read
@@ -472,7 +472,6 @@ func (s *Server) markAllReadAdmin(w http.ResponseWriter, r *http.Request) {
         if categorieF != "" {
                 whereClauses = append(whereClauses, fmt.Sprintf(`"categorie" = $%d`, argIdx))
                 args = append(args, categorieF)
-                argIdx++
         }
 
         whereClause := "WHERE " + joinStrings(whereClauses, " AND ")
@@ -489,7 +488,7 @@ func (s *Server) markAllReadAdmin(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":       "notifications marquées comme lues",
                 "updatedCount":  updatedCount,
         })
@@ -515,7 +514,7 @@ func (s *Server) deleteAllReadAdmin(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":      "notifications lues supprimées",
                 "deletedCount": deletedCount,
         })

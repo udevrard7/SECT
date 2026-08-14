@@ -95,7 +95,7 @@ func (w *SimilarityWorker) findQualifyingEpreuves(ctx context.Context) ([]qualif
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return nil, fmt.Errorf("set claims: %w", err)
@@ -160,7 +160,7 @@ func (w *SimilarityWorker) processEpreuve(ctx context.Context, ep qualifyingEpre
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
                 return fmt.Errorf("set claims: %w", err)

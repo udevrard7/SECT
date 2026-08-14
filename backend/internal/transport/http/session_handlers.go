@@ -43,7 +43,7 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(sessions) // bare array
+        _ = json.NewEncoder(w).Encode(sessions) // bare array
 }
 
 // getSession — GET /api/sessions/{id}
@@ -62,7 +62,7 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"session": sess})
+        _ = json.NewEncoder(w).Encode(map[string]any{"session": sess})
 }
 
 // startSession — POST /api/sessions
@@ -118,7 +118,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "session": sess,
                 "resumed": resumed,
                 "epreuve": map[string]any{
@@ -199,7 +199,7 @@ func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]bool{"saved": true})
+        _ = json.NewEncoder(w).Encode(map[string]bool{"saved": true})
 }
 
 // submitSession — POST /api/sessions/{id}/submit
@@ -274,7 +274,7 @@ func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // ============================================================
@@ -330,7 +330,7 @@ func (s *Server) listResultats(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // resultatsEtudiantOverview — GET /api/resultats/etudiant-overview
@@ -348,7 +348,7 @@ func (s *Server) resultatsEtudiantOverview(w http.ResponseWriter, r *http.Reques
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(overview)
+        _ = json.NewEncoder(w).Encode(overview)
 }
 
 // ============================================================

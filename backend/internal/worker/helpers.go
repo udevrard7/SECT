@@ -48,9 +48,9 @@ func getActiveProviderShared(ctx context.Context, dbPool *pgxpool.Pool) (*ai.Act
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var p ai.ActiveProvider
         var extraConfig string
@@ -71,7 +71,7 @@ func getActiveProviderShared(ctx context.Context, dbPool *pgxpool.Pool) (*ai.Act
                 return nil, fmt.Errorf("no active AI provider: %w", err)
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 
         // Bug #2 : fusionner extraConfig (ZAI stocke apiKey dans extraConfig).
         if extraConfig != "" {
@@ -101,9 +101,9 @@ func getActiveProviderByCapabilityShared(ctx context.Context, dbPool *pgxpool.Po
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var p ai.ActiveProvider
         var extraConfig string
@@ -126,7 +126,7 @@ func getActiveProviderByCapabilityShared(ctx context.Context, dbPool *pgxpool.Po
                 return nil, fmt.Errorf("no active AI provider for capability %q: %w", capability, err)
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 
         // Fusionner extraConfig (ZAI stocke apiKey dans extraConfig).
         if extraConfig != "" {

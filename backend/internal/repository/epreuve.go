@@ -175,7 +175,7 @@ func (r *EpreuveRepository) FindByID(ctx context.Context, id string) (*domain.Ep
                 // compute QuestionCount + TotalPoints. Avant, getEpreuve retournait
                 // questions:[] (non hydraté) → dialog détail vide. Désormais on parse
                 // contenu.questions et on crée des EpreuveQuestion avec QuestionRef.
-                if ep.Contenu != nil && len(ep.Contenu) > 0 {
+                if len(ep.Contenu) > 0 {
                         var contenu struct {
                                 Questions []struct {
                                         ID           string  `json:"id"`
@@ -356,7 +356,6 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 if params.ResponsableID != "" {
                         where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Filiere" f WHERE f."id" = "Epreuve"."filiereId" AND f."responsableId" = $%d)`, argIdx))
                         args = append(args, params.ResponsableID)
-                        argIdx++
                 }
 
                 whereClause := "WHERE " + strings.Join(where, " AND ")
@@ -609,7 +608,7 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // EPREUVE-RLS-FIX : poser les claims RLS (app.claims.*) pour activer la policy
         // Epreuve_modify_enseignant (is_enseignant() AND enseignantId = current_user_id()).
@@ -805,7 +804,7 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // EPREUVE-RLS-FIX : poser les claims RLS pour activer Epreuve_modify_enseignant.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -1029,7 +1028,7 @@ func (r *EpreuveRepository) SoftDelete(ctx context.Context, id string) error {
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // EPREUVE-RLS-FIX : poser les claims RLS pour activer Epreuve_modify_enseignant
         // (le SELECT et le UPDATE suivant doivent passer la policy).

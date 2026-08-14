@@ -37,7 +37,7 @@ func (s *Server) examPrepDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(dash)
+        _ = json.NewEncoder(w).Encode(dash)
 }
 
 // ============================================================
@@ -169,7 +169,7 @@ func (s *Server) listExamPrepDocuments(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"documents": dtos})
+        _ = json.NewEncoder(w).Encode(map[string]any{"documents": dtos})
 }
 
 // ============================================================
@@ -194,7 +194,7 @@ func (s *Server) listReviewItems(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"reviewItems": items})
+        _ = json.NewEncoder(w).Encode(map[string]any{"reviewItems": items})
 }
 
 // markReviewed — POST /api/exam-prep/review
@@ -225,7 +225,7 @@ func (s *Server) markReviewed(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Chapitre marqué comme révisé"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Chapitre marqué comme révisé"})
 }
 
 // ============================================================
@@ -247,7 +247,7 @@ func (s *Server) listStudySessions(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"sessions": sessions})
+        _ = json.NewEncoder(w).Encode(map[string]any{"sessions": sessions})
 }
 
 // createStudySession — POST /api/exam-prep/planning
@@ -272,7 +272,7 @@ func (s *Server) createStudySession(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"session": session})
+        _ = json.NewEncoder(w).Encode(map[string]any{"session": session})
 }
 
 // deleteStudySession — DELETE /api/exam-prep/planning/{id}
@@ -290,7 +290,7 @@ func (s *Server) deleteStudySession(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Session supprimée"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Session supprimée"})
 }
 
 // ============================================================
@@ -313,7 +313,7 @@ func (s *Server) listPracticeAttempts(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"attempts": attempts})
+        _ = json.NewEncoder(w).Encode(map[string]any{"attempts": attempts})
 }
 
 // submitPractice — POST /api/exam-prep/practice/{id}/submit
@@ -338,7 +338,7 @@ func (s *Server) submitPractice(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"attempt": attempt})
+        _ = json.NewEncoder(w).Encode(map[string]any{"attempt": attempt})
 }
 
 // ============================================================
@@ -424,7 +424,7 @@ func (s *Server) examPrepGeneratePractice(w http.ResponseWriter, r *http.Request
         if hasEnough && len(cached) > 0 {
                 w.Header().Set("Content-Type", "application/json")
                 w.WriteHeader(http.StatusOK)
-                json.NewEncoder(w).Encode(map[string]any{
+                _ = json.NewEncoder(w).Encode(map[string]any{
                         "status":     "PRET",
                         "documentId": body.DocumentID,
                         "questions":  toExamPrepCachedQuestionDTOs(cached),
@@ -455,7 +455,7 @@ func (s *Server) examPrepGeneratePractice(w http.ResponseWriter, r *http.Request
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusAccepted)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "status":     "EN_COURS",
                 "documentId": body.DocumentID,
                 "message":    "génération de questions lancée en arrière-plan, interrogez /api/questions?documentId=X pour récupérer le résultat",
@@ -533,7 +533,7 @@ func (s *Server) examPrepQA(w http.ResponseWriter, r *http.Request) {
 
         // 4. Réponse.
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "response":   result.Content,
                 "model":      result.Model,
                 "citations":  []any{}, // v1 : pas d'extraction de citations (placeholder pour future v2)
@@ -591,7 +591,7 @@ func (s *Server) listHelpThreads(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"threads": threads})
+        _ = json.NewEncoder(w).Encode(map[string]any{"threads": threads})
 }
 
 // createHelpThread — POST /api/exam-prep/help
@@ -616,7 +616,7 @@ func (s *Server) createHelpThread(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"thread": thread})
+        _ = json.NewEncoder(w).Encode(map[string]any{"thread": thread})
 }
 
 // closeHelpThread — POST /api/exam-prep/help/{id}/close
@@ -634,7 +634,7 @@ func (s *Server) closeHelpThread(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Fil clos"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Fil clos"})
 }
 
 // deleteHelpThread — DELETE /api/exam-prep/help/{id}
@@ -655,7 +655,7 @@ func (s *Server) deleteHelpThread(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Fil supprimé"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Fil supprimé"})
 }
 
 // listHelpMessages — GET /api/exam-prep/help/{id}/messages
@@ -674,7 +674,7 @@ func (s *Server) listHelpMessages(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"messages": messages})
+        _ = json.NewEncoder(w).Encode(map[string]any{"messages": messages})
 }
 
 // createHelpMessage — POST /api/exam-prep/help/{id}/messages
@@ -700,7 +700,7 @@ func (s *Server) createHelpMessage(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"message": msg})
+        _ = json.NewEncoder(w).Encode(map[string]any{"message": msg})
 }
 
 // ============================================================
@@ -784,7 +784,7 @@ func (s *Server) readExamPrepDocument(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"document": dto})
+        _ = json.NewEncoder(w).Encode(map[string]any{"document": dto})
 }
 
 // ============================================================
@@ -896,7 +896,7 @@ func (s *Server) createFlashcard(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"flashcard": toExamPrepFlashcardDTO(flashcard)})
+        _ = json.NewEncoder(w).Encode(map[string]any{"flashcard": toExamPrepFlashcardDTO(flashcard)})
 }
 
 // listFlashcards — GET /api/exam-prep/flashcards?documentId=X
@@ -920,7 +920,7 @@ func (s *Server) listFlashcards(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"flashcards": dtos})
+        _ = json.NewEncoder(w).Encode(map[string]any{"flashcards": dtos})
 }
 
 // deleteFlashcard — DELETE /api/exam-prep/flashcards/{id}
@@ -1145,7 +1145,7 @@ func (s *Server) listQuestionBank(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"questions": dtos})
+        _ = json.NewEncoder(w).Encode(map[string]any{"questions": dtos})
 }
 
 // examPrepVoteBody est le body attendu par POST /api/exam-prep/questions/{id}/vote.
@@ -1187,7 +1187,7 @@ func (s *Server) voteQuestion(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]any{"vote": vote})
+        _ = json.NewEncoder(w).Encode(map[string]any{"vote": vote})
 }
 
 // removeVote — DELETE /api/exam-prep/questions/{id}/vote
@@ -1310,7 +1310,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
         // 3. Retourner 202 avec l'audio (status EN_COURS).
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusAccepted)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "audio":   toExamPrepAudioDTO(audio),
                 "message": "génération du podcast lancée en arrière-plan",
         })
@@ -1362,7 +1362,7 @@ func (s *Server) listDocumentAudio(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"audios": dtos})
+        _ = json.NewEncoder(w).Encode(map[string]any{"audios": dtos})
 }
 
 // getAudio — GET /api/exam-prep/audio/{id}
@@ -1402,7 +1402,7 @@ func (s *Server) getAudio(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"audio": dto})
+        _ = json.NewEncoder(w).Encode(map[string]any{"audio": dto})
 }
 
 // deleteAudio — DELETE /api/exam-prep/audio/{id}
@@ -1437,7 +1437,7 @@ func (s *Server) deleteAudio(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "success": true,
                 "message": "Podcast supprimé",
         })

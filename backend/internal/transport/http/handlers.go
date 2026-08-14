@@ -13,7 +13,7 @@ import (
 // health handler — vérifie l'état du serveur.
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{
+        _ = json.NewEncoder(w).Encode(map[string]string{
                 "status":  "ok",
                 "service": "sect-api",
                 "version": "0.2.0",
@@ -76,5 +76,5 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(user)
+        _ = json.NewEncoder(w).Encode(user)
 }

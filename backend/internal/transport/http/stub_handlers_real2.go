@@ -104,7 +104,7 @@ func (s *Server) securitySettingsGetReal(w http.ResponseWriter, r *http.Request)
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"securitySettings": results})
+        _ = json.NewEncoder(w).Encode(map[string]any{"securitySettings": results})
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ func (s *Server) etudiantsListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "etudiants": result,
                 "total":     len(result),
         })
@@ -394,7 +394,7 @@ func (s *Server) facturesListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "factures": result,
                 "total":    len(result),
         })
@@ -532,7 +532,7 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "events": result,
                 "total":  len(result),
                 "stats": map[string]int{
@@ -605,7 +605,7 @@ func (s *Server) ipWhitelistListReal(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         // PARAMETRES-FIX-P9 : clé "entries" (et non "ips") pour matcher le type frontend
         // IpWhitelistEntry[] attendu par responsable-parametres-page.tsx.
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "entries": result,
                 "total":   len(result),
         })
@@ -684,7 +684,7 @@ func (s *Server) createIpWhitelist(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"entry": created})
+        _ = json.NewEncoder(w).Encode(map[string]any{"entry": created})
 }
 
 // updateIpWhitelist — PATCH /api/ip-whitelist/{id}
@@ -746,7 +746,7 @@ func (s *Server) updateIpWhitelist(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"entry": updated})
+        _ = json.NewEncoder(w).Encode(map[string]any{"entry": updated})
 }
 
 // deleteIpWhitelist — DELETE /api/ip-whitelist/{id}
@@ -779,7 +779,7 @@ func (s *Server) deleteIpWhitelist(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "entrée supprimée"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "entrée supprimée"})
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -988,7 +988,7 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
         totalCount := len(documents) + len(questions) + len(epreuves) + len(devoirs)
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "documents":  documents,
                 "questions":  questions,
                 "epreuves":   epreuves,
@@ -1076,7 +1076,7 @@ func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(statusCode)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":  fmt.Sprintf("%d élément(s) restauré(s)", restored),
                 "restored": restored,
                 "errors":   errors,
@@ -1213,7 +1213,7 @@ func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(statusCode)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message": fmt.Sprintf("%d élément(s) supprimé(s) définitivement", purged),
                 "purged":  purged,
                 "errors":  errors,
@@ -1329,7 +1329,6 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
                 if etudiantID != "" {
                         soumissionJoin = fmt.Sprintf(`LEFT JOIN "Soumission" s ON s."devoirId" = d."id" AND s."etudiantId" = $%d`, argIdx)
                         args = append(args, etudiantID)
-                        argIdx++
                 }
 
                 selectCols := ""
@@ -1459,7 +1458,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "devoirs": result,
                 "total":   len(result),
         })
@@ -1594,7 +1593,7 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(stats)
+        _ = json.NewEncoder(w).Encode(stats)
 }
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -49,7 +49,7 @@ func (s *Server) notificationsStream(w http.ResponseWriter, r *http.Request) {
                 Data:      initialData,
                 Timestamp: time.Now().UTC().Format(time.RFC3339),
         })
-        fmt.Fprintf(w, "data: %s\n\n", initialEvent)
+        _, _ = fmt.Fprintf(w, "data: %s\n\n", initialEvent)
         flushIfNeeded()
 
         // Polling 15s pour le compteur (near-real-time sans modifier les handlers de création)
@@ -72,11 +72,11 @@ func (s *Server) notificationsStream(w http.ResponseWriter, r *http.Request) {
                                         Data:      data,
                                         Timestamp: time.Now().UTC().Format(time.RFC3339),
                                 })
-                                fmt.Fprintf(w, "data: %s\n\n", event)
+                                _, _ = fmt.Fprintf(w, "data: %s\n\n", event)
                                 flushIfNeeded()
                         }
                 case <-heartbeat.C:
-                        fmt.Fprintf(w, ": heartbeat\n\n")
+                        _, _ = fmt.Fprintf(w, ": heartbeat\n\n")
                         flushIfNeeded()
                 }
         }
@@ -115,7 +115,6 @@ func (s *Server) fetchUnreadCountSSE(r *http.Request, claims appdb.SessionClaims
                 if role == "ENSEIGNANT" {
                         rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = "NotificationUnified"."epreuveId" AND e."enseignantId" = $%d))`, argIdx))
                         args = append(args, claims.UserID)
-                        argIdx++
                 }
 
                 // ADMIN PaaS : uniquement les alertes système (multi-tenant).
@@ -278,9 +277,10 @@ func (s *Server) notificationsUnifiedList(w http.ResponseWriter, r *http.Request
 
                 // Clause WHERE : (RBAC) AND (filtre lue optionnel)
                 whereParts := []string{"(" + strings.Join(rbacConds, " OR ") + ")"}
-                if luParam == "false" {
+                switch luParam {
+                case "false":
                         whereParts = append(whereParts, `"lue" = false`)
-                } else if luParam == "true" {
+                case "true":
                         whereParts = append(whereParts, `"lue" = true`)
                 }
                 whereClause := "WHERE " + strings.Join(whereParts, " AND ")
@@ -321,7 +321,7 @@ func (s *Server) notificationsUnifiedList(w http.ResponseWriter, r *http.Request
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "notifications": result,
                 "total":         len(result),
         })
@@ -368,7 +368,7 @@ func (s *Server) notificationsPreferencesGet(w http.ResponseWriter, r *http.Requ
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "preferences": result,
         })
 }
@@ -422,7 +422,7 @@ func (s *Server) notificationsPreferencesUpdate(w http.ResponseWriter, r *http.R
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message": "préférence mise à jour",
                 "preference": map[string]any{
                         "id":           prefID,
@@ -432,16 +432,6 @@ func (s *Server) notificationsPreferencesUpdate(w http.ResponseWriter, r *http.R
                 },
         })
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────────────────────────────────
-
-func mustJSON(v any) json.RawMessage {
-        b, _ := json.Marshal(v)
-        return b
-}
-
 // chi import pour éviter l'erreur "imported and not used" si chi.URLParam
 // n'est pas utilisé directement dans ce fichier (les routes sont dans router.go).
 var _ = chi.URLParam

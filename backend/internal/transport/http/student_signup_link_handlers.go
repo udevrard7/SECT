@@ -89,7 +89,7 @@ func (s *Server) createStudentSignupLink(w http.ResponseWriter, r *http.Request)
         // Sécurité : on ne loggue jamais le token en clair — seulement l'ID du lien.
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "id":                     link.ID,
                 "token":                  link.Token, // retourné une seule fois à la création (pour construire l'URL)
                 "url":                    publicURL,
@@ -170,7 +170,7 @@ func (s *Server) listStudentSignupLinks(w http.ResponseWriter, r *http.Request) 
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"links": safe})
+        _ = json.NewEncoder(w).Encode(map[string]any{"links": safe})
 }
 
 // revokeStudentSignupLink — DELETE /api/student-signup-links/{id}
@@ -215,7 +215,7 @@ func (s *Server) revokeStudentSignupLink(w http.ResponseWriter, r *http.Request)
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "revoked": true,
                 "id":      id,
                 "audited": true, // SECT-ETABLISSEMENT-AUDIT-1 — confirm journalisation
@@ -401,7 +401,7 @@ func (s *Server) verifyStudentSignupLink(w http.ResponseWriter, r *http.Request)
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // studentSignupLinkStats — GET /api/student-signup-links/stats (Phase 3)
@@ -433,7 +433,7 @@ func (s *Server) studentSignupLinkStats(w http.ResponseWriter, r *http.Request) 
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(stats)
+        _ = json.NewEncoder(w).Encode(stats)
 }
 
 // acceptStudentSignupRequest — body du POST /api/student-signup (PUBLIC).
@@ -534,7 +534,7 @@ func (s *Server) acceptStudentSignup(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "user":    user,
                 "message": res.Message,
         })

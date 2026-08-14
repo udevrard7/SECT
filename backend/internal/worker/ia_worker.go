@@ -261,9 +261,9 @@ func (w *IAWorker) updateEpreuveStatus(ctx context.Context, epreuveID, statut, c
                 w.logger.Error("Failed to begin tx for status update", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         if contenu != "" {
                 _, err = tx.Exec(ctx, `
@@ -283,7 +283,7 @@ func (w *IAWorker) updateEpreuveStatus(ctx context.Context, epreuveID, statut, c
                 return
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 }
 
 // markEpreuveError marque l'épreuve en erreur.
@@ -309,9 +309,9 @@ func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
                 w.logger.Error("RecoverInterruptedJobs: failed to begin tx", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         rows, err := tx.Query(ctx, `
                 SELECT "id", "enseignantId", "contenu"
@@ -334,14 +334,14 @@ func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
                         continue
                 }
                 w.logger.Warn("Recovering interrupted epreuve", "epreuveId", epreuveID, "enseignantId", enseignantID)
-                tx.Exec(ctx, `
+                _, _ = tx.Exec(ctx, `
                         UPDATE "Epreuve" SET "statut" = 'BROUILLON', "updatedAt" = CURRENT_TIMESTAMP
                         WHERE "id" = $1
                 `, epreuveID)
                 recovered++
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 
         if recovered > 0 {
                 w.logger.Info("Recovered interrupted jobs", "count", recovered)

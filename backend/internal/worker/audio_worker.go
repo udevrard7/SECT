@@ -250,7 +250,7 @@ func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, document
         if err != nil {
                 return "", fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -310,7 +310,7 @@ func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, scrip
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 return fmt.Errorf("set system claims: %w", err)
@@ -335,7 +335,7 @@ func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, statu
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 return fmt.Errorf("set system claims: %w", err)
@@ -384,7 +384,7 @@ func (w *AudioGenerationWorker) RecoverInterruptedAudioJobs(ctx context.Context)
                 w.logger.Error("RecoverInterruptedAudioJobs: failed to begin tx", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 

@@ -79,7 +79,7 @@ func (s *Server) aiAssistant(w http.ResponseWriter, r *http.Request) {
 
 	// Retourner la réponse au frontend.
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(aiAssistantResponse{
+	_ = json.NewEncoder(w).Encode(aiAssistantResponse{
 		Response: result.Content,
 		Model:    result.Model,
 	})

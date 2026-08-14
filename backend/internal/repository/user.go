@@ -748,7 +748,7 @@ func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (
 	if err != nil {
 		return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// AUDIT-RLS-REPOS-001 : poser les claims system-worker pour bypass RLS.
 	if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {

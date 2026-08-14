@@ -132,7 +132,7 @@ func (s *Server) createMonitoringEvent(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"event": created})
+        _ = json.NewEncoder(w).Encode(map[string]any{"event": created})
 }
 
 // resolveMonitoringEvent — PATCH /api/monitoring/{id} (résoudre)
@@ -194,7 +194,7 @@ func (s *Server) resolveMonitoringEvent(w http.ResponseWriter, r *http.Request) 
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"event": updated})
+        _ = json.NewEncoder(w).Encode(map[string]any{"event": updated})
 }
 
 // ignoreMonitoringEvent — DELETE /api/monitoring/{id} (ignorer, soft-delete)
@@ -229,7 +229,7 @@ func (s *Server) ignoreMonitoringEvent(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "événement ignoré"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "événement ignoré"})
 }
 
 // monitoringHealthCheck — GET /api/monitoring/health
@@ -248,7 +248,7 @@ func (s *Server) monitoringHealthCheck(w http.ResponseWriter, r *http.Request) {
         report := s.monHealthChecker.CheckAll(r.Context())
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(report)
+        _ = json.NewEncoder(w).Encode(report)
 }
 
 // bulkMonitoringEvents — POST /api/monitoring/bulk
@@ -338,7 +338,7 @@ func (s *Server) bulkMonitoringEvents(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "updated": updated,
                 "action":  input.Action,
                 "total":   len(input.IDs),

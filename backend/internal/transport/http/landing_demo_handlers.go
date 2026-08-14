@@ -220,7 +220,7 @@ Réponds UNIQUEMENT avec le JSON demandé.`, topic)
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "qcm":   qcm,
                 "model": result.Model,
         })

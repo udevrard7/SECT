@@ -489,12 +489,11 @@ func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.
         argIdx++
 
         if params.DueOnly {
-                where = append(where, fmt.Sprintf(`"nextReviewAt" <= CURRENT_TIMESTAMP`))
+                where = append(where, `"nextReviewAt" <= CURRENT_TIMESTAMP`)
         }
         if params.DocumentID != "" {
                 where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Chapter" c WHERE c."id" = "ReviewItem"."chapterId" AND c."documentId" = $%d)`, argIdx))
                 args = append(args, params.DocumentID)
-                argIdx++
         }
 
         query := fmt.Sprintf(`

@@ -282,7 +282,7 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
                 // Retourner 202 Accepted
                 w.Header().Set("Content-Type", "application/json")
                 w.WriteHeader(http.StatusAccepted)
-                json.NewEncoder(w).Encode(map[string]any{
+                _ = json.NewEncoder(w).Encode(map[string]any{
                         "status":    "EN_COURS",
                         "epreuveId": epreuve.ID,
                         "message":   "Génération IA lancée. Poll GET /api/epreuves/" + epreuve.ID + "/status pour suivre le statut.",
@@ -326,7 +326,7 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
         //    generation-ia-page.tsx (data.contenu.questions, data.contenu.consignes,
         //    data.contenu.baremeTotal, data.autoDetectedUEId?).
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "contenu": map[string]any{
                         "questions":   questions,
                         "consignes":   consignes,

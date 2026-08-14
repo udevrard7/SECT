@@ -34,7 +34,7 @@ func (s *Server) vapidPublicKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"publicKey": s.vapidPublicKey,
 	})
 }
@@ -89,7 +89,7 @@ func (s *Server) pushSubscribeHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"message": "abonnement enregistré",
 	})
 }
@@ -113,7 +113,7 @@ func (s *Server) pushUnsubscribeHandler(w http.ResponseWriter, r *http.Request) 
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"message": "désabonné",
 	})
 }

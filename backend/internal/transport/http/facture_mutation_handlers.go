@@ -201,7 +201,7 @@ func (s *Server) createFacture(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"facture": created})
+        _ = json.NewEncoder(w).Encode(map[string]any{"facture": created})
 }
 
 // getFactureByID — GET /api/factures/{id}
@@ -364,7 +364,7 @@ func (s *Server) getFactureByID(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"facture": found})
+        _ = json.NewEncoder(w).Encode(map[string]any{"facture": found})
 }
 
 // updateFacture — PATCH /api/factures/{id}
@@ -433,7 +433,7 @@ func (s *Server) updateFacture(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"facture": updated})
+        _ = json.NewEncoder(w).Encode(map[string]any{"facture": updated})
 }
 
 // cancelFacture — DELETE /api/factures/{id} (annuler, soft-delete)
@@ -469,7 +469,7 @@ func (s *Server) cancelFacture(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "facture annulée"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "facture annulée"})
 }
 
 // stringToIntSafe convertit une string en int de manière sûre.

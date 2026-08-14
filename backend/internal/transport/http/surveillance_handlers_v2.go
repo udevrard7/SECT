@@ -196,9 +196,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 
 	var rawSessions []rawSession
 	var epreuveOptions []survEpreuveOption
-	var txErr error
-
-	txErr = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var where []string
 		var args []any
 		argIdx := 1
@@ -463,7 +461,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"sessions": sessions,
 		"epreuves": epreuveOptions,
 		"total":    len(sessions),
@@ -681,7 +679,7 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -830,7 +828,7 @@ func (s *Server) surveillanceFlagSession(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"alerte": map[string]string{
 			"id":       alerteID,
 			"titre":    "Session signalée",
@@ -871,7 +869,7 @@ func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 
 	stats := s.fetchSurveillanceStats(r, enseignantID)
 	if statsJSON, err := json.Marshal(stats); err == nil {
-		fmt.Fprintf(w, "data: %s\n\n", statsJSON)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", statsJSON)
 		flushIfNeeded()
 	}
 
@@ -887,11 +885,11 @@ func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 		case <-ticker.C:
 			stats := s.fetchSurveillanceStats(r, enseignantID)
 			if statsJSON, err := json.Marshal(stats); err == nil {
-				fmt.Fprintf(w, "data: %s\n\n", statsJSON)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", statsJSON)
 				flushIfNeeded()
 			}
 		case <-heartbeat.C:
-			fmt.Fprintf(w, ": heartbeat\n\n")
+			_, _ = fmt.Fprintf(w, ": heartbeat\n\n")
 			flushIfNeeded()
 		}
 	}

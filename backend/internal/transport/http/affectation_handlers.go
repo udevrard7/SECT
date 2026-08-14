@@ -140,7 +140,6 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 			// présence dans le JSON array niveaux.
 			where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "UniteEnseignement" ue4 WHERE ue4."id" = a."uniteEnseignementId" AND (ue4."niveau" = $%d OR ue4."niveaux"::jsonb ? $%d::text))`, argIdx, argIdx))
 			args = append(args, niveau)
-			argIdx++
 		}
 
 		whereClause := ""
@@ -346,7 +345,7 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"affectations": result,
 	})
 }
@@ -492,7 +491,7 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"affectation": map[string]any{
 			"id":                  row.ID,
 			"enseignantId":        row.EnseignantID,
@@ -787,7 +786,7 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 		resp["affectation"].(map[string]any)["publishedAt"] = *publishedAtRFC3339
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // auditAndNotifyAffectationPublish — SECT-AFFECTATION-PUBLISH-ENRICH-1
@@ -1019,7 +1018,7 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
 		resp["dependencies"] = deps
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // getAffectationDependencies — GET /api/affectations/{id}/dependencies
@@ -1074,7 +1073,7 @@ func (s *Server) getAffectationDependencies(w http.ResponseWriter, r *http.Reque
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"epreuves":            nbEpreuves,
 		"sessions":            nbSessions,
 		"canDelete":           nbEpreuves == 0, // pas de blocage, juste informatif

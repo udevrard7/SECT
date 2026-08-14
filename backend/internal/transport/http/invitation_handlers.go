@@ -58,7 +58,7 @@ func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"invitations": invitations})
+        _ = json.NewEncoder(w).Encode(map[string]any{"invitations": invitations})
 }
 
 // createInvitationRequest — body du POST /api/invitations.
@@ -105,7 +105,7 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "token":       invitation.Token,
                 "invitation": invitation,
         })
@@ -136,7 +136,7 @@ func (s *Server) resendInvitation(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "token":       token,
                 "invitation": invitation,
         })
@@ -164,7 +164,7 @@ func (s *Server) cancelInvitation(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "deleted": true,
                 "id":      id,
         })
@@ -219,7 +219,7 @@ func (s *Server) verifyInvitation(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "invitation": invitation,
         })
 }
@@ -269,7 +269,7 @@ func (s *Server) acceptInvitation(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "user": map[string]any{
                         "id":    user.ID,
                         "name":  user.Name,

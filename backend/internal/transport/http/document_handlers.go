@@ -30,7 +30,7 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"documents": docs})
+        _ = json.NewEncoder(w).Encode(map[string]any{"documents": docs})
 }
 
 // getDocument — GET /api/documents/{id}
@@ -49,7 +49,7 @@ func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"document": doc})
+        _ = json.NewEncoder(w).Encode(map[string]any{"document": doc})
 }
 
 // uploadDocument — POST /api/documents (multipart/form-data)
@@ -96,7 +96,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // deleteDocument — DELETE /api/documents/{id} (soft delete + R2 cleanup)
@@ -114,7 +114,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Document déplacé vers la corbeille"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Document déplacé vers la corbeille"})
 }
 
 // batchDeleteDocuments — DELETE /api/documents (batch soft delete)
@@ -149,7 +149,7 @@ func (s *Server) batchDeleteDocuments(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message": fmt.Sprintf("%d document(s) déplacé(s) vers la corbeille", deleted),
                 "deleted":  deleted,
         })
@@ -178,7 +178,7 @@ func (s *Server) downloadDocument(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"url": url})
+        _ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
 
 // analyzeDocument — POST /api/documents/{id}/analyze (P1-D3)
@@ -233,7 +233,7 @@ func (s *Server) analyzeDocument(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusAccepted)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "status":     "EN_COURS",
                 "documentId": docID,
                 "message":    "Analyse IA lancée. Le statut sera mis à jour automatiquement.",

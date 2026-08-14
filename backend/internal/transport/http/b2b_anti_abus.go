@@ -73,7 +73,7 @@ func (s *Server) verifyB2BEmail(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "success":          true,
                 "etablissementId":  etabID,
                 "etablissementNom": etabNom,
@@ -165,7 +165,7 @@ func (s *Server) validateB2BEstablishment(w http.ResponseWriter, r *http.Request
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "success":      success,
                 "abonnementId": aboID,
                 "statut":       statut,
@@ -239,7 +239,7 @@ func (s *Server) listPendingB2B(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "pending": items,
                 "count":   len(items),
         })

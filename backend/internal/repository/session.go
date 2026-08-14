@@ -172,7 +172,7 @@ func (r *SessionRepository) Create(ctx context.Context, etudiantID, epreuveID st
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // SESSION-RLS-FIX : poser les claims RLS pour activer SessionPassation_modify_etudiant.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -218,7 +218,7 @@ func (r *SessionRepository) UpdateStatut(ctx context.Context, id string, statut 
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // SESSION-RLS-FIX : poser les claims RLS.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -247,7 +247,7 @@ func (r *SessionRepository) SaveReponse(ctx context.Context, sessionID, question
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // SESSION-RLS-FIX : poser les claims RLS pour activer Reponse_modify_etudiant.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -293,7 +293,7 @@ func (r *SessionRepository) BulkSaveReponses(ctx context.Context, sessionID stri
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // Poser les claims RLS une seule fois pour toute la transaction
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -391,7 +391,7 @@ func (r *SessionRepository) batchFlushChunk(ctx context.Context, sessions []doma
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // Poser les claims system-worker une seule fois
         if err := db.SetClaimsTx(ctx, tx, systemClaims); err != nil {
@@ -479,7 +479,7 @@ func (r *SessionRepository) UpdateReponseScore(ctx context.Context, reponseID st
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // SESSION-RLS-FIX : poser les claims RLS. UpdateReponseScore est appelé
         // par l'auto-grading (Submit) — l'étudiant a posé ses claims.
@@ -506,7 +506,7 @@ func (r *SessionRepository) AddAlerte(ctx context.Context, sessionID string, pen
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // SESSION-RLS-FIX : poser les claims RLS.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -605,7 +605,7 @@ func (r *ResultatRepository) Upsert(ctx context.Context, res *domain.Resultat) (
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // SESSION-RLS-FIX : poser les claims RLS pour activer Resultat_modify_etudiant.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -914,7 +914,7 @@ func (r *ResultatRepository) ListByEpreuve(ctx context.Context, epreuveID string
                 // BUGFIX (RESULTATS-TABS-1) : LEFT JOIN User + Filiere pour peupler
                 // etudiant:{id, name, email, filiere} attendu par le frontend.
                 // P1-R2 : LEFT JOIN Resultat pour peupler resultat:{id, scoreFinal, detailParQuestion, dateCorrection, dateRetour}
-                query := fmt.Sprintf(`
+                query := `
                         SELECT s."id", s."etudiantId", s."epreuveId", s."statut"::text,
                                s."dateDebut", s."dateFin", s."score", s."logEvents",
                                s."alertes", s."createdAt", s."updatedAt",
@@ -927,8 +927,8 @@ func (r *ResultatRepository) ListByEpreuve(ctx context.Context, epreuveID string
                         LEFT JOIN "Resultat" r ON r."sessionId" = s."id"
                         WHERE s."epreuveId" = $1
                         ORDER BY s."score" DESC NULLS LAST
-                `)
-                var args []any = []any{epreuveID}
+                `
+                var args = []any{epreuveID}
                 if page > 0 && limit > 0 {
                         offset := (page - 1) * limit
                         query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
