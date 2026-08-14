@@ -34,7 +34,7 @@
 -keepnames class kotlinx.coroutines.internal.CoroutineExceptionHandlerImpl
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler
 -keepclassmembers class kotlinx.coroutines.** {
-    volatile ***;
+    volatile <fields>;
 }
 -dontwarn kotlinx.coroutines.**
 
