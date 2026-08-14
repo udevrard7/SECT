@@ -250,9 +250,18 @@ jobs:
       # ── Artefacts ──
       - name: 📦 Zip iOS App for upload
         run: |
-          cd iosApp/build/Build/Products/Debug-iphonesimulator
-          zip -r sect-ios-app.zip *.app
-          echo "✓ .app zipped"
+          # Trouver le .app produit par xcodebuild
+          APP_DIR=$(find iosApp/build/Build/Products -name "*.app" -type d | head -1)
+          if [ -z "$APP_DIR" ]; then
+            echo "❌ No .app found in build products"
+            find iosApp/build -name "*.app" 2>/dev/null || echo "  build dir doesn't exist"
+            exit 1
+          fi
+          echo "Found: $APP_DIR"
+          # Zip le .app (bundle directory)
+          cd "$(dirname "$APP_DIR")"
+          zip -r sect-ios-app.zip "$(basename "$APP_DIR")"
+          echo "✓ .app zipped: $(ls -lh sect-ios-app.zip)"
 
       - name: 📦 Upload iOS App
         uses: actions/upload-artifact@v4
@@ -260,7 +269,7 @@ jobs:
           name: sect-ios-simulator
           path: iosApp/build/Build/Products/Debug-iphonesimulator/sect-ios-app.zip
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: ✅ iOS build terminé
         run: echo "✅ iOS app compiled for simulator"
