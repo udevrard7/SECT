@@ -148,3 +148,22 @@ Stage Summary:
 - Backend en production fonctionnel (bug compilation résolu)
 - CI rouge : errcheck (34 fichiers) + 7 migrations down manquantes (000023, 000024, 000055-000059) — à traiter dans tâches dédiées
 - mobile-release.yml : anomalie trigger (se déclenche sur push main au lieu de tags v* uniquement)
+
+---
+Task ID: SECT-CI-GREEN-1
+Agent: Z.ai Code (tuteur/assistant) + subagents
+Task: Remettre CI au vert (A: lint, B: down.sql, C: audit SECURITY-AUDIT)
+
+Work Log:
+- Audit commit d03f7b3 (109 fichiers) : 15 problèmes trouvés dont 2 CRITIQUES
+- Fix CRITIQUE 1 : migration 000105 RLS GUC (app.current_user_id → app.claims.user_id), appliquée sur Neon (v104→v105)
+- Fix CRITIQUE 2 : fcm_sender.go getDeviceTokens + markDeviceInactive wrappés avec appdb.WithTx(SystemClaims)
+- Tâche B : 7 .down.sql créés (000023, 000024, 000055-000059) → job CI Migrations VERT
+- Tâche A : 38/98 erreurs lint corrigées (errcheck, staticcheck, unused), 60 restantes
+- Commit fdf35fe, push main, Render LIVE en 90s, health 200
+
+Stage Summary:
+- ✅ Mobile push RLS fonctionnel en prod
+- ✅ Job CI Migrations VERT (7 down.sql)
+- ⚠️ Job CI Lint reste rouge (60 erreurs non-bloquantes)
+- ✅ Render LIVE, backend opérationnel
