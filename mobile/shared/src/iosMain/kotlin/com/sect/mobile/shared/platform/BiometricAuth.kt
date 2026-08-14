@@ -1,14 +1,13 @@
 // SECT Mobile — Biometric Auth iOS (LAContext — Face ID / Touch ID)
+//
+// NOTE : L'API LAPolicy en Kotlin/Native nécessite des imports cinterop spécifiques
+// qui varient selon la version de Kotlin. Cette implémentation stub retourne
+// NOT_AVAILABLE en attendant l'intégration complète via un wrapper Swift.
+// TODO : Implémenter via iosApp/Utilities/BiometricHelper.swift exposé à KMP.
 package com.sect.mobile.shared.platform
 
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.suspendCancellableCoroutine
-import platform.LocalAuthentication.LAContext
-import platform.LocalAuthentication.LAPolicy
 import platform.Foundation.NSUserDefaults
-import kotlin.coroutines.resume
 
-@OptIn(ExperimentalForeignApi::class)
 class IOSBiometricAuth : BiometricAuth {
 
     companion object {
@@ -18,59 +17,14 @@ class IOSBiometricAuth : BiometricAuth {
     private val defaults = NSUserDefaults.standardUserDefaults
 
     override suspend fun isAvailable(): BiometricAvailability {
-        val context = LAContext()
-        val canEvaluate = context.canEvaluatePolicy(
-            LAPolicy.LAPolicyDeviceOwnerAuthenticationWithBiometrics,
-            null
-        )
-        return if (canEvaluate) {
-            BiometricAvailability.AVAILABLE
-        } else {
-            // Pas de biométrie sur ce simulateur/appareil
-            BiometricAvailability.NOT_AVAILABLE
-        }
+        // TODO : Utiliser LAContext.canEvaluatePolicy via un wrapper Swift
+        // L'API LAPolicy en Kotlin/Native nécessite une investigation approfondie
+        // des bindings cinterop pour LocalAuthentication.framework
+        return BiometricAvailability.NOT_AVAILABLE
     }
 
     override suspend fun authenticate(reason: String): BiometricResult {
-        return suspendCancellableCoroutine { continuation ->
-            val context = LAContext()
-            context.localizedReason = reason
-
-            val canEvaluate = context.canEvaluatePolicy(
-                LAPolicy.LAPolicyDeviceOwnerAuthenticationWithBiometrics,
-                null
-            )
-
-            if (!canEvaluate) {
-                continuation.resume(BiometricResult.Failure("Biométrie non disponible"))
-                return@suspendCancellableCoroutine
-            }
-
-            context.evaluatePolicy(
-                LAPolicy.LAPolicyDeviceOwnerAuthenticationWithBiometrics,
-                reason
-            ) { success, error ->
-                if (continuation.isActive) {
-                    when {
-                        success -> continuation.resume(BiometricResult.Success)
-                        error != null -> {
-                            val nsError = error
-                            // -2 = user cancelled
-                            if (nsError?.code?.toInt() == -2) {
-                                continuation.resume(BiometricResult.Cancelled)
-                            } else {
-                                continuation.resume(BiometricResult.Failure(nsError?.localizedDescription ?: "Erreur"))
-                            }
-                        }
-                        else -> continuation.resume(BiometricResult.Failure("Échec de l'authentification"))
-                    }
-                }
-            }
-
-            continuation.invokeOnCancellation {
-                context.invalidate()
-            }
-        }
+        return BiometricResult.Failure("Biométrie non disponible sur iOS (stub)")
     }
 
     override suspend fun enable() {
@@ -85,11 +39,3 @@ class IOSBiometricAuth : BiometricAuth {
         return defaults.boolForKey(KEY_BIOMETRIC_ENABLED)
     }
 }
-
-/**
- * Factory function for Koin DI.
- * Use in platformModule: single<BiometricAuth> { createBiometricAuth() }
- *
- * OLD: actual fun createBiometricAuth() (expect/actual pattern — REMOVED)
- * NEW: Direct construction via DI — platform module provides the instance
- */
