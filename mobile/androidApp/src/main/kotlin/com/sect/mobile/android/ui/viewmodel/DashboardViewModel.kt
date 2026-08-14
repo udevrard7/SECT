@@ -9,6 +9,7 @@ import com.sect.mobile.shared.domain.model.User
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
 import com.sect.mobile.shared.domain.enum.Role
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,7 +59,8 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
      * - Stats (total, en cours, planifiées)
      */
     private suspend fun loadEnseignantDashboard() {
-        launch {
+        coroutineScope {
+            launch {
             try {
                 val enCours = repository.listEpreuves(search = nil(), statut = "EN_COURS", filiereId = nil(), page = 1, limit = 10)
                 val planifiees = repository.listEpreuves(search = nil(), statut = "PLANIFIEE", filiereId = nil(), page = 1, limit = 5)
@@ -72,6 +74,7 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
             } catch (e: Exception) {
                 _upcomingEpreuves.value = UiState.Error(e.message ?: "Erreur")
             }
+            }
         }
     }
 
@@ -81,7 +84,8 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
      * - Stats (à venir, terminées)
      */
     private suspend fun loadEtudiantDashboard() {
-        launch {
+        coroutineScope {
+            launch {
             try {
                 val enCours = repository.listEpreuves(search = nil(), statut = "EN_COURS", filiereId = nil(), page = 1, limit = 10)
                 val planifiees = repository.listEpreuves(search = nil(), statut = "PLANIFIEE", filiereId = nil(), page = 1, limit = 5)
@@ -94,6 +98,7 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
                 )
             } catch (e: Exception) {
                 _upcomingEpreuves.value = UiState.Error(e.message ?: "Erreur")
+            }
             }
         }
     }
