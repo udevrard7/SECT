@@ -12,7 +12,6 @@
 
 import Foundation
 import Shared
-import Koin
 
 /// KoinStartup — One-time Koin DI initialization for iOS.
 ///
@@ -32,18 +31,19 @@ enum KoinStartup {
         // Start Koin with: iosPlatformModule (platform) + sharedModules (network → data → domain → presentation)
         //
         // The Shared framework exposes:
-        //   IOSPlatformModuleKt.iosPlatformModule — iOS-specific singletons (HttpClient, TokenCache, etc.)
+        //   IOSPlatformModuleKt.iosPlatformModule — iOS-specific singletons
         //   PlatformModuleKt.sharedModules — shared DI modules from commonMain
         //
-        // This mirrors Android's: startKoin { modules(appModule + sharedModules) }
+        // KoinCoreKoin_instance is the Koin global instance exposed via Shared.framework.
+        // (No need to 'import Koin' — all Koin types are re-exported via Shared.)
         let allModules = [IOSPlatformModuleKt.iosPlatformModule] + PlatformModuleKt.sharedModules
 
-        KoinCoreKoin_instance.start(modules: allModules)
+        SharedDIHelper.shared.startKoin(modules: allModules)
         print("[Koin] Started successfully with \(allModules.count) modules")
     }
 
     /// Check if Koin is already running.
     private static func isKoinStarted() -> Bool {
-        return KoinCoreKoin_instance.isStarted()
+        return SharedDIHelper.shared.isKoinStarted()
     }
 }
