@@ -146,9 +146,9 @@ func (w *HomeworkCorrectionWorker) getHomeworkData(ctx context.Context, soumissi
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var d homeworkData
         var contenu, consignes, description, grilleCriteres *string
@@ -185,7 +185,7 @@ func (w *HomeworkCorrectionWorker) getHomeworkData(ctx context.Context, soumissi
                 d.ContenuEtudiant = *contenu
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
         return &d, nil
 }
 
@@ -277,7 +277,7 @@ func (w *HomeworkCorrectionWorker) updateSoumissionStatusIA(ctx context.Context,
                 w.logger.Error("Failed to begin tx for IA status update", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 w.logger.Error("Failed to set system claims", "error", err)
@@ -318,9 +318,9 @@ func (w *HomeworkCorrectionWorker) RecoverInterruptedHomeworkCorrections(ctx con
                 w.logger.Error("RecoverHomework: failed to begin tx", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         rows, err := tx.Query(ctx, `
                 SELECT s."id", s."devoirId", dv."enseignantId"
@@ -354,7 +354,7 @@ func (w *HomeworkCorrectionWorker) RecoverInterruptedHomeworkCorrections(ctx con
                 }
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 
         if recovered > 0 {
                 w.logger.Info("Recovered interrupted homework corrections", "count", recovered)

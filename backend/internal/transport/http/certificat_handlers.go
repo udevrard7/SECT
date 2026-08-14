@@ -41,7 +41,7 @@ func (s *Server) listCertificats(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"certificats": certs})
+        _ = json.NewEncoder(w).Encode(map[string]any{"certificats": certs})
 }
 
 // getCertificat — GET /api/certificats/{id}
@@ -60,7 +60,7 @@ func (s *Server) getCertificat(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"certificat": cert})
+        _ = json.NewEncoder(w).Encode(map[string]any{"certificat": cert})
 }
 
 // verifyCertificat — GET /api/certificats/verify/{code} (PUBLIC — no auth required)
@@ -78,7 +78,7 @@ func (s *Server) verifyCertificat(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "valid":      cert.Statut == domain.StatutCertificatEmis,
                 "valide":     cert.Statut == domain.StatutCertificatEmis, // rétrocompat
                 "certificat": cert,
@@ -105,7 +105,7 @@ func (s *Server) revokeCertificat(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Certificat révoqué"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Certificat révoqué"})
 }
 
 // createCertificat — POST /api/certificats (P3c-CERTIFICATS)
@@ -198,7 +198,7 @@ func (s *Server) createCertificat(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "certificat": created,
                 "message":    "Certificat émis",
         })
@@ -228,7 +228,7 @@ func (s *Server) listCorrectionSessions(w http.ResponseWriter, r *http.Request) 
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"sessions": sessions})
+        _ = json.NewEncoder(w).Encode(map[string]any{"sessions": sessions})
 }
 
 // updateReponse — PATCH /api/correction/reponses/{reponseId}
@@ -275,7 +275,7 @@ func (s *Server) updateReponse(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Réponse mise à jour"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Réponse mise à jour"})
 }
 
 // retournerSession — POST /api/correction/{sessionId}/retourner
@@ -337,7 +337,7 @@ func (s *Server) retournerSession(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Session retournée à l'étudiant"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Session retournée à l'étudiant"})
 }
 
 // retournerBatch — POST /api/correction/retourner-batch
@@ -419,7 +419,7 @@ func (s *Server) retournerBatch(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":  "Sessions retournées",
                 "count":    count,
                 "returned": count,
@@ -494,7 +494,7 @@ func (s *Server) aiGradeSession(w http.ResponseWriter, r *http.Request) {
         // 3. Retourner 202 Accepted
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusAccepted)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "status":    "EN_COURS",
                 "message":   fmt.Sprintf("Correction IA lancee pour %d reponse(s).", pushed),
                 "jobCount":  pushed,

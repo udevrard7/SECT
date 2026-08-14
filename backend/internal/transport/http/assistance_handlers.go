@@ -67,7 +67,7 @@ func (s *Server) enterAssistanceMode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"user": map[string]any{
 			"id":              claims.UserID,
 			"email":           claims.Email,
@@ -109,7 +109,7 @@ func (s *Server) exitAssistanceMode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"user": map[string]any{
 			"id":              claims.UserID,
 			"email":           claims.Email,

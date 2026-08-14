@@ -171,9 +171,9 @@ func (w *PracticeWorker) getDocumentContent(ctx context.Context, documentID stri
         if err != nil {
                 return "", fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var contenu *string
         err = tx.QueryRow(ctx, `
@@ -183,7 +183,7 @@ func (w *PracticeWorker) getDocumentContent(ctx context.Context, documentID stri
                 return "", fmt.Errorf("query document content: %w", err)
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 
         if contenu == nil {
                 return "", nil
@@ -343,7 +343,7 @@ func (w *PracticeWorker) insertQuestions(ctx context.Context, job PracticeJob, q
         if err != nil {
                 return 0, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 return 0, fmt.Errorf("set system claims: %w", err)

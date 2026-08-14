@@ -144,7 +144,7 @@ func (w *CorrectionWorker) getQuestionAndReponse(ctx context.Context, reponseID 
         if err != nil {
                 return nil, nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -246,7 +246,7 @@ func (w *CorrectionWorker) updateReponseStatusIA(ctx context.Context, reponseID,
                 w.logger.Error("Failed to begin tx for IA status update", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 w.logger.Error("Failed to set system claims", "error", err)
@@ -285,7 +285,7 @@ func (w *CorrectionWorker) RecoverInterruptedCorrections(ctx context.Context) {
                 w.logger.Error("RecoverCorrections: failed to begin tx", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 

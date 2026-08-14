@@ -131,7 +131,7 @@ func (w *DocumentAnalyzerWorker) markAnalysisSuccess(ctx context.Context, docume
                 w.logger.Error("markAnalysisSuccess: begin tx failed", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -160,7 +160,7 @@ func (w *DocumentAnalyzerWorker) markAnalysisError(ctx context.Context, document
                 w.logger.Error("markAnalysisError: begin tx failed", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -213,7 +213,7 @@ func (w *DocumentAnalyzerWorker) getDocumentContent(ctx context.Context, documen
         if err != nil {
                 return "", fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -223,7 +223,7 @@ func (w *DocumentAnalyzerWorker) getDocumentContent(ctx context.Context, documen
                 return "", fmt.Errorf("query document: %w", err)
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
         if content == nil {
                 return "", nil
         }
@@ -235,13 +235,13 @@ func (w *DocumentAnalyzerWorker) countChapters(ctx context.Context, documentID s
         if err != nil {
                 return 0, err
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var count int
         err = tx.QueryRow(ctx, `SELECT count(*) FROM "Chapter" WHERE "documentId" = $1`, documentID).Scan(&count)
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
         return count, err
 }
 
@@ -298,7 +298,7 @@ func (w *DocumentAnalyzerWorker) insertChapters(ctx context.Context, documentID 
                 w.logger.Error("Failed to begin tx for chapters", "error", err)
                 return 0
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -316,7 +316,7 @@ func (w *DocumentAnalyzerWorker) insertChapters(ctx context.Context, documentID 
                 inserted++
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
         return inserted
 }
 
@@ -326,7 +326,7 @@ func (w *DocumentAnalyzerWorker) RecoverInterruptedAnalyses(ctx context.Context)
                 w.logger.Error("RecoverAnalyses: failed to begin tx", "error", err)
                 return
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
@@ -359,7 +359,7 @@ func (w *DocumentAnalyzerWorker) RecoverInterruptedAnalyses(ctx context.Context)
                 }
         }
 
-        tx.Commit(ctx)
+        _ = tx.Commit(ctx)
 
         if recovered > 0 {
                 w.logger.Info("Recovered interrupted document analyses", "count", recovered)

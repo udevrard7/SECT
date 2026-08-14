@@ -214,7 +214,7 @@ func (r *EtablissementAccessRepository) fetchAdminRefs(ctx context.Context, admi
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
         if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
@@ -265,7 +265,7 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
         if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
@@ -310,7 +310,7 @@ func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, e
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
         if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
@@ -374,7 +374,7 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // Pose les claims system-worker pour activer la policy RLS is_system().
         // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
@@ -425,7 +425,7 @@ func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string, a
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx
         if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
@@ -478,7 +478,7 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // Pose les claims system-worker pour activer la policy RLS is_system().
         // AUDIT-RLS-REPOS-001: standardized from raw set_config to db.SetClaimsTx

@@ -88,7 +88,7 @@ func (w *AutoCloseWorker) closeExpiredEpreuves(ctx context.Context) (int, error)
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Poser les claims system-worker pour RLS (policies Epreuve_all_system).
 	if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
@@ -137,7 +137,7 @@ func (w *AutoCloseWorker) closeAllSubmittedEpreuves(ctx context.Context) (int, e
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
 		return 0, fmt.Errorf("set claims: %w", err)

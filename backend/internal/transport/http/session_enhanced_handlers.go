@@ -114,7 +114,7 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                 }
 
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(map[string]any{
+                _ = json.NewEncoder(w).Encode(map[string]any{
                         "saved": true,
                         "count": len(reponses),
                 })
@@ -188,7 +188,7 @@ func (s *Server) updateSessionBulk(w http.ResponseWriter, r *http.Request) {
                 })
 
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(map[string]any{
+                _ = json.NewEncoder(w).Encode(map[string]any{
                         "logged": true,
                 })
                 return
@@ -324,7 +324,7 @@ func (s *Server) captureSession(w http.ResponseWriter, r *http.Request) {
         _ = s.sessionUC.AddAlerte(r.Context(), claims, sessionID, 0, alerteInput)
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "captured":     true,
                 "captureId":    captureID,
                 "captureIndex": captureIndex,
@@ -438,7 +438,7 @@ func (s *Server) listSessionCaptures(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "captures": result,
         })
 }
@@ -543,7 +543,7 @@ func (s *Server) epreuveAutoClose(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -637,7 +637,7 @@ func (s *Server) securitySettingsByEtablissement(w http.ResponseWriter, r *http.
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "securitySettings": settings,
         })
 }
@@ -870,7 +870,7 @@ func (s *Server) updateSecuritySettingsByEtablissement(w http.ResponseWriter, r 
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "securitySettings": result,
                 "message":          "Paramètres de sécurité mis à jour",
         })
@@ -1214,7 +1214,7 @@ func (s *Server) rapportFraudeSession(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(response)
+        _ = json.NewEncoder(w).Encode(response)
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1354,7 +1354,7 @@ func (s *Server) listSimilarityReports(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "reports":          formatted,
                 "seuilSimilarite":  seuilSimilarite,
                 "epreuveId":        epreuveID,
@@ -1459,7 +1459,7 @@ func (s *Server) uploadIdentityPhoto(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "id":        photoID,
                 "r2Key":     r2Key,
                 "photoType": input.PhotoType,
@@ -1590,7 +1590,7 @@ func (s *Server) listIdentityPhotos(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "photos": result,
         })
 }
@@ -1652,7 +1652,7 @@ func (s *Server) verifyIdentityPhoto(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "verified":   true,
                 "verifiedAt": verifiedAt.UTC().Format(time.RFC3339),
                 "verifiedBy": claims.UserID,

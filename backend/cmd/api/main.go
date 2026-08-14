@@ -379,7 +379,7 @@ func main() {
                                         logger.Warn("self-ping failed", "error", err)
                                         continue
                                 }
-                                resp.Body.Close()
+                                _ = resp.Body.Close()
                                 logger.Debug("self-ping ok", "port", cfg.Port)
                         }
                 }()

@@ -81,7 +81,6 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		if enseignantID != "" {
 			whereE = fmt.Sprintf(`WHERE e."enseignantId" = $%d AND e."deletedAt" IS NULL`, argIdx)
 			args = append(args, enseignantID)
-			argIdx++
 		} else {
 			whereE = `WHERE e."deletedAt" IS NULL`
 		}
@@ -265,7 +264,7 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"totalEpreuves":      totalEpreuves,
 		"totalSessions":      totalSessions,
 		"totalCorrigees":     totalCorrigees,

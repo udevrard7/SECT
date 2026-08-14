@@ -267,7 +267,7 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"devoir": created,
 	})
 }
@@ -414,7 +414,7 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 	d.Soumission = soumissions
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"devoir": d,
 	})
 }
@@ -496,7 +496,7 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"devoir": map[string]any{
 				"id":     devoirID,
 				"statut": updatedStatut,
@@ -598,7 +598,7 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"devoir": map[string]any{
 			"id":        respID,
 			"titre":     respTitre,
@@ -662,7 +662,7 @@ func (s *Server) deleteDevoir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "devoir déplacé vers la corbeille",
 		"id":      devoirID,
 	})
@@ -796,7 +796,7 @@ func (s *Server) createSoumission(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"soumission": resp,
 	})
 }
@@ -977,7 +977,7 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"soumission": resp,
 	})
 }
@@ -1043,7 +1043,7 @@ func (s *Server) listGrillesEvaluation(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"grilles": result,
 	})
 }
@@ -1109,7 +1109,7 @@ func (s *Server) createGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 			return err
 		})
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"grille": map[string]any{
 				"id":       existingGrilleID,
 				"devoirId": input.DevoirID,
@@ -1132,7 +1132,7 @@ func (s *Server) createGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"grille": map[string]any{
 			"id":       createdID,
 			"devoirId": input.DevoirID,
@@ -1195,7 +1195,7 @@ func (s *Server) updateGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"grille": map[string]any{
 			"id":       updatedID,
 			"criteres": string(criteresJSON),
@@ -1263,7 +1263,7 @@ func (s *Server) presignUploadSoumission(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"uploadUrl":   uploadURL,
 		"key":         key,
 		"expiresIn":   300,
@@ -1353,7 +1353,7 @@ func (s *Server) aiGradeSoumission(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":       "EN_COURS",
 		"soumissionId": soumissionID,
 		"message":      "évaluation IA lancée",

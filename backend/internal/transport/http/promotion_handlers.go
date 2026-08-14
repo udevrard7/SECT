@@ -97,7 +97,7 @@ func (s *Server) runPromotion(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"batchId": batch.ID,
 		"statut":  string(batch.Statut),
 	})
@@ -138,7 +138,7 @@ func (s *Server) previewPromotion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"etudiants": etudiants,
 		"total":     len(etudiants),
 	})
@@ -183,7 +183,7 @@ func (s *Server) getPromotionBatchStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"batchId":         batch.ID,
 		"statut":          string(batch.Statut),
 		"totalEtudiants":  batch.TotalEtudiants,
@@ -224,7 +224,7 @@ func (s *Server) listPromotionBatches(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"batches": batches,
 		"total":   len(batches),
 	})
@@ -255,7 +255,7 @@ func (s *Server) getReglesPassage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(regles)
+	_ = json.NewEncoder(w).Encode(regles)
 }
 
 // updateReglesPassageRequest — body du PUT /api/etablissements/{id}/regles-passage.
@@ -320,7 +320,7 @@ func (s *Server) updateReglesPassage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(regles)
+	_ = json.NewEncoder(w).Encode(regles)
 }
 
 // promoteStudentManualRequest — body du POST /api/etudiants/{etudiantId}/promote.
@@ -378,7 +378,7 @@ func (s *Server) promoteStudentManual(w http.ResponseWriter, r *http.Request) {
 	if result.ErrorMessage != "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error":         "erreur lors de la clôture",
 			"details":       result.ErrorMessage,
 			"etudiantId":    etudiantID,
@@ -388,7 +388,7 @@ func (s *Server) promoteStudentManual(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"etudiantId":      etudiantID,
 		"anneeSourceId":   req.AnneeSourceID,
 		"decision":        string(result.Decision),
@@ -450,7 +450,7 @@ func (s *Server) runPromotionSync(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"batchId":         result.BatchID,
 		"statut":          string(result.Statut),
 		"totalEtudiants":  result.TotalEtudiants,
@@ -505,5 +505,5 @@ func (s *Server) listEtudiantInscriptions(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(inscriptions)
+	_ = json.NewEncoder(w).Encode(inscriptions)
 }

@@ -205,7 +205,7 @@ func (s *Server) initiateB2CPayment(w http.ResponseWriter, r *http.Request) {
         }
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // --- Handler 2 : GET /api/subscriptions/b2c/{id}/payment-status ---
@@ -251,7 +251,7 @@ func (s *Server) getB2CPaymentStatus(w http.ResponseWriter, r *http.Request) {
                 resp.Reference = nil
                 resp.Message = "Aucun paiement initié"
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(resp)
+                _ = json.NewEncoder(w).Encode(resp)
                 return
         }
 
@@ -263,7 +263,7 @@ func (s *Server) getB2CPaymentStatus(w http.ResponseWriter, r *http.Request) {
                 resp.PaymentStatus = &completed
                 resp.Message = "Paiement confirmé"
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(resp)
+                _ = json.NewEncoder(w).Encode(resp)
                 return
         }
 
@@ -273,7 +273,7 @@ func (s *Server) getB2CPaymentStatus(w http.ResponseWriter, r *http.Request) {
                 resp.PaymentStatus = &pending
                 resp.Message = "Vérification GeniusPay non disponible"
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(resp)
+                _ = json.NewEncoder(w).Encode(resp)
                 return
         }
 
@@ -285,7 +285,7 @@ func (s *Server) getB2CPaymentStatus(w http.ResponseWriter, r *http.Request) {
                 resp.PaymentStatus = &pending
                 resp.Message = "Vérification en cours..."
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(resp)
+                _ = json.NewEncoder(w).Encode(resp)
                 return
         }
 
@@ -320,7 +320,7 @@ func (s *Server) getB2CPaymentStatus(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // --- Handler 3 : POST /api/webhooks/geniuspay ---
@@ -331,7 +331,7 @@ func (s *Server) geniuspayWebhook(w http.ResponseWriter, r *http.Request) {
         if err != nil {
                 slog.Error("geniuspayWebhook: read body failed", "error", err.Error())
                 w.WriteHeader(http.StatusOK) // 200 pour ne pas trigger de retry GeniusPay
-                json.NewEncoder(w).Encode(map[string]bool{"received": true})
+                _ = json.NewEncoder(w).Encode(map[string]bool{"received": true})
                 return
         }
 
@@ -352,7 +352,7 @@ func (s *Server) geniuspayWebhook(w http.ResponseWriter, r *http.Request) {
                         // Retourner 200 quand même pour ne pas leak d'info (un attaquant ne doit
                         // pas savoir si la signature a été vérifiée). Mais ne pas traiter.
                         w.WriteHeader(http.StatusOK)
-                        json.NewEncoder(w).Encode(map[string]bool{"received": true})
+                        _ = json.NewEncoder(w).Encode(map[string]bool{"received": true})
                         return
                 }
         }
@@ -363,7 +363,7 @@ func (s *Server) geniuspayWebhook(w http.ResponseWriter, r *http.Request) {
                 slog.Error("geniuspayWebhook: unmarshal failed", "error", err.Error(),
                         "body", string(rawPayload)[:min(200, len(rawPayload))])
                 w.WriteHeader(http.StatusOK)
-                json.NewEncoder(w).Encode(map[string]bool{"received": true})
+                _ = json.NewEncoder(w).Encode(map[string]bool{"received": true})
                 return
         }
 
@@ -388,7 +388,7 @@ func (s *Server) geniuspayWebhook(w http.ResponseWriter, r *http.Request) {
         // 5. Toujours répondre 200 rapidement (< 5-10s, doc GeniusPay)
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]bool{"received": true})
+        _ = json.NewEncoder(w).Encode(map[string]bool{"received": true})
 }
 
 // handleGeniusPaySuccess active l'abonnement lié à la référence du paiement.
@@ -551,7 +551,7 @@ func (s *Server) downgradeB2CToSolo(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "success":       true,
                 "abonnementId":  aboID,
                 "newPlanId":     newPlanID,
@@ -688,5 +688,5 @@ func (s *Server) renewB2CPayment(w http.ResponseWriter, r *http.Request) {
         }
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }

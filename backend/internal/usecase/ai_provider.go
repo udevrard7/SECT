@@ -808,7 +808,7 @@ func testChatCompletion(baseURL, apiKey, model string) error {
         if err != nil {
                 return fmt.Errorf("HTTP error: %w", err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         if resp.StatusCode >= 400 {
                 respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
@@ -843,7 +843,7 @@ func testAnthropicChat(baseURL, apiKey, model string) error {
         if err != nil {
                 return fmt.Errorf("HTTP error: %w", err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         if resp.StatusCode >= 400 {
                 respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
@@ -872,7 +872,7 @@ func fetchProviderModels(provider, baseURL, apiKey string) ([]string, error) {
         if err != nil {
                 return nil, err
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
         respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MiB max
         if resp.StatusCode >= 400 {
                 return nil, fmt.Errorf("provider returned HTTP %d", resp.StatusCode)

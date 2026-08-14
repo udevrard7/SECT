@@ -130,7 +130,7 @@ func (s *Server) saveGradeOrFinalize(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":             "Note sauvegardée",
 		"needsCorrectionCount": needsCorrection,
 		"allCorrected":         allCorrected,
@@ -208,7 +208,7 @@ func (s *Server) finalizeSession(w http.ResponseWriter, r *http.Request, claims 
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":       "Session finalisée",
 		"score":         totalScore,
 		"totalPossible": totalPossible,
@@ -301,7 +301,7 @@ func (s *Server) batchAiGrade(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":  "EN_COURS",
 		"graded":  pushed,
 		"total":   len(pending),

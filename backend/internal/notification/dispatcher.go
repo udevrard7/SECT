@@ -333,7 +333,7 @@ func (d *Dispatcher) sendPush(ctx context.Context, userID string, payload map[st
                         continue
                 }
                 if resp != nil {
-                        resp.Body.Close()
+                        _ = resp.Body.Close()
                 }
                 subCount++
         }

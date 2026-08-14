@@ -32,7 +32,7 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"accessRecords": records})
+        _ = json.NewEncoder(w).Encode(map[string]any{"accessRecords": records})
 }
 
 // createAccess — POST /api/etablissement-access
@@ -57,7 +57,7 @@ func (s *Server) createAccess(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"accessRecord": access})
+        _ = json.NewEncoder(w).Encode(map[string]any{"accessRecord": access})
 }
 
 // updateAccess — PATCH /api/etablissement-access/{id}
@@ -87,7 +87,7 @@ func (s *Server) updateAccess(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"accessRecord": access})
+        _ = json.NewEncoder(w).Encode(map[string]any{"accessRecord": access})
 }
 
 // deleteAccess — DELETE /api/etablissement-access/{id}
@@ -113,7 +113,7 @@ func (s *Server) deleteAccess(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "demande d'accès annulée"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "demande d'accès annulée"})
 }
 
 // checkAccess — GET /api/etablissement-access/check?etablissementId=...
@@ -137,7 +137,7 @@ func (s *Server) checkAccess(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "hasAccess":    access != nil,
                 "accessRecord": access,
         })
@@ -158,5 +158,5 @@ func (s *Server) authorizedEtablissements(w http.ResponseWriter, r *http.Request
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"etablissements": etabs})
+        _ = json.NewEncoder(w).Encode(map[string]any{"etablissements": etabs})
 }

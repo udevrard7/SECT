@@ -81,7 +81,7 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // getUser — GET /api/users/{id}
@@ -112,7 +112,7 @@ func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"user": user})
+	_ = json.NewEncoder(w).Encode(map[string]any{"user": user})
 }
 
 // createUser — POST /api/users
@@ -163,7 +163,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // updateUser — PATCH /api/users/{id}
@@ -209,7 +209,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"user": user})
+	_ = json.NewEncoder(w).Encode(map[string]any{"user": user})
 }
 
 // deleteUser — DELETE /api/users/{id}
@@ -251,7 +251,7 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":             "utilisateur supprimé",
 		"deletedDependencies": deps,
 	})
@@ -300,7 +300,7 @@ func (s *Server) getUserDependencies(w http.ResponseWriter, r *http.Request) {
 		deps.Epreuves == 0 && deps.Devoirs == 0 && deps.Affectations == 0 && deps.EnseignantFilieres == 0
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		// Déps étudiant
 		"sessions":    deps.Sessions,
 		"reponses":    deps.Reponses,
@@ -412,7 +412,7 @@ func (s *Server) importUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"imported": imported,
 		"errors":   errors,
 		"users":    users,
@@ -483,7 +483,7 @@ func (s *Server) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":            "mot de passe réinitialisé",
 		"temporaryPassword":  tempPassword,
 		"mustChangePassword": true,
@@ -523,7 +523,7 @@ func (s *Server) unlockUserAccount(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "compte déverrouillé",
 	})
 }
@@ -577,7 +577,7 @@ func (s *Server) softDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"softDeleted": true,
 		"id":          id,
 	})
@@ -607,7 +607,7 @@ func (s *Server) listOrphanUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"users": users,
 		"count": len(users),
 	})
@@ -643,7 +643,7 @@ func (s *Server) hardDeleteOrphans(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"deletedCount": count,
 	})
 }

@@ -205,7 +205,7 @@ func callVoxtralAPI(ctx context.Context, provider *ai.ActiveProvider, text, refA
         if err != nil {
                 return nil, fmt.Errorf("voxtral request failed: %w", err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         if resp.StatusCode != 200 {
                 var errResp struct {
@@ -358,7 +358,7 @@ func fetchAudioAsBase64(ctx context.Context, audioURL string, logger *slog.Logge
         if err != nil {
                 return "", fmt.Errorf("fetch ref_audio: %w", err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         if resp.StatusCode != 200 {
                 return "", fmt.Errorf("ref_audio HTTP %d", resp.StatusCode)

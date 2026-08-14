@@ -158,7 +158,7 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "logs":  result,
                 "total": totalCount,
                 "page":  page,
@@ -189,7 +189,7 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "providers": result,
         })
 }
@@ -289,9 +289,10 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
 
                 // Clause WHERE : (RBAC) AND (filtre lue optionnel)
                 whereParts := []string{"(" + strings.Join(rbacConds, " OR ") + ")"}
-                if lueParam == "false" {
+                switch lueParam {
+                case "false":
                         whereParts = append(whereParts, `a."lue" = false`)
-                } else if lueParam == "true" {
+                case "true":
                         whereParts = append(whereParts, `a."lue" = true`)
                 }
                 whereClause := "WHERE " + strings.Join(whereParts, " AND ")
@@ -344,7 +345,7 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "alertes": result,
                 "total":   len(result),
         })
@@ -407,7 +408,6 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
                 if etudiantID != "" {
                         whereClause = fmt.Sprintf(`WHERE v."etudiantId" = $%d`, argIdx)
                         args = append(args, etudiantID)
-                        argIdx++
                 }
 
                 // P2b : LEFT JOIN UniteEnseignement pour le nested + LEFT JOIN Certificat
@@ -471,7 +471,7 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "validations": result,
         })
 }
@@ -584,7 +584,7 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "abonnements": result,
         })
 }
@@ -688,7 +688,7 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "plans": result,
         })
 }
@@ -740,11 +740,12 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
         var args []any
         argIdx := 1
 
-        if luParam == "false" {
+        switch luParam {
+        case "false":
                 whereClauses = append(whereClauses, fmt.Sprintf(`"lu" = $%d`, argIdx))
                 args = append(args, false)
                 argIdx++
-        } else if luParam == "true" {
+        case "true":
                 whereClauses = append(whereClauses, fmt.Sprintf(`"lu" = $%d`, argIdx))
                 args = append(args, true)
                 argIdx++
@@ -816,7 +817,7 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "notifications": result,
                 "total":         totalCount,
                 "unreadCount":   unreadCount,
@@ -849,7 +850,7 @@ func (s *Server) platformSettingsReal(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "settings": settings,
         })
 }
@@ -912,7 +913,7 @@ func (s *Server) updatePlatformSettings(w http.ResponseWriter, r *http.Request) 
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "settings": merged,
                 "message":  "Configuration sauvegardée",
         })
@@ -1087,7 +1088,7 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "alerte":  updated,
                 "message": "Alerte mise à jour",
         })

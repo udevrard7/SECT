@@ -51,7 +51,7 @@ func (s *Server) notificationsListReal(w http.ResponseWriter, r *http.Request) {
 		args = append(args, claims.UserID)
 		argIdx++
 		if lueParam == "false" {
-			whereClause += fmt.Sprintf(` AND "lue" = false`)
+			whereClause += ` AND "lue" = false`
 		}
 
 		query := fmt.Sprintf(`
@@ -82,7 +82,7 @@ func (s *Server) notificationsListReal(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"notifications": result,
 		"total":         len(result),
 	})
@@ -158,9 +158,8 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
 
 		// Construction des args : $1=enseignantId, $2=filiereId, $3=niveau, puis search/limit
 		var args []any
-		argIdx := 1
 		args = append(args, enseignantID, filiereID, niveau)
-		argIdx = 4
+		argIdx := 4
 
 		var where []string
 		if search != "" {
@@ -294,7 +293,7 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"etudiants": result,
 		"total":     len(result),
 	})
@@ -363,9 +362,8 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 		// (avec filtres semestre/année optionnels via UniteEnseignement.semestre
 		// et extraction d'année depuis Epreuve.createdAt).
 		var argsE []any
-		argIdx := 1
 		argsE = append(argsE, enseignantID, filiereID, niveau)
-		argIdx = 4
+		argIdx := 4
 		var whereE []string
 		whereE = append(whereE, `e."enseignantId" = $1`)
 		whereE = append(whereE, `e."filiereId" = $2`)
@@ -382,7 +380,6 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 			year := strings.Split(anneeUniversitaire, "-")[0]
 			whereE = append(whereE, fmt.Sprintf(`to_char(e."createdAt", 'YYYY') = $%d`, argIdx))
 			argsE = append(argsE, year)
-			argIdx++
 		}
 
 		eRows, err := tx.Query(r.Context(), fmt.Sprintf(`
@@ -415,7 +412,7 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 
 		// 2. Récupérer les étudiants (même scoping UE strict que enseignantEtudiantsReal)
 		argsU := []any{enseignantID, filiereID, niveau}
-		uRows, err := tx.Query(r.Context(), fmt.Sprintf(`
+		uRows, err := tx.Query(r.Context(), `
                         SELECT DISTINCT u."id", u."name", COALESCE(u."matricule",''), COALESCE(u."email",''),
                                COALESCE(f."nom",'')
                         FROM "User" u
@@ -442,7 +439,7 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
                               )
                           )
                         ORDER BY u."name"
-                `), argsU...)
+                `, argsU...)
 		if err != nil {
 			return fmt.Errorf("query etudiants: %w", err)
 		}
@@ -543,16 +540,16 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 			name := strings.ReplaceAll(e.Name, ";", ",")
 			email := strings.ReplaceAll(e.Email, ";", ",")
 			filiere := strings.ReplaceAll(e.Filiere, ";", ",")
-			sb.WriteString(fmt.Sprintf("%s;%s;%s;%s", e.Matricule, name, email, filiere))
+			fmt.Fprintf(&sb, "%s;%s;%s;%s", e.Matricule, name, email, filiere)
 			for _, ep := range epreuves {
 				if note, ok := e.Notes[ep.ID]; ok && note != nil {
-					sb.WriteString(fmt.Sprintf(";%.2f", *note))
+					fmt.Fprintf(&sb, ";%.2f", *note)
 				} else {
 					sb.WriteString(";—")
 				}
 			}
 			if e.Moyenne != nil {
-				sb.WriteString(fmt.Sprintf(";%.2f", *e.Moyenne))
+				fmt.Fprintf(&sb, ";%.2f", *e.Moyenne)
 			} else {
 				sb.WriteString(";—")
 			}
@@ -563,13 +560,13 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="fiche_notes.csv"`)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(body))
+		_, _ = w.Write([]byte(body))
 		return
 	}
 
 	// Format JSON (défaut) : pour génération PDF côté Next.js
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"epreuves":           epreuves,
 		"etudiants":          etudiants,
 		"filiereId":          filiereID,
@@ -579,329 +576,6 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 		"total":              len(etudiants),
 	})
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-// 4. GET /api/resultats/overview — agregations pour page Résultats
-// ──────────────────────────────────────────────────────────────────────────
-
-func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims.UserID == "" {
-		writeJSONError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
-	enseignantID := r.URL.Query().Get("enseignantId")
-	if enseignantID == "" && claims.Role == "ENSEIGNANT" {
-		enseignantID = claims.UserID
-	}
-
-	type overviewEpreuve struct {
-		ID             string   `json:"id"`
-		Titre          string   `json:"titre"`
-		NbParticipants int      `json:"nbParticipants"`
-		Moyenne        *float64 `json:"moyenne,omitempty"`
-		TauxReussite   float64  `json:"tauxReussite"`
-		DateCloture    *string  `json:"dateCloture,omitempty"`
-	}
-	type overviewEvolution struct {
-		Mois          string  `json:"mois"`
-		Moyenne       float64 `json:"moyenne"`
-		NbEvaluations int     `json:"nbEvaluations"`
-	}
-	type studentAtRisk struct {
-		ID      string  `json:"id"`
-		Name    string  `json:"name"`
-		Email   string  `json:"email"`
-		Moyenne float64 `json:"moyenne"`
-		Filiere string  `json:"filiere"`
-	}
-	type topQuestion struct {
-		ID           string  `json:"id"`
-		Intitule     string  `json:"intitule"`
-		TauxReussite float64 `json:"tauxReussite"`
-		NbReponses   int     `json:"nbReponses"`
-	}
-
-	epreuves := []overviewEpreuve{}
-	evolution := []overviewEvolution{}
-	studentsAtRisk := []studentAtRisk{}
-	topQuestions := []topQuestion{}
-
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// 1. Épreuves avec stats
-		var args []any
-		argIdx := 1
-		whereE := ""
-		if enseignantID != "" {
-			whereE = fmt.Sprintf(`WHERE e."enseignantId" = $%d AND e."deletedAt" IS NULL`, argIdx)
-			args = append(args, enseignantID)
-			argIdx++
-		} else {
-			whereE = `WHERE e."deletedAt" IS NULL`
-		}
-
-		rows, err := tx.Query(r.Context(), fmt.Sprintf(`
-                        SELECT e."id", e."titre",
-                               (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id") AS nb_part,
-                               (SELECT AVG(s2.score) / e."noteTotal" * 20 FROM "SessionPassation" s2
-                                WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL) AS moy,
-                               CASE WHEN count(s3.id) > 0
-                                    THEN (count(s3.id) FILTER (WHERE s3.score >= e."noteTotal" * 0.5))::float / count(s3.id) * 100
-                                    ELSE 0 END AS taux,
-                               e."clotureeAt"
-                        FROM "Epreuve" e
-                        LEFT JOIN "SessionPassation" s3 ON s3."epreuveId" = e."id"
-                          AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL
-                        %s
-                        GROUP BY e."id", e."titre", e."noteTotal", e."clotureeAt"
-                        ORDER BY e."createdAt" DESC
-                        LIMIT 20
-                `, whereE), args...)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				ep := overviewEpreuve{}
-				var moy *float64
-				var clotureeAt *time.Time
-				if err := rows.Scan(&ep.ID, &ep.Titre, &ep.NbParticipants, &moy, &ep.TauxReussite, &clotureeAt); err == nil {
-					ep.Moyenne = moy
-					if clotureeAt != nil {
-						ts := clotureeAt.UTC().Format(time.RFC3339)
-						ep.DateCloture = &ts
-					}
-					epreuves = append(epreuves, ep)
-				}
-			}
-		}
-
-		// 2. Évolution mensuelle (6 derniers mois)
-		whereE2 := ""
-		args2 := []any{}
-		if enseignantID != "" {
-			whereE2 = fmt.Sprintf(`AND e."enseignantId" = $1`)
-			args2 = append(args2, enseignantID)
-		}
-		rows2, err := tx.Query(r.Context(), fmt.Sprintf(`
-                        SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-                               COALESCE(AVG(s.score) / e."noteTotal" * 20, 0) AS moyenne,
-                               count(*) AS nb_eval
-                        FROM "SessionPassation" s
-                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                        WHERE s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
-                          AND s."updatedAt" > now() - interval '6 months'
-                          %s
-                        GROUP BY mois ORDER BY mois ASC
-                `, whereE2), args2...)
-		if err == nil {
-			defer rows2.Close()
-			for rows2.Next() {
-				ev := overviewEvolution{}
-				if err := rows2.Scan(&ev.Mois, &ev.Moyenne, &ev.NbEvaluations); err == nil {
-					evolution = append(evolution, ev)
-				}
-			}
-		}
-
-		// 3. Étudiants en difficulté (moyenne < 8/20)
-		rows3, err := tx.Query(r.Context(), fmt.Sprintf(`
-                        SELECT u."id", u."name", u."email", COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moy,
-                               COALESCE(f."nom", '—') AS filiere
-                        FROM "User" u
-                        JOIN "SessionPassation" s ON s."etudiantId" = u."id"
-                          AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
-                        LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
-                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                        WHERE u."role" = 'ETUDIANT' %s
-                        GROUP BY u."id", u."name", u."email", f."nom"
-                        HAVING AVG(s.score / e."noteTotal" * 20) < 8
-                        ORDER BY moy ASC LIMIT 10
-                `, whereE2), args2...)
-		if err == nil {
-			defer rows3.Close()
-			for rows3.Next() {
-				sr := studentAtRisk{}
-				if err := rows3.Scan(&sr.ID, &sr.Name, &sr.Email, &sr.Moyenne, &sr.Filiere); err == nil {
-					studentsAtRisk = append(studentsAtRisk, sr)
-				}
-			}
-		}
-
-		return nil
-	})
-
-	// BUGFIX (RESULTATS-KPI-1) : calculer les KPIs scalaires attendus
-	// par le frontend (OverviewResponse dans types/resultats.ts).
-	// Avant ce fix, l'API ne retournait que les arrays (epreuves, evolution,
-	// studentsAtRisk, topQuestions) mais pas les 5 scalaires → les KPIs
-	// affichaient "undefined corrigées" et "0.0/20".
-	totalEpreuves := len(epreuves)
-	totalSessions := 0
-	totalCorrigees := 0
-	var globalMoy float64
-	var globalTaux float64
-	moyCount := 0
-	for _, ep := range epreuves {
-		totalSessions += ep.NbParticipants
-		if ep.Moyenne != nil {
-			globalMoy += *ep.Moyenne
-			moyCount++
-		}
-		globalTaux += ep.TauxReussite
-	}
-	if moyCount > 0 {
-		globalMoy /= float64(moyCount)
-	}
-	if totalEpreuves > 0 {
-		globalTaux /= float64(totalEpreuves)
-	}
-	totalCorrigees = moyCount
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"totalEpreuves":      totalEpreuves,
-		"totalSessions":      totalSessions,
-		"totalCorrigees":     totalCorrigees,
-		"globalMoyenne":      globalMoy,
-		"globalTauxReussite": globalTaux,
-		"epreuves":           epreuves,
-		"evolution":          evolution,
-		"studentsAtRisk":     studentsAtRisk,
-		"topQuestions":       topQuestions,
-	})
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// 5. GET /api/resultats/etudiant-overview — vue étudiant de ses résultats
-// ──────────────────────────────────────────────────────────────────────────
-
-func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims.UserID == "" {
-		writeJSONError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
-	etudiantID := r.URL.Query().Get("etudiantId")
-	if etudiantID == "" {
-		etudiantID = claims.UserID
-	}
-
-	type evolPoint struct {
-		Mois          string  `json:"mois"`
-		Moyenne       float64 `json:"moyenne"`
-		NbEvaluations int     `json:"nbEvaluations"`
-	}
-	type perfByType struct {
-		Type       string  `json:"type"`
-		Moyenne    float64 `json:"moyenne"`
-		NbReponses int     `json:"nbReponses"`
-	}
-	type distBin struct {
-		Label string `json:"label"`
-		Count int    `json:"count"`
-	}
-	type recentResult struct {
-		EpreuveTitre string   `json:"epreuveTitre"`
-		Score        *float64 `json:"score,omitempty"`
-		Statut       string   `json:"statut"`
-		Date         string   `json:"date"`
-	}
-
-	evolution := []evolPoint{}
-	performanceParType := []perfByType{}
-	distribution := []distBin{}
-	recentResults := []recentResult{}
-
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// 1. Évolution mensuelle
-		rows, err := tx.Query(r.Context(), `
-                        SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-                               COALESCE(AVG(s.score / e."noteTotal" * 20), 0), count(*)
-                        FROM "SessionPassation" s
-                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
-                          AND s."updatedAt" > now() - interval '6 months'
-                        GROUP BY mois ORDER BY mois ASC
-                `, etudiantID)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				ev := evolPoint{}
-				if err := rows.Scan(&ev.Mois, &ev.Moyenne, &ev.NbEvaluations); err == nil {
-					evolution = append(evolution, ev)
-				}
-			}
-		}
-
-		// 2. Résultats récents
-		rows2, err := tx.Query(r.Context(), `
-                        SELECT e."titre", s."score" / e."noteTotal" * 20 AS score_sur20, s."statut"::text, s."updatedAt"
-                        FROM "SessionPassation" s
-                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE')
-                        ORDER BY s."updatedAt" DESC LIMIT 10
-                `, etudiantID)
-		if err == nil {
-			defer rows2.Close()
-			for rows2.Next() {
-				rr := recentResult{}
-				var updatedAt time.Time
-				if err := rows2.Scan(&rr.EpreuveTitre, &rr.Score, &rr.Statut, &updatedAt); err == nil {
-					rr.Date = updatedAt.UTC().Format(time.RFC3339)
-					recentResults = append(recentResults, rr)
-				}
-			}
-		}
-
-		// 3. Distribution des notes
-		rows3, err := tx.Query(r.Context(), `
-                        SELECT CASE
-                                WHEN s.score / e."noteTotal" * 20 < 8 THEN '< 8'
-                                WHEN s.score / e."noteTotal" * 20 < 10 THEN '8-10'
-                                WHEN s.score / e."noteTotal" * 20 < 12 THEN '10-12'
-                                WHEN s.score / e."noteTotal" * 20 < 14 THEN '12-14'
-                                WHEN s.score / e."noteTotal" * 20 < 16 THEN '14-16'
-                                ELSE '16-20'
-                        END AS bucket, count(*) AS nb
-                        FROM "SessionPassation" s
-                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
-                        GROUP BY bucket ORDER BY bucket
-                `, etudiantID)
-		if err == nil {
-			defer rows3.Close()
-			dist := []distBin{
-				{Label: "< 8", Count: 0}, {Label: "8-10", Count: 0},
-				{Label: "10-12", Count: 0}, {Label: "12-14", Count: 0},
-				{Label: "14-16", Count: 0}, {Label: "16-20", Count: 0},
-			}
-			for rows3.Next() {
-				var b string
-				var n int
-				if err := rows3.Scan(&b, &n); err == nil {
-					for i := range dist {
-						if dist[i].Label == b {
-							dist[i].Count = n
-						}
-					}
-				}
-			}
-			distribution = dist
-		}
-
-		return nil
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"evolution":          evolution,
-		"performanceParType": performanceParType,
-		"distribution":       distribution,
-		"recentResults":      recentResults,
-	})
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // 2. GET /api/enseignant/context — filieres (avec niveaux[] + UEs) + etudiants
 // ──────────────────────────────────────────────────────────────────────────
@@ -1054,7 +728,7 @@ func (s *Server) enseignantContextReal(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"filieres":  filieres,
 		"etudiants": etudiants,
 	})
@@ -1120,9 +794,10 @@ func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
 		args = append(args, claims.Role)
 		argIdx++
 
-		if luParam == "false" {
+		switch luParam {
+		case "false":
 			whereParts = append(whereParts, `"lu" = false`)
-		} else if luParam == "true" {
+		case "true":
 			whereParts = append(whereParts, `"lu" = true`)
 		}
 
@@ -1163,7 +838,7 @@ func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"notifications": result,
 		"total":         len(result),
 	})
@@ -1205,7 +880,6 @@ func (s *Server) alertesMarkAllRead(w http.ResponseWriter, r *http.Request) {
 			argIdx++
 			whereParts = append(whereParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId" WHERE e.id = "Alerte"."epreuveId" AND f."etablissementId" = $%d)`, argIdx))
 			args = append(args, claims.EtablissementID)
-			argIdx++
 		}
 
 		whereParts = append(whereParts, `"lue" = false`)
@@ -1223,7 +897,7 @@ func (s *Server) alertesMarkAllRead(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": fmt.Sprintf("%d alerte(s) marquée(s) comme lue(s)", updatedCount),
 		"updated": updatedCount,
 	})
@@ -1266,7 +940,7 @@ func (s *Server) notificationsMeMarkRead(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "notification marquée comme lue",
 	})
 }

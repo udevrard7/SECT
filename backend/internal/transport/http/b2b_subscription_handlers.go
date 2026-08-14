@@ -143,5 +143,5 @@ func (s *Server) createB2BSubscription(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }

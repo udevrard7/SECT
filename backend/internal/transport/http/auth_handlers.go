@@ -28,7 +28,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // refresh handler — POST /api/auth/refresh
@@ -51,7 +51,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // logout handler — POST /api/auth/logout
@@ -69,7 +69,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "déconnexion réussie"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "déconnexion réussie"})
 }
 
 // changePassword handler — POST /api/auth/change-password (auth requis)
@@ -94,7 +94,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "mot de passe modifié"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "mot de passe modifié"})
 }
 
 // requestPasswordReset handler — POST /api/auth/password-reset (PUBLIC — anti-énumération)
@@ -120,7 +120,7 @@ func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
         _ = s.authUC.RequestPasswordReset(r.Context(), req.Email, ip, userAgent)
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{
+        _ = json.NewEncoder(w).Encode(map[string]string{
                 "message": "Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.",
         })
 }
@@ -145,7 +145,7 @@ func (s *Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{
+        _ = json.NewEncoder(w).Encode(map[string]string{
                 "message": "mot de passe réinitialisé avec succès",
         })
 }
@@ -156,7 +156,7 @@ func (s *Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(status)
-        json.NewEncoder(w).Encode(map[string]string{"error": msg})
+        _ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 // clientIP utilise la fonction partagée GetClientIP du middleware pour

@@ -150,7 +150,7 @@ func (m *ResendMailer) Send(e Email) error {
 	if err != nil {
 		return fmt.Errorf("resend http call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var errResp resendErrorResponse

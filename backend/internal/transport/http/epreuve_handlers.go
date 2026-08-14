@@ -114,7 +114,7 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // getEpreuve — GET /api/epreuves/{id}
@@ -131,7 +131,7 @@ func (s *Server) getEpreuve(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"epreuve": e})
+        _ = json.NewEncoder(w).Encode(map[string]any{"epreuve": e})
 }
 
 // createEpreuve — POST /api/epreuves
@@ -153,7 +153,7 @@ func (s *Server) createEpreuve(w http.ResponseWriter, r *http.Request) {
         }
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "epreuve": e,
                 "message": "Épreuve créée avec succès",
         })
@@ -185,7 +185,7 @@ func (s *Server) getEpreuveStatus(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // updateEpreuve — PATCH /api/epreuves/{id}
@@ -223,7 +223,7 @@ func (s *Server) updateEpreuve(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "epreuve": e,
                 "message": message,
         })
@@ -242,7 +242,7 @@ func (s *Server) deleteEpreuve(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Épreuve déplacée vers la corbeille"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Épreuve déplacée vers la corbeille"})
 }
 
 // listEpreuveQuestions — GET /api/epreuves/{id}/questions
@@ -259,7 +259,7 @@ func (s *Server) listEpreuveQuestions(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(questions) // bare array
+        _ = json.NewEncoder(w).Encode(questions) // bare array
 }
 
 // ============================================================
@@ -292,7 +292,7 @@ func (s *Server) listQuestions(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // getQuestion — GET /api/questions/{id}
@@ -309,7 +309,7 @@ func (s *Server) getQuestion(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"question": q})
+        _ = json.NewEncoder(w).Encode(map[string]any{"question": q})
 }
 
 // createQuestion — POST /api/questions
@@ -331,7 +331,7 @@ func (s *Server) createQuestion(w http.ResponseWriter, r *http.Request) {
         }
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "question": q,
                 "message":  "Question créée avec succès",
         })
@@ -368,10 +368,11 @@ func (s *Server) updateQuestion(w http.ResponseWriter, r *http.Request) {
                         Action string `json:"action"`
                 }
                 if err := json.Unmarshal(bodyBytes, &actionBody); err == nil {
-                        if actionBody.Action == "valider" {
+                        switch actionBody.Action {
+                        case "valider":
                                 valTrue := true
                                 input.Validee = &valTrue
-                        } else if actionBody.Action == "devalider" {
+                        case "devalider":
                                 valFalse := false
                                 input.Validee = &valFalse
                         }
@@ -394,7 +395,7 @@ func (s *Server) updateQuestion(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "question": q,
                 "message":  message,
         })
@@ -413,7 +414,7 @@ func (s *Server) deleteQuestion(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "Question déplacée vers la corbeille"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Question déplacée vers la corbeille"})
 }
 
 // batchDeleteQuestions — DELETE /api/questions (batch soft delete)
@@ -439,7 +440,7 @@ func (s *Server) batchDeleteQuestions(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":      strconv.Itoa(count) + " question(s) déplacée(s) vers la corbeille",
                 "deletedCount": count,
         })

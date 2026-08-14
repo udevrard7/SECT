@@ -52,7 +52,7 @@ func (s *Server) listOrphanEpreuves(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "orphelines": result,
                 "count":      len(result),
         })
@@ -107,7 +107,7 @@ func (s *Server) listSessionSpeciale(w http.ResponseWriter, r *http.Request) {
         })
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "sessionsSpeciales": result,
                 "count":             len(result),
         })
@@ -235,7 +235,7 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "epreuve":  created,
                 "message":  "Session spéciale créée. Pensez à la publier et lancer la session pour que les étudiants puissent la passer.",
         })

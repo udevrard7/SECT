@@ -169,7 +169,7 @@ func (s *Server) createB2CSubscription(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // sendB2CWelcomeEmail envoie l'email de bienvenue B2C (non bloquant, asynchrone).
@@ -311,7 +311,7 @@ func (s *Server) confirmB2CPayment(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // sendB2CPremiumWelcomeEmail envoie l'email de bienvenue Premium après paiement.

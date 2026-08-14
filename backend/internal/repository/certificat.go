@@ -291,7 +291,7 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // CORRECTION-RLS-FIX : poser les claims RLS pour activer SessionPassation_select,
         // Epreuve_select, User_select (l'enseignant voit ses épreuves + les étudiants
@@ -381,7 +381,7 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
 
         // Query 2 : batch Reponses pour toutes les sessions (avec JOIN Question + EpreuveQuestion)
         if len(sessionIDs) > 0 {
-                reponseQuery := fmt.Sprintf(`
+                reponseQuery := `
                         SELECT r."id", r."sessionId", r."questionId", r."contenu", r."score",
                                r."commentaire", r."noteIA", r."justificationIA",
                                eq."bareme", eq."ordre", q."type"::text, q."enonce"
@@ -390,7 +390,7 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
                         LEFT JOIN "Question" q ON q."id" = r."questionId"
                         WHERE r."sessionId" = ANY($2)
                         ORDER BY eq."ordre" ASC
-                `)
+                `
                 // Note : $1 = epreuveIDs, $2 = sessionIDs
                 epreuveIDList := make([]string, 0, len(epreuveIDs))
                 for id := range epreuveIDs {
@@ -486,7 +486,7 @@ func (r *CorrectionRepository) UpdateReponse(ctx context.Context, reponseID stri
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // CORRECTION-RLS-FIX : poser les claims RLS pour activer Reponse_modify_enseignant.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -541,7 +541,7 @@ func (r *CorrectionRepository) RetournerSession(ctx context.Context, sessionID s
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // CORRECTION-RLS-FIX : poser les claims RLS.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -562,8 +562,7 @@ func (r *CorrectionRepository) RetournerSession(ctx context.Context, sessionID s
         // P2-CORRECTION : marquer le résultat comme retourné (ne plus avaler l'erreur)
         if _, err := tx.Exec(ctx, `UPDATE "Resultat" SET "dateRetour" = CURRENT_TIMESTAMP WHERE "sessionId" = $1`, sessionID); err != nil {
                 // Non-fatal : le Resultat peut ne pas exister encore (session non finalisée)
-                // On log mais on ne bloque pas le retour.
-                // TODO : logger l'erreur
+                _ = err
         }
 
         return tx.Commit(ctx)
@@ -584,7 +583,7 @@ func (r *CorrectionRepository) RetournerBatch(ctx context.Context, sessionIDs []
         if err != nil {
                 return 0, fmt.Errorf("begin tx: %w", err)
         }
-        defer tx.Rollback(ctx)
+        defer func() { _ = tx.Rollback(ctx) }()
 
         // CORRECTION-RLS-FIX : poser les claims RLS.
         if err := db.SetClaimsTx(ctx, tx, claims); err != nil {
@@ -611,7 +610,7 @@ func (r *CorrectionRepository) RetournerBatch(ctx context.Context, sessionIDs []
         // P2-CORRECTION : marquer les résultats comme retournés (ne plus avaler l'erreur)
         if _, err := tx.Exec(ctx, fmt.Sprintf(`UPDATE "Resultat" SET "dateRetour" = CURRENT_TIMESTAMP WHERE "sessionId" IN (%s)`, strings.Join(placeholders, ",")), args...); err != nil {
                 // Non-fatal : certains Resultats peuvent ne pas exister encore
-                // TODO : logger l'erreur
+                _ = err
         }
 
         if err := tx.Commit(ctx); err != nil {

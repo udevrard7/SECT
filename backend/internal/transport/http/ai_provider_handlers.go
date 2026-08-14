@@ -187,7 +187,7 @@ func (s *Server) aiProviderCreate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"provider": created})
+	_ = json.NewEncoder(w).Encode(map[string]any{"provider": created})
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ func (s *Server) aiProviderGet(w http.ResponseWriter, r *http.Request) {
 	j := providerToJSON(provider, true) // GET /{id}: include apiKey
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"provider": j})
+	_ = json.NewEncoder(w).Encode(map[string]any{"provider": j})
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -265,7 +265,7 @@ func (s *Server) aiProviderUpdate(w http.ResponseWriter, r *http.Request) {
 	updated := providerToJSON(provider, false) // PATCH: don't reveal apiKey
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"provider": updated})
+	_ = json.NewEncoder(w).Encode(map[string]any{"provider": updated})
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ func (s *Server) aiProviderDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"message": "provider supprimé",
 		"id":      id,
@@ -336,7 +336,7 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
 		verb = "activé"
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"message": fmt.Sprintf("Provider « %s » %s", name, verb),
 		"active":  newState,
@@ -368,7 +368,7 @@ func (s *Server) aiProviderTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": success,
 		"message": message,
 	})
@@ -399,7 +399,7 @@ func (s *Server) aiProviderModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"models": models,
 	})
 }
@@ -530,7 +530,7 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"config":       result.Config,
 		"summary":      summary,
 		"providers":    providers,
@@ -569,7 +569,7 @@ func (s *Server) aiProviderFailoverConfig(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"config":  result.Config,
 	})
@@ -613,7 +613,7 @@ func (s *Server) aiProviderPriority(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"message": "priorités mises à jour",
 	})
@@ -646,7 +646,7 @@ func (s *Server) aiProviderFailoverHealth(w http.ResponseWriter, r *http.Request
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"message": "santé réinitialisée",
 		})
@@ -676,7 +676,7 @@ func (s *Server) aiProviderFailoverHealth(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"healthy":   allHealthy,
 		"providers": result,
 	})

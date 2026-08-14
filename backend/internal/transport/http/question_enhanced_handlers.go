@@ -184,7 +184,7 @@ Réponds UNIQUEMENT avec le JSON demandé.`, docContent, qType, qDiff)
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "question": resp,
         })
 }
@@ -214,7 +214,7 @@ func (s *Server) testZaiConnection(w http.ResponseWriter, r *http.Request) {
         result, err := s.aiService.ChatCompletion(r.Context(), messages)
         if err != nil {
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(map[string]any{
+                _ = json.NewEncoder(w).Encode(map[string]any{
                         "status": "error",
                         "error":  err.Error(),
                 })
@@ -222,7 +222,7 @@ func (s *Server) testZaiConnection(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "status":  "ok",
                 "model":   result.Model,
                 "response": result.Content,

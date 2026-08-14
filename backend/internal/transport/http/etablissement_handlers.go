@@ -34,7 +34,7 @@ func (s *Server) listEtablissements(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"etablissements": etabs})
+        _ = json.NewEncoder(w).Encode(map[string]any{"etablissements": etabs})
 }
 
 // getEtablissement — GET /api/etablissements/{id}
@@ -58,7 +58,7 @@ func (s *Server) getEtablissement(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"etablissement": etab})
+        _ = json.NewEncoder(w).Encode(map[string]any{"etablissement": etab})
 }
 
 // createEtablissement — POST /api/etablissements (ADMIN only)
@@ -108,7 +108,7 @@ func (s *Server) createEtablissement(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(resp)
+        _ = json.NewEncoder(w).Encode(resp)
 }
 
 // updateEtablissement — PATCH /api/etablissements/{id}
@@ -138,7 +138,7 @@ func (s *Server) updateEtablissement(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"etablissement": etab})
+        _ = json.NewEncoder(w).Encode(map[string]any{"etablissement": etab})
 }
 
 // deleteEtablissement — DELETE /api/etablissements/{id} (ADMIN only)
@@ -161,7 +161,7 @@ func (s *Server) deleteEtablissement(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"message": "établissement supprimé"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "établissement supprimé"})
 }
 
 // uploadLogo — POST /api/etablissements/upload-logo (multipart/form-data)
@@ -224,7 +224,7 @@ func (s *Server) uploadLogo(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "logo":          dataURL,
                 "etablissement": etab,
         })
@@ -260,7 +260,7 @@ func (s *Server) deleteLogo(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":       "logo supprimé",
                 "etablissement": etab,
         })
@@ -287,7 +287,7 @@ func (s *Server) getCurrentAnnee(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "anneeCourante": annee, // nil si non définie
         })
 }
@@ -324,7 +324,7 @@ func (s *Server) setCurrentAnnee(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":       "année courante mise à jour",
                 "etablissement": etab,
         })
@@ -346,7 +346,7 @@ func (s *Server) getWatermark(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"config": cfg})
+        _ = json.NewEncoder(w).Encode(map[string]any{"config": cfg})
 }
 
 // updateWatermark — PATCH /api/etablissements/{id}/watermark
@@ -371,7 +371,7 @@ func (s *Server) updateWatermark(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message": "Configuration mise à jour",
                 "config":  result,
         })
@@ -391,7 +391,7 @@ func (s *Server) getWatermarkConfig(w http.ResponseWriter, r *http.Request) {
         if claims.EtablissementID == "" {
                 // ADMIN sans établissement → retourner default
                 w.Header().Set("Content-Type", "application/json")
-                json.NewEncoder(w).Encode(map[string]any{
+                _ = json.NewEncoder(w).Encode(map[string]any{
                         "config": domain.WatermarkConfig{
                                 CertWatermarkText:    "ORIGINAL",
                                 CertWatermarkEnabled: true,
@@ -408,7 +408,7 @@ func (s *Server) getWatermarkConfig(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"config": cfg})
+        _ = json.NewEncoder(w).Encode(map[string]any{"config": cfg})
 }
 
 // updateWatermarkConfig — PATCH /api/certificats/watermark-config
@@ -433,7 +433,7 @@ func (s *Server) updateWatermarkConfig(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message": "Configuration mise à jour",
                 "config":  result,
         })

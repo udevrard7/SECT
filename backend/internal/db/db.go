@@ -146,7 +146,7 @@ func SystemClaims() SessionClaims {
 // Usage typique dans un repository :
 //
 //      tx, _ := pool.BeginTx(ctx, pgx.TxOptions{})
-//      defer tx.Rollback(ctx)
+//      defer func() { _ = tx.Rollback(ctx) }()
 //      db.SetClaimsTx(ctx, tx, claims)
 //      // ... queries ...
 //      tx.Commit(ctx)

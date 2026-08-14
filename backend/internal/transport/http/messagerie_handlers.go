@@ -51,7 +51,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // getConversation — GET /api/messagerie/conversations/{id}
@@ -68,7 +68,7 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(conv)
+        _ = json.NewEncoder(w).Encode(conv)
 }
 
 // getOrCreateIAPrivate — POST /api/messagerie/conversations/ia-private
@@ -86,7 +86,7 @@ func (s *Server) getOrCreateIAPrivate(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(conv)
+        _ = json.NewEncoder(w).Encode(conv)
 }
 
 // createDirect — POST /api/messagerie/conversations/direct
@@ -108,7 +108,7 @@ func (s *Server) createDirect(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(conv)
+        _ = json.NewEncoder(w).Encode(conv)
 }
 
 // ============================================================
@@ -137,7 +137,7 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // sendMessage — POST /api/messagerie/conversations/{id}/messages
@@ -166,7 +166,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(msg)
+        _ = json.NewEncoder(w).Encode(msg)
 }
 
 // editMessage — PATCH /api/messagerie/messages/{id}
@@ -191,7 +191,7 @@ func (s *Server) editMessage(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(msg)
+        _ = json.NewEncoder(w).Encode(msg)
 }
 
 // deleteMessage — DELETE /api/messagerie/messages/{id}
@@ -207,7 +207,7 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+        _ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
 }
 
 // ============================================================
@@ -236,7 +236,7 @@ func (s *Server) markAsRead(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]bool{"read": true})
+        _ = json.NewEncoder(w).Encode(map[string]bool{"read": true})
 }
 
 // setMuted — PATCH /api/messagerie/conversations/{id}/mute
@@ -260,7 +260,7 @@ func (s *Server) setMuted(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]bool{"muted": body.Muted})
+        _ = json.NewEncoder(w).Encode(map[string]bool{"muted": body.Muted})
 }
 
 // listParticipants — GET /api/messagerie/conversations/{id}/participants
@@ -279,7 +279,7 @@ func (s *Server) listParticipants(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"participants": participants})
+        _ = json.NewEncoder(w).Encode(map[string]any{"participants": participants})
 }
 
 // presence — GET /api/messagerie/presence
@@ -300,7 +300,7 @@ func (s *Server) presence(w http.ResponseWriter, r *http.Request) {
         }
         online := s.messagerieHub.OnlineUsers()
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "online": online,
                 "count":  len(online),
         })
@@ -326,7 +326,7 @@ func (s *Server) leaveConversation(w http.ResponseWriter, r *http.Request) {
         }
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]string{"message": "conversation quittée"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "conversation quittée"})
 }
 
 // clearConversation — POST /api/messagerie/conversations/{id}/clear
@@ -345,7 +345,7 @@ func (s *Server) clearConversation(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":       "conversation vidée pour vous",
                 "hiddenCount":   count,
                 "conversationId": conversationID,
@@ -377,7 +377,7 @@ func (s *Server) hideMessages(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        _ = json.NewEncoder(w).Encode(map[string]any{
                 "message":   "messages masqués pour vous",
                 "count":     len(input.MessageIDs),
                 "messageIds": input.MessageIDs,
@@ -416,7 +416,7 @@ func (s *Server) toggleReaction(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
+        _ = json.NewEncoder(w).Encode(result)
 }
 
 // ============================================================
@@ -443,7 +443,7 @@ func (s *Server) signalMessage(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(signalement)
+        _ = json.NewEncoder(w).Encode(signalement)
 }
 
 // listSignalements — GET /api/messagerie/signalements
@@ -466,7 +466,7 @@ func (s *Server) listSignalements(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"signalements": signalements})
+        _ = json.NewEncoder(w).Encode(map[string]any{"signalements": signalements})
 }
 
 // resolveSignalement — PATCH /api/messagerie/signalements/{id}
@@ -492,7 +492,7 @@ func (s *Server) resolveSignalement(w http.ResponseWriter, r *http.Request) {
                 return
         }
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(signalement)
+        _ = json.NewEncoder(w).Encode(signalement)
 }
 
 // ============================================================
