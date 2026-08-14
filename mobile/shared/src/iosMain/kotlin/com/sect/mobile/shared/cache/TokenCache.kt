@@ -26,10 +26,10 @@ import platform.Security.*
 class IOSTokenCache : TokenCache {
 
     companion object {
-        private const val KEY_ACCESS_TOKEN = "ci.sect.app.access_token"
-        private const val KEY_REFRESH_TOKEN = "ci.sect.app.refresh_token"
-        private const val KEY_EXPIRES_AT = "ci.sect.app.expires_at"
-        private const val SERVICE_NAME = "ci.sect.app.auth"
+        private const val KEY_ACCESS_TOKEN = "com.ftci.app.access_token"
+        private const val KEY_REFRESH_TOKEN = "com.ftci.app.refresh_token"
+        private const val KEY_EXPIRES_AT = "com.ftci.app.expires_at"
+        private const val SERVICE_NAME = "com.ftci.app.auth"
     }
 
     override suspend fun saveAccessToken(token: String) {

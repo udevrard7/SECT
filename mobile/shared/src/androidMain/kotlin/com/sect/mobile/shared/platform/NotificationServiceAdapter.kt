@@ -126,7 +126,7 @@ class AndroidNotificationService(
                         "userId" to userId,
                         "token" to token,
                         "platform" to "android",
-                        "bundleId" to "ci.sect.app"
+                        "bundleId" to "com.ftci.sect"
                     )
                 )
             }

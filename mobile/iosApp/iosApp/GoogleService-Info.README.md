@@ -4,14 +4,14 @@
 
 1. Go to [Firebase Console](https://console.firebase.google.com)
 2. Create or select project **SECT**
-3. Add an iOS app with bundle ID: `ci.sect.app.ios`
+3. Add an iOS app with bundle ID: `com.ftci.app`
 4. Download `GoogleService-Info.plist` and place it in this directory
 5. The file is excluded from git via `.gitignore`
 
 ## Required
 
 The `GoogleService-Info.plist` file must contain:
-- `BUNDLE_ID` — Must be `ci.sect.app.ios`
+- `BUNDLE_ID` — Must be `com.ftci.app`
 - `PROJECT_ID` — Firebase project ID (e.g., `sect-app`)
 - `GOOGLE_APP_ID` — Firebase app ID
 - `GCM_SENDER_ID` — FCM sender ID (same as project number)

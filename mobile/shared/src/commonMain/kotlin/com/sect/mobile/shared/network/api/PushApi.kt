@@ -23,7 +23,7 @@ class PushApi(private val client: HttpClient) {
         userId: String,
         token: String,
         platform: String, // "android" or "ios"
-        bundleId: String = if (platform == "android") "ci.sect.app" else "ci.sect.app.ios"
+        bundleId: String = if (platform == "android") "com.ftci.sect" else "com.ftci.app"
     ) {
         client.post("/api/push/mobile/register") {
             contentType(ContentType.Application.Json)

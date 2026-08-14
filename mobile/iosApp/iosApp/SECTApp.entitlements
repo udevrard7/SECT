@@ -5,7 +5,7 @@
         <!-- Keychain Access Groups for secure token storage -->
         <key>keychain-access-groups</key>
         <array>
-                <string>$(AppIdentifierPrefix)ci.sect.app</string>
+                <string>$(AppIdentifierPrefix)com.ftci.app</string>
         </array>
 
         <!-- Associated Domains for universal links -->
