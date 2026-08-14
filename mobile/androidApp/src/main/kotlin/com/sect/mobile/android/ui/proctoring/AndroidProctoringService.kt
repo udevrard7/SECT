@@ -6,7 +6,7 @@ import android.app.Activity
 import android.os.Build
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import com.sect.mobile.shared.platform.proctoring.*
+import com.sect.mobile.shared.proctoring.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
