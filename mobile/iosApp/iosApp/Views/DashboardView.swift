@@ -460,7 +460,7 @@ struct ConversationRow: View {
         }
     }
 
-    private func formatDate(_ instant: Instant) -> String {
+    private func formatDate(_ instant: String) -> String {
         let date = Date(timeIntervalSince1970: Double(instant.toEpochMilliseconds()) / 1000.0)
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "fr_FR")

@@ -56,7 +56,7 @@ struct ConversationView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color(.systemBarBackground))
+            .background(Color(UIColor.systemBackground))
         }
         .navigationTitle(conversation.titre ?? "Conversation")
         .navigationBarTitleDisplayMode(.inline)
@@ -113,7 +113,7 @@ struct MessageBubble: View {
         }
     }
 
-    private func formatTime(_ instant: Instant) -> String {
+    private func formatTime(_ instant: String) -> String {
         let date = Date(timeIntervalSince1970: Double(instant.toEpochMilliseconds()) / 1000.0)
         let formatter = DateFormatter()
         formatter.dateStyle = .none
