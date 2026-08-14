@@ -1,12 +1,14 @@
 // SECT Mobile — Biometric Auth iOS (LAContext — Face ID / Touch ID)
 package com.sect.mobile.shared.platform
 
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.LocalAuthentication.LAContext
 import platform.LocalAuthentication.LAPolicy
 import platform.Foundation.NSUserDefaults
 import kotlin.coroutines.resume
 
+@OptIn(ExperimentalForeignApi::class)
 class IOSBiometricAuth : BiometricAuth {
 
     companion object {
