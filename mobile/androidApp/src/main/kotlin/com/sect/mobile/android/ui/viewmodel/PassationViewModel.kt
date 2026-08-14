@@ -8,6 +8,7 @@ import com.sect.mobile.shared.domain.model.Reponse
 import com.sect.mobile.shared.domain.model.SessionPassation
 import com.sect.mobile.shared.domain.enum.TypeQuestion
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.notification.PushSubscriptionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +28,10 @@ import kotlinx.coroutines.launch
  * - Soumission finale
  * - Proctoring (alertes, fullscreen)
  */
-class PassationViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
+class PassationViewModel(
+    private val repository: SECTRepositoryInterface,
+    private val pushSubscriptionManager: PushSubscriptionManager
+) : ViewModel() {
 
     // ── État de la session ──
     private val _session = MutableStateFlow<UiState<SessionPassation>>(UiState.Loading)
@@ -74,6 +78,10 @@ class PassationViewModel(private val repository: SECTRepositoryInterface) : View
             try {
                 val session = repository.startSession(epreuveId)
                 _session.value = UiState.Success(session)
+
+                // SECT-MOBILE-TOPIC-PUSH-1 : s'abonner aux notifications de cette épreuve
+                // (rappels + résultats) pour recevoir les push en temps réel
+                pushSubscriptionManager.subscribeToEpreuve(epreuveId)
 
                 // Démarrer le timer
                 val durationSeconds = (session.epreuve?.duree ?: 0) * 60
