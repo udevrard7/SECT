@@ -1,6 +1,8 @@
 // SECT Mobile — Android Application (Jetpack Compose)
 // Application Android native utilisant le module :shared
 
+import java.util.Properties
+
 plugins {
     kotlin("android")
     kotlin("plugin.compose")
@@ -15,7 +17,7 @@ android {
 
     // ── Signing Configuration ──
     val keystorePropertiesFile = rootProject.file("keystore.properties")
-    val keystoreProperties = java.util.Properties()
+    val keystoreProperties = Properties()
     if (keystorePropertiesFile.exists()) {
         keystoreProperties.load(keystorePropertiesFile.inputStream())
     }
