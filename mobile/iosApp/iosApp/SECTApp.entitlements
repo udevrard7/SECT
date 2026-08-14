@@ -19,7 +19,11 @@
         <string>complete</string>
 
         <!-- Push Notifications -->
+        <!-- APS_ENVIRONMENT est défini dans les build settings du projet :
+             - Debug   = development (certificats Apple Development)
+             - Release = production   (certificats Apple Distribution)
+             Voir project.pbxproj : APS_ENVIRONMENT = development/production -->
         <key>aps-environment</key>
-        <string>production</string>
+        <string>$(APS_ENVIRONMENT)</string>
 </dict>
 </plist>

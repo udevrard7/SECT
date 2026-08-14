@@ -133,6 +133,7 @@ jobs:
       - name: 🏗️ Build iOS App
         run: |
           cd iosApp
+          set -o pipefail
           xcodebuild archive \
             -project iosApp.xcodeproj \
             -scheme iosApp \
@@ -141,17 +142,18 @@ jobs:
             -configuration Release \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="${{ secrets.APPLE_PROVISION_UUID }}" \
-            | xcpretty || true
+            | xcpretty
 
       - name: 📦 Export IPA
         if: secrets.APPLE_CERT_B64 != ''
         run: |
-          cd mobile/iosApp
+          cd iosApp
+          set -o pipefail
           xcodebuild -exportArchive \
             -archivePath build/SECT.xcarchive \
             -exportPath build/ipa \
             -exportOptionsPlist ExportOptions.plist \
-            | xcpretty || true
+            | xcpretty
 
       - name: 📦 Upload IPA
         uses: actions/upload-artifact@v4
@@ -159,7 +161,7 @@ jobs:
           name: sect-release-ipa
           path: mobile/iosApp/build/ipa/*.ipa
           retention-days: 90
-        if: always()
+          if-no-files-found: warn  # L'IPA n'existe que si le code signing Apple est configuré
 
   # ── GitHub Release ──
   create-release:
@@ -167,6 +169,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [release-android, release-ios]
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write  # Requis par softprops/action-gh-release pour créer une release
 
     steps:
       - name: 📥 Checkout code

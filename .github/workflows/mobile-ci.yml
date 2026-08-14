@@ -68,15 +68,16 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: 🔍 Lint Kotlin
-        run: ./gradlew :shared:ktlintCheck --no-daemon
+      - name: 🔍 Compile Shared Module (commonMain + Android + iOS)
+        run: ./gradlew :shared:compileKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
 
       - name: 🧪 Test Shared Module (commonMain)
-        run: ./gradlew0 :shared:allTests --no-daemon || true
-        # || true car les tests iOS nécessitent un runner macOS
+        run: ./gradlew :shared:allTests --no-daemon
+        # Les tests iOS tournent sur le runner macOS du job build-ios
+        # Ce job ne fait que valider la compilation shared
 
       - name: ✅ Shared module vérifié
-        run: echo "✅ Shared KMP module compiles and passes lint"
+        run: echo "✅ Shared KMP module compiles and passes tests"
 
   # ──────────────────────────────────────────────────────────────────────
   # Job 2 : Build Android APK
@@ -146,7 +147,7 @@ jobs:
 
       # ── Tests ──
       - name: 🧪 Tests Android
-        run: ./gradlew :androidApp:testDebugUnitTest --no-daemon || true
+        run: ./gradlew :androidApp:testDebugUnitTest --no-daemon
 
       # ── Artefacts ──
       - name: 📦 Upload Debug APK
@@ -228,6 +229,8 @@ jobs:
         run: |
           cd iosApp
           # Build pour simulateur (pas besoin de code signing)
+          # xcpretty formate la sortie ; en cas d'échec, le pipe échoue via PIPESTATUS
+          set -o pipefail
           xcodebuild build \
             -project iosApp.xcodeproj \
             -scheme iosApp \
@@ -235,7 +238,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty || true
+            | xcpretty
         # xcpretty est préinstallé sur les runners GitHub macOS
 
       # ── Artefacts ──
@@ -245,7 +248,7 @@ jobs:
           name: sect-ios-simulator
           path: mobile/iosApp/build/Build/Products/Debug-iphonesimulator/*.app
           retention-days: 7
-        if: always()  # Upload même si xcodebuild a des warnings
+          if-no-files-found: error  # Échoue si le build n'a pas produit d'artefact
 
       - name: ✅ iOS build terminé
         run: echo "✅ iOS app compiled for simulator"
