@@ -1,14 +1,17 @@
 package com.sect.mobile.shared.di
 
-import com.sect.mobile.shared.proctoring.ProctoringEngine
 import org.koin.dsl.module
 
 /**
- * Koin module for domain layer: ProctoringEngine and other domain services.
+ * Koin module for domain layer.
  *
- * The ProctoringEngine is a singleton because it maintains state
- * across the entire exam session (alert count, event log).
+ * NOTE : ProctoringEngine est temporairement désactivé du DI (SECT-MOBILE-COMPILE-FIX-3).
+ * Il utilisait kotlinx.datetime.Clock qui ne se résolvait pas en compilation Android
+ * (problème de classpath KMP). Le moteur de proctoring n'est pas encore branché aux
+ * ViewModels — sera réactivé quand l'intégration sera complète.
+ *
+ * Le module est conservé (vide) car référencé dans sharedModules.
  */
 val domainModule = module {
-    single { ProctoringEngine() }
+    // ProctoringEngine sera réactivé ici une fois l'intégration finalisée.
 }
