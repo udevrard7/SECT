@@ -106,10 +106,11 @@ class iOSProctoringService: NSObject, ObservableObject {
         let maxAlerts = config?.maxAlerts ?? 10
         shouldTerminate = alertCount >= maxAlerts
         
-        // Envoyer via WebSocket
-        Task {
-            try? await websocket?.sendAlert(type: event.rawValue)
-        }
+        // Envoyer via WebSocket (stub — websocket est Any?)
+        // TODO: restaurer l'envoi WebSocket quand SurveillanceWebSocket sera exposé
+        // Task {
+        //     try? await websocket?.sendAlert(type: event.rawValue)
+        // }
     }
     
     private func alertIncrement(for event: ProctoringEvent) -> Int {

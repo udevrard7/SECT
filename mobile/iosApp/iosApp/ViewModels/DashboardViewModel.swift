@@ -22,9 +22,9 @@ class DashboardViewModel: ObservableObject {
             user = try await repository.getCurrentUser()
 
             // Load epreuves by different statuts in parallel
-            async let enCoursList = try await repository.listEpreuves(statut: "EN_COURS")
-            async let planifieesList = try await repository.listEpreuves(statut: "PLANIFIEE")
-            async let allList = try await repository.listEpreuves(page: 1, limit: 100)
+            async let enCoursList = try await repository.listEpreuves(search: nil, statut: "EN_COURS", filiereId: nil, page: 1, limit: 20)
+            async let planifieesList = try await repository.listEpreuves(search: nil, statut: "PLANIFIEE", filiereId: nil, page: 1, limit: 20)
+            async let allList = try await repository.listEpreuves(search: nil, statut: nil, filiereId: nil, page: 1, limit: 100)
 
             let enCoursResult = try await enCoursList
             let planifieesResult = try await planifieesList
@@ -34,9 +34,9 @@ class DashboardViewModel: ObservableObject {
             planifiees = planifieesResult.count
             totalEpreuves = allResult.count
 
-            // Upcoming = planifiees + en_cours, sorted by dateDebut
+            // Upcoming = planifiees + en_cours, sorted by dateDebut (String comparison ISO 8601)
             upcomingEpreuves = (planifieesResult + enCoursResult).sorted { e1, e2 in
-                e1.dateDebut.toEpochMilliseconds() < e2.dateDebut.toEpochMilliseconds()
+                e1.dateDebut < e2.dateDebut
             }
         } catch {
             self.error = error.localizedDescription

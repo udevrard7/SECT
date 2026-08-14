@@ -34,7 +34,8 @@ struct EpreuveDetailView: View {
                     .padding(.horizontal)
 
                     // ── Description ──
-                    if let desc = epreuve.description, !desc.isEmpty {
+                    let desc = epreuve.description ?? ""
+                    if !desc.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Description")
                                 .font(.headline)
@@ -149,7 +150,9 @@ struct EpreuveDetailView: View {
     }
 
     private func formatString(_ instant: String) -> String {
-        let date = Date(timeIntervalSince1970: Double(instant.toEpochMilliseconds()) / 1000.0)
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = isoFormatter.date(from: instant) ?? Date()
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short

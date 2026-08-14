@@ -48,7 +48,8 @@ class AuthViewModel: ObservableObject {
     }
     
     func checkAuth() async {
-        if await repository.isAuthenticated() {
+        let isAuth = await repository.isAuthenticated()
+        if isAuth.boolValue {
             do {
                 currentUser = try await repository.getCurrentUser()
                 isAuthenticated = true

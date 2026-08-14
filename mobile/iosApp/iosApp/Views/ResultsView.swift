@@ -161,7 +161,9 @@ struct ResultsView: View {
     }
 
     private func formatString(_ instant: String) -> String {
-        let date = Date(timeIntervalSince1970: Double(instant.toEpochMilliseconds()) / 1000.0)
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = isoFormatter.date(from: instant) ?? Date()
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
