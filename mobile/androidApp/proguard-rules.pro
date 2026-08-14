@@ -55,6 +55,10 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 
+# ── Ktor — classes JVM non disponibles sur Android ──
+# Ktor debug detector référence java.lang.management.* (JVM only, pas Android)
+-dontwarn java.lang.management.**
+
 # ── AndroidX / Jetpack Compose ──
 -dontwarn androidx.**
 -keep class androidx.compose.** { *; }
