@@ -63,6 +63,7 @@ kotlin {
         }
 
         commonTest.dependencies {
+            implementation(kotlin("test"))
             implementation(kotlin("test-common"))
             implementation(kotlin("test-annotations-common"))
             implementation("io.ktor:ktor-client-mock:3.1.3")
