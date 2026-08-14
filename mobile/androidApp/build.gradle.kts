@@ -100,8 +100,8 @@ dependencies {
     implementation("androidx.compose.material3.adaptive:adaptive:1.1.0")
 
     // Koin DI Android
-    implementation("io.insert-koin:koin-android:4.2.2")
-    implementation("io.insert-koin:koin-androidx-compose:4.2.2")
+    implementation("io.insert-koin:koin-android:4.1.1")
+    implementation("io.insert-koin:koin-androidx-compose:4.1.1")
 
     // Coil pour images (Compose)
     implementation("io.coil-kt.coil3:coil-compose:3.2.0")
