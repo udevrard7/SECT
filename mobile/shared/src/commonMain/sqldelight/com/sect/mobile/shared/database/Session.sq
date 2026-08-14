@@ -20,7 +20,7 @@ CREATE TABLE local_reponse (
     question_id TEXT NOT NULL,
     contenu TEXT NOT NULL,
     saved_at INTEGER NOT NULL,     -- epoch millis
-    synced INTEGER AS Boolean NOT NULL DEFAULT 0,  -- 0 = pas sync, 1 = sync au backend
+    synced INTEGER NOT NULL DEFAULT 0,  -- 0 = pas sync, 1 = sync au backend
     PRIMARY KEY (session_id, question_id)
 );
 
