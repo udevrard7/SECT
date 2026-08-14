@@ -6,7 +6,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.google.firebase.FirebaseApp
-import com.google.firebase.ktx.firebase
 import com.sect.mobile.android.di.appModule
 import com.sect.mobile.shared.cache.initTokenCache
 import com.sect.mobile.shared.di.sharedModules

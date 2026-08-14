@@ -83,7 +83,7 @@ val appModule = module {
 
     single<TimeProvider> { AndroidTimeProvider() }
 
-    single<NotificationService> { AndroidNotificationService(androidContext()) }
+    single<NotificationService> { AndroidNotificationService(androidContext() as android.app.Application) }
 
     single<BiometricAuth> { AndroidBiometricAuth(androidContext()) }
 
