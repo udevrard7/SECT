@@ -32,11 +32,13 @@ import com.sect.mobile.shared.domain.model.Epreuve
 fun SplashScreen(
     authState: AuthState,
     onNavigateToLogin: () -> Unit,
-    onNavigateToDashboard: () -> Unit
+    onNavigateToDashboard: () -> Unit,
+    onNavigateToWebRedirect: () -> Unit = {}
 ) {
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.Authenticated -> onNavigateToDashboard()
+            is AuthState.RedirectToWeb -> onNavigateToWebRedirect()
             is AuthState.Unauthenticated -> onNavigateToLogin()
             is AuthState.Error -> onNavigateToLogin()
             AuthState.CheckingToken -> { /* Afficher splash */ }
@@ -49,6 +51,81 @@ fun SplashScreen(
             Text("Système d'Évaluation", style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(24.dp))
             CircularProgressIndicator()
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════
+// WEB REDIRECT SCREEN — pour ADMIN / RESPONSABLE
+// L'app mobile est réservée aux enseignants et étudiants
+// ══════════════════════════════════════════════════
+
+@Composable
+fun WebRedirectScreen(
+    userName: String,
+    role: String,
+    onBackToLogin: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val intent = remember {
+        android.content.Intent(
+            android.content.Intent.ACTION_VIEW,
+            android.net.Uri.parse("https://sect-app.vercel.app")
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Devices,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                "Bonjour $userName",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Votre rôle ($role) nécessite l'interface web",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                "L'application mobile SECT est réservée aux enseignants et étudiants.\n" +
+                "Pour accéder à toutes les fonctionnalités d'administration, utilisez la version web.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(
+                onClick = { context.startActivity(intent) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Ouvrir l'interface web")
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onBackToLogin,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Retour à la connexion")
+            }
         }
     }
 }
@@ -71,7 +148,11 @@ fun LoginScreen(
     val authState by viewModel.authState.collectAsState()
 
     LaunchedEffect(authState) {
-        if (authState is AuthState.Authenticated) onLoginSuccess()
+        when (authState) {
+            is AuthState.Authenticated -> onLoginSuccess()
+            is AuthState.RedirectToWeb -> onLoginSuccess() // Navigue vers WebRedirect via SPLASH
+            else -> {}
+        }
     }
 
     if (showPasswordReset) {

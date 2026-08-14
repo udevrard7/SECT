@@ -23,5 +23,6 @@ sealed interface AuthState {
     data object CheckingToken : AuthState
     data object Unauthenticated : AuthState
     data class Authenticated(val userId: String, val role: String, val userName: String) : AuthState
+    data class RedirectToWeb(val userName: String, val role: String) : AuthState
     data class Error(val message: String) : AuthState
 }
