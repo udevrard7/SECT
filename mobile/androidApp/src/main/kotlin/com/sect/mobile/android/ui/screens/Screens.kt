@@ -266,70 +266,104 @@ fun DashboardScreen(
     val user by viewModel.user.collectAsState()
     val upcomingEpreuves by viewModel.upcomingEpreuves.collectAsState()
     val stats by viewModel.stats.collectAsState()
+    val isEnseignant = viewModel.isEnseignant
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(selected = true, onClick = {},
-                    icon = { Icon(androidx.compose.material.icons.Icons.Default.Home, "Accueil") },
-                    label = { Text("Accueil") })
-                NavigationBarItem(selected = false, onClick = onNavigateToEpreuves,
-                    icon = { Icon(androidx.compose.material.icons.Icons.Default.Assignment, "Épreuves") },
-                    label = { Text("Épreuves") })
-                NavigationBarItem(selected = false, onClick = onNavigateToMessagerie,
-                    icon = { Icon(androidx.compose.material.icons.Icons.Default.Chat, "Messages") },
-                    label = { Text("Messages") })
-                NavigationBarItem(selected = false, onClick = onNavigateToProfile,
-                    icon = { Icon(androidx.compose.material.icons.Icons.Default.Person, "Profil") },
-                    label = { Text("Profil") })
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        // ── En-tête : bienvenue ──
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Bonjour, ${user?.name?.split(" ")?.firstOrNull() ?: "..."}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (isEnseignant) "Enseignant" else "Étudiant",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(48.dp))
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
-    ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            // Bienvenue
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Bonjour, ${user?.name?.split(" ")?.firstOrNull() ?: "..."}",
-                            style = MaterialTheme.typography.headlineSmall)
-                        Text(user?.role?.name ?: "", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Icon(androidx.compose.material.icons.Icons.Default.AccountCircle, null,
-                        modifier = Modifier.size(48.dp))
+
+        // ── Stats rapides ──
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatCard("Épreuves", stats.totalEpreuves.toString(), Modifier.weight(1f))
+                StatCard("En cours", stats.enCours.toString(), Modifier.weight(1f))
+                StatCard("À venir", stats.planifiees.toString(), Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // ── Titre section ──
+        item {
+            Text(
+                if (isEnseignant) "Épreuves à surveiller" else "Mes épreuves à venir",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // ── Liste des épreuves ──
+        when (upcomingEpreuves) {
+            is UiState.Loading -> item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-                Spacer(modifier = Modifier.height(16.dp))
             }
-
-            // Stats rapides
-            item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard("Épreuves", stats.totalEpreuves.toString(), Modifier.weight(1f))
-                    StatCard("En cours", stats.enCours.toString(), Modifier.weight(1f))
-                    StatCard("Planifiées", stats.planifiees.toString(), Modifier.weight(1f))
-                }
-                Spacer(modifier = Modifier.height(16.dp))
+            is UiState.Error -> item {
+                Text(
+                    (upcomingEpreuves as UiState.Error).message,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
-
-            // Épreuves à venir
-            item {
-                Text("Épreuves à venir", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            when (upcomingEpreuves) {
-                is UiState.Loading -> item { CircularProgressIndicator() }
-                is UiState.Error -> item { Text((upcomingEpreuves as UiState.Error).message,
-                    color = MaterialTheme.colorScheme.error) }
-                is UiState.Success -> {
-                    val epreuves = (upcomingEpreuves as UiState.Success).data
-                    if (epreuves.isEmpty()) {
-                        item { Text("Aucune épreuve à venir", style = MaterialTheme.typography.bodyMedium) }
-                    } else {
-                        items(epreuves, key = { it.id }) { epreuve ->
-                            EpreuveCard(epreuve, onClick = { /* navigation */ })
+            is UiState.Success -> {
+                val epreuves = (upcomingEpreuves as UiState.Success).data
+                if (epreuves.isEmpty()) {
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.EventBusy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "Aucune épreuve à venir",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
+                } else {
+                    items(epreuves, key = { it.id }) { epreuve ->
+                        EpreuveCard(epreuve, onClick = onNavigateToEpreuves)
+                    }
                 }
+            }
+        }
+
+        // ── Raccourci vers toutes les épreuves ──
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedButton(
+                onClick = onNavigateToEpreuves,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+ Text("Voir toutes les épreuves")
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -593,19 +627,70 @@ fun ProfileScreen(
     val userState by viewModel.user.collectAsState()
 
     when (val state = userState) {
-        is UiState.Loading -> CircularProgressIndicator()
+        is UiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
         is UiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
         is UiState.Success -> {
             val user = state.data
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Text(user.name, style = MaterialTheme.typography.headlineMedium)
-                Text(user.email, style = MaterialTheme.typography.bodyMedium)
-                Text("Rôle : ${user.role.name}", style = MaterialTheme.typography.bodyMedium)
-                user.etablissement?.let { Text("Établissement : ${it.nom}", style = MaterialTheme.typography.bodyMedium) }
-                user.filiere?.let { Text("Filière : ${it.nom}", style = MaterialTheme.typography.bodyMedium) }
-                user.matricule?.let { Text("Matricule : $it", style = MaterialTheme.typography.bodyMedium) }
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                // ── En-tête profil ──
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(user.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text(user.email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            AssistChip(onClick = {}, label = { Text(user.role.name) })
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // ── Infos ──
+                item {
+                    Text("Informations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            user.etablissement?.let { InfoRow("Établissement", it.nom) }
+                            user.filiere?.let { InfoRow("Filière", it.nom) }
+                            user.matricule?.let { InfoRow("Matricule", it) }
+                            InfoRow("Rôle", user.role.name)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // ── Paramètres ──
+                item {
+                    Text("Paramètres", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("SECT Mobile v1.0.0", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Système d'Évaluation Casse-Tête", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
 
