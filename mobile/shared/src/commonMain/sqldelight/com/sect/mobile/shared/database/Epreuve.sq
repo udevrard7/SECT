@@ -10,7 +10,7 @@ CREATE TABLE cached_epreuve (
     date_fin TEXT NOT NULL,
     statut TEXT NOT NULL,
     note_total REAL NOT NULL,
-    proctoring_actif INTEGER AS Boolean NOT NULL DEFAULT 0,
+    proctoring_actif INTEGER NOT NULL DEFAULT 0,
     filiere_id TEXT,
     enseignant_id TEXT NOT NULL,
     questions_json TEXT NOT NULL,   -- JSON serialized list of questions
