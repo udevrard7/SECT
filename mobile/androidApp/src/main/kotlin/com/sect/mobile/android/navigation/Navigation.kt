@@ -24,6 +24,7 @@ object Routes {
     const val CONVERSATION = "messagerie/{conversationId}"
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
+    const val WEB_REDIRECT = "web_redirect"
 }
 
 @Composable
@@ -38,7 +39,22 @@ fun SECTNavigation(
             SplashScreen(
                 authState = authVM.authState.sectCollectAsState().value,
                 onNavigateToLogin = { navController.navigate(Routes.LOGIN) },
-                onNavigateToDashboard = { navController.navigate(Routes.DASHBOARD) }
+                onNavigateToDashboard = { navController.navigate(Routes.DASHBOARD) },
+                onNavigateToWebRedirect = { navController.navigate(Routes.WEB_REDIRECT) }
+            )
+        }
+
+        composable(Routes.WEB_REDIRECT) {
+            val authVM: AuthViewModel = koinViewModel()
+            val authState by authVM.authState.collectAsState()
+            val state = authState as? AuthState.RedirectToWeb
+            WebRedirectScreen(
+                userName = state?.userName ?: "",
+                role = state?.role ?: "",
+                onBackToLogin = {
+                    authVM.logout()
+                    navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
+                }
             )
         }
 

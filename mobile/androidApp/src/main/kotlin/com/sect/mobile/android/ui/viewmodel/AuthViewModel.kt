@@ -1,4 +1,6 @@
 // SECT Mobile — AuthViewModel (login, logout, token refresh, biometric)
+// SECT-MOBILE-FOCUS : l'app mobile est réservée aux ENSEIGNANT et ETUDIANT.
+// Les ADMIN et RESPONSABLE sont redirigés vers l'interface web.
 package com.sect.mobile.android.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
@@ -12,17 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/**
- * ViewModel pour l'authentification.
- * Gère : login, logout, refresh token, vérification initiale.
- *
- * Flux :
- * 1. App launch → checkAuth() → vérifie le token en cache
- * 2. Si token valide → AuthState.Authenticated
- * 3. Si token expiré → refresh automatique → si échec → Unauthenticated
- * 4. Login → credentials → API → cache tokens → Authenticated
- * 5. Logout → révoque refresh token → clear cache → Unauthenticated
- */
 class AuthViewModel(
     private val repository: SECTRepositoryInterface,
     private val pushSubscriptionManager: PushSubscriptionManager
@@ -45,8 +36,8 @@ class AuthViewModel(
     }
 
     /**
-     * Vérifie si l'utilisateur est déjà authentifié (token en cache).
-     * Appelé au lancement de l'app pour décider entre Login et Dashboard.
+     * Vérifie si l'utilisateur est déjà authentifié.
+     * Si ADMIN/RESPONSABLE → RedirectToWeb (l'app est réservée enseignant/étudiant)
      */
     fun checkAuth() {
         viewModelScope.launch {
@@ -55,29 +46,15 @@ class AuthViewModel(
                 if (repository.isAuthenticated()) {
                     val user = repository.getCurrentUser()
                     _currentUser.value = user
-                    _authState.value = AuthState.Authenticated(
-                        userId = user.id,
-                        role = user.role.name,
-                        userName = user.name
-                    )
-                    // SECT-MOBILE-TOPIC-PUSH-1 : restaurer les abonnements aux topics
-                    // (app relancée avec token valide)
-                    pushSubscriptionManager.onUserLoggedIn(user)
+                    handleAuthSuccess(user)
                 } else {
                     _authState.value = AuthState.Unauthenticated
                 }
             } catch (e: Exception) {
-                // Token expiré, tenter un refresh
                 try {
                     val session = repository.refreshToken()
                     _currentUser.value = session.user
-                    _authState.value = AuthState.Authenticated(
-                        userId = session.user.id,
-                        role = session.user.role.name,
-                        userName = session.user.name
-                    )
-                    // SECT-MOBILE-TOPIC-PUSH-1 : restaurer les abonnements après refresh
-                    pushSubscriptionManager.onUserLoggedIn(session.user)
+                    handleAuthSuccess(session.user)
                 } catch (_: Exception) {
                     _authState.value = AuthState.Unauthenticated
                 }
@@ -95,14 +72,7 @@ class AuthViewModel(
             try {
                 val session = repository.login(identifier, password)
                 _currentUser.value = session.user
-                _authState.value = AuthState.Authenticated(
-                    userId = session.user.id,
-                    role = session.user.role.name,
-                    userName = session.user.name
-                )
-                // SECT-MOBILE-TOPIC-PUSH-1 : s'abonner aux topics de notifications
-                // (alerts établissement + filière) après un login réussi.
-                pushSubscriptionManager.onUserLoggedIn(session.user)
+                handleAuthSuccess(session.user)
             } catch (e: Exception) {
                 val message = when {
                     e.message?.contains("401") == true -> "Identifiants incorrects"
@@ -119,8 +89,28 @@ class AuthViewModel(
     }
 
     /**
-     * Demander un reset de mot de passe.
+     * Détermine l'état après authentification réussie.
+     * - ENSEIGNANT / ETUDIANT → Authenticated (accès app mobile)
+     * - ADMIN / RESPONSABLE → RedirectToWeb (redirigé vers sect-app.vercel.app)
      */
+    private fun handleAuthSuccess(user: User) {
+        val role = user.role
+        if (role.name == "ADMIN" || role.name == "RESPONSABLE") {
+            _authState.value = AuthState.RedirectToWeb(
+                userName = user.name,
+                role = role.name
+            )
+        } else {
+            _authState.value = AuthState.Authenticated(
+                userId = user.id,
+                role = role.name,
+                userName = user.name
+            )
+            // Push subscriptions seulement pour enseignant/étudiant
+            pushSubscriptionManager.onUserLoggedIn(user)
+        }
+    }
+
     fun requestPasswordReset(email: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             try {
@@ -132,17 +122,12 @@ class AuthViewModel(
         }
     }
 
-    /**
-     * Logout complet.
-     */
     fun logout() {
         viewModelScope.launch {
             try {
                 repository.logout()
             } catch (_: Exception) {
-                // Même si le logout API échoue, on clear le cache local
             } finally {
-                // SECT-MOBILE-TOPIC-PUSH-1 : se désabonner de tous les topics
                 pushSubscriptionManager.onUserLoggedOut()
                 _currentUser.value = null
                 _authState.value = AuthState.Unauthenticated
@@ -150,9 +135,6 @@ class AuthViewModel(
         }
     }
 
-    /**
-     * Changer le mot de passe (utilisateur connecté).
-     */
     fun changePassword(currentPassword: String, newPassword: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             try {
