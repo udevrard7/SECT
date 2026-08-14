@@ -93,7 +93,7 @@ final class PushNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         print("[APNs] Foreground notification: \(title)")
         
         // Notify the app (for in-app banner)
-        onForegroundNotification?(title, body, userInfo)
+        onForegroundNotification?(title, body, userInfo as? [String: Any] ?? [:])
         
         // Show the notification banner (iOS 14+)
         completionHandler([.banner, .sound, .badge])

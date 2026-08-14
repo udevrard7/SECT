@@ -45,10 +45,10 @@ class PassationViewModel: ObservableObject {
 
             // Start countdown timer
             let totalSeconds: Int
-            if let tempsRestant = session.tempsRestant, tempsRestant > 0 {
-                totalSeconds = tempsRestant
+            if let tempsRestant = session.tempsRestant, Int(tempsRestant.intValue) > 0 {
+                totalSeconds = Int(tempsRestant.intValue)
             } else if let epreuve = self.epreuve {
-                totalSeconds = epreuve.duree * 60
+                totalSeconds = Int(epreuve.duree.intValue) * 60
             } else {
                 totalSeconds = 0
             }

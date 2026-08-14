@@ -53,8 +53,8 @@ struct ResultsView: View {
                 .foregroundStyle(.secondary)
 
             if let note = session.note {
-                let penalite = session.penaliteProctoring ?? 0
-                let noteFinale = max(0, note - penalite)
+                let penalite = session.penaliteProctoring?.doubleValue ?? 0.0
+                let noteFinale = max(0.0, note.doubleValue - penalite)
 
                 ZStack {
                     Circle()
@@ -235,7 +235,7 @@ struct ReponseRow: View {
 
     private var noteColor: Color {
         guard let note = reponse.note else { return .gray }
-        if note >= reponse.note ?? 0 / 2 { return .sectGreen }
+        if note.doubleValue >= (reponse.note?.doubleValue ?? 0) / 2.0 { return .sectGreen }
         return .sectRed
     }
 }
