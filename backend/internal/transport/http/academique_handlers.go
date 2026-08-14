@@ -37,7 +37,7 @@ func (s *Server) listFilieres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"filieres": filieres})
+	_ = json.NewEncoder(w).Encode(map[string]any{"filieres": filieres})
 }
 
 // getFiliere — GET /api/filieres/{id}
@@ -54,7 +54,7 @@ func (s *Server) getFiliere(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(f) // bare object (pas de wrapper)
+	_ = json.NewEncoder(w).Encode(f) // bare object (pas de wrapper)
 }
 
 // createFiliere — POST /api/filieres
@@ -76,7 +76,7 @@ func (s *Server) createFiliere(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"filiere": f})
+	_ = json.NewEncoder(w).Encode(map[string]any{"filiere": f})
 }
 
 // updateFiliere — PATCH /api/filieres/{id}
@@ -98,7 +98,7 @@ func (s *Server) updateFiliere(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(f) // bare
+	_ = json.NewEncoder(w).Encode(f) // bare
 }
 
 // deleteFiliere — DELETE /api/filieres/{id} (soft delete).
@@ -128,7 +128,7 @@ func (s *Server) deleteFiliere(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"message":    fmt.Sprintf("Filière « %s » supprimée définitivement", nom),
 			"hardDelete": true,
 		})
@@ -147,7 +147,7 @@ func (s *Server) deleteFiliere(w http.ResponseWriter, r *http.Request) {
 	// ne change pas les FK).
 	deps, _ := s.filiereUC.GetDependencies(r.Context(), claims, id)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":      "Filière désactivée (suppression logique)",
 		"filiere":      updated,
 		"dependencies": deps,
@@ -172,7 +172,7 @@ func (s *Server) getFiliereDependencies(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deps)
+	_ = json.NewEncoder(w).Encode(deps)
 }
 
 // bulkFilieres — PATCH /api/filieres/bulk
@@ -193,7 +193,7 @@ func (s *Server) bulkFilieres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"updated":  count,
 		"filieres": filieres,
 	})
@@ -222,10 +222,10 @@ func (s *Server) exportFilieres(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	filename := "filieres_export_" + time.Now().Format("2006-01-02") + ".csv"
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
-	w.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
 
 	// Header
-	w.Write([]byte("Nom,Code,Établissement,Responsable,Étudiants,Statut,Date création\n"))
+	_, _ = w.Write([]byte("Nom,Code,Établissement,Responsable,Étudiants,Statut,Date création\n"))
 	for _, f := range filieres {
 		statut := "Inactif"
 		if f.Actif {
@@ -240,7 +240,7 @@ func (s *Server) exportFilieres(w http.ResponseWriter, r *http.Request) {
 			code = *f.Code
 		}
 		date := f.CreatedAt.Format("2006-01-02")
-		w.Write([]byte(csvEscape(f.Nom) + "," + csvEscape(code) + ",," + "," + csvEscape(nbEtu) + "," + statut + "," + date + "\n"))
+		_, _ = w.Write([]byte(csvEscape(f.Nom) + "," + csvEscape(code) + ",," + "," + csvEscape(nbEtu) + "," + statut + "," + date + "\n"))
 	}
 }
 
@@ -298,7 +298,7 @@ func (s *Server) listUEs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"unitesEnseignement": ues})
+	_ = json.NewEncoder(w).Encode(map[string]any{"unitesEnseignement": ues})
 }
 
 // getUE — GET /api/unites-enseignement/{id}
@@ -315,7 +315,7 @@ func (s *Server) getUE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
+	_ = json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
 }
 
 // createUE — POST /api/unites-enseignement
@@ -337,7 +337,7 @@ func (s *Server) createUE(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
+	_ = json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
 }
 
 // updateUE — PATCH /api/unites-enseignement/{id}
@@ -359,7 +359,7 @@ func (s *Server) updateUE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
+	_ = json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
 }
 
 // deleteUE — DELETE /api/unites-enseignement/{id}
@@ -382,7 +382,7 @@ func (s *Server) deleteUE(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"message": "Unité d'enseignement supprimée définitivement",
 		})
 		return
@@ -393,7 +393,7 @@ func (s *Server) deleteUE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"uniteEnseignement": ue,
 		"message":           "Unité d'enseignement désactivée avec succès",
 	})
@@ -416,7 +416,7 @@ func (s *Server) getUEDependencies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deps)
+	_ = json.NewEncoder(w).Encode(deps)
 }
 
 // ============================================================
@@ -442,7 +442,7 @@ func (s *Server) listEnseignantFilieres(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"assignments": assignments})
+	_ = json.NewEncoder(w).Encode(map[string]any{"assignments": assignments})
 }
 
 // createEnseignantFilieres — POST /api/enseignant-filieres
@@ -501,7 +501,7 @@ func (s *Server) createEnseignantFilieres(w http.ResponseWriter, r *http.Request
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"assignments": created,
 			"errors":      errs,
 		})
@@ -526,7 +526,7 @@ func (s *Server) createEnseignantFilieres(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"assignments": []any{ef}})
+	_ = json.NewEncoder(w).Encode(map[string]any{"assignments": []any{ef}})
 }
 
 // deleteEnseignantFilieres — DELETE /api/enseignant-filieres (body JSON)
@@ -546,7 +546,7 @@ func (s *Server) deleteEnseignantFilieres(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Affectation supprimée avec succès"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Affectation supprimée avec succès"})
 }
 
 // ============================================================
@@ -572,7 +572,7 @@ func (s *Server) listAnnees(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(annees) // bare array
+	_ = json.NewEncoder(w).Encode(annees) // bare array
 }
 
 // createAnnee — POST /api/annees-academiques
@@ -594,7 +594,7 @@ func (s *Server) createAnnee(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(a) // bare object
+	_ = json.NewEncoder(w).Encode(a) // bare object
 }
 
 // getAnnee — GET /api/annees-academiques/{id}
@@ -612,7 +612,7 @@ func (s *Server) getAnnee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(a)
+	_ = json.NewEncoder(w).Encode(a)
 }
 
 // updateAnnee — PATCH /api/annees-academiques/{id}
@@ -635,7 +635,7 @@ func (s *Server) updateAnnee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(a)
+	_ = json.NewEncoder(w).Encode(a)
 }
 
 // deleteAnnee — DELETE /api/annees-academiques/{id}
@@ -664,7 +664,7 @@ func (s *Server) deleteAnnee(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"message": "Année académique supprimée définitivement",
 		})
 		return
@@ -675,7 +675,7 @@ func (s *Server) deleteAnnee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"anneeAcademique": a,
 		"message":         "Année académique désactivée avec succès",
 	})
@@ -705,5 +705,5 @@ func (s *Server) getAnneeDependencies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deps)
+	_ = json.NewEncoder(w).Encode(deps)
 }

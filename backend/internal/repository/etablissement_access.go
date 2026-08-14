@@ -112,7 +112,6 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                 if params.EtablissementID != "" {
                         where = append(where, fmt.Sprintf(`ea."etablissementId" = $%d`, argIdx))
                         args = append(args, params.EtablissementID)
-                        argIdx++
                 }
 
                 whereClause := ""

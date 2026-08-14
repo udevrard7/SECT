@@ -226,7 +226,6 @@ func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]
 			where = append(where, fmt.Sprintf(`("UniteEnseignement"."nom" ILIKE $%d OR "UniteEnseignement"."code" ILIKE $%d)`, argIdx, argIdx+1))
 			args = append(args, "%"+params.Search+"%")
 			args = append(args, "%"+params.Search+"%")
-			argIdx += 2
 		}
 
 		whereClause := ""
@@ -621,7 +620,6 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
 		if params.Niveau != "" {
 			where = append(where, fmt.Sprintf(`ef."niveau" = $%d`, argIdx))
 			args = append(args, params.Niveau)
-			argIdx++
 		}
 
 		whereClause := ""
@@ -845,7 +843,6 @@ func (r *AnneeAcademiqueRepository) List(ctx context.Context, etablissementID st
 		if actif != nil && *actif {
 			where = append(where, fmt.Sprintf(`"actif" = $%d`, argIdx))
 			args = append(args, true)
-			argIdx++
 		}
 
 		query := fmt.Sprintf(`SELECT %s FROM "AnneeAcademique" WHERE %s ORDER BY "dateDebut" DESC`,

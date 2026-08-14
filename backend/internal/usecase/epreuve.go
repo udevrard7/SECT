@@ -40,6 +40,7 @@ func (uc *QuestionUseCase) List(ctx context.Context, claims db.SessionClaims, pa
                 etabScope = claims.EtablissementID
                 if params.UserID != "" {
                         // Le userId doit appartenir à son établissement (vérifié par RLS)
+                        _ = params.UserID
                 }
         case domain.RoleAdmin:
                 // ADMIN : pas de scope par défaut (RLS filtre via EtablissementAccess)
@@ -178,6 +179,7 @@ func (uc *EpreuveUseCase) List(ctx context.Context, claims db.SessionClaims, par
         // Multi-statut: ?statut=TERMINEE,CLOTUREE
         if len(params.Statuts) == 0 && params.Search != "" {
                 // search peut contenir des statuts séparés par virgule si passé directement
+                _ = params.Search
         }
 
         // ENSEIGNANT : force enseignantId = user.id

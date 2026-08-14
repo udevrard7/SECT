@@ -277,7 +277,7 @@ func (h *MessagerieHub) HandleSSE(w http.ResponseWriter, r *http.Request) {
                 Data:      helloData,
                 Timestamp: time.Now().UTC().Format(time.RFC3339),
         })
-        fmt.Fprintf(w, "data: %s\n\n", helloEvent)
+        _, _ = fmt.Fprintf(w, "data: %s\n\n", helloEvent)
         flushIfNeeded()
 
         // 2. Inscrire le client SSE pour recevoir les events broadcastés.
@@ -296,11 +296,11 @@ func (h *MessagerieHub) HandleSSE(w http.ResponseWriter, r *http.Request) {
                         return
                 case event := <-ch:
                         payload, _ := json.Marshal(event)
-                        fmt.Fprintf(w, "data: %s\n\n", payload)
+                        _, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
                         flushIfNeeded()
                 case <-heartbeat.C:
                         // Commentaire SSE (ignoré par EventSource mais maintient la connexion).
-                        fmt.Fprintf(w, ": heartbeat\n\n")
+                        _, _ = fmt.Fprintf(w, ": heartbeat\n\n")
                         flushIfNeeded()
                 }
         }

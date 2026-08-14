@@ -135,7 +135,7 @@ func (c *Client) CreatePayment(ctx context.Context, req CreatePaymentRequest) (*
         if err != nil {
                 return nil, fmt.Errorf("geniuspay: http do: %w", err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         respBody, _ := io.ReadAll(resp.Body)
 
@@ -187,7 +187,7 @@ func (c *Client) GetPayment(ctx context.Context, reference string) (*PaymentData
         if err != nil {
                 return nil, fmt.Errorf("geniuspay: http do: %w", err)
         }
-        defer resp.Body.Close()
+        defer func() { _ = resp.Body.Close() }()
 
         respBody, _ := io.ReadAll(resp.Body)
 

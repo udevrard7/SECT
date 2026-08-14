@@ -799,7 +799,8 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
                         WHERE "userId" = $1 AND "questionId" = $2
                 `, userID, input.QuestionID).Scan(&existingID, &existingEase, &existingReps)
 
-                if err == pgx.ErrNoRows {
+                switch err {
+                case pgx.ErrNoRows:
                         // Premier review sur cette question → INSERT.
                         // Initialise easeFactor=2.5, repetitions=1, interval calculé SM-2.
                         newEase := 2.5 + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
@@ -823,8 +824,9 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
                                 // Non-fatal : on log via fmt.Errorf mais on ne fait pas échouer SubmitPractice.
                                 // L'attempt a déjà été inséré ; le SRS est best-effort.
                                 // On continue vers le commit.
+                                _ = err
                         }
-                } else if err == nil {
+                case nil:
                         // ReviewItem existe déjà → appliquer SM-2 puis UPDATE.
                         newEase := existingEase + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
                         if newEase < 1.3 {
@@ -846,6 +848,7 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
                                 WHERE "id" = $1
                         `, existingID, newInterval, newEase, newReps); err != nil {
                                 // Non-fatal : best-effort, on continue.
+                                _ = err
                         }
                 }
                 // ── Fin SRS ────────────────────────────────────────────────────────────

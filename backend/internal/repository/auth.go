@@ -241,7 +241,7 @@ func (r *AuthRepository) CreateAuditLog(ctx context.Context, entry *domain.Audit
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
                 INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "etablissementId", "reason", "createdAt")

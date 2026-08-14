@@ -5,7 +5,6 @@ import (
         "encoding/json"
         "fmt"
         "net/http"
-        "strconv"
 
         "github.com/go-chi/chi/v5"
         "github.com/jackc/pgx/v5"
@@ -334,28 +333,6 @@ func (s *Server) listResultats(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(result)
 }
 
-// resultatsOverview — GET /api/resultats/overview
-func (s *Server) resultatsOverview(w http.ResponseWriter, r *http.Request) {
-        claims, ok := middleware.ClaimsFromContext(r.Context())
-        if !ok {
-                writeJSONError(w, http.StatusUnauthorized, "authentication required")
-                return
-        }
-
-        // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ENSEIGNANT ne peut
-        // cibler que son propre ID. Le query param ?enseignantId= est ignoré pour
-        // ce rôle (forcé à claims.UserID).
-        enseignantID := resolveScopedUserID(r, r.URL.Query().Get("enseignantId"))
-        overview, err := s.resultatUC.GetOverview(r.Context(), claims, enseignantID)
-        if err != nil {
-                middleware.MapDomainError(w, err)
-                return
-        }
-
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(overview)
-}
-
 // resultatsEtudiantOverview — GET /api/resultats/etudiant-overview
 func (s *Server) resultatsEtudiantOverview(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
@@ -373,14 +350,6 @@ func (s *Server) resultatsEtudiantOverview(w http.ResponseWriter, r *http.Reques
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(overview)
 }
-
-// parseIntQueryParamExtended parse avec fallback (utilise parseIntQueryParam existant).
-func parseIntQueryParamExtended(s string, defaultVal int) int {
-        return parseIntQueryParam(s, defaultVal)
-}
-
-// strconv unused suppress
-var _ = strconv.Itoa
 
 // ============================================================
 // CACHE-RAM-1 — public methods for worker goroutine

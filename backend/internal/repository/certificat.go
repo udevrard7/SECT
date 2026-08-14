@@ -139,7 +139,6 @@ func (r *CertificatRepository) List(ctx context.Context, params domain.Certifica
                 if params.Statut != "" {
                         where = append(where, fmt.Sprintf(`"statut" = $%d`, argIdx))
                         args = append(args, params.Statut)
-                        argIdx++
                 }
 
                 whereClause := ""
@@ -315,7 +314,6 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
         if params.EpreuveID != "" {
                 where = append(where, fmt.Sprintf(`s."epreuveId" = $%d`, argIdx))
                 args = append(args, params.EpreuveID)
-                argIdx++
         }
 
         whereClause := "WHERE " + strings.Join(where, " AND ")

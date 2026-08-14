@@ -656,7 +656,7 @@ func fallbackMsg(message, fallback string) string {
 // pour prévenir XSS (un créateur ne peut pas injecter du HTML dans l'email).
 func (uc *StudentSignupLinkUseCase) sendStudentWelcomeEmail(ctx context.Context, token string, res *domain.AcceptSignupResult) {
 	// Context avec timeout de 30s (évite fuite si DB ou Resend est lent).
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var (

@@ -158,7 +158,6 @@ func (r *FiliereRepository) List(ctx context.Context, params domain.FiliereListP
                 if params.EtablissementID != "" {
                         where = append(where, fmt.Sprintf(`f."etablissementId" = $%d`, argIdx))
                         args = append(args, params.EtablissementID)
-                        argIdx++
                 }
 
                 whereClause := ""

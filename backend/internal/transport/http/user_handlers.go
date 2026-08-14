@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/udevrard7/sect/backend/internal/domain"
@@ -424,11 +423,6 @@ func (s *Server) importUsers(w http.ResponseWriter, r *http.Request) {
 func boolPtrTrue() *bool {
 	b := true
 	return &b
-}
-
-// Valide qu'une string n'est pas vide
-func requireNonEmpty(s string) bool {
-	return strings.TrimSpace(s) != ""
 }
 
 // resetUserPassword — POST /api/users/{id}/reset-password

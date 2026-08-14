@@ -135,7 +135,7 @@ func (w *RelanceWorker) checkAndSend(ctx context.Context) {
                         w.logger.Error("Relance Worker: scan failed", "error", err.Error())
                         continue
                 }
-                c.JoursRest = int(c.DateFin.Sub(time.Now()).Hours() / 24)
+                c.JoursRest = int(time.Until(c.DateFin).Hours() / 24)
                 candidates = append(candidates, c)
         }
 

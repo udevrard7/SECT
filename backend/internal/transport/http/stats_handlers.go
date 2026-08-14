@@ -970,7 +970,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 idx := 1
                 idx = appendFiltre(&clauses, &args, idx, `e."filiereId"`, "=", filiereID)
                 idx = appendFiltre(&clauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
-                idx = appendFiltre(&clauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
+                appendFiltre(&clauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
                 return buildAnd(clauses), args
         }
         // buildJoinAndWhere : pour requêtes LEFT/INNER JOIN SessionPassation.
@@ -982,7 +982,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 idx := 1
                 idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
                 idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
-                idx = appendFiltre(&wClauses, &args, idx, `e."filiereId"`, "=", filiereID)
+                appendFiltre(&wClauses, &args, idx, `e."filiereId"`, "=", filiereID)
                 joinOn = buildAnd(jClauses)
                 where = buildAnd(wClauses)
                 return
@@ -997,7 +997,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 idx := 1
                 idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
                 idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
-                idx = appendFiltre(&wClauses, &args, idx, `u."filiereId"`, "=", filiereID)
+                appendFiltre(&wClauses, &args, idx, `u."filiereId"`, "=", filiereID)
                 joinOn = buildAnd(jClauses)
                 where = buildAnd(wClauses)
                 return

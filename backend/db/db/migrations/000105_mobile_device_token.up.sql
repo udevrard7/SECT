@@ -18,9 +18,12 @@ CREATE INDEX IF NOT EXISTS "idx_mobile_device_user" ON "MobileDeviceToken"("user
 CREATE INDEX IF NOT EXISTS "idx_mobile_device_active" ON "MobileDeviceToken"("userId", "active");
 
 -- Row Level Security
+-- NOTE: GUC doit être 'app.claims.user_id' (posé par db.SetClaimsTx), PAS
+-- 'app.current_user_id'. Bug introduit dans le commit SECT-SECURITY-AUDIT :
+-- mismatch de nom → RLS bloquait 100% des opérations sur cette table.
 ALTER TABLE "MobileDeviceToken" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "mobile_device_owner" ON "MobileDeviceToken"
-    FOR ALL USING ("userId" = current_setting('app.current_user_id', true));
+    FOR ALL USING ("userId" = current_setting('app.claims.user_id', true));
 
 -- Topic subscriptions for APNs (server-side routing)
 CREATE TABLE IF NOT EXISTS "MobileTopicSubscription" (
@@ -36,4 +39,4 @@ CREATE INDEX IF NOT EXISTS "idx_mobile_topic_topic" ON "MobileTopicSubscription"
 
 ALTER TABLE "MobileTopicSubscription" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "mobile_topic_owner" ON "MobileTopicSubscription"
-    FOR ALL USING ("userId" = current_setting('app.current_user_id', true));
+    FOR ALL USING ("userId" = current_setting('app.claims.user_id', true));

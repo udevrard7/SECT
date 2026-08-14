@@ -133,7 +133,7 @@ func (w *DocumentAnalyzerWorker) markAnalysisSuccess(ctx context.Context, docume
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         _, err = tx.Exec(ctx, `
                 UPDATE "Document"
@@ -148,7 +148,9 @@ func (w *DocumentAnalyzerWorker) markAnalysisSuccess(ctx context.Context, docume
                 w.logger.Error("markAnalysisSuccess: update failed", "error", err, "documentId", documentID)
                 return
         }
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                w.logger.Error("commit failed", "error", err)
+        }
 }
 
 // markAnalysisError met à jour le document : statut=ERREUR + erreurAnalyse (P1-D1).
@@ -160,7 +162,7 @@ func (w *DocumentAnalyzerWorker) markAnalysisError(ctx context.Context, document
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         _, err = tx.Exec(ctx, `
                 UPDATE "Document"
@@ -173,7 +175,9 @@ func (w *DocumentAnalyzerWorker) markAnalysisError(ctx context.Context, document
                 w.logger.Error("markAnalysisError: update failed", "error", err, "documentId", documentID)
                 return
         }
-        tx.Commit(ctx)
+        if err := tx.Commit(ctx); err != nil {
+                w.logger.Error("commit failed", "error", err)
+        }
 }
 
 // extractThemesFromChapters sérialise les titres de chapters en JSON string.
@@ -211,7 +215,7 @@ func (w *DocumentAnalyzerWorker) getDocumentContent(ctx context.Context, documen
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var content *string
         err = tx.QueryRow(ctx, `SELECT "contenuTexte" FROM "Document" WHERE "id" = $1`, documentID).Scan(&content)
@@ -233,7 +237,7 @@ func (w *DocumentAnalyzerWorker) countChapters(ctx context.Context, documentID s
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         var count int
         err = tx.QueryRow(ctx, `SELECT count(*) FROM "Chapter" WHERE "documentId" = $1`, documentID).Scan(&count)
@@ -296,7 +300,7 @@ func (w *DocumentAnalyzerWorker) insertChapters(ctx context.Context, documentID 
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         inserted := 0
         for i, ch := range chapters {
@@ -324,7 +328,7 @@ func (w *DocumentAnalyzerWorker) RecoverInterruptedAnalyses(ctx context.Context)
         }
         defer tx.Rollback(ctx)
 
-        tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
         rows, err := tx.Query(ctx, `
                 SELECT d."id"

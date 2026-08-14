@@ -379,7 +379,7 @@ func buildEpreuvePrompt(materials []docMaterial, cfg epreuvesGenerateConfig) []a
         // Construire la section « documents » du prompt.
         var docsBuf strings.Builder
         for i, m := range materials {
-                docsBuf.WriteString(fmt.Sprintf("--- Document %d : %s ---\n", i+1, m.Filename))
+                fmt.Fprintf(&docsBuf, "--- Document %d : %s ---\n", i+1, m.Filename)
                 docsBuf.WriteString(m.Content)
                 docsBuf.WriteString("\n\n")
         }

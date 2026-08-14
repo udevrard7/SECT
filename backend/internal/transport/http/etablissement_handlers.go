@@ -191,7 +191,7 @@ func (s *Server) uploadLogo(w http.ResponseWriter, r *http.Request) {
                 writeJSONError(w, http.StatusBadRequest, "fichier 'file' requis")
                 return
         }
-        defer file.Close()
+        defer func() { _ = file.Close() }()
 
         // Valider le type MIME
         contentType := header.Header.Get("Content-Type")

@@ -125,13 +125,17 @@ func (s *Server) initiateB2BPayment(w http.ResponseWriter, r *http.Request) {
         }
 
         // 5. Stocker la référence
-        err = appdb.WithTx(ctx, s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
+        if err := appdb.WithTx(ctx, s.dbPool, appdb.SystemClaims(), func(tx pgx.Tx) error {
                 _, err := tx.Exec(ctx, `
                         UPDATE "Abonnement" SET "geniuspayReference" = $1, "geniuspayPaymentUrl" = $2, "updatedAt" = NOW()
                         WHERE "id" = $3
                 `, gpResp.Reference, gpResp.PaymentURL, aboID)
                 return err
-        })
+        }); err != nil {
+                slog.Error("B2B payment: failed to store reference", "aboId", aboID, "error", err)
+                writeJSONError(w, http.StatusInternalServerError, "failed to store payment reference")
+                return
+        }
 
         slog.Info("B2B payment initiated",
                 "aboId", aboID, "reference", gpResp.Reference,
