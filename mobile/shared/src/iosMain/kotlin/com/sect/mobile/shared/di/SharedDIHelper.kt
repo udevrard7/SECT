@@ -5,6 +5,8 @@ package com.sect.mobile.shared.di
 
 import com.sect.mobile.shared.cache.TokenCache
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import org.koin.core.KoinApplication
+import org.koin.core.module.Module
 import org.koin.mp.KoinPlatform
 
 /**
@@ -24,6 +26,26 @@ import org.koin.mp.KoinPlatform
  * calling any resolve methods. This is guaranteed by SECTApp.init().
  */
 object SharedDIHelper {
+
+    /**
+     * Start Koin with the given modules.
+     * Called from Swift KoinStartup.start().
+     */
+    fun startKoin(modules: List<Module>) {
+        KoinPlatform.startKoin(modules = modules)
+    }
+
+    /**
+     * Check if Koin is already started.
+     */
+    fun isKoinStarted(): Boolean {
+        return try {
+            KoinPlatform.getKoin()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     /**
      * Resolve SECTRepositoryInterface from Koin.
