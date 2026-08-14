@@ -107,7 +107,7 @@ class AuthViewModel(
                 userName = user.name
             )
             // Push subscriptions seulement pour enseignant/étudiant
-            pushSubscriptionManager.onUserLoggedIn(user)
+            viewModelScope.launch { pushSubscriptionManager.onUserLoggedIn(user) }
         }
     }
 
