@@ -55,7 +55,7 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1") // ensure json available for datetime serializers
 
             // Koin DI (shared)
-            implementation("io.insert-koin:koin-core:4.2.2")
+            implementation("io.insert-koin:koin-core:4.1.1")
 
             // SQLDelight (base SQLite native — offline mode)
             implementation("app.cash.sqldelight:runtime:2.0.2")
