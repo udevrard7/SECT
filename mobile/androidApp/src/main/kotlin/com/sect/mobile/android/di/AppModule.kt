@@ -56,10 +56,12 @@ val appModule = module {
 
     single<HttpClientFactory> { AndroidHttpClientFactory() }
 
+    // ⚠️ ATTENTION : AuthApi dépend de HttpClient → dépendance circulaire.
+    // On ne peut pas faire get<AuthApi>() pendant la création de HttpClient.
+    // Solution : résolution lazy via getKoin() dans le refreshHandler.
     single<HttpClient> {
         val factory = get<HttpClientFactory>()
         val tokenCache = get<TokenCache>()
-        val apiAuthApi = get<AuthApi>()
         factory.create(
             baseUrl = get<String>(named("apiBaseUrl")),
             tokenProvider = { runBlocking { tokenCache.getAccessToken() } },
@@ -67,6 +69,8 @@ val appModule = module {
                 try {
                     val rt = runBlocking { tokenCache.getRefreshToken() }
                     if (rt.isNotEmpty()) {
+                        // Résolution lazy d'AuthApi pour éviter la dépendance circulaire
+                        val apiAuthApi = getKoin().get<AuthApi>()
                         val dto = apiAuthApi.refresh(rt)
                         runBlocking {
                             tokenCache.saveAccessToken(dto.accessToken)
