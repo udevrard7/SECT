@@ -64,3 +64,32 @@ data class PropositionDto(
     val estCorrecte: Boolean,
     val ordre: Int
 )
+
+// ── Response wrappers (le backend Go retourne des objets wrappés, pas des bare arrays) ──
+
+/**
+ * Réponse de GET /api/epreuves (list).
+ * Le backend retourne { epreuves, filieres, [total, page, limit, totalPages] }.
+ * Sans wrapper, la désérialisation en List<EpreuveDto> échoue silencieusement
+ * et le dashboard reste vide.
+ */
+@Serializable
+data class EpreuveListResponseDto(
+    val epreuves: List<EpreuveDto> = emptyList(),
+    val filieres: List<FiliereRefDto> = emptyList(),
+    val total: Int? = null,
+    val page: Int? = null,
+    val limit: Int? = null,
+    val totalPages: Int? = null
+)
+
+/** Réponse de GET /api/epreuves/{id} : { epreuve: {...} } */
+@Serializable
+data class EpreuveResponseDto(val epreuve: EpreuveDto)
+
+/** Réponse de POST/PATCH /api/epreuves : { epreuve: {...}, message: "..." } */
+@Serializable
+data class EpreuveMutationResponseDto(
+    val epreuve: EpreuveDto,
+    val message: String? = null
+)

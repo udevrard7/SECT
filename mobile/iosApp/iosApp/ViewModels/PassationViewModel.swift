@@ -193,7 +193,15 @@ class PassationViewModel: ObservableObject {
                 sessionId: session.id,
                 reponses: reponses
             )
-            self.session = result
+            // FIX-API-2 : submitSession retourne maintenant un SubmitResult (et non
+            // un SessionPassation). On récupère la session mise à jour renvoyée par
+            // le backend (statut=SOUMISE/CORRIGEE + score si auto-graded), avec
+            // fallback sur la session courante si le backend ne renvoie pas la session.
+            if let updatedSession = result.session {
+                self.session = updatedSession
+            } else {
+                self.session = session
+            }
             isSessionComplete = true
         } catch {
             self.error = error.localizedDescription

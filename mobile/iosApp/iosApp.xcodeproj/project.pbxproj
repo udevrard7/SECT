@@ -52,6 +52,11 @@
                         isa = PBXBuildFile;
                         fileRef = 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */;
                 };
+/* Resources in Resources build phase */
+                8A1A2B3C4D5E6F7A8B9C0D91 /* Assets.xcassets in Resources */ = {
+                        isa = PBXBuildFile;
+                        fileRef = 8A1A2B3C4D5E6F7A8B9C0D90 /* Assets.xcassets */;
+                };
 
 /* ===== PBXFileReference ===== */
                 8A1A2B3C4D5E6F7A8B9C0D1E /* SECTApp.swift */ = {
@@ -119,6 +124,12 @@
                         path = iosApp.app;
                         sourceTree = BUILT_PRODUCTS_DIR;
                 };
+                8A1A2B3C4D5E6F7A8B9C0D90 /* Assets.xcassets */ = {
+                        isa = PBXFileReference;
+                        lastKnownFileType = folder.assetcatalog;
+                        path = Assets.xcassets;
+                        sourceTree = "<group>";
+                };
 
 /* ===== PBXGroup ===== */
                 8A1A2B3C4D5E6F7A8B9C0D32 /* ViewModels */ = {
@@ -174,6 +185,7 @@
                         isa = PBXGroup;
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D1E /* SECTApp.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D90 /* Assets.xcassets */,
                                 8A1A2B3C4D5E6F7A8B9C0D32 /* ViewModels */,
                                 8A1A2B3C4D5E6F7A8B9C0D33 /* Views */,
                                 8A1A2B3C4D5E6F7A8B9C0D34 /* Utilities */,
@@ -319,6 +331,7 @@
                         isa = PBXResourcesBuildPhase;
                         buildActionMask = 2147483647;
                         files = (
+                                8A1A2B3C4D5E6F7A8B9C0D91 /* Assets.xcassets in Resources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };
