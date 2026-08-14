@@ -4,6 +4,7 @@ package com.sect.mobile.shared.repository
 
 import com.sect.mobile.shared.network.api.SessionApi
 import kotlinx.coroutines.*
+import kotlinx.datetime.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -78,7 +79,7 @@ class AutoSaveService(
         try {
             sessionApi.saveReponse(sid, questionId, contenu)
             _dirtyQuestions.value = _dirtyQuestions.value - questionId
-            _lastSaveTime.value = System.currentTimeMillis()
+            _lastSaveTime.value = Clock.System.now().toEpochMilliseconds()
             _saveError.value = null
         } catch (e: Exception) {
             _saveError.value = e.message
@@ -104,7 +105,7 @@ class AutoSaveService(
                 failed++
             }
         }
-        _lastSaveTime.value = System.currentTimeMillis()
+        _lastSaveTime.value = Clock.System.now().toEpochMilliseconds()
         _saveError.value = if (failed > 0) "$failed réponses non sauvegardées" else null
         _isSaving.value = false
     }
@@ -121,7 +122,7 @@ class AutoSaveService(
             } catch (_: Exception) { continue }
         }
         _dirtyQuestions.value = emptySet()
-        _lastSaveTime.value = System.currentTimeMillis()
+        _lastSaveTime.value = Clock.System.now().toEpochMilliseconds()
         _saveError.value = null
         _isSaving.value = false
     }
