@@ -75,6 +75,21 @@
                         path = iOSProctoringService.swift;
                         sourceTree = "<group>";
                 };
+                8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpreuveDetailView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpreuveViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D79 /* KoinRepositoryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KoinRepositoryProvider.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D7B /* KoinStartup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KoinStartup.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagerieViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassationView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassationViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D85 /* PushConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushConfig.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D87 /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationManager.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SECTAppDelegate.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */ = {
                         isa = PBXFileReference;
                         lastKnownFileType = wrapper.framework;
