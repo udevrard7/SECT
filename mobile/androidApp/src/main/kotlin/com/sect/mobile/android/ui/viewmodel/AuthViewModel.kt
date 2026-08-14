@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.AuthSession
 import com.sect.mobile.shared.domain.model.User
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.notification.PushSubscriptionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +23,10 @@ import kotlinx.coroutines.launch
  * 4. Login → credentials → API → cache tokens → Authenticated
  * 5. Logout → révoque refresh token → clear cache → Unauthenticated
  */
-class AuthViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
+class AuthViewModel(
+    private val repository: SECTRepositoryInterface,
+    private val pushSubscriptionManager: PushSubscriptionManager
+) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.CheckingToken)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -56,6 +60,9 @@ class AuthViewModel(private val repository: SECTRepositoryInterface) : ViewModel
                         role = user.role.name,
                         userName = user.name
                     )
+                    // SECT-MOBILE-TOPIC-PUSH-1 : restaurer les abonnements aux topics
+                    // (app relancée avec token valide)
+                    pushSubscriptionManager.onUserLoggedIn(user)
                 } else {
                     _authState.value = AuthState.Unauthenticated
                 }
@@ -69,6 +76,8 @@ class AuthViewModel(private val repository: SECTRepositoryInterface) : ViewModel
                         role = session.user.role.name,
                         userName = session.user.name
                     )
+                    // SECT-MOBILE-TOPIC-PUSH-1 : restaurer les abonnements après refresh
+                    pushSubscriptionManager.onUserLoggedIn(session.user)
                 } catch (_: Exception) {
                     _authState.value = AuthState.Unauthenticated
                 }
@@ -91,6 +100,9 @@ class AuthViewModel(private val repository: SECTRepositoryInterface) : ViewModel
                     role = session.user.role.name,
                     userName = session.user.name
                 )
+                // SECT-MOBILE-TOPIC-PUSH-1 : s'abonner aux topics de notifications
+                // (alerts établissement + filière) après un login réussi.
+                pushSubscriptionManager.onUserLoggedIn(session.user)
             } catch (e: Exception) {
                 val message = when {
                     e.message?.contains("401") == true -> "Identifiants incorrects"
@@ -130,6 +142,8 @@ class AuthViewModel(private val repository: SECTRepositoryInterface) : ViewModel
             } catch (_: Exception) {
                 // Même si le logout API échoue, on clear le cache local
             } finally {
+                // SECT-MOBILE-TOPIC-PUSH-1 : se désabonner de tous les topics
+                pushSubscriptionManager.onUserLoggedOut()
                 _currentUser.value = null
                 _authState.value = AuthState.Unauthenticated
             }

@@ -7,6 +7,7 @@ import com.sect.mobile.shared.data.cache.AndroidPreferencesCache
 import com.sect.mobile.shared.data.cache.PreferencesCache
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import com.sect.mobile.shared.network.api.AuthApi
+import com.sect.mobile.shared.notification.PushSubscriptionManager
 import com.sect.mobile.shared.platform.AndroidBiometricAuth
 import com.sect.mobile.shared.platform.AndroidHttpClientFactory
 import com.sect.mobile.shared.platform.AndroidNotificationService
@@ -91,11 +92,11 @@ val appModule = module {
     single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
 
     // ── Android ViewModels (depend on SECTRepositoryInterface, not SECTRepository) ──
-    viewModel { AuthViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { AuthViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
     viewModel { DashboardViewModel(get<SECTRepositoryInterface>()) }
     viewModel { EpreuveViewModel(get<SECTRepositoryInterface>()) }
-    viewModel { PassationViewModel(get<SECTRepositoryInterface>()) }
-    viewModel { MessagerieViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { PassationViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
+    viewModel { MessagerieViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
     viewModel { ProfileViewModel(get<SECTRepositoryInterface>()) }
 }
 

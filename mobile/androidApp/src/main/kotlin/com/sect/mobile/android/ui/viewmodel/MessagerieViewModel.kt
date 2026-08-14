@@ -6,12 +6,16 @@ import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Conversation
 import com.sect.mobile.shared.domain.model.Message
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.notification.PushSubscriptionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class MessagerieViewModel(private val repository: SECTRepositoryInterface) : ViewModel() {
+class MessagerieViewModel(
+    private val repository: SECTRepositoryInterface,
+    private val pushSubscriptionManager: PushSubscriptionManager
+) : ViewModel() {
 
     // ── Conversations ──
     private val _conversations = MutableStateFlow<UiState<List<Conversation>>>(UiState.Loading)
@@ -54,7 +58,18 @@ class MessagerieViewModel(private val repository: SECTRepositoryInterface) : Vie
      * Sélectionner une conversation et charger ses messages.
      */
     fun selectConversation(conversationId: String) {
+        // SECT-MOBILE-TOPIC-PUSH-1 : se désabonner de l'ancienne conversation
+        // et s'abonner à la nouvelle pour recevoir les push de nouveaux messages
+        val previousId = _selectedConversationId.value
+        if (previousId != null && previousId != conversationId) {
+            viewModelScope.launch {
+                pushSubscriptionManager.unsubscribeFromConversation(previousId)
+            }
+        }
         _selectedConversationId.value = conversationId
+        viewModelScope.launch {
+            pushSubscriptionManager.subscribeToConversation(conversationId)
+        }
         loadMessages(conversationId)
     }
 
