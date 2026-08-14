@@ -69,7 +69,7 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: 🔍 Compile Shared Module (commonMain + Android + iOS)
-        run: ./gradlew :shared:compileKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
 
       - name: 🧪 Test Shared Module (commonMain)
         run: ./gradlew :shared:allTests --no-daemon
