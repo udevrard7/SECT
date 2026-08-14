@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import org.koin.mp.KoinPlatform
 
 /**
  * iOS platform-specific Koin module.
@@ -57,7 +58,15 @@ val iosPlatformModule = module {
     single<HttpClient> {
         val factory = get<HttpClientFactory>()
         val tokenCache = get<TokenCache>()
-        val apiAuthApi = get<AuthApi>()
+        // ⚠️ ATTENTION : AuthApi dépend de HttpClient → dépendance circulaire.
+        // On ne peut PAS faire get<AuthApi>() pendant la création de HttpClient,
+        // sinon Koin lève une StackOverflowError / KoinInstanceCreationException
+        // au runtime → l'app iOS crashe au lancement (KoinStartup.start() → SECTApp.init()).
+        //
+        // Solution : résolution lazy via KoinPlatform.getKoin().get<AuthApi>()
+        // à l'intérieur du refreshHandler (appelé uniquement quand un token
+        // expire, pas à la création du singleton HttpClient).
+        // C'est le même pattern que côté Android (AppModule.kt).
         factory.create(
             baseUrl = get<String>(named("apiBaseUrl")),
             tokenProvider = { kotlinx.coroutines.runBlocking { tokenCache.getAccessToken() } },
@@ -65,6 +74,7 @@ val iosPlatformModule = module {
                 try {
                     val rt = kotlinx.coroutines.runBlocking { tokenCache.getRefreshToken() }
                     if (rt.isNotEmpty()) {
+                        val apiAuthApi = KoinPlatform.getKoin().get<AuthApi>()
                         val session = apiAuthApi.refresh(rt)
                         kotlinx.coroutines.runBlocking {
                             tokenCache.saveAccessToken(session.accessToken)
