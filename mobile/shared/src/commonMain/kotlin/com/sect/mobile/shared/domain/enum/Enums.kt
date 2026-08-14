@@ -12,6 +12,12 @@ enum class Role {
     ETUDIANT;
 
     fun isAtLeast(required: Role): Boolean = this.ordinal <= required.ordinal
+
+    /**
+     * L'app mobile est réservée aux enseignants et étudiants.
+     * Les ADMIN et RESPONSABLE doivent utiliser l'interface web.
+     */
+    fun isMobileUser(): Boolean = this == ENSEIGNANT || this == ETUDIANT
 }
 
 // ── Niveaux d'étude ──
