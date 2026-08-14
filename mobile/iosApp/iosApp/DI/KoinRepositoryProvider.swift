@@ -62,8 +62,8 @@ class KoinRepositoryProvider {
     /// `tokenProvider` closure in the HttpClient has a token to return.
     /// Called from SECTApp.swift splash screen.
     func initializeTokens() async {
-        _cachedAccessToken = try? await tokenCache.getAccessToken()
-        _cachedRefreshToken = try? await tokenCache.getRefreshToken()
+        _cachedAccessToken = (try? await tokenCache.getAccessToken()) ?? ""
+        _cachedRefreshToken = (try? await tokenCache.getRefreshToken()) ?? ""
     }
     
     /// Update cached tokens after a successful login.
