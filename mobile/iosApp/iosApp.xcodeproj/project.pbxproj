@@ -75,21 +75,21 @@
                         path = iOSProctoringService.swift;
                         sourceTree = "<group>";
                 };
-                8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpreuveDetailView.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpreuveViewModel.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D79 /* KoinRepositoryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KoinRepositoryProvider.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D7B /* KoinStartup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KoinStartup.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagerieViewModel.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassationView.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassationViewModel.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViewModel.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D85 /* PushConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushConfig.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D87 /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationManager.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SECTAppDelegate.swift; sourceTree = "<group>"; };
-                8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConversationView.swift; path = ../Views/ConversationView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DashboardViewModel.swift; path = ../ViewModels/DashboardViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EpreuveDetailView.swift; path = ../Views/EpreuveDetailView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EpreuveViewModel.swift; path = ../ViewModels/EpreuveViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D79 /* KoinRepositoryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KoinRepositoryProvider.swift; path = ../DI/KoinRepositoryProvider.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D7B /* KoinStartup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KoinStartup.swift; path = ../DI/KoinStartup.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MessagerieViewModel.swift; path = ../ViewModels/MessagerieViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PassationView.swift; path = ../Views/PassationView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PassationViewModel.swift; path = ../ViewModels/PassationViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProfileViewModel.swift; path = ../ViewModels/ProfileViewModel.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D85 /* PushConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushConfig.swift; path = ../Push/PushConfig.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D87 /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushNotificationManager.swift; path = ../Push/PushNotificationManager.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResultsView.swift; path = ../Views/ResultsView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SECTAppDelegate.swift; path = ../Push/SECTAppDelegate.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = ../Views/SettingsView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */ = {
                         isa = PBXFileReference;
                         lastKnownFileType = wrapper.framework;
@@ -110,11 +110,6 @@
                         isa = PBXGroup;
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D1F /* AuthViewModel.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */,
                         );
                         path = ViewModels;
                         sourceTree = "<group>";
@@ -124,11 +119,6 @@
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D20 /* LoginView.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0D21 /* DashboardView.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */,
                         );
                         path = Views;
                         sourceTree = "<group>";
@@ -137,9 +127,22 @@
                         isa = PBXGroup;
                         children = (
                                 8A1A2B3C4D5E6F7A8B9C0D22 /* Colors.swift */,
-                                8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */
-				8A1A2B3C4D5E6F7A8B9C0D22 /* Colors.swift */,
-				8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D23 /* iOSProctoringService.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D71 /* ConversationView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D73 /* DashboardViewModel.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D75 /* EpreuveDetailView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D77 /* EpreuveViewModel.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D79 /* KoinRepositoryProvider.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D7B /* KoinStartup.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D7D /* MessagerieViewModel.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D7F /* PassationView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D81 /* PassationViewModel.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D83 /* ProfileViewModel.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D85 /* PushConfig.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D87 /* PushNotificationManager.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */,
                         );
                         path = Utilities;
                         sourceTree = "<group>";
@@ -159,8 +162,6 @@
                                 8A1A2B3C4D5E6F7A8B9C0D32 /* ViewModels */,
                                 8A1A2B3C4D5E6F7A8B9C0D33 /* Views */,
                                 8A1A2B3C4D5E6F7A8B9C0D34 /* Utilities */,
-				8A1A2B3C4D5E6F7A8B9C0D90 /* DI */,
-				8A1A2B3C4D5E6F7A8B9C0D91 /* Push */,
                         );
                         path = iosApp;
                         sourceTree = "<group>";
