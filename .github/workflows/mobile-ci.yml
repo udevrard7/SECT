@@ -65,7 +65,9 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: 🔍 Compile Shared Module (Android + iOS targets)
-        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon
+        # --no-build-cache : évite que le cache Gradle restore l'ancien code
+        # SQLDelight généré (les .sq ont été modifiés, la régénération est obligatoire)
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64 --no-daemon --no-build-cache
 
       - name: 🧪 Test Shared Module (commonMain)
         run: ./gradlew :shared:allTests --no-daemon
