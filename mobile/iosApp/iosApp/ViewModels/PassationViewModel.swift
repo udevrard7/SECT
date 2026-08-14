@@ -48,7 +48,7 @@ class PassationViewModel: ObservableObject {
             if let tempsRestant = session.tempsRestant, Int(tempsRestant.intValue) > 0 {
                 totalSeconds = Int(tempsRestant.intValue)
             } else if let epreuve = self.epreuve {
-                totalSeconds = Int(epreuve.duree.intValue) * 60
+                totalSeconds = Int(epreuve.duree) * 60
             } else {
                 totalSeconds = 0
             }
