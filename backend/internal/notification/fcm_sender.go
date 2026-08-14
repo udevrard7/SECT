@@ -10,6 +10,7 @@ package notification
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -192,15 +193,15 @@ func (s *FCMSender) sendFCMMessage(ctx context.Context, deviceToken string, topi
 		"android": map[string]any{
 			"notification": map[string]string{
 				"channel_id": "sect_notifications",
-				"icon":        "ic_notification",
-				"color":       "#10B981",
+				"icon":       "ic_notification",
+				"color":      "#10B981",
 			},
 			"priority": "high",
 		},
 		"apns": map[string]any{
 			"payload": map[string]any{
 				"aps": map[string]any{
-					"sound":            "default",
+					"sound":             "default",
 					"content-available": 1,
 				},
 			},
@@ -376,7 +377,7 @@ func buildAndSignJWT(clientEmail, tokenURI string, privateKey *rsa.PrivateKey) (
 	signingInput := headerB64 + "." + payloadB64
 	hashed := sha256.Sum256([]byte(signingInput))
 
-	signature, err := rsa.SignPKCS1v15(nil, privateKey, sha256.New, hashed[:])
+	signature, err := rsa.SignPKCS1v15(nil, privateKey, crypto.SHA256, hashed[:])
 	if err != nil {
 		return "", fmt.Errorf("failed to sign JWT: %w", err)
 	}
