@@ -3,15 +3,18 @@
 // Plus sécurisé que NSUserDefaults (chiffré, persistant, accessible uniquement par l'app).
 package com.sect.mobile.shared.cache
 
+import kotlinx.cinterop.COpaquePointerVar
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
 import platform.Foundation.NSData
-import platform.Foundation.NSKeyedArchiver
-import platform.Foundation.NSKeyedUnarchiver
+import platform.Foundation.NSMutableDictionary
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
 import platform.Foundation.dataUsingEncoding
-import platform.Foundation.length
-import platform.Foundation.stringUsingEncoding
 import platform.Security.*
 
 /**
@@ -23,6 +26,7 @@ import platform.Security.*
  * - Accessible uniquement par l'application (sandbox)
  * - Supporte Access Control (Face ID / Touch ID)
  */
+@OptIn(ExperimentalForeignApi::class)
 class IOSTokenCache : TokenCache {
 
     companion object {
@@ -69,41 +73,40 @@ class IOSTokenCache : TokenCache {
         val data = value.encodeToByteArray().toNSData()
         if (data == null) return
 
-        val query = mapOf<Any?, Any?>(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE_NAME,
-            kSecAttrAccount to key,
-            kSecValueData to data,
-            kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        )
+        val query = NSMutableDictionary()
+        query[kSecClass] = kSecClassGenericPassword
+        query[kSecAttrService] = SERVICE_NAME
+        query[kSecAttrAccount] = key
+        query[kSecValueData] = data
+        query[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         SecItemAdd(query, null)
     }
 
     private fun getFromKeychain(key: String): String? {
-        val query = mapOf<Any?, Any?>(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE_NAME,
-            kSecAttrAccount to key,
-            kSecReturnData to true,
-            kSecMatchLimit to kSecMatchLimitOne
-        )
+        val query = NSMutableDictionary()
+        query[kSecClass] = kSecClassGenericPassword
+        query[kSecAttrService] = SERVICE_NAME
+        query[kSecAttrAccount] = key
+        query[kSecReturnData] = true
+        query[kSecMatchLimit] = kSecMatchLimitOne
 
-        var result: Any? = null
-        val status = SecItemCopyMatching(query, &result)
+        return memScoped {
+            val resultPtr = alloc<COpaquePointerVar>()
+            val status = SecItemCopyMatching(query, resultPtr.ptr)
 
-        if (status != errSecSuccess || result == null) return null
+            if (status != errSecSuccess) return@memScoped null
 
-        val data = result as? NSData ?: return null
-        return data.toStringFromUTF8()
+            val cfData = resultPtr.value?.reinterpret<NSData>()
+            cfData?.toStringFromUTF8()
+        }
     }
 
     private fun deleteFromKeychain(key: String) {
-        val query = mapOf<Any?, Any?>(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE_NAME,
-            kSecAttrAccount to key
-        )
+        val query = NSMutableDictionary()
+        query[kSecClass] = kSecClassGenericPassword
+        query[kSecAttrService] = SERVICE_NAME
+        query[kSecAttrAccount] = key
 
         SecItemDelete(query)
     }
@@ -111,7 +114,6 @@ class IOSTokenCache : TokenCache {
     // ── Helpers ──
 
     private fun ByteArray.toNSData(): NSData? {
-        // Conversion ByteArray → NSData via NSString intermédiaire
         val nsString = NSString.create(string = this.decodeToString())
         return nsString.dataUsingEncoding(NSUTF8StringEncoding)
     }
@@ -121,4 +123,5 @@ class IOSTokenCache : TokenCache {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 actual fun createTokenCache(): TokenCache = IOSTokenCache()
