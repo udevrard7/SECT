@@ -220,3 +220,30 @@ Stage Summary:
 - ⏳ Job "Build iOS App" : en cours de fix (action setup-xcode remplacée)
 - Avant cette session : le CI mobile ne validait RIEN (gradlew0 + || true masquaient tout)
 - Après : Android shared + app compilent, tests passent, APK release signé produit
+
+---
+Task ID: SECT-MOBILE-CI-IOS-GREEN
+Agent: Z.ai Code (tuteur/assistant)
+Task: Analyse architecture mobile + correction bugs + finalisation CI/CD
+
+Work Log:
+- Analyse architecture mobile KMP : shared (82 fichiers KMP) + androidApp (16) + iosApp (21 Swift)
+- Data flow : UI → ViewModel → SECTRepositoryInterface ← SECTRepositoryImpl → API(DTO) → Mapper → Domain
+- Bugs corrigés :
+  1. AutoSaveService.kt : System.currentTimeMillis() → Clock.System.now() (non dispo Kotlin/Native iOS)
+  2. kotlinx-datetime 0.7.0 → 0.6.0 (0.7.0 compilé avec Kotlin 2.2+, incompatible 2.1.21)
+  3. TokenCache.kt iOS : Keychain cinterop (SecItemAdd/CopyMatching) → NSUserDefaults (API Foundation bridgée)
+  4. BiometricAuth.kt iOS : LAPolicy non résolu → stub (NOT_AVAILABLE) en attendant wrapper Swift
+  5. --no-build-cache sur compile shared (cache Gradle restore ancien code SQLDelight)
+  6. xcodebuild : iPhone 16 → generic → détection dynamique simulateur
+- Workflows optimisés :
+  - mobile-ci.yml : cache réactivé, secrets via env:, linkDebugFramework au lieu de compile,
+    détection dynamique simulateur, typos corrigés
+  - mobile-release.yml : linkReleaseFramework, fallback simulateur si pas de code signing Apple,
+    secrets via env:, ExportOptions.plist créé
+
+Stage Summary:
+- ✅ Shared KMP compile (Android + iOS targets) + tests passent
+- ✅ Build Android APK release signé (+ upload artefact + Appetize deploy)
+- ⏳ Build iOS : Shared.framework compile ✅, xcodebuild en cours de fix (simulateur)
+- 7 commits pour résoudre les bugs iOS (Clock, kotlinx-datetime, TokenCache, BiometricAuth, simulator)
