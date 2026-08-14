@@ -111,7 +111,10 @@ sqldelight {
     databases {
         create("SectDatabase") {
             packageName.set("com.sect.mobile.shared.database")
-            srcDirs.setFrom(file("src/commonMain/sqldelight/com/sect/mobile/shared/database"))
+            // srcDirs doit pointer vers la RACINE sqldelight, pas le sous-dossier du package.
+            // SQLDelight attend que les .sq soient dans <srcDir>/<package-path>/.
+            // Ici : src/commonMain/sqldelight/com/sect/mobile/shared/database/*.sq
+            srcDirs.setFrom(file("src/commonMain/sqldelight"))
         }
     }
 }
