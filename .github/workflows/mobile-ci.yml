@@ -250,11 +250,12 @@ jobs:
       # ── Artefacts ──
       - name: 📦 Zip iOS App for upload
         run: |
-          # Trouver le .app produit par xcodebuild
-          APP_DIR=$(find iosApp/build/Build/Products -name "*.app" -type d | head -1)
+          # Trouver le .app produit par xcodebuild (recherche large)
+          APP_DIR=$(find iosApp/ -name "*.app" -type d 2>/dev/null | head -1)
           if [ -z "$APP_DIR" ]; then
-            echo "❌ No .app found in build products"
-            find iosApp/build -name "*.app" 2>/dev/null || echo "  build dir doesn't exist"
+            echo "❌ No .app found anywhere in iosApp/"
+            echo "=== Listing iosApp/build ==="
+            find iosApp/build -type f 2>/dev/null | head -20 || echo "  build dir doesn't exist"
             exit 1
           fi
           echo "Found: $APP_DIR"
@@ -262,12 +263,14 @@ jobs:
           cd "$(dirname "$APP_DIR")"
           zip -r sect-ios-app.zip "$(basename "$APP_DIR")"
           echo "✓ .app zipped: $(ls -lh sect-ios-app.zip)"
+          # Afficher le chemin absolu pour l'étape d'upload
+          echo "ZIP_PATH=$(pwd)/sect-ios-app.zip" >> $GITHUB_ENV
 
       - name: 📦 Upload iOS App
         uses: actions/upload-artifact@v4
         with:
           name: sect-ios-simulator
-          path: iosApp/build/Build/Products/Debug-iphonesimulator/sect-ios-app.zip
+          path: ${{ env.ZIP_PATH }}
           retention-days: 30
           if-no-files-found: warn
 
