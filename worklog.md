@@ -167,3 +167,24 @@ Stage Summary:
 - ✅ Job CI Migrations VERT (7 down.sql)
 - ⚠️ Job CI Lint reste rouge (60 erreurs non-bloquantes)
 - ✅ Render LIVE, backend opérationnel
+
+---
+Task ID: SECT-CI-GREEN-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Corriger toutes les erreurs golangci-lint restantes (98→0) sans délégation
+
+Work Log:
+- Phase 1 (unused, 22 erreurs) : supprimé 19 fonctions mortes dans stats_handlers.go (stub anciennes versions remplacées par *Real), mustJSON, resultatsOverviewReal, resultatsEtudiantOverviewReal
+- Phase 2 (errcheck, ~50 erreurs) : wrapping global sur 51 fichiers — defer resp.Body.Close(), defer tx.Rollback(ctx), json.NewEncoder(w).Encode(), fmt.Fprintf(w,...), w.Write(), tx.Commit(ctx), tx.Exec(set_config). Remplacement global car linter max-same-issues=3 masquait la majorité
+- Phase 3 (staticcheck, 16 erreurs) : S1039 (Sprintf inutile), SA9003 (branches vides), S1009 (nil check), ST1023 (omit type), QF1003 (5 if/else→switch), QF1012 (WriteString(Sprintf)→Fprintf), S1021 (merge var)
+- Phase 4 (ineffassign, 6 erreurs) : suppression argIdx++ final + fusion argIdx := 1 + argIdx = 4 → argIdx := 4
+- Commit cb19a72 (68 fichiers, +406/-970), push main
+- Render deploy dep-d9v7lmrncjis738nfbl0 → LIVE, health /health HTTP 200 en 0.27s
+- CI backend-ci.yml run #8 : TOUS les jobs VERTS (Migrations ✓, Lint ✓, Tests ✓, Build ✓)
+
+Stage Summary:
+- ✅ golangci-lint v2.12.2 : 0 issues (était 98)
+- ✅ CI backend-ci.yml : 100% VERT (était rouge sur Lint + Migrations)
+- ✅ Render LIVE (cb19a72), health 200
+- ✅ go vet 0, go build 0 (binaire 27MB)
+- Bilan session complète : bug compilation (SECT-FCM-BUILD-FIX-1) + RLS critique (SECT-CI-GREEN-1) + 7 down.sql + 98 erreurs lint (SECT-CI-GREEN-2) = CI entièrement au vert
