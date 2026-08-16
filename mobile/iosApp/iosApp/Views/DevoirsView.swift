@@ -132,8 +132,9 @@ struct DevoirCard: View {
             Text(devoir.titre)
                 .font(.headline).lineLimit(2)
 
-            if let desc = devoir.description {
-                Text(desc).font(.subheadline).foregroundColor(.secondary).lineLimit(2)
+            // description est un mot-clé Swift (NSObject.description) — accès direct
+            if !devoir.description.isEmpty {
+                Text(devoir.description).font(.subheadline).foregroundColor(.secondary).lineLimit(2)
             }
 
             HStack(spacing: 16) {
