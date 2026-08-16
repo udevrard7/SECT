@@ -83,7 +83,7 @@ struct EtudiantDashboardView: View {
     private var welcomeHeader: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Bonjour, \(authVM.currentUser?.name?.components(separatedBy: " ").first ?? "...")")
+                Text("Bonjour, \(authVM.currentUser?.name.components(separatedBy: " ").first ?? "...")")
                     .font(.headline)
                 Text("Étudiant")
                     .font(.subheadline)
