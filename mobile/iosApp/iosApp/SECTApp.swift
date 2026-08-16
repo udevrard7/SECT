@@ -18,6 +18,8 @@ struct SECTApp: App {
     // SECT-MOBILE-NAV-PHASE-B : nouveaux ViewModels pour Devoirs + Corrections
     @StateObject private var devoirsViewModel = DevoirsViewModel()
     @StateObject private var correctionsViewModel = CorrectionsViewModel()
+    // SECT-MOBILE-NAV-PHASE-C : ResultatsViewModel pour l'onglet Résultats étudiant
+    @StateObject private var resultatsViewModel = ResultatsViewModel()
     
     /// Tracks whether in-memory tokens have been loaded from Keychain.
     /// Shows a lightweight splash until ready so no HTTP request fires
@@ -102,6 +104,7 @@ struct SECTApp: App {
                     .environmentObject(profileViewModel)
                     .environmentObject(devoirsViewModel)
                     .environmentObject(correctionsViewModel)
+                    .environmentObject(resultatsViewModel)
             } else {
                 LoginView()
                     .environmentObject(authViewModel)
@@ -161,9 +164,8 @@ struct MainTabView: View {
                     }
                     .tag(2)
             } else {
-                // TODO(SECT-MOBILE-NAV-PHASE-B) : ResultatsView iOS à créer
-                // Pour l'instant, placeholder pour l'étudiant
-                EmptyView()
+                // SECT-MOBILE-NAV-PHASE-C : ResultatsView iOS (liste des résultats étudiant)
+                ResultatsView()
                     .tabItem {
                         Label("Résultats", systemImage: "chart.bar.fill")
                     }
