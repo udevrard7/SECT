@@ -103,7 +103,7 @@ val appModule = module {
     viewModel { MessagerieViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
     viewModel { ProfileViewModel(get<SECTRepositoryInterface>()) }
     // ViewModels ajoutés (SECT-MOBILE-CI-FIX-1) : corrections, resultats, devoirs
-    viewModel { CorrectionsViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { CorrectionsViewModel(get<SECTRepositoryInterface>(), get<CorrectionSessionHolder>()) }
     viewModel { ResultatsViewModel(get<SECTRepositoryInterface>()) }
     viewModel { DevoirsViewModel(get<SECTRepositoryInterface>()) }
     // SECT-MOBILE-CORRECTION-1 : correction détail (notation + finalize + retourner)

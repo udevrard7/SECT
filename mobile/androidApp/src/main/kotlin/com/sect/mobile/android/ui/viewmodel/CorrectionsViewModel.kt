@@ -15,7 +15,8 @@ import kotlinx.coroutines.launch
  * (au lieu du stub emptyList() précédent).
  */
 class CorrectionsViewModel(
-    private val repository: SECTRepositoryInterface
+    private val repository: SECTRepositoryInterface,
+    private val holder: CorrectionSessionHolder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<CorrectionsUiState>(CorrectionsUiState.Loading)
@@ -37,6 +38,11 @@ class CorrectionsViewModel(
                 )
             }
         }
+    }
+
+    /** Stocke la session sélectionnée pour le passage au détail. */
+    fun selectSession(session: CorrectionSession) {
+        holder.select(session)
     }
 }
 

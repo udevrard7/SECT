@@ -22,6 +22,7 @@ import com.sect.mobile.android.ui.viewmodel.FinalizeState
 import com.sect.mobile.android.ui.viewmodel.SaveState
 import com.sect.mobile.shared.domain.model.CorrectionReponse
 import com.sect.mobile.shared.domain.model.CorrectionSession
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * Écran détail de correction — notation question par question.
@@ -208,8 +209,9 @@ private fun ReponseCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (reponse.type != null) {
-                Text(reponse.type,
+            val type = reponse.type
+            if (type != null) {
+                Text(type,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -217,10 +219,11 @@ private fun ReponseCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Énoncé
-            if (!reponse.enonce.isNullOrBlank()) {
+            val enonce = reponse.enonce
+            if (!enonce.isNullOrBlank()) {
                 Text("Énoncé :", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(reponse.enonce,
+                Text(enonce,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 4.dp))
                 Spacer(modifier = Modifier.height(8.dp))
@@ -259,8 +262,9 @@ private fun ReponseCard(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer)
                         }
-                        if (!reponse.justificationIA.isNullOrBlank()) {
-                            Text(reponse.justificationIA,
+                        val justif = reponse.justificationIA
+                        if (!justif.isNullOrBlank()) {
+                            Text(justif,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(top = 4.dp))
