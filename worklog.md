@@ -600,3 +600,35 @@ Stage Summary:
 - ✅ Audit proactif : ProfileView et EtudiantDashboardView (aussi ajoutés au target dans FIX-4) avaient des erreurs non-détectées par le task — corrigées pour éviter un 6e round-trip CI
 - ⚠️ createConversation est un stub (le repository shared n'expose pas cette opération) — signalé à l'utilisateur via self.error au lieu de crasher
 - ⏳ CI iOS à re-vérifier après push (orchestrator s'en charge pour le commit)
+
+---
+Task ID: SECT-MOBILE-CI-GREEN-FINAL
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vérification CI mobile — de FAILURE total à 100% VERT
+
+Work Log:
+- Point de départ : run #93 (commit 90197b08) en FAILURE, job "Vérifier Shared KMP" échec
+- 6 commits, 6 itérations de CI pour résoudre toutes les erreurs :
+  1. e2dbbc08 (SECT-MOBILE-CI-FIX-1) : shared KMP — imports DTO + ResultatsApi (.body<>)
+  2. 8a3e14ed (SECT-MOBILE-CI-FIX-2) : suppression 4 doublons androidApp/java + alignement modèles domain
+  3. fb773151 (SECT-MOBILE-CI-FIX-3) : 60 erreurs Android — icônes Material, constructeur Epreuve, items() scope
+  4. 9a46e6b8 (SECT-MOBILE-CI-FIX-4) : iOS — syntaxe \\( + Role lowercase + 5 fichiers View ajoutés au pbxproj
+  5. a5e5d0f0 (SECT-MOBILE-CI-FIX-5) : iOS — 31 erreurs dans 6 fichiers (EpreuvesView, MessagerieView, DashboardViewModel, etc.)
+  6. 43a8184c (SECT-MOBILE-CI-FIX-6) : iOS — 3 dernières erreurs (optional chaining sur non-optionnels)
+- Run #99 (43a8184c) : SUCCESS ✅
+
+Résultat final run #99 :
+  ✅ 🧪 Vérifier Shared KMP      : success
+  ✅ 🤖 Build Android APK        : success (release signé + upload artefact)
+  ✅ 🍎 Build iOS App            : success (.app simulateur + upload artefact)
+  ✅ 📋 Summary                  : success
+  ✅ 📱 Deploy Appetize.io       : success (APK + iOS app déployés pour preview)
+
+Stage Summary:
+- ✅ CI mobile 100% VERT (était rouge sur Shared + Android + iOS)
+- ✅ APK Android release signé produit + déployé sur Appetize.io
+- ✅ App iOS simulateur compilée + déployée sur Appetize.io
+- ✅ Shared KMP compile (Android + iOS targets) + tests passent
+- ⚠️ getSessionsACorriger() retourne emptyList() (route backend /api/sessions/a-corriger à créer — TODO documenté)
+- ⚠️ Routes RESULTATS et CORRECTIONS sont des placeholders dans Navigation.kt (écrans pas encore branchés)
+- Bilan : 6 commits, ~100 erreurs résolues (5 shared + 473 doublons supprimés + 60 Android + 52 iOS)
