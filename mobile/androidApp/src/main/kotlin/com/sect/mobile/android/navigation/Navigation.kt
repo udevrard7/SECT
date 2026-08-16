@@ -28,6 +28,7 @@ import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
 import com.sect.mobile.android.ui.screens.travail.TravailScreen
 import com.sect.mobile.android.ui.viewmodel.*
+import com.sect.mobile.android.ui.components.navigation.SectAdaptiveNavigation
 import com.sect.mobile.android.ui.components.navigation.*
 import com.sect.mobile.shared.navigation.MobileRole
 import com.sect.mobile.shared.navigation.NavigationPolicy
@@ -157,34 +158,27 @@ fun SECTNavigation(
         }
     }
 
-    // SECT-MOBILE-NAV-PHASE-A : visibilité bottom bar déléguée à NavigationPolicy
-    // (shared KMP — réutilisable iOS). Masque en mode immersif (passation) +
-    // routes secondaires (détail, profil, conversation).
-    val showBottomBar = NavigationPolicy.shouldShowBottomBar(currentRoute, mobileRole)
+    // SECT-MOBILE-NAV-PHASE-A : visibilité déléguée à NavigationPolicy (shared KMP)
+    // SECT-MOBILE-NAV-PHASE-D : navigation adaptative (NavigationBar compact / NavigationRail medium+)
+    val showNav = NavigationPolicy.shouldShowBottomBar(currentRoute, mobileRole)
 
-    Scaffold(
-        bottomBar = {
-            if (showBottomBar) {
-                SectBottomNavigationBar(
-                    items = navItemsWithBadges,
-                    currentRoute = currentRoute ?: "",
-                    onNavigate = { route ->
-                        navController.navigate(route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
+    SectAdaptiveNavigation(
+        showNav = showNav,
+        items = navItemsWithBadges,
+        currentRoute = currentRoute ?: "",
+        onNavigate = { route ->
+            navController.navigate(route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
             }
         }
-    ) { innerPadding ->
+    ) {
         NavHost(
             navController = navController,
-            startDestination = startDestination,
-            modifier = Modifier.padding(innerPadding)
+            startDestination = startDestination
         ) {
             // ── Splash (avant auth) ──
             composable(Routes.SPLASH) {
