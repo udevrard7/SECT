@@ -756,3 +756,69 @@ Stage Summary:
 - ✅ Profil sorti de la bottom bar → accessible via avatar cliquable dans TopBar
 - ✅ Bottom bar masquée automatiquement en mode Passation (immersif) + routes secondaires
 - ⏳ CI mobile à vérifier après push
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-B-PBXPROJ
+Agent: general-purpose (pbxproj updater)
+Task: Ajouter 7 nouveaux fichiers Swift au project.pbxproj
+
+Work Log:
+- Lecture du fichier `/home/z/sect/mobile/iosApp/iosApp.xcodeproj/project.pbxproj` (584 lignes) pour comprendre la structure. Le fichier utilise un format de sections non-standard avec marqueurs `/* ===== PBXBuildFile ===== */`, `/* ===== PBXFileReference ===== */`, `/* ===== PBXGroup ===== */`, `/* ===== PBXSourcesBuildPhase ===== */` (pas de marqueurs Begin/End section classiques).
+- Vérification de l'existence des 7 fichiers Swift sur disque (3 ViewModels + 4 Views) sous `iosApp/iosApp/ViewModels/` et `iosApp/iosApp/Views/`.
+- Vérification de l'indentation réelle du fichier via `od -c` : 16 espaces pour les entrées PBXBuildFile/PBXFileReference (single-line), 32 espaces pour les éléments des listes children/files. Le fichier utilise des espaces, pas des tabs.
+- Edition 1 (PBXBuildFile) : insertion de 7 entrées single-line après `EtudiantDashboardView.swift in Sources` (ID D9B), avant le commentaire `/* Framework in Frameworks build phase */`. IDs utilisés : D9D, D9F, DA1, DA3, DA5, DA7, DA9.
+- Edition 2 (PBXFileReference) : insertion de 7 entrées single-line après `EtudiantDashboardView.swift` (ID D9A), avant `Shared.framework`. Chemins `../ViewModels/X.swift` pour les 3 ViewModels et `../Views/X.swift` pour les 4 Views. IDs fileRef : D9C, D9E, DA0, DA2, DA4, DA6, DA8.
+- Edition 3 (Utilities group children, ID D34) : insertion de 7 IDs fileRef après `EtudiantDashboardView.swift` (ID D9A), avant la fermeture `);` + `path = Utilities;`.
+- Edition 4 (Sources build phase files, ID D41) : insertion de 7 IDs buildFile après `EtudiantDashboardView.swift in Sources` (ID D9B), avant la fermeture `);` + `runOnlyForDeploymentPostprocessing = 0;`.
+- Vérification post-édition : grep pour chaque nom de fichier confirme 4 occurrences par fichier (1 dans PBXBuildFile, 1 dans PBXFileReference, 1 dans children Utilities, 1 dans files Sources). Tous les IDs correspondent au tableau d'allocation.
+- Vérification structurelle : équilibrage des accolades (100/100) et des parenthèses (43/43) intact. Le fichier passe de 584 à 612 lignes.
+
+Stage Summary:
+- Fichier modifié : `/home/z/sect/mobile/iosApp/iosApp.xcodeproj/project.pbxproj` (+28 lignes nettes).
+- 7 fichiers Swift ajoutés au projet Xcode : DevoirsViewModel.swift, DevoirsView.swift, CorrectionsViewModel.swift, CorrectionsView.swift, CorrectionDetailViewModel.swift, CorrectionDetailView.swift, TravailView.swift.
+- 14 nouveaux IDs alloués (7 fileRef + 7 buildFile) dans la plage `8A1A2B3C4D5E6F7A8B9C0D9C` → `8A1A2B3C4D5E6F7A8B9C0DA9`. Le prochain ID disponible est `8A1A2B3C4D5E6F7A8B9C0DAA`.
+- 4 sections mises à jour : PBXBuildFile, PBXFileReference, group Utilities (children), build phase Sources (files).
+- Format respecté : single-line style identique aux entrées existantes (16 espaces d'indentation pour les entries, 32 pour les items de liste).
+- Aucun commit git effectué, conformément aux règles.
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-B
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase B — Parité iOS Devoirs + Corrections + TravailView + MainTabView refonte
+
+Work Log:
+- Exploration architecture iOS (subagent) : pattern ViewModel (@MainActor ObservableObject + @Published + KoinRepositoryProvider.shared.repository), bridging KMP (KotlinDouble? → .doubleValue, KotlinInt? → .int32Value), MainTabView 4 tabs actuel, pbxproj structure (IDs 8A1A2B3C4D5E6F7A8B9C0D9C..DA9)
+- Créé 7 nouveaux fichiers Swift :
+  1. DevoirsViewModel.swift — liste devoirs avec pagination (loadDevoirs/loadMore)
+  2. DevoirsView.swift — liste + cards + states (loading/error/empty) + header enseignant
+  3. CorrectionsViewModel.swift — getSessionsACorriger + pendingCount
+  4. CorrectionsView.swift — liste + NavigationLink vers CorrectionDetailView
+  5. CorrectionDetailViewModel.swift — saveGrade/finalize/retourner + update locale (copy())
+  6. CorrectionDetailView.swift — notation question par question :
+     - HeaderCard (étudiant, épreuve, indicateurs)
+     - ReponseCorrectionCard (énoncé, réponse, suggestion IA, saisie score/commentaire)
+     - IASuggestionCard (noteIA + justification + bouton Appliquer)
+     - CorrectionBottomActionBar (Finaliser + Retourner)
+  7. TravailView.swift — conteneur avec Picker segmented [Épreuves | Devoirs] + toolbar [+] enseignant
+- Mis à jour SECTApp.swift :
+  - 2 nouveaux @StateObject : devoirsViewModel + correctionsViewModel
+  - .environmentObject pour les 2 nouveaux VMs
+  - MainTabView refondue : 4 onglets rôle-spécifiques
+    - Étudiant : Accueil · Travail · Résultats (placeholder) · Messages
+    - Enseignant : Accueil · Travail · Corrections · Messages
+    - Profil retiré de la bottom bar (accessible via avatar Dashboard — TODO)
+- Mis à jour project.pbxproj (subagent) :
+  - 7 PBXFileReference + 7 PBXBuildFile (IDs D9C..DA9)
+  - 7 entrées dans Utilities group + 7 dans Sources phase
+- Pattern holder iOS : contrairement à Android (CorrectionSessionHolder singleton),
+  iOS passe la CorrectionSession directement via NavigationLink(destination: CorrectionDetailView(session:))
+  — plus idiomatique SwiftUI, pas d'état global
+
+Stage Summary:
+- ✅ Parité iOS atteinte pour Devoirs + Corrections
+- ✅ MainTabView refondue en 4 onglets rôle-spécifiques (alignée sur Phase A Android)
+- ✅ TravailView conteneur avec Épreuves|Devoirs (segmented control)
+- ✅ CorrectionDetailView avec notation complète (score, commentaire, suggestion IA, finalize, retourner)
+- ✅ pbxproj mis à jour (7 fichiers, 28 entrées)
+- ⚠️ ResultatsView iOS = placeholder EmptyView (TODO: créer l'écran résultats étudiant iOS)
+- ⏳ CI mobile à vérifier après push
