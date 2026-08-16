@@ -15,6 +15,9 @@ struct SECTApp: App {
     @StateObject private var epreuveViewModel = EpreuveViewModel()
     @StateObject private var messagerieViewModel = MessagerieViewModel()
     @StateObject private var profileViewModel = ProfileViewModel()
+    // SECT-MOBILE-NAV-PHASE-B : nouveaux ViewModels pour Devoirs + Corrections
+    @StateObject private var devoirsViewModel = DevoirsViewModel()
+    @StateObject private var correctionsViewModel = CorrectionsViewModel()
     
     /// Tracks whether in-memory tokens have been loaded from Keychain.
     /// Shows a lightweight splash until ready so no HTTP request fires
@@ -97,6 +100,8 @@ struct SECTApp: App {
                     .environmentObject(epreuveViewModel)
                     .environmentObject(messagerieViewModel)
                     .environmentObject(profileViewModel)
+                    .environmentObject(devoirsViewModel)
+                    .environmentObject(correctionsViewModel)
             } else {
                 LoginView()
                     .environmentObject(authViewModel)
@@ -123,9 +128,17 @@ enum DeepLinkTarget {
     case notifications
 }
 
-// ── Tab View principal ──
+// ── Tab View principal — SECT-MOBILE-NAV-PHASE-A/B : 4 onglets rôle-spécifiques ──
+// Étudiant    : Accueil · Travail · Résultats · Messages
+// Enseignant  : Accueil · Travail · Corrections · Messages
+// Profil est accessible via l'avatar dans le Dashboard (secondaire).
 struct MainTabView: View {
     @State private var selectedTab = 0
+    @EnvironmentObject var authViewModel: AuthViewModel
+
+    private var isEnseignant: Bool {
+        authViewModel.currentUser?.role == .enseignant
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -135,21 +148,31 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
-            EpreuvesView()
+            TravailView()
                 .tabItem {
-                    Label("Épreuves", systemImage: "doc.text.fill")
+                    Label("Travail", systemImage: "briefcase.fill")
                 }
                 .tag(1)
+
+            if isEnseignant {
+                CorrectionsView()
+                    .tabItem {
+                        Label("Corrections", systemImage: "checkmark.square")
+                    }
+                    .tag(2)
+            } else {
+                // TODO(SECT-MOBILE-NAV-PHASE-B) : ResultatsView iOS à créer
+                // Pour l'instant, placeholder pour l'étudiant
+                EmptyView()
+                    .tabItem {
+                        Label("Résultats", systemImage: "chart.bar.fill")
+                    }
+                    .tag(2)
+            }
 
             MessagerieView()
                 .tabItem {
                     Label("Messages", systemImage: "message.fill")
-                }
-                .tag(2)
-
-            ProfileView()
-                .tabItem {
-                    Label("Profil", systemImage: "person.fill")
                 }
                 .tag(3)
         }
