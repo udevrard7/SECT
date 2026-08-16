@@ -95,9 +95,12 @@ object Routes {
 
     // Bottom Navigation (commun) — SECT-MOBILE-NAV-PHASE-A : 4 onglets par rôle
     const val DASHBOARD = "dashboard"
-    const val TRAVAIL = "travail"   // Épreuves + Devoils (conteneur)
+    const val TRAVAIL = "travail"   // Épreuves + Devoirs (conteneur)
     const val MESSAGERIE = "messagerie"
     const val PROFILE = "profile"  // secondaire (avatar TopBar)
+
+    // Route standalone (accès direct, hors bottom bar)
+    const val EPREUVES = "epreuves"
 
     // Spécifique Étudiant
     const val RESULTATS = "resultats"
