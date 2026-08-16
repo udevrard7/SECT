@@ -23,6 +23,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.sect.mobile.android.ui.screens.*
+import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
+import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
 import com.sect.mobile.android.ui.viewmodel.*
 import com.sect.mobile.android.ui.components.navigation.*
 import org.koin.androidx.compose.koinViewModel
@@ -236,7 +238,9 @@ fun SECTNavigation(
                     onLogout = {
                         dashboardAuthVM.logout()
                         navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
-                    }
+                    },
+                    onNavigateToResultats = { navController.navigate(Routes.RESULTATS) },
+                    onNavigateToCorrections = { navController.navigate(Routes.CORRECTIONS) }
                 )
             }
 
@@ -302,11 +306,43 @@ fun SECTNavigation(
                 )
             }
 
-            // 📊 Résultats (Étudiant uniquement) - Placeholder pour l'instant
-            // composable(Routes.RESULTATS) { ... }
+            // 📊 Résultats (Étudiant uniquement)
+            // Branché SECT-MOBILE-NAV-1 : liste des résultats de l'étudiant connecté.
+            // Accessible via l'onglet "Résultats" de la bottom bar (studentNavItems)
+            // + raccourci depuis le Dashboard (onNavigateToResultats).
+            composable(Routes.RESULTATS) {
+                val resultatsVM: ResultatsViewModel = koinViewModel()
+                ResultatsScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onResultClick = { resultatId ->
+                        // TODO(SECT-MOBILE-NAV) : créer une route détail de résultat
+                        // (ex: resultats/{resultatId}) affichant le détail par question.
+                        // Pour l'instant, pas de route détail — on reste sur la liste.
+                    },
+                    viewModel = resultatsVM
+                )
+            }
 
-            // ✏️ Corrections (Enseignant uniquement) - Placeholder pour l'instant
-            // composable(Routes.CORRECTIONS) { ... }
+            // ✏️ Corrections (Enseignant uniquement)
+            // Branché SECT-MOBILE-NAV-1 : liste des copies à corriger pour l'enseignant.
+            // Accessible via l'onglet "Corrections" de la bottom bar (enseignantNavItems)
+            // + raccourci depuis le Dashboard (onNavigateToCorrections).
+            //
+            // NOTE : getSessionsACorriger() retourne actuellement emptyList() car la route
+            // backend /api/sessions/a-corriger n'existe pas encore (voir ResultatsApi.kt).
+            // L'écran affichera l'état "Aucune copie à corriger" en attendant.
+            composable(Routes.CORRECTIONS) {
+                val correctionsVM: CorrectionsViewModel = koinViewModel()
+                CorrectionsScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onSessionClick = { sessionId ->
+                        // TODO(SECT-MOBILE-NAV) : créer une route détail de correction
+                        // (ex: corrections/{sessionId}) affichant les réponses à noter.
+                        // Pour l'instant, pas de route détail — on reste sur la liste.
+                    },
+                    viewModel = correctionsVM
+                )
+            }
 
             // ── Results (après passation) ──
             composable(Routes.RESULTS) { backStackEntry ->

@@ -632,3 +632,41 @@ Stage Summary:
 - ⚠️ getSessionsACorriger() retourne emptyList() (route backend /api/sessions/a-corriger à créer — TODO documenté)
 - ⚠️ Routes RESULTATS et CORRECTIONS sont des placeholders dans Navigation.kt (écrans pas encore branchés)
 - Bilan : 6 commits, ~100 erreurs résolues (5 shared + 473 doublons supprimés + 60 Android + 52 iOS)
+
+---
+Task ID: SECT-MOBILE-NAV-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Brancher les écrans Corrections/Resultats dans la navigation Android
+
+Work Log:
+- État initial : routes RESULTATS (étudiant) et CORRECTIONS (enseignant) définies dans
+  ScreenRoute/Routes + onglets déjà présents dans la bottom bar (studentNavItems /
+  enseignantNavItems), mais les composable() correspondants étaient commentés
+  (placeholders lignes 305-309 de Navigation.kt) → clic sur l'onglet aurait crashé
+- Ajout des imports explicites dans Navigation.kt :
+  - com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
+  - com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
+  (le wildcard screens.* n'importe pas les sous-packages en Kotlin)
+- Décommenté et implémenté composable(Routes.RESULTATS) :
+  - koinViewModel() pour ResultatsViewModel (déjà dans AppModule)
+  - onBackClick = popBackStack()
+  - onResultClick = no-op (TODO : route détail résultat à créer)
+- Décommenté et implémenté composable(Routes.CORRECTIONS) :
+  - koinViewModel() pour CorrectionsViewModel (déjà dans AppModule)
+  - onBackClick = popBackStack()
+  - onSessionClick = no-op (TODO : route détail correction à créer)
+- Ajout raccourcis rôle-spécifiques dans DashboardScreen (Screens.kt) :
+  - 2 nouveaux params optionnels : onNavigateToResultats / onNavigateToCorrections
+  - Bouton "Corrections en attente" (icône EditNote) pour enseignant
+  - Bouton "Mes résultats" (icône Assessment) pour étudiant
+  - Placé après le bouton "Voir toutes les épreuves"
+- Connecté les callbacks dans Navigation.kt → navController.navigate(RESULTATS/CORRECTIONS)
+- Diff : 2 fichiers, +73/-6 lignes
+
+Stage Summary:
+- ✅ Onglet "Résultats" (étudiant) fonctionnel : bottom bar + raccourci dashboard
+- ✅ Onglet "Corrections" (enseignant) fonctionnel : bottom bar + raccourci dashboard
+- ✅ ViewModels déjà injectés via Koin (AppModule, SECT-MOBILE-CI-FIX-2)
+- ⏳ onResultClick/onSessionClick = no-op (routes détail à créer dans une tâche future)
+- ⏳ getSessionsACorriger() retourne emptyList() (route backend à créer)
+- ⏳ CI mobile à vérifier après push
