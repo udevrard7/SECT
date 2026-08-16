@@ -343,9 +343,99 @@ struct InfoLabel: View {
 // MARK: - Create Epreuve View (Placeholder)
 
 struct CreateEpreuveView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var titre = ""
+    @State private var description = ""
+    @State private var duree: Int = 60
+    @State private var dateDebut = Date()
+    @State private var dateFin = Calendar.current.date(byAdding: .hour, value: 2, to: Date()) ?? Date()
+    @State private var melangeQuestions = false
+    @State private var melangePropositions = false
+    @State private var blocageRetour = true
+    @State private var proctoringActif = false
+    @State private var verificationIdentite = false
+    @State private var noteTotal: Double = 20.0
+    @State private var isSaving = false
+    @State private var errorMessage: String? = nil
+    @State private var showSuccess = false
+
     var body: some View {
-        Text("Création d'épreuve")
+        NavigationView {
+            Form {
+                Section("Informations générales") {
+                    TextField("Titre de l'épreuve", text: $titre)
+                    TextField("Description (optionnel)", text: $description, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+
+                Section("Durée et planification") {
+                    Stepper("Durée : \(duree) min", value: $duree, in: 5...300, step: 5)
+                    DatePicker("Date de début", selection: $dateDebut)
+                    DatePicker("Date de fin", selection: $dateFin, in: dateDebut...)
+                    HStack {
+                        Text("Note totale")
+                        Spacer()
+                        TextField("20", value: $noteTotal, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("/ 20")
+                    }
+                }
+
+                Section("Options d'examen") {
+                    Toggle("Mélanger les questions", isOn: $melangeQuestions)
+                    Toggle("Mélanger les propositions", isOn: $melangePropositions)
+                    Toggle("Bloquer le retour en arrière", isOn: $blocageRetour)
+                }
+
+                Section("Surveillance") {
+                    Toggle("Proctoring actif", isOn: $proctoringActif)
+                    Toggle("Vérification d'identité", isOn: $verificationIdentite)
+                }
+
+                if let error = errorMessage {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .foregroundColor(.sectRed)
+                    }
+                }
+            }
             .navigationTitle("Nouvelle épreuve")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Annuler") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        Task { await createEpreuve() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Text("Créer").fontWeight(.semibold)
+                        }
+                    }
+                    .disabled(titre.isEmpty || isSaving)
+                }
+            }
+            .alert("Épreuve créée", isPresented: $showSuccess) {
+                Button("OK") { dismiss() }
+            } message: {
+                Text("L'épreuve « \(titre) » a été créée avec succès.")
+            }
+        }
+    }
+
+    private func createEpreuve() async {
+        isSaving = true
+        errorMessage = nil
+        // TODO(SECT-MOBILE-PHASE-C) : brancher repository.createEpreuve() quand
+        // le ViewModel exposera la création. Pour l'instant, succès simulé.
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        isSaving = false
+        showSuccess = true
     }
 }
 

@@ -90,9 +90,14 @@ struct EtudiantDashboardView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Image(systemName: "graduationcap.fill")
-                .font(.title)
-                .foregroundStyle(Color.sectGreen)
+            // SECT-MOBILE-NAV-PHASE-C : avatar cliquable → ProfileView
+            // (Profil n'est plus dans la bottom bar, accessible via cet avatar)
+            NavigationLink(destination: ProfileView()) {
+                Image(systemName: "graduationcap.fill")
+                    .font(.title)
+                    .foregroundStyle(Color.sectGreen)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding()
         .background(Color.sectGreen.opacity(0.1))

@@ -822,3 +822,68 @@ Stage Summary:
 - ✅ pbxproj mis à jour (7 fichiers, 28 entrées)
 - ⚠️ ResultatsView iOS = placeholder EmptyView (TODO: créer l'écran résultats étudiant iOS)
 - ⏳ CI mobile à vérifier après push
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-C-PBXPROJ
+Agent: general-purpose (pbxproj updater)
+Task: Ajouter 2 nouveaux fichiers Swift au project.pbxproj
+
+Work Log:
+- Lu project.pbxproj (612 lignes) pour identifier la structure et le format (single-line style pour les entrées Phase A/B).
+- Repéré les 4 points d'insertion via grep sur `TravailView` (dernière entrée Phase B, IDs ...0DA8/...0DA9).
+- Vérifié via `cat -A` que le fichier utilise des espaces (16 pour PBXBuildFile/PBXFileReference, 32 pour group children/Sources files) et non des tabs.
+- Edit 1 — PBXBuildFile (ligne 61) : ajouté 2 lignes après `TravailView.swift in Sources` avec IDs ...0DAB (ViewModel) et ...0DAD (View).
+- Edit 2 — PBXFileReference (ligne 138) : ajouté 2 lignes après `TravailView.swift` avec IDs ...0DAA (ViewModel, path ../ViewModels/) et ...0DAC (View, path ../Views/).
+- Edit 3 — Utilities group children (ligne 211) : ajouté les 2 fileRef IDs (...0DAA, ...0DAC) après `TravailView.swift`.
+- Edit 4 — Sources build phase files (ligne 368) : ajouté les 2 buildFile IDs (...0DAB, ...0DAD) après `TravailView.swift in Sources`.
+- Vérification finale via grep count : `ResultatsViewModel` = 4 occurrences, `ResultatsView.swift` = 4 occurrences (PBXBuildFile, PBXFileReference, Utilities children, Sources files).
+- Aucun git commit/push effectué (conforme aux règles).
+
+Stage Summary:
+- 2 fichiers Swift ajoutés au project.pbxproj : `ResultatsViewModel.swift` et `ResultatsView.swift`.
+- 8 nouvelles entrées au total (4 par fichier : fileRef + buildFile + group child + sources file).
+- IDs attribués : fileRef ...0DAA (ViewModel), ...0DAC (View) ; buildFile ...0DAB (ViewModel), ...0DAD (View).
+- Dernier ID utilisé désormais ...0DAD (next free: ...0DAE).
+- Format single-line cohérent avec les entrées Phase A/B existantes.
+- Fichier project.pbxproj reste syntaxiquement valide (structure des 4 sections préservée).
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-C
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase C — Compléter placeholders iOS (ResultatsView + CreateEpreuveView + avatar Profil)
+
+Work Log:
+- Audit placeholders : ResultsView.swift (existant) affiche le résultat post-passation (1 session),
+  PAS la liste des résultats étudiant. CreateEpreuveView = placeholder Text("Création d'épreuve").
+  Avatar dashboards = icônes non cliquables.
+- Créé 2 nouveaux fichiers Swift :
+  1. ResultatsViewModel.swift — getResultatsEtudiant() + getStatsEtudiant() (optionnel),
+     moyenneCalculee + reussites (fallback si stats indisponibles)
+  2. ResultatsView.swift — liste résultats étudiant avec :
+     - StatsHeader (moyenne, nbEpreuvesTerminees, meilleureNote) ou StatsHeaderFallback
+     - ResultatCard (titre, badge Réussi/À refaire, score /20, %, date, barre progression colorée)
+     - States loading/error/empty + pull-to-refresh
+- Complété CreateEpreuveView (dans EpreuvesView.swift) :
+  - Form avec sections : Informations générales (titre, description),
+    Durée et planification (stepper, datePickers, noteTotal),
+    Options d'examen (melangeQuestions, melangePropositions, blocageRetour),
+    Surveillance (proctoringActif, verificationIdentite)
+  - Toolbar Annuler + Créer (disabled si titre vide)
+  - Alert succès + TODO brancher repository.createEpreuve()
+- Rendu les avatars dashboards cliquables → ProfileView :
+  - EnseignantDashboardView : person.circle.fill → NavigationLink(destination: ProfileView())
+  - EtudiantDashboardView : graduationcap.fill → NavigationLink(destination: ProfileView())
+  (Profil n'est plus dans la bottom bar depuis Phase A/B, accessible via ces avatars)
+- Mis à jour SECTApp.swift :
+  - @StateObject resultatsViewModel + .environmentObject
+  - MainTabView : remplacé EmptyView placeholder par ResultatsView() pour l'étudiant
+- Mis à jour project.pbxproj (subagent) :
+  - 2 PBXFileReference + 2 PBXBuildFile (IDs DAA, DAC, DAB, DAD)
+  - 2 entrées dans Utilities group + Sources phase
+
+Stage Summary:
+- ✅ ResultatsView iOS créé (liste résultats étudiant, miroir Android ResultatsScreen)
+- ✅ CreateEpreuveView complété (formulaire fonctionnel avec validation, TODO backend)
+- ✅ Avatar Profil cliquable dans les 2 dashboards (Enseignant + Étudiant)
+- ✅ MainTabView : onglet Résultats étudiant pleinement fonctionnel (plus EmptyView)
+- ⏳ CI mobile à vérifier après push
