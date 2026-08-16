@@ -131,53 +131,87 @@ enum DeepLinkTarget {
     case notifications
 }
 
-// ── Tab View principal — SECT-MOBILE-NAV-PHASE-A/B : 4 onglets rôle-spécifiques ──
+// ── Tab View principal — SECT-MOBILE-NAV-PHASE-A/B/D : 4 onglets rôle-spécifiques ──
 // Étudiant    : Accueil · Travail · Résultats · Messages
 // Enseignant  : Accueil · Travail · Corrections · Messages
 // Profil est accessible via l'avatar dans le Dashboard (secondaire).
+//
+// SECT-MOBILE-NAV-PHASE-D : navigation adaptative
+//   iPhone (compact) : TabView en bas
+//   iPad   (regular) : NavigationSplitView avec sidebar
 struct MainTabView: View {
     @State private var selectedTab = 0
     @EnvironmentObject var authViewModel: AuthViewModel
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     private var isEnseignant: Bool {
         authViewModel.currentUser?.role == .enseignant
     }
 
     var body: some View {
+        if horizontalSizeClass == .regular {
+            // iPad : NavigationSplitView avec sidebar
+            iPadLayout
+        } else {
+            // iPhone : TabView standard
+            phoneLayout
+        }
+    }
+
+    // MARK: - iPhone (TabView)
+
+    private var phoneLayout: some View {
         TabView(selection: $selectedTab) {
             DashboardView()
-                .tabItem {
-                    Label("Accueil", systemImage: "house.fill")
-                }
+                .tabItem { Label("Accueil", systemImage: "house.fill") }
                 .tag(0)
 
             TravailView()
-                .tabItem {
-                    Label("Travail", systemImage: "briefcase.fill")
-                }
+                .tabItem { Label("Travail", systemImage: "briefcase.fill") }
                 .tag(1)
 
             if isEnseignant {
                 CorrectionsView()
-                    .tabItem {
-                        Label("Corrections", systemImage: "checkmark.square")
-                    }
+                    .tabItem { Label("Corrections", systemImage: "checkmark.square") }
                     .tag(2)
             } else {
-                // SECT-MOBILE-NAV-PHASE-C : ResultatsView iOS (liste des résultats étudiant)
                 ResultatsView()
-                    .tabItem {
-                        Label("Résultats", systemImage: "chart.bar.fill")
-                    }
+                    .tabItem { Label("Résultats", systemImage: "chart.bar.fill") }
                     .tag(2)
             }
 
             MessagerieView()
-                .tabItem {
-                    Label("Messages", systemImage: "message.fill")
-                }
+                .tabItem { Label("Messages", systemImage: "message.fill") }
                 .tag(3)
         }
         .tint(.sectGreen)
+    }
+
+    // MARK: - iPad (NavigationSplitView)
+
+    private var iPadLayout: some View {
+        NavigationSplitView {
+            // Sidebar : liste des destinations
+            List(selection: $selectedTab) {
+                Label("Accueil", systemImage: "house.fill").tag(0)
+                Label("Travail", systemImage: "briefcase.fill").tag(1)
+                if isEnseignant {
+                    Label("Corrections", systemImage: "checkmark.square").tag(2)
+                } else {
+                    Label("Résultats", systemImage: "chart.bar.fill").tag(2)
+                }
+                Label("Messages", systemImage: "message.fill").tag(3)
+            }
+            .navigationTitle("SECT")
+            .tint(.sectGreen)
+        } detail: {
+            switch selectedTab {
+            case 0: DashboardView()
+            case 1: TravailView()
+            case 2: isEnseignant ? AnyView(CorrectionsView()) : AnyView(ResultatsView())
+            case 3: MessagerieView()
+            default: DashboardView()
+            }
+        }
     }
 }

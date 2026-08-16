@@ -887,3 +887,40 @@ Stage Summary:
 - ✅ Avatar Profil cliquable dans les 2 dashboards (Enseignant + Étudiant)
 - ✅ MainTabView : onglet Résultats étudiant pleinement fonctionnel (plus EmptyView)
 - ⏳ CI mobile à vérifier après push
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-D
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase D — Navigation adaptative tablette/iPad
+
+Work Log:
+- Objectif : NavigationBar (phone) ↔ NavigationRail (Android tablet) côté Android,
+  TabView (iPhone) ↔ NavigationSplitView (iPad) côté iOS.
+  Les destinations (NavigationPolicy) restent identiques, seuls les composants UI changent.
+- Android (1 nouveau fichier + 1 modifié) :
+  - Créé SectAdaptiveNavigation.kt :
+    - BoxWithConstraints pour détecter la largeur (pas de nouvelle dépendance —
+      window-size-class non ajouté, BoxWithConstraints suffit et est dans Foundation)
+    - < 600dp (compact) : Scaffold + SectBottomNavigationBar (pattern standard)
+    - ≥ 600dp (medium+) : Row + NavigationRail à gauche + contenu weight(1f)
+    - NavigationRail avec header "SECT" + NavigationRailItem pour chaque destination
+    - showNav=false (mode immersif) → contenu plein écran, pas de nav
+  - Navigation.kt mis à jour :
+    - Remplacé Scaffold+bottomBar par SectAdaptiveNavigation(showNav, items, currentRoute, onNavigate)
+    - NavHost déplacé à l'intérieur du content lambda (plus de modifier padding)
+    - showBottomBar renommé showNav (sémantique : nav pas seulement bottom)
+- iOS (1 fichier modifié, SECTApp.swift) :
+  - MainTabView refondu en layout adaptatif :
+    - @Environment(\.horizontalSizeClass) pour détecter iPhone vs iPad
+    - phoneLayout : TabView standard (4 onglets, inchangé)
+    - iPadLayout : NavigationSplitView avec sidebar List (sélection) + detail switch
+    - AnyView pour le case 2 (CorrectionsView ou ResultatsView selon rôle)
+- Pas de nouveau fichier iOS à ajouter au pbxproj (modification de SECTApp.swift existant)
+- Pas de nouvelle dépendance Gradle (BoxWithConstraints est dans androidx.compose.foundation)
+
+Stage Summary:
+- ✅ Android : NavigationBar (compact) ↔ NavigationRail (medium+) via BoxWithConstraints
+- ✅ iOS : TabView (compact) ↔ NavigationSplitView (regular) via horizontalSizeClass
+- ✅ NavigationPolicy shared KMP inchangé (destinations identiques sur tous facteurs de forme)
+- ✅ Aucune nouvelle dépendance (utilise APIs natives Compose Foundation + SwiftUI)
+- ⏳ CI mobile à vérifier après push
