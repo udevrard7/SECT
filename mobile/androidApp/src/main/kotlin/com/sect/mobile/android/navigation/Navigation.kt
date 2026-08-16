@@ -30,6 +30,7 @@ import com.sect.mobile.android.ui.screens.travail.TravailScreen
 import com.sect.mobile.android.ui.viewmodel.*
 import com.sect.mobile.android.ui.components.navigation.SectAdaptiveNavigation
 import com.sect.mobile.android.ui.components.navigation.*
+import com.sect.mobile.android.ui.components.BadgeManager
 import com.sect.mobile.shared.navigation.MobileRole
 import com.sect.mobile.shared.navigation.NavigationPolicy
 import org.koin.androidx.compose.koinViewModel
@@ -139,20 +140,16 @@ fun SECTNavigation(
     // Déterminer les items de navigation selon le rôle
     val navItems = getNavItemsForRole(isEnseignant = isEnseignant)
     
-    // Mappe les routes pour inclure les badges dynamiques
+    // Mappe les routes pour inclure les badges dynamiques (SECT-MOBILE-NAV-PHASE-E)
+    // BadgeManager est alimenté par MessagerieViewModel (messages non lus)
+    // et CorrectionsViewModel (sessions needsCorrectionCount > 0).
     val navItemsWithBadges = navItems.map { item ->
         when (item.route) {
             Routes.MESSAGERIE -> {
-                // TODO: Récupérer le nombre de messages non lus depuis MessagerieViewModel
-                item.copy(badgeCount = null)
+                item.copy(badgeCount = BadgeManager.unreadMessages.value)
             }
             Routes.CORRECTIONS -> {
-                // TODO: Récupérer le nombre de corrections en attente depuis DashboardViewModel
-                item.copy(badgeCount = null)
-            }
-            Routes.RESULTATS -> {
-                // TODO: Récupérer le nombre de nouveaux résultats
-                item.copy(badgeCount = null)
+                item.copy(badgeCount = BadgeManager.pendingCorrections.value)
             }
             else -> item
         }

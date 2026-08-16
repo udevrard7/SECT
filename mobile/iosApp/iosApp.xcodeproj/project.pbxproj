@@ -61,6 +61,8 @@
                 8A1A2B3C4D5E6F7A8B9C0DA9 /* TravailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DA8 /* TravailView.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0DAB /* ResultatsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DAA /* ResultatsViewModel.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0DAD /* ResultatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DAC /* ResultatsView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0DAF /* SectDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DAE /* SectDesignSystem.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0DB1 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */; };
 /* Framework in Frameworks build phase */
                 8A1A2B3C4D5E6F7A8B9C0D66 /* Shared.framework in Frameworks */ = {
                         isa = PBXBuildFile;
@@ -138,6 +140,8 @@
                 8A1A2B3C4D5E6F7A8B9C0DA8 /* TravailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TravailView.swift; path = ../Views/TravailView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0DAA /* ResultatsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResultatsViewModel.swift; path = ../ViewModels/ResultatsViewModel.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0DAC /* ResultatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResultatsView.swift; path = ../Views/ResultatsView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0DAE /* SectDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SectDesignSystem.swift; path = ../Utilities/SectDesignSystem.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BadgeManager.swift; path = ../Utilities/BadgeManager.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */ = {
                         isa = PBXFileReference;
                         lastKnownFileType = wrapper.framework;
@@ -211,6 +215,8 @@
                                 8A1A2B3C4D5E6F7A8B9C0DA8 /* TravailView.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0DAA /* ResultatsViewModel.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0DAC /* ResultatsView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0DAE /* SectDesignSystem.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */,
                         );
                         path = Utilities;
                         sourceTree = "<group>";
@@ -368,6 +374,8 @@
                                 8A1A2B3C4D5E6F7A8B9C0DA9 /* TravailView.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0DAB /* ResultatsViewModel.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0DAD /* ResultatsView.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0DAF /* SectDesignSystem.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0DB1 /* BadgeManager.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };
