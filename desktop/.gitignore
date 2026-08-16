@@ -1,0 +1,55 @@
+# SECT Desktop — .gitignore
+
+# Binaires
+bin/
+build/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.app
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
+# Go
+vendor/
+
+# Frontend (Wails)
+frontend/node_modules/
+frontend/dist/assets/
+frontend/src/bindings.ts
+frontend/wailsjs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Certificats (JAMAIS committer)
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+
+# Env
+.env
+.env.local
+
+# Build artifacts
+*.sig
+latest.json

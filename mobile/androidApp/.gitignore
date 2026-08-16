@@ -1,0 +1,17 @@
+# SECT Android App — .gitignore
+
+# Signing secrets
+*.jks
+*.keystore
+keystore.properties
+
+# Firebase (contains project-specific keys — never commit real secrets)
+google-services.json
+
+# Build outputs
+build/
+.gradle/
+
+# Environment
+.env
+.env.*

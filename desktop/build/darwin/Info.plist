@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>SECT Desktop</string>
+    <key>CFBundleDisplayName</key>
+    <string>SECT</string>
+    <key>CFBundleIdentifier</key>
+    <string>fr.ftci.sect.desktop</string>
+    <key>CFBundleVersion</key>
+    <string>0.2.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.2.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>icon.icns</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSCameraUsageDescription</key>
+    <string>SECT utilise la caméra pour la photo d'identité anti-fraude lors des examens.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SECT utilise le microphone pour les notifications audio (optionnel).</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+    </dict>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.education</string>
+</dict>
+</plist>

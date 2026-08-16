@@ -1,0 +1,114 @@
+# SECT-DESKTOP-PHASE-B-1 : release desktop sur tag desktop-v*.
+# Build + signing + upload GitHub Release avec latest.json pour auto-update.
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'  # ex: desktop-v0.2.0
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, platform: windows/amd64, name: windows, ext: '.exe' }
+          - { os: macos-latest, platform: darwin/universal, name: macos, ext: '.dmg' }
+          - { os: ubuntu-22.04, platform: linux/amd64, name: linux, ext: '.AppImage' }
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend deps
+        working-directory: desktop/frontend
+        run: npm ci || npm install
+
+      - name: Build
+        working-directory: desktop
+        run: wails build -platform ${{ matrix.platform }} -clean -webview2 embed
+
+      # --- Signing Windows ---
+      - name: Sign Windows exe
+        if: matrix.os == 'windows-latest'
+        env:
+          CERT_FILE: ${{ secrets.WINDOWS_CODESIGN_PFX }}
+          CERT_PASS: ${{ secrets.WINDOWS_CODESIGN_PASS }}
+        shell: bash
+        run: |
+          if [ -z "$CERT_FILE" ]; then
+            echo "⚠️  WINDOWS_CODESIGN_PFX secret not set — skipping signing"
+            exit 0
+          fi
+          echo "$CERT_FILE" | base64 -d > sect-codesign.pfx
+          desktop/scripts/sign-windows.sh sect-codesign.pfx "$CERT_PASS" desktop/build/bin/*.exe
+
+      # --- Signing + Notarization macOS ---
+      - name: Sign + Notarize macOS
+        if: matrix.os == 'macos-latest'
+        env:
+          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          DEVELOPER_KEY: ${{ secrets.APPLE_DEVELOPER_KEY }}
+        run: |
+          if [ -z "$DEVELOPER_ID" ]; then
+            echo "⚠️  APPLE_DEVELOPER_ID secret not set — skipping signing"
+            exit 0
+          fi
+          echo "$DEVELOPER_KEY" | base64 -d > developer-key.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import developer-key.p12 -k build.keychain -P "$KEYCHAIN_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          desktop/scripts/notarize-macos.sh "desktop/build/bin/SECT Desktop.app" \
+            "$DEVELOPER_ID" "$APPLE_ID" "$APP_PASSWORD" "$TEAM_ID"
+
+      # --- Package Linux ---
+      - name: Package Linux (.deb, .rpm)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          VERSION=${GITHUB_REF#refs/tags/desktop-v}
+          desktop/scripts/package-linux.sh desktop/build/bin/sect-desktop "$VERSION"
+
+      # --- Generate latest.json (seulement sur Linux, une seule fois) ---
+      - name: Generate latest.json
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/desktop-v}
+          desktop/scripts/generate-manifest.sh "$VERSION" > latest.json
+          cat latest.json
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/build/bin/*
+            latest.json
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') || contains(github.ref, 'phase') }}
