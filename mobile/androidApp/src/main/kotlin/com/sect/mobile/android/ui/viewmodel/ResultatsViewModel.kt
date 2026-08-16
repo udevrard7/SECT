@@ -2,7 +2,7 @@ package com.sect.mobile.android.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sect.mobile.shared.domain.repository.SECTRepository
+import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import com.sect.mobile.shared.domain.model.Resultat
 import com.sect.mobile.shared.domain.model.EtudiantStats
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ResultatsViewModel(
-    private val repository: SECTRepository
+    private val repository: SECTRepositoryInterface
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ResultatsUiState>(ResultatsUiState.Loading)

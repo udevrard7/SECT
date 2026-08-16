@@ -102,6 +102,10 @@ val appModule = module {
     viewModel { PassationViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
     viewModel { MessagerieViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
     viewModel { ProfileViewModel(get<SECTRepositoryInterface>()) }
+    // ViewModels ajoutés (SECT-MOBILE-CI-FIX-1) : corrections, resultats, devoirs
+    viewModel { CorrectionsViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { ResultatsViewModel(get<SECTRepositoryInterface>()) }
+    viewModel { DevoirsViewModel(get<SECTRepositoryInterface>()) }
 }
 
 // Helper for named qualifiers
