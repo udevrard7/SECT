@@ -23,6 +23,8 @@ class CorrectionsViewModel: ObservableObject {
             // getSessionsACorriger(epreuveId: nil) → l'enseignant connecté est
             // auto-identifié côté backend via son JWT (usecase force enseignantId).
             sessions = try await repository.getSessionsACorriger(epreuveId: nil)
+            // SECT-MOBILE-NAV-PHASE-E : alimenter le badge dynamique
+            BadgeManager.shared.setPendingCorrections(pendingCount)
         } catch {
             self.error = error.localizedDescription
         }

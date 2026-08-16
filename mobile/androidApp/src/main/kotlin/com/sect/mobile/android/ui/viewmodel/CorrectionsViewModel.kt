@@ -2,6 +2,7 @@ package com.sect.mobile.android.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sect.mobile.android.ui.components.BadgeManager
 import com.sect.mobile.shared.domain.model.CorrectionSession
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,9 @@ class CorrectionsViewModel(
                 _uiState.value = CorrectionsUiState.Loading
                 val sessions = repository.getSessionsACorriger()
                 _uiState.value = CorrectionsUiState.Success(sessions)
+                // SECT-MOBILE-NAV-PHASE-E : alimenter le badge dynamique
+                val pending = sessions.count { !it.allCorrected }
+                BadgeManager.setPendingCorrections(pending)
             } catch (e: Exception) {
                 _uiState.value = CorrectionsUiState.Error(
                     "Erreur lors du chargement des copies: ${e.message}"

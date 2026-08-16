@@ -105,6 +105,11 @@ struct SECTApp: App {
                     .environmentObject(devoirsViewModel)
                     .environmentObject(correctionsViewModel)
                     .environmentObject(resultatsViewModel)
+                    .environmentObject(BadgeManager.shared)
+                    // SECT-MOBILE-NAV-PHASE-E : Deep Links sect://
+                    .onOpenURL { url in
+                        handleDeepLink(url)
+                    }
             } else {
                 LoginView()
                     .environmentObject(authViewModel)
@@ -123,12 +128,70 @@ extension Notification.Name {
 // ── Deep Link Target ──
 
 /// Deep link target for notification tap navigation.
+/// SECT-MOBILE-NAV-PHASE-E : étendu avec corrections, travail, profile + parser sect://
 enum DeepLinkTarget {
     case epreuve(id: String)
     case results(epreuveId: String)
     case messages(conversationId: String)
     case dashboard
     case notifications
+    // SECT-MOBILE-NAV-PHASE-E : nouveaux cas
+    case corrections
+    case correctionDetail(sessionId: String)
+    case travail
+    case profile
+    case resultats
+    case unknown(uri: String)
+
+    /// Parse une URL sect:// en DeepLinkTarget.
+    static func parse(from url: URL) -> DeepLinkTarget? {
+        guard url.scheme == "sect" else { return nil }
+        let host = url.host ?? ""
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+
+        switch host {
+        case "dashboard": return .dashboard
+        case "messagerie":
+            return pathComponents.isEmpty ? .messages(conversationId: "") : .messages(conversationId: pathComponents[0])
+        case "corrections":
+            return pathComponents.isEmpty ? .corrections : .correctionDetail(sessionId: pathComponents[0])
+        case "resultats": return .resultats
+        case "travail": return .travail
+        case "profile": return .profile
+        case "epreuves":
+            return pathComponents.isEmpty ? .travail : .epreuve(id: pathComponents[0])
+        case "results":
+            return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .results(epreuveId: pathComponents[0])
+        case "passation":
+            return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .results(epreuveId: pathComponents[0])
+        default: return .unknown(uri: url.absoluteString)
+        }
+    }
+
+    /// Index d'onglet pour MainTabView (0=Accueil, 1=Travail, 2=Corrections/Résultats, 3=Messages).
+    var tabIndex: Int? {
+        switch self {
+        case .dashboard: return 0
+        case .travail: return 1
+        case .corrections, .resultats: return 2
+        case .messages: return 3
+        default: return nil
+        }
+    }
+}
+
+// ── Deep Link Handler (SECT-MOBILE-NAV-PHASE-E) ──
+
+/// Traite un deep link sect:// — publie une notification pour la navigation.
+func handleDeepLink(_ url: URL) {
+    guard let target = DeepLinkTarget.parse(from: url) else { return }
+    DispatchQueue.main.async {
+        NotificationCenter.default.post(
+            name: .sectDeepLink,
+            object: nil,
+            userInfo: ["target": target]
+        )
+    }
 }
 
 // ── Tab View principal — SECT-MOBILE-NAV-PHASE-A/B/D : 4 onglets rôle-spécifiques ──

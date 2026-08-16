@@ -924,3 +924,67 @@ Stage Summary:
 - ✅ NavigationPolicy shared KMP inchangé (destinations identiques sur tous facteurs de forme)
 - ✅ Aucune nouvelle dépendance (utilise APIs natives Compose Foundation + SwiftUI)
 - ⏳ CI mobile à vérifier après push
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-E-PBXPROJ
+Agent: general-purpose (pbxproj updater)
+Task: Ajouter 2 nouveaux fichiers Swift au project.pbxproj (SectDesignSystem + BadgeManager)
+
+Work Log:
+- Lu le fichier `/home/z/sect/mobile/iosApp/iosApp.xcodeproj/project.pbxproj` (620 lignes, format mixte single-line/multi-line).
+- Vérifié l'indentation réelle avec `cat -A`: le fichier utilise des espaces (16 espaces pour les sections PBXBuildFile/PBXFileReference, 32 espaces pour les listes children/files).
+- Repéré les 4 points d'insertion via `ResultatsView` (dernière entrée Phase C, IDs ...0DAC/...0DAD).
+- Edit 1 (PBXBuildFile, après ligne 63): ajout de 2 entrées pour SectDesignSystem.swift (...0DAF) et BadgeManager.swift (...0DB1).
+- Edit 2 (PBXFileReference, après ligne 140): ajout de 2 entrées fileRef pour ...0DAE et ...0DB0 avec path `../Utilities/...`.
+- Edit 3 (Utilities group `8A1A2B3C4D5E6F7A8B9C0D34`, après ligne 213): ajout des 2 fileRef IDs à la fin de children.
+- Edit 4 (Sources build phase `8A1A2B3C4D5E6F7A8B9C0D41`, après ligne 370): ajout des 2 buildFile IDs à la fin de files.
+- Vérification finale par grep: 8 occurrences totales (4 pour SectDesignSystem, 4 pour BadgeManager), réparties correctement dans les 4 sections.
+
+Stage Summary:
+- Fichier modifié: `/home/z/sect/mobile/iosApp/iosApp.xcodeproj/project.pbxproj` uniquement.
+- 2 fichiers Swift ajoutés au projet Xcode: `iosApp/Utilities/SectDesignSystem.swift` et `iosApp/Utilities/BadgeManager.swift`.
+- IDs alloués: SectDesignSystem fileRef=...0DAE / buildFile=...0DAF ; BadgeManager fileRef=...0DB0 / buildFile=...0DB1 (suffixe suivant libre: ...0DB2).
+- 4 sections mises à jour: PBXBuildFile (lignes 64-65), PBXFileReference (lignes 143-144), Utilities group children (lignes 218-219), Sources build phase files (lignes 377-378).
+- Format respecté: single-line style, indentation 16/32 espaces, commentaires `/* ... */`, paths `../Utilities/X.swift`, `sourceTree = "<group>"`.
+- Aucun commit/push effectué.
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-E
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase E — Identité "Savane EdTech" + badges + deep links + animations
+
+Work Log:
+- Audit design system web (frontend/src/app/globals.css + docs/design-system.md) :
+  palette exacte "Savane EdTech" récupérée :
+  - Primary vert lime #84CC16, Secondary terre cuite #C2410C, Navy #2C3E50,
+    Gold #D4A017, Tech cyan #06B6D4, Fond #F0F2F5
+  - Statut sémantique + tiers gamification (bronze/silver/gold/platinum/xp)
+- Android (4 nouveaux fichiers + 3 modifiés) :
+  1. Color.kt réécrit : palette "Savane EdTech" complète + alias rétrocompatibles
+     (SectLime/SectTerreCuite/SectNavy/SectGold/SectTech + LightColorScheme/DarkColorScheme alignés)
+  2. SectDesignSystem.kt (nouveau) : GlassCard (glassmorphism), KenteDivider
+     (motif tricolore lime/terre/or), SectStatCard, SectProgressBar (animée), SectBadge
+  3. SectAnimations.kt (nouveau) : fadeIn/fadeOut transitions, pulseAnimation, bounceOnAppear
+  4. BadgeManager.kt (nouveau) : holder central (unreadMessages, pendingCorrections)
+  5. DeepLinkHandler.kt (nouveau) : parser sect:// → DeepLinkTarget + toRoute()
+  6. AndroidManifest.xml : intent-filter sect:// scheme
+  7. Navigation.kt : badges dynamiques depuis BadgeManager (remplace TODO)
+  8. CorrectionsViewModel.kt : alimente BadgeManager.setPendingCorrections()
+- iOS (2 nouveaux fichiers + 3 modifiés) :
+  1. Colors.swift réécrit : palette "Savane EdTech" + ShapeStyle extensions + alias
+  2. SectDesignSystem.swift (nouveau) : GlassCard, KenteDivider, SectStatCard,
+     SectProgressBar, SectBadge (miroir Android)
+  3. BadgeManager.swift (nouveau) : singleton @MainActor ObservableObject
+  4. SECTApp.swift : DeepLinkTarget étendu + parse(from:) + handleDeepLink()
+     + .onOpenURL + .environmentObject(BadgeManager.shared)
+  5. CorrectionsViewModel.swift : alimente BadgeManager.shared.setPendingCorrections()
+- project.pbxproj : 2 PBXFileReference + 2 PBXBuildFile (IDs DAE, DB0, DAF, DB1)
+
+Stage Summary:
+- ✅ Palette "Savane EdTech" alignée web ↔ mobile (vert lime + terre cuite + bleu nuit + or)
+- ✅ Composants DS unifiés : GlassCard (glassmorphism), KenteDivider (motif africain)
+- ✅ Badges dynamiques : Messages (non lus) + Corrections (en attente) via BadgeManager
+- ✅ Deep links sect:// (epreuves/{id}, corrections/{id}, messagerie/{id}, dashboard, etc.)
+- ✅ Animations : fadeIn/fadeOut, pulse, bounce + progressBar animée
+- ✅ Alias rétrocompatibles (SectGreen→SectLime, etc.) — pas de cassage existing code
+- ⏳ CI mobile à vérifier après push

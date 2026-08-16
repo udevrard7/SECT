@@ -38,6 +38,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- SECT-MOBILE-NAV-PHASE-E : Deep Links sect:// -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sect" />
+            </intent-filter>
         </activity>
 
         <!-- Firebase Cloud Messaging Service -->
