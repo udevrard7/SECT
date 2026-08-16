@@ -84,7 +84,7 @@ struct ProfileView: View {
                     .fill(Color.sectBlue.opacity(0.2))
                     .frame(width: 100, height: 100)
                 
-                if let imageUrl = user?.photoUrl, !imageUrl.isEmpty {
+                if let imageUrl = user?.image, !imageUrl.isEmpty {
                     AsyncImage(url: URL(string: imageUrl)) { image in
                         image
                             .resizable()
@@ -105,13 +105,13 @@ struct ProfileView: View {
             
             // Name & Role
             VStack(spacing: 4) {
-                Text(user?.nom ?? "Utilisateur")
+                Text(user?.name ?? "Utilisateur")
                     .font(.title2)
                     .fontWeight(.bold)
                 
                 if let role = user?.role {
                     HStack {
-                        Badge(text: role.nom.capitalized, color: roleBadgeColor(for: role))
+                        Badge(text: role.name.capitalized, color: roleBadgeColor(for: role))
                     }
                 }
                 
@@ -135,8 +135,8 @@ struct ProfileView: View {
                 .font(.headline)
                 .foregroundColor(.secondary)
             
-            InfoRow(label: "Établissement", value: user?.etablissementNom ?? "N/A")
-            InfoRow(label: "Filière", value: user?.filiere ?? "N/A")
+            InfoRow(label: "Établissement", value: user?.etablissement?.nom ?? "N/A")
+            InfoRow(label: "Filière", value: user?.filiere?.nom ?? "N/A")
             InfoRow(label: "Niveau", value: user?.niveau ?? "N/A")
             
             if let matricule = user?.matricule {
