@@ -29,6 +29,7 @@ val dataModule = module {
             statsApi = get(),
             resultatsApi = get(),
             devoirApi = get(),
+            correctionApi = get(),
             tokenCache = get()
         )
     }

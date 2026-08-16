@@ -10,13 +10,14 @@ import com.sect.mobile.shared.data.mapper.*
 import com.sect.mobile.shared.domain.model.*
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import com.sect.mobile.shared.network.api.AuthApi
+import com.sect.mobile.shared.network.api.CorrectionApi
 import com.sect.mobile.shared.network.api.DevoirApi
 import com.sect.mobile.shared.network.api.EpreuveApi
 import com.sect.mobile.shared.network.api.MessagerieApi
+import com.sect.mobile.shared.network.api.ResultatsApi
 import com.sect.mobile.shared.network.api.SessionApi
 import com.sect.mobile.shared.network.api.StatsApi
 import com.sect.mobile.shared.network.api.UserApi
-import com.sect.mobile.shared.network.api.ResultatsApi
 
 /**
  * SECTRepositoryImpl is the data-layer implementation of the domain repository interface.
@@ -39,6 +40,7 @@ class SECTRepositoryImpl(
     private val statsApi: StatsApi,
     private val resultatsApi: ResultatsApi,
     private val devoirApi: DevoirApi,
+    private val correctionApi: CorrectionApi,
     private val tokenCache: TokenCache
 ) : SECTRepositoryInterface {
 
@@ -155,8 +157,25 @@ class SECTRepositoryImpl(
     override suspend fun getResultatsEtudiant(): List<Resultat> =
         resultatsApi.getResultatsEtudiant().map { it.toDomain() }
 
-    override suspend fun getSessionsACorriger(): List<SessionPassation> =
-        resultatsApi.getSessionsACorriger().map { it.toDomain() }
+    override suspend fun getSessionsACorriger(epreuveId: String?): List<CorrectionSession> =
+        correctionApi.getSessions(epreuveId = epreuveId).map { it.toDomain() }
+
+    override suspend fun saveGrade(
+        sessionId: String,
+        questionId: String,
+        score: Double?,
+        commentaire: String?
+    ) {
+        correctionApi.saveGrade(sessionId, questionId, score, commentaire)
+    }
+
+    override suspend fun finalizeCorrectionSession(sessionId: String) {
+        correctionApi.finalizeSession(sessionId)
+    }
+
+    override suspend fun retournerCorrectionSession(sessionId: String) {
+        correctionApi.retournerSession(sessionId)
+    }
     
     // ── Devoirs & Soumissions ──
     

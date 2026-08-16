@@ -4,11 +4,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,22 +21,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sect.mobile.android.ui.viewmodel.CorrectionsUiState
 import com.sect.mobile.android.ui.viewmodel.CorrectionsViewModel
-import com.sect.mobile.shared.domain.enum.StatutSession
-import com.sect.mobile.shared.domain.model.SessionPassation
+import com.sect.mobile.shared.domain.model.CorrectionSession
 
 /**
- * Écran Corrections pour les enseignants.
- * Liste des copies à corriger avec accès rapide aux détails.
- *
- * NOTE SECT-MOBILE-CI-FIX-1 : la route backend /api/sessions/a-corriger n'existe
- * pas encore (voir ResultatsApi.getSessionsACorriger()). En attendant, l'API
- * retourne une liste vide — l'écran affichera l'état "Aucune copie à corriger".
+ * Écran Corrections pour les enseignants — liste des copies à corriger.
+ * SECT-MOBILE-CORRECTION-1 : utilise GET /api/correction (vrai backend endpoint).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CorrectionsScreen(
     onBackClick: () -> Unit,
-    onSessionClick: (String) -> Unit,
+    onSessionClick: (CorrectionSession) -> Unit,
     viewModel: CorrectionsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -91,8 +89,8 @@ fun CorrectionsScreen(
 
 @Composable
 private fun CorrectionsList(
-    sessions: List<SessionPassation>,
-    onSessionClick: (String) -> Unit,
+    sessions: List<CorrectionSession>,
+    onSessionClick: (CorrectionSession) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -100,10 +98,39 @@ private fun CorrectionsList(
         contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // En-tête résumé
+        item {
+            val aCorriger = sessions.count { !it.allCorrected }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Copies en attente", fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("$aCorriger session(s) à corriger",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                    Icon(Icons.Default.Assessment, contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+            }
+        }
+
         items(sessions, key = { it.id }) { session ->
             SessionCorrectionCard(
                 session = session,
-                onClick = { onSessionClick(session.id) }
+                onClick = { onSessionClick(session) }
             )
         }
     }
@@ -111,7 +138,7 @@ private fun CorrectionsList(
 
 @Composable
 private fun SessionCorrectionCard(
-    session: SessionPassation,
+    session: CorrectionSession,
     onClick: () -> Unit
 ) {
     Card(
@@ -128,7 +155,7 @@ private fun SessionCorrectionCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // En-tête : Identifiant étudiant + badge statut
+            // Étudiant + statut
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -136,38 +163,27 @@ private fun SessionCorrectionCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Étudiant ${session.etudiantId.take(8)}",
+                        text = session.etudiantNom.ifEmpty { "Étudiant ${session.etudiantId.take(8)}" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Soumis le ${session.dateSoumission?.toString()?.take(10) ?: "Non soumis"}",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = session.epreuveTitre.ifEmpty { "Épreuve ${session.epreuveId.take(8)}" },
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                // Badge statut — mapping enum StatutSession
-                val (badgeText, badgeContainer, badgeContent) = when (session.statut) {
-                    StatutSession.SOUMISE -> Triple(
-                        "À corriger",
-                        MaterialTheme.colorScheme.secondaryContainer,
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    StatutSession.CORRIGEE, StatutSession.RETOURNEE -> Triple(
-                        "Corrigé",
-                        MaterialTheme.colorScheme.primaryContainer,
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    else -> Triple(
-                        session.statut.name,
-                        MaterialTheme.colorScheme.tertiaryContainer,
-                        MaterialTheme.colorScheme.onTertiaryContainer
-                    )
+                // Badge statut
+                val (badgeText, badgeColor) = when (session.statut) {
+                    "SOUMISE" -> "À corriger" to MaterialTheme.colorScheme.secondaryContainer
+                    "CORRIGEE" -> "Corrigé" to MaterialTheme.colorScheme.primaryContainer
+                    "RETOURNEE" -> "Retourné" to MaterialTheme.colorScheme.tertiaryContainer
+                    else -> session.statut to MaterialTheme.colorScheme.surfaceVariant
                 }
                 Badge(
-                    containerColor = badgeContainer,
-                    contentColor = badgeContent
+                    containerColor = badgeColor,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     Text(badgeText)
                 }
@@ -175,44 +191,58 @@ private fun SessionCorrectionCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Titre de l'épreuve (via la relation epreuve si présente)
-            Text(
-                text = session.epreuve?.titre ?: "Épreuve ${session.epreuveId.take(8)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Score si disponible, sinon "En attente de correction"
-            if (session.note != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Note: ${session.note}/${session.epreuve?.totalPoints ?: session.epreuve?.noteTotal ?: "?"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
+            // Indicateurs : réponses à corriger + alertes proctoring + score
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Réponses à corriger
+                if (session.needsCorrectionCount > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Edit, contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.secondary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "${session.needsCorrectionCount} à corriger",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Tout corrigé",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
                 }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+
+                // Alertes proctoring
+                if (session.alertes > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("${session.alertes} alerte(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                }
+
+                // Score si déjà calculé
+                if (session.score != null) {
+                    Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = "En attente de correction",
+                        "Score: ${session.score}/20",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -233,17 +263,13 @@ private fun EmptyCorrectionsState(modifier: Modifier = Modifier) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Aucune copie à corriger",
+        Text("Aucune copie à corriger",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Toutes les soumissions ont été évaluées",
+        Text("Toutes les soumissions ont été évaluées",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-        )
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
     }
 }
 
@@ -257,27 +283,18 @@ private fun ErrorCorrectionsState(
         modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = Icons.Default.Error,
-            contentDescription = null,
+        Icon(Icons.Default.Error, contentDescription = null,
             modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.error
-        )
+            tint = MaterialTheme.colorScheme.error)
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Erreur de chargement",
+        Text("Erreur de chargement",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.error
-        )
+            color = MaterialTheme.colorScheme.error)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = message,
+        Text(message,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onRetry) {
-            Text("Réessayer")
-        }
+        Button(onClick = onRetry) { Text("Réessayer") }
     }
 }

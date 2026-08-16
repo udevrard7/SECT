@@ -39,7 +39,10 @@ interface SECTRepositoryInterface : AuthRepository {
     
     // Resultats & Corrections
     suspend fun getResultatsEtudiant(): List<Resultat>
-    suspend fun getSessionsACorriger(): List<SessionPassation>
+    suspend fun getSessionsACorriger(epreuveId: String? = null): List<CorrectionSession>
+    suspend fun saveGrade(sessionId: String, questionId: String, score: Double?, commentaire: String?)
+    suspend fun finalizeCorrectionSession(sessionId: String)
+    suspend fun retournerCorrectionSession(sessionId: String)
     
     // Devoirs & Soumissions
     suspend fun listDevoirs(search: String? = null, statut: String? = null, page: Int = 1, limit: Int = 20): List<Devoir>

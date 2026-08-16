@@ -670,3 +670,44 @@ Stage Summary:
 - ⏳ onResultClick/onSessionClick = no-op (routes détail à créer dans une tâche future)
 - ⏳ getSessionsACorriger() retourne emptyList() (route backend à créer)
 - ⏳ CI mobile à vérifier après push
+
+---
+Task ID: SECT-MOBILE-CORRECTION-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Implémenter la correction enseignant sur mobile (brancher le vrai endpoint backend /api/correction)
+
+Work Log:
+- Audit backend : endpoint GET /api/correction trouvé (router.go:775, handler listCorrectionSessions)
+  - 7 endpoints : GET list, PATCH saveGrade/finalize, POST retourner, POST ai-grade, etc.
+  - Pour un ENSEIGNANT, enseignantId est auto-rempli depuis le JWT → GET /api/correction sans params retourne toutes ses sessions à corriger
+  - Réponse : { sessions: [CorrectionSession] } avec reponses, epreuve, etudiant, alertes, needsCorrectionCount, etc.
+- Module shared KMP (6 nouveaux fichiers) :
+  1. data/dto/CorrectionDto.kt — 7 DTOs @Serializable miroir exact du backend Go (CorrectionSessionDto, CorrectionReponseDto, CorrectionEtudiantDto, CorrectionResultatDto, CorrectionEpreuveDto, CorrectionQuestionDto, SaveGradeInputDto)
+  2. domain/model/Correction.kt — 5 domain models pure Kotlin
+  3. data/mapper/CorrectionMapper.kt — DTO→Domain mappers
+  4. network/api/CorrectionApi.kt — Ktor client (getSessions, saveGrade, finalizeSession, retournerSession)
+- Repository refactor :
+  - SECTRepositoryInterface : getSessionsACorriger() retourne maintenant List<CorrectionSession> (au lieu de List<SessionPassation>) + 3 nouvelles méthodes (saveGrade, finalizeCorrectionSession, retournerCorrectionSession)
+  - SECTRepositoryImpl : ajout correctionApi au constructeur, délégation aux méthodes CorrectionApi
+  - ResultatsApi : supprimé le stub getSessionsACorriger() (emptyList) — déplacé vers CorrectionApi
+  - NetworkModule + DataModule : CorrectionApi enregistré et injecté
+- Android (4 fichiers modifiés + 2 nouveaux) :
+  5. CorrectionsViewModel.kt — utilise CorrectionSession (au lieu de SessionPassation)
+  6. CorrectionsScreen.kt — réécrite avec vraies propriétés (etudiantNom, epreuveTitre, needsCorrectionCount, alertes, score, badge statut SOUMISE/CORRIGEE/RETOURNEE)
+  7. CorrectionDetailViewModel.kt (nouveau) — holder partagé + saveGrade/finalize/retourner avec update locale
+  8. CorrectionDetailScreen.kt (nouveau) — notation question par question :
+     - En-tête : étudiant + épreuve + indicateurs (statut, à corriger, alertes)
+     - Cartes Reponse : énoncé + type + barème + réponse étudiant + suggestion IA (avec bouton "Appliquer") + saisie score + commentaire + bouton Enregistrer
+     - Bottom bar : boutons Finaliser (SOUMISE→CORRIGEE) + Retourner (CORRIGEE→RETOURNEE)
+  - CorrectionSessionHolder : singleton Koin pour passer la session sélectionnée de la liste au détail (pas de GET unitaire backend)
+  - Navigation.kt : route corrections/{sessionId} + ScreenRoute.CorrectionDetail + composable CORRECTION_DETAIL
+  - AppModule.kt : CorrectionSessionHolder (single) + CorrectionDetailViewModel (viewModel)
+
+Stage Summary:
+- ✅ Endpoint backend /api/correction pleinement intégré sur mobile
+- ✅ Liste des copies à corriger avec données réelles (GET /api/correction)
+- ✅ Écran détail de notation : score + commentaire par question + suggestion IA
+- ✅ Actions : saveGrade (PATCH), finalize (PATCH finalizeAll), retourner (POST)
+- ✅ Pattern holder pour navigation liste→détail sans GET unitaire
+- ✅ CorrectionSession domain model aligné sur le contrat backend exact
+- ⏳ CI mobile à vérifier après push (shared compile + Android + iOS)
