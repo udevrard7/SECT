@@ -1,0 +1,60 @@
+```
+# Kotlin/Android build artifacts
+*.class
+*.jar
+*.war
+*.aar
+*.apk
+*.dex
+
+# Gradle
+.gradle/
+build/
+!gradle.properties
+!gradlew
+!gradlew.bat
+
+# Android
+*.ap_
+*.aab
+local.properties
+captures/
+
+# iOS
+*.ipa
+*.app
+*.dSYM/
+Pods/
+build/
+
+# Kotlin Multiplatform
+.kotlin/
+!gradle/
+!gradlew
+!gradlew.bat
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Coverage
+.coverage
+htmlcov/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

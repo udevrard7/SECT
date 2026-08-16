@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+        <!-- Keychain Access Groups for secure token storage -->
+        <key>keychain-access-groups</key>
+        <array>
+                <string>$(AppIdentifierPrefix)com.ftci.app</string>
+        </array>
+
+        <!-- Associated Domains for universal links -->
+        <key>com.apple.developer.associated-domains</key>
+        <array>
+                <string>applinks:sect.ci</string>
+        </array>
+
+        <!-- Data Protection -->
+        <key>com.apple.developer.data-protection</key>
+        <string>complete</string>
+
+        <!-- Push Notifications -->
+        <!-- APS_ENVIRONMENT est défini dans les build settings du projet :
+             - Debug   = development (certificats Apple Development)
+             - Release = production   (certificats Apple Distribution)
+             Voir project.pbxproj : APS_ENVIRONMENT = development/production -->
+        <key>aps-environment</key>
+        <string>$(APS_ENVIRONMENT)</string>
+</dict>
+</plist>

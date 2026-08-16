@@ -1,0 +1,14 @@
+# Signing
+*.jks
+*.keystore
+keystore.properties
+
+# Firebase (replace with real values — never commit real secrets)
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+FastlaneApiKey.json
+
+# Environment
+.env
+.env.*

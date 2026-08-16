@@ -1,0 +1,55 @@
+-- SECT Mobile — Epreuve cache (offline exam access)
+-- Students can download epreuves ahead of time to take exams offline
+
+CREATE TABLE cached_epreuve (
+    id TEXT NOT NULL PRIMARY KEY,
+    titre TEXT NOT NULL,
+    description TEXT,
+    duree INTEGER NOT NULL,
+    date_debut TEXT NOT NULL,
+    date_fin TEXT NOT NULL,
+    statut TEXT NOT NULL,
+    note_total REAL NOT NULL,
+    proctoring_actif INTEGER NOT NULL DEFAULT 0,
+    filiere_id TEXT,
+    enseignant_id TEXT NOT NULL,
+    questions_json TEXT NOT NULL,   -- JSON serialized list of questions
+    cached_at INTEGER NOT NULL,    -- epoch millis
+    expires_at INTEGER NOT NULL    -- cached_at + TTL
+);
+
+-- Index for finding epreuves by statut
+CREATE INDEX idx_cached_epreuve_statut ON cached_epreuve(statut);
+
+-- Index for TTL-based cache eviction
+CREATE INDEX idx_cached_epreuve_expires ON cached_epreuve(expires_at);
+
+getEpreuve:
+SELECT * FROM cached_epreuve WHERE id = ?;
+
+getEpreuveIfValid:
+SELECT * FROM cached_epreuve WHERE id = ? AND expires_at > ?;
+
+listEpreuvesByStatut:
+SELECT * FROM cached_epreuve WHERE statut = ? ORDER BY date_debut DESC;
+
+listAllEpreuves:
+SELECT * FROM cached_epreuve ORDER BY date_debut DESC;
+
+listValidEpreuves:
+SELECT * FROM cached_epreuve WHERE expires_at > ? ORDER BY date_debut DESC;
+
+insertEpreuve:
+INSERT OR REPLACE INTO cached_epreuve
+    (id, titre, description, duree, date_debut, date_fin, statut, note_total,
+     proctoring_actif, filiere_id, enseignant_id, questions_json, cached_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteEpreuve:
+DELETE FROM cached_epreuve WHERE id = ?;
+
+deleteExpiredEpreuves:
+DELETE FROM cached_epreuve WHERE expires_at <= ?;
+
+deleteAllEpreuves:
+DELETE FROM cached_epreuve;

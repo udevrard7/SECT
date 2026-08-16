@@ -1,0 +1,41 @@
+# Backend Go — .dockerignore
+# Exclut tout ce qui n'est pas nécessaire au build Docker pour accélérer
+# le contexte de build et réduire la taille de l'image.
+
+# Build artifacts
+bin/
+tmp/
+*.exe
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+MIGRATIONS_RECONCILIATION.md
+db/README.md
+db/MIGRATIONS_RECONCILIATION.md
+
+# Build tools (pas nécessaires dans l'image Docker)
+Makefile
+sqlc.yaml
+
+# SQL queries et référence (générés par sqlc, pas utilisés au runtime)
+db/queries/
+db/reference/
+
+# Migrations DB (appliquées séparément via golang-migrate, pas au runtime)
+db/db/migrations/
+db/db/README.md
+
+# Env files (jamais dans l'image Docker — utiliser Render env vars)
+.env
+.env.*
+.gitenv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

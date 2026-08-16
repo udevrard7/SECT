@@ -1,0 +1,39 @@
+-- SECT Mobile — User cache (offline profile data)
+-- Stores serialized user profiles for offline access
+
+CREATE TABLE cached_user (
+    id TEXT NOT NULL PRIMARY KEY,
+    email TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    etablissement_id TEXT,
+    filiere_id TEXT,
+    matricule TEXT,
+    image TEXT,
+    user_json TEXT NOT NULL,       -- Full JSON for deserialization
+    cached_at INTEGER NOT NULL,    -- epoch millis
+    expires_at INTEGER NOT NULL    -- cached_at + TTL
+);
+
+-- Index for TTL-based cache eviction
+CREATE INDEX idx_cached_user_expires ON cached_user(expires_at);
+
+getUser:
+SELECT * FROM cached_user WHERE id = ?;
+
+getUserIfValid:
+SELECT * FROM cached_user WHERE id = ? AND expires_at > ?;
+
+insertUser:
+INSERT OR REPLACE INTO cached_user
+    (id, email, name, role, etablissement_id, filiere_id, matricule, image, user_json, cached_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteUser:
+DELETE FROM cached_user WHERE id = ?;
+
+deleteExpiredUsers:
+DELETE FROM cached_user WHERE expires_at <= ?;
+
+deleteAllUsers:
+DELETE FROM cached_user;

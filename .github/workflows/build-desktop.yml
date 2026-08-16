@@ -1,0 +1,68 @@
+# SECT-DESKTOP-PHASE-B-1 : build desktop sur chaque push.
+# Build les 3 plateformes (sans signing) + upload artifacts.
+# Le release (avec signing) est dans release-desktop.yml (sur tag).
+name: Build Desktop
+
+on:
+  push:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/build-desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: windows/amd64, name: windows }
+          - { os: macos-latest, target: darwin/universal, name: macos }
+          # Ubuntu 22.04 (pas 24.04) car Wails v2.13 nécessite libwebkit2gtk-4.0-dev
+          # (Ubuntu 24.04 ne fournit que libwebkit2gtk-4.1-dev, incompatible avec Wails v2)
+          - { os: ubuntu-22.04, target: linux/amd64, name: linux }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend deps
+        working-directory: desktop/frontend
+        run: npm ci || npm install
+
+      - name: Build
+        working-directory: desktop
+        run: wails build -platform ${{ matrix.target }} -clean
+
+      - name: Package Linux (.deb, .rpm)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          desktop/scripts/package-linux.sh desktop/build/bin/sect-desktop 0.2.0
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sect-desktop-${{ matrix.name }}
+          path: |
+            desktop/build/bin/*
+            !desktop/build/bin/*.bak
