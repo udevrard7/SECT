@@ -47,6 +47,11 @@
                 8A1A2B3C4D5E6F7A8B9C0D8A /* ResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0D8C /* SECTAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0D8E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D93 /* EpreuvesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D92 /* EpreuvesView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D95 /* MessagerieView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D94 /* MessagerieView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D97 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D96 /* ProfileView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D99 /* EnseignantDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D98 /* EnseignantDashboardView.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0D9B /* EtudiantDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0D9A /* EtudiantDashboardView.swift */; };
 /* Framework in Frameworks build phase */
                 8A1A2B3C4D5E6F7A8B9C0D66 /* Shared.framework in Frameworks */ = {
                         isa = PBXBuildFile;
@@ -110,6 +115,11 @@
                 8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResultsView.swift; path = ../Views/ResultsView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SECTAppDelegate.swift; path = ../Push/SECTAppDelegate.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = ../Views/SettingsView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D92 /* EpreuvesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EpreuvesView.swift; path = ../Views/EpreuvesView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D94 /* MessagerieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MessagerieView.swift; path = ../Views/MessagerieView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D96 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProfileView.swift; path = ../Views/ProfileView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D98 /* EnseignantDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EnseignantDashboardView.swift; path = ../Views/Dashboard/EnseignantDashboardView.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0D9A /* EtudiantDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EtudiantDashboardView.swift; path = ../Views/Dashboard/EtudiantDashboardView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */ = {
                         isa = PBXFileReference;
                         lastKnownFileType = wrapper.framework;
@@ -169,6 +179,11 @@
                                 8A1A2B3C4D5E6F7A8B9C0D89 /* ResultsView.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0D8B /* SECTAppDelegate.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0D8D /* SettingsView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D92 /* EpreuvesView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D94 /* MessagerieView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D96 /* ProfileView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D98 /* EnseignantDashboardView.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0D9A /* EtudiantDashboardView.swift */,
                         );
                         path = Utilities;
                         sourceTree = "<group>";
@@ -312,6 +327,11 @@
                                 8A1A2B3C4D5E6F7A8B9C0D8A /* ResultsView.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0D8C /* SECTAppDelegate.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0D8E /* SettingsView.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0D93 /* EpreuvesView.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0D95 /* MessagerieView.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0D97 /* ProfileView.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0D99 /* EnseignantDashboardView.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0D9B /* EtudiantDashboardView.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };
