@@ -118,13 +118,13 @@ struct EtudiantDashboardView: View {
                 color: Color.sectGreen
             )
             EtudiantStatItem(
-                value: Int(stats.moyenne),
+                value: Int32(stats.moyenne),
                 label: "Moyenne",
                 icon: "chart.line.uptrend.xyaxis",
                 color: Color.sectPurple
             )
             EtudiantStatItem(
-                value: Int(stats.meilleureNote),
+                value: Int32(stats.meilleureNote),
                 label: "Meilleure",
                 icon: "star.fill",
                 color: Color.sectOrange

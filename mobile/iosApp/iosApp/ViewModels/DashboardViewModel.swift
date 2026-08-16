@@ -90,10 +90,11 @@ class DashboardViewModel: ObservableObject {
                 raisonCloture: nil,
                 delaiGrace: 0,
                 epreuveOrigineId: nil,
-                questionCount: 0,
-                totalPoints: 0.0,
+                questionCount: KotlinInt(int: 0),
+                totalPoints: KotlinDouble(double: 0.0),
                 enseignant: nil,
-                filiere: nil
+                filiere: nil,
+                questions: nil
             )
         }
     }
@@ -140,10 +141,11 @@ class DashboardViewModel: ObservableObject {
                 raisonCloture: nil,
                 delaiGrace: 0,
                 epreuveOrigineId: nil,
-                questionCount: epreuve.nbQuestions,
-                totalPoints: epreuve.totalPoints,
+                questionCount: KotlinInt(int: epreuve.nbQuestions),
+                totalPoints: KotlinDouble(double: epreuve.totalPoints),
                 enseignant: nil,
-                filiere: nil
+                filiere: nil,
+                questions: nil
             )
         }
     }

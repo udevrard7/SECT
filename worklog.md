@@ -516,3 +516,87 @@ Stage Summary:
 - ✅ Patterns de fix cohérents avec le codebase existant (.enseignant lowercase, .planifiee, .normale, .manuelle)
 - ✅ Hypothèse du task (cascade du bug AuthViewModel) partiellement confirmée pour les erreurs Role/syntax, mais la cause racine des "cannot find X in scope" était les fichiers manquants du target Xcode — pas une cascade
 - ⏳ CI iOS à re-vérifier après push (orchestrator s'en charge pour le commit)
+
+---
+Task ID: SECT-MOBILE-CI-FIX-5
+Agent: general-purpose (iOS Swift fixer round 2)
+Task: Corriger erreurs Swift restantes (EpreuvesView, MessagerieView, DashboardViewModel)
+
+Work Log:
+- Lu worklog.md (entrées SECT-MOBILE-CI-FIX-1/2/3/4) pour contexte : Android SUCCESS, iOS encore en échec après FIX-4 (5 View fichiers ajoutés au target Xcode ont révélé des erreurs jusque-là cachées)
+- Lu les fichiers de référence Kotlin : Epreuve.kt (34 params dont questions: List<Question>? en dernier), Messagerie.kt (Message a createdAt/updatedAt, pas de date ; Conversation a unreadCount: Int non-optional, pas de otherUser), Enums.kt (StatutEpreuve: BROUILLON, PLANIFIEE, EN_COURS, TERMINEE, CLOTUREE), Stats.kt (EpreuveAVenirEtudiant a nbQuestions: Int, totalPoints: Double), Models.kt (typealias Instant = String), User.kt (User a name/image, pas de nom/photoUrl ; UserRef a name), SECTRepositoryInterface.kt (listUsers existe, createConversation n'existe pas)
+- Lu les fichiers Swift de référence : EnseignantDashboardView.swift (définit Badge+ErrorBanner canoniques, ligne 389), EpreuveDetailView.swift (prend epreuveId: String, utilise .name sur enums, utilise questionCount ?? 0 et totalPoints ?? 0), EpreuveViewModel.swift (loadEpreuves est async), MessagerieViewModel.swift (n'a pas isLoading/availableUsers/isLoadingUsers/createConversation/loadAvailableUsers), ProfileView.swift (utilise photoUrl/nom/etablissementNom inexistant)
+- Lu les 3 fichiers à corriger intégralement : DashboardViewModel.swift (155 lignes), EpreuvesView.swift (369 lignes), MessagerieView.swift (385 lignes)
+
+Fix 1 — DashboardViewModel.swift (4 erreurs listées, via MultiEdit) :
+  - Bloc enseignant (ligne 93-97) : questionCount: 0 → KotlinInt(int: 0), totalPoints: 0.0 → KotlinDouble(double: 0.0), ajouté questions: nil après filiere: nil
+  - Bloc étudiant (ligne 144-148) : questionCount: epreuve.nbQuestions → KotlinInt(int: epreuve.nbQuestions), totalPoints: epreuve.totalPoints → KotlinDouble(double: epreuve.totalPoints), ajouté questions: nil après filiere: nil
+  - Rationale : Kotlin Int? / Double? exportés comme KotlinInt? / KotlinDouble? en Swift (boxed nullable primitives) ; questions est le dernier paramètre (List<Question>? = null) non-préservé par l'export Swift
+
+Fix 2 — EpreuvesView.swift (12 erreurs listées + 3 cascading, via MultiEdit) :
+  - Ligne 59 (Button refresh) : viewModel.loadEpreuves() → Task { await viewModel.loadEpreuves() } (async call in sync context)
+  - Ligne 76 (.onAppear) : idem wrapping Task { }
+  - Ligne 158 (Button retry) : idem wrapping Task { }
+  - Ligne 116 : StatutEpreuve.allCases → [StatutEpreuve.brouillon, .planifiee, .enCours, .terminee, .cloturee] (Kotlin enums n'exposent pas allCases en Swift)
+  - Lignes 255-259 (statutColor switch) : .active → .enCours (sectGreen), .archivee → .cloturee (gray), ajouté .planifiee (sectBlue) et changé .terminee → sectOrange ; cases correctes selon Enums.kt
+  - Ligne 269 : EpreuveDetailView(epreuve: epreuve) → EpreuveDetailView(epreuveId: epreuve.id) (EpreuveDetailView prend epreuveId: String, vérifié dans son source)
+  - Lignes 293-294 : epreuve.dureeMinutes → epreuve.duree (Epreuve a duree: Int, pas dureeMinutes)
+  - Ligne 297 (cascading) : epreuve.questionsCount → epreuve.questionCount ?? 0 (mauvais nom de propriété + optional KotlinInt)
+  - Ligne 299 (cascading) : epreuve.pointsMax → epreuve.totalPoints ?? 0.0 (mauvais nom + optional KotlinDouble)
+  - Lignes 307-311 (cascading) : if let date = epreuve.dateCreation { Text("Créée le \(date.formatted(...))") } → if !epreuve.createdAt.isEmpty { Text("Créée le \(formatDate(epreuve.createdAt))") } avec helper formatDate ajouté (parse ISO8601 String → Date, pattern identique à EnseignantDashboardView/EpreuveDetailView)
+  - Lignes 335-351 : SUPPRIMÉ le struct Badge dupliqué (conflit avec EnseignantDashboardView.swift:389, désormais dans le même target) — le Badge canonique d'EnseignantDashboardView est conservé
+  - Ajouté extension StatutEpreuve { var nom: String { ... } } mappant chaque case → libellé français (Brouillon, Planifiée, En cours, Terminée, Clôturée) avec default: return name (fallback Kotlin enum name) — résout les références statut.nom aux lignes 118 et 265
+
+Fix 3 — MessagerieView.swift (5 erreurs listées + ~10 cascading, via MultiEdit) :
+  - Ligne 19 : conversation.unreadCount ?? 0 → Int(conversation.unreadCount) (unreadCount est Int32 non-optional en Swift, ?? invalide ; Int(Int32) → Int pour match le type de retour)
+  - Ligne 26 : viewModel.isLoading → viewModel.isLoadingConversations (MessagerieViewModel n'a pas isLoading, a isLoadingConversations/isLoadingMessages/isSendingMessage)
+  - Lignes 47, 68, 101 : viewModel.loadConversations() → Task { await viewModel.loadConversations() } (async dans sync context — 3 occurrences)
+  - Lignes 171-185 (lastMessageDate) : guard let date = conversation.lastMessage?.date → guard let isoString = conversation.lastMessage?.createdAt + parse ISO8601DateFormatter → Date (Message n'a pas .date, a createdAt: Instant = String ; .omitted/.abbreviated de Date.FormattedStyle nécessitent un Date, pas un String — cascade fix)
+  - Lignes 191-198 (avatar ConversationRow) : simplifié ZStack en gardant juste le Circle + Image(person.fill) placeholder — supprimé la branche conversation.otherUser?.photoUrl (otherUser n'existe pas sur Conversation)
+  - Ligne 203 : conversation.otherUser?.nom ?? "Utilisateur" → conversation.titre ?? "Conversation" (otherUser n'existe pas ; titre: String? existe sur Conversation)
+  - Lignes 245-252 (filteredUsers) : viewModel.availableUsers ?? [] → viewModel.availableUsers (non-optional désormais) ; $0.nom → $0.name (User a name, pas nom)
+  - Ligne 288 : user.photoUrl → user.image (User a image: String?, pas photoUrl)
+  - Ligne 315 : Text(user.nom) → Text(user.name) (User a name, pas nom)
+
+Fix 4 — MessagerieViewModel.swift (ajout membres manquants pour NewConversationView, via Edit) :
+  - Ajouté @Published var availableUsers: [User] = []
+  - Ajouté @Published var isLoadingUsers = false
+  - Ajouté func loadAvailableUsers() async { ... } qui appelle repository.listUsers(search:nil, role:nil, etablissementId:nil, page:1, limit:50) et stocke result.users
+  - Ajouté func createConversation(otherUserId: String) async { ... } avec TODO comment + self.error = "La création de conversation n'est pas encore disponible sur l'application mobile." (SECTRepositoryInterface n'expose pas createConversation — stub non-crashant)
+  - Rationale : NewConversationView référencait 4 membres inexistants du ViewModel ; plutôt que de supprimer la feature, ajout des membres pour compiler
+
+Fix 5 — ProfileView.swift (5 erreurs cascading découvertes pendant l'audit, via MultiEdit) :
+  - Ligne 87 : user?.photoUrl → user?.image
+  - Ligne 108 : user?.nom → user?.name
+  - Ligne 114 : role.nom.capitalized → role.name.capitalized (Role enum expose .name, pas .nom)
+  - Ligne 138 : user?.etablissementNom → user?.etablissement?.nom (User a etablissement: EtablissementRef? qui a nom: String ; pas de etablissementNom direct)
+  - Ligne 139 : user?.filiere ?? "N/A" → user?.filiere?.nom ?? "N/A" (user?.filiere est FiliereRef? pas String ; FiliereRef.nom est le libellé)
+
+Fix 6 — EtudiantDashboardView.swift (2 erreurs cascading découvertes pendant l'audit, via MultiEdit) :
+  - Ligne 121 : value: Int(stats.moyenne) → value: Int32(stats.moyenne) (EtudiantStatItem.value est Int32 ; Int(Double) retourne Int qui ne matche pas Int32)
+  - Ligne 127 : value: Int(stats.meilleureNote) → value: Int32(stats.meilleureNote) (idem)
+
+Vérifications post-fix (grep sur /home/z/sect/mobile/iosApp) :
+  - 0 match pour \.dureeMinutes ✓
+  - 0 match pour case \.active|case \.archivee sur StatutEpreuve ✓
+  - 1 seul struct Badge (EnseignantDashboardView.swift:389) ✓ — plus de doublon dans EpreuvesView
+  - 0 match pour StatutEpreuve\.allCases ✓
+  - 0 match pour \.lastMessage\?\.date (Message.date) ✓
+  - DashboardViewModel : questionCount: KotlinInt(int: ...) × 2, totalPoints: KotlinDouble(double: ...) × 2, questions: nil × 2 ✓
+  - 0 match pour \.photoUrl ✓
+  - 0 match pour user\?\.nom|user\.nom|role\.nom ✓
+  - 0 match pour etablissementNom ✓
+  - 0 match pour value: Int\( (où Int32 attendu) ✓
+  - 0 match pour conversation\.otherUser ✓
+  - Tous les viewModel.isLoading sont sur des ViewModels qui ont cette propriété (DashboardViewModel, EpreuveViewModel, PassationViewModel) ✓ — MessagerieView utilise isLoadingConversations
+  - Tous les Button/onAppear avec appels async sont wrappés dans Task { } ✓
+  - MessagerieViewModel a bien availableUsers, isLoadingUsers, loadAvailableUsers, createConversation ✓
+
+Stage Summary:
+- ✅ 24 erreurs Swift corrigées sur les 3 fichiers listés (DashboardViewModel 4, EpreuvesView 15, MessagerieView 15) + 7 erreurs cascading additionnelles sur 2 fichiers non-listés (ProfileView 5, EtudiantDashboardView 2) = 31 erreurs au total
+- ✅ 5 fichiers modifiés : DashboardViewModel.swift, EpreuvesView.swift, MessagerieView.swift, MessagerieViewModel.swift (ajout membres pour NewConversationView), ProfileView.swift, EtudiantDashboardView.swift
+- ✅ 0 modification du module :shared, :androidApp, ou project.pbxproj (règle respectée)
+- ✅ Patterns cohérents avec le codebase existant : Task { await ... } pour async-in-sync, .name sur enums Kotlin, ISO8601DateFormatter pour parsing Instant (=String), Int32 pour les params Kotlin Int, KotlinInt/KotlinDouble pour les params Kotlin Int?/Double?
+- ✅ Audit proactif : ProfileView et EtudiantDashboardView (aussi ajoutés au target dans FIX-4) avaient des erreurs non-détectées par le task — corrigées pour éviter un 6e round-trip CI
+- ⚠️ createConversation est un stub (le repository shared n'expose pas cette opération) — signalé à l'utilisateur via self.error au lieu de crasher
+- ⏳ CI iOS à re-vérifier après push (orchestrator s'en charge pour le commit)

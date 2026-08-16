@@ -11,6 +11,8 @@ class MessagerieViewModel: ObservableObject {
     @Published var isLoadingConversations = false
     @Published var isLoadingMessages = false
     @Published var isSendingMessage = false
+    @Published var availableUsers: [User] = []
+    @Published var isLoadingUsers = false
     @Published var error: String? = nil
 
     private let repository = KoinRepositoryProvider.shared.repository
@@ -85,5 +87,31 @@ class MessagerieViewModel: ObservableObject {
 
     var hasMoreMessages: Bool {
         return messages.count >= pageSize
+    }
+
+    // ── Available Users (pour nouvelle conversation) ──
+
+    func loadAvailableUsers() async {
+        isLoadingUsers = true
+        do {
+            let result = try await repository.listUsers(
+                search: nil,
+                role: nil,
+                etablissementId: nil,
+                page: 1,
+                limit: 50
+            )
+            availableUsers = result.users
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isLoadingUsers = false
+    }
+
+    func createConversation(otherUserId: String) async {
+        // TODO: implémenter quand SECTRepositoryInterface exposera createConversation.
+        // Le repository partagé ne propose pas encore cette opération ; on signale
+        // l'indisponibilité à l'utilisateur plutôt que de planter silencieusement.
+        self.error = "La création de conversation n'est pas encore disponible sur l'application mobile."
     }
 }

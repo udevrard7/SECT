@@ -56,7 +56,7 @@ struct EpreuvesView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        viewModel.loadEpreuves()
+                        Task { await viewModel.loadEpreuves() }
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .foregroundColor(.sectGreen)
@@ -73,7 +73,7 @@ struct EpreuvesView: View {
                 }
             }
             .onAppear {
-                viewModel.loadEpreuves()
+                Task { await viewModel.loadEpreuves() }
             }
         }
     }
@@ -113,7 +113,7 @@ struct EpreuvesView: View {
                         action: { selectedFilter = nil }
                     )
                     
-                    ForEach(StatutEpreuve.allCases, id: \.self) { statut in
+                    ForEach([StatutEpreuve.brouillon, .planifiee, .enCours, .terminee, .cloturee], id: \.self) { statut in
                         FilterChip(
                             title: statut.nom,
                             isSelected: selectedFilter == statut,
@@ -155,7 +155,7 @@ struct EpreuvesView: View {
                 .padding(.horizontal)
             
             Button(action: {
-                viewModel.loadEpreuves()
+                Task { await viewModel.loadEpreuves() }
             }) {
                 Text("Réessayer")
                     .fontWeight(.semibold)
@@ -253,9 +253,10 @@ struct EpreuveCard: View {
     private var statutColor: Color {
         switch epreuve.statut {
         case .brouillon: return .gray
-        case .active: return .sectGreen
-        case .terminee: return .sectBlue
-        case .archivee: return .gray
+        case .planifiee: return .sectBlue
+        case .enCours: return .sectGreen
+        case .terminee: return .sectOrange
+        case .cloturee: return .gray
         default: return .gray
         }
     }
@@ -265,7 +266,7 @@ struct EpreuveCard: View {
     }
     
     var body: some View {
-        NavigationLink(destination: EpreuveDetailView(epreuve: epreuve)) {
+        NavigationLink(destination: EpreuveDetailView(epreuveId: epreuve.id)) {
             VStack(alignment: .leading, spacing: 12) {
                 // Header
                 HStack {
@@ -289,13 +290,13 @@ struct EpreuveCard: View {
                 
                 // Info row
                 HStack(spacing: 16) {
-                    InfoLabel(icon: "clock", text: epreuve.dureeMinutes > 0 
-                              ? "\(epreuve.dureeMinutes) min" 
+                    InfoLabel(icon: "clock", text: epreuve.duree > 0
+                              ? "\(epreuve.duree) min"
                               : "Illimité")
                     
-                    InfoLabel(icon: "questionmark.circle", text: "\(epreuve.questionsCount) questions")
+                    InfoLabel(icon: "questionmark.circle", text: "\(epreuve.questionCount ?? 0) questions")
                     
-                    InfoLabel(icon: "star", text: "\(epreuve.pointsMax) pts")
+                    InfoLabel(icon: "star", text: "\(epreuve.totalPoints ?? 0.0) pts")
                     
                     Spacer()
                 }
@@ -303,8 +304,8 @@ struct EpreuveCard: View {
                 .foregroundColor(.secondary)
                 
                 // Footer
-                if let date = epreuve.dateCreation {
-                    Text("Créée le \(date.formatted(date: .abbreviated, time: .shortened))")
+                if !epreuve.createdAt.isEmpty {
+                    Text("Créée le \(formatDate(epreuve.createdAt))")
                         .font(.caption2)
                         .foregroundColor(.gray)
                 }
@@ -315,6 +316,13 @@ struct EpreuveCard: View {
             .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func formatDate(_ isoString: String) -> String {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = isoFormatter.date(from: isoString) else { return isoString }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
@@ -332,30 +340,28 @@ struct InfoLabel: View {
     }
 }
 
-// MARK: - Badge
-
-struct Badge: View {
-    let text: String
-    let color: Color
-    
-    var body: some View {
-        Text(text)
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color)
-            .cornerRadius(6)
-    }
-}
-
 // MARK: - Create Epreuve View (Placeholder)
 
 struct CreateEpreuveView: View {
     var body: some View {
         Text("Création d'épreuve")
             .navigationTitle("Nouvelle épreuve")
+    }
+}
+
+// MARK: - StatutEpreuve French label extension
+
+extension StatutEpreuve {
+    /// Libellé français du statut pour l'affichage UI.
+    var nom: String {
+        switch self {
+        case .brouillon: return "Brouillon"
+        case .planifiee: return "Planifiée"
+        case .enCours: return "En cours"
+        case .terminee: return "Terminée"
+        case .cloturee: return "Clôturée"
+        default: return name
+        }
     }
 }
 

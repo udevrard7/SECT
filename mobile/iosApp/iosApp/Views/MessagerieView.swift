@@ -16,14 +16,14 @@ struct MessagerieView: View {
     
     private var unreadCount: Int {
         viewModel.conversations.reduce(0) { count, conversation in
-            count + (conversation.unreadCount ?? 0)
+            count + Int(conversation.unreadCount)
         }
     }
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                if viewModel.isLoading {
+                if viewModel.isLoadingConversations {
                     loadingView
                 } else if viewModel.error != nil {
                     errorView
@@ -44,7 +44,7 @@ struct MessagerieView: View {
                         
                         // Refresh button
                         Button(action: {
-                            viewModel.loadConversations()
+                            Task { await viewModel.loadConversations() }
                         }) {
                             Image(systemName: "arrow.clockwise")
                                 .foregroundColor(.sectGreen)
@@ -65,7 +65,7 @@ struct MessagerieView: View {
                     .environmentObject(viewModel)
             }
             .onAppear {
-                viewModel.loadConversations()
+                Task { await viewModel.loadConversations() }
             }
         }
     }
@@ -98,7 +98,7 @@ struct MessagerieView: View {
                 .padding(.horizontal)
             
             Button(action: {
-                viewModel.loadConversations()
+                Task { await viewModel.loadConversations() }
             }) {
                 Text("Réessayer")
                     .fontWeight(.semibold)
@@ -169,8 +169,10 @@ struct ConversationRow: View {
     @EnvironmentObject var viewModel: MessagerieViewModel
     
     private var lastMessageDate: String {
-        guard let date = conversation.lastMessage?.date else { return "" }
-        let now = Date()
+        guard let isoString = conversation.lastMessage?.createdAt else { return "" }
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = isoFormatter.date(from: isoString) else { return "" }
         let calendar = Calendar.current
         
         if calendar.isDateInToday(date) {
@@ -191,28 +193,14 @@ struct ConversationRow: View {
                         .fill(Color.sectBlue.opacity(0.2))
                         .frame(width: 50, height: 50)
                     
-                    if let imageUrl = conversation.otherUser?.photoUrl,
-                       !imageUrl.isEmpty {
-                        AsyncImage(url: URL(string: imageUrl)) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 50, height: 50)
-                                .clipShape(Circle())
-                        } placeholder: {
-                            Image(systemName: "person.fill")
-                                .foregroundColor(.sectBlue)
-                        }
-                    } else {
-                        Image(systemName: "person.fill")
-                            .foregroundColor(.sectBlue)
-                    }
+                    Image(systemName: "person.fill")
+                        .foregroundColor(.sectBlue)
                 }
                 
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text(conversation.otherUser?.nom ?? "Utilisateur")
+                        Text(conversation.titre ?? "Conversation")
                             .font(.headline)
                             .lineLimit(1)
                         
@@ -256,10 +244,10 @@ struct NewConversationView: View {
     
     private var filteredUsers: [User] {
         if searchText.isEmpty {
-            return viewModel.availableUsers ?? []
+            return viewModel.availableUsers
         }
-        return (viewModel.availableUsers ?? []).filter {
-            $0.nom.localizedCaseInsensitiveContains(searchText) ||
+        return viewModel.availableUsers.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
             $0.email.localizedCaseInsensitiveContains(searchText)
         }
     }
@@ -297,7 +285,7 @@ struct NewConversationView: View {
                     List(filteredUsers, id: \.id) { user in
                         HStack {
                             // Avatar
-                            if let imageUrl = user.photoUrl, !imageUrl.isEmpty {
+                            if let imageUrl = user.image, !imageUrl.isEmpty {
                                 AsyncImage(url: URL(string: imageUrl)) { image in
                                     image
                                         .resizable()
@@ -324,7 +312,7 @@ struct NewConversationView: View {
                             
                             // Info
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(user.nom)
+                                Text(user.name)
                                     .font(.headline)
                                 Text(user.email)
                                     .font(.subheadline)
