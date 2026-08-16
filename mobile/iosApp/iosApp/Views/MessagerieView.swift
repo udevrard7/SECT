@@ -218,7 +218,8 @@ struct ConversationRow: View {
                 }
                 
                 // Unread badge
-                if let unreadCount = conversation.unreadCount, unreadCount > 0 {
+                let unreadCount = Int(conversation.unreadCount)
+                if unreadCount > 0 {
                     Spacer()
                     
                     Badge(text: "\(unreadCount)", color: .sectOrange)
