@@ -191,27 +191,58 @@ struct MainTabView: View {
 
     private var iPadLayout: some View {
         NavigationSplitView {
-            // Sidebar : liste des destinations
-            List(selection: $selectedTab) {
-                Label("Accueil", systemImage: "house.fill").tag(0)
-                Label("Travail", systemImage: "briefcase.fill").tag(1)
-                if isEnseignant {
-                    Label("Corrections", systemImage: "checkmark.square").tag(2)
-                } else {
-                    Label("Résultats", systemImage: "chart.bar.fill").tag(2)
+            // Sidebar : liste des destinations avec sélection manuelle
+            List {
+                ForEach(sidebarItems, id: \.tag) { item in
+                    Button {
+                        selectedTab = item.tag
+                    } label: {
+                        Label(item.title, systemImage: item.icon)
+                            .foregroundColor(selectedTab == item.tag ? .sectGreen : .primary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                Label("Messages", systemImage: "message.fill").tag(3)
             }
             .navigationTitle("SECT")
             .tint(.sectGreen)
         } detail: {
-            switch selectedTab {
-            case 0: DashboardView()
-            case 1: TravailView()
-            case 2: isEnseignant ? AnyView(CorrectionsView()) : AnyView(ResultatsView())
-            case 3: MessagerieView()
-            default: DashboardView()
+            detailView
+        }
+    }
+
+    private struct SidebarItem {
+        let tag: Int
+        let title: String
+        let icon: String
+    }
+
+    private var sidebarItems: [SidebarItem] {
+        var items = [
+            SidebarItem(tag: 0, title: "Accueil", icon: "house.fill"),
+            SidebarItem(tag: 1, title: "Travail", icon: "briefcase.fill")
+        ]
+        if isEnseignant {
+            items.append(SidebarItem(tag: 2, title: "Corrections", icon: "checkmark.square"))
+        } else {
+            items.append(SidebarItem(tag: 2, title: "Résultats", icon: "chart.bar.fill"))
+        }
+        items.append(SidebarItem(tag: 3, title: "Messages", icon: "message.fill"))
+        return items
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch selectedTab {
+        case 0: DashboardView()
+        case 1: TravailView()
+        case 2:
+            if isEnseignant {
+                CorrectionsView()
+            } else {
+                ResultatsView()
             }
+        case 3: MessagerieView()
+        default: DashboardView()
         }
     }
 }
