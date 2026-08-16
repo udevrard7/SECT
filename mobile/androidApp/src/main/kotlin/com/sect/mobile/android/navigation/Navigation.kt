@@ -27,9 +27,7 @@ import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
 import com.sect.mobile.android.ui.viewmodel.*
-import com.sect.mobile.android.ui.viewmodel.CorrectionSessionHolder
 import com.sect.mobile.android.ui.components.navigation.*
-import org.koin.androidx.compose.koinInject
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -334,11 +332,10 @@ fun SECTNavigation(
             // On tap → stocke la session dans CorrectionSessionHolder + navigue au détail.
             composable(Routes.CORRECTIONS) {
                 val correctionsVM: CorrectionsViewModel = koinViewModel()
-                val holder: CorrectionSessionHolder = koinInject()
                 CorrectionsScreen(
                     onBackClick = { navController.popBackStack() },
                     onSessionClick = { session ->
-                        holder.select(session)
+                        correctionsVM.selectSession(session)
                         navController.navigate("corrections/${session.id}")
                     },
                     viewModel = correctionsVM
