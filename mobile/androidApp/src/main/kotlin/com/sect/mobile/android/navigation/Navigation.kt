@@ -115,7 +115,9 @@ fun SECTNavigation(
     // Récupérer le rôle utilisateur pour la navigation conditionnelle
     val authVM: AuthViewModel = koinViewModel()
     val authState by authVM.authState.collectAsState()
-    val currentUser = (authState as? AuthState.Authenticated)?.user
+    // AuthState.Authenticated n'expose pas `user` (seulement userId/role/userName)
+    // → on lit directement le StateFlow<User?> du ViewModel pour récupérer le Role typé.
+    val currentUser by authVM.currentUser.collectAsState()
     val isEnseignant = currentUser?.role?.name == "ENSEIGNANT"
     val isEtudiant = currentUser?.role?.name == "ETUDIANT"
     

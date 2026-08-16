@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sect.mobile.android.ui.viewmodel.CorrectionsUiState
 import com.sect.mobile.android.ui.viewmodel.CorrectionsViewModel
 import com.sect.mobile.shared.domain.enum.StatutSession
 import com.sect.mobile.shared.domain.model.SessionPassation
@@ -28,6 +29,7 @@ import com.sect.mobile.shared.domain.model.SessionPassation
  * pas encore (voir ResultatsApi.getSessionsACorriger()). En attendant, l'API
  * retourne une liste vide — l'écran affichera l'état "Aucune copie à corriger".
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CorrectionsScreen(
     onBackClick: () -> Unit,

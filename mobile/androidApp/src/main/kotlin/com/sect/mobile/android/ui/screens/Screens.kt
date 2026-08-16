@@ -265,7 +265,12 @@ fun DashboardScreen(
 ) {
     val user by viewModel.user.collectAsState()
     val upcomingEpreuves by viewModel.upcomingEpreuves.collectAsState()
-    val stats by viewModel.stats.collectAsState()
+    // Stats dérivées des épreuves à venir (le VM expose enseignantStats / etudiantStats séparément,
+    // non fusionnés en une seule propriété `stats`).
+    val upcomingList = (upcomingEpreuves as? UiState.Success)?.data ?: emptyList()
+    val totalEpreuves = upcomingList.size
+    val enCours = upcomingList.count { it.statut == StatutEpreuve.EN_COURS }
+    val planifiees = upcomingList.count { it.statut == StatutEpreuve.PLANIFIEE }
     val isEnseignant = viewModel.isEnseignant
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -292,9 +297,9 @@ fun DashboardScreen(
         // ── Stats rapides ──
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("Épreuves", stats.totalEpreuves.toString(), Modifier.weight(1f))
-                StatCard("En cours", stats.enCours.toString(), Modifier.weight(1f))
-                StatCard("À venir", stats.planifiees.toString(), Modifier.weight(1f))
+                StatCard("Épreuves", totalEpreuves.toString(), Modifier.weight(1f))
+                StatCard("En cours", enCours.toString(), Modifier.weight(1f))
+                StatCard("À venir", planifiees.toString(), Modifier.weight(1f))
             }
             Spacer(modifier = Modifier.height(16.dp))
         }

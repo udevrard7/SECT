@@ -381,3 +381,78 @@ Stage Summary:
 - ✅ Graph Koin complet (9 ViewModels au lieu de 6)
 - Diff : 9 fichiers, +92/-578 lignes
 - ⏳ CI mobile à re-vérifier après push (run #95 attendu — jobs Shared + Android + iOS + Deploy)
+
+---
+Task ID: SECT-MOBILE-CI-FIX-3
+Agent: general-purpose (mobile compilation fixer)
+Task: Corriger 60 erreurs de compilation Android sur 7 fichiers
+
+Work Log:
+- Lecture du worklog (entrées SECT-MOBILE-CI-FIX-1, FIX-2, session resume) pour comprendre le contexte : module :shared KMP compile OK (rôle/filtre login/bottom nav ajoutés par SECT-MOBILE-FOCUS), mais androidApp a 60 erreurs résiduelles sur 7 fichiers (avant masquées par l'échec du shared)
+- Lecture des fichiers de référence du shared (Epreuve, Stats, Enums, User, Color, Theme, AuthViewModel+UiState) :
+  - Epreuve constructor : 14 params required (melangeQuestions, melangePropositions, blocageRetour, sessionExamen, generationMode, etc.) ; `nbQuestions` n'existe pas → c'est `questionCount: Int? = null`
+  - `typealias Instant = String` (dans Models.kt legacy) → passage de "" aux champs dateDebut/dateFin/createdAt/updatedAt est valide
+  - Enums réels : SessionExamen.NORMALE (pas PREMIERE_SESSION), ModeGeneration.MANUELLE (pas MANUEL)
+  - EtudiantStats : nbEpreuvesAVenir, nbEpreuvesTerminees, moyenne, meilleureNote, epreuvesAVenir (List<EpreuveAVenirEtudiant>), resultatsRecents, evolutionScores, performanceParType, sessionEnCours
+  - EpreuveAVenirEtudiant : n'a PAS de champ `statut` (contrairement à EpreuveAVenir qui l'a)
+  - EnseignantStats : nbDocuments, nbQuestionsTotal, nbEpreuves, nbEpreuvesActives, nbCorrectionsEnAttente, pendingCorrections, recentEpreuves, performanceParEpreuve, evolutionMoyennes, epreuvesAVenir (List<EpreuveAVenir>)
+  - AuthState.Authenticated : userId, role, userName — PAS de `user`
+  - Color.kt + CommonComponents.kt définissent tous deux SectGreen/Blue/Orange/Red — la bottom nav importait SectPurple mais pas SectRed
+  - build.gradle.kts : material-icons-extended présent → tous les variants (Filled, Rounded, …) sont disponibles
+
+- Fix 1 — SectBottomNavigationBar.kt (28 erreurs) :
+  - Ajouté imports : androidx.compose.material.icons.Icons + 6 icons filled (Dashboard, Book, Assessment, Chat, Person, EditNote) + 6 icons rounded (mêmes noms) + androidx.compose.ui.draw.scale + com.sect.mobile.android.ui.components.SectRed
+  - Changé `(MaterialTheme.ColorScheme) -> Color = { it.primary }` en `(ColorScheme) -> Color = { it.primary }` (ColorScheme est le type de material3, pas une nested class de MaterialTheme)
+  - Remplacé toutes les références `androidx.compose.material.icons.Icons.Filled.X` (fully qualified, non résolues sans imports d'extension properties) par `Icons.Filled.X` / `Icons.Rounded.X` (10 nav items × 2 icons = 20 références)
+  - → import `androidx.compose.ui.draw.scale` rend `Modifier.scale(scale)` (ligne 83) résolu
+  - → import `SectRed` rend `badgeColor = { SectRed }` (ligne 206) résolu
+
+- Fix 2 — DashboardViewModel.kt (13 erreurs) :
+  - Pour loadEnseignantDashboard (EpreuveAVenir → Epreuve) : `nbQuestions = 0` → `questionCount = 0` ; ajouté 5 params required manquants : melangeQuestions=false, melangePropositions=false, blocageRetour=false, sessionExamen=SessionExamen.NORMALE, generationMode=ModeGeneration.MANUELLE
+  - Pour loadEtudiantDashboard (EpreuveAVenirEtudiant → Epreuve) : idem + `statut = StatutEpreuve.valueOf(epreuve.statut)` → `statut = StatutEpreuve.PLANIFIEE` (par défaut) car EpreuveAVenirEtudiant n'expose pas `statut` (TODO commenté) ; `nbQuestions = epreuve.nbQuestions` → `questionCount = epreuve.nbQuestions` (mapping field→param renommé)
+  - Commentaire ajouté pour expliquer le défaut PLANIFIEE
+
+- Fix 3 — Screens.kt (7 erreurs) :
+  - `val stats by viewModel.stats.collectAsState()` (inexistant — le VM expose enseignantStats/etudiantStats séparément) → dérivation depuis upcomingEpreuves :
+    val upcomingList = (upcomingEpreuves as? UiState.Success)?.data ?: emptyList()
+    val totalEpreuves = upcomingList.size
+    val enCours = upcomingList.count { it.statut == StatutEpreuve.EN_COURS }
+    val planifiees = upcomingList.count { it.statut == StatutEpreuve.PLANIFIEE }
+  - StatCard("Épreuves", stats.totalEpreuves.toString(), …) → StatCard("Épreuves", totalEpreuves.toString(), …) (idem enCours/planifiees)
+  - StatutEpreuve déjà importé (ligne 22 de Screens.kt) → pas d'import à ajouter
+
+- Fix 4 — CommonComponents.kt (7 erreurs) :
+  - Ajouté imports : androidx.compose.material.icons.Icons, androidx.compose.material.icons.filled.AccountCircle, androidx.compose.material.icons.filled.Error, androidx.compose.animation.core.animateFloat + infiniteRepeatable + rememberInfiniteTransition + RepeatMode + tween, androidx.compose.runtime.getValue
+  - Remplacé `androidx.compose.material.icons.Icons.Filled.AccountCircle` → `Icons.Filled.AccountCircle` (ligne 111) et `androidx.compose.material.icons.Icons.Filled.Error` → `Icons.Filled.Error` (ligne 254) — sans import d'extension property, le fully qualified ne compile pas
+  - Réécrit SkeletonRectangle : `androidx.compose.animation.core.animateFloat(...)` (n'existe pas comme top-level @Composable avec cette signature) → pattern standard `rememberInfiniteTransition() + transition.animateFloat(...)` qui retourne un `State<Float>` délégué via `by` ; supprime l'erreur "Unresolved reference 'animateFloat'" et ses cascades ("Cannot infer type", "@Composable invocations can only happen from context of @Composable function")
+  - Supprimé l'import `animateFloatAsState` non utilisé
+
+- Fix 5 — EnseignantDashboardScreen.kt (3 erreurs) :
+  - 3 appels `items(stats.X.take(5)) { ... }` (lignes 154, 186, 218) dans un bloc `item { when (statsState) { is UiState.Success -> { if (X.isEmpty()) Card else items(...) } } }` → `items()` est une extension sur LazyListScope, non disponible dans LazyItemScope
+  - Remplacé chaque `items(list) { x -> Card(...) }` par `Column(modifier = Modifier.fillMaxWidth()) { list.forEach { x -> Card(...) } }` (Column importé via androidx.compose.foundation.layout.* déjà présent) — les cartes s'empilent verticalement dans le même slot `item {}`
+  - 3 blocs affectés : pendingCorrections, recentEpreuves, epreuvesAVenir
+
+- Fix 6 — EtudiantDashboardScreen.kt (3 erreurs) :
+  - Même pattern que Fix 5 : 3 appels `items(...)` dans des blocs `item { when (statsState) { ... else { items(...) } } }` (lignes 202, 234, 266)
+  - Même correction : `Column(modifier = Modifier.fillMaxWidth()) { list.forEach { x -> Card(...) } }`
+  - 3 blocs affectés : epreuvesAVenir (EpreuveAVenirEtudiant), resultatsRecents (ResultatRecent), performanceParType (PerformanceType)
+
+- Fix 7 — Navigation.kt (1 erreur) :
+  - Ligne 118 : `val currentUser = (authState as? AuthState.Authenticated)?.user` — AuthState.Authenticated n'expose que userId/role/userName (PAS de `user`)
+  - Remplacé par `val currentUser by authVM.currentUser.collectAsState()` (AuthViewModel expose `currentUser: StateFlow<User?>`) — permet de récupérer le Role typé pour le check `currentUser?.role?.name == "ENSEIGNANT"/"ETUDIANT"`
+  - Commentaire ajouté pour expliquer le pourquoi
+
+- Vérification post-fix (grep) :
+  - Aucune référence restante à `MaterialTheme.ColorScheme`, `viewModel.stats`, `nbQuestions =`, `(authState as? AuthState.Authenticated)?.user`
+  - Aucun appel `items(` résiduel dans les 2 dashboard screens (Column+forEach à la place)
+  - Tous les Icons.Filled.* / Icons.Rounded.* / Icons.Default.* utilisés ont leur import d'extension property (sauf Screens.kt qui importe `androidx.compose.material.icons.filled.*` wildcard)
+  - La seule référence `nbQuestions = epreuve.questionCount` restante est dans EpreuvesScreen.kt (passage au paramètre `nbQuestions: Int?` de la Compose fun EpreuveCard — valide, ce n'est pas le ctor Epreuve)
+
+- Note environnement : tentative de compilation locale (`./gradlew :androidApp:compileDebugKotlinAndroid`) impossible — sandbox sans `javac` (JRE only) ni Android SDK ; l'agent précédent (SECT-MOBILE-CI-FIX-2) a aussi vérifié via CI GitHub uniquement. Vérification statique uniquement effectuée ici.
+
+Stage Summary:
+- ✅ 60 erreurs de compilation corrigées sur 7 fichiers androidApp (28+13+7+7+3+3+1 = 62 erreurs ciblées, plus cascades)
+- ✅ 0 modifications du module :shared (règle respectée)
+- ✅ Patterns de fix cohérents : imports d'extension properties Material Icons, MaterialTheme.colorScheme (lowercase) vs ColorScheme (type), LazyListScope.items() vs LazyItemScope, StateFlow pour récupérer User typé
+- ✅ Diff : 7 fichiers modifiés, +75/-35 lignes approx
+- ⏳ CI mobile à re-vérifier après push (run #96 attendu) — pas de commit/push effectué par cet agent (orchestrator s'en charge)

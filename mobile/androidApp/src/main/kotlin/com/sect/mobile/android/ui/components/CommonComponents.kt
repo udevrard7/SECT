@@ -2,12 +2,20 @@
 // Inspiré du /frontend/src/components/ui et /frontend/src/components/ds
 package com.sect.mobile.android.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,7 +108,7 @@ fun WelcomeCard(
                 )
             }
             Icon(
-                imageVector = androidx.compose.material.icons.Icons.Filled.AccountCircle,
+                imageVector = Icons.Filled.AccountCircle,
                 contentDescription = null,
                 tint = SectGreen,
                 modifier = Modifier.size(48.dp)
@@ -209,20 +217,21 @@ fun SkeletonRectangle(
     modifier: Modifier = Modifier,
     height: Int = 16
 ) {
-    androidx.compose.animation.core.animateFloat(
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
         initialValue = 0.3f,
         targetValue = 0.7f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(800),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        )
-    ) { alpha ->
-        Box(
-            modifier = modifier
-                .height(height.dp)
-                .background(Color.LightGray.copy(alpha = alpha), RoundedCornerShape(4.dp))
-        )
-    }
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "skeletonAlpha"
+    )
+    Box(
+        modifier = modifier
+            .height(height.dp)
+            .background(Color.LightGray.copy(alpha = alpha), RoundedCornerShape(4.dp))
+    )
 }
 
 // ══════════════════════════════════════════════════
@@ -242,7 +251,7 @@ fun ErrorState(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
-            imageVector = androidx.compose.material.icons.Icons.Filled.Error,
+            imageVector = Icons.Filled.Error,
             contentDescription = null,
             tint = SectRed,
             modifier = Modifier.size(48.dp)
