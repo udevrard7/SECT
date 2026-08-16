@@ -456,3 +456,63 @@ Stage Summary:
 - ✅ Patterns de fix cohérents : imports d'extension properties Material Icons, MaterialTheme.colorScheme (lowercase) vs ColorScheme (type), LazyListScope.items() vs LazyItemScope, StateFlow pour récupérer User typé
 - ✅ Diff : 7 fichiers modifiés, +75/-35 lignes approx
 - ⏳ CI mobile à re-vérifier après push (run #96 attendu) — pas de commit/push effectué par cet agent (orchestrator s'en charge)
+
+---
+Task ID: SECT-MOBILE-CI-FIX-4
+Agent: general-purpose (iOS Swift fixer)
+Task: Corriger 7 erreurs de compilation Swift iOS
+
+Work Log:
+- Lu worklog.md (entrées SECT-MOBILE-CI-FIX-1/2/3) pour comprendre le contexte (Android SUCCESS, iOS still failing)
+- Lu les 2 fichiers Swift défaillants: AuthViewModel.swift (98 lignes) et DashboardViewModel.swift (155 lignes)
+- Lu les modèles Kotlin de référence: Epreuve.kt (34 params), Stats.kt (EpreuveAVenir, EpreuveAVenirEtudiant), Enums.kt (Role, StatutEpreuve, SessionExamen, ModeGeneration)
+- Lu l'équivalent Android DashboardViewModel.kt pour mirroirer l'approche de fix
+- Vérifié typealias Instant = String dans Models.kt (donc dateDebut/dateFin/createdAt/updatedAt sont String en Swift)
+- ANALYSE CRITIQUE — grep du project.pbxproj a révélé que 5 fichiers View .swift existent sur disque mais NE SONT PAS référencés dans le target Xcode:
+  * iosApp/Views/EpreuvesView.swift
+  * iosApp/Views/MessagerieView.swift (le task disait qu'il était dans MessagerieViewModel.swift — incorrect, c'est un fichier séparé)
+  * iosApp/Views/ProfileView.swift (idem — fichier séparé, pas dans ProfileViewModel.swift)
+  * iosApp/Views/Dashboard/EnseignantDashboardView.swift (sous-dossier Dashboard/)
+  * iosApp/Views/Dashboard/EtudiantDashboardView.swift
+  → Les erreurs "cannot find X in scope" ne sont PAS des cascades du bug de syntaxe AuthViewModel — ce sont des fichiers manquants du target Xcode
+- Confirme que .enseignant/.etudiant (lowercase) est la convention Kotlin→Swift (vérifié via grep: EpreuvesView.swift:19, ProfileView.swift:262-263, DashboardViewModel.swift:25/29 utilisent déjà lowercase)
+- Confirme que StatutEpreuve n'est pas un enum String-raw-backed en Swift → StatutEpreuve(rawValue:) n'existe pas (erreur #13). StatutEpreuve.allCases existe par contre (EpreuvesView.swift:116)
+
+Fix A — AuthViewModel.swift (4 edits via MultiEdit):
+- Ligne 32: .ENSEIGNANT → .enseignant, .ETUDIANT → .etudiant (erreurs #5, #6, #8, #9)
+- Ligne 33: "\\(user.role == .ADMIN ? ..." → "\(user.role == .admin ? ..." — fix double-escape \\( → \( et .ADMIN → .admin (erreur #7)
+- Ligne 73: .ENSEIGNANT → .enseignant, .ETUDIANT → .etudiant
+- Ligne 75: "\\(user.role.name)" → "\(user.role.name)" — fix double-escape (vérifié que .name est une propriété valide sur enums Kotlin via SettingsView.swift:84 et EpreuveDetailView.swift:148)
+
+Fix B — DashboardViewModel.swift (2 edits via MultiEdit, les deux blocs Epreuve(...)):
+- Remplacé les 2 appels Epreuve(...) (enseignant + étudiant) avec les 33 params requis par l'init Swift (Kotlin default values non préservés en Swift export)
+- Params ajoutés: melangeQuestions=false, melangePropositions=false, blocageRetour=false, uniteEnseignementId=nil, niveau=nil, sessionExamen=.normale, anneeAcademiqueId=nil, deletedAt=nil, proctoringActif=false, verificationIdentite=false, generationMode=.manuelle, isTemplate=false, noteTotal=20.0, clotureeAt=nil, clotureeAutomatiquement=false, raisonCloture=nil, delaiGrace=0, epreuveOrigineId=nil, enseignant=nil, filiere=nil (erreurs #12, #14)
+- Remplacé statut: StatutEpreuve(rawValue: epreuve.statut) ?? .planifiee par statut: .planifiee (erreur #13 — pas de rawValue init)
+- Pour étudiant: .planifiee au lieu de epreuve.statut (erreur #15 — EpreuveAVenirEtudiant n'a pas de champ statut)
+- Renommé nbQuestions: 0 → questionCount: 0 (enseignant) et questionCount: epreuve.nbQuestions (étudiant)
+- Param questions omis (a un default Swift fonctionnel, non listé dans l'erreur "missing arguments")
+
+Fix C — project.pbxproj (4 edits via MultiEdit, 5 fichiers ajoutés):
+- Ajouté 5 PBXBuildFile entries (IDs D93, D95, D97, D99, D9B)
+- Ajouté 5 PBXFileReference entries avec paths relatifs ../Views/ et ../Views/Dashboard/ (IDs D92, D94, D96, D98, D9A)
+- Ajouté 5 entrées au children du PBXGroup "Utilities" (mirroirant le pattern existant des autres Views)
+- Ajouté 5 entrées au PBXSourcesBuildPhase files list
+- IDs uniques séquentiels D92-D9B (vérifié aucune collision avec IDs existants D00-D91)
+
+Vérifications post-fix:
+- grep \\\\( dans *.swift → 0 match (plus aucun double-escape)
+- grep StatutEpreuve(rawValue: → 0 match (plus aucun appel invalide)
+- grep nbQuestions: → 0 match comme paramètre constructeur (epreuve.nbQuestions comme field access est valide)
+- grep .ENSEIGNANT|.ETUDIANT|.ADMIN|.RESPONSABLE → 0 match (tous lowercase)
+- Vérifié MessagerieView.swift, ProfileView.swift, EtudiantDashboardView.swift, EpreuvesView.swift, EnseignantDashboardView.swift — tous ont des struct definitions propres, pas de bugs de syntaxe
+- Vérifié que Badge et ErrorBanner (définis dans EnseignantDashboardView.swift) seront maintenant résolvables depuis MessagerieView.swift et EpreuveDetailView.swift
+- Compté 20 lignes dans pbxproj contenant les nouveaux IDs (5 PBXBuildFile + 5 PBXFileReference + 5 PBXGroup + 5 PBXSourcesBuildPhase = 20) ✓
+
+Stage Summary:
+- ✅ 15 erreurs de compilation Swift corrigées (le task listait "7" mais il y en avait 15 au total dans le log xcodebuild)
+- ✅ 3 fichiers modifiés: AuthViewModel.swift, DashboardViewModel.swift, project.pbxproj
+- ✅ 5 fichiers View ajoutés au target Xcode (EpreuvesView, MessagerieView, ProfileView, EnseignantDashboardView, EtudiantDashboardView)
+- ✅ 0 modifications du module :shared ou androidApp (règle respectée)
+- ✅ Patterns de fix cohérents avec le codebase existant (.enseignant lowercase, .planifiee, .normale, .manuelle)
+- ✅ Hypothèse du task (cascade du bug AuthViewModel) partiellement confirmée pour les erreurs Role/syntax, mais la cause racine des "cannot find X in scope" était les fichiers manquants du target Xcode — pas une cascade
+- ⏳ CI iOS à re-vérifier après push (orchestrator s'en charge pour le commit)

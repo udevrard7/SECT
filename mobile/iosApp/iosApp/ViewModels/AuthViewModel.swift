@@ -29,8 +29,8 @@ class AuthViewModel: ObservableObject {
             
             // SECT-RBAC-MOBILE-1: L'app mobile est réservée aux ENSEIGNANT et ETUDIANT
             // Les ADMIN et RESPONSABLE doivent utiliser l'interface web
-            if user.role != .ENSEIGNANT && user.role != .ETUDIANT {
-                blockedRoleError = "L'application mobile est réservée aux enseignants et étudiants. Les \\(user.role == .ADMIN ? "administrateurs" : "responsables") doivent utiliser l'interface web."
+            if user.role != .enseignant && user.role != .etudiant {
+                blockedRoleError = "L'application mobile est réservée aux enseignants et étudiants. Les \(user.role == .admin ? "administrateurs" : "responsables") doivent utiliser l'interface web."
                 // Logout immédiat + clear tokens
                 try? await repository.logout()
                 KoinRepositoryProvider.shared.clearCachedTokens()
@@ -70,9 +70,9 @@ class AuthViewModel: ObservableObject {
                 let user = try await repository.getCurrentUser()
                 
                 // SECT-RBAC-MOBILE-1: Vérifier le rôle même pour les sessions existantes
-                if user.role != .ENSEIGNANT && user.role != .ETUDIANT {
+                if user.role != .enseignant && user.role != .etudiant {
                     await logout()
-                    blockedRoleError = "Votre compte (\\(user.role.name)) n'est pas autorisé sur l'application mobile. Veuillez utiliser l'interface web."
+                    blockedRoleError = "Votre compte (\(user.role.name)) n'est pas autorisé sur l'application mobile. Veuillez utiliser l'interface web."
                     return
                 }
                 
