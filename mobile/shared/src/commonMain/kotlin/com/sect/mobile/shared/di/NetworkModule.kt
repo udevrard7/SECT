@@ -23,4 +23,5 @@ val networkModule = module {
     single<StatsApi> { StatsApi(get()) }
     single<ResultatsApi> { ResultatsApi(get()) }
     single<DevoirApi> { DevoirApi(get()) }
+    single<CorrectionApi> { CorrectionApi(get()) }
 }

@@ -2,13 +2,18 @@ package com.sect.mobile.android.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sect.mobile.shared.domain.model.CorrectionSession
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
-import com.sect.mobile.shared.domain.model.SessionPassation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * ViewModel pour l'écran liste des copies à corriger (enseignant).
+ * SECT-MOBILE-CORRECTION-1 : utilise désormais le vrai endpoint GET /api/correction
+ * (au lieu du stub emptyList() précédent).
+ */
 class CorrectionsViewModel(
     private val repository: SECTRepositoryInterface
 ) : ViewModel() {
@@ -24,7 +29,6 @@ class CorrectionsViewModel(
         viewModelScope.launch {
             try {
                 _uiState.value = CorrectionsUiState.Loading
-                // Récupérer les sessions à corriger (statut SOUMIS ou EN_CORRECTION)
                 val sessions = repository.getSessionsACorriger()
                 _uiState.value = CorrectionsUiState.Success(sessions)
             } catch (e: Exception) {
@@ -38,6 +42,6 @@ class CorrectionsViewModel(
 
 sealed class CorrectionsUiState {
     object Loading : CorrectionsUiState()
-    data class Success(val sessions: List<SessionPassation>) : CorrectionsUiState()
+    data class Success(val sessions: List<CorrectionSession>) : CorrectionsUiState()
     data class Error(val message: String) : CorrectionsUiState()
 }

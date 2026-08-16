@@ -1,13 +1,15 @@
 package com.sect.mobile.shared.network.api
 
 import com.sect.mobile.shared.data.dto.ResultatDto
-import com.sect.mobile.shared.data.dto.SessionPassationDto
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 
 /**
- * API for fetching student results and sessions to correct.
+ * API for fetching student results.
+ *
+ * NOTE : les sessions à corriger (côté enseignant) ont été déplacées vers
+ * CorrectionApi (GET /api/correction) — voir SECT-MOBILE-CORRECTION-1.
  */
 class ResultatsApi(private val client: HttpClient) {
 
@@ -22,19 +24,5 @@ class ResultatsApi(private val client: HttpClient) {
     suspend fun getResultatsEtudiant(): List<ResultatDto> {
         val response: Map<String, List<ResultatDto>> = client.get("/api/resultats").body()
         return response["resultats"] ?: emptyList()
-    }
-
-    /**
-     * Get sessions pending correction for the current teacher.
-     *
-     * TODO(SECT-MOBILE-CORRECTIONS): la route backend /api/sessions/a-corriger
-     * n'existe pas encore. Le frontend Next.js utilise /api/resultats?epreuveId=X
-     * (par épreuve) mais aucun endpoint global "sessions à corriger" n'est
-     * implémenté côté backend (vérifié dans internal/transport/http/router.go).
-     * En attendant l'ajout de cette route, on retourne une liste vide pour ne
-     * pas crasher l'écran Corrections de l'enseignant (CorrectionsViewModel).
-     */
-    suspend fun getSessionsACorriger(): List<SessionPassationDto> {
-        return emptyList()
     }
 }

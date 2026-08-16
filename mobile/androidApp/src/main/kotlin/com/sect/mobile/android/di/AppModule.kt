@@ -106,6 +106,9 @@ val appModule = module {
     viewModel { CorrectionsViewModel(get<SECTRepositoryInterface>()) }
     viewModel { ResultatsViewModel(get<SECTRepositoryInterface>()) }
     viewModel { DevoirsViewModel(get<SECTRepositoryInterface>()) }
+    // SECT-MOBILE-CORRECTION-1 : correction détail (notation + finalize + retourner)
+    single { CorrectionSessionHolder() }
+    viewModel { CorrectionDetailViewModel(get<SECTRepositoryInterface>(), get<CorrectionSessionHolder>()) }
 }
 
 // Helper for named qualifiers

@@ -23,10 +23,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.sect.mobile.android.ui.screens.*
+import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
 import com.sect.mobile.android.ui.viewmodel.*
+import com.sect.mobile.android.ui.viewmodel.CorrectionSessionHolder
 import com.sect.mobile.android.ui.components.navigation.*
+import org.koin.androidx.compose.koinInject
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -56,7 +59,8 @@ sealed class ScreenRoute(val route: String) {
     data class Passation(val id: String) : ScreenRoute("passation/$id")
     data class Results(val id: String) : ScreenRoute("results/$id")
     data class Conversation(val id: String) : ScreenRoute("messagerie/$id")
-    
+    data class CorrectionDetail(val id: String) : ScreenRoute("corrections/$id")
+
     companion object {
         fun fromRoute(route: String): ScreenRoute? {
             return when {
@@ -72,6 +76,7 @@ sealed class ScreenRoute(val route: String) {
                 route.startsWith("epreuves/") -> EpreuveDetail(route.removePrefix("epreuves/"))
                 route.startsWith("passation/") -> Passation(route.removePrefix("passation/"))
                 route.startsWith("results/") -> Results(route.removePrefix("results/"))
+                route.startsWith("corrections/") -> CorrectionDetail(route.removePrefix("corrections/"))
                 route.startsWith("messagerie/") && route.count { it == '/' } > 0 -> {
                     // Éviter confusion avec /messagerie (liste)
                     Conversation(route.removePrefix("messagerie/"))
@@ -104,6 +109,7 @@ object Routes {
     const val PASSATION = "passation/{epreuveId}"
     const val RESULTS = "results/{epreuveId}"
     const val CONVERSATION = "messagerie/{conversationId}"
+    const val CORRECTION_DETAIL = "corrections/{sessionId}"
 }
 
 @Composable
@@ -323,24 +329,33 @@ fun SECTNavigation(
                 )
             }
 
-            // ✏️ Corrections (Enseignant uniquement)
-            // Branché SECT-MOBILE-NAV-1 : liste des copies à corriger pour l'enseignant.
-            // Accessible via l'onglet "Corrections" de la bottom bar (enseignantNavItems)
-            // + raccourci depuis le Dashboard (onNavigateToCorrections).
-            //
-            // NOTE : getSessionsACorriger() retourne actuellement emptyList() car la route
-            // backend /api/sessions/a-corriger n'existe pas encore (voir ResultatsApi.kt).
-            // L'écran affichera l'état "Aucune copie à corriger" en attendant.
+            // ✏️ Corrections (Enseignant uniquement) — liste des copies à corriger
+            // SECT-MOBILE-CORRECTION-1 : utilise GET /api/correction (vrai endpoint backend).
+            // On tap → stocke la session dans CorrectionSessionHolder + navigue au détail.
             composable(Routes.CORRECTIONS) {
                 val correctionsVM: CorrectionsViewModel = koinViewModel()
+                val holder: CorrectionSessionHolder = koinInject()
                 CorrectionsScreen(
                     onBackClick = { navController.popBackStack() },
-                    onSessionClick = { sessionId ->
-                        // TODO(SECT-MOBILE-NAV) : créer une route détail de correction
-                        // (ex: corrections/{sessionId}) affichant les réponses à noter.
-                        // Pour l'instant, pas de route détail — on reste sur la liste.
+                    onSessionClick = { session ->
+                        holder.select(session)
+                        navController.navigate("corrections/${session.id}")
                     },
                     viewModel = correctionsVM
+                )
+            }
+
+            // ✏️ Correction détail — notation question par question
+            // SECT-MOBILE-CORRECTION-1 : la session est lue via CorrectionSessionHolder
+            // (pas de GET unitaire backend). Permet saveGrade + finalize + retourner.
+            composable(Routes.CORRECTION_DETAIL) { backStackEntry ->
+                val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
+                val detailVM: CorrectionDetailViewModel = koinViewModel()
+                CorrectionDetailScreen(
+                    sessionId = sessionId,
+                    onBackClick = { navController.popBackStack() },
+                    onReturned = { navController.popBackStack() },
+                    viewModel = detailVM
                 )
             }
 
