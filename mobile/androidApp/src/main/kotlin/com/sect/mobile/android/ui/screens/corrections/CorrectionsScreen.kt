@@ -1,6 +1,5 @@
 package com.sect.mobile.android.ui.screens.corrections
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,16 +13,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sect.mobile.android.ui.viewmodel.CorrectionsViewModel
-import com.sect.mobile.shared.domain.model.Session
+import com.sect.mobile.shared.domain.enum.StatutSession
+import com.sect.mobile.shared.domain.model.SessionPassation
 
 /**
- * Écran Corrections pour les enseignants
- * Liste des copies à corriger avec accès rapide aux détails
+ * Écran Corrections pour les enseignants.
+ * Liste des copies à corriger avec accès rapide aux détails.
+ *
+ * NOTE SECT-MOBILE-CI-FIX-1 : la route backend /api/sessions/a-corriger n'existe
+ * pas encore (voir ResultatsApi.getSessionsACorriger()). En attendant, l'API
+ * retourne une liste vide — l'écran affichera l'état "Aucune copie à corriger".
  */
 @Composable
 fun CorrectionsScreen(
@@ -86,7 +89,7 @@ fun CorrectionsScreen(
 
 @Composable
 private fun CorrectionsList(
-    sessions: List<Session>,
+    sessions: List<SessionPassation>,
     onSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -106,7 +109,7 @@ private fun CorrectionsList(
 
 @Composable
 private fun SessionCorrectionCard(
-    session: Session,
+    session: SessionPassation,
     onClick: () -> Unit
 ) {
     Card(
@@ -123,7 +126,7 @@ private fun SessionCorrectionCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // En-tête : Nom étudiant + statut
+            // En-tête : Identifiant étudiant + badge statut
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,62 +134,57 @@ private fun SessionCorrectionCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = session.etudiantNom ?: "Étudiant inconnu",
+                        text = "Étudiant ${session.etudiantId.take(8)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Soumis le ${session.submittedAt?.toString()?.take(10) ?: "Non soumis"}",
+                        text = "Soumis le ${session.dateSoumission?.toString()?.take(10) ?: "Non soumis"}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                
-                // Badge statut
-                when {
-                    session.statut == "SOUMIS" -> {
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ) {
-                            Text("À corriger")
-                        }
-                    }
-                    session.statut == "EN_CORRECTION" -> {
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        ) {
-                            Text("En cours")
-                        }
-                    }
-                    else -> {
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ) {
-                            Text("Corrigé")
-                        }
-                    }
+
+                // Badge statut — mapping enum StatutSession
+                val (badgeText, badgeContainer, badgeContent) = when (session.statut) {
+                    StatutSession.SOUMISE -> Triple(
+                        "À corriger",
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    StatutSession.CORRIGEE, StatutSession.RETOURNEE -> Triple(
+                        "Corrigé",
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    else -> Triple(
+                        session.statut.name,
+                        MaterialTheme.colorScheme.tertiaryContainer,
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                Badge(
+                    containerColor = badgeContainer,
+                    contentColor = badgeContent
+                ) {
+                    Text(badgeText)
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Informations épreuve
+            // Titre de l'épreuve (via la relation epreuve si présente)
             Text(
-                text = session.epreuveTitre ?: "Épreuve inconnue",
+                text = session.epreuve?.titre ?: "Épreuve ${session.epreuveId.take(8)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Score si disponible
+            // Score si disponible, sinon "En attente de correction"
             if (session.note != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
@@ -195,15 +193,13 @@ private fun SessionCorrectionCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Note: ${session.note}/${session.totalPoints ?: "?"}",
+                        text = "Note: ${session.note}/${session.epreuve?.totalPoints ?: session.epreuve?.noteTotal ?: "?"}",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = null,
@@ -225,8 +221,7 @@ private fun SessionCorrectionCard(
 @Composable
 private fun EmptyCorrectionsState(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier
-            .padding(32.dp),
+        modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
@@ -257,8 +252,7 @@ private fun ErrorCorrectionsState(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier
-            .padding(32.dp),
+        modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
@@ -284,11 +278,4 @@ private fun ErrorCorrectionsState(
             Text("Réessayer")
         }
     }
-}
-
-// États UI scellés
-sealed class CorrectionsUiState {
-    object Loading : CorrectionsUiState()
-    data class Success(val sessions: List<Session>) : CorrectionsUiState()
-    data class Error(val message: String) : CorrectionsUiState()
 }

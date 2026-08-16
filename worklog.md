@@ -337,3 +337,47 @@ Stage Summary:
 - ✅ getResultatsEtudiant() maintenant aligné sur le contrat backend réel ({resultats: [...]})
 - ⚠️ getSessionsACorriger() retourne emptyList() en attendant la création de la route backend /api/sessions/a-corriger (TODO documenté dans le code)
 - ⏳ CI mobile à re-vérifier après push (run #94 attendu)
+
+---
+Task ID: SECT-MOBILE-CI-FIX-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Coriger job Android APK en échec (run #94, après fix shared KMP SECT-MOBILE-CI-FIX-1)
+
+Work Log:
+- Run #94 (commit e2dbbc08) : job "🧪 Vérifier Shared KMP" SUCCESS ✅, mais job "🤖 Build Android APK" FAILURE ❌ (était skipped avant car shared échouait en amont)
+- Diagnostic logs job Android (95139180258) : 14 erreurs dans CorrectionsListScreen.kt (androidApp/src/main/java/com/sect/app/)
+  - Unresolved references : 'theme' (imports), 'shared', 'SectOrange/Blue/Red/Green', 'Session', 'epreuveNom', 'etudiantNom', 'dateSubmission', 'reponses'
+- Investigation : DEUX structures parallèles dans androidApp/src/main/ :
+  - kotlin/com/sect/mobile/android/ → structure officielle (thème, écrans, ViewModels corrects)
+  - java/com/sect/app/ → DOUBLONS cassés (mauvais packages com.sect.app.ui.theme et com.sect.shared qui n'existent pas)
+- Cause racine : le merge 90197b08 a introduit 4 fichiers doublons dans java/ qui ne sont jamais utilisés par la navigation officielle (com.sect.mobile.android.navigation) mais compilés par Gradle (src/main/java est un source set Android par défaut)
+- Correction 1 : supprimé les 4 doublons + dossiers vides
+  - CorrectionsListScreen.kt, ResultsListScreen.kt, CorrectionsViewModel.kt, ResultsViewModel.kt (-473 lignes)
+- Correction 2 : CorrectionsViewModel.kt (officiel kotlin/) — type inexistant
+  - import Session → SessionPassation (le shared module définit SessionPassation, pas Session)
+  - SECTRepository → SECTRepositoryInterface (seul SECTRepositoryInterface existe dans le shared)
+- Correction 3 : CorrectionsScreen.kt (officiel kotlin/) — réécriture complète
+  - Session → SessionPassation
+  - Propriétés inexistantes (etudiantNom, submittedAt, epreuveTitre, totalPoints) → vraies propriétés SessionPassation (etudiantId, dateSoumission, epreuve?.titre, epreuve?.totalPoints)
+  - statut == "SOUMIS" (String) → statut == StatutSession.SOUMISE (enum, avec when-expression)
+  - Retiré sealed class CorrectionsUiState en double (déjà définie dans CorrectionsViewModel.kt)
+- Correction 4 : ResultatsScreen.kt (officiel kotlin/) — réécriture complète (même type de bugs)
+  - Propriétés inexistantes Resultat (pourcentage, epreuveTitre, estReussi, note, totalPoints) → vraies propriétés (score, epreuveNom, score>=50.0)
+  - Propriétés inexistantes EtudiantStats (moyenneGenerale, totalEpreuves) → vraies propriétés (moyenne, nbEpreuvesTerminees)
+  - dateCompletion?.toString() (String non-nullable) → dateCompletion.take(10)
+  - LinearProgressIndicator(progress = Float) → progress = { Float } lambda (API Compose récent)
+  - Retiré sealed class ResultatsUiState en double
+- Correction 5 : ResultatsViewModel.kt (officiel) — SECTRepository → SECTRepositoryInterface
+- Correction 6 : AppModule.kt — ajouté 3 ViewModels manquants au graphe Koin
+  - CorrectionsViewModel, ResultatsViewModel, DevoirsViewModel (injectés via SECTRepositoryInterface)
+  - Ces VMs n'étaient pas déclarés → auraient crashé au runtime (Koin ne les connaissait pas)
+- Vérification systématique post-fix : tous les imports androidApp pointent vers des types existants, plus aucun com.sect.shared ni com.sect.app
+- Note : routes RESULTATS et CORRECTIONS sont des placeholders commentés dans Navigation.kt (lignes 304-307) — écrans pas encore branchés dans la nav, mais compilent
+
+Stage Summary:
+- ✅ 4 doublons supprimés (-473 lignes de code mort cassé)
+- ✅ 5 fichiers officiels corrigés (CorrectionsVM, CorrectionsScreen, ResultatsScreen, ResultatsVM, AppModule)
+- ✅ Alignement complet sur les vrais modèles domain (SessionPassation, Resultat, EtudiantStats, StatutSession enum)
+- ✅ Graph Koin complet (9 ViewModels au lieu de 6)
+- Diff : 9 fichiers, +92/-578 lignes
+- ⏳ CI mobile à re-vérifier après push (run #95 attendu — jobs Shared + Android + iOS + Deploy)

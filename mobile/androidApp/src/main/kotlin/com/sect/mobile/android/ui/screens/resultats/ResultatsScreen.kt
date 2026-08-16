@@ -1,12 +1,11 @@
 package com.sect.mobile.android.ui.screens.resultats
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
@@ -15,14 +14,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sect.mobile.android.ui.viewmodel.ResultatsViewModel
+import com.sect.mobile.shared.domain.model.EtudiantStats
 import com.sect.mobile.shared.domain.model.Resultat
 
 /**
- * Écran Résultats pour les étudiants
- * Liste des résultats d'épreuves avec statistiques détaillées
+ * Écran Résultats pour les étudiants.
+ * Liste des résultats d'épreuves avec statistiques détaillées.
+ *
+ * NOTE SECT-MOBILE-CI-FIX-1 : aligné sur le modèle domain Resultat (score: Double
+ * interprété comme un pourcentage 0-100, epreuveNom, dateCompletion: String) et
+ * EtudiantStats (moyenne, nbEpreuvesTerminees, meilleureNote).
  */
 @Composable
 fun ResultatsScreen(
@@ -87,7 +92,7 @@ fun ResultatsScreen(
 @Composable
 private fun ResultatsList(
     resultats: List<Resultat>,
-    stats: com.sect.mobile.shared.domain.model.EtudiantStats?,
+    stats: EtudiantStats?,
     onResultClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -103,7 +108,7 @@ private fun ResultatsList(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
-        
+
         items(resultats, key = { it.id }) { resultat ->
             ResultatCard(
                 resultat = resultat,
@@ -114,7 +119,7 @@ private fun ResultatsList(
 }
 
 @Composable
-private fun StatsHeader(stats: com.sect.mobile.shared.domain.model.EtudiantStats) {
+private fun StatsHeader(stats: EtudiantStats) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -132,26 +137,26 @@ private fun StatsHeader(stats: com.sect.mobile.shared.domain.model.EtudiantStats
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 StatItem(
                     label = "Moyenne",
-                    value = "${stats.moyenneGenerale?.take(4) ?: "N/A"}",
+                    value = "%.1f".format(stats.moyenne),
                     color = MaterialTheme.colorScheme.primary
                 )
                 StatItem(
-                    label = "Épreuves",
-                    value = stats.totalEpreuves.toString(),
+                    label = "Terminées",
+                    value = stats.nbEpreuvesTerminees.toString(),
                     color = MaterialTheme.colorScheme.secondary
                 )
                 StatItem(
                     label = "Meilleure",
-                    value = "${stats.meilleureNote?.toString() ?: "N/A"}/20",
+                    value = "%.1f/20".format(stats.meilleureNote),
                     color = MaterialTheme.colorScheme.tertiary
                 )
             }
@@ -187,10 +192,13 @@ private fun ResultatCard(
     resultat: Resultat,
     onClick: () -> Unit
 ) {
+    // Score interprété comme un pourcentage 0-100
+    val pourcentage = resultat.score.coerceIn(0.0, 100.0)
+    val estReussi = pourcentage >= 50.0
     val scoreColor = when {
-        resultat.pourcentage >= 80 -> MaterialTheme.colorScheme.primary
-        resultat.pourcentage >= 60 -> MaterialTheme.colorScheme.secondary
-        resultat.pourcentage >= 50 -> MaterialTheme.colorScheme.tertiary
+        pourcentage >= 80 -> MaterialTheme.colorScheme.primary
+        pourcentage >= 60 -> MaterialTheme.colorScheme.secondary
+        pourcentage >= 50 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.error
     }
 
@@ -212,25 +220,25 @@ private fun ResultatCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = resultat.epreuveTitre ?: "Épreuve inconnue",
+                    text = resultat.epreuveNom,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                
+
                 Badge(
-                    containerColor = if (resultat.estReussi) {
+                    containerColor = if (estReussi) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
                         MaterialTheme.colorScheme.errorContainer
                     },
-                    contentColor = if (resultat.estReussi) {
+                    contentColor = if (estReussi) {
                         MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onErrorContainer
                     }
                 ) {
-                    Text(if (resultat.estReussi) "Réussi" else "À refaire")
+                    Text(if (estReussi) "Réussi" else "À refaire")
                 }
             }
 
@@ -244,20 +252,20 @@ private fun ResultatCard(
             ) {
                 Column {
                     Text(
-                        text = "Note: ${resultat.note}/${resultat.totalPoints}",
+                        text = "Score: %.1f/20".format(pourcentage / 5.0),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = scoreColor
                     )
                     Text(
-                        text = "${resultat.pourcentage}%",
+                        text = "${pourcentage.toInt()}%",
                         style = MaterialTheme.typography.bodyMedium,
                         color = scoreColor
                     )
                 }
-                
+
                 Text(
-                    text = resultat.dateCompletion?.toString()?.take(10) ?: "Non terminé",
+                    text = resultat.dateCompletion.take(10),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -267,7 +275,7 @@ private fun ResultatCard(
 
             // Barre de progression
             LinearProgressIndicator(
-                progress = resultat.pourcentage.toFloat() / 100f,
+                progress = { (pourcentage / 100f).toFloat() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp),
@@ -281,8 +289,7 @@ private fun ResultatCard(
 @Composable
 private fun EmptyResultatsState(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier
-            .padding(32.dp),
+        modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
@@ -302,7 +309,7 @@ private fun EmptyResultatsState(modifier: Modifier = Modifier) {
             text = "Commencez par passer des épreuves pour voir vos résultats ici",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -314,8 +321,7 @@ private fun ErrorResultatsState(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier
-            .padding(32.dp),
+        modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
@@ -341,14 +347,4 @@ private fun ErrorResultatsState(
             Text("Réessayer")
         }
     }
-}
-
-// États UI scellés
-sealed class ResultatsUiState {
-    object Loading : ResultatsUiState()
-    data class Success(
-        val resultats: List<Resultat>,
-        val stats: com.sect.mobile.shared.domain.model.EtudiantStats? = null
-    ) : ResultatsUiState()
-    data class Error(val message: String) : ResultatsUiState()
 }
