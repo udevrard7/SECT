@@ -26,8 +26,11 @@ import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
+import com.sect.mobile.android.ui.screens.travail.TravailScreen
 import com.sect.mobile.android.ui.viewmodel.*
 import com.sect.mobile.android.ui.components.navigation.*
+import com.sect.mobile.shared.navigation.MobileRole
+import com.sect.mobile.shared.navigation.NavigationPolicy
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -42,7 +45,7 @@ sealed class ScreenRoute(val route: String) {
     
     // Bottom Navigation (commun)
     object Dashboard : ScreenRoute("dashboard")
-    object Epreuves : ScreenRoute("epreuves")
+    object Travail : ScreenRoute("travail")   // Épreuves + Devoirs (conteneur)
     object Messagerie : ScreenRoute("messagerie")
     object Profile : ScreenRoute("profile")
     
@@ -66,7 +69,7 @@ sealed class ScreenRoute(val route: String) {
                 route == "login" -> Login
                 route == "web_redirect" -> WebRedirect
                 route == "dashboard" -> Dashboard
-                route == "epreuves" -> Epreuves
+                route == "travail" -> Travail
                 route == "messagerie" -> Messagerie
                 route == "profile" -> Profile
                 route == "resultats" -> Resultats
@@ -90,11 +93,11 @@ object Routes {
     const val LOGIN = "login"
     const val WEB_REDIRECT = "web_redirect"
 
-    // Bottom Navigation (commun)
+    // Bottom Navigation (commun) — SECT-MOBILE-NAV-PHASE-A : 4 onglets par rôle
     const val DASHBOARD = "dashboard"
-    const val EPREUVES = "epreuves"
+    const val TRAVAIL = "travail"   // Épreuves + Devoils (conteneur)
     const val MESSAGERIE = "messagerie"
-    const val PROFILE = "profile"
+    const val PROFILE = "profile"  // secondaire (avatar TopBar)
 
     // Spécifique Étudiant
     const val RESULTATS = "resultats"
@@ -125,7 +128,9 @@ fun SECTNavigation(
     // → on lit directement le StateFlow<User?> du ViewModel pour récupérer le Role typé.
     val currentUser by authVM.currentUser.collectAsState()
     val isEnseignant = currentUser?.role?.name == "ENSEIGNANT"
-    val isEtudiant = currentUser?.role?.name == "ETUDIANT"
+
+    // Rôle typé pour NavigationPolicy (shared KMP)
+    val mobileRole = if (isEnseignant) MobileRole.ENSEIGNANT else MobileRole.ETUDIANT
     
     // Déterminer les items de navigation selon le rôle
     val navItems = getNavItemsForRole(isEnseignant = isEnseignant)
@@ -149,16 +154,10 @@ fun SECTNavigation(
         }
     }
 
-    // Détermine si on affiche la bottom bar (seulement sur les onglets principaux)
-    val mainRoutes = buildList {
-        add(Routes.DASHBOARD)
-        add(Routes.EPREUVES)
-        add(Routes.MESSAGERIE)
-        add(Routes.PROFILE)
-        if (isEtudiant) add(Routes.RESULTATS)
-        if (isEnseignant) add(Routes.CORRECTIONS)
-    }
-    val showBottomBar = currentRoute in mainRoutes
+    // SECT-MOBILE-NAV-PHASE-A : visibilité bottom bar déléguée à NavigationPolicy
+    // (shared KMP — réutilisable iOS). Masque en mode immersif (passation) +
+    // routes secondaires (détail, profil, conversation).
+    val showBottomBar = NavigationPolicy.shouldShowBottomBar(currentRoute, mobileRole)
 
     Scaffold(
         bottomBar = {
@@ -235,7 +234,7 @@ fun SECTNavigation(
                 val dashboardAuthVM: AuthViewModel = koinViewModel()
                 DashboardScreen(
                     viewModel = dashboardVM,
-                    onNavigateToEpreuves = { navController.navigate(Routes.EPREUVES) },
+                    onNavigateToEpreuves = { navController.navigate(Routes.TRAVAIL) },
                     onNavigateToMessagerie = { navController.navigate(Routes.MESSAGERIE) },
                     onNavigateToProfile = { navController.navigate(Routes.PROFILE) },
                     onNavigateToSettings = { navController.navigate(Routes.PROFILE) },
@@ -244,11 +243,25 @@ fun SECTNavigation(
                         navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
                     },
                     onNavigateToResultats = { navController.navigate(Routes.RESULTATS) },
-                    onNavigateToCorrections = { navController.navigate(Routes.CORRECTIONS) }
+                    onNavigateToCorrections = { navController.navigate(Routes.CORRECTIONS) },
+                    onNavigateToTravail = { navController.navigate(Routes.TRAVAIL) }
                 )
             }
 
-            // 📝 Épreuves
+            // 📚 Travail (conteneur Épreuves + Devoirs) — SECT-MOBILE-NAV-PHASE-A
+            // Remplace l'onglet "Épreuves" seul. La bottom bar affiche "Travail" qui contient
+            // un TabRow [Épreuves | Devoirs] + bouton [+] pour l'enseignant.
+            composable(Routes.TRAVAIL) {
+                TravailScreen(
+                    isEnseignant = isEnseignant,
+                    onNavigateToEpreuveDetail = { id -> navController.navigate("epreuves/$id") },
+                    onNavigateToDevoirDetail = { id -> navController.navigate("epreuves/$id") }, // TODO: route devoirs/{id}
+                    onCreateEpreuve = { /* TODO: route create-epreuve */ },
+                    onCreateDevoir = { /* TODO: route create-devoir */ }
+                )
+            }
+
+            // 📝 Épreuves (route standalone conservée pour accès direct si besoin)
             composable(Routes.EPREUVES) {
                 val epreuveVM: EpreuveViewModel = koinViewModel()
                 EpreuvesScreen(
