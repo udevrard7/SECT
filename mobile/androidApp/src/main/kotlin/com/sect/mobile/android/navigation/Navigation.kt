@@ -1,12 +1,15 @@
-// SECT Mobile — Navigation Android avec Bottom Navigation (4 onglets)
-// SECT-MOBILE-FOCUS : app réservée Enseignant + Étudiant → navigation simplifiée
+// SECT Mobile — Navigation Android avec Bottom Navigation RBAC (Enseignant vs Étudiant)
+// SECT-MOBILE-FOCUS : app réservée Enseignant + Étudiant → navigation adaptative selon le rôle
+// REFACTOR-PHASE2 : Navigation type-safe inspirée du routing Next.js du frontend web
 package com.sect.mobile.android.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,18 +24,78 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.viewmodel.*
+import com.sect.mobile.android.ui.components.navigation.*
 import org.koin.androidx.compose.koinViewModel
+
+/**
+ * Routes type-safe inspirées du routing Next.js (/frontend/src/app).
+ * Évite les hardcoded strings et permet une navigation prévisible.
+ */
+sealed class ScreenRoute(val route: String) {
+    // Auth
+    object Splash : ScreenRoute("splash")
+    object Login : ScreenRoute("login")
+    object WebRedirect : ScreenRoute("web_redirect")
+    
+    // Bottom Navigation (commun)
+    object Dashboard : ScreenRoute("dashboard")
+    object Epreuves : ScreenRoute("epreuves")
+    object Messagerie : ScreenRoute("messagerie")
+    object Profile : ScreenRoute("profile")
+    
+    // Spécifique Étudiant
+    object Resultats : ScreenRoute("resultats")
+    
+    // Spécifique Enseignant
+    object Corrections : ScreenRoute("corrections")
+    
+    // Routes secondaires avec arguments
+    data class EpreuveDetail(val id: String) : ScreenRoute("epreuves/$id")
+    data class Passation(val id: String) : ScreenRoute("passation/$id")
+    data class Results(val id: String) : ScreenRoute("results/$id")
+    data class Conversation(val id: String) : ScreenRoute("messagerie/$id")
+    
+    companion object {
+        fun fromRoute(route: String): ScreenRoute? {
+            return when {
+                route == "splash" -> Splash
+                route == "login" -> Login
+                route == "web_redirect" -> WebRedirect
+                route == "dashboard" -> Dashboard
+                route == "epreuves" -> Epreuves
+                route == "messagerie" -> Messagerie
+                route == "profile" -> Profile
+                route == "resultats" -> Resultats
+                route == "corrections" -> Corrections
+                route.startsWith("epreuves/") -> EpreuveDetail(route.removePrefix("epreuves/"))
+                route.startsWith("passation/") -> Passation(route.removePrefix("passation/"))
+                route.startsWith("results/") -> Results(route.removePrefix("results/"))
+                route.startsWith("messagerie/") && route.count { it == '/' } > 0 -> {
+                    // Éviter confusion avec /messagerie (liste)
+                    Conversation(route.removePrefix("messagerie/"))
+                }
+                else -> null
+            }
+        }
+    }
+}
 
 object Routes {
     const val SPLASH = "splash"
     const val LOGIN = "login"
     const val WEB_REDIRECT = "web_redirect"
 
-    // Bottom Navigation (4 onglets)
+    // Bottom Navigation (commun)
     const val DASHBOARD = "dashboard"
     const val EPREUVES = "epreuves"
     const val MESSAGERIE = "messagerie"
     const val PROFILE = "profile"
+
+    // Spécifique Étudiant
+    const val RESULTATS = "resultats"
+    
+    // Spécifique Enseignant
+    const val CORRECTIONS = "corrections"
 
     // Routes secondaires (accessibles depuis les onglets)
     const val EPREUVE_DETAIL = "epreuves/{epreuveId}"
@@ -41,19 +104,6 @@ object Routes {
     const val CONVERSATION = "messagerie/{conversationId}"
 }
 
-data class BottomNavItem(
-    val route: String,
-    val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
-)
-
-val bottomNavItems = listOf(
-    BottomNavItem(Routes.DASHBOARD, "Accueil", Icons.Default.Dashboard),
-    BottomNavItem(Routes.EPREUVES, "Épreuves", Icons.Default.Book),
-    BottomNavItem(Routes.MESSAGERIE, "Messages", Icons.Default.Chat),
-    BottomNavItem(Routes.PROFILE, "Profil", Icons.Default.Person),
-)
-
 @Composable
 fun SECTNavigation(
     navController: NavHostController = rememberNavController(),
@@ -61,31 +111,63 @@ fun SECTNavigation(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    
+    // Récupérer le rôle utilisateur pour la navigation conditionnelle
+    val authVM: AuthViewModel = koinViewModel()
+    val authState by authVM.authState.collectAsState()
+    val currentUser = (authState as? AuthState.Authenticated)?.user
+    val isEnseignant = currentUser?.role?.name == "ENSEIGNANT"
+    val isEtudiant = currentUser?.role?.name == "ETUDIANT"
+    
+    // Déterminer les items de navigation selon le rôle
+    val navItems = getNavItemsForRole(isEnseignant = isEnseignant)
+    
+    // Mappe les routes pour inclure les badges dynamiques
+    val navItemsWithBadges = navItems.map { item ->
+        when (item.route) {
+            Routes.MESSAGERIE -> {
+                // TODO: Récupérer le nombre de messages non lus depuis MessagerieViewModel
+                item.copy(badgeCount = null)
+            }
+            Routes.CORRECTIONS -> {
+                // TODO: Récupérer le nombre de corrections en attente depuis DashboardViewModel
+                item.copy(badgeCount = null)
+            }
+            Routes.RESULTATS -> {
+                // TODO: Récupérer le nombre de nouveaux résultats
+                item.copy(badgeCount = null)
+            }
+            else -> item
+        }
+    }
 
-    // Détermine si on affiche la bottom bar (seulement sur les 4 onglets principaux)
-    val showBottomBar = currentRoute in bottomNavItems.map { it.route }
+    // Détermine si on affiche la bottom bar (seulement sur les onglets principaux)
+    val mainRoutes = buildList {
+        add(Routes.DASHBOARD)
+        add(Routes.EPREUVES)
+        add(Routes.MESSAGERIE)
+        add(Routes.PROFILE)
+        if (isEtudiant) add(Routes.RESULTATS)
+        if (isEnseignant) add(Routes.CORRECTIONS)
+    }
+    val showBottomBar = currentRoute in mainRoutes
 
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
-                    bottomNavItems.forEach { item ->
-                        NavigationBarItem(
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
-                            selected = currentRoute == item.route,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                SectBottomNavigationBar(
+                    items = navItemsWithBadges,
+                    currentRoute = currentRoute ?: "",
+                    onNavigate = { route ->
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
                             }
-                        )
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                }
+                )
             }
         }
     ) { innerPadding ->
@@ -96,9 +178,9 @@ fun SECTNavigation(
         ) {
             // ── Splash (avant auth) ──
             composable(Routes.SPLASH) {
-                val authVM: AuthViewModel = koinViewModel()
+                val splashAuthVM: AuthViewModel = koinViewModel()
                 SplashScreen(
-                    authState = authVM.authState.collectAsState().value,
+                    authState = splashAuthVM.authState.collectAsState().value,
                     onNavigateToLogin = { navController.navigate(Routes.LOGIN) },
                     onNavigateToDashboard = {
                         navController.navigate(Routes.DASHBOARD) {
@@ -111,14 +193,14 @@ fun SECTNavigation(
 
             // ── Web Redirect (ADMIN/RESPONSABLE) ──
             composable(Routes.WEB_REDIRECT) {
-                val authVM: AuthViewModel = koinViewModel()
-                val authState by authVM.authState.collectAsState()
+                val redirectAuthVM: AuthViewModel = koinViewModel()
+                val authState by redirectAuthVM.authState.collectAsState()
                 val state = authState as? AuthState.RedirectToWeb
                 WebRedirectScreen(
                     userName = state?.userName ?: "",
                     role = state?.role ?: "",
                     onBackToLogin = {
-                        authVM.logout()
+                        redirectAuthVM.logout()
                         navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
                     }
                 )
@@ -126,9 +208,9 @@ fun SECTNavigation(
 
             // ── Login ──
             composable(Routes.LOGIN) {
-                val authVM: AuthViewModel = koinViewModel()
+                val loginAuthVM: AuthViewModel = koinViewModel()
                 LoginScreen(
-                    viewModel = authVM,
+                    viewModel = loginAuthVM,
                     onLoginSuccess = {
                         navController.navigate(Routes.DASHBOARD) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
@@ -137,12 +219,12 @@ fun SECTNavigation(
                 )
             }
 
-            // ══ BOTTOM NAV : 4 onglets ══
+            // ══ BOTTOM NAV : Onglets conditionnels ══
 
             // 🏠 Accueil
             composable(Routes.DASHBOARD) {
                 val dashboardVM: DashboardViewModel = koinViewModel()
-                val authVM: AuthViewModel = koinViewModel()
+                val dashboardAuthVM: AuthViewModel = koinViewModel()
                 DashboardScreen(
                     viewModel = dashboardVM,
                     onNavigateToEpreuves = { navController.navigate(Routes.EPREUVES) },
@@ -150,7 +232,7 @@ fun SECTNavigation(
                     onNavigateToProfile = { navController.navigate(Routes.PROFILE) },
                     onNavigateToSettings = { navController.navigate(Routes.PROFILE) },
                     onLogout = {
-                        authVM.logout()
+                        dashboardAuthVM.logout()
                         navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
                     }
                 )
@@ -168,10 +250,10 @@ fun SECTNavigation(
 
             composable(Routes.EPREUVE_DETAIL) { backStackEntry ->
                 val epreuveId = backStackEntry.arguments?.getString("epreuveId") ?: ""
-                val epreuveVM: EpreuveViewModel = koinViewModel()
+                val epreuveDetailVM: EpreuveViewModel = koinViewModel()
                 EpreuveDetailScreen(
                     epreuveId = epreuveId,
-                    viewModel = epreuveVM,
+                    viewModel = epreuveDetailVM,
                     onStartPassation = { navController.navigate("passation/$epreuveId") },
                     onBack = { navController.popBackStack() }
                 )
@@ -200,10 +282,10 @@ fun SECTNavigation(
 
             composable(Routes.CONVERSATION) { backStackEntry ->
                 val conversationId = backStackEntry.arguments?.getString("conversationId") ?: ""
-                val messagerieVM: MessagerieViewModel = koinViewModel()
+                val conversationVM: MessagerieViewModel = koinViewModel()
                 ConversationScreen(
                     conversationId = conversationId,
-                    viewModel = messagerieVM,
+                    viewModel = conversationVM,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -211,20 +293,26 @@ fun SECTNavigation(
             // 👤 Profil
             composable(Routes.PROFILE) {
                 val profileVM: ProfileViewModel = koinViewModel()
-                val authVM: AuthViewModel = koinViewModel()
+                val profileAuthVM: AuthViewModel = koinViewModel()
                 ProfileScreen(
                     viewModel = profileVM,
                     onBack = { navController.popBackStack() }
                 )
             }
 
+            // 📊 Résultats (Étudiant uniquement) - Placeholder pour l'instant
+            // composable(Routes.RESULTATS) { ... }
+
+            // ✏️ Corrections (Enseignant uniquement) - Placeholder pour l'instant
+            // composable(Routes.CORRECTIONS) { ... }
+
             // ── Results (après passation) ──
             composable(Routes.RESULTS) { backStackEntry ->
                 val epreuveId = backStackEntry.arguments?.getString("epreuveId") ?: ""
-                val passationVM: PassationViewModel = koinViewModel()
+                val resultsVM: PassationViewModel = koinViewModel()
                 ResultsScreen(
                     epreuveId = epreuveId,
-                    viewModel = passationVM,
+                    viewModel = resultsVM,
                     onBack = { navController.popBackStack() }
                 )
             }

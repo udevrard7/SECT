@@ -23,7 +23,8 @@ fun ConversationDto.toDomain() = Conversation(
     createdAt = createdAt,
     updatedAt = updatedAt,
     participants = participants?.map { it.toDomain() },
-    lastMessage = lastMessage?.toDomain()
+    lastMessage = lastMessage?.toDomain(),
+    unreadCount = unreadCount
 )
 
 fun ConversationParticipantDto.toDomain() = ConversationParticipant(
@@ -69,7 +70,8 @@ fun Conversation.toDto() = ConversationDto(
     createdAt = createdAt,
     updatedAt = updatedAt,
     participants = participants?.map { it.toDto() },
-    lastMessage = lastMessage?.toDto()
+    lastMessage = lastMessage?.toDto(),
+    unreadCount = unreadCount
 )
 
 fun ConversationParticipant.toDto() = ConversationParticipantDto(

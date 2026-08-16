@@ -32,7 +32,22 @@ struct LoginView: View {
                     SecureField("Mot de passe", text: $password)
                         .textFieldStyle(.roundedBorder)
                     
-                    if let error = authVM.error {
+                    // SECT-RBAC-MOBILE-1: Afficher erreur de rôle bloqué (ADMIN/RESPONSABLE)
+                    if let blockedError = authVM.blockedRoleError {
+                        VStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.shield.fill")
+                                .font(.title2)
+                                .foregroundStyle(.sectOrange)
+                            Text(blockedError)
+                                .font(.caption)
+                                .foregroundStyle(.sectOrange)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.sectOrange.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else if let error = authVM.error {
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.red)

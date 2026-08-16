@@ -13,7 +13,8 @@ data class Conversation(
     val createdAt: Instant,
     val updatedAt: Instant,
     val participants: List<ConversationParticipant>? = null,
-    val lastMessage: Message? = null
+    val lastMessage: Message? = null,
+    val unreadCount: Int = 0 // Pour les badges de notifications
 )
 
 data class ConversationParticipant(
