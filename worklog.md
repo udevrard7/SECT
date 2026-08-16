@@ -711,3 +711,48 @@ Stage Summary:
 - ✅ Pattern holder pour navigation liste→détail sans GET unitaire
 - ✅ CorrectionSession domain model aligné sur le contrat backend exact
 - ⏳ CI mobile à vérifier après push (shared compile + Android + iOS)
+
+---
+Task ID: SECT-MOBILE-NAV-PHASE-A
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase A — Refonte navigation Android (4 onglets + Travail + Profil en secondaire)
+
+Work Log:
+- Objectif : passer de 5 onglets (Accueil/Épreuves/X/Messages/Profil) à 4 onglets
+  (Accueil/Travail/[Résultats|Corrections]/Messages) + Profil accessible via avatar
+  dans la TopBar du Dashboard. Masquer la bottom bar en mode immersif (Passation).
+- Créé NavigationPolicy (shared KMP, pure Kotlin, réutilisable iOS) :
+  - 4 routes primaires par rôle (etudiantPrimaryRoutes, enseignantPrimaryRoutes)
+  - Classification NavLevel (PRIMARY / SECONDARY / IMMERSIVE / AUTH)
+  - shouldShowBottomBar(route, role) — masque en immersif + secondaire + auth
+  - levelOf(route, role) + roleSpecificTab(role)
+- SectBottomNavigationBar refactorisé :
+  - studentNavItems : Accueil · Travail · Résultats · Messages (4, plus de Profil)
+  - enseignantNavItems : Accueil · Travail · Corrections · Messages (4, plus de Profil)
+  - Icône Travail = Icons.Filled.Work / Rounded.Work
+- Créé TravailScreen (conteneur) :
+  - Scaffold + TopBar avec titre "Travail" + bouton [+] pour enseignant
+  - TabRow [Épreuves | Devoirs] avec rememberSaveable (survit rotations)
+  - Embarque EpreuvesScreen et DevoirsScreen (déjà sans Scaffold propre)
+  - [+] adapte l'action : onCreateEpreuve ou onCreateDevoir selon l'onglet actif
+- Navigation.kt mis à jour :
+  - Route TRAVAIL = "travail" + ScreenRoute.Travail + fromRoute
+  - composable(TRAVAIL) → TravailScreen avec callbacks navigation
+  - Route EPREUVES standalone conservée (accès direct possible)
+  - showBottomBar délégué à NavigationPolicy.shouldShowBottomBar (plus de buildList manuel)
+  - mobileRole : MobileRole.ENSEIGNANT ou ETUDIANT (typé pour NavigationPolicy)
+  - DashboardScreen : onNavigateToEpreuves → TRAVAIL (plus intuitif)
+- DashboardScreen mis à jour :
+  - Avatar cliquable dans l'en-tête → navigue vers Profil (onNavigateToProfile)
+  - Bouton "Mon travail académique" remplace "Voir toutes les épreuves" → onNavigateToTravail
+  - Nouveau param onNavigateToTravail (optionnel, default {})
+- Fichiers : 1 nouveau shared + 1 nouveau androidApp + 3 modifiés
+
+Stage Summary:
+- ✅ Navigation 4 onglets par rôle (étudiant : Accueil/Travail/Résultats/Messages ;
+  enseignant : Accueil/Travail/Corrections/Messages)
+- ✅ NavigationPolicy shared KMP (réutilisable iOS dans Phase B)
+- ✅ TravailScreen conteneur avec TabRow Épreuves|Devoirs + bouton [+]
+- ✅ Profil sorti de la bottom bar → accessible via avatar cliquable dans TopBar
+- ✅ Bottom bar masquée automatiquement en mode Passation (immersif) + routes secondaires
+- ⏳ CI mobile à vérifier après push

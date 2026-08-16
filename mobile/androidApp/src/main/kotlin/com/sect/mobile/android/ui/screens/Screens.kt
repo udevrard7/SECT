@@ -263,7 +263,8 @@ fun DashboardScreen(
     onNavigateToSettings: () -> Unit,
     onLogout: () -> Unit,
     onNavigateToResultats: () -> Unit = {},
-    onNavigateToCorrections: () -> Unit = {}
+    onNavigateToCorrections: () -> Unit = {},
+    onNavigateToTravail: () -> Unit = {}
 ) {
     val user by viewModel.user.collectAsState()
     val upcomingEpreuves by viewModel.upcomingEpreuves.collectAsState()
@@ -276,7 +277,9 @@ fun DashboardScreen(
     val isEnseignant = viewModel.isEnseignant
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        // ── En-tête : bienvenue ──
+        // ── En-tête : bienvenue + avatar (navigue vers Profil) ──
+        // SECT-MOBILE-NAV-PHASE-A : Profil n'est plus dans la bottom bar.
+        // L'avatar dans la TopBar du Dashboard est le point d'entrée principal.
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -291,7 +294,11 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(48.dp))
+                // Avatar cliquable → Profil
+                IconButton(onClick = onNavigateToProfile) {
+                    Icon(Icons.Default.AccountCircle, "Profil", modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                }
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -361,14 +368,15 @@ fun DashboardScreen(
             }
         }
 
-        // ── Raccourci vers toutes les épreuves ──
+        // ── Raccourci vers Travail (Épreuves + Devoirs) ──
+        // SECT-MOBILE-NAV-PHASE-A : remplace "Voir toutes les épreuves"
         item {
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedButton(
-                onClick = onNavigateToEpreuves,
+                onClick = onNavigateToTravail,
                 modifier = Modifier.fillMaxWidth()
             ) {
- Text("Voir toutes les épreuves")
+ Text("Mon travail académique")
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
             }

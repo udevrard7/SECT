@@ -10,13 +10,13 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.rounded.Assessment
 import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.EditNote
-import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -142,7 +142,10 @@ fun SectBottomNavigationBar(
 
 /**
  * Configuration de navigation pour ÉTUDIANT
- * Routes: Dashboard | Épreuves | Résultats | Messagerie | Profil
+ * SECT-MOBILE-NAV-PHASE-A : 4 onglets (Profil déplacé en secondaire → avatar TopBar)
+ *   Accueil · Travail · Résultats · Messages
+ *
+ * "Travail" regroupe Épreuves + Devoirs (sous-navigation par tabs dans TravailScreen).
  */
 val studentNavItems = listOf(
     NavItem(
@@ -152,10 +155,10 @@ val studentNavItems = listOf(
         selectedIcon = Icons.Rounded.Dashboard
     ),
     NavItem(
-        route = "epreuves",
-        label = "Épreuves",
-        icon = Icons.Filled.Book,
-        selectedIcon = Icons.Rounded.Book
+        route = "travail",
+        label = "Travail",
+        icon = Icons.Filled.Work,
+        selectedIcon = Icons.Rounded.Work
     ),
     NavItem(
         route = "resultats",
@@ -171,18 +174,13 @@ val studentNavItems = listOf(
         selectedIcon = Icons.Rounded.Chat,
         badgeCount = null, // À dynamiser avec messages non lus
         badgeColor = { SectOrange }
-    ),
-    NavItem(
-        route = "profile",
-        label = "Profil",
-        icon = Icons.Filled.Person,
-        selectedIcon = Icons.Rounded.Person
     )
 )
 
 /**
  * Configuration de navigation pour ENSEIGNANT
- * Routes: Dashboard | Épreuves | Corrections | Messagerie | Profil
+ * SECT-MOBILE-NAV-PHASE-A : 4 onglets (Profil déplacé en secondaire → avatar TopBar)
+ *   Accueil · Travail · Corrections · Messages
  */
 val enseignantNavItems = listOf(
     NavItem(
@@ -192,10 +190,10 @@ val enseignantNavItems = listOf(
         selectedIcon = Icons.Rounded.Dashboard
     ),
     NavItem(
-        route = "epreuves",
-        label = "Épreuves",
-        icon = Icons.Filled.Book,
-        selectedIcon = Icons.Rounded.Book
+        route = "travail",
+        label = "Travail",
+        icon = Icons.Filled.Work,
+        selectedIcon = Icons.Rounded.Work
     ),
     NavItem(
         route = "corrections",
@@ -212,12 +210,6 @@ val enseignantNavItems = listOf(
         selectedIcon = Icons.Rounded.Chat,
         badgeCount = null, // À dynamiser avec messages non lus
         badgeColor = { SectOrange }
-    ),
-    NavItem(
-        route = "profile",
-        label = "Profil",
-        icon = Icons.Filled.Person,
-        selectedIcon = Icons.Rounded.Person
     )
 )
 
