@@ -261,7 +261,9 @@ fun DashboardScreen(
     onNavigateToMessagerie: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToResultats: () -> Unit = {},
+    onNavigateToCorrections: () -> Unit = {}
 ) {
     val user by viewModel.user.collectAsState()
     val upcomingEpreuves by viewModel.upcomingEpreuves.collectAsState()
@@ -369,6 +371,35 @@ fun DashboardScreen(
  Text("Voir toutes les épreuves")
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+
+        // ── Raccourci rôle-spécifique (SECT-MOBILE-NAV-1) ──
+        // Étudiant → "Mes résultats" | Enseignant → "Corrections en attente"
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            if (isEnseignant) {
+                OutlinedButton(
+                    onClick = onNavigateToCorrections,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Corrections en attente")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+            } else {
+                OutlinedButton(
+                    onClick = onNavigateToResultats,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Mes résultats")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
