@@ -69,7 +69,9 @@ struct CorrectionDetailView: View {
 
             // Bottom bar : Finaliser + Retourner
             CorrectionBottomActionBar(
-                session: session,
+                statut: viewModel.effectiveStatut,
+                score: session.score,
+                allCorrected: session.allCorrected,
                 isProcessing: viewModel.isProcessing,
                 onFinalize: { Task { await viewModel.finalize() } },
                 onRetourner: {
@@ -270,21 +272,23 @@ struct IASuggestionCard: View {
 // MARK: - Bottom Action Bar
 
 struct CorrectionBottomActionBar: View {
-    let session: CorrectionSession
+    let statut: String
+    let score: KotlinDouble?
+    let allCorrected: Bool
     let isProcessing: Bool
     let onFinalize: () -> Void
     let onRetourner: () -> Void
 
     var body: some View {
         HStack {
-            if let score = session.score {
+            if let score = score {
                 Text("Score: \(String(format: "%.1f", score.doubleValue))")
                     .font(.subheadline).fontWeight(.bold)
             }
             Spacer()
 
-            if session.statut != "RETOURNEE" {
-                if session.statut == "SOUMISE" {
+            if statut != "RETOURNEE" {
+                if statut == "SOUMISE" {
                     Button(action: onFinalize) {
                         if isProcessing { ProgressView() } else {
                             Label("Finaliser", systemImage: "checkmark.circle")
@@ -294,7 +298,7 @@ struct CorrectionBottomActionBar: View {
                     .disabled(isProcessing)
                 }
 
-                let canRetourner = session.statut == "CORRIGEE" || session.allCorrected
+                let canRetourner = statut == "CORRIGEE" || allCorrected
                 Button(action: onRetourner) {
                     if isProcessing { ProgressView() } else {
                         Label("Retourner", systemImage: "paperplane")

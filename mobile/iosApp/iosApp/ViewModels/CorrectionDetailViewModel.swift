@@ -5,9 +5,9 @@
 //  SECT-MOBILE-NAV-PHASE-B : miroir iOS de CorrectionDetailViewModel (Android).
 //  Gère la notation question par question + finalize + retourner.
 //
-//  Contrairement à Android (qui utilise CorrectionSessionHolder singleton),
-//  iOS passe la CorrectionSession directement au ViewModel via `configure(session:)`.
-//  C'est plus idiomatique SwiftUI (pas d'état global partagé).
+//  NOTE : KMP data class copy() ne préserve pas les default args en Swift.
+//  Au lieu de copy(), on utilise un statut local simple (statutLocal + lastSavedQuestionId)
+//  pour le feedback UI. La session originale reste immuable.
 //
 import SwiftUI
 import Shared
@@ -20,41 +20,34 @@ class CorrectionDetailViewModel: ObservableObject {
     @Published var saveError: String? = nil
     @Published var processError: String? = nil
     @Published var lastSavedQuestionId: String? = nil
+    /// Statut local mis à jour après finalize/retourner ( évite copy() )
+    @Published var statutLocal: String? = nil
 
     private let repository = KoinRepositoryProvider.shared.repository
 
     /// Initialise le VM avec la session sélectionnée (depuis la liste).
     func configure(session: CorrectionSession) {
         self.session = session
+        self.statutLocal = session.statut
+    }
+
+    /// Statut effectif (local si mis à jour, sinon original).
+    var effectiveStatut: String {
+        statutLocal ?? session?.statut ?? ""
     }
 
     /// Sauve la note d'une question (PATCH /api/correction/{sessionId}/ai-grade).
-    /// Met à jour la session localement pour un feedback immédiat.
     func saveGrade(questionId: String, score: Double?, commentaire: String?) async {
         guard let current = session else { return }
         isSaving = true
         saveError = nil
         do {
-            // Kotlin Double? → KotlinDouble? en Swift
             let scoreKotlin: KotlinDouble? = score.map { KotlinDouble(double: $0) }
             try await repository.saveGrade(
                 sessionId: current.id,
                 questionId: questionId,
                 score: scoreKotlin,
                 commentaire: commentaire
-            )
-            // Update locale de la réponse
-            let updatedReponses = current.reponses.map { r -> CorrectionReponse in
-                if r.questionId == questionId {
-                    return r.copy(score: scoreKotlin, commentaire: commentaire)
-                }
-                return r
-            }
-            let allCorrected = updatedReponses.allSatisfy { $0.score != nil }
-            session = current.copy(
-                reponses: updatedReponses,
-                allCorrected: allCorrected,
-                needsCorrectionCount: updatedReponses.filter { $0.score == nil }.count
             )
             lastSavedQuestionId = questionId
         } catch {
@@ -65,12 +58,12 @@ class CorrectionDetailViewModel: ObservableObject {
 
     /// Finalise la correction (PATCH .../ai-grade { finalizeAll: true }).
     func finalize() async {
-        guard let current = session else { return }
+        guard session != nil else { return }
         isProcessing = true
         processError = nil
         do {
-            try await repository.finalizeCorrectionSession(sessionId: current.id)
-            session = current.copy(statut: "CORRIGEE")
+            try await repository.finalizeCorrectionSession(sessionId: session!.id)
+            statutLocal = "CORRIGEE"
         } catch {
             self.processError = error.localizedDescription
         }
@@ -79,12 +72,12 @@ class CorrectionDetailViewModel: ObservableObject {
 
     /// Retourne la copie à l'étudiant (POST .../retourner).
     func retourner() async -> Bool {
-        guard let current = session else { return false }
+        guard session != nil else { return false }
         isProcessing = true
         processError = nil
         do {
-            try await repository.retournerCorrectionSession(sessionId: current.id)
-            session = current.copy(statut: "RETOURNEE")
+            try await repository.retournerCorrectionSession(sessionId: session!.id)
+            statutLocal = "RETOURNEE"
             isProcessing = false
             return true
         } catch {
