@@ -3,7 +3,9 @@
 package com.sect.mobile.shared.data.repository
 
 import com.sect.mobile.shared.cache.TokenCache
+import com.sect.mobile.shared.data.dto.CreateDevoirRequest
 import com.sect.mobile.shared.data.dto.CredentialsDto
+import com.sect.mobile.shared.data.dto.SubmitDevoirRequest
 import com.sect.mobile.shared.data.mapper.*
 import com.sect.mobile.shared.domain.model.*
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface

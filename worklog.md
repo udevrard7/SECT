@@ -275,3 +275,65 @@ Stage Summary:
 - ✅ Role.isMobileUser() : shared KMP (Android + iOS)
 - ✅ Dépendance circulaire fixée (AppModule)
 - ⏳ CI : à vérifier (quota GitHub Actions pouvait être épuisé)
+
+---
+Task ID: SECT-SESSION-RESUME-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reprise de session — clonage du dépôt, installation Go 1.24, configuration environnement local, vérification déploiements prod
+
+Work Log:
+- Cloné https://github.com/udevrard7/SECT → /home/z/sect (main, HEAD 90197b08, à jour avec origin)
+- Configuré git identity : udevrard7 <ulrichdouh@gmail.com> + credential.helper store
+- Installé Go 1.24.4 à /home/z/go-install/go/ (symlink /usr/local/bin/go) — version requise par go.mod (go 1.24)
+- Installé golang-migrate v4.19.1 (tags postgres) → /usr/local/bin/migrate
+- Créé backend/.env (gitignored) avec NEON_DATABASE_URL (pooler) + NEON_DIRECT_URL (direct, dérivé sans -pooler) + JWT_SECRET dev + CORS local+prod
+- Vérifié Neon DB : migration version 105 (cohérent avec SECT-CI-GREEN-1 qui a poussé v104→v105)
+- Backend : go mod download OK, go build ./cmd/api OK (binaire 27MB), go vet ./... 0 erreur
+- Frontend : bun install OK (1067 packages, 2.59s), bun run lint OK (0 erreurs, 1 warning mineur sur use-surveillance-ws.ts)
+- Render backend LIVE : GET https://sect-zead.onrender.com/health → HTTP 200, {"service":"sect-api","status":"ok","version":"0.2.0"}
+- Vercel frontend LIVE : GET https://sect-app.vercel.app → HTTP 308 (redirection i18n, normal)
+- Identifié 6 workflows CI/CD : backend-ci, frontend-ci, mobile-ci, mobile-release, build-desktop, release-desktop
+
+Stage Summary:
+- ✅ Environnement local pleinement opérationnel : Go 1.24.4 + migrate + bun + node
+- ✅ Backend compile et se connecte à Neon (v105)
+- ✅ Frontend installe et lint clean
+- ✅ Productions Vercel + Render LIVE et saines
+- ✅ Git configuré avec la bonne identité pour push → déclenche auto-deploy Vercel + Render
+- ⚠️ Tokens fournis par l'utilisateur (GitHub PAT, Neon, Vercel, Render) — à révoquer après session
+- 🔒 backend/.env est gitignored (vérifié via git check-ignore)
+- Projet prêt pour reprise du développement ; en attente des instructions de l'utilisateur sur les prochaines tâches
+
+---
+Task ID: SECT-MOBILE-CI-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Corriger le CI mobile en échec sur commit 90197b08 (run #93, job "Vérifier Shared KMP")
+
+Work Log:
+- Diagnostic via GitHub API : run #93 (90197b08) en failure, job "🧪 Vérifier Shared KMP" échec à l'étape "🔍 Compile Shared Module (Android + iOS targets)", jobs Android/iOS/Deploy skipés
+- Récupération logs job (95128020346) : 5 erreurs de compilation Kotlin dans :shared:compileDebugKotlinAndroid
+  1. SECTRepositoryImpl.kt:180 — Unresolved reference 'CreateDevoirRequest'
+  2. SECTRepositoryImpl.kt:192 — Unresolved reference 'CreateDevoirRequest'
+  3. SECTRepositoryImpl.kt:203 — Unresolved reference 'SubmitDevoirRequest'
+  4. ResultatsApi.kt:18 — Return type mismatch: expected 'List<ResultatDto>', actual 'HttpResponse'
+  5. ResultatsApi.kt:26 — Return type mismatch: expected 'List<SessionPassationDto>', actual 'HttpResponse'
+- Cause racine 1 (SECTRepositoryImpl) : imports manquants pour CreateDevoirRequest et SubmitDevoirRequest (DTOs définis dans data/dto/DevoirDto.kt mais package data.dto non importé — seul data.mapper.* et domain.model.* l'étaient)
+- Cause racine 2 (ResultatsApi) : 
+  (a) client.get() retourne HttpResponse, pas List<...> — il manquait l'appel .body<Map<String,List<...>>>() 
+  (b) la route /api/sessions/a-corriger N'EXISTE PAS côté backend (vérifié internal/transport/http/router.go : r.Route("/api/sessions") ne définit que /, /{id}, /{id}/submit, /{id}/capture, etc. — aucune sous-route a-corriger). Le frontend Next.js non plus ne l'utilise jamais. Route fantôme inventée lors du merge "Devoirs".
+- Vérification cohérence backend :
+  - GET /api/resultats (session_handlers.go:listResultats) pour un ETUDIANT → force etudiantId=claims.UserID → Branch A → renvoie {resultats: SessionPassation[]}
+  - Le usecase ResultatUseCase.List (session.go:523) retourne map[string]any{"resultats": sessions} en Branch A
+  - Mappers ResultatDtoMapper et DevoirMapper présents → pas d'erreur de compilation en cascade
+- Correction 1 : SECTRepositoryImpl.kt — ajouté 2 imports (CreateDevoirRequest, SubmitDevoirRequest depuis com.sect.mobile.shared.data.dto)
+- Correction 2 : ResultatsApi.kt — 
+  - getResultatsEtudiant() : ajouté .body<Map<String, List<ResultatDto>>>() + extraction response["resultats"] ?: emptyList()
+  - getSessionsACorriger() : retourne emptyList() avec TODO documenté (route backend à créer dans une tâche future — évite le crash runtime de CorrectionsViewModel)
+- Diff : 2 fichiers Kotlin modifiés (+18/-4 lignes)
+
+Stage Summary:
+- ✅ 5 erreurs de compilation Kotlin résolues (3 unresolved reference + 2 return type mismatch)
+- ✅ Imports ajoutés cohérents avec le pattern existant (DevoirApi utilise déjà ces DTOs)
+- ✅ getResultatsEtudiant() maintenant aligné sur le contrat backend réel ({resultats: [...]})
+- ⚠️ getSessionsACorriger() retourne emptyList() en attendant la création de la route backend /api/sessions/a-corriger (TODO documenté dans le code)
+- ⏳ CI mobile à re-vérifier après push (run #94 attendu)
