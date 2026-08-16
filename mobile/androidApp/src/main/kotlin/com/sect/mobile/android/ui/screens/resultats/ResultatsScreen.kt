@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sect.mobile.android.ui.viewmodel.ResultatsUiState
 import com.sect.mobile.android.ui.viewmodel.ResultatsViewModel
 import com.sect.mobile.shared.domain.model.EtudiantStats
 import com.sect.mobile.shared.domain.model.Resultat
@@ -29,6 +30,7 @@ import com.sect.mobile.shared.domain.model.Resultat
  * interprété comme un pourcentage 0-100, epreuveNom, dateCompletion: String) et
  * EtudiantStats (moyenne, nbEpreuvesTerminees, meilleureNote).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResultatsScreen(
     onBackClick: () -> Unit,

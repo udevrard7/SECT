@@ -4,11 +4,25 @@ package com.sect.mobile.android.ui.components.navigation
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.Assessment
+import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.rounded.Chat
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -18,6 +32,7 @@ import com.sect.mobile.android.ui.components.SectGreen
 import com.sect.mobile.android.ui.components.SectBlue
 import com.sect.mobile.android.ui.components.SectOrange
 import com.sect.mobile.android.ui.components.SectPurple
+import com.sect.mobile.android.ui.components.SectRed
 
 /**
  * Élément de navigation avec badge pour notifications
@@ -28,7 +43,7 @@ data class NavItem(
     val icon: ImageVector,
     val selectedIcon: ImageVector? = null,
     val badgeCount: Int? = null,
-    val badgeColor: (MaterialTheme.ColorScheme) -> Color = { it.primary }
+    val badgeColor: (ColorScheme) -> Color = { it.primary }
 )
 
 /**
@@ -133,35 +148,35 @@ val studentNavItems = listOf(
     NavItem(
         route = "dashboard",
         label = "Accueil",
-        icon = androidx.compose.material.icons.Icons.Filled.Dashboard,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Dashboard
+        icon = Icons.Filled.Dashboard,
+        selectedIcon = Icons.Rounded.Dashboard
     ),
     NavItem(
         route = "epreuves",
         label = "Épreuves",
-        icon = androidx.compose.material.icons.Icons.Filled.Book,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Book
+        icon = Icons.Filled.Book,
+        selectedIcon = Icons.Rounded.Book
     ),
     NavItem(
         route = "resultats",
         label = "Résultats",
-        icon = androidx.compose.material.icons.Icons.Filled.Assessment,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Assessment,
+        icon = Icons.Filled.Assessment,
+        selectedIcon = Icons.Rounded.Assessment,
         badgeCount = null // À dynamiser avec nouveaux résultats
     ),
     NavItem(
         route = "messagerie",
         label = "Messages",
-        icon = androidx.compose.material.icons.Icons.Filled.Chat,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Chat,
+        icon = Icons.Filled.Chat,
+        selectedIcon = Icons.Rounded.Chat,
         badgeCount = null, // À dynamiser avec messages non lus
         badgeColor = { SectOrange }
     ),
     NavItem(
         route = "profile",
         label = "Profil",
-        icon = androidx.compose.material.icons.Icons.Filled.Person,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Person
+        icon = Icons.Filled.Person,
+        selectedIcon = Icons.Rounded.Person
     )
 )
 
@@ -173,36 +188,36 @@ val enseignantNavItems = listOf(
     NavItem(
         route = "dashboard",
         label = "Accueil",
-        icon = androidx.compose.material.icons.Icons.Filled.Dashboard,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Dashboard
+        icon = Icons.Filled.Dashboard,
+        selectedIcon = Icons.Rounded.Dashboard
     ),
     NavItem(
         route = "epreuves",
         label = "Épreuves",
-        icon = androidx.compose.material.icons.Icons.Filled.Book,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Book
+        icon = Icons.Filled.Book,
+        selectedIcon = Icons.Rounded.Book
     ),
     NavItem(
         route = "corrections",
         label = "Corrections",
-        icon = androidx.compose.material.icons.Icons.Filled.EditNote,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.EditNote,
+        icon = Icons.Filled.EditNote,
+        selectedIcon = Icons.Rounded.EditNote,
         badgeCount = null, // À dynamiser avec corrections en attente
         badgeColor = { SectRed }
     ),
     NavItem(
         route = "messagerie",
         label = "Messages",
-        icon = androidx.compose.material.icons.Icons.Filled.Chat,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Chat,
+        icon = Icons.Filled.Chat,
+        selectedIcon = Icons.Rounded.Chat,
         badgeCount = null, // À dynamiser avec messages non lus
         badgeColor = { SectOrange }
     ),
     NavItem(
         route = "profile",
         label = "Profil",
-        icon = androidx.compose.material.icons.Icons.Filled.Person,
-        selectedIcon = androidx.compose.material.icons.Icons.Rounded.Person
+        icon = Icons.Filled.Person,
+        selectedIcon = Icons.Rounded.Person
     )
 )
 

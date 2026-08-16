@@ -151,8 +151,12 @@ fun EnseignantDashboardScreen(
                             }
                         }
                     } else {
-                        items(stats.pendingCorrections.take(5)) { correction ->
-                            PendingCorrectionCard(correction, onClick = { onNavigateToCorrections() })
+                        // `items()` (LazyListScope) n'est pas callable ici (on est dans un `item {}`)
+                        // → on empile les cartes via Column + forEach
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            stats.pendingCorrections.take(5).forEach { correction ->
+                                PendingCorrectionCard(correction, onClick = { onNavigateToCorrections() })
+                            }
                         }
                     }
                 }
@@ -183,8 +187,12 @@ fun EnseignantDashboardScreen(
                             )
                         }
                     } else {
-                        items(stats.recentEpreuves.take(5)) { epreuve ->
-                            RecentEpreuveCard(epreuve, onClick = { onNavigateToEpreuves() })
+                        // `items()` (LazyListScope) n'est pas callable ici (on est dans un `item {}`)
+                        // → on empile les cartes via Column + forEach
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            stats.recentEpreuves.take(5).forEach { epreuve ->
+                                RecentEpreuveCard(epreuve, onClick = { onNavigateToEpreuves() })
+                            }
                         }
                     }
                 }
@@ -215,8 +223,12 @@ fun EnseignantDashboardScreen(
                             )
                         }
                     } else {
-                        items(stats.epreuvesAVenir.take(5)) { epreuve ->
-                            UpcomingEpreuveCard(epreuve, onClick = { onNavigateToEpreuves() })
+                        // `items()` (LazyListScope) n'est pas callable ici (on est dans un `item {}`)
+                        // → on empile les cartes via Column + forEach
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            stats.epreuvesAVenir.take(5).forEach { epreuve ->
+                                UpcomingEpreuveCard(epreuve, onClick = { onNavigateToEpreuves() })
+                            }
                         }
                     }
                 }

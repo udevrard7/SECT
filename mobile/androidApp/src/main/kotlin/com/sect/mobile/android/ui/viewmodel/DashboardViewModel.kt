@@ -78,12 +78,17 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
                             dateDebut = epreuve.date,
                             dateFin = epreuve.dateFin,
                             duree = epreuve.duree,
-                            nbQuestions = 0,
+                            questionCount = 0,
                             totalPoints = 0.0,
                             filiereId = "",
                             enseignantId = "",
                             createdAt = "",
-                            updatedAt = ""
+                            updatedAt = "",
+                            melangeQuestions = false,
+                            melangePropositions = false,
+                            blocageRetour = false,
+                            sessionExamen = com.sect.mobile.shared.domain.enum.SessionExamen.NORMALE,
+                            generationMode = com.sect.mobile.shared.domain.enum.ModeGeneration.MANUELLE
                         )
                     }
                     _upcomingEpreuves.value = UiState.Success(epreuvesAVenir)
@@ -110,21 +115,27 @@ class DashboardViewModel(private val repository: SECTRepositoryInterface) : View
                     _etudiantStats.value = UiState.Success(stats)
                     
                     // Charger aussi les épreuves à venir pour compatibilité
+                    // Note : EpreuveAVenirEtudiant n'expose pas `statut` → défaut PLANIFIEE (épreuve à venir)
                     val epreuvesAVenir = stats.epreuvesAVenir.map { epreuve ->
                         Epreuve(
                             id = epreuve.id,
                             titre = epreuve.titre,
                             description = "",
-                            statut = com.sect.mobile.shared.domain.enum.StatutEpreuve.valueOf(epreuve.statut),
+                            statut = com.sect.mobile.shared.domain.enum.StatutEpreuve.PLANIFIEE,
                             dateDebut = epreuve.date,
                             dateFin = epreuve.dateFin,
                             duree = epreuve.duree,
-                            nbQuestions = epreuve.nbQuestions,
+                            questionCount = epreuve.nbQuestions,
                             totalPoints = epreuve.totalPoints,
                             filiereId = "",
                             enseignantId = "",
                             createdAt = "",
-                            updatedAt = ""
+                            updatedAt = "",
+                            melangeQuestions = false,
+                            melangePropositions = false,
+                            blocageRetour = false,
+                            sessionExamen = com.sect.mobile.shared.domain.enum.SessionExamen.NORMALE,
+                            generationMode = com.sect.mobile.shared.domain.enum.ModeGeneration.MANUELLE
                         )
                     }
                     _upcomingEpreuves.value = UiState.Success(epreuvesAVenir)

@@ -199,8 +199,12 @@ fun EtudiantDashboardScreen(
                             }
                         }
                     } else {
-                        items(stats.epreuvesAVenir.take(5)) { epreuve ->
-                            EpreuveAVenirCard(epreuve, onClick = { onStartSession(epreuve.id) })
+                        // `items()` (LazyListScope) n'est pas callable ici (on est dans un `item {}`)
+                        // → on empile les cartes via Column + forEach
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            stats.epreuvesAVenir.take(5).forEach { epreuve ->
+                                EpreuveAVenirCard(epreuve, onClick = { onStartSession(epreuve.id) })
+                            }
                         }
                     }
                 }
@@ -231,8 +235,12 @@ fun EtudiantDashboardScreen(
                             )
                         }
                     } else {
-                        items(stats.resultatsRecents.take(5)) { resultat ->
-                            ResultatRecentCard(resultat, onClick = { onNavigateToResultats() })
+                        // `items()` (LazyListScope) n'est pas callable ici (on est dans un `item {}`)
+                        // → on empile les cartes via Column + forEach
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            stats.resultatsRecents.take(5).forEach { resultat ->
+                                ResultatRecentCard(resultat, onClick = { onNavigateToResultats() })
+                            }
                         }
                     }
                 }
@@ -263,8 +271,12 @@ fun EtudiantDashboardScreen(
                             )
                         }
                     } else {
-                        items(stats.performanceParType.take(5)) { perf ->
-                            PerformanceTypeCard(perf)
+                        // `items()` (LazyListScope) n'est pas callable ici (on est dans un `item {}`)
+                        // → on empile les cartes via Column + forEach
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            stats.performanceParType.take(5).forEach { perf ->
+                                PerformanceTypeCard(perf)
+                            }
                         }
                     }
                 }
