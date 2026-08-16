@@ -27,7 +27,8 @@ data class ConversationDto(
     val createdAt: InstantDto,
     val updatedAt: InstantDto,
     val participants: List<ConversationParticipantDto>? = null,
-    val lastMessage: MessageDto? = null
+    val lastMessage: MessageDto? = null,
+    val unreadCount: Int = 0 // Ajout pour les badges de notifications
 )
 
 @Serializable

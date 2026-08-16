@@ -55,6 +55,15 @@ class MessagerieViewModel(
     }
 
     /**
+     * Calculer le nombre total de messages non lus
+     */
+    fun getTotalUnreadCount(): Int {
+        return (_conversations.value as? UiState.Success)?.data
+            ?.sumOf { it.unreadCount }
+            ?: 0
+    }
+
+    /**
      * Sélectionner une conversation et charger ses messages.
      */
     fun selectConversation(conversationId: String) {

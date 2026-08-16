@@ -8,10 +8,13 @@ import com.sect.mobile.shared.data.mapper.*
 import com.sect.mobile.shared.domain.model.*
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import com.sect.mobile.shared.network.api.AuthApi
+import com.sect.mobile.shared.network.api.DevoirApi
 import com.sect.mobile.shared.network.api.EpreuveApi
 import com.sect.mobile.shared.network.api.MessagerieApi
 import com.sect.mobile.shared.network.api.SessionApi
+import com.sect.mobile.shared.network.api.StatsApi
 import com.sect.mobile.shared.network.api.UserApi
+import com.sect.mobile.shared.network.api.ResultatsApi
 
 /**
  * SECTRepositoryImpl is the data-layer implementation of the domain repository interface.
@@ -31,6 +34,9 @@ class SECTRepositoryImpl(
     private val epreuveApi: EpreuveApi,
     private val sessionApi: SessionApi,
     private val messagerieApi: MessagerieApi,
+    private val statsApi: StatsApi,
+    private val resultatsApi: ResultatsApi,
+    private val devoirApi: DevoirApi,
     private val tokenCache: TokenCache
 ) : SECTRepositoryInterface {
 
@@ -133,4 +139,77 @@ class SECTRepositoryImpl(
 
     override suspend fun changePassword(currentPassword: String, newPassword: String) =
         authApi.changePassword(currentPassword, newPassword)
+
+    // ── Stats ──
+
+    override suspend fun getStatsEnseignant(): EnseignantStats =
+        statsApi.getStatsEnseignant().toDomain()
+
+    override suspend fun getStatsEtudiant(): EtudiantStats =
+        statsApi.getStatsEtudiant().toDomain()
+
+    // ── Resultats & Corrections ──
+
+    override suspend fun getResultatsEtudiant(): List<Resultat> =
+        resultatsApi.getResultatsEtudiant().map { it.toDomain() }
+
+    override suspend fun getSessionsACorriger(): List<SessionPassation> =
+        resultatsApi.getSessionsACorriger().map { it.toDomain() }
+    
+    // ── Devoirs & Soumissions ──
+    
+    override suspend fun listDevoirs(
+        search: String?,
+        statut: String?,
+        page: Int,
+        limit: Int
+    ): List<Devoir> {
+        return devoirApi.list(search, statut, page, limit).map { it.toDomain() }
+    }
+    
+    override suspend fun getDevoir(id: String): Devoir = 
+        devoirApi.get(id).toDomain()
+    
+    override suspend fun createDevoir(
+        titre: String,
+        description: String?,
+        dateLimite: String,
+        pointsMax: Int,
+        fichierUrl: String?
+    ): Devoir {
+        val input = CreateDevoirRequest(titre, description, dateLimite, pointsMax, fichierUrl)
+        return devoirApi.create(input).toDomain()
+    }
+    
+    override suspend fun updateDevoir(
+        id: String,
+        titre: String,
+        description: String?,
+        dateLimite: String,
+        pointsMax: Int,
+        fichierUrl: String?
+    ): Devoir {
+        val input = CreateDevoirRequest(titre, description, dateLimite, pointsMax, fichierUrl)
+        return devoirApi.update(id, input).toDomain()
+    }
+    
+    override suspend fun deleteDevoir(id: String) = 
+        devoirApi.delete(id)
+    
+    override suspend fun getPresignedUrl(fileName: String, contentType: String): PresignedUrl =
+        devoirApi.getPresignedUrl(fileName, contentType).toDomain()
+    
+    override suspend fun submitDevoir(devoirId: String, fichierUrl: String, commentaire: String?): Soumission {
+        val input = SubmitDevoirRequest(devoirId, fichierUrl, commentaire)
+        return devoirApi.submitSoumission(input).toDomain()
+    }
+    
+    override suspend fun getSoumission(id: String): Soumission =
+        devoirApi.getSoumission(id).toDomain()
+    
+    override suspend fun listSoumissions(devoirId: String): List<Soumission> =
+        devoirApi.listSoumissions(devoirId).map { it.toDomain() }
+    
+    override suspend fun noterSoumission(id: String, note: Float, commentaire: String?): Soumission =
+        devoirApi.noterSoumission(id, note, commentaire).toDomain()
 }

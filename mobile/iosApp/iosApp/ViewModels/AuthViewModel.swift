@@ -8,6 +8,7 @@ class AuthViewModel: ObservableObject {
     @Published var currentUser: User?  // From Shared framework
     @Published var isLoading = false
     @Published var error: String? = nil
+    @Published var blockedRoleError: String? = nil  // SECT-RBAC-MOBILE-1: Error for ADMIN/RESPONSABLE
     
     private let repository = KoinRepositoryProvider.shared.repository
     
@@ -21,9 +22,23 @@ class AuthViewModel: ObservableObject {
     func login(identifier: String, password: String) async {
         isLoading = true
         error = nil
+        blockedRoleError = nil
         do {
             let session = try await repository.login(identifier: identifier, password: password)
-            currentUser = session.user
+            let user = session.user
+            
+            // SECT-RBAC-MOBILE-1: L'app mobile est réservée aux ENSEIGNANT et ETUDIANT
+            // Les ADMIN et RESPONSABLE doivent utiliser l'interface web
+            if user.role != .ENSEIGNANT && user.role != .ETUDIANT {
+                blockedRoleError = "L'application mobile est réservée aux enseignants et étudiants. Les \\(user.role == .ADMIN ? "administrateurs" : "responsables") doivent utiliser l'interface web."
+                // Logout immédiat + clear tokens
+                try? await repository.logout()
+                KoinRepositoryProvider.shared.clearCachedTokens()
+                isLoading = false
+                return
+            }
+            
+            currentUser = user
             isAuthenticated = true
             // Update in-memory token cache so subsequent Ktor requests
             // pick up the new access token synchronously.
@@ -43,6 +58,7 @@ class AuthViewModel: ObservableObject {
         } catch { }
         currentUser = nil
         isAuthenticated = false
+        blockedRoleError = nil
         // Wipe in-memory tokens so Ktor no longer sends stale credentials.
         KoinRepositoryProvider.shared.clearCachedTokens()
     }
@@ -51,9 +67,20 @@ class AuthViewModel: ObservableObject {
         let isAuth = try? await repository.isAuthenticated()
         if isAuth?.boolValue ?? false {
             do {
-                currentUser = try await repository.getCurrentUser()
+                let user = try await repository.getCurrentUser()
+                
+                // SECT-RBAC-MOBILE-1: Vérifier le rôle même pour les sessions existantes
+                if user.role != .ENSEIGNANT && user.role != .ETUDIANT {
+                    await logout()
+                    blockedRoleError = "Votre compte (\\(user.role.name)) n'est pas autorisé sur l'application mobile. Veuillez utiliser l'interface web."
+                    return
+                }
+                
+                currentUser = user
                 isAuthenticated = true
-            } catch { }
+            } catch {
+                await logout()
+            }
         }
     }
     
