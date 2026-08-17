@@ -94,13 +94,13 @@ private fun ExamPrepHomeContent(
                 SectStatCard(
                     value = "${state.cardsDueToday}",
                     label = "Cartes à revoir",
-                    icon = { Icon(Icons.Default.Style, null, tint = SectLime) },
+                    icon = { Icon(imageVector = Icons.Default.School, contentDescription = null, tint = SectLime) },
                     modifier = Modifier.weight(1f)
                 )
                 SectStatCard(
                     value = "${state.upcomingSessionsCount}",
                     label = "Sessions prévues",
-                    icon = { Icon(Icons.Default.Event, null, tint = SectGold) },
+                    icon = { Icon(imageVector = Icons.Default.Event, contentDescription = null, tint = SectGold) },
                     modifier = Modifier.weight(1f)
                 )
             }

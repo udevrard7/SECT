@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sect.mobile.shared.presentation.examprep.documents.ExamPrepDocumentsViewModel
 import com.sect.mobile.android.ui.components.GlassCard
+import com.sect.mobile.android.ui.components.SectBadge
 import com.sect.mobile.android.theme.*
 import org.koin.androidx.compose.koinViewModel
 
