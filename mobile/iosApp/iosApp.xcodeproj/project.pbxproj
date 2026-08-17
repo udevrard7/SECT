@@ -63,6 +63,7 @@
                 8A1A2B3C4D5E6F7A8B9C0DAD /* ResultatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DAC /* ResultatsView.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0DAF /* SectDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DAE /* SectDesignSystem.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0DB1 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0DB3 /* ExamPrepViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB2 /* ExamPrepViews.swift */; };
 /* Framework in Frameworks build phase */
                 8A1A2B3C4D5E6F7A8B9C0D66 /* Shared.framework in Frameworks */ = {
                         isa = PBXBuildFile;
@@ -142,6 +143,7 @@
                 8A1A2B3C4D5E6F7A8B9C0DAC /* ResultatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ResultatsView.swift; path = ../Views/ResultatsView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0DAE /* SectDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SectDesignSystem.swift; path = ../Utilities/SectDesignSystem.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BadgeManager.swift; path = ../Utilities/BadgeManager.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0DB2 /* ExamPrepViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExamPrepViews.swift; path = ../Views/ExamPrepViews.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */ = {
                         isa = PBXFileReference;
                         lastKnownFileType = wrapper.framework;
@@ -217,6 +219,7 @@
                                 8A1A2B3C4D5E6F7A8B9C0DAC /* ResultatsView.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0DAE /* SectDesignSystem.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0DB2 /* ExamPrepViews.swift */,
                         );
                         path = Utilities;
                         sourceTree = "<group>";
@@ -376,6 +379,7 @@
                                 8A1A2B3C4D5E6F7A8B9C0DAD /* ResultatsView.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0DAF /* SectDesignSystem.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0DB1 /* BadgeManager.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0DB3 /* ExamPrepViews.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

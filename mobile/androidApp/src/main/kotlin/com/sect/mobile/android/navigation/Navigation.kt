@@ -25,6 +25,10 @@ import androidx.navigation.compose.rememberNavController
 import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepDocumentsScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepHomeScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepReaderScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepReviewScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
 import com.sect.mobile.android.ui.screens.travail.TravailScreen
 import com.sect.mobile.android.ui.viewmodel.*
@@ -116,6 +120,12 @@ object Routes {
     const val RESULTS = "results/{epreuveId}"
     const val CONVERSATION = "messagerie/{conversationId}"
     const val CORRECTION_DETAIL = "corrections/{sessionId}"
+
+    // SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vague 1)
+    const val EXAM_PREP_HOME = "examprep/home"
+    const val EXAM_PREP_DOCUMENTS = "examprep/documents"
+    const val EXAM_PREP_READER = "examprep/reader/{documentId}"
+    const val EXAM_PREP_REVIEW = "examprep/review"
 }
 
 @Composable
@@ -370,6 +380,37 @@ fun SECTNavigation(
                 ResultsScreen(
                     epreuveId = epreuveId,
                     viewModel = resultsVM,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // ══ SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vague 1) ══
+
+            composable(Routes.EXAM_PREP_HOME) {
+                ExamPrepHomeScreen(
+                    onNavigateToDocuments = { navController.navigate(Routes.EXAM_PREP_DOCUMENTS) },
+                    onNavigateToReview = { navController.navigate(Routes.EXAM_PREP_REVIEW) },
+                    onNavigateToPlanning = { /* TODO Phase F2 Vague 4 */ }
+                )
+            }
+
+            composable(Routes.EXAM_PREP_DOCUMENTS) {
+                ExamPrepDocumentsScreen(
+                    onDocumentClick = { id -> navController.navigate("examprep/reader/$id") },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.EXAM_PREP_READER) { backStackEntry ->
+                val docId = backStackEntry.arguments?.getString("documentId") ?: ""
+                ExamPrepReaderScreen(
+                    documentId = docId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.EXAM_PREP_REVIEW) {
+                ExamPrepReviewScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

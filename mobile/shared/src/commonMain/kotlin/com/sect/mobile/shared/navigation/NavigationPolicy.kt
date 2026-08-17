@@ -64,7 +64,8 @@ object NavigationPolicy {
         "epreuves/",          // détail d'une épreuve
         "messagerie/",        // conversation
         "corrections/",       // détail de correction
-        "results/"            // résultats après passation
+        "results/",           // résultats après passation
+        "examprep/"           // SECT-EXAMPREP-CONTRACT-F2 : module Prépa Examens
     )
 
     val secondaryExactRoutes: List<String> = listOf(
