@@ -14,36 +14,33 @@ struct ExamPrepPracticeView: View {
     @State private var documentId = ""
     @State private var nombreQuestions: Double = 10
     @State private var difficulte = "MOYEN"
-    @State private var generationState: PracticeGenerationState = .Idle
+    @State private var isGenerating = false
     @State private var questions: [PracticeQuestion] = []
     @State private var currentIndex = 0
     @State private var attempts: [PracticeAttempt] = []
     @State private var userAnswers: [String: [String]] = [:]
+    @State private var errorMessage: String? = nil
 
     private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var body: some View {
-        switch generationState {
-        case .Idle:
-            configView
-        case .Generating:
-            VStack(spacing: 16) {
-                ProgressView()
-                Text("Génération des questions...")
-                Text("L'IA prépare votre entraînement").foregroundColor(.secondary).font(.caption)
-            }
-        case .ready(let qs):
-            questionsView(qs: qs)
-        case .failed(let msg):
-            VStack(spacing = 16) {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 48)).foregroundColor(.sectRed)
-                Text(msg).foregroundColor(.sectRed)
-                Button("Réessayer") { generationState = .Idle }
-            }
-        case .Timeout:
-            VStack(spacing: 16) {
-                Text("Délai dépassé (60s)").foregroundColor(.sectRed)
-                Button("Réessayer") { generationState = .Idle }
+        Group {
+            if let error = errorMessage {
+                VStack(spacing: 16) {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 48)).foregroundColor(.sectRed)
+                    Text(error).foregroundColor(.sectRed)
+                    Button("Réessayer") { errorMessage = nil }
+                }
+            } else if isGenerating {
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text("Génération des questions...")
+                    Text("L'IA prépare votre entraînement").foregroundColor(.secondary).font(.caption)
+                }
+            } else if !questions.isEmpty {
+                questionsView
+            } else {
+                configView
             }
         }
     }
@@ -118,22 +115,26 @@ struct ExamPrepPracticeView: View {
     }
 
     private func generate() async {
-        generationState = .Generating
+        isGenerating = true
+        errorMessage = nil
         let result = await repository.generatePractice(
             documentId: documentId,
             nombreQuestions: Int32(nombreQuestions),
             difficulte: difficulte,
             chapterId: nil
         )
-        switch result {
-        case .ready(let qs):
-            questions = qs; currentIndex = 0; userAnswers = [:]
-            generationState = .Ready(qs)
-        case .failed(let msg):
-            generationState = .Failed(message: msg)
-        case .Timeout:
-            generationState = .Timeout
-        default: generationState = .Idle
+        isGenerating = false
+        // Traitement du résultat PracticeGenerationState (sealed class Kotlin)
+        // Les cases sont des objects/data classes — on utilise le pattern matching
+        if let readyResult = result as? PracticeGenerationState.Ready {
+            questions = readyResult.questions
+            currentIndex = 0
+            userAnswers = [:]
+        } else if let failedResult = result as? PracticeGenerationState.Failed {
+            errorMessage = failedResult.message
+        } else {
+            // Timeout ou autre
+            errorMessage = "Délai dépassé ou erreur inconnue"
         }
     }
 
