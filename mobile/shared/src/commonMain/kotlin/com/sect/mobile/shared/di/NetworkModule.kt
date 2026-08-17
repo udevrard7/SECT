@@ -1,6 +1,7 @@
 package com.sect.mobile.shared.di
 
 import com.sect.mobile.shared.network.api.*
+import com.sect.mobile.shared.network.api.ExamPrepApi
 import io.ktor.client.*
 import org.koin.dsl.module
 
@@ -24,4 +25,6 @@ val networkModule = module {
     single<ResultatsApi> { ResultatsApi(get()) }
     single<DevoirApi> { DevoirApi(get()) }
     single<CorrectionApi> { CorrectionApi(get()) }
+    // SECT-EXAMPREP-CONTRACT-1 : API ExamPrep (28 endpoints)
+    single<ExamPrepApi> { ExamPrepApi(get()) }
 }

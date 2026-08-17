@@ -106,6 +106,16 @@ type CreateStudySessionInput struct {
         Notes      *string `json:"notes,omitempty"`
 }
 
+// UpdateStudySessionInput pour modifier une session existante (PATCH /planning/{id}).
+// SECT-EXAMPREP-CONTRACT-1 : tous les champs sont optionnels (update partiel).
+type UpdateStudySessionInput struct {
+        Type      *string `json:"type,omitempty"`
+        DateDebut *string `json:"dateDebut,omitempty"`  // ISO
+        DateFin   *string `json:"dateFin,omitempty"`    // ISO
+        Statut    *string `json:"statut,omitempty"`     // PLANIFIEE | EN_COURS | TERMINEE
+        Notes     *string `json:"notes,omitempty"`
+}
+
 // ============================================================
 // PRACTICE ATTEMPT
 // ============================================================
@@ -340,6 +350,7 @@ type ExamPrepRepository interface {
         // Planning (study sessions)
         ListStudySessions(ctx context.Context, userID string) ([]*StudySession, error)
         CreateStudySession(ctx context.Context, userID string, input CreateStudySessionInput) (*StudySession, error)
+        UpdateStudySession(ctx context.Context, id string, input UpdateStudySessionInput) (*StudySession, error) // SECT-EXAMPREP-CONTRACT-1
         DeleteStudySession(ctx context.Context, id string) error
 
         // Practice

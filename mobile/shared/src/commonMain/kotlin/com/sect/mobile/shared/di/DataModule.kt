@@ -35,4 +35,9 @@ val dataModule = module {
     }
     single { AutoSaveService(get(), scope = get<CoroutineScope>()) }
     single { PushSubscriptionManager(get<NotificationService>()) }
+
+    // SECT-EXAMPREP-CONTRACT-1 : repository ExamPrep (séparé de SECTRepositoryInterface)
+    single<com.sect.mobile.shared.domain.repository.examprep.ExamPrepRepository> {
+        com.sect.mobile.shared.data.repository.examprep.ExamPrepRepositoryImpl(get())
+    }
 }

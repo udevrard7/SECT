@@ -206,11 +206,26 @@ func (s *Server) markReviewed(w http.ResponseWriter, r *http.Request) {
         }
 
         var body struct {
-                ChapterID string `json:"chapterId"`
-                Quality   *int   `json:"quality"`
+                // SECT-EXAMPREP-CONTRACT-1 : le champ s'appelait `chapterId` mais la valeur
+                // attendue est l'ID du ReviewItem (pas l'ID du chapitre). Renommé en
+                // `reviewItemId` pour le contrat KMP. Rétrocompatibilité : on accepte
+                // encore `chapterId` pour ne pas casser le frontend web existant.
+                ReviewItemID string `json:"reviewItemId"`
+                ChapterID    string `json:"chapterId,omitempty"` // deprecated alias
+                Quality      *int   `json:"quality"`
         }
         if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+
+        // Rétrocompatibilité : si reviewItemId vide, fallback sur chapterId (ancien contrat)
+        itemID := body.ReviewItemID
+        if itemID == "" {
+                itemID = body.ChapterID
+        }
+        if itemID == "" {
+                writeJSONError(w, http.StatusBadRequest, "reviewItemId requis")
                 return
         }
 
@@ -219,13 +234,13 @@ func (s *Server) markReviewed(w http.ResponseWriter, r *http.Request) {
                 quality = *body.Quality
         }
 
-        if err := s.examPrepUC.MarkReviewed(r.Context(), claims, body.ChapterID, quality); err != nil {
+        if err := s.examPrepUC.MarkReviewed(r.Context(), claims, itemID, quality); err != nil {
                 middleware.MapDomainError(w, err)
                 return
         }
 
         w.Header().Set("Content-Type", "application/json")
-        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Chapitre marqué comme révisé"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"message": "Item de révision marqué comme révisé"})
 }
 
 // ============================================================
@@ -291,6 +306,32 @@ func (s *Server) deleteStudySession(w http.ResponseWriter, r *http.Request) {
 
         w.Header().Set("Content-Type", "application/json")
         _ = json.NewEncoder(w).Encode(map[string]string{"message": "Session supprimée"})
+}
+
+// updateStudySession — PATCH /api/exam-prep/planning/{id}
+// SECT-EXAMPREP-CONTRACT-1 : update partiel (tous champs optionnels).
+func (s *Server) updateStudySession(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        id := chi.URLParam(r, "id")
+        var input domain.UpdateStudySessionInput
+        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+
+        session, err := s.examPrepUC.UpdateStudySession(r.Context(), claims, id, input)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        _ = json.NewEncoder(w).Encode(map[string]any{"session": session})
 }
 
 // ============================================================

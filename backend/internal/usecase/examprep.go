@@ -289,6 +289,18 @@ func (uc *ExamPrepUseCase) DeleteStudySession(ctx context.Context, claims db.Ses
         return uc.repo.DeleteStudySession(ctx, id)
 }
 
+// UpdateStudySession modifie une session existante (PATCH /planning/{id}).
+// SECT-EXAMPREP-CONTRACT-1 : update partiel, tous les champs optionnels.
+func (uc *ExamPrepUseCase) UpdateStudySession(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateStudySessionInput) (*domain.StudySession, error) {
+        if claims.Role != string(domain.RoleEtudiant) {
+                return nil, &domain.UnauthorizedError{Message: "réservé aux étudiants"}
+        }
+        if id == "" {
+                return nil, &domain.ValidationError{Field: "id", Message: "requis"}
+        }
+        return uc.repo.UpdateStudySession(ctx, id, input)
+}
+
 // ListPracticeAttempts liste les tentatives.
 func (uc *ExamPrepUseCase) ListPracticeAttempts(ctx context.Context, claims db.SessionClaims, documentID string) ([]*domain.PracticeAttempt, error) {
         if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {

@@ -988,3 +988,125 @@ Stage Summary:
 - ✅ Animations : fadeIn/fadeOut, pulse, bounce + progressBar animée
 - ✅ Alias rétrocompatibles (SectGreen→SectLime, etc.) — pas de cassage existing code
 - ⏳ CI mobile à vérifier après push
+
+---
+Task ID: SECT-EXAMPREP-CONTRACT-1-REPO
+Agent: general-purpose (repo impl)
+Task: Implémenter UpdateStudySession dans le repository ExamPrep
+
+Work Log:
+- Lu /home/z/sect/backend/internal/domain/examprep.go pour confirmer la signature
+  UpdateStudySession(ctx, id string, input UpdateStudySessionInput) (*StudySession, error)
+  et le struct StudySession (champs Type, DateDebut, DateFin, Statut, Notes...).
+- Lu /home/z/sect/backend/internal/repository/examprep.go : examiné CreateStudySession
+  (lignes 632-671) et DeleteStudySession (lignes 677-693) pour le pattern
+  (db.ClaimsFromContext + db.WithTx + pgx.Tx + RETURNING + mapping titre→Type).
+- Lu /home/z/sect/backend/internal/repository/user.go UpdateUser (lignes 330-423)
+  pour le pattern de construction dynamique du SET (addSet helper + argIdx +
+  strings.Join + "updatedAt" = CURRENT_TIMESTAMP + pgx.ErrNoRows → NotFoundError).
+- Vérifié le schéma DB réel dans db/db/migrations/000002_create_tables.up.sql et
+  db/db/reference/schema.sql : la table "StudySession" a les colonnes
+  id, userId, documentId, chapterIds, titre, dateDebut, dureeMin, statut,
+  rappelEnvoye, createdAt, updatedAt. Il n'existe PAS de colonnes "type",
+  "dateFin" ni "notes" — la liste du task description ("based on the domain
+  struct") ne correspond pas au schéma réel.
+- Ajouté la méthode UpdateStudySession dans examprep.go (lignes 673-759) entre
+  CreateStudySession et DeleteStudySession. L'implémentation :
+  * Récupère les claims RLS via db.ClaimsFromContext (cohérent avec CreateStudySession).
+  * Parse input.DateDebut (ISO RFC3339) en time.Time hors closure avec
+    domain.ValidationError en cas de format invalide.
+  * Construit dynamiquement le SET avec addSet helper (pattern UpdateUser) :
+    - input.Type → colonne "titre" (mapping identique à CreateStudySession)
+    - input.DateDebut → colonne "dateDebut" (time.Time)
+    - input.Statut → colonne "statut"
+    - "updatedAt" = CURRENT_TIMESTAMP (toujours, cohérent avec UpdateUser)
+  * Append id après les args du SET ; placeholder $N pour WHERE "id" = $N.
+  * RETURNING les colonnes réelles du schéma ; scan avec vars intermédiaires
+    (chapterIds, titre *string ; dureeMin *int ; rappelEnvoye *bool) puis
+    mapping titre → s.Type (identique à CreateStudySession).
+  * pgx.ErrNoRows → domain.NotFoundError{Entity: "StudySession", ID: id}.
+  * Erreur wrappée via fmt.Errorf("update study session: %w", err).
+- Installé Go 1.24.0 (non présent sur le sandbox ; téléchargé depuis go.dev,
+  extrait dans /home/z/go avec GOROOT/GOPATH séparés).
+- go build ./cmd/api → EXIT_CODE=0 (succès, aucune erreur).
+- go vet ./internal/repository/ → VET_EXIT=0 (succès).
+
+Stage Summary:
+- Fichier modifié : /home/z/sect/backend/internal/repository/examprep.go
+  (méthode UpdateStudySession ajoutée, lignes 673-759).
+- go build ./cmd/api passe (exit 0). go vet ./internal/repository/ passe (exit 0).
+- L'implémentation suit le pattern de CreateStudySession (RLS via db.WithTx,
+  mapping titre→Type, RETURNING + scan) et de UpdateUser (SET dynamique addSet,
+  argIdx, updatedAt=CURRENT_TIMESTAMP, pgx.ErrNoRows → NotFoundError).
+- ÉCART NOTE : le task description listait les colonnes "type", "dateFin",
+  "notes" (dérivées du struct domain). Le schéma DB réel (migration 000002)
+  utilise "titre" pour Type, "dureeMin" (INTEGER) au lieu de dateFin, et n'a
+  pas de colonne "notes". J'ai utilisé les colonnes réelles du schéma pour
+  garantir un fonctionnement correct à l'exécution (sinon UPDATE/RETURNING
+  échouerait sur colonne inexistante). Les champs DateFin et Notes de l'input
+  sont acceptés mais non persistés — cohérent avec CreateStudySession qui les
+  ignore déjà. Ceci est documenté dans le commentaire de la méthode.
+- Si une migration future ajoute les colonnes "type"/"dateFin"/"notes", il
+  faudra mettre à jour cette méthode pour les prendre en charge.
+
+---
+Task ID: SECT-EXAMPREP-CONTRACT-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Contrat KMP ExamPrep — backend fixes + module shared complet (28 endpoints)
+
+Work Log:
+- Audit backend ExamPrep confirmé : 28 routes /api/exam-prep, 11 domaines fonctionnels
+- 4 issues identifiées par l'audit utilisateur :
+  1. 🔴 POST /review : chapterId trompeur (valeur = ReviewItem.id)
+  2. 🟠 PATCH /planning/{id} manquant
+  3. 🟠 question-bank?chapterId= ignoré en V1
+  4. 🟠 Génération IA = polling 202 → question-bank
+  5. 🟠 Flashcard → SRS best-effort
+
+- Backend fixes (3 fichiers Go modifiés + 1 subagent pour le repo) :
+  1. examprep_handlers.go markReviewed : chapterId → reviewItemId (+ rétrocompatibilité
+     : accepte encore chapterId pour ne pas casser le frontend web). Validation itemID non vide.
+  2. router.go : ajout r.Patch("/planning/{id}", s.updateStudySession)
+  3. domain/examprep.go : UpdateStudySessionInput struct (tous champs *string optionnels)
+     + méthode UpdateStudySession dans ExamPrepRepository interface
+  4. usecase/examprep.go : UpdateStudySession usecase (rôle étudiant + validation id)
+  5. transport/http/examprep_handlers.go : updateStudySession handler (PATCH partiel)
+  6. repository/examprep.go : UpdateStudySession impl SQL (subagent — dynamic SET + RETURNING)
+  - go build ./cmd/api : EXIT 0 ✅
+
+- Module shared KMP (6 nouveaux fichiers) :
+  1. data/dto/examprep/ExamPrepDto.kt : 20+ DTOs @Serializable (Dashboard, Documents,
+     Reader, Review, Planning, Practice, QA, Flashcards, Audio, Help + inputs)
+  2. domain/model/examprep/ExamPrepModels.kt : 15 domain models pure Kotlin
+  3. domain/model/examprep/ExamPrepStates.kt : 3 sealed classes états asynchrones :
+     - PracticeGenerationState (Idle/Generating/Ready/Failed/Timeout)
+     - AudioGenerationState (Idle/Generating/Ready/Failed)
+     - QAState (Idle/Loading/Success/Error)
+     - ExamPrepUiState<T> générique
+  4. data/mapper/examprep/ExamPrepMapper.kt : tous les DTO→Domain mappers
+  5. network/api/ExamPrepApi.kt : Ktor client 28 endpoints (11 domaines)
+  6. domain/repository/examprep/ExamPrepRepository.kt : interface 28 méthodes
+  7. data/repository/examprep/ExamPrepRepositoryImpl.kt : implémentation avec
+     polling generatePractice (200 PRET / 202 EN_COURS → poll question-bank 2s × 30 = 60s max)
+
+- DI câblée :
+  - NetworkModule : single<ExamPrepApi>
+  - DataModule : single<ExamPrepRepository> (séparé de SECTRepositoryInterface — trop de méthodes)
+
+- Points clés du contrat (documentés dans le code) :
+  - markReviewed utilise reviewItemId (pas chapterId)
+  - generatePractice gère 200/202 + polling automatique
+  - updateStudySession fait update partiel (PATCH)
+  - audioUrl présignée 15min — ne pas stocker durablement
+  - question-bank chapterId ignoré V1 — ne pas présenter comme filtre actif
+  - Flashcard → SRS best-effort (2 états conceptuels)
+  - Le mobile N'IMPLÉMENTE PAS SM-2 (géré backend)
+
+Stage Summary:
+- ✅ 2 corrections backend appliquées (reviewItemId + PATCH /planning/{id})
+- ✅ Module shared KMP ExamPrep complet (DTO + Domain + Mapper + API + Repository)
+- ✅ 3 états asynchrones modélisés (PracticeGeneration, AudioGeneration, QA)
+- ✅ Polling generatePractice implémenté (200/202 + question-bank 2s × 30)
+- ✅ DI câblée (ExamPrepApi + ExamPrepRepository séparés)
+- ✅ Backend compile (go build EXIT 0)
+- ⏳ CI mobile + backend à vérifier après push

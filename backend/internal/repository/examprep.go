@@ -670,6 +670,94 @@ func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID stri
         return s, nil
 }
 
+// UpdateStudySession modifie une session existante (PATCH /planning/{id}).
+//
+// SECT-EXAMPREP-CONTRACT-1 : update partiel — seuls les champs non-nil de
+// l'input sont inclus dans le SET. "updatedAt" est toujours rafraîchi
+// (CURRENT_TIMESTAMP). RLS actif via db.WithTx : la policy
+// StudySession_all_owner n'autorise la modification que si userId =
+// current_user_id(). NotFoundError propagé si aucune ligne retournée
+// (id introuvable ou session non propriétaire).
+//
+// NOTE : la colonne "titre" stocke le Type de session (cf. CreateStudySession
+// qui insère input.Type dans "titre"). Les champs DateFin et Notes de
+// l'input n'ont pas de colonne correspondante dans le schéma actuel
+// (migration 000002) et sont donc ignorés — cohérent avec CreateStudySession
+// qui ne les persiste pas non plus.
+func (r *ExamPrepRepository) UpdateStudySession(ctx context.Context, id string, input domain.UpdateStudySessionInput) (*domain.StudySession, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
+        // Validation du format date (hors closure — échec avant d'ouvrir la tx).
+        var dateDebut time.Time
+        if input.DateDebut != nil {
+                var err error
+                dateDebut, err = time.Parse(time.RFC3339, *input.DateDebut)
+                if err != nil {
+                        return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
+                }
+        }
+
+        var s *domain.StudySession
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Construction dynamique du SET — seuls les champs non-nil.
+                var setClauses []string
+                var args []any
+                argIdx := 1
+
+                addSet := func(col string, val any) {
+                        setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
+                        args = append(args, val)
+                        argIdx++
+                }
+
+                if input.Type != nil {
+                        addSet("titre", *input.Type)
+                }
+                if input.DateDebut != nil {
+                        addSet("dateDebut", dateDebut)
+                }
+                if input.Statut != nil {
+                        addSet("statut", *input.Statut)
+                }
+
+                // Toujours rafraîchir "updatedAt" (le trigger 000005 le ferait
+                // aussi, mais on l'explicité pour cohérence avec UpdateUser).
+                setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
+
+                // id placeholder (après les args du SET).
+                args = append(args, id)
+                updateSQL := fmt.Sprintf(`
+                        UPDATE "StudySession" SET %s WHERE "id" = $%d
+                        RETURNING "id", "userId", "documentId", "chapterIds", "titre",
+                                "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
+                `, strings.Join(setClauses, ", "), argIdx)
+
+                row := tx.QueryRow(ctx, updateSQL, args...)
+                s = &domain.StudySession{}
+                var chapterIds, titre *string
+                var dureeMin *int
+                var rappelEnvoye *bool
+                if err := row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
+                        &s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "StudySession", ID: id}
+                        }
+                        return fmt.Errorf("update study session: %w", err)
+                }
+                if titre != nil {
+                        s.Type = *titre
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
+        }
+        return s, nil
+}
+
 // DeleteStudySession supprime une session.
 //
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. NotFoundError
