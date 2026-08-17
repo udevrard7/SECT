@@ -35,7 +35,14 @@ class KoinRepositoryProvider {
     lazy var repository: SECTRepositoryInterface = {
         return SharedDIHelper.shared.sectRepositoryInterface
     }()
-    
+
+    // ── ExamPrep Repository (SECT-EXAMPREP-CONTRACT-F1) ──
+
+    /// Resolve ExamPrepRepository from Koin (separate from SECTRepositoryInterface).
+    lazy var examPrepRepository: ExamPrepRepository = {
+        return SharedDIHelper.shared.examPrepRepository
+    }()
+
     // ── Token Cache ──
     
     /// Resolve TokenCache from Koin (IOSTokenCache via Keychain).

@@ -18,7 +18,7 @@ struct ExamPrepHomeView: View {
     @State private var isLoading = true
     @State private var error: String? = nil
 
-    private let repository = KoinRepositoryProvider.shared.repository
+    private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var body: some View {
         NavigationView {
@@ -137,7 +137,7 @@ struct ExamPrepDocumentsView: View {
     @State private var searchQuery = ""
     @State private var isLoading = true
 
-    private let repository = KoinRepositoryProvider.shared.repository
+    private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var filteredDocuments: [ExamPrepDocument] {
         documents.filter { searchQuery.isEmpty || $0.nomFichier.lowercased().contains(searchQuery.lowercased()) }
@@ -197,7 +197,7 @@ struct ExamPrepReaderView: View {
     @State private var showFlashcardSheet = false
     @State private var showQASheet = false
 
-    private let repository = KoinRepositoryProvider.shared.repository
+    private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var body: some View {
         ScrollView {
@@ -250,7 +250,7 @@ struct ExamPrepReviewView: View {
     @State private var dueOnly = true
     @State private var lastReviewedId: String? = nil
 
-    private let repository = KoinRepositoryProvider.shared.repository
+    private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var body: some View {
         ScrollView {
@@ -346,7 +346,7 @@ struct FlashcardSheet: View {
     @State private var isCreating = false
     @State private var created = false
 
-    private let repository = KoinRepositoryProvider.shared.repository
+    private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var body: some View {
         NavigationView {
@@ -397,7 +397,7 @@ struct QASheet: View {
     @State private var response: QAResponse? = nil
     @State private var isLoading = false
 
-    private let repository = KoinRepositoryProvider.shared.repository
+    private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
     var body: some View {
         NavigationView {
