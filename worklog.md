@@ -1158,3 +1158,67 @@ Stage Summary:
 - ✅ Limitation DateFin/Notes documentée dans le contrat Repository
 - ✅ Pattern de test aligné sur UserMapperTest existant (kotlin.test)
 - ⏳ CI mobile à vérifier après push (job "Test Shared Module (commonMain)")
+
+---
+Task ID: SECT-EXAMPREP-CONTRACT-F1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase F1 — ViewModels commonMain ExamPrep (11 VMs partagés Android+iOS)
+
+Work Log:
+- Objectif : créer 11 ViewModels commonMain consommés simultanément par
+  Android (Compose) et iOS (SwiftUI), un par expérience utilisateur.
+- Pattern : BaseViewModel (pure Kotlin) + StateFlow + CoroutineScope.
+  Pas de dépendance androidx.lifecycle — chaque plateforme wrappe le VM
+  dans son propre cycle de vie.
+- Créé BaseViewModel.kt : CoroutineScope géré (SupervisorJob + Main dispatcher),
+  clear() pour annulation, helper launch {} avec try/catch global.
+
+- 11 ViewModels créés (1 par expérience utilisateur) :
+  1. ExamPrepHomeViewModel — hub agrégeant Dashboard + Documents + SRS du jour
+     + Lacunes + Sessions à venir. Computed properties : cardsDueToday,
+     weakChapters, averageScore, successRate, revisionTimeFormatted.
+  2. ExamPrepDocumentsViewModel — liste + recherche + filtre UE + refresh.
+     filteredDocuments + availableUEs computed.
+  3. ExamPrepReaderViewModel — lecteur + hub pédagogique : sélection texte
+     → createFlashcardFromSelection (limit 4000 chars) + askQuestion (RAG).
+     QAState intégré (Idle/Loading/Success/Error).
+  4. ExamPrepPracticeViewModel — le plus complexe : config → génération →
+     questions → réponse → soumission → résultat. Gère PracticeGenerationState
+     (Idle/Generating/Ready/Failed/Timeout) avec polling automatique du repository.
+     Navigation questions (next/previous), tracking userAnswers, submitCurrentAnswer.
+  5. ExamPrepReviewViewModel — liste SRS + markReviewed(reviewItemId, quality 0-5).
+     Le mobile ne calcule PAS SM-2 (backend gère). dueItems filter avec isDue().
+  6. ExamPrepFlashcardsViewModel — liste + createFromSelection (best-effort SRS)
+     + delete. Limit 4000 chars sur selectedText.
+  7. ExamPrepProgressViewModel — dashboard analytics : averageScorePercent,
+     successRate, revisionTimeFormatted, masteredItems, dueToday, sortedWeaknesses.
+  8. ExamPrepPlanningViewModel — CRUD complet avec PATCH (update partiel).
+     ⚠️ Documenté : dateFin/notes acceptés mais non persistés backend.
+     markCompleted() helper.
+  9. ExamPrepAudioViewModel — génération + polling (30×10s=5min max) + lecture.
+     ⚠️ audioUrl présignée 15min → refreshAudioUrl() pour re-fetch.
+     States : AudioGenerationState (Idle/Generating/Ready/Failed).
+  10. ExamPrepQaViewModel — Q&A RAG simple : ask() + history locale.
+      citations vide V1 (ne pas construire UI sophistiquée).
+  11. ExamPrepHelpViewModel — mini messagerie : threads + messages + create
+      + sendMessage + closeThread + deleteThread. openThreads/closedThreads.
+
+- PresentationModule.kt mis à jour : 11 factory Koin single { VM(get<Repository>()) }.
+  Plus vide — les VMs sont maintenant partagés et instanciables via Koin sur
+  les deux plateformes.
+
+- Points clés du contrat respectés :
+  - markReviewed utilise reviewItemId (pas chapterId)
+  - generatePractice délègue au repository le polling 200/202
+  - updateStudySession fait update partiel (PATCH) + doc limitation
+  - audioUrl traitée comme éphémère (refreshAudioUrl)
+  - Flashcard → SRS best-effort (le VM ne crash pas si SRS échoue)
+  - Le mobile N'IMPLÉMENTE PAS SM-2 (quality envoyé au backend)
+
+Stage Summary:
+- ✅ 11 ViewModels commonMain créés (1 par expérience utilisateur)
+- ✅ BaseViewModel shared (CoroutineScope + StateFlow, pas de dépendance Android)
+- ✅ PresentationModule : 11 factory Koin
+- ✅ Tous les états asynchrones intégrés (Practice, Audio, QA)
+- ✅ Limitations backend documentées dans le code (dateFin/Notes, audioUrl 15min)
+- ⏳ CI mobile à vérifier après push (Shared KMP compile + tests)
