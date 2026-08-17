@@ -151,7 +151,8 @@ class ExamPrepMapperTest {
         assertEquals("doc_001", domain.id)
         assertEquals("La complexité algorithmique mesure l'efficacité...", domain.contenuTexte)
         assertEquals("complexité", domain.themesDetectes[0])
-        assertEquals("ue1", domain.uniteEnseignement?.code)
+        assertEquals("ue1", domain.uniteEnseignement?.id)
+        assertEquals("INF301", domain.uniteEnseignement?.code)
     }
 
     // ════════════════════════════════════════════════════
