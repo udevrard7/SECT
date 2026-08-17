@@ -94,7 +94,7 @@ private fun ConfigContent(
             onClick = { viewModel.generate() },
             modifier = Modifier.fillMaxWidth(),
             enabled = state.documentId != null,
-            colors = ButtonDefaults.buttonColors(containerColor = SectLime)
+            colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF84CC16))
         ) {
             Icon(Icons.Default.AutoAwesome, null)
             Spacer(Modifier.width(8.dp))
@@ -109,9 +109,14 @@ private fun ConfigContent(
                 items(state.attempts.take(10), key = { it.id }) { attempt ->
                     GlassCard {
                         Row(modifier = Modifier.padding(12.dp)) {
+                            val attemptColor = if (attempt.correct)
+                                androidx.compose.ui.graphics.Color(0xFF84CC16)
+                            else
+                                androidx.compose.ui.graphics.Color(0xFFEF4444)
                             Icon(
-                                if (attempt.correct) Icons.Default.CheckCircle else Icons.Default.Cancel,
-                                null, tint = if (attempt.correct) SectLime else SectRed
+                                imageVector = if (attempt.correct) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                contentDescription = null,
+                                tint = attemptColor
                             )
                             Spacer(Modifier.width(8.dp))
                             Column {
@@ -172,7 +177,7 @@ private fun QuestionsContent(
                             },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = if (isSelected) SectLime.copy(alpha = 0.2f) else androidx.compose.ui.graphics.Color.Transparent
+                                containerColor = if (isSelected) androidx.compose.ui.graphics.Color(0xFF84CC16).copy(alpha = 0.2f) else androidx.compose.ui.graphics.Color.Transparent
                             )
                         ) { Text(prop) }
                     }
@@ -193,7 +198,7 @@ private fun QuestionsContent(
                 Button(
                     onClick = { viewModel.submitCurrentAnswer() },
                     enabled = state.allAnswered,
-                    colors = ButtonDefaults.buttonColors(containerColor = SectLime)
+                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF84CC16))
                 ) { Text("Terminer", color = androidx.compose.ui.graphics.Color(0xFF3F6212)) }
             }
         }
