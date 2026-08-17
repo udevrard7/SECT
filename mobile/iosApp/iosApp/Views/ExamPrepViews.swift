@@ -287,7 +287,7 @@ struct ExamPrepReviewView: View {
 
     private func markReviewed(_ id: String, quality: Int) async {
         do {
-            try await repository.markReviewed(reviewItemId: id, quality: KotlinInt(int: quality))
+            try await repository.markReviewed(reviewItemId: id, quality: KotlinInt(int: Int32(quality)))
             lastReviewedId = id
             await loadItems()
         } catch {}
