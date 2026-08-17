@@ -14,7 +14,7 @@ struct ExamPrepPracticeView: View {
     @State private var documentId = ""
     @State private var nombreQuestions: Double = 10
     @State private var difficulte = "MOYEN"
-    @State private var generationState: PracticeGenerationState = .idle
+    @State private var generationState: PracticeGenerationState = .Idle
     @State private var questions: [PracticeQuestion] = []
     @State private var currentIndex = 0
     @State private var attempts: [PracticeAttempt] = []
@@ -24,9 +24,9 @@ struct ExamPrepPracticeView: View {
 
     var body: some View {
         switch generationState {
-        case .idle:
+        case .Idle:
             configView
-        case .generating:
+        case .Generating:
             VStack(spacing: 16) {
                 ProgressView()
                 Text("Génération des questions...")
@@ -38,12 +38,12 @@ struct ExamPrepPracticeView: View {
             VStack(spacing = 16) {
                 Image(systemName: "xmark.circle.fill").font(.system(size: 48)).foregroundColor(.sectRed)
                 Text(msg).foregroundColor(.sectRed)
-                Button("Réessayer") { generationState = .idle }
+                Button("Réessayer") { generationState = .Idle }
             }
-        case .timeout:
+        case .Timeout:
             VStack(spacing: 16) {
                 Text("Délai dépassé (60s)").foregroundColor(.sectRed)
-                Button("Réessayer") { generationState = .idle }
+                Button("Réessayer") { generationState = .Idle }
             }
         }
     }
@@ -118,7 +118,7 @@ struct ExamPrepPracticeView: View {
     }
 
     private func generate() async {
-        generationState = .generating
+        generationState = .Generating
         let result = await repository.generatePractice(
             documentId: documentId,
             nombreQuestions: Int32(nombreQuestions),
@@ -128,12 +128,12 @@ struct ExamPrepPracticeView: View {
         switch result {
         case .ready(let qs):
             questions = qs; currentIndex = 0; userAnswers = [:]
-            generationState = .ready(qs)
+            generationState = .Ready(qs)
         case .failed(let msg):
-            generationState = .failed(message: msg)
-        case .timeout:
-            generationState = .timeout
-        default: generationState = .idle
+            generationState = .Failed(message: msg)
+        case .Timeout:
+            generationState = .Timeout
+        default: generationState = .Idle
         }
     }
 

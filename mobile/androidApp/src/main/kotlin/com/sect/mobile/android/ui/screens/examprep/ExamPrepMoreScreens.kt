@@ -39,16 +39,16 @@ fun ExamPrepProgressScreen(
                 item { KenteDivider(thickness = 3) }
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SectStatCard(value = "${state.averageScorePercent}%", label = "Score moyen", icon = { Icon(imageVector = Icons.Default.TrendingUp, contentDescription = null, tint = SectLime) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = "${state.successRate}%", label = "Réussite", icon = { Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = SectGold) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = state.revisionTimeFormatted, label = "Temps", icon = { Icon(imageVector = Icons.Default.Schedule, contentDescription = null, tint = SectNavy) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.averageScorePercent}%", label = "Score moyen", icon = { Icon(imageVector = Icons.Default.TrendingUp, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF84CC16)) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.successRate}%", label = "Réussite", icon = { Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFD4A017)) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = state.revisionTimeFormatted, label = "Temps", icon = { Icon(imageVector = Icons.Default.Schedule, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF2C3E50)) }, modifier = Modifier.weight(1f))
                     }
                 }
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SectStatCard(value = "${state.totalAttempts}", label = "Tentatives", icon = { Icon(imageVector = Icons.Default.Quiz, contentDescription = null, tint = SectTerreCuite) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = "${state.masteredItems}", label = "Maîtrisés", icon = { Icon(imageVector = Icons.Default.School, contentDescription = null, tint = SectLime) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = "${state.dueToday}", label = "Dus", icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = null, tint = SectGold) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.totalAttempts}", label = "Tentatives", icon = { Icon(imageVector = Icons.Default.Quiz, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFC2410C)) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.masteredItems}", label = "Maîtrisés", icon = { Icon(imageVector = Icons.Default.School, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF84CC16)) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.dueToday}", label = "Dus", icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFD4A017)) }, modifier = Modifier.weight(1f))
                     }
                 }
                 if (state.sortedWeaknesses.isNotEmpty()) {
@@ -151,7 +151,7 @@ fun ExamPrepFlashcardsScreen(
             state.isLoading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.flashcards.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Style, null, modifier = Modifier.size(64.dp), tint = SectLime)
+                    Icon(Icons.Default.Style, null, modifier = Modifier.size(64.dp), tint = androidx.compose.ui.graphics.Color(0xFF84CC16))
                     Text("Aucune flashcard", style = MaterialTheme.typography.titleMedium)
                     Text("Créez-en depuis le lecteur de cours", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -164,7 +164,7 @@ fun ExamPrepFlashcardsScreen(
                             Text(if (flipped) card.verso else card.recto, style = if (flipped) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(8.dp))
                             TextButton(onClick = { flipped = !flipped }) { Text(if (flipped) "Voir recto" else "Voir verso") }
-                            IconButton(onClick = { viewModel.delete(card.id) }) { Icon(Icons.Default.Delete, "Supprimer", tint = SectRed) }
+                            IconButton(onClick = { viewModel.delete(card.id) }) { Icon(Icons.Default.Delete, "Supprimer", tint = androidx.compose.ui.graphics.Color(0xFFEF4444)) }
                         }
                     }
                 }
@@ -241,7 +241,7 @@ fun ExamPrepPlanningScreen(
                 items(state.upcoming, key = { it.id }) { session ->
                     GlassCard {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.Event, contentDescription = null, tint = SectGold)
+                            Icon(imageVector = Icons.Default.Event, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFD4A017))
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(session.type.replaceFirstChar { it.uppercase() }, fontWeight = FontWeight.Medium)
