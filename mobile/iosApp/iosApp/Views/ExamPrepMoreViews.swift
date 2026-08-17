@@ -78,7 +78,8 @@ struct ExamPrepPracticeView: View {
         .task { await loadAttempts() }
     }
 
-    private func questionsView(qs: [PracticeQuestion]) -> some View {
+    private var questionsView: some View {
+        let qs = questions
         let progress = Double(currentIndex + 1) / Double(qs.count)
         return VStack {
             ProgressView(value: progress)
@@ -116,24 +117,26 @@ struct ExamPrepPracticeView: View {
     private func generate() async {
         isGenerating = true
         errorMessage = nil
-        let result = await repository.generatePractice(
-            documentId: documentId,
-            nombreQuestions: Int32(nombreQuestions),
-            difficulte: difficulte,
-            chapterId: nil
-        )
-        isGenerating = false
-        // Traitement du résultat PracticeGenerationState (sealed class Kotlin)
-        // Les cases sont des objects/data classes — on utilise le pattern matching
-        if let readyResult = result as? PracticeGenerationState.Ready {
-            questions = readyResult.questions
-            currentIndex = 0
-            userAnswers = [:]
-        } else if let failedResult = result as? PracticeGenerationState.Failed {
-            errorMessage = failedResult.message
-        } else {
-            // Timeout ou autre
-            errorMessage = "Délai dépassé ou erreur inconnue"
+        do {
+            let result = try await repository.generatePractice(
+                documentId: documentId,
+                nombreQuestions: Int32(nombreQuestions),
+                difficulte: difficulte,
+                chapterId: nil
+            )
+            isGenerating = false
+            if let readyResult = result as? PracticeGenerationState.Ready {
+                questions = readyResult.questions
+                currentIndex = 0
+                userAnswers = [:]
+            } else if let failedResult = result as? PracticeGenerationState.Failed {
+                errorMessage = failedResult.message
+            } else {
+                errorMessage = "Délai dépassé ou erreur inconnue"
+            }
+        } catch {
+            isGenerating = false
+            errorMessage = error.localizedDescription
         }
     }
 
