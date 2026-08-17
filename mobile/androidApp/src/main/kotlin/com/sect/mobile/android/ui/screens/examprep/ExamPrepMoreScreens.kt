@@ -39,16 +39,16 @@ fun ExamPrepProgressScreen(
                 item { KenteDivider(thickness = 3) }
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SectStatCard(value = "${state.averageScorePercent}%", label = "Score moyen", icon = { Icon(Icons.Default.TrendingUp, null, tint = SectLime) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = "${state.successRate}%", label = "Réussite", icon = { Icon(Icons.Default.CheckCircle, null, tint = SectGold) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = state.revisionTimeFormatted, label = "Temps", icon = { Icon(Icons.Default.Schedule, null, tint = SectNavy) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.averageScorePercent}%", label = "Score moyen", icon = { Icon(imageVector = Icons.Default.TrendingUp, contentDescription = null, tint = SectLime) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.successRate}%", label = "Réussite", icon = { Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = SectGold) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = state.revisionTimeFormatted, label = "Temps", icon = { Icon(imageVector = Icons.Default.Schedule, contentDescription = null, tint = SectNavy) }, modifier = Modifier.weight(1f))
                     }
                 }
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SectStatCard(value = "${state.totalAttempts}", label = "Tentatives", icon = { Icon(Icons.Default.Quiz, null, tint = SectTerreCuite) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = "${state.masteredItems}", label = "Maîtrisés", icon = { Icon(Icons.Default.School, null, tint = SectLime) }, modifier = Modifier.weight(1f))
-                        SectStatCard(value = "${state.dueToday}", label = "Dus", icon = { Icon(Icons.Default.Notifications, null, tint = SectGold) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.totalAttempts}", label = "Tentatives", icon = { Icon(imageVector = Icons.Default.Quiz, contentDescription = null, tint = SectTerreCuite) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.masteredItems}", label = "Maîtrisés", icon = { Icon(imageVector = Icons.Default.School, contentDescription = null, tint = SectLime) }, modifier = Modifier.weight(1f))
+                        SectStatCard(value = "${state.dueToday}", label = "Dus", icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = null, tint = SectGold) }, modifier = Modifier.weight(1f))
                     }
                 }
                 if (state.sortedWeaknesses.isNotEmpty()) {
@@ -241,7 +241,7 @@ fun ExamPrepPlanningScreen(
                 items(state.upcoming, key = { it.id }) { session ->
                     GlassCard {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Event, null, tint = SectGold)
+                            Icon(imageVector = Icons.Default.Event, contentDescription = null, tint = SectGold)
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(session.type.replaceFirstChar { it.uppercase() }, fontWeight = FontWeight.Medium)
