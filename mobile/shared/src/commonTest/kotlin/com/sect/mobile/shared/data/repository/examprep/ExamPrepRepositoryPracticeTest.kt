@@ -3,6 +3,8 @@ package com.sect.mobile.shared.data.repository.examprep
 import com.sect.mobile.shared.data.dto.examprep.*
 import com.sect.mobile.shared.domain.model.examprep.PracticeGenerationState
 import com.sect.mobile.shared.network.api.ExamPrepApi
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +25,7 @@ class ExamPrepRepositoryPracticeTest {
     private class FakeExamPrepApi(
         val generateResponse: PracticeGenerationResponseDto,
         val questionBankResponse: List<PracticeQuestionDto> = emptyList()
-    ) : ExamPrepApi {
+    ) : ExamPrepApi(client = HttpClient(MockEngine { _ -> error("FakeApi n'utilise pas le client réel") })) {
         override suspend fun generatePractice(
             documentId: String,
             config: PracticeGenerationConfigDto
