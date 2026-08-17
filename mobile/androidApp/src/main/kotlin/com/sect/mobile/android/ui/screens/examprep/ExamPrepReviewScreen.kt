@@ -158,10 +158,10 @@ private fun ReviewItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                QualityButton(0, "Oubli", SectRed, onMarkReviewed)
-                QualityButton(2, "Difficile", SectTerreCuite, onMarkReviewed)
-                QualityButton(3, "Correct", SectGold, onMarkReviewed)
-                QualityButton(5, "Parfait", SectLime, onMarkReviewed)
+                QualityButton(0, "Oubli", SectRed, onMarkReviewed, Modifier.weight(1f))
+                QualityButton(2, "Difficile", SectTerreCuite, onMarkReviewed, Modifier.weight(1f))
+                QualityButton(3, "Correct", SectGold, onMarkReviewed, Modifier.weight(1f))
+                QualityButton(5, "Parfait", SectLime, onMarkReviewed, Modifier.weight(1f))
             }
         }
     }
@@ -171,12 +171,13 @@ private fun ReviewItemCard(
 private fun QualityButton(
     quality: Int,
     label: String,
-    color: Color,
-    onClick: (Int) -> Unit
+    color: androidx.compose.ui.graphics.Color,
+    onClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     OutlinedButton(
         onClick = { onClick(quality) },
-        modifier = Modifier.weight(1f),
+        modifier = modifier,
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = color
         ),
@@ -185,5 +186,3 @@ private fun QualityButton(
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
-
-private typealias Color = androidx.compose.ui.graphics.Color

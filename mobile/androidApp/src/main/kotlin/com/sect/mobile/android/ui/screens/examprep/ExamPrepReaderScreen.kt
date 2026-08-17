@@ -13,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextSelection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sect.mobile.shared.presentation.examprep.reader.ExamPrepReaderViewModel
@@ -138,7 +137,7 @@ private fun FlashcardDialog(
                 OutlinedTextField(
                     value = selectedText,
                     onValueChange = onTextChange,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 100, max = 200),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 200.dp),
                     maxLines = 5
                 )
                 if (isCreated) {
