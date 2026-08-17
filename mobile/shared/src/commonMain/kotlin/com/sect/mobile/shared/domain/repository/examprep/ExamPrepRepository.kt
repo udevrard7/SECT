@@ -16,6 +16,17 @@ interface ExamPrepRepository {
     // ── Planning ──
     suspend fun listStudySessions(): List<StudySession>
     suspend fun createStudySession(documentId: String?, chapitreId: String?, type: String, dateDebut: String, dateFin: String?, notes: String?): StudySession
+
+    /**
+     * Update partiel d'une session de révision (PATCH /planning/{id}).
+     *
+     * ⚠️ LIMITATION BACKEND (SECT-EXAMPREP-CONTRACT-1) :
+     * Les champs `dateFin` et `notes` sont acceptés par l'API mais NE SONT PAS
+     * persistés côté backend (colonnes DB absentes du schéma actuel).
+     * Seuls `type`, `dateDebut` et `statut` sont réellement sauvegardés.
+     * Le mobile ne doit pas donner l'impression à l'utilisateur que dateFin/notes
+     * ont été sauvegardés tant qu'une migration DB n'a pas ajouté ces colonnes.
+     */
     suspend fun updateStudySession(id: String, type: String?, dateDebut: String?, dateFin: String?, statut: String?, notes: String?): StudySession
     suspend fun deleteStudySession(id: String)
     // ── Practice ──
