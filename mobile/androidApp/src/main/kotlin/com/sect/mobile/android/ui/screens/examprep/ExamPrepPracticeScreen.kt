@@ -98,7 +98,7 @@ private fun ConfigContent(
         ) {
             Icon(Icons.Default.AutoAwesome, null)
             Spacer(Modifier.width(8.dp))
-            Text("Générer", color = androidx.compose.ui.graphics.Color(0xFF84CC16)Dark, fontWeight = FontWeight.Bold)
+            Text("Générer", color = androidx.compose.ui.graphics.Color(0xFF3F6212), fontWeight = FontWeight.Bold)
         }
 
         // Attempts history
@@ -194,7 +194,7 @@ private fun QuestionsContent(
                     onClick = { viewModel.submitCurrentAnswer() },
                     enabled = state.allAnswered,
                     colors = ButtonDefaults.buttonColors(containerColor = SectLime)
-                ) { Text("Terminer", color = androidx.compose.ui.graphics.Color(0xFF84CC16)Dark) }
+                ) { Text("Terminer", color = androidx.compose.ui.graphics.Color(0xFF3F6212)) }
             }
         }
     }
@@ -204,7 +204,7 @@ private fun QuestionsContent(
 private fun ErrorContent(message: String, padding: PaddingValues, viewModel: ExamPrepPracticeViewModel) {
     Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = SectRed, modifier = Modifier.size(48.dp))
+            Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFEF4444), modifier = Modifier.size(48.dp))
             Spacer(Modifier.height(16.dp))
             Text(message, color = androidx.compose.ui.graphics.Color(0xFFEF4444))
             Spacer(Modifier.height(16.dp))
