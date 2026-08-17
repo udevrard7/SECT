@@ -111,7 +111,7 @@ fun ExamPrepQaScreen(
                         }
                     }
                 }
-                is com.sect.mobile.shared.domain.model.examprep.QAState.Error -> Text(qa.message, color = SectRed)
+                is com.sect.mobile.shared.domain.model.examprep.QAState.Error -> Text(qa.message, color = androidx.compose.ui.graphics.Color(0xFFEF4444))
                 else -> {}
             }
             // History
@@ -195,7 +195,7 @@ fun ExamPrepAudioScreen(
             }
             when (val gs = state.generationState) {
                 is com.sect.mobile.shared.domain.model.examprep.AudioGenerationState.Generating -> { Spacer(Modifier.height(16.dp)); CircularProgressIndicator(); Text("Génération en cours...") }
-                is com.sect.mobile.shared.domain.model.examprep.AudioGenerationState.Failed -> { Text(gs.message, color = SectRed) }
+                is com.sect.mobile.shared.domain.model.examprep.AudioGenerationState.Failed -> { Text(gs.message, color = androidx.compose.ui.graphics.Color(0xFFEF4444)) }
                 else -> {}
             }
             Spacer(Modifier.height(16.dp))
@@ -209,7 +209,7 @@ fun ExamPrepAudioScreen(
                                 if (audio.status == "PRET" && audio.audioUrl != null) {
                                     TextButton(onClick = { viewModel.play(audio) }) { Text("▶ Lecture") }
                                 }
-                                TextButton(onClick = { viewModel.delete(audio.id) }) { Text("Supprimer", color = SectRed) }
+                                TextButton(onClick = { viewModel.delete(audio.id) }) { Text("Supprimer", color = androidx.compose.ui.graphics.Color(0xFFEF4444)) }
                             }
                         }
                     }
@@ -248,7 +248,7 @@ fun ExamPrepPlanningScreen(
                                 Text(session.dateDebut.take(16), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (session.statut != "TERMINEE") {
-                                TextButton(onClick = { viewModel.markCompleted(session.id) }) { Text("Terminer", color = SectLime) }
+                                TextButton(onClick = { viewModel.markCompleted(session.id) }) { Text("Terminer", color = androidx.compose.ui.graphics.Color(0xFF84CC16)) }
                             }
                         }
                     }

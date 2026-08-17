@@ -98,7 +98,7 @@ private fun ConfigContent(
         ) {
             Icon(Icons.Default.AutoAwesome, null)
             Spacer(Modifier.width(8.dp))
-            Text("Générer", color = SectLimeDark, fontWeight = FontWeight.Bold)
+            Text("Générer", color = androidx.compose.ui.graphics.Color(0xFF84CC16)Dark, fontWeight = FontWeight.Bold)
         }
 
         // Attempts history
@@ -194,7 +194,7 @@ private fun QuestionsContent(
                     onClick = { viewModel.submitCurrentAnswer() },
                     enabled = state.allAnswered,
                     colors = ButtonDefaults.buttonColors(containerColor = SectLime)
-                ) { Text("Terminer", color = SectLimeDark) }
+                ) { Text("Terminer", color = androidx.compose.ui.graphics.Color(0xFF84CC16)Dark) }
             }
         }
     }
@@ -206,7 +206,7 @@ private fun ErrorContent(message: String, padding: PaddingValues, viewModel: Exa
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = SectRed, modifier = Modifier.size(48.dp))
             Spacer(Modifier.height(16.dp))
-            Text(message, color = SectRed)
+            Text(message, color = androidx.compose.ui.graphics.Color(0xFFEF4444))
             Spacer(Modifier.height(16.dp))
             Button(onClick = { viewModel.resetGeneration() }) { Text("Réessayer") }
         }
