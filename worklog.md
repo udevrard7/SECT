@@ -1110,3 +1110,51 @@ Stage Summary:
 - ✅ DI câblée (ExamPrepApi + ExamPrepRepository séparés)
 - ✅ Backend compile (go build EXIT 0)
 - ⏳ CI mobile + backend à vérifier après push
+
+---
+Task ID: SECT-EXAMPREP-CONTRACT-F0
+Agent: Z.ai Code (tuteur/assistant)
+Task: Phase F0 — Validation du contrat KMP ExamPrep (tests unitaires)
+
+Work Log:
+- Objectif : valider le contrat KMP ExamPrep (DTO → Mapper → Repository → States)
+  AVANT la création des ViewModels, pour verrouiller la logique de polling
+  et les conversions.
+- 3 fichiers de tests créés dans shared/src/commonTest/ :
+
+  1. ExamPrepMapperTest.kt (20 tests) :
+     - Dashboard : DTO→Domain avec itemsSrs + lacunesParChapitre + null safety
+     - Documents : nested objects (UE + owner + chapters) + null handling
+     - Reader : contenuTexte + themesDetectes
+     - Review : SRS fields (interval, easeFactor, repetitions, dates nullables)
+     - Planning : all fields + null optionals (documentId, chapitreId, dateFin, notes)
+     - Practice : score/correct + votes (netVotes, upvotes, downvotes, userVote)
+     - PracticeGenerationConfig : defaults (10 questions, MOYEN)
+     - QA : response + model + citations vides (V1)
+     - Flashcards : recto/verso
+     - Audio : presigned URL + null quand EN_COURS
+     - Help : statut + auteurRole
+
+  2. ExamPrepStatesTest.kt (10 tests) :
+     - PracticeGenerationState : Idle, Generating, Ready(questions), Failed(msg), Timeout
+     - AudioGenerationState : Idle, Generating, Ready(audio+url), Failed
+     - QAState : Idle, Loading, Success(response+citations vides V1), Error
+     - ExamPrepUiState<T> : Loading, Success(data), Error(message)
+
+  3. ExamPrepRepositoryPracticeTest.kt (3 tests clés) :
+     - 200 PRET → Ready immédiat (pas de polling)
+     - 202 EN_COURS + questions disponibles → Ready après polling
+     - Statut inconnu → Failed
+     - Utilise un FakeExamPrepApi (mock) pour isoler la logique de décision
+
+- Documentation limitation backend :
+  - ExamPrepRepository.kt : ajout docstring sur updateStudySession
+    ⚠️ dateFin et notes acceptés mais NON persistés (colonnes DB absentes)
+    → le mobile ne doit pas donner l'impression que ces champs sont sauvegardés
+
+Stage Summary:
+- ✅ 33 tests couvrent les 11 domaines fonctionnels (DTO/Mapper + States + Repository)
+- ✅ Logique de polling generatePractice validée (200 PRET / 202 EN_COURS / unknown)
+- ✅ Limitation DateFin/Notes documentée dans le contrat Repository
+- ✅ Pattern de test aligné sur UserMapperTest existant (kotlin.test)
+- ⏳ CI mobile à vérifier après push (job "Test Shared Module (commonMain)")
