@@ -5,6 +5,7 @@ package com.sect.mobile.shared.di
 
 import com.sect.mobile.shared.cache.TokenCache
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.domain.repository.examprep.ExamPrepRepository
 import org.koin.core.KoinApplication
 import org.koin.core.module.Module
 import org.koin.mp.KoinPlatform
@@ -65,4 +66,11 @@ object SharedDIHelper {
      */
     val tokenCache: TokenCache
         get() = KoinPlatform.getKoin().get<TokenCache>()
+
+    /**
+     * Resolve ExamPrepRepository from Koin.
+     * SECT-EXAMPREP-CONTRACT-F1 : repository séparé pour le module ExamPrep (28 endpoints).
+     */
+    val examPrepRepository: ExamPrepRepository
+        get() = KoinPlatform.getKoin().get<ExamPrepRepository>()
 }

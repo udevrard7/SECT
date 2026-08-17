@@ -170,11 +170,12 @@ private fun ExamPrepHomeContent(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(weakness.titre, fontWeight = FontWeight.Medium)
-                        val weaknessColor: androidx.compose.ui.graphics.Color =
-                            if (weakness.avgScore < 0.4) SectRed else SectGold
                         SectProgressBar(
                             progress = weakness.avgScore.toFloat(),
-                            color = weaknessColor
+                            color = when {
+                                weakness.avgScore < 0.4 -> SectRed
+                                else -> SectGold
+                            }
                         )
                         Text("${(weakness.avgScore * 100).toInt()}% · ${weakness.attempts} tentatives",
                             style = MaterialTheme.typography.bodySmall,
