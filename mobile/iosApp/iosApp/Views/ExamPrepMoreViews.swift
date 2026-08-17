@@ -23,25 +23,24 @@ struct ExamPrepPracticeView: View {
 
     private let repository = KoinRepositoryProvider.shared.examPrepRepository
 
+    @ViewBuilder
     var body: some View {
-        Group {
-            if let error = errorMessage {
-                VStack(spacing: 16) {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 48)).foregroundColor(.sectRed)
-                    Text(error).foregroundColor(.sectRed)
-                    Button("Réessayer") { errorMessage = nil }
-                }
-            } else if isGenerating {
-                VStack(spacing: 16) {
-                    ProgressView()
-                    Text("Génération des questions...")
-                    Text("L'IA prépare votre entraînement").foregroundColor(.secondary).font(.caption)
-                }
-            } else if !questions.isEmpty {
-                questionsView
-            } else {
-                configView
+        if let error = errorMessage {
+            VStack(spacing: 16) {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 48)).foregroundColor(.sectRed)
+                Text(error).foregroundColor(.sectRed)
+                Button("Réessayer") { errorMessage = nil }
             }
+        } else if isGenerating {
+            VStack(spacing: 16) {
+                ProgressView()
+                Text("Génération des questions...")
+                Text("L'IA prépare votre entraînement").foregroundColor(.secondary).font(.caption)
+            }
+        } else if !questions.isEmpty {
+            questionsView
+        } else {
+            configView
         }
     }
 
