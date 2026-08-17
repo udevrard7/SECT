@@ -54,7 +54,7 @@ fun ExamPrepProgressScreen(
                 if (state.sortedWeaknesses.isNotEmpty()) {
                     item { Text("⚠️ Lacunes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                     items(state.sortedWeaknesses, key = { it.chapterId }) { w ->
-                        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SectTerreCuite.copy(alpha = 0.08f))) {
+                        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFC2410C).copy(alpha = 0.08f))) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(w.titre, fontWeight = FontWeight.Medium)
                                 SectProgressBar(progress = w.avgScore.toFloat(), color = androidx.compose.ui.graphics.Color(0xFFEF4444))
@@ -95,7 +95,7 @@ fun ExamPrepQaScreen(
                 onClick = { viewModel.ask() },
                 enabled = state.currentQuestion.isNotBlank() && state.qaState !is com.sect.mobile.shared.domain.model.examprep.QAState.Loading,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = SectTech)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF06B6D4))
             ) { Text("Demander à l'IA", color = androidx.compose.ui.graphics.Color.White) }
 
             Spacer(Modifier.height(16.dp))
@@ -190,7 +190,7 @@ fun ExamPrepAudioScreen(
         topBar = { TopAppBar(title = { Text("🎧 Audio") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Retour") } }) }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Button(onClick = { viewModel.generate(documentId) }, enabled = state.generationState is com.sect.mobile.shared.domain.model.examprep.AudioGenerationState.Idle, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = SectTech)) {
+            Button(onClick = { viewModel.generate(documentId) }, enabled = state.generationState is com.sect.mobile.shared.domain.model.examprep.AudioGenerationState.Idle, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF06B6D4))) {
                 Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Générer podcast", color = androidx.compose.ui.graphics.Color.White)
             }
             when (val gs = state.generationState) {
@@ -284,7 +284,7 @@ fun ExamPrepHelpScreen(
                 items(state.threads, key = { it.id }) { thread ->
                     GlassCard {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (thread.statut == "OUVERT") Icons.Default.QuestionAnswer else Icons.Default.CheckCircle, null, tint = if (thread.statut == "OUVERT") SectLime else SectNavy)
+                            Icon(if (thread.statut == "OUVERT") Icons.Default.QuestionAnswer else Icons.Default.CheckCircle, null, tint = if (thread.statut == "OUVERT") androidx.compose.ui.graphics.Color(0xFF84CC16) else androidx.compose.ui.graphics.Color(0xFF2C3E50))
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(thread.sujet, fontWeight = FontWeight.Medium, maxLines = 2)
