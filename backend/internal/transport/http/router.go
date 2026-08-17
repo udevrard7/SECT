@@ -803,6 +803,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         // Planning (study sessions)
                         r.Get("/planning", s.listStudySessions)
                         r.Post("/planning", s.createStudySession)
+                        r.Patch("/planning/{id}", s.updateStudySession) // SECT-EXAMPREP-CONTRACT-1
                         r.Delete("/planning/{id}", s.deleteStudySession)
                         // Practice
                         r.Get("/practice", s.listPracticeAttempts)
