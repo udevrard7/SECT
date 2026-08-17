@@ -170,9 +170,10 @@ private fun ExamPrepHomeContent(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(weakness.titre, fontWeight = FontWeight.Medium)
+                        val weaknessColor = if (weakness.avgScore < 0.4) SectRed else SectGold
                         SectProgressBar(
                             progress = weakness.avgScore.toFloat(),
-                            color = if (weakness.avgScore < 0.4) SectRed else SectGold
+                            color = weaknessColor
                         )
                         Text("${(weakness.avgScore * 100).toInt()}% · ${weakness.attempts} tentatives",
                             style = MaterialTheme.typography.bodySmall,
