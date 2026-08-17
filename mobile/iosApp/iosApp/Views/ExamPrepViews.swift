@@ -281,13 +281,13 @@ struct ExamPrepReviewView: View {
     }
 
     private func loadItems() async {
-        do { reviewItems = try await repository.listReviewItems(documentId: nil, due: dueOnly) } catch {}
+        do { reviewItems = try await repository.listReviewItems(documentId: nil, due: KotlinBoolean(bool: dueOnly)) } catch {}
         isLoading = false
     }
 
     private func markReviewed(_ id: String, quality: Int) async {
         do {
-            try await repository.markReviewed(reviewItemId: id, quality: quality)
+            try await repository.markReviewed(reviewItemId: id, quality: KotlinInt(int: quality))
             lastReviewedId = id
             await loadItems()
         } catch {}
