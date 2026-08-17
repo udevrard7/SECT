@@ -204,7 +204,7 @@ private fun QuestionsContent(
 private fun ErrorContent(message: String, padding: PaddingValues, viewModel: ExamPrepPracticeViewModel) {
     Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Error, null, tint = SectRed, modifier = Modifier.size(48.dp))
+            Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = SectRed, modifier = Modifier.size(48.dp))
             Spacer(Modifier.height(16.dp))
             Text(message, color = SectRed)
             Spacer(Modifier.height(16.dp))
