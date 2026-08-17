@@ -25,8 +25,15 @@ import androidx.navigation.compose.rememberNavController
 import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepAudioScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepDocumentsScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepFlashcardsScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepHelpScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepHomeScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepPlanningScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepPracticeScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepProgressScreen
+import com.sect.mobile.android.ui.screens.examprep.ExamPrepQaScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepReaderScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepReviewScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
@@ -126,6 +133,14 @@ object Routes {
     const val EXAM_PREP_DOCUMENTS = "examprep/documents"
     const val EXAM_PREP_READER = "examprep/reader/{documentId}"
     const val EXAM_PREP_REVIEW = "examprep/review"
+    // SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vagues 2-4)
+    const val EXAM_PREP_PRACTICE = "examprep/practice"
+    const val EXAM_PREP_PROGRESS = "examprep/progress"
+    const val EXAM_PREP_QA = "examprep/qa"
+    const val EXAM_PREP_FLASHCARDS = "examprep/flashcards"
+    const val EXAM_PREP_AUDIO = "examprep/audio/{documentId}"
+    const val EXAM_PREP_PLANNING = "examprep/planning"
+    const val EXAM_PREP_HELP = "examprep/help"
 }
 
 @Composable
@@ -413,6 +428,37 @@ fun SECTNavigation(
                 ExamPrepReviewScreen(
                     onBack = { navController.popBackStack() }
                 )
+            }
+
+            // ══ SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vagues 2-4) ══
+
+            composable(Routes.EXAM_PREP_PRACTICE) {
+                ExamPrepPracticeScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.EXAM_PREP_PROGRESS) {
+                ExamPrepProgressScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.EXAM_PREP_QA) {
+                ExamPrepQaScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.EXAM_PREP_FLASHCARDS) {
+                ExamPrepFlashcardsScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.EXAM_PREP_AUDIO) { backStackEntry ->
+                val docId = backStackEntry.arguments?.getString("documentId") ?: ""
+                ExamPrepAudioScreen(documentId = docId, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.EXAM_PREP_PLANNING) {
+                ExamPrepPlanningScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.EXAM_PREP_HELP) {
+                ExamPrepHelpScreen(onBack = { navController.popBackStack() })
             }
         }
     }
