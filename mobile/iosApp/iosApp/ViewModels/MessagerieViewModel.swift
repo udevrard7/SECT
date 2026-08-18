@@ -178,4 +178,129 @@ class MessagerieViewModel: ObservableObject {
     func streamUrl() -> String {
         return "/api/messagerie/stream"
     }
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY-M2 : Flux temps réel SSE
+    // ════════════════════════════════════════════════════════
+
+    @Published var realtimeState: String = "disconnected" // disconnected, connecting, connected, error
+    @Published var typingIndicator: Bool = false
+    private var sseTask: Task<Void, Never>?
+
+    /**
+     * Démarre la connexion SSE temps réel.
+     * À appeler quand l'utilisateur ouvre la messagerie.
+     */
+    func startRealtime() {
+        guard sseTask == nil else { return }
+        realtimeState = "connecting"
+
+        let token = KoinRepositoryProvider.shared.cachedAccessToken
+        guard !token.isEmpty else { return }
+
+        let streamPath = "/api/messagerie/stream"
+        let fullUrl = "https://sect-zead.onrender.com\(streamPath)"
+
+        sseTask = Task { [weak self] in
+            var request = URLRequest(url: URL(string: fullUrl)!)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+
+            do {
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else { return }
+
+                await MainActor.run { self?.realtimeState = "connected" }
+
+                var currentEvent = ""
+                var currentData = ""
+
+                for try await line in bytes.lines {
+                    if Task.isCancelled { break }
+
+                    if line.hasPrefix("event:") {
+                        currentEvent = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                    } else if line.hasPrefix("data:") {
+                        currentData += String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                    } else if line.isEmpty && !currentData.isEmpty {
+                        // Fin d'événement — traiter
+                        await self?.handleRealtimeEvent(type: currentEvent, data: currentData)
+                        currentEvent = ""
+                        currentData = ""
+                    }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    await MainActor.run { self?.realtimeState = "error" }
+                    // Auto-reconnect après 5s
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    await MainActor.run { self?.startRealtime() }
+                }
+            }
+        }
+    }
+
+    /**
+     * Arrête la connexion SSE.
+     */
+    func stopRealtime() {
+        sseTask?.cancel()
+        sseTask = nil
+        realtimeState = "disconnected"
+        typingIndicator = false
+    }
+
+    /**
+     * Traite un événement temps réel reçu du backend.
+     */
+    private func handleRealtimeEvent(type: String, data: String) async {
+        // Parser le JSON pour extraire conversationId
+        guard let jsonData = data.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
+
+        let eventType = type.isEmpty ? (json["type"] as? String ?? "") : type
+        let innerData = json["data"] as? [String: Any]
+        let conversationId = innerData?["conversationId"] as? String
+        let activeConvId = selectedConversation?.id
+
+        switch eventType {
+        case "message_new":
+            // Nouveau message : recharger la conversation active + rafraîchir la liste
+            if conversationId == activeConvId { await loadMessages() }
+            await loadConversations()
+
+        case "message_edited", "message_deleted", "reaction_toggle":
+            // Message modifié/supprimé/réaction : recharger la conversation active
+            if conversationId == activeConvId { await loadMessages() }
+
+        case "read":
+            // Conversation marquée comme lue : rafraîchir les unread
+            await loadConversations()
+
+        case "typing":
+            // Indicateur de frappe pendant 3s
+            if conversationId == activeConvId {
+                await MainActor.run { self.typingIndicator = true }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run { self.typingIndicator = false }
+            }
+
+        case "ia_streaming":
+            // Streaming IA : recharger pour afficher le contenu accumulé
+            if conversationId == activeConvId { await loadMessages() }
+
+        case "hello":
+            // Connexion établie — pas d'action nécessaire
+            break
+
+        default:
+            break
+        }
+    }
+
+    deinit {
+        sseTask?.cancel()
+    }
 }
