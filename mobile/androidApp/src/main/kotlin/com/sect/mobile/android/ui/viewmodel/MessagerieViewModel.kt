@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Conversation
 import com.sect.mobile.shared.domain.model.Message
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.network.realtime.MessagerieRealtimeEvent
+import com.sect.mobile.shared.network.realtime.MessagerieRealtimeService
+import com.sect.mobile.shared.network.realtime.RealtimeState
 import com.sect.mobile.shared.notification.PushSubscriptionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +17,8 @@ import kotlinx.coroutines.launch
 
 class MessagerieViewModel(
     private val repository: SECTRepositoryInterface,
-    private val pushSubscriptionManager: PushSubscriptionManager
+    private val pushSubscriptionManager: PushSubscriptionManager,
+    private val realtimeService: MessagerieRealtimeService
 ) : ViewModel() {
 
     // ── Conversations ──
@@ -244,4 +248,103 @@ class MessagerieViewModel(
 
     /** URL du flux SSE temps réel. */
     fun streamUrl(): String = "/api/messagerie/stream"
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY-M2 : Flux temps réel SSE
+    // ════════════════════════════════════════════════════════
+
+    private val _realtimeState = MutableStateFlow(RealtimeState.DISCONNECTED)
+    val realtimeState: StateFlow<RealtimeState> = _realtimeState.asStateFlow()
+
+    private val _typingUsers = MutableStateFlow<Set<String>>(emptySet())
+    val typingUsers: StateFlow<Set<String>> = _typingUsers.asStateFlow()
+
+    /**
+     * Démarre la connexion SSE temps réel.
+     * À appeler quand l'utilisateur ouvre la messagerie.
+     */
+    fun startRealtime() {
+        realtimeService.connect(viewModelScope) { event ->
+            handleRealtimeEvent(event)
+        }
+        viewModelScope.launch {
+            realtimeService.state.collect { state ->
+                _realtimeState.value = state
+            }
+        }
+    }
+
+    /**
+     * Arrête la connexion SSE.
+     * À appeler quand l'utilisateur quitte la messagerie.
+     */
+    fun stopRealtime() {
+        realtimeService.disconnect()
+        _typingUsers.value = emptySet()
+    }
+
+    /**
+     * Traite un événement temps réel reçu du backend.
+     *
+     * Events backend (messagerie_hub.go) :
+     * - message_new : recharger les messages + rafraîchir les conversations
+     * - message_edited : recharger les messages
+     * - message_deleted : recharger les messages
+     * - read : mettre à jour le badge non-lu
+     * - typing : afficher l'indicateur de frappe
+     * - reaction_toggle : recharger les messages
+     * - ia_streaming : afficher le streaming IA
+     * - hello : connexion établie
+     */
+    private fun handleRealtimeEvent(event: MessagerieRealtimeEvent) {
+        when (event.type) {
+            "message_new" -> {
+                // Nouveau message : recharger la conversation active + rafraîchir la liste
+                val activeConvId = _selectedConversationId.value
+                if (activeConvId != null && event.conversationId == activeConvId) {
+                    loadMessages(activeConvId)
+                }
+                loadConversations()
+            }
+            "message_edited", "message_deleted", "reaction_toggle" -> {
+                // Message modifié/supprimé/réaction : recharger la conversation active
+                val activeConvId = _selectedConversationId.value
+                if (activeConvId != null && event.conversationId == activeConvId) {
+                    loadMessages(activeConvId)
+                }
+            }
+            "read" -> {
+                // Conversation marquée comme lue : rafraîchir les unread
+                loadConversations()
+            }
+            "typing" -> {
+                // Indicateur de frappe : ajouter temporairement l'utilisateur
+                // (le backend envoie {userId, conversationId})
+                // On nettoie après 3s
+                if (event.conversationId == _selectedConversationId.value) {
+                    // Marquer comme "typing" — le UI affiche "..." pendant 3s
+                    viewModelScope.launch {
+                        _typingUsers.value = _typingUsers.value + event.conversationId.orEmpty()
+                        kotlinx.coroutines.delay(3_000)
+                        _typingUsers.value = _typingUsers.value - event.conversationId.orEmpty()
+                    }
+                }
+            }
+            "ia_streaming" -> {
+                // Streaming IA : recharger pour afficher le contenu accumulé
+                val activeConvId = _selectedConversationId.value
+                if (activeConvId != null && event.conversationId == activeConvId) {
+                    loadMessages(activeConvId)
+                }
+            }
+            "hello" -> {
+                // Connexion établie — pas d'action nécessaire
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopRealtime()
+    }
 }

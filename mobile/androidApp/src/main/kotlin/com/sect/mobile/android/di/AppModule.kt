@@ -6,6 +6,7 @@ import com.sect.mobile.shared.cache.TokenCache
 import com.sect.mobile.shared.data.cache.AndroidPreferencesCache
 import com.sect.mobile.shared.data.cache.PreferencesCache
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
+import com.sect.mobile.shared.network.realtime.MessagerieRealtimeService
 import com.sect.mobile.shared.network.api.AuthApi
 import com.sect.mobile.shared.notification.PushSubscriptionManager
 import com.sect.mobile.shared.platform.AndroidBiometricAuth
@@ -100,7 +101,7 @@ val appModule = module {
     viewModel { DashboardViewModel(get<SECTRepositoryInterface>()) }
     viewModel { EpreuveViewModel(get<SECTRepositoryInterface>()) }
     viewModel { PassationViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
-    viewModel { MessagerieViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>()) }
+    viewModel { MessagerieViewModel(get<SECTRepositoryInterface>(), get<PushSubscriptionManager>(), get()) }
     viewModel { ProfileViewModel(get<SECTRepositoryInterface>()) }
     // ViewModels ajoutés (SECT-MOBILE-CI-FIX-1) : corrections, resultats, devoirs
     viewModel { CorrectionsViewModel(get<SECTRepositoryInterface>(), get<CorrectionSessionHolder>()) }
@@ -109,6 +110,14 @@ val appModule = module {
     // SECT-MOBILE-CORRECTION-1 : correction détail (notation + finalize + retourner)
     single { CorrectionSessionHolder() }
     viewModel { CorrectionDetailViewModel(get<SECTRepositoryInterface>(), get<CorrectionSessionHolder>()) }
+    // SECT-MOBILE-PARITY-M2 : MessagerieRealtimeService
+    single {
+        MessagerieRealtimeService(
+            client = get(),
+            baseUrl = get<String>(named("apiBaseUrl")),
+            tokenProvider = { runBlocking { get<com.sect.mobile.shared.cache.TokenCache>().getAccessToken() } }
+        )
+    }
 }
 
 // Helper for named qualifiers
