@@ -122,28 +122,28 @@ class MessagerieViewModel: ObservableObject {
     // SECT-MOBILE-PARITY P1-9 : méthodes Messages avancées
 
     func markAsRead(conversationId: String) async {
-        try? await repository.markConversationAsRead(conversationId: conversationId)
+        try? await repository.markConversationAsRead(conversationId)
     }
 
     func toggleMute(conversationId: String, muted: Bool) async {
-        try? await repository.setConversationMuted(conversationId: conversationId, muted: muted)
+        try? await repository.setConversationMuted(conversationId, muted: muted)
         await loadConversations()
     }
 
     func editMessage(messageId: String, newContent: String) async {
         do {
-            _ = try await repository.editMessage(messageId: messageId, contenu: newContent)
+            _ = try await repository.editMessage(messageId, contenu: newContent)
             if let convId = selectedConversation?.id { await loadMessages(conversationId: convId) }
         } catch {}
     }
 
     func deleteMessage(messageId: String) async {
-        try? await repository.deleteMessage(messageId: messageId)
+        try? await repository.deleteMessage(messageId)
         if let convId = selectedConversation?.id { await loadMessages(conversationId: convId) }
     }
 
     func toggleReaction(messageId: String, emoji: String) async {
-        try? await repository.toggleReaction(messageId: messageId, emoji: emoji)
+        try? await repository.toggleReaction(messageId, emoji)
         if let convId = selectedConversation?.id { await loadMessages(conversationId: convId) }
     }
 
@@ -157,6 +157,6 @@ class MessagerieViewModel: ObservableObject {
 
     // SECT-MOBILE-PARITY P1-8 : Correction IA des devoirs
     func aiGradeSoumission(soumissionId: String) async {
-        try? await repository.aiGradeSoumission(soumissionId: soumissionId)
+        try? await repository.aiGradeSoumission(soumissionId)
     }
 }
