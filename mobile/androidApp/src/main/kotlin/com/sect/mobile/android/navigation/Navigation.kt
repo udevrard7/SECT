@@ -37,6 +37,7 @@ import com.sect.mobile.android.ui.screens.examprep.ExamPrepProgressScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepQaScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepReaderScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepReviewScreen
+import com.sect.mobile.android.ui.screens.resultats.ResultatDetailScreen
 import com.sect.mobile.android.ui.screens.resultats.ResultatsScreen
 import com.sect.mobile.android.ui.screens.travail.TravailScreen
 import com.sect.mobile.android.ui.viewmodel.*
@@ -131,6 +132,8 @@ object Routes {
 
     // SECT-MOBILE-PARITY : Devoirs — route détail dédiée (pas epreuves/{id})
     const val DEVOIR_DETAIL = "devoirs/{devoirId}"
+    // SECT-MOBILE-PARITY-R1 : Résultat détail par epreuveId
+    const val RESULTAT_DETAIL = "resultats/{epreuveId}"
 
     // SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vague 1)
     const val EXAM_PREP_HOME = "examprep/home"
@@ -294,6 +297,15 @@ fun SECTNavigation(
                 )
             }
 
+            // SECT-MOBILE-PARITY-R1 : Résultat détail par epreuveId
+            composable(Routes.RESULTAT_DETAIL) { backStackEntry ->
+                val epreuveId = backStackEntry.arguments?.getString("epreuveId") ?: ""
+                ResultatDetailScreen(
+                    epreuveId = epreuveId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             // 📝 Épreuves (route standalone conservée pour accès direct si besoin)
             composable(Routes.EPREUVES) {
                 val epreuveVM: EpreuveViewModel = koinViewModel()
@@ -364,11 +376,8 @@ fun SECTNavigation(
                 val resultatsVM: ResultatsViewModel = koinViewModel()
                 ResultatsScreen(
                     onBackClick = { navController.popBackStack() },
-                    onResultClick = { resultatId ->
-                        // SECT-NAV-AUDIT-FIX : pas de route détail dédiée pour l'instant.
-                        // Le détail par question est déjà accessible via results/{epreuveId}
-                        // (résultat post-passation). Pour l'historique, on reste sur la liste.
-                        // TODO futur : créer resultats/{resultatId} avec le détail par question.
+                    onResultClick = { epreuveId ->
+                        navController.navigate("resultats/$epreuveId")
                     },
                     viewModel = resultatsVM
                 )

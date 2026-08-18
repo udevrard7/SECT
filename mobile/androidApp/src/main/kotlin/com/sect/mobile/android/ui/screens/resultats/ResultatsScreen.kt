@@ -114,7 +114,7 @@ private fun ResultatsList(
         items(resultats, key = { it.id }) { resultat ->
             ResultatCard(
                 resultat = resultat,
-                onClick = { onResultClick(resultat.id) }
+                onClick = { onResultClick(resultat.epreuveId) }
             )
         }
     }
