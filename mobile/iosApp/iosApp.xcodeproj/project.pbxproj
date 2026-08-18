@@ -65,6 +65,7 @@
                 8A1A2B3C4D5E6F7A8B9C0DB1 /* BadgeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0DB3 /* ExamPrepViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB2 /* ExamPrepViews.swift */; };
                 8A1A2B3C4D5E6F7A8B9C0DB5 /* ExamPrepMoreViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB4 /* ExamPrepMoreViews.swift */; };
+                8A1A2B3C4D5E6F7A8B9C0DB7 /* DevoirDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1A2B3C4D5E6F7A8B9C0DB6 /* DevoirDetailView.swift */; };
 /* Framework in Frameworks build phase */
                 8A1A2B3C4D5E6F7A8B9C0D66 /* Shared.framework in Frameworks */ = {
                         isa = PBXBuildFile;
@@ -146,6 +147,7 @@
                 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BadgeManager.swift; path = ../Utilities/BadgeManager.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0DB2 /* ExamPrepViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExamPrepViews.swift; path = ../Views/ExamPrepViews.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0DB4 /* ExamPrepMoreViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExamPrepMoreViews.swift; path = ../Views/ExamPrepMoreViews.swift; sourceTree = "<group>"; };
+                8A1A2B3C4D5E6F7A8B9C0DB6 /* DevoirDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DevoirDetailView.swift; path = ../Views/DevoirDetailView.swift; sourceTree = "<group>"; };
                 8A1A2B3C4D5E6F7A8B9C0D24 /* Shared.framework */ = {
                         isa = PBXFileReference;
                         lastKnownFileType = wrapper.framework;
@@ -223,6 +225,7 @@
                                 8A1A2B3C4D5E6F7A8B9C0DB0 /* BadgeManager.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0DB2 /* ExamPrepViews.swift */,
                                 8A1A2B3C4D5E6F7A8B9C0DB4 /* ExamPrepMoreViews.swift */,
+                                8A1A2B3C4D5E6F7A8B9C0DB6 /* DevoirDetailView.swift */,
                         );
                         path = Utilities;
                         sourceTree = "<group>";
@@ -384,6 +387,7 @@
                                 8A1A2B3C4D5E6F7A8B9C0DB1 /* BadgeManager.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0DB3 /* ExamPrepViews.swift in Sources */,
                                 8A1A2B3C4D5E6F7A8B9C0DB5 /* ExamPrepMoreViews.swift in Sources */,
+                                8A1A2B3C4D5E6F7A8B9C0DB7 /* DevoirDetailView.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };
