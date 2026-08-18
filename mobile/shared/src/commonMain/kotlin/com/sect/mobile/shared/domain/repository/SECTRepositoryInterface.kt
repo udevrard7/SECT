@@ -49,6 +49,8 @@ interface SECTRepositoryInterface : AuthRepository {
     
     // Resultats & Corrections
     suspend fun getResultatsEtudiant(): List<Resultat>
+    // SECT-MOBILE-PARITY-R1 : détail d'un résultat par epreuveId
+    suspend fun getResultatDetail(epreuveId: String): ResultatDetail?
     suspend fun getSessionsACorriger(epreuveId: String? = null): List<CorrectionSession>
     suspend fun saveGrade(sessionId: String, questionId: String, score: Double?, commentaire: String?)
     suspend fun finalizeCorrectionSession(sessionId: String)

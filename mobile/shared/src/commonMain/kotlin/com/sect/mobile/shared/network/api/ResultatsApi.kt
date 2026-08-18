@@ -1,5 +1,6 @@
 package com.sect.mobile.shared.network.api
 
+import com.sect.mobile.shared.data.dto.ResultatDetailDto
 import com.sect.mobile.shared.data.dto.ResultatDto
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -24,5 +25,26 @@ class ResultatsApi(private val client: HttpClient) {
     suspend fun getResultatsEtudiant(): List<ResultatDto> {
         val response: Map<String, List<ResultatDto>> = client.get("/api/resultats").body()
         return response["resultats"] ?: emptyList()
+    }
+
+    /**
+     * SECT-MOBILE-PARITY-R1 : Détail d'un résultat par epreuveId.
+     *
+     * GET /api/resultats?epreuveId=X → { sessions: [...], stats: {...} } (Branch B)
+     *
+     * Le backend retourne les sessions avec reponses + resultat + epreuve enrichis.
+     * Pour un étudiant, le backend filtre automatiquement (RLS + claims).
+     * On prend la première session (l'étudiant a une session par épreuve).
+     *
+     * Si aucune session n'est trouvée, retourne null.
+     */
+    suspend fun getResultatDetail(epreuveId: String): ResultatDetailDto? {
+        val response: Map<String, List<ResultatDetailDto>> = client.get("/api/resultats") {
+            parameter("epreuveId", epreuveId)
+        }.body()
+        // Branch B retourne { sessions: [...] }, Branch A retourne { resultats: [...] }
+        // Pour un étudiant avec epreuveId, le backend utilise Branch B
+        val sessions = response["sessions"] ?: response["resultats"] ?: emptyList()
+        return sessions.firstOrNull()
     }
 }

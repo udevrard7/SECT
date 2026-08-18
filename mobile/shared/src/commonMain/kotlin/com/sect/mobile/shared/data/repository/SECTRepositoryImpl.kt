@@ -183,6 +183,10 @@ class SECTRepositoryImpl(
     override suspend fun getResultatsEtudiant(): List<Resultat> =
         resultatsApi.getResultatsEtudiant().map { it.toDomain() }
 
+    // SECT-MOBILE-PARITY-R1 : détail d'un résultat par epreuveId
+    override suspend fun getResultatDetail(epreuveId: String): ResultatDetail? =
+        resultatsApi.getResultatDetail(epreuveId)?.toDomain()
+
     override suspend fun getSessionsACorriger(epreuveId: String?): List<CorrectionSession> =
         correctionApi.getSessions(epreuveId = epreuveId).map { it.toDomain() }
 
