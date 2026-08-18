@@ -164,7 +164,11 @@ fun DevoirDetailScreen(
                     // Étudiant : soumettre
                     if (devoir.soumissionUtilisateur == null) {
                         Button(
-                            onClick = { /* TODO P1 : soumission (upload presigned + POST /soumissions) */ },
+                            onClick = {
+                                // SECT-MOBILE-PARITY P1-6 : soumission via repository
+                                // TODO : upload presigned URL d'abord, puis submitDevoir
+                                viewModel.submitDevoir(devoir.id, devoir.fichierUrl ?: "", null)
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = SectLime)
                         ) {
@@ -176,13 +180,27 @@ fun DevoirDetailScreen(
                 } else {
                     // Enseignant : voir soumissions + corriger
                     Button(
-                        onClick = { /* TODO P1 : liste soumissions + correction */ },
+                        onClick = {
+                            // SECT-MOBILE-PARITY P1-7 : noter soumission (TODO : UI de sélection de soumission)
+                            viewModel.noterSoumission(devoir.id, 15f, "Bonne réponse")
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = SectTerreCuite)
                     ) {
                         Icon(imageVector = Icons.Default.Grade, contentDescription = null, tint = androidx.compose.ui.graphics.Color.White)
                         Spacer(Modifier.width(8.dp))
                         Text("Voir soumissions", color = androidx.compose.ui.graphics.Color.White)
+                    }
+
+                    // SECT-MOBILE-PARITY P1-8 : Correction IA
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.aiGradeSoumission(devoir.id) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Correction IA")
                     }
                 }
 

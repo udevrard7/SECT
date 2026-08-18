@@ -32,6 +32,16 @@ interface SECTRepositoryInterface : AuthRepository {
     suspend fun getConversation(id: String): Conversation
     suspend fun listMessages(conversationId: String, before: String? = null): List<Message>
     suspend fun sendMessage(conversationId: String, contenu: String): Message
+    // SECT-MOBILE-PARITY P1-9 : création conversation direct
+    suspend fun createDirectConversation(targetUserId: String): Conversation
+    // SECT-MOBILE-PARITY P1-9 : méthodes Messages avancées
+    suspend fun markConversationAsRead(conversationId: String)
+    suspend fun setConversationMuted(conversationId: String, muted: Boolean)
+    suspend fun editMessage(messageId: String, contenu: String): Message
+    suspend fun deleteMessage(messageId: String)
+    suspend fun signalMessage(messageId: String, raison: String)
+    suspend fun toggleReaction(messageId: String, emoji: String)
+    suspend fun getOrCreateIAPrivateConversation(): Conversation
 
     // Stats
     suspend fun getStatsEnseignant(): EnseignantStats
@@ -55,4 +65,6 @@ interface SECTRepositoryInterface : AuthRepository {
     suspend fun getSoumission(id: String): Soumission
     suspend fun listSoumissions(devoirId: String): List<Soumission>
     suspend fun noterSoumission(id: String, note: Float, commentaire: String?): Soumission
+    // SECT-MOBILE-PARITY P1-8 : Correction IA des devoirs
+    suspend fun aiGradeSoumission(soumissionId: String)
 }

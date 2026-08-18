@@ -131,4 +131,24 @@ class DevoirApi(private val client: HttpClient) {
         return response["soumission"] 
             ?: throw Exception("Erreur lors de la notation")
     }
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY P1-8 : Correction IA des devoirs
+    // ════════════════════════════════════════════════════════
+
+    /**
+     * Demander la correction IA d'une soumission.
+     * POST /api/soumissions/{id}/ai-grade
+     *
+     * Retourne 202 Accepted — le worker HomeworkCorrectionWorker traite
+     * la correction en arrière-plan. Le statut est visible via getSoumission().
+     *
+     * États possibles de soumission.statutIA :
+     * - EN_ATTENTE → EN_COURS → TERMINE / ERREUR
+     *
+     * Le mobile doit poller getSoumission() pour suivre le statut.
+     */
+    suspend fun aiGrade(soumissionId: String) {
+        client.post("/api/soumissions/$soumissionId/ai-grade")
+    }
 }

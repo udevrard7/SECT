@@ -63,7 +63,14 @@ data class MessageDto(
     val contenu: String,
     @SerialName("user") val expediteur: MessageUserRefDto? = null,
     val createdAt: InstantDto,
-    val updatedAt: InstantDto? = null
+    val updatedAt: InstantDto? = null,
+    // SECT-MOBILE-PARITY P1-10 : champs enrichis du backend
+    val isIA: Boolean = false,
+    val replyToId: String? = null,
+    val editedAt: String? = null,
+    val deletedAt: String? = null,
+    val attachments: List<String>? = null,
+    val reactions: List<ReactionDto>? = null
 )
 
 /**
@@ -76,6 +83,19 @@ data class MessageUserRefDto(
     val name: String,
     val email: String,
     val role: String
+)
+
+/**
+ * SECT-MOBILE-PARITY P1-10 : Reaction DTO
+ * Miroir du backend domain.Reaction (messagerie.go).
+ */
+@Serializable
+data class ReactionDto(
+    val id: String,
+    val messageId: String,
+    val userId: String,
+    val emoji: String,
+    val createdAt: String? = null
 )
 
 // ── Response wrappers (le backend Go retourne des objets wrappés) ──

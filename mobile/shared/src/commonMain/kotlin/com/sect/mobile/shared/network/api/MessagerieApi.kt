@@ -86,4 +86,80 @@ class MessagerieApi(private val client: HttpClient) {
             setBody(mapOf("contenu" to contenu))
         }.body()
     }
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY P1-9 : méthodes Messages avancées
+    // ════════════════════════════════════════════════════════
+
+    /**
+     * Marquer une conversation comme lue.
+     * POST /api/messagerie/conversations/{id}/lu
+     */
+    suspend fun markAsRead(conversationId: String) {
+        client.post("/api/messagerie/conversations/$conversationId/lu")
+    }
+
+    /**
+     * Activer/désactiver le mode silencieux (mute).
+     * PATCH /api/messagerie/conversations/{id}/mute
+     * Body : { muted: true/false }
+     */
+    suspend fun setMuted(conversationId: String, muted: Boolean) {
+        client.patch("/api/messagerie/conversations/$conversationId/mute") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("muted" to muted))
+        }
+    }
+
+    /**
+     * Modifier un message.
+     * PATCH /api/messagerie/messages/{id}
+     * Body : { contenu: "nouveau texte" }
+     */
+    suspend fun editMessage(messageId: String, contenu: String): MessageDto {
+        return client.patch("/api/messagerie/messages/$messageId") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("contenu" to contenu))
+        }.body()
+    }
+
+    /**
+     * Supprimer un message.
+     * DELETE /api/messagerie/messages/{id}
+     */
+    suspend fun deleteMessage(messageId: String) {
+        client.delete("/api/messagerie/messages/$messageId")
+    }
+
+    /**
+     * Signaler un message.
+     * POST /api/messagerie/messages/{id}/signaler
+     * Body : { raison: "..." }
+     */
+    suspend fun signalMessage(messageId: String, raison: String) {
+        client.post("/api/messagerie/messages/$messageId/signaler") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("raison" to raison))
+        }
+    }
+
+    /**
+     * Basculer une réaction sur un message.
+     * POST /api/messagerie/messages/{id}/reactions
+     * Body : { emoji: "👍" }
+     */
+    suspend fun toggleReaction(messageId: String, emoji: String) {
+        client.post("/api/messagerie/messages/$messageId/reactions") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("emoji" to emoji))
+        }
+    }
+
+    /**
+     * Créer ou récupérer une conversation IA privée.
+     * POST /api/messagerie/conversations/ia-private
+     */
+    suspend fun getOrCreateIAPrivate(): ConversationDto {
+        return client.post("/api/messagerie/conversations/ia-private").body()
+    }
 }
