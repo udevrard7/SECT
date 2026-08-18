@@ -111,7 +111,13 @@ data class ResultatRecentDto(
 @Serializable
 data class ResultatDetailDto(
     val scoreFinal: Double,
-    val totalPossible: Double
+    val totalPossible: Double,
+    // SECT-MOBILE-PARITY-R1 : champs enrichis pour le détail
+    val id: String = "",
+    val sessionId: String = "",
+    val dateCorrection: String? = null,
+    val dateRetour: String? = null,
+    val commentaires: String? = null
 )
 
 @Serializable

@@ -131,7 +131,12 @@ fun ResultatRecentDto.toDomain(): ResultatRecent {
 fun ResultatDetailDto.toDomain(): ResultatDetail {
     return ResultatDetail(
         scoreFinal = this.scoreFinal,
-        totalPossible = this.totalPossible
+        totalPossible = this.totalPossible,
+        id = this.id,
+        sessionId = this.sessionId,
+        dateCorrection = this.dateCorrection,
+        dateRetour = this.dateRetour,
+        commentaires = this.commentaires
     )
 }
 
