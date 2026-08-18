@@ -25,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
+import com.sect.mobile.android.ui.screens.devoirs.DevoirDetailScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepAudioScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepDocumentsScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepFlashcardsScreen
@@ -127,6 +128,9 @@ object Routes {
     const val RESULTS = "results/{epreuveId}"
     const val CONVERSATION = "messagerie/{conversationId}"
     const val CORRECTION_DETAIL = "corrections/{sessionId}"
+
+    // SECT-MOBILE-PARITY : Devoirs — route détail dédiée (pas epreuves/{id})
+    const val DEVOIR_DETAIL = "devoirs/{devoirId}"
 
     // SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vague 1)
     const val EXAM_PREP_HOME = "examprep/home"
@@ -274,9 +278,19 @@ fun SECTNavigation(
                 TravailScreen(
                     isEnseignant = isEnseignant,
                     onNavigateToEpreuveDetail = { id -> navController.navigate("epreuves/$id") },
-                    onNavigateToDevoirDetail = { id -> navController.navigate("epreuves/$id") }, // SECT-NAV-AUDIT-FIX : devoirs utilisent la même route détail qu'épreuves pour l'instant
+                    onNavigateToDevoirDetail = { id -> navController.navigate("devoirs/$id") }, // SECT-MOBILE-PARITY : route détail dédiée aux devoirs
                     onCreateEpreuve = { /* SECT-NAV-AUDIT-FIX : CreateEpreuveView iOS existe, Android utilise une sheet/dialog */ },
                     onCreateDevoir = { /* SECT-NAV-AUDIT-FIX : création devoir à implémenter (backend endpoint existe : POST /api/devoirs) */ }
+                )
+            }
+
+            // SECT-MOBILE-PARITY : Devoir détail (route dédiée, pas epreuves/{id})
+            composable(Routes.DEVOIR_DETAIL) { backStackEntry ->
+                val devoirId = backStackEntry.arguments?.getString("devoirId") ?: ""
+                DevoirDetailScreen(
+                    devoirId = devoirId,
+                    onBack = { navController.popBackStack() },
+                    isEnseignant = isEnseignant
                 )
             }
 

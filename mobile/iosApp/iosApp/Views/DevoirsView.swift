@@ -62,7 +62,10 @@ struct DevoirsView: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(viewModel.devoirs, id: \.id) { devoir in
-                    DevoirCard(devoir: devoir)
+                    NavigationLink(destination: DevoirDetailView(devoirId: devoir.id)) {
+                        DevoirCard(devoir: devoir)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 if viewModel.isLoadingMore {
                     ProgressView().padding()
