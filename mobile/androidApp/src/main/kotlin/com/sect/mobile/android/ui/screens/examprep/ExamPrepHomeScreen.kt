@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sect.mobile.shared.presentation.examprep.home.ExamPrepHomeViewModel
@@ -29,6 +30,12 @@ fun ExamPrepHomeScreen(
     onNavigateToDocuments: () -> Unit,
     onNavigateToReview: () -> Unit,
     onNavigateToPlanning: () -> Unit,
+    onNavigateToPractice: () -> Unit,
+    onNavigateToProgress: () -> Unit,
+    onNavigateToQA: () -> Unit,
+    onNavigateToFlashcards: () -> Unit,
+    onNavigateToAudio: (String) -> Unit,
+    onNavigateToHelp: () -> Unit,
     viewModel: ExamPrepHomeViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -59,7 +66,13 @@ fun ExamPrepHomeScreen(
                 padding = padding,
                 onNavigateToDocuments = onNavigateToDocuments,
                 onNavigateToReview = onNavigateToReview,
-                onNavigateToPlanning = onNavigateToPlanning
+                onNavigateToPlanning = onNavigateToPlanning,
+                onNavigateToPractice = onNavigateToPractice,
+                onNavigateToProgress = onNavigateToProgress,
+                onNavigateToQA = onNavigateToQA,
+                onNavigateToFlashcards = onNavigateToFlashcards,
+                onNavigateToAudio = onNavigateToAudio,
+                onNavigateToHelp = onNavigateToHelp
             )
         }
     }
@@ -71,7 +84,13 @@ private fun ExamPrepHomeContent(
     padding: PaddingValues,
     onNavigateToDocuments: () -> Unit,
     onNavigateToReview: () -> Unit,
-    onNavigateToPlanning: () -> Unit
+    onNavigateToPlanning: () -> Unit,
+    onNavigateToPractice: () -> Unit,
+    onNavigateToProgress: () -> Unit,
+    onNavigateToQA: () -> Unit,
+    onNavigateToFlashcards: () -> Unit,
+    onNavigateToAudio: (String) -> Unit,
+    onNavigateToHelp: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -210,7 +229,60 @@ private fun ExamPrepHomeContent(
             }
         }
 
+        // ── Actions rapides (SECT-NAV-AUDIT-FIX) ──
+        // Raccordement de toutes les fonctionnalités ExamPrep depuis le hub
+        item {
+            Spacer(Modifier.height(8.dp))
+            Text("Actions rapides", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+
+        // Grille d'actions 2 colonnes
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickActionButton("🧠 Réviser", Icons.Default.Psychology, onNavigateToReview, Modifier.weight(1f))
+                QuickActionButton("🎯 S'entraîner", Icons.Default.AutoAwesome, onNavigateToPractice, Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickActionButton("🃏 Flashcards", Icons.Default.Style, onNavigateToFlashcards, Modifier.weight(1f))
+                QuickActionButton("📊 Progression", Icons.Default.TrendingUp, onNavigateToProgress, Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickActionButton("🤖 Q&A IA", Icons.Default.QuestionAnswer, onNavigateToQA, Modifier.weight(1f))
+                QuickActionButton("📅 Planning", Icons.Default.Event, onNavigateToPlanning, Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickActionButton("🎧 Audio", Icons.Default.Headphones, { state.documents.firstOrNull()?.let { onNavigateToAudio(it.id) } }, Modifier.weight(1f))
+                QuickActionButton("👨‍🏫 Aide", Icons.Default.Help, onNavigateToHelp, Modifier.weight(1f))
+            }
+        }
+
         // Bandeau kente en bas
         item { Spacer(Modifier.height(8.dp)); KenteDivider(thickness = 3) }
+    }
+}
+
+@Composable
+private fun QuickActionButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }

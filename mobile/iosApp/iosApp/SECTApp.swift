@@ -141,6 +141,18 @@ enum DeepLinkTarget {
     case travail
     case profile
     case resultats
+    // SECT-NAV-AUDIT-FIX : deep links ExamPrep
+    case examPrep
+    case examPrepDocuments
+    case examPrepReader(documentId: String)
+    case examPrepReview
+    case examPrepPractice
+    case examPrepProgress
+    case examPrepQA
+    case examPrepFlashcards
+    case examPrepAudio(documentId: String)
+    case examPrepPlanning
+    case examPrepHelp
     case unknown(uri: String)
 
     /// Parse une URL sect:// en DeepLinkTarget.
@@ -164,6 +176,26 @@ enum DeepLinkTarget {
             return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .results(epreuveId: pathComponents[0])
         case "passation":
             return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .results(epreuveId: pathComponents[0])
+        // SECT-NAV-AUDIT-FIX : deep links ExamPrep
+        case "examprep":
+            if pathComponents.isEmpty { return .examPrep }
+            let sub = pathComponents[0]
+            switch sub {
+            case "home": return .examPrep
+            case "documents": return .examPrepDocuments
+            case "reader":
+                return pathComponents.count > 1 ? .examPrepReader(documentId: pathComponents[1]) : .examPrepDocuments
+            case "review": return .examPrepReview
+            case "practice": return .examPrepPractice
+            case "progress": return .examPrepProgress
+            case "qa": return .examPrepQA
+            case "flashcards": return .examPrepFlashcards
+            case "audio":
+                return pathComponents.count > 1 ? .examPrepAudio(documentId: pathComponents[1]) : .examPrep
+            case "planning": return .examPrepPlanning
+            case "help": return .examPrepHelp
+            default: return .examPrep
+            }
         default: return .unknown(uri: url.absoluteString)
         }
     }
@@ -171,13 +203,19 @@ enum DeepLinkTarget {
     /// Index d'onglet pour MainTabView.
     // SECT-NAV-EXAMPREP : Étudiant a 5 onglets (Accueil=0, Travail=1, Prépa=2, Résultats=3, Messages=4)
     // Enseignant a 4 onglets (Accueil=0, Travail=1, Corrections=2, Messages=3)
-    var tabIndex: Int? {
+    // SECT-NAV-AUDIT-FIX : messages retourne 3 pour enseignant (pas 4)
+    func tabIndex(isEnseignant: Bool) -> Int? {
         switch self {
         case .dashboard: return 0
         case .travail: return 1
-        case .corrections: return 2  // Enseignant
-        case .resultats: return 3    // Étudiant (après Prépa)
-        case .messages: return 4     // Étudiant (5e onglet) ou 3 enseignant
+        case .corrections: return 2       // Enseignant
+        case .resultats: return 3          // Étudiant
+        case .messages: return isEnseignant ? 3 : 4  // SECT-NAV-AUDIT-FIX
+        // SECT-NAV-AUDIT-FIX : ExamPrep est l'onglet 2 pour l'étudiant
+        case .examPrep, .examPrepDocuments, .examPrepReader, .examPrepReview,
+             .examPrepPractice, .examPrepProgress, .examPrepQA,
+             .examPrepFlashcards, .examPrepAudio, .examPrepPlanning, .examPrepHelp:
+            return isEnseignant ? nil : 2
         default: return nil
         }
     }
