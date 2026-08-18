@@ -168,13 +168,16 @@ enum DeepLinkTarget {
         }
     }
 
-    /// Index d'onglet pour MainTabView (0=Accueil, 1=Travail, 2=Corrections/Résultats, 3=Messages).
+    /// Index d'onglet pour MainTabView.
+    // SECT-NAV-EXAMPREP : Étudiant a 5 onglets (Accueil=0, Travail=1, Prépa=2, Résultats=3, Messages=4)
+    // Enseignant a 4 onglets (Accueil=0, Travail=1, Corrections=2, Messages=3)
     var tabIndex: Int? {
         switch self {
         case .dashboard: return 0
         case .travail: return 1
-        case .corrections, .resultats: return 2
-        case .messages: return 3
+        case .corrections: return 2  // Enseignant
+        case .resultats: return 3    // Étudiant (après Prépa)
+        case .messages: return 4     // Étudiant (5e onglet) ou 3 enseignant
         default: return nil
         }
     }
@@ -194,9 +197,9 @@ func handleDeepLink(_ url: URL) {
     }
 }
 
-// ── Tab View principal — SECT-MOBILE-NAV-PHASE-A/B/D : 4 onglets rôle-spécifiques ──
-// Étudiant    : Accueil · Travail · Résultats · Messages
-// Enseignant  : Accueil · Travail · Corrections · Messages
+// ── Tab View principal — SECT-NAV-EXAMPREP : 5 onglets étudiant / 4 enseignant ──
+// Étudiant    : Accueil · Travail · Prépa · Résultats · Messages (5 onglets)
+// Enseignant  : Accueil · Travail · Corrections · Messages (4 onglets)
 // Profil est accessible via l'avatar dans le Dashboard (secondaire).
 //
 // SECT-MOBILE-NAV-PHASE-D : navigation adaptative
@@ -234,18 +237,25 @@ struct MainTabView: View {
                 .tag(1)
 
             if isEnseignant {
+                // Enseignant : Corrections en position 2 (4 onglets)
                 CorrectionsView()
                     .tabItem { Label("Corrections", systemImage: "checkmark.square") }
                     .tag(2)
+                MessagerieView()
+                    .tabItem { Label("Messages", systemImage: "message.fill") }
+                    .tag(3)
             } else {
+                // Étudiant : Prépa en position 2 (5 onglets) — SECT-NAV-EXAMPREP
+                ExamPrepHomeView()
+                    .tabItem { Label("Prépa", systemImage: "book.fill") }
+                    .tag(2)
                 ResultatsView()
                     .tabItem { Label("Résultats", systemImage: "chart.bar.fill") }
-                    .tag(2)
+                    .tag(3)
+                MessagerieView()
+                    .tabItem { Label("Messages", systemImage: "message.fill") }
+                    .tag(4)
             }
-
-            MessagerieView()
-                .tabItem { Label("Messages", systemImage: "message.fill") }
-                .tag(3)
         }
         .tint(.sectGreen)
     }
@@ -286,10 +296,13 @@ struct MainTabView: View {
         ]
         if isEnseignant {
             items.append(SidebarItem(tag: 2, title: "Corrections", icon: "checkmark.square"))
+            items.append(SidebarItem(tag: 3, title: "Messages", icon: "message.fill"))
         } else {
-            items.append(SidebarItem(tag: 2, title: "Résultats", icon: "chart.bar.fill"))
+            // Étudiant : 5 onglets — SECT-NAV-EXAMPREP
+            items.append(SidebarItem(tag: 2, title: "Prépa", icon: "book.fill"))
+            items.append(SidebarItem(tag: 3, title: "Résultats", icon: "chart.bar.fill"))
+            items.append(SidebarItem(tag: 4, title: "Messages", icon: "message.fill"))
         }
-        items.append(SidebarItem(tag: 3, title: "Messages", icon: "message.fill"))
         return items
     }
 
@@ -302,9 +315,16 @@ struct MainTabView: View {
             if isEnseignant {
                 CorrectionsView()
             } else {
+                ExamPrepHomeView()
+            }
+        case 3:
+            if isEnseignant {
+                MessagerieView()
+            } else {
                 ResultatsView()
             }
-        case 3: MessagerieView()
+        case 4:
+            MessagerieView()
         default: DashboardView()
         }
     }
