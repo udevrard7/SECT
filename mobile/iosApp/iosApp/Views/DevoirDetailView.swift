@@ -24,12 +24,12 @@ struct DevoirDetailView: View {
                     Text(d.titre).font(.title2).fontWeight(.bold)
                     SectBadge(text: d.statut, color: d.statut == "PUBLIE" ? .sectLime : .sectNavy)
 
-                    // Description
-                    if let desc = d.description, !desc.isEmpty {
+                    // Description (description est non-optionnel en Swift, mot-clé NSObject)
+                    if !d.description.isEmpty {
                         GlassCard {
                             VStack(alignment: .leading) {
                                 Text("Description").font(.headline)
-                                Text(desc).font(.body)
+                                Text(d.description).font(.body)
                             }
                         }
                     }
@@ -113,7 +113,7 @@ struct DevoirDetailView: View {
     private func loadDevoir() async {
         isLoading = true
         do {
-            let devoirs = try await repository.listDevoirs(page: 1, limit: 50)
+            let devoirs = try await repository.listDevoirs(search: nil, statut: nil, page: 1, limit: 50)
             devoir = devoirs.first(where: { $0.id == devoirId })
         } catch {}
         isLoading = false
