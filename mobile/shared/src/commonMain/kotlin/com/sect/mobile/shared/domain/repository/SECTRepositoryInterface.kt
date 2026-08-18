@@ -42,6 +42,10 @@ interface SECTRepositoryInterface : AuthRepository {
     suspend fun signalMessage(messageId: String, raison: String)
     suspend fun toggleReaction(messageId: String, emoji: String)
     suspend fun getOrCreateIAPrivateConversation(): Conversation
+    // SECT-MOBILE-PARITY-M1 : endpoints restants
+    suspend fun leaveConversation(conversationId: String)
+    suspend fun clearConversation(conversationId: String)
+    suspend fun hideMessages(messageIds: List<String>)
 
     // Stats
     suspend fun getStatsEnseignant(): EnseignantStats

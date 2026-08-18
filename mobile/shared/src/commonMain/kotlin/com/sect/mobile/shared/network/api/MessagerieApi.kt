@@ -162,4 +162,53 @@ class MessagerieApi(private val client: HttpClient) {
     suspend fun getOrCreateIAPrivate(): ConversationDto {
         return client.post("/api/messagerie/conversations/ia-private").body()
     }
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY-M1 : endpoints restants
+    // ════════════════════════════════════════════════════════
+
+    /**
+     * Lister les participants d'une conversation.
+     * GET /api/messagerie/conversations/{id}/participants
+     */
+    suspend fun listParticipants(conversationId: String): List<Map<String, String?>> {
+        return try {
+            client.get("/api/messagerie/conversations/$conversationId/participants").body()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /**
+     * Quitter une conversation.
+     * DELETE /api/messagerie/conversations/{id}
+     */
+    suspend fun leaveConversation(conversationId: String) {
+        client.delete("/api/messagerie/conversations/$conversationId")
+    }
+
+    /**
+     * Effacer l'historique d'une conversation.
+     * POST /api/messagerie/conversations/{id}/clear
+     */
+    suspend fun clearConversation(conversationId: String) {
+        client.post("/api/messagerie/conversations/$conversationId/clear")
+    }
+
+    /**
+     * Masquer des messages (modération).
+     * POST /api/messagerie/messages/hide
+     * Body : { messageIds: [...] }
+     */
+    suspend fun hideMessages(messageIds: List<String>) {
+        client.post("/api/messagerie/messages/hide") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("messageIds" to messageIds))
+        }
+    }
+
+    /**
+     * Flux SSE temps réel — retourne l'URL du stream.
+     * Le client doit ouvrir une connexion EventSource sur cette URL.
+     * GET /api/messagerie/stream
+     */
+    fun streamUrl(): String = "/api/messagerie/stream"
 }

@@ -159,4 +159,23 @@ class MessagerieViewModel: ObservableObject {
     func aiGradeSoumission(soumissionId: String) async {
         try? await repository.aiGradeSoumission(soumissionId: soumissionId)
     }
+
+    // SECT-MOBILE-PARITY-M1 : endpoints restants
+    func leaveConversation(conversationId: String) async {
+        try? await repository.leaveConversation(conversationId: conversationId)
+        await loadConversations()
+    }
+
+    func clearConversation(conversationId: String) async {
+        try? await repository.clearConversation(conversationId: conversationId)
+        await loadMessages()
+    }
+
+    func hideMessages(messageIds: [String]) async {
+        try? await repository.hideMessages(messageIds: messageIds)
+    }
+
+    func streamUrl() -> String {
+        return "/api/messagerie/stream"
+    }
 }
