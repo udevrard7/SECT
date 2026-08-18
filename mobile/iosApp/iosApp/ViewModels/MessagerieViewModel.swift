@@ -111,11 +111,9 @@ class MessagerieViewModel: ObservableObject {
     func createConversation(otherUserId: String) async {
         // SECT-MOBILE-PARITY P1-9 : création conversation direct
         do {
-            // Utiliser l'API directe car createDirectConversation peut ne pas être visible
-            // dans le protocol compilé si le cache Gradle n'est pas invalidé
             let conv = try await repository.createDirectConversation(targetUserId: otherUserId)
             selectedConversation = conv
-            await loadMessages(conversationId: conv.id)
+            await loadMessages()
         } catch {
             self.error = error.localizedDescription
         }
@@ -135,25 +133,25 @@ class MessagerieViewModel: ObservableObject {
     func editMessage(messageId: String, newContent: String) async {
         do {
             _ = try await repository.editMessage(messageId: messageId, contenu: newContent)
-            if let convId = selectedConversation?.id { await loadMessages(conversationId: convId) }
+            await loadMessages()
         } catch {}
     }
 
     func deleteMessage(messageId: String) async {
         try? await repository.deleteMessage(messageId: messageId)
-        if let convId = selectedConversation?.id { await loadMessages(conversationId: convId) }
+        await loadMessages()
     }
 
     func toggleReaction(messageId: String, emoji: String) async {
         try? await repository.toggleReaction(messageId: messageId, emoji: emoji)
-        if let convId = selectedConversation?.id { await loadMessages(conversationId: convId) }
+        await loadMessages()
     }
 
     func startIAPrivate() async {
         do {
             let conv = try await repository.getOrCreateIAPrivateConversation()
             selectedConversation = conv
-            await loadMessages(conversationId: conv.id)
+            await loadMessages()
         } catch {}
     }
 
