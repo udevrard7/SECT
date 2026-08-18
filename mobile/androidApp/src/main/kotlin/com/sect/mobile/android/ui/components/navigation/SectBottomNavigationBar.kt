@@ -10,12 +10,14 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.rounded.Assessment
 import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -142,10 +144,11 @@ fun SectBottomNavigationBar(
 
 /**
  * Configuration de navigation pour ÉTUDIANT
- * SECT-MOBILE-NAV-PHASE-A : 4 onglets (Profil déplacé en secondaire → avatar TopBar)
- *   Accueil · Travail · Résultats · Messages
+ * SECT-NAV-EXAMPREP : 5 onglets (ajout Prépa Examens)
+ *   Accueil · Travail · Prépa · Résultats · Messages
  *
  * "Travail" regroupe Épreuves + Devoirs (sous-navigation par tabs dans TravailScreen).
+ * "Prépa" ouvre le module ExamPrep (dashboard pédagogique : SRS, cours, entraînement, etc.).
  */
 val studentNavItems = listOf(
     NavItem(
@@ -161,18 +164,25 @@ val studentNavItems = listOf(
         selectedIcon = Icons.Rounded.Work
     ),
     NavItem(
+        route = "examprep/home",
+        label = "Prépa",
+        icon = Icons.Filled.MenuBook,
+        selectedIcon = Icons.Rounded.MenuBook,
+        badgeCount = null // À dynamiser avec révisions dues
+    ),
+    NavItem(
         route = "resultats",
         label = "Résultats",
         icon = Icons.Filled.Assessment,
         selectedIcon = Icons.Rounded.Assessment,
-        badgeCount = null // À dynamiser avec nouveaux résultats
+        badgeCount = null
     ),
     NavItem(
         route = "messagerie",
         label = "Messages",
         icon = Icons.Filled.Chat,
         selectedIcon = Icons.Rounded.Chat,
-        badgeCount = null, // À dynamiser avec messages non lus
+        badgeCount = null,
         badgeColor = { SectOrange }
     )
 )
