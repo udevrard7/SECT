@@ -150,4 +150,70 @@ class MessagerieViewModel(
     }
 
     fun refresh() = loadConversations()
+
+    // SECT-MOBILE-PARITY P1-9 : méthodes Messages avancées
+
+    fun markAsRead(conversationId: String) {
+        viewModelScope.launch {
+            try { repository.markConversationAsRead(conversationId) } catch (_: Exception) {}
+        }
+    }
+
+    fun toggleMute(conversationId: String, muted: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setConversationMuted(conversationId, muted)
+                loadConversations()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun editMessage(messageId: String, newContent: String) {
+        viewModelScope.launch {
+            try {
+                repository.editMessage(messageId, newContent)
+                _selectedConversationId.value?.let { loadMessages(it) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun deleteMessage(messageId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteMessage(messageId)
+                _selectedConversationId.value?.let { loadMessages(it) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun toggleReaction(messageId: String, emoji: String) {
+        viewModelScope.launch {
+            try {
+                repository.toggleReaction(messageId, emoji)
+                _selectedConversationId.value?.let { loadMessages(it) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun signalMessage(messageId: String, raison: String) {
+        viewModelScope.launch {
+            try { repository.signalMessage(messageId, raison) } catch (_: Exception) {}
+        }
+    }
+
+    fun startIAPrivateConversation() {
+        viewModelScope.launch {
+            try {
+                val conv = repository.getOrCreateIAPrivateConversation()
+                selectConversation(conv.id)
+            } catch (_: Exception) {}
+        }
+    }
+
+    // SECT-MOBILE-PARITY P1-8 : Correction IA des devoirs
+    fun aiGradeSoumission(soumissionId: String) {
+        viewModelScope.launch {
+            try { repository.aiGradeSoumission(soumissionId) } catch (_: Exception) {}
+        }
+    }
 }

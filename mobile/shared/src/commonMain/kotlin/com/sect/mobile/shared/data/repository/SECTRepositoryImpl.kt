@@ -134,6 +134,32 @@ class SECTRepositoryImpl(
     override suspend fun sendMessage(conversationId: String, contenu: String): Message =
         messagerieApi.sendMessage(conversationId, contenu).toDomain()
 
+    // SECT-MOBILE-PARITY P1-9 : création conversation direct
+    override suspend fun createDirectConversation(targetUserId: String): Conversation =
+        messagerieApi.createConversation(mapOf("targetUserId" to targetUserId)).toDomain()
+
+    // SECT-MOBILE-PARITY P1-9 : méthodes Messages avancées
+    override suspend fun markConversationAsRead(conversationId: String) =
+        messagerieApi.markAsRead(conversationId)
+
+    override suspend fun setConversationMuted(conversationId: String, muted: Boolean) =
+        messagerieApi.setMuted(conversationId, muted)
+
+    override suspend fun editMessage(messageId: String, contenu: String): Message =
+        messagerieApi.editMessage(messageId, contenu).toDomain()
+
+    override suspend fun deleteMessage(messageId: String) =
+        messagerieApi.deleteMessage(messageId)
+
+    override suspend fun signalMessage(messageId: String, raison: String) =
+        messagerieApi.signalMessage(messageId, raison)
+
+    override suspend fun toggleReaction(messageId: String, emoji: String) =
+        messagerieApi.toggleReaction(messageId, emoji)
+
+    override suspend fun getOrCreateIAPrivateConversation(): Conversation =
+        messagerieApi.getOrCreateIAPrivate().toDomain()
+
     // ── Password Reset ──
 
     override suspend fun requestPasswordReset(email: String) = authApi.requestPasswordReset(email)
@@ -233,4 +259,8 @@ class SECTRepositoryImpl(
     
     override suspend fun noterSoumission(id: String, note: Float, commentaire: String?): Soumission =
         devoirApi.noterSoumission(id, note, commentaire).toDomain()
+
+    // SECT-MOBILE-PARITY P1-8 : Correction IA des devoirs
+    override suspend fun aiGradeSoumission(soumissionId: String) =
+        devoirApi.aiGrade(soumissionId)
 }

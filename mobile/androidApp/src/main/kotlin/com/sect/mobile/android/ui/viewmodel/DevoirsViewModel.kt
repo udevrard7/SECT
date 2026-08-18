@@ -98,4 +98,30 @@ class DevoirsViewModel(
             state.devoirs.find { it.id == id }
         } else null
     }
+
+    // SECT-MOBILE-PARITY P1-6 : Soumission étudiant
+    fun submitDevoir(devoirId: String, fichierUrl: String, commentaire: String?) {
+        viewModelScope.launch {
+            try {
+                repository.submitDevoir(devoirId, fichierUrl, commentaire)
+                loadDevoirs(refresh = true)
+            } catch (_: Exception) {}
+        }
+    }
+
+    // SECT-MOBILE-PARITY P1-7 : Correction enseignant
+    fun noterSoumission(soumissionId: String, note: Float, commentaire: String?) {
+        viewModelScope.launch {
+            try {
+                repository.noterSoumission(soumissionId, note, commentaire)
+            } catch (_: Exception) {}
+        }
+    }
+
+    // SECT-MOBILE-PARITY P1-8 : Correction IA
+    fun aiGradeSoumission(soumissionId: String) {
+        viewModelScope.launch {
+            try { repository.aiGradeSoumission(soumissionId) } catch (_: Exception) {}
+        }
+    }
 }
