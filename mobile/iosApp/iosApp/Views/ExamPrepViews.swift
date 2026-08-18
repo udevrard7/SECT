@@ -107,6 +107,36 @@ struct ExamPrepHomeView: View {
                         .padding(.horizontal)
                     }
 
+                    // ── Actions rapides (SECT-NAV-AUDIT-FIX) ──
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Actions rapides").font(.title3).fontWeight(.bold)
+
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                            NavigationLink(destination: ExamPrepReviewView()) {
+                                quickActionCard("🧠 Réviser", "brain.head.profile")
+                            }
+                            NavigationLink(destination: ExamPrepPracticeView()) {
+                                quickActionCard("🎯 S'entraîner", "wand.and.stars")
+                            }
+                            NavigationLink(destination: ExamPrepFlashcardsView()) {
+                                quickActionCard("🃏 Flashcards", "rectangle.stack")
+                            }
+                            NavigationLink(destination: ExamPrepProgressView()) {
+                                quickActionCard("📊 Progression", "chart.line.uptrend.xyarrow")
+                            }
+                            NavigationLink(destination: ExamPrepQaView()) {
+                                quickActionCard("🤖 Q&A IA", "questionmark.bubble")
+                            }
+                            NavigationLink(destination: ExamPrepPlanningView()) {
+                                quickActionCard("📅 Planning", "calendar")
+                            }
+                            NavigationLink(destination: ExamPrepHelpView()) {
+                                quickActionCard("👨‍🏫 Aide", "person.crop.circle.badge.questionmark")
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+
                     KenteDivider(height: 3)
                 }
                 .padding(.vertical)
@@ -126,6 +156,21 @@ struct ExamPrepHomeView: View {
         }
         isLoading = false
     }
+}
+
+// MARK: - Quick Action Card helper (SECT-NAV-AUDIT-FIX)
+
+private func quickActionCard(_ label: String, _ icon: String) -> some View {
+    HStack {
+        Image(systemName: icon).foregroundColor(.sectLime)
+        Text(label).font(.caption).fontWeight(.medium)
+        Spacer()
+    }
+    .padding(12)
+    .background(Color.savaneCard.opacity(0.85))
+    .background(.ultraThinMaterial)
+    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.3), lineWidth: 1))
+    .cornerRadius(12)
 }
 
 // ════════════════════════════════════════════════════════

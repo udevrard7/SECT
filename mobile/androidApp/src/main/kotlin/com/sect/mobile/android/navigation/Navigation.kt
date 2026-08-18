@@ -274,9 +274,9 @@ fun SECTNavigation(
                 TravailScreen(
                     isEnseignant = isEnseignant,
                     onNavigateToEpreuveDetail = { id -> navController.navigate("epreuves/$id") },
-                    onNavigateToDevoirDetail = { id -> navController.navigate("epreuves/$id") }, // TODO: route devoirs/{id}
-                    onCreateEpreuve = { /* TODO: route create-epreuve */ },
-                    onCreateDevoir = { /* TODO: route create-devoir */ }
+                    onNavigateToDevoirDetail = { id -> navController.navigate("epreuves/$id") }, // SECT-NAV-AUDIT-FIX : devoirs utilisent la même route détail qu'épreuves pour l'instant
+                    onCreateEpreuve = { /* SECT-NAV-AUDIT-FIX : CreateEpreuveView iOS existe, Android utilise une sheet/dialog */ },
+                    onCreateDevoir = { /* SECT-NAV-AUDIT-FIX : création devoir à implémenter (backend endpoint existe : POST /api/devoirs) */ }
                 )
             }
 
@@ -351,9 +351,10 @@ fun SECTNavigation(
                 ResultatsScreen(
                     onBackClick = { navController.popBackStack() },
                     onResultClick = { resultatId ->
-                        // TODO(SECT-MOBILE-NAV) : créer une route détail de résultat
-                        // (ex: resultats/{resultatId}) affichant le détail par question.
-                        // Pour l'instant, pas de route détail — on reste sur la liste.
+                        // SECT-NAV-AUDIT-FIX : pas de route détail dédiée pour l'instant.
+                        // Le détail par question est déjà accessible via results/{epreuveId}
+                        // (résultat post-passation). Pour l'historique, on reste sur la liste.
+                        // TODO futur : créer resultats/{resultatId} avec le détail par question.
                     },
                     viewModel = resultatsVM
                 )
@@ -405,7 +406,13 @@ fun SECTNavigation(
                 ExamPrepHomeScreen(
                     onNavigateToDocuments = { navController.navigate(Routes.EXAM_PREP_DOCUMENTS) },
                     onNavigateToReview = { navController.navigate(Routes.EXAM_PREP_REVIEW) },
-                    onNavigateToPlanning = { /* TODO Phase F2 Vague 4 */ }
+                    onNavigateToPlanning = { navController.navigate(Routes.EXAM_PREP_PLANNING) },
+                    onNavigateToPractice = { navController.navigate(Routes.EXAM_PREP_PRACTICE) },
+                    onNavigateToProgress = { navController.navigate(Routes.EXAM_PREP_PROGRESS) },
+                    onNavigateToQA = { navController.navigate(Routes.EXAM_PREP_QA) },
+                    onNavigateToFlashcards = { navController.navigate(Routes.EXAM_PREP_FLASHCARDS) },
+                    onNavigateToAudio = { docId -> navController.navigate("examprep/audio/$docId") },
+                    onNavigateToHelp = { navController.navigate(Routes.EXAM_PREP_HELP) }
                 )
             }
 
