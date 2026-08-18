@@ -127,7 +127,13 @@ data class ResultatRecent(
  */
 data class ResultatDetail(
     val scoreFinal: Double,
-    val totalPossible: Double
+    val totalPossible: Double,
+    // SECT-MOBILE-PARITY-R1 : champs enrichis
+    val id: String = "",
+    val sessionId: String = "",
+    val dateCorrection: String? = null,
+    val dateRetour: String? = null,
+    val commentaires: String? = null
 )
 
 /**
