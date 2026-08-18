@@ -35,7 +35,7 @@ enum class NavLevel {
  *
  * "Travail" regroupe Épreuves + Devoirs (sous-navigation par tabs).
  * "Prépa" (examprep/home) est le hub du module ExamPrep (dashboard pédagogique).
- * Les sous-routes examprep/* restent SECONDARY (stack interne au module).
+ * Les sous-routes examprep/ restent SECONDARY (stack interne au module).
  * Profil est secondaire (accessible via avatar dans la TopBar).
  * Passation est immersif (bottom bar masquée).
  */
