@@ -64,13 +64,14 @@ data class MessageDto(
     @SerialName("user") val expediteur: MessageUserRefDto? = null,
     val createdAt: InstantDto,
     val updatedAt: InstantDto? = null,
-    // SECT-MOBILE-PARITY P1-10 : champs enrichis du backend
+    // SECT-MOBILE-PARITY P1-10/M1 : champs enrichis du backend
     val isIA: Boolean = false,
+    val contenuHtml: String? = null,
     val replyToId: String? = null,
     val editedAt: String? = null,
     val deletedAt: String? = null,
-    val attachments: List<String>? = null,
-    val reactions: List<ReactionDto>? = null
+    val attachments: List<MessageAttachmentDto>? = null,
+    val reactions: List<ReactionSummaryDto>? = null
 )
 
 /**
@@ -86,15 +87,31 @@ data class MessageUserRefDto(
 )
 
 /**
- * SECT-MOBILE-PARITY P1-10 : Reaction DTO
- * Miroir du backend domain.Reaction (messagerie.go).
+ * SECT-MOBILE-PARITY M1 : ReactionSummary DTO
+ * Miroir du backend domain.ReactionSummary (messagerie.go).
+ * Agrégation par émoji (1 summary par émoji, pas 1 par utilisateur).
  */
 @Serializable
-data class ReactionDto(
-    val id: String,
-    val messageId: String,
-    val userId: String,
-    val emoji: String,
+data class ReactionSummaryDto(
+    val emoji: String = "",
+    val count: Int = 0,
+    val userIds: List<String> = emptyList(),
+    val reactedByMe: Boolean = false
+)
+
+/**
+ * SECT-MOBILE-PARITY M1 : MessageAttachment DTO
+ * Miroir du backend domain.MessageAttachment (messagerie.go).
+ */
+@Serializable
+data class MessageAttachmentDto(
+    val id: String = "",
+    val messageId: String = "",
+    val type: String = "",
+    val url: String = "",
+    val filename: String = "",
+    val mimeType: String = "",
+    val size: Int = 0,
     val createdAt: String? = null
 )
 

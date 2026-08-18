@@ -160,6 +160,16 @@ class SECTRepositoryImpl(
     override suspend fun getOrCreateIAPrivateConversation(): Conversation =
         messagerieApi.getOrCreateIAPrivate().toDomain()
 
+    // SECT-MOBILE-PARITY-M1 : endpoints restants
+    override suspend fun leaveConversation(conversationId: String) =
+        messagerieApi.leaveConversation(conversationId)
+
+    override suspend fun clearConversation(conversationId: String) =
+        messagerieApi.clearConversation(conversationId)
+
+    override suspend fun hideMessages(messageIds: List<String>) =
+        messagerieApi.hideMessages(messageIds)
+
     // ── Password Reset ──
 
     override suspend fun requestPasswordReset(email: String) = authApi.requestPasswordReset(email)

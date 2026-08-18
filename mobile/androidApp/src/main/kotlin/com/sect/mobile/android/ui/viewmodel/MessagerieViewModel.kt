@@ -216,4 +216,32 @@ class MessagerieViewModel(
             try { repository.aiGradeSoumission(soumissionId) } catch (_: Exception) {}
         }
     }
+
+    // SECT-MOBILE-PARITY-M1 : endpoints restants
+    fun leaveConversation(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                repository.leaveConversation(conversationId)
+                loadConversations()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun clearConversation(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                repository.clearConversation(conversationId)
+                _selectedConversationId.value?.let { loadMessages(it) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun hideMessages(messageIds: List<String>) {
+        viewModelScope.launch {
+            try { repository.hideMessages(messageIds) } catch (_: Exception) {}
+        }
+    }
+
+    /** URL du flux SSE temps réel. */
+    fun streamUrl(): String = "/api/messagerie/stream"
 }
