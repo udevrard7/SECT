@@ -1,14 +1,16 @@
 // SECT Mobile — ResultatDetailScreen (Android Compose)
 // SECT-MOBILE-PARITY-R1 : détail d'un résultat étudiant par epreuveId.
 //
-// Affiche : score final, pourcentage, statut, date, pénalité proctoring,
-// détail par question (réponse, score, commentaire, suggestion IA).
+// Utilise GET /api/resultats?epreuveId=X (backend existant).
+// Affiche le score final, le statut et les commentaires.
+// Le ResultatDetail du domaine KMP est un objet simple (scoreFinal, totalPossible,
+// commentaires) — les réponses détaillées par question sont dans le domaine Session
+// (non exposé ici pour l'instant, futur R2).
 package com.sect.mobile.android.ui.screens.resultats
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,7 +23,6 @@ import com.sect.mobile.android.ui.components.*
 import com.sect.mobile.android.ui.viewmodel.ResultatDetailUiState
 import com.sect.mobile.android.ui.viewmodel.ResultatsViewModel
 import com.sect.mobile.shared.domain.model.ResultatDetail
-import com.sect.mobile.shared.domain.model.ResultatReponse
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,61 +70,36 @@ fun ResultatDetailScreen(
 
 @Composable
 private fun ResultatDetailContent(detail: ResultatDetail, padding: PaddingValues) {
+    val scoreFinal = detail.scoreFinal
+    val totalPossible = if (detail.totalPossible > 0) detail.totalPossible else 20.0
+    val pourcentage = (scoreFinal / totalPossible) * 100.0
+    val estReussi = pourcentage >= 50.0
+    val scoreColor = if (estReussi) androidx.compose.ui.graphics.Color(0xFF84CC16)
+                     else androidx.compose.ui.graphics.Color(0xFFEF4444)
+
     Column(
         modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         KenteDivider(thickness = 3)
 
-        // Épreuve
-        detail.epreuve?.let { epreuve ->
-            GlassCard {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(epreuve.titre, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("${epreuve.duree} min · /${epreuve.noteTotal}", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    epreuve.enseignant?.let { Text("Par ${it.name}", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-            }
-        }
-
         // Score principal
         GlassCard {
             Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Note obtenue", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val scoreColor = if (detail.estReussi) androidx.compose.ui.graphics.Color(0xFF84CC16)
-                                 else androidx.compose.ui.graphics.Color(0xFFEF4444)
-                Text("${"%.1f".format(detail.scoreOn20)} / ${detail.epreuve?.noteTotal ?: 20.0}",
+                Text("${"%.1f".format(scoreFinal)} / ${"%.0f".format(totalPossible)}",
                     style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = scoreColor)
-                Text("${detail.pourcentage.toInt()}%", style = MaterialTheme.typography.titleMedium, color = scoreColor)
+                Text("${pourcentage.toInt()}%", style = MaterialTheme.typography.titleMedium, color = scoreColor)
                 SectBadge(
-                    text = if (detail.estReussi) "Réussi" else "À refaire",
+                    text = if (estReussi) "Réussi" else "À refaire",
                     color = scoreColor
                 )
-                if (detail.penalite > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("⚠️ Pénalité proctoring: -${detail.penalite} pts",
-                        style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color(0xFFEF4444))
-                }
-                if (detail.alertes > 0) {
-                    Text("🚨 ${detail.alertes} alerte(s) de surveillance",
-                        style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color(0xFFEF4444))
-                }
             }
         }
 
-        // Détail par question
-        if (detail.reponses.isNotEmpty()) {
-            Text("Détail par question", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            detail.reponses.forEachIndexed { index, reponse ->
-                ReponseDetailCard(index + 1, reponse)
-            }
-        }
-
-        // Commentaires généraux
-        detail.resultat?.commentaires?.let { comm ->
+        // Commentaires
+        detail.commentaires?.let { comm ->
             if (comm.isNotEmpty()) {
                 GlassCard {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -134,72 +110,16 @@ private fun ResultatDetailContent(detail: ResultatDetail, padding: PaddingValues
             }
         }
 
-        KenteDivider(thickness = 3)
-    }
-}
-
-@Composable
-private fun ReponseDetailCard(index: Int, reponse: ResultatReponse) {
-    GlassCard {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Question $index", fontWeight = FontWeight.Bold)
-                reponse.score?.let { score ->
-                    SectBadge(
-                        text = "${"%.1f".format(score)} pts",
-                        color = if (score > 0) androidx.compose.ui.graphics.Color(0xFF84CC16)
-                                else androidx.compose.ui.graphics.Color(0xFFEF4444)
-                    )
-                } ?: Text("Non noté", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            reponse.contenu?.let { contenu ->
-                Text("Votre réponse:", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(contenu, style = MaterialTheme.typography.bodyMedium)
-            }
-
-            reponse.commentaire?.let { comm ->
-                if (comm.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text("Commentaire: $comm", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            // Suggestion IA
-            reponse.noteIA?.let { noteIA ->
-                Spacer(Modifier.height(8.dp))
-                Card(
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = androidx.compose.ui.graphics.Color(0xFF06B6D4).copy(alpha = 0.08f)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, null, tint = androidx.compose.ui.graphics.Color(0xFF06B6D4),
-                                modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("IA: ${"%.1f".format(noteIA)} pts", style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFF06B6D4))
-                        }
-                        reponse.justificationIA?.let { justif ->
-                            if (justif.isNotEmpty()) {
-                                Text(justif, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-            }
+        // Dates
+        detail.dateCorrection?.let { date ->
+            Text("Corrigé le ${date.take(10)}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        detail.dateRetour?.let { date ->
+            Text("Retourné le ${date.take(10)}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        KenteDivider(thickness = 3)
     }
 }
