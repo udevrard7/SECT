@@ -3,6 +3,7 @@ package com.sect.mobile.android.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sect.mobile.android.ui.components.BadgeManager
 import com.sect.mobile.shared.domain.model.Conversation
 import com.sect.mobile.shared.domain.model.Message
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
@@ -52,6 +53,9 @@ class MessagerieViewModel(
             try {
                 val result = repository.listConversations()
                 _conversations.value = UiState.Success(result)
+                // SECT-MOBILE-PARITY-T1-ACTIVATION : alimenter le BadgeManager
+                // (était dead code avant — le badge Messages restait toujours à 0)
+                BadgeManager.setUnreadMessages(result.sumOf { it.unreadCount })
             } catch (e: Exception) {
                 _conversations.value = UiState.Error(e.message ?: "Erreur")
             }
@@ -69,6 +73,8 @@ class MessagerieViewModel(
 
     /**
      * Sélectionner une conversation et charger ses messages.
+     * SECT-MOBILE-PARITY-T1-ACTIVATION : marque la conversation comme lue côté backend
+     * + décrémente le badge Messages (était jamais appelé avant).
      */
     fun selectConversation(conversationId: String) {
         // SECT-MOBILE-TOPIC-PUSH-1 : se désabonner de l'ancienne conversation
@@ -84,6 +90,8 @@ class MessagerieViewModel(
             pushSubscriptionManager.subscribeToConversation(conversationId)
         }
         loadMessages(conversationId)
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : markAsRead + badge refresh
+        markAsRead(conversationId)
     }
 
     /**
@@ -159,7 +167,12 @@ class MessagerieViewModel(
 
     fun markAsRead(conversationId: String) {
         viewModelScope.launch {
-            try { repository.markConversationAsRead(conversationId) } catch (_: Exception) {}
+            try {
+                repository.markConversationAsRead(conversationId)
+                // SECT-MOBILE-PARITY-T1-ACTIVATION : rafraîchir la liste pour que
+                // les unreadCount soient recalculés côté client + badge mis à jour.
+                loadConversations()
+            } catch (_: Exception) {}
         }
     }
 
@@ -314,7 +327,9 @@ class MessagerieViewModel(
                 }
             }
             "read" -> {
-                // Conversation marquée comme lue : rafraîchir les unread
+                // Conversation marquée comme lue : rafraîchir les unread + badge.
+                // SECT-MOBILE-PARITY-T1-ACTIVATION : loadConversations() alimente
+                // maintenant BadgeManager.setUnreadMessages() automatiquement.
                 loadConversations()
             }
             "typing" -> {

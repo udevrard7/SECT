@@ -26,6 +26,23 @@
         <key>MinimumOSVersion</key>
         <string>16.0</string>
 
+        <!-- SECT-MOBILE-PARITY-T1-ACTIVATION : Deep Links sect:// -->
+        <!-- Avant : iOS ne connaissait pas le scheme sect:// → les taps depuis Safari/Mail/Notes
+             n'ouvraient jamais SECT. Déclaré maintenant. -->
+        <key>CFBundleURLTypes</key>
+        <array>
+                <dict>
+                        <key>CFBundleURLName</key>
+                        <string>com.sect.mobile</string>
+                        <key>CFBundleURLSchemes</key>
+                        <array>
+                                <string>sect</string>
+                        </array>
+                        <key>CFBundleTypeRole</key>
+                        <string>Editor</string>
+                </dict>
+        </array>
+
         <!-- Privacy — Camera access for exam proctoring -->
         <key>NSCameraUsageDescription</key>
         <string>SECT utilise la caméra pour la surveillance des examens</string>

@@ -639,6 +639,16 @@ fun MessagerieScreen(
 ) {
     val conversations by viewModel.conversations.collectAsState()
 
+    // SECT-MOBILE-PARITY-T1-ACTIVATION : démarrer le SSE temps réel à l'ouverture
+    // de l'écran Messagerie (et l'arrêter à la fermeture). Avant ce fix, startRealtime()
+    // existait mais n'était jamais appelé → pas de messages temps réel.
+    DisposableEffect(Unit) {
+        viewModel.startRealtime()
+        onDispose {
+            viewModel.stopRealtime()
+        }
+    }
+
     when (val state = conversations) {
         is UiState.Loading -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

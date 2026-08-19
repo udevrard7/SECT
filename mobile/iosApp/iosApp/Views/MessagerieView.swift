@@ -65,7 +65,17 @@ struct MessagerieView: View {
                     .environmentObject(viewModel)
             }
             .onAppear {
-                Task { await viewModel.loadConversations() }
+                Task {
+                    await viewModel.loadConversations()
+                    // SECT-MOBILE-PARITY-T1-ACTIVATION : démarrer le SSE temps réel
+                    // (était jamais appelé avant → pas de messages temps réel)
+                    viewModel.startRealtime()
+                }
+            }
+            .onDisappear {
+                // SECT-MOBILE-PARITY-T1-ACTIVATION : arrêter le SSE en quittant l'onglet
+                // Messagerie pour libérer la connexion et économiser la batterie.
+                viewModel.stopRealtime()
             }
         }
     }

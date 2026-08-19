@@ -129,8 +129,10 @@ extension Notification.Name {
 
 /// Deep link target for notification tap navigation.
 /// SECT-MOBILE-NAV-PHASE-E : étendu avec corrections, travail, profile + parser sect://
+/// SECT-MOBILE-PARITY-T1-ACTIVATION : ajout devoirs/{id}, passation fix, resultats/{id}
 enum DeepLinkTarget {
     case epreuve(id: String)
+    case devoir(id: String)
     case results(epreuveId: String)
     case messages(conversationId: String)
     case dashboard
@@ -141,6 +143,8 @@ enum DeepLinkTarget {
     case travail
     case profile
     case resultats
+    case resultatDetail(epreuveId: String)
+    case passation(epreuveId: String)
     // SECT-NAV-AUDIT-FIX : deep links ExamPrep
     case examPrep
     case examPrepDocuments
@@ -167,15 +171,21 @@ enum DeepLinkTarget {
             return pathComponents.isEmpty ? .messages(conversationId: "") : .messages(conversationId: pathComponents[0])
         case "corrections":
             return pathComponents.isEmpty ? .corrections : .correctionDetail(sessionId: pathComponents[0])
-        case "resultats": return .resultats
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : resultats/{epreuveId} → détail (pas liste)
+        case "resultats":
+            return pathComponents.isEmpty ? .resultats : .resultatDetail(epreuveId: pathComponents[0])
         case "travail": return .travail
         case "profile": return .profile
         case "epreuves":
             return pathComponents.isEmpty ? .travail : .epreuve(id: pathComponents[0])
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : devoirs/{id} (manquait avant)
+        case "devoirs":
+            return pathComponents.isEmpty ? .travail : .devoir(id: pathComponents[0])
         case "results":
             return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .results(epreuveId: pathComponents[0])
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : passation → .passation (avant c'était .results, copy-paste bug)
         case "passation":
-            return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .results(epreuveId: pathComponents[0])
+            return pathComponents.isEmpty ? .unknown(uri: url.absoluteString) : .passation(epreuveId: pathComponents[0])
         // SECT-NAV-AUDIT-FIX : deep links ExamPrep
         case "examprep":
             if pathComponents.isEmpty { return .examPrep }
@@ -208,15 +218,19 @@ enum DeepLinkTarget {
         switch self {
         case .dashboard: return 0
         case .travail: return 1
-        case .corrections: return 2       // Enseignant
-        case .resultats: return 3          // Étudiant
-        case .messages: return isEnseignant ? 3 : 4  // SECT-NAV-AUDIT-FIX
+        case .corrections, .correctionDetail: return 2       // Enseignant
+        case .resultats, .resultatDetail: return 3           // Étudiant
+        case .messages: return isEnseignant ? 3 : 4          // SECT-NAV-AUDIT-FIX
         // SECT-NAV-AUDIT-FIX : ExamPrep est l'onglet 2 pour l'étudiant
         case .examPrep, .examPrepDocuments, .examPrepReader, .examPrepReview,
              .examPrepPractice, .examPrepProgress, .examPrepQA,
              .examPrepFlashcards, .examPrepAudio, .examPrepPlanning, .examPrepHelp:
             return isEnseignant ? nil : 2
-        default: return nil
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : epreuve/devoir → onglet Travail
+        case .epreuve, .devoir: return 1
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : passation/results → pas d'onglet direct, poussé en détail
+        case .passation, .results: return nil
+        case .profile, .notifications, .unknown: return nil
         }
     }
 }
@@ -245,6 +259,8 @@ func handleDeepLink(_ url: URL) {
 //   iPad   (regular) : NavigationSplitView avec sidebar
 struct MainTabView: View {
     @State private var selectedTab = 0
+    // SECT-MOBILE-PARITY-T1-ACTIVATION : deep-link cible pour navigation (poussée en détail)
+    @State private var pendingDeepLink: DeepLinkTarget? = nil
     @EnvironmentObject var authViewModel: AuthViewModel
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
@@ -296,6 +312,97 @@ struct MainTabView: View {
             }
         }
         .tint(.sectGreen)
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : observer les deep-links sect:// et push
+        .onReceive(NotificationCenter.default.publisher(for: .sectDeepLink)) { note in
+            handleDeepLinkNotification(note)
+        }
+        // NavigationLink invisible pour pousser les écrans de détail suite à un deep-link
+        .background(
+            NavigationLink(
+                destination: deepLinkDetailView(),
+                isActive: Binding(
+                    get: { pendingDeepLink != nil },
+                    set: { if !$0 { pendingDeepLink = nil } }
+                ),
+                label: { EmptyView() }
+            )
+            .opacity(0)
+        )
+    }
+
+    // MARK: - Deep Link handling
+
+    /// Traite une notification .sectDeepLink : switch l'onglet + pose pendingDeepLink
+    /// pour pousser l'écran de détail si nécessaire.
+    private func handleDeepLinkNotification(_ note: Notification) {
+        // Le payload peut contenir soit un DeepLinkTarget (depuis .onOpenURL),
+        // soit un dictionnaire target+id (depuis PushNotificationManager).
+        let target: DeepLinkTarget?
+        if let t = note.userInfo?["target"] as? DeepLinkTarget {
+            target = t
+        } else if let rawTarget = note.userInfo?["target"] as? String {
+            // Push notification path (depuis SECTApp.init onDeepLink closure)
+            switch rawTarget {
+            case "epreuve":
+                if let id = note.userInfo?["epreuveId"] as? String { target = .epreuve(id: id) }
+                else { target = nil }
+            case "results":
+                if let id = note.userInfo?["epreuveId"] as? String { target = .results(epreuveId: id) }
+                else { target = nil }
+            case "messages":
+                if let id = note.userInfo?["conversationId"] as? String { target = .messages(conversationId: id) }
+                else { target = nil }
+            case "dashboard":
+                target = .dashboard
+            default:
+                target = nil
+            }
+        } else {
+            target = nil
+        }
+
+        guard let t = target else { return }
+
+        // 1. Switch l'onglet si la cible a un tabIndex
+        if let tab = t.tabIndex(isEnseignant: isEnseignant) {
+            selectedTab = tab
+        }
+
+        // 2. Pose pendingDeepLink pour pousser l'écran de détail si constructible.
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : on ne pousse QUE les vues qui acceptent
+        // un simple ID. Pour messages/corrections/results/resultatDetail, le switch
+        // d'onglet suffit (l'utilisateur atterrit sur la liste).
+        switch t {
+        case .epreuve, .devoir, .passation, .examPrepReader, .examPrepAudio:
+            pendingDeepLink = t
+        default:
+            pendingDeepLink = nil
+        }
+    }
+
+    /// Vue de détail poussée par le NavigationLink invisible suite à un deep-link.
+    /// SECT-MOBILE-PARITY-T1-ACTIVATION : ne pousse QUE les vues constructibles
+    /// avec un simple ID. Pour CorrectionDetail/Results (qui exigent un objet session
+    /// complet), on se contente du switch d'onglet — l'utilisateur atterrit sur la liste.
+    @ViewBuilder
+    private func deepLinkDetailView() -> some View {
+        switch pendingDeepLink {
+        case .epreuve(let id):
+            EpreuveDetailView(epreuveId: id)
+        case .devoir(let id):
+            DevoirDetailView(devoirId: id)
+        case .passation(let epreuveId):
+            PassationView(epreuveId: epreuveId)
+        case .examPrepReader(let docId):
+            ExamPrepReaderView(documentId: docId)
+        case .examPrepAudio(let docId):
+            ExamPrepAudioView(documentId: docId)
+        // NB: .messages(convId) → on switch l'onglet vers Messages (déjà fait via tabIndex),
+        // on ne pousse pas ConversationView car on n'a pas l'objet Conversation complet.
+        // .correctionDetail / .results / .resultatDetail → idem, exigent un objet session.
+        default:
+            EmptyView()
+        }
     }
 
     // MARK: - iPad (NavigationSplitView)
