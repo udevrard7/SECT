@@ -143,13 +143,13 @@ data class SessionResultatDto(
     @SerialName("score") val score: Double? = null,
     @SerialName("alertes") val alertes: Int = 0,
     @SerialName("penalite") val penalite: Double = 0.0,
-    @SerialName("reponses") val reponses: List<ReponseDto> = emptyList(),
+    @SerialName("reponses") val reponses: List<ResultatReponseDto> = emptyList(),
     @SerialName("resultat") val resultat: ResultatDetailDto? = null,
     @SerialName("epreuve") val epreuve: SessionEpreuveRefDto? = null
 )
 
 @Serializable
-data class ReponseDto(
+data class ResultatReponseDto(
     @SerialName("id") val id: String = "",
     @SerialName("questionId") val questionId: String = "",
     @SerialName("contenu") val contenu: String? = null,
