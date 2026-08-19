@@ -136,6 +136,75 @@ data class ResultatDetail(
     val commentaires: String? = null
 )
 
+// ════════════════════════════════════════════════════════
+// SECT-MOBILE-PARITY-R2 : Détail par question
+// ════════════════════════════════════════════════════════
+
+/**
+ * Session de passation avec détail complet (Phase R2).
+ * Contient les réponses de l'étudiant + les infos épreuve/questions.
+ */
+data class SessionResultat(
+    val id: String,
+    val etudiantId: String,
+    val epreuveId: String,
+    val statut: String,
+    val dateDebut: String?,
+    val dateFin: String?,
+    val score: Double?,
+    val alertes: Int,
+    val penalite: Double,
+    val reponses: List<ReponseResultat>,
+    val resultat: ResultatDetail?,
+    val epreuve: SessionEpreuveRef?
+) {
+    val effectiveScore: Double get() = resultat?.scoreFinal ?: (score ?: 0.0)
+    val pourcentage: Double
+        get() = if (resultat?.totalPossible ?: 20.0 > 0)
+            (effectiveScore / (resultat?.totalPossible ?: 20.0)) * 100.0 else 0.0
+    val estReussi: Boolean get() = pourcentage >= 50.0
+}
+
+data class ReponseResultat(
+    val id: String,
+    val questionId: String,
+    val contenu: String?,
+    val score: Double?,
+    val commentaire: String?,
+    val noteIA: Double?,
+    val justificationIA: String?
+)
+
+data class SessionEpreuveRef(
+    val id: String,
+    val titre: String,
+    val description: String?,
+    val duree: Int,
+    val noteTotal: Double,
+    val enseignant: SessionEnseignantRef?,
+    val questions: List<EpreuveQuestionInfo>
+)
+
+data class SessionEnseignantRef(
+    val id: String,
+    val name: String
+)
+
+data class EpreuveQuestionInfo(
+    val id: String,
+    val questionId: String,
+    val bareme: Double,
+    val ordre: Int,
+    val question: EpreuveQuestionDetail?
+)
+
+data class EpreuveQuestionDetail(
+    val id: String,
+    val type: String,
+    val enonce: String,
+    val difficulte: String?
+)
+
 /**
  * Évolution des scores dans le temps
  */

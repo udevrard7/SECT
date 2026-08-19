@@ -195,7 +195,11 @@ class SECTRepositoryImpl(
 
     // SECT-MOBILE-PARITY-R1 : détail d'un résultat par epreuveId
     override suspend fun getResultatDetail(epreuveId: String): ResultatDetail? =
-        resultatsApi.getResultatDetail(epreuveId)?.toDomain()
+        resultatsApi.getSessionDetail(epreuveId)?.resultat?.toDomain()
+
+    // SECT-MOBILE-PARITY-R2 : détail complet avec réponses par question
+    override suspend fun getSessionDetail(epreuveId: String): SessionResultat? =
+        resultatsApi.getSessionDetail(epreuveId)?.toDomain()
 
     override suspend fun getSessionsACorriger(epreuveId: String?): List<CorrectionSession> =
         correctionApi.getSessions(epreuveId = epreuveId).map { it.toDomain() }

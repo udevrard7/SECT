@@ -28,22 +28,17 @@ class ResultatsApi(private val client: HttpClient) {
     }
 
     /**
-     * SECT-MOBILE-PARITY-R1 : Détail d'un résultat par epreuveId.
+     * SECT-MOBILE-PARITY-R2 : Détail complet d'un résultat par epreuveId.
      *
-     * GET /api/resultats?epreuveId=X → { sessions: [...], stats: {...} } (Branch B)
+     * GET /api/resultats?epreuveId=X → { sessions: [...] } (Branch B)
      *
-     * Le backend retourne les sessions avec reponses + resultat + epreuve enrichis.
+     * Retourne la session avec reponses + resultat + epreuve (avec questions).
      * Pour un étudiant, le backend filtre automatiquement (RLS + claims).
-     * On prend la première session (l'étudiant a une session par épreuve).
-     *
-     * Si aucune session n'est trouvée, retourne null.
      */
-    suspend fun getResultatDetail(epreuveId: String): ResultatDetailDto? {
-        val response: Map<String, List<ResultatDetailDto>> = client.get("/api/resultats") {
+    suspend fun getSessionDetail(epreuveId: String): SessionResultatDto? {
+        val response: Map<String, List<SessionResultatDto>> = client.get("/api/resultats") {
             parameter("epreuveId", epreuveId)
         }.body()
-        // Branch B retourne { sessions: [...] }, Branch A retourne { resultats: [...] }
-        // Pour un étudiant avec epreuveId, le backend utilise Branch B
         val sessions = response["sessions"] ?: response["resultats"] ?: emptyList()
         return sessions.firstOrNull()
     }

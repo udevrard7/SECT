@@ -1,6 +1,7 @@
 package com.sect.mobile.shared.domain.repository
 
 import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.domain.model.SessionResultat
 
 /**
  * Main domain repository interface.
@@ -55,6 +56,8 @@ interface SECTRepositoryInterface : AuthRepository {
     suspend fun getResultatsEtudiant(): List<Resultat>
     // SECT-MOBILE-PARITY-R1 : détail d'un résultat par epreuveId
     suspend fun getResultatDetail(epreuveId: String): ResultatDetail?
+    // SECT-MOBILE-PARITY-R2 : détail complet avec réponses par question
+    suspend fun getSessionDetail(epreuveId: String): SessionResultat?
     suspend fun getSessionsACorriger(epreuveId: String? = null): List<CorrectionSession>
     suspend fun saveGrade(sessionId: String, questionId: String, score: Double?, commentaire: String?)
     suspend fun finalizeCorrectionSession(sessionId: String)
