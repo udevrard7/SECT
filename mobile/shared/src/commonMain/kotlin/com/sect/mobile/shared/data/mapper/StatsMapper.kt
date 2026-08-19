@@ -14,6 +14,12 @@ import com.sect.mobile.shared.data.dto.EvolutionScoreDto
 import com.sect.mobile.shared.data.dto.PerformanceTypeDto
 import com.sect.mobile.shared.data.dto.SessionEnCoursDto
 import com.sect.mobile.shared.data.dto.ResultatDetailDto
+import com.sect.mobile.shared.data.dto.SessionResultatDto
+import com.sect.mobile.shared.data.dto.ResultatReponseDto
+import com.sect.mobile.shared.data.dto.SessionEpreuveRefDto
+import com.sect.mobile.shared.data.dto.SessionEnseignantRefDto
+import com.sect.mobile.shared.data.dto.EpreuveQuestionInfoDto
+import com.sect.mobile.shared.data.dto.EpreuveQuestionDetailDto
 import com.sect.mobile.shared.domain.model.EnseignantStats
 import com.sect.mobile.shared.domain.model.EtudiantStats
 import com.sect.mobile.shared.domain.model.EpreuveAVenirEtudiant
