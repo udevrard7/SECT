@@ -6,9 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.sect.mobile.android.navigation.SECTNavigation
-import com.sect.mobile.android.navigation.DeepLinkHandler
 import com.sect.mobile.android.navigation.DeepLinkTarget
+import com.sect.mobile.android.navigation.SECTNavigation
 import com.sect.mobile.android.theme.SECTTheme
 
 /**
@@ -53,7 +52,7 @@ class MainActivity : ComponentActivity() {
      * La navigation consomme ensuite `pendingDeepLink` via consumePendingDeepLink().
      */
     private fun handleDeepLink(intent: Intent?) {
-        val target = DeepLinkHandler.fromIntent(intent) ?: return
+        val target = DeepLinkTarget.fromIntent(intent) ?: return
         // On ne stocke QUE les cibles résolubles (Unknown → null → toRoute() = null)
         if (target.toRoute() != null) {
             pendingDeepLink = target
