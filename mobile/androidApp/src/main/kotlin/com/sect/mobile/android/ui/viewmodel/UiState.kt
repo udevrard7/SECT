@@ -6,9 +6,6 @@ package com.sect.mobile.android.ui.viewmodel
  * Chaque écran passe par 3 phases : Chargement → Succès (données) ou Erreur
  */
 sealed interface UiState<out T> {
-    /** État initial (avant toute action) — SECT-MOBILE-PARITY-T1 : pour les flux de création */
-    data object Idle : UiState<Nothing>
-
     /** Écran en cours de chargement */
     data object Loading : UiState<Nothing>
 

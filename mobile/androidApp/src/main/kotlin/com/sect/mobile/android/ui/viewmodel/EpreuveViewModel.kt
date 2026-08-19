@@ -32,8 +32,8 @@ class EpreuveViewModel(private val repository: SECTRepositoryInterface) : ViewMo
     val selectedEpreuve: StateFlow<UiState<Epreuve>> = _selectedEpreuve.asStateFlow()
 
     // SECT-MOBILE-PARITY-T1 : état de création (Idle → Loading → Success/Error)
-    private val _createState = MutableStateFlow<UiState<Epreuve>>(UiState.Idle)
-    val createState: StateFlow<UiState<Epreuve>> = _createState.asStateFlow()
+    private val _createState = MutableStateFlow<CreateEpreuveState>(CreateEpreuveState.Idle)
+    val createState: StateFlow<CreateEpreuveState> = _createState.asStateFlow()
 
     init {
         loadEpreuves()
@@ -135,15 +135,15 @@ class EpreuveViewModel(private val repository: SECTRepositoryInterface) : ViewMo
      */
     fun createEpreuve(input: CreateEpreuveInput) {
         viewModelScope.launch {
-            _createState.value = UiState.Loading
+            _createState.value = CreateEpreuveState.Loading
             try {
                 val created = repository.createEpreuve(input)
-                _createState.value = UiState.Success(created)
+                _createState.value = CreateEpreuveState.Success(created)
                 // Rafraîchir la liste pour que la nouvelle épreuve apparaisse
                 _page.value = 1
                 loadEpreuves()
             } catch (e: Exception) {
-                _createState.value = UiState.Error(
+                _createState.value = CreateEpreuveState.Error(
                     e.message ?: "Erreur lors de la création de l'épreuve"
                 )
             }
@@ -152,6 +152,14 @@ class EpreuveViewModel(private val repository: SECTRepositoryInterface) : ViewMo
 
     /** Remet l'état de création à Idle (à appeler quand on quitte le form). */
     fun resetCreateState() {
-        _createState.value = UiState.Idle
+        _createState.value = CreateEpreuveState.Idle
     }
+}
+
+// SECT-MOBILE-PARITY-T1 : état de création d'épreuve (Idle → Loading → Success/Error)
+sealed class CreateEpreuveState {
+    data object Idle : CreateEpreuveState()
+    data object Loading : CreateEpreuveState()
+    data class Success(val epreuve: Epreuve) : CreateEpreuveState()
+    data class Error(val message: String) : CreateEpreuveState()
 }
