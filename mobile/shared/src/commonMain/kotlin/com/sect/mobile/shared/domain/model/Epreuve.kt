@@ -65,3 +65,58 @@ data class Proposition(
     val estCorrecte: Boolean,
     val ordre: Int
 )
+
+// ════════════════════════════════════════════════════════
+// SECT-MOBILE-PARITY-T1 : Inputs de création (domain, pure Kotlin)
+// Miroir du backend domain.CreateEpreuveInput (Go).
+// Les champs requis correspondent aux validations de EpreuveUseCase.Create.
+// ════════════════════════════════════════════════════════
+
+/**
+ * Input de création d'une épreuve (POST /api/epreuves).
+ *
+ * Champs requis (validés côté backend) :
+ * - enseignantId, titre, duree (>0), dateDebut, dateFin, uniteEnseignementId
+ *
+ * Le statut est forcé à BROUILLON côté backend (non settable ici).
+ * Les dates sont des chaînes ISO (le backend parse en time.Time).
+ *
+ * @param enseignantId ID de l'enseignant créateur (doit = user connecté pour rôle ENSEIGNANT)
+ * @param titre Titre de l'épreuve
+ * @param duree Durée en minutes (>0)
+ * @param dateDebut ISO datetime (ex: "2026-09-01T08:00:00Z")
+ * @param dateFin ISO datetime
+ * @param uniteEnseignementId ID de l'UE (requis, non vide)
+ * @param description Description optionnelle
+ * @param melangeQuestions Mélanger l'ordre des questions (null = false côté DB)
+ * @param melangePropositions Mélanger les propositions (null = false)
+ * @param blocageRetour Bloquer le retour arrière (null = false)
+ * @param filiereId ID de filière optionnel
+ * @param niveau Niveau optionnel
+ * @param sessionExamen NORMALE | RATTRAPAGE | SPECIALE | EXCEPTIONNELLE | DIFFERE (null = "NORMALE")
+ * @param anneeAcademiqueId ID d'année académique optionnel
+ * @param generationMode MANUELLE | IA_ASSISTEE (null = "MANUELLE")
+ * @param noteTotal Note totale sur 20 par défaut
+ * @param delaiGrace Délai de grâce en minutes
+ * @param documentIds IDs de documents attachés
+ */
+data class CreateEpreuveInput(
+    val enseignantId: String,
+    val titre: String,
+    val duree: Int,
+    val dateDebut: String,
+    val dateFin: String,
+    val uniteEnseignementId: String,
+    val description: String? = null,
+    val melangeQuestions: Boolean? = null,
+    val melangePropositions: Boolean? = null,
+    val blocageRetour: Boolean? = null,
+    val filiereId: String? = null,
+    val niveau: String? = null,
+    val sessionExamen: String? = null,
+    val anneeAcademiqueId: String? = null,
+    val generationMode: String? = null,
+    val noteTotal: Double? = null,
+    val delaiGrace: Int? = null,
+    val documentIds: List<String>? = null
+)

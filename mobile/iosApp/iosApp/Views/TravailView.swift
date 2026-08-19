@@ -11,6 +11,8 @@ import Shared
 struct TravailView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var selectedTab = 0
+    @State private var showCreateEpreuve = false
+    @State private var showCreateDevoir = false
 
     private var isEnseignant: Bool {
         authViewModel.currentUser?.role == .enseignant
@@ -38,12 +40,12 @@ struct TravailView: View {
                     if isEnseignant {
                         Menu {
                             Button {
-                                // TODO: create epreuve
+                                showCreateEpreuve = true
                             } label: {
                                 Label("Nouvelle épreuve", systemImage: "doc.badge.plus")
                             }
                             Button {
-                                // TODO: create devoir
+                                showCreateDevoir = true
                             } label: {
                                 Label("Nouveau devoir", systemImage: "doc.text.badge.plus")
                             }
@@ -52,6 +54,13 @@ struct TravailView: View {
                         }
                     }
                 }
+            }
+            // SECT-MOBILE-PARITY-T1 : présentation des formulaires de création
+            .sheet(isPresented: $showCreateEpreuve) {
+                CreateEpreuveView()
+            }
+            .sheet(isPresented: $showCreateDevoir) {
+                CreateDevoirView()
             }
         }
     }

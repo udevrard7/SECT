@@ -4,6 +4,7 @@ package com.sect.mobile.android.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Epreuve
+import com.sect.mobile.shared.domain.model.CreateEpreuveInput
 import com.sect.mobile.shared.domain.model.Question
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
@@ -29,6 +30,10 @@ class EpreuveViewModel(private val repository: SECTRepositoryInterface) : ViewMo
     // ── Détail d'épreuve ──
     private val _selectedEpreuve = MutableStateFlow<UiState<Epreuve>>(UiState.Loading)
     val selectedEpreuve: StateFlow<UiState<Epreuve>> = _selectedEpreuve.asStateFlow()
+
+    // SECT-MOBILE-PARITY-T1 : état de création (Idle → Loading → Success/Error)
+    private val _createState = MutableStateFlow<UiState<Epreuve>>(UiState.Idle)
+    val createState: StateFlow<UiState<Epreuve>> = _createState.asStateFlow()
 
     init {
         loadEpreuves()
@@ -117,4 +122,36 @@ class EpreuveViewModel(private val repository: SECTRepositoryInterface) : ViewMo
         "TERMINEE" to "Terminée",
         "CLOTUREE" to "Clôturée"
     )
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY-T1 : Création d'épreuve (enseignant)
+    // ════════════════════════════════════════════════════════
+
+    /**
+     * Crée une épreuve via POST /api/epreuves.
+     * - Passe par CreateEpreuveInput (domain) → CreateEpreuveRequest (DTO) → API.
+     * - Sur succès, rafraîchit la liste automatiquement.
+     * - L'état _createState passe à Success(createdEpreuve) pour que le form puisse fermer.
+     */
+    fun createEpreuve(input: CreateEpreuveInput) {
+        viewModelScope.launch {
+            _createState.value = UiState.Loading
+            try {
+                val created = repository.createEpreuve(input)
+                _createState.value = UiState.Success(created)
+                // Rafraîchir la liste pour que la nouvelle épreuve apparaisse
+                _page.value = 1
+                loadEpreuves()
+            } catch (e: Exception) {
+                _createState.value = UiState.Error(
+                    e.message ?: "Erreur lors de la création de l'épreuve"
+                )
+            }
+        }
+    }
+
+    /** Remet l'état de création à Idle (à appeler quand on quitte le form). */
+    fun resetCreateState() {
+        _createState.value = UiState.Idle
+    }
 }
