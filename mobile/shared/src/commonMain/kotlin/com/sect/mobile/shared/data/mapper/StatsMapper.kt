@@ -159,7 +159,7 @@ fun SessionResultatDto.toDomain(): SessionResultat = SessionResultat(
     epreuve = epreuve?.toDomain()
 )
 
-fun ReponseDto.toDomain(): ReponseResultat = ReponseResultat(
+fun ResultatReponseDto.toDomain(): ReponseResultat = ReponseResultat(
     id = id,
     questionId = questionId,
     contenu = contenu,
