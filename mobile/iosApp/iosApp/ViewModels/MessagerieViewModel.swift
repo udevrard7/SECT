@@ -25,6 +25,10 @@ class MessagerieViewModel: ObservableObject {
         error = nil
         do {
             conversations = try await repository.listConversations()
+            // SECT-MOBILE-PARITY-T1-ACTIVATION : alimenter le BadgeManager partagé
+            // (était dead code avant — le badge Messages restait toujours à 0)
+            let totalUnread = conversations.reduce(0) { $0 + Int($1.unreadCount) }
+            await MainActor.run { BadgeManager.shared.setUnreadMessages(totalUnread) }
         } catch {
             self.error = error.localizedDescription
         }
@@ -34,6 +38,9 @@ class MessagerieViewModel: ObservableObject {
     func selectConversation(_ conversation: Conversation) async {
         selectedConversation = conversation
         await loadMessages()
+        // SECT-MOBILE-PARITY-T1-ACTIVATION : marquer comme lue côté backend
+        // + rafraîchir la liste pour recalculer les unreadCount (était jamais appelé avant)
+        await markAsRead(conversationId: conversation.id)
     }
 
     // ── Messages ──
@@ -276,7 +283,9 @@ class MessagerieViewModel: ObservableObject {
             if conversationId == activeConvId { await loadMessages() }
 
         case "read":
-            // Conversation marquée comme lue : rafraîchir les unread
+            // Conversation marquée comme lue : rafraîchir les unread + badge.
+            // SECT-MOBILE-PARITY-T1-ACTIVATION : loadConversations() alimente
+            // maintenant BadgeManager.shared.setUnreadMessages() automatiquement.
             await loadConversations()
 
         case "typing":

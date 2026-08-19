@@ -22,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.sect.mobile.android.MainActivity
 import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
@@ -162,7 +163,7 @@ fun SECTNavigation(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    
+
     // Récupérer le rôle utilisateur pour la navigation conditionnelle
     val authVM: AuthViewModel = koinViewModel()
     val authState by authVM.authState.collectAsState()
@@ -173,7 +174,30 @@ fun SECTNavigation(
 
     // Rôle typé pour NavigationPolicy (shared KMP)
     val mobileRole = if (isEnseignant) MobileRole.ENSEIGNANT else MobileRole.ETUDIANT
-    
+
+    // ── SECT-MOBILE-PARITY-T1-ACTIVATION : consommation deep-link ──
+    // Au premier composition (ou quand l'auth devient Authenticated), on consomme
+    // un éventuel deep-link en attente (tap depuis notifications/Safari/adb) et on
+    // navigue vers sa route. Le deep-link est posé par MainActivity.onCreate/onNewIntent.
+    LaunchedEffect(authState) {
+        // Peek sans consommer — on ne consomme QUE si l'utilisateur est authentifié
+        val target = MainActivity.peekPendingDeepLink() ?: return@LaunchedEffect
+        if (authState is AuthState.Authenticated) {
+            MainActivity.consumePendingDeepLink()
+            target.toRoute()?.let { route ->
+                navController.navigate(route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
+        // Sinon : on laisse le deep-link en attente — il sera re-testé à la prochaine
+        // transition d'authState (Authenticated arrivera après login).
+    }
+
     // Déterminer les items de navigation selon le rôle
     val navItems = getNavItemsForRole(isEnseignant = isEnseignant)
     

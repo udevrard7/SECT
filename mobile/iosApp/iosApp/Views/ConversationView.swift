@@ -3,7 +3,10 @@ import SwiftUI
 import Shared
 
 struct ConversationView: View {
-    @StateObject var viewModel = MessagerieViewModel()
+    // SECT-MOBILE-PARITY-T1-ACTIVATION : utiliser l'instance partagée @EnvironmentObject
+    // (avant c'était @StateObject = MessagerieViewModel() → instance fraîche à chaque push,
+    // le SSE tournait sur l'ancienne instance qui ne voyait pas selectedConversation).
+    @EnvironmentObject var viewModel: MessagerieViewModel
     let conversation: Conversation
 
     @FocusState private var isInputFocused: Bool

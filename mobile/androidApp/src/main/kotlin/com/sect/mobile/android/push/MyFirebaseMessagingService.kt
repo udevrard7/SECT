@@ -157,10 +157,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     /**
      * Build a deep link intent based on the data payload.
      *
-     * Supported deep links:
-     * - epreuveId    → sect://epreuve/{id}
-     * - sessionId    → sect://session/{id}
-     * - conversationId → sect://conversation/{id}
+     * Supported deep links (SECT-MOBILE-PARITY-T1-ACTIVATION : hosts alignés avec le parser
+     * DeepLinkHandler — avant c'était sect://epreuve/ et sect://session/ qui tombaient sur Unknown) :
+     * - epreuveId      → sect://epreuves/{id}        (pluriel, parser host "epreuves")
+     * - sessionId      → sect://corrections/{id}      (parser host "corrections")
+     * - conversationId → sect://messagerie/{id}       (parser host "messagerie")
      */
     private fun buildDeepLinkIntent(data: Map<String, String>): Intent {
         val epreuveId = data[KEY_EPREUVE_ID]
@@ -168,9 +169,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         val conversationId = data[KEY_CONVERSATION_ID]
 
         val deepLink = when {
-            epreuveId != null -> "sect://epreuve/$epreuveId"
-            sessionId != null -> "sect://session/$sessionId"
-            conversationId != null -> "sect://conversation/$conversationId"
+            epreuveId != null -> "sect://epreuves/$epreuveId"
+            sessionId != null -> "sect://corrections/$sessionId"
+            conversationId != null -> "sect://messagerie/$conversationId"
             else -> null
         }
 
