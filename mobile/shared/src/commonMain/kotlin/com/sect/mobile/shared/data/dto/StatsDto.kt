@@ -120,6 +120,78 @@ data class ResultatDetailDto(
     val commentaires: String? = null
 )
 
+// ════════════════════════════════════════════════════════
+// SECT-MOBILE-PARITY-R2 : Détail par question
+// ════════════════════════════════════════════════════════
+
+/**
+ * DTO pour une session de passation avec détail (Phase R2).
+ * Miroir du backend domain.SessionPassation enrichi.
+ *
+ * Source : GET /api/resultats?epreuveId=X → { sessions: [...] }
+ * Chaque session contient : reponses + resultat + epreuve (avec questions).
+ */
+@Serializable
+data class SessionResultatDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("etudiantId") val etudiantId: String = "",
+    @SerialName("epreuveId") val epreuveId: String = "",
+    @SerialName("statut") val statut: String = "",
+    @SerialName("dateDebut") val dateDebut: String? = null,
+    @SerialName("dateFin") val dateFin: String? = null,
+    @SerialName("score") val score: Double? = null,
+    @SerialName("alertes") val alertes: Int = 0,
+    @SerialName("penalite") val penalite: Double = 0.0,
+    @SerialName("reponses") val reponses: List<ReponseDto> = emptyList(),
+    @SerialName("resultat") val resultat: ResultatDetailDto? = null,
+    @SerialName("epreuve") val epreuve: SessionEpreuveRefDto? = null
+)
+
+@Serializable
+data class ReponseDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("questionId") val questionId: String = "",
+    @SerialName("contenu") val contenu: String? = null,
+    @SerialName("score") val score: Double? = null,
+    @SerialName("commentaire") val commentaire: String? = null,
+    @SerialName("noteIA") val noteIA: Double? = null,
+    @SerialName("justificationIA") val justificationIA: String? = null
+)
+
+@Serializable
+data class SessionEpreuveRefDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("titre") val titre: String = "",
+    @SerialName("description") val description: String? = null,
+    @SerialName("duree") val duree: Int = 0,
+    @SerialName("noteTotal") val noteTotal: Double = 20.0,
+    @SerialName("enseignant") val enseignant: SessionEnseignantRefDto? = null,
+    @SerialName("questions") val questions: List<EpreuveQuestionInfoDto> = emptyList()
+)
+
+@Serializable
+data class SessionEnseignantRefDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("name") val name: String = ""
+)
+
+@Serializable
+data class EpreuveQuestionInfoDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("questionId") val questionId: String = "",
+    @SerialName("bareme") val bareme: Double = 0.0,
+    @SerialName("ordre") val ordre: Int = 0,
+    @SerialName("question") val question: EpreuveQuestionDetailDto? = null
+)
+
+@Serializable
+data class EpreuveQuestionDetailDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("type") val type: String = "",
+    @SerialName("enonce") val enonce: String = "",
+    @SerialName("difficulte") val difficulte: String? = null
+)
+
 @Serializable
 data class EvolutionScoreDto(
     val titre: String,

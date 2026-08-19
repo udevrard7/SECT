@@ -140,6 +140,61 @@ fun ResultatDetailDto.toDomain(): ResultatDetail {
     )
 }
 
+// ════════════════════════════════════════════════════════
+// SECT-MOBILE-PARITY-R2 : Mappers pour le détail par question
+// ════════════════════════════════════════════════════════
+
+fun SessionResultatDto.toDomain(): SessionResultat = SessionResultat(
+    id = id,
+    etudiantId = etudiantId,
+    epreuveId = epreuveId,
+    statut = statut,
+    dateDebut = dateDebut,
+    dateFin = dateFin,
+    score = score,
+    alertes = alertes,
+    penalite = penalite,
+    reponses = reponses.map { it.toDomain() },
+    resultat = resultat?.toDomain(),
+    epreuve = epreuve?.toDomain()
+)
+
+fun ReponseDto.toDomain(): ReponseResultat = ReponseResultat(
+    id = id,
+    questionId = questionId,
+    contenu = contenu,
+    score = score,
+    commentaire = commentaire,
+    noteIA = noteIA,
+    justificationIA = justificationIA
+)
+
+fun SessionEpreuveRefDto.toDomain(): SessionEpreuveRef = SessionEpreuveRef(
+    id = id,
+    titre = titre,
+    description = description,
+    duree = duree,
+    noteTotal = noteTotal,
+    enseignant = enseignant?.toDomain(),
+    questions = questions.map { it.toDomain() }
+)
+
+fun SessionEnseignantRefDto.toDomain(): SessionEnseignantRef = SessionEnseignantRef(
+    id = id, name = name
+)
+
+fun EpreuveQuestionInfoDto.toDomain(): EpreuveQuestionInfo = EpreuveQuestionInfo(
+    id = id,
+    questionId = questionId,
+    bareme = bareme,
+    ordre = ordre,
+    question = question?.toDomain()
+)
+
+fun EpreuveQuestionDetailDto.toDomain(): EpreuveQuestionDetail = EpreuveQuestionDetail(
+    id = id, type = type, enonce = enonce, difficulte = difficulte
+)
+
 fun EvolutionScoreDto.toDomain(): EvolutionScore {
     return EvolutionScore(
         titre = this.titre,

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
 import com.sect.mobile.shared.domain.model.Resultat
 import com.sect.mobile.shared.domain.model.ResultatDetail
+import com.sect.mobile.shared.domain.model.SessionResultat
 import com.sect.mobile.shared.domain.model.EtudiantStats
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,10 @@ class ResultatsViewModel(
     // SECT-MOBILE-PARITY-R1 : état du détail
     private val _detailState = MutableStateFlow<ResultatDetailUiState>(ResultatDetailUiState.Idle)
     val detailState: StateFlow<ResultatDetailUiState> = _detailState.asStateFlow()
+
+    // SECT-MOBILE-PARITY-R2 : état du détail complet avec réponses
+    private val _sessionState = MutableStateFlow<SessionDetailUiState>(SessionDetailUiState.Idle)
+    val sessionState: StateFlow<SessionDetailUiState> = _sessionState.asStateFlow()
 
     init {
         loadResultats()
@@ -60,6 +65,27 @@ class ResultatsViewModel(
     fun resetDetail() {
         _detailState.value = ResultatDetailUiState.Idle
     }
+
+    // SECT-MOBILE-PARITY-R2 : charger le détail complet avec réponses par question
+    fun loadSessionDetail(epreuveId: String) {
+        _sessionState.value = SessionDetailUiState.Loading
+        viewModelScope.launch {
+            try {
+                val session = repository.getSessionDetail(epreuveId)
+                if (session != null) {
+                    _sessionState.value = SessionDetailUiState.Success(session)
+                } else {
+                    _sessionState.value = SessionDetailUiState.Error("Session introuvable")
+                }
+            } catch (e: Exception) {
+                _sessionState.value = SessionDetailUiState.Error(e.message ?: "Erreur")
+            }
+        }
+    }
+
+    fun resetSessionDetail() {
+        _sessionState.value = SessionDetailUiState.Idle
+    }
 }
 
 sealed class ResultatsUiState {
@@ -77,4 +103,12 @@ sealed class ResultatDetailUiState {
     object Loading : ResultatDetailUiState()
     data class Success(val detail: ResultatDetail) : ResultatDetailUiState()
     data class Error(val message: String) : ResultatDetailUiState()
+}
+
+// SECT-MOBILE-PARITY-R2 : état du détail complet avec réponses par question
+sealed class SessionDetailUiState {
+    object Idle : SessionDetailUiState()
+    object Loading : SessionDetailUiState()
+    data class Success(val session: SessionResultat) : SessionDetailUiState()
+    data class Error(val message: String) : SessionDetailUiState()
 }
