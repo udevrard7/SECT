@@ -14,7 +14,23 @@ import com.sect.mobile.shared.data.dto.EvolutionScoreDto
 import com.sect.mobile.shared.data.dto.PerformanceTypeDto
 import com.sect.mobile.shared.data.dto.SessionEnCoursDto
 import com.sect.mobile.shared.data.dto.ResultatDetailDto
-import com.sect.mobile.shared.domain.model.*
+import com.sect.mobile.shared.domain.model.EnseignantStats
+import com.sect.mobile.shared.domain.model.EtudiantStats
+import com.sect.mobile.shared.domain.model.EpreuveAVenirEtudiant
+import com.sect.mobile.shared.domain.model.EvolutionScore
+import com.sect.mobile.shared.domain.model.PerformanceData
+import com.sect.mobile.shared.domain.model.PerformanceType
+import com.sect.mobile.shared.domain.model.PendingCorrection
+import com.sect.mobile.shared.domain.model.RecentEpreuve
+import com.sect.mobile.shared.domain.model.ResultatDetail
+import com.sect.mobile.shared.domain.model.ResultatRecent
+import com.sect.mobile.shared.domain.model.SessionEnCours
+import com.sect.mobile.shared.domain.model.SessionResultat
+import com.sect.mobile.shared.domain.model.ReponseResultat
+import com.sect.mobile.shared.domain.model.SessionEpreuveRef
+import com.sect.mobile.shared.domain.model.SessionEnseignantRef
+import com.sect.mobile.shared.domain.model.EpreuveQuestionInfo
+import com.sect.mobile.shared.domain.model.EpreuveQuestionDetail
 
 /**
  * Mapper pour les statistiques Enseignant
