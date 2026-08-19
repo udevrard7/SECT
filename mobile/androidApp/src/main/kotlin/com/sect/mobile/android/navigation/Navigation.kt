@@ -26,6 +26,8 @@ import com.sect.mobile.android.ui.screens.*
 import com.sect.mobile.android.ui.screens.corrections.CorrectionDetailScreen
 import com.sect.mobile.android.ui.screens.corrections.CorrectionsScreen
 import com.sect.mobile.android.ui.screens.devoirs.DevoirDetailScreen
+import com.sect.mobile.android.ui.screens.devoirs.DevoirFormScreen
+import com.sect.mobile.android.ui.screens.epreuves.EpreuveFormScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepAudioScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepDocumentsScreen
 import com.sect.mobile.android.ui.screens.examprep.ExamPrepFlashcardsScreen
@@ -134,6 +136,9 @@ object Routes {
     const val DEVOIR_DETAIL = "devoirs/{devoirId}"
     // SECT-MOBILE-PARITY-R1 : Résultat détail par epreuveId
     const val RESULTAT_DETAIL = "resultats/{epreuveId}"
+    // SECT-MOBILE-PARITY-T1 : Création enseignant (épreuve + devoir)
+    const val EPREUVE_CREATE = "epreuves/create"
+    const val DEVOIR_CREATE = "devoirs/create"
 
     // SECT-EXAMPREP-CONTRACT-F2 : ExamPrep (Vague 1)
     const val EXAM_PREP_HOME = "examprep/home"
@@ -282,8 +287,26 @@ fun SECTNavigation(
                     isEnseignant = isEnseignant,
                     onNavigateToEpreuveDetail = { id -> navController.navigate("epreuves/$id") },
                     onNavigateToDevoirDetail = { id -> navController.navigate("devoirs/$id") }, // SECT-MOBILE-PARITY : route détail dédiée aux devoirs
-                    onCreateEpreuve = { /* SECT-NAV-AUDIT-FIX : CreateEpreuveView iOS existe, Android utilise une sheet/dialog */ },
-                    onCreateDevoir = { /* SECT-NAV-AUDIT-FIX : création devoir à implémenter (backend endpoint existe : POST /api/devoirs) */ }
+                    // SECT-MOBILE-PARITY-T1 : création enseignant branchée
+                    onCreateEpreuve = { navController.navigate(Routes.EPREUVE_CREATE) },
+                    onCreateDevoir = { navController.navigate(Routes.DEVOIR_CREATE) }
+                )
+            }
+
+            // SECT-MOBILE-PARITY-T1 : Formulaire création épreuve (enseignant)
+            composable(Routes.EPREUVE_CREATE) {
+                EpreuveFormScreen(
+                    enseignantId = currentUser?.id ?: "",
+                    onSuccess = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // SECT-MOBILE-PARITY-T1 : Formulaire création devoir (enseignant)
+            composable(Routes.DEVOIR_CREATE) {
+                DevoirFormScreen(
+                    onSuccess = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
                 )
             }
 

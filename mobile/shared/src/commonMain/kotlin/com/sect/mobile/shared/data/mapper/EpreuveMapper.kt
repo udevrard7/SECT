@@ -1,6 +1,7 @@
 // SECT Mobile — Epreuve DTO ↔ Domain mappers
 package com.sect.mobile.shared.data.mapper
 
+import com.sect.mobile.shared.data.dto.CreateEpreuveRequest
 import com.sect.mobile.shared.data.dto.EpreuveDto
 import com.sect.mobile.shared.data.dto.PropositionDto
 import com.sect.mobile.shared.data.dto.QuestionDto
@@ -9,6 +10,7 @@ import com.sect.mobile.shared.domain.enum.ModeGeneration
 import com.sect.mobile.shared.domain.enum.SessionExamen
 import com.sect.mobile.shared.domain.enum.StatutEpreuve
 import com.sect.mobile.shared.domain.enum.TypeQuestion
+import com.sect.mobile.shared.domain.model.CreateEpreuveInput
 import com.sect.mobile.shared.domain.model.Epreuve
 import com.sect.mobile.shared.domain.model.Proposition
 import com.sect.mobile.shared.domain.model.Question
@@ -133,4 +135,32 @@ fun Proposition.toDto() = PropositionDto(
     texte = texte,
     estCorrecte = estCorrecte,
     ordre = ordre
+)
+
+// ── SECT-MOBILE-PARITY-T1 : Domain input → Create request DTO ──
+
+/**
+ * Convertit un CreateEpreuveInput (domain) en CreateEpreuveRequest (DTO sérialisable).
+ * Les valeurs null sont omises côté JSON (explicitNulls=false).
+ * Les défauts sessionExamen/generationMode sont remplis si null côté input.
+ */
+fun CreateEpreuveInput.toRequest() = CreateEpreuveRequest(
+    enseignantId = enseignantId,
+    titre = titre,
+    duree = duree,
+    dateDebut = dateDebut,
+    dateFin = dateFin,
+    uniteEnseignementId = uniteEnseignementId,
+    description = description,
+    melangeQuestions = melangeQuestions,
+    melangePropositions = melangePropositions,
+    blocageRetour = blocageRetour,
+    filiereId = filiereId,
+    niveau = niveau,
+    sessionExamen = sessionExamen ?: "NORMALE",
+    anneeAcademiqueId = anneeAcademiqueId,
+    generationMode = generationMode ?: "MANUELLE",
+    noteTotal = noteTotal,
+    delaiGrace = delaiGrace,
+    documentIds = documentIds
 )

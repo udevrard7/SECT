@@ -6,7 +6,6 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
-
 class EpreuveApi(private val client: HttpClient) {
 
     /**
@@ -45,8 +44,10 @@ class EpreuveApi(private val client: HttpClient) {
     /**
      * Créer une épreuve.
      * POST /api/epreuves — réponse wrappée : { epreuve: {...}, message }
+     *
+     * SECT-MOBILE-PARITY-T1 : signature typée (CreateEpreuveRequest) au lieu de Map<String,Any?>.
      */
-    suspend fun create(input: Map<String, Any?>): EpreuveDto {
+    suspend fun create(input: CreateEpreuveRequest): EpreuveDto {
         val response: EpreuveMutationResponseDto = client.post("/api/epreuves") {
             setBody(input)
         }.body()

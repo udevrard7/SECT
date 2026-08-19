@@ -3,7 +3,6 @@
 package com.sect.mobile.shared.data.repository
 
 import com.sect.mobile.shared.cache.TokenCache
-import com.sect.mobile.shared.data.dto.CreateDevoirRequest
 import com.sect.mobile.shared.data.dto.CredentialsDto
 import com.sect.mobile.shared.data.dto.SubmitDevoirRequest
 import com.sect.mobile.shared.data.mapper.*
@@ -102,7 +101,10 @@ class SECTRepositoryImpl(
 
     override suspend fun getEpreuve(id: String): Epreuve = epreuveApi.get(id).toDomain()
 
-    override suspend fun createEpreuve(input: Map<String, Any?>): Epreuve = epreuveApi.create(input).toDomain()
+    override suspend fun createEpreuve(input: CreateEpreuveInput): Epreuve {
+        val request = input.toRequest()
+        return epreuveApi.create(request).toDomain()
+    }
 
     override suspend fun updateEpreuve(id: String, input: Map<String, Any?>): Epreuve = epreuveApi.update(id, input).toDomain()
 
@@ -235,27 +237,15 @@ class SECTRepositoryImpl(
     override suspend fun getDevoir(id: String): Devoir = 
         devoirApi.get(id).toDomain()
     
-    override suspend fun createDevoir(
-        titre: String,
-        description: String?,
-        dateLimite: String,
-        pointsMax: Int,
-        fichierUrl: String?
-    ): Devoir {
-        val input = CreateDevoirRequest(titre, description, dateLimite, pointsMax, fichierUrl)
-        return devoirApi.create(input).toDomain()
+    // SECT-MOBILE-PARITY-T1 : création typée (CreateDevoirInput → CreateDevoirRequest)
+    override suspend fun createDevoir(input: CreateDevoirInput): Devoir {
+        val request = input.toRequest()
+        return devoirApi.create(request).toDomain()
     }
     
-    override suspend fun updateDevoir(
-        id: String,
-        titre: String,
-        description: String?,
-        dateLimite: String,
-        pointsMax: Int,
-        fichierUrl: String?
-    ): Devoir {
-        val input = CreateDevoirRequest(titre, description, dateLimite, pointsMax, fichierUrl)
-        return devoirApi.update(id, input).toDomain()
+    override suspend fun updateDevoir(id: String, input: CreateDevoirInput): Devoir {
+        val request = input.toRequest()
+        return devoirApi.update(id, request).toDomain()
     }
     
     override suspend fun deleteDevoir(id: String) = 

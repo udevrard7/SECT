@@ -93,3 +93,41 @@ data class EpreuveMutationResponseDto(
     val epreuve: EpreuveDto,
     val message: String? = null
 )
+
+// ════════════════════════════════════════════════════════
+// SECT-MOBILE-PARITY-T1 : DTO de création d'épreuve
+// Miroir du backend domain.CreateEpreuveInput (epreuve.go:297-318).
+// Les noms de champs correspondent EXACTEMENT aux tags JSON Go (camelCase).
+// ════════════════════════════════════════════════════════
+
+/**
+ * Corps de requête POST /api/epreuves.
+ *
+ * Rôle : ENSEIGNANT, ADMIN, RESPONSABLE.
+ * Réponse 201 : { epreuve: EpreuveDto, message: "Épreuve créée avec succès" }.
+ *
+ * Champs requis : enseignantId, titre, duree(>0), dateDebut, dateFin, uniteEnseignementId.
+ * sessionExamen et generationMode ont des défauts (encodeDefaults=true les enverra).
+ * Les champs nullables null sont omis (explicitNulls=false).
+ */
+@Serializable
+data class CreateEpreuveRequest(
+    val enseignantId: String,
+    val titre: String,
+    val duree: Int,
+    val dateDebut: String,
+    val dateFin: String,
+    val uniteEnseignementId: String,
+    val description: String? = null,
+    val melangeQuestions: Boolean? = null,
+    val melangePropositions: Boolean? = null,
+    val blocageRetour: Boolean? = null,
+    val filiereId: String? = null,
+    val niveau: String? = null,
+    val sessionExamen: String = "NORMALE",
+    val anneeAcademiqueId: String? = null,
+    val generationMode: String = "MANUELLE",
+    val noteTotal: Double? = null,
+    val delaiGrace: Int? = null,
+    val documentIds: List<String>? = null
+)

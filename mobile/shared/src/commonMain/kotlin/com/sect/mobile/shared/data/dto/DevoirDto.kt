@@ -33,10 +33,19 @@ data class SoumissionDto(
 @Serializable
 data class CreateDevoirRequest(
     val titre: String,
-    val description: String?,
+    val uniteEnseignementId: String,
     val dateLimite: String,
-    val pointsMax: Int,
-    val fichierUrl: String?
+    val description: String? = null,
+    val consignes: String? = null,
+    val enseignantId: String? = null,
+    val typeSeance: String = "TD",
+    val datePublication: String? = null,
+    val noteMax: Double = 20.0,
+    val renduFichiers: String? = null,
+    val soumissionGroupe: Boolean = false,
+    val nbMaxFichiers: Int = 5,
+    val tailleMaxFichier: Int = 10_485_760,
+    val anneeUniversitaire: String = "2024-2025"
 )
 
 @Serializable

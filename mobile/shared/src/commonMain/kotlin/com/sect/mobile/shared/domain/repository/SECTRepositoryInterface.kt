@@ -18,7 +18,8 @@ interface SECTRepositoryInterface : AuthRepository {
     // Epreuves
     suspend fun listEpreuves(search: String? = null, statut: String? = null, filiereId: String? = null, page: Int = 1, limit: Int = 20): List<Epreuve>
     suspend fun getEpreuve(id: String): Epreuve
-    suspend fun createEpreuve(input: Map<String, Any?>): Epreuve
+    // SECT-MOBILE-PARITY-T1 : création typée (remplace Map<String,Any?>)
+    suspend fun createEpreuve(input: CreateEpreuveInput): Epreuve
     suspend fun updateEpreuve(id: String, input: Map<String, Any?>): Epreuve
     suspend fun deleteEpreuve(id: String)
     suspend fun getEpreuveSessions(epreuveId: String): List<SessionPassation>
@@ -66,8 +67,9 @@ interface SECTRepositoryInterface : AuthRepository {
     // Devoirs & Soumissions
     suspend fun listDevoirs(search: String? = null, statut: String? = null, page: Int = 1, limit: Int = 20): List<Devoir>
     suspend fun getDevoir(id: String): Devoir
-    suspend fun createDevoir(titre: String, description: String?, dateLimite: String, pointsMax: Int, fichierUrl: String?): Devoir
-    suspend fun updateDevoir(id: String, titre: String, description: String?, dateLimite: String, pointsMax: Int, fichierUrl: String?): Devoir
+    // SECT-MOBILE-PARITY-T1 : création typée (remplace les 5 params positionnels cassés)
+    suspend fun createDevoir(input: CreateDevoirInput): Devoir
+    suspend fun updateDevoir(id: String, input: CreateDevoirInput): Devoir
     suspend fun deleteDevoir(id: String)
     suspend fun getPresignedUrl(fileName: String, contentType: String): PresignedUrl
     suspend fun submitDevoir(devoirId: String, fichierUrl: String, commentaire: String?): Soumission

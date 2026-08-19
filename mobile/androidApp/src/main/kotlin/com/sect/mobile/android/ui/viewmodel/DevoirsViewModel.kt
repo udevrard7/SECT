@@ -3,6 +3,7 @@ package com.sect.mobile.android.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sect.mobile.shared.domain.model.Devoir
+import com.sect.mobile.shared.domain.model.CreateDevoirInput
 import com.sect.mobile.shared.domain.model.PresignedUrl
 import com.sect.mobile.shared.domain.model.Soumission
 import com.sect.mobile.shared.domain.repository.SECTRepositoryInterface
@@ -21,13 +22,25 @@ sealed class DevoirsUiState {
     data class Error(val message: String) : DevoirsUiState()
 }
 
+// SECT-MOBILE-PARITY-T1 : état de création de devoir (Idle → Loading → Success/Error)
+sealed class CreateDevoirState {
+    data object Idle : CreateDevoirState()
+    data object Loading : CreateDevoirState()
+    data class Success(val devoir: Devoir) : CreateDevoirState()
+    data class Error(val message: String) : CreateDevoirState()
+}
+
 class DevoirsViewModel(
     private val repository: SECTRepositoryInterface
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow<DevoirsUiState>(DevoirsUiState.Loading)
     val uiState: StateFlow<DevoirsUiState> = _uiState.asStateFlow()
-    
+
+    // SECT-MOBILE-PARITY-T1 : état création de devoir
+    private val _createState = MutableStateFlow<CreateDevoirState>(CreateDevoirState.Idle)
+    val createState: StateFlow<CreateDevoirState> = _createState.asStateFlow()
+
     private var currentPage = 1
     private val pageSize = 20
     
@@ -123,5 +136,36 @@ class DevoirsViewModel(
         viewModelScope.launch {
             try { repository.aiGradeSoumission(soumissionId) } catch (_: Exception) {}
         }
+    }
+
+    // ════════════════════════════════════════════════════════
+    // SECT-MOBILE-PARITY-T1 : Création de devoir (enseignant)
+    // ════════════════════════════════════════════════════════
+
+    /**
+     * Crée un devoir via POST /api/devoirs.
+     * - CreateDevoirInput (domain) → CreateDevoirRequest (DTO) → API.
+     * - Sur succès, rafraîchit la liste.
+     * - Rôle : ENSEIGNANT uniquement (validé côté backend).
+     */
+    fun createDevoir(input: CreateDevoirInput) {
+        viewModelScope.launch {
+            _createState.value = CreateDevoirState.Loading
+            try {
+                val created = repository.createDevoir(input)
+                _createState.value = CreateDevoirState.Success(created)
+                // Rafraîchir la liste
+                loadDevoirs(refresh = true)
+            } catch (e: Exception) {
+                _createState.value = CreateDevoirState.Error(
+                    e.message ?: "Erreur lors de la création du devoir"
+                )
+            }
+        }
+    }
+
+    /** Remet l'état de création à Idle (à appeler quand on quitte le form). */
+    fun resetCreateState() {
+        _createState.value = CreateDevoirState.Idle
     }
 }

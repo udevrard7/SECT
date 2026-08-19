@@ -14,6 +14,7 @@ struct EpreuvesView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var searchText = ""
     @State private var selectedFilter: StatutEpreuve? = nil
+    @State private var showCreateEpreuve = false
     
     private var isEnseignant: Bool {
         authViewModel.currentUser?.role == .enseignant
@@ -65,7 +66,9 @@ struct EpreuvesView: View {
                 
                 if isEnseignant {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        NavigationLink(destination: CreateEpreuveView()) {
+                        Button {
+                            showCreateEpreuve = true
+                        } label: {
                             Image(systemName: "plus.circle.fill")
                                 .foregroundColor(.sectGreen)
                         }
@@ -74,6 +77,10 @@ struct EpreuvesView: View {
             }
             .onAppear {
                 Task { await viewModel.loadEpreuves() }
+            }
+            // SECT-MOBILE-PARITY-T1 : création épreuve via sheet
+            .sheet(isPresented: $showCreateEpreuve) {
+                CreateEpreuveView()
             }
         }
     }
@@ -340,38 +347,48 @@ struct InfoLabel: View {
     }
 }
 
-// MARK: - Create Epreuve View (Placeholder)
+// MARK: - Create Epreuve View
+// SECT-MOBILE-PARITY-T1 : formulaire de création d'épreuve branché sur repository.
 
 struct CreateEpreuveView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var viewModel: EpreuveViewModel
+    @EnvironmentObject var authViewModel: AuthViewModel
+
     @State private var titre = ""
     @State private var description = ""
     @State private var duree: Int = 60
+    @State private var uniteEnseignementId = ""
     @State private var dateDebut = Date()
     @State private var dateFin = Calendar.current.date(byAdding: .hour, value: 2, to: Date()) ?? Date()
     @State private var melangeQuestions = false
     @State private var melangePropositions = false
     @State private var blocageRetour = true
-    @State private var proctoringActif = false
-    @State private var verificationIdentite = false
     @State private var noteTotal: Double = 20.0
-    @State private var isSaving = false
-    @State private var errorMessage: String? = nil
-    @State private var showSuccess = false
+
+    private var isFormValid: Bool {
+        !titre.trimmingCharacters(in: .whitespaces).isEmpty
+        && !uniteEnseignementId.trimmingCharacters(in: .whitespaces).isEmpty
+        && duree > 0
+        && (authViewModel.currentUser?.id.isEmpty == false)
+    }
 
     var body: some View {
         NavigationView {
             Form {
                 Section("Informations générales") {
-                    TextField("Titre de l'épreuve", text: $titre)
+                    TextField("Titre de l'épreuve *", text: $titre)
                     TextField("Description (optionnel)", text: $description, axis: .vertical)
                         .lineLimit(3...6)
+                    TextField("ID Unité d'Enseignement *", text: $uniteEnseignementId)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
                 }
 
                 Section("Durée et planification") {
                     Stepper("Durée : \(duree) min", value: $duree, in: 5...300, step: 5)
-                    DatePicker("Date de début", selection: $dateDebut)
-                    DatePicker("Date de fin", selection: $dateFin, in: dateDebut...)
+                    DatePicker("Date de début *", selection: $dateDebut)
+                    DatePicker("Date de fin *", selection: $dateFin, in: dateDebut...)
                     HStack {
                         Text("Note totale")
                         Spacer()
@@ -389,12 +406,7 @@ struct CreateEpreuveView: View {
                     Toggle("Bloquer le retour en arrière", isOn: $blocageRetour)
                 }
 
-                Section("Surveillance") {
-                    Toggle("Proctoring actif", isOn: $proctoringActif)
-                    Toggle("Vérification d'identité", isOn: $verificationIdentite)
-                }
-
-                if let error = errorMessage {
+                if let error = viewModel.createError {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .foregroundColor(.sectRed)
@@ -405,37 +417,74 @@ struct CreateEpreuveView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Annuler") { dismiss() }
+                    Button("Annuler") {
+                        viewModel.resetCreateState()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        Task { await createEpreuve() }
+                        Task { await submit() }
                     } label: {
-                        if isSaving {
+                        if viewModel.isCreating {
                             ProgressView()
                         } else {
                             Text("Créer").fontWeight(.semibold)
                         }
                     }
-                    .disabled(titre.isEmpty || isSaving)
+                    .disabled(!isFormValid || viewModel.isCreating)
                 }
-            }
-            .alert("Épreuve créée", isPresented: $showSuccess) {
-                Button("OK") { dismiss() }
-            } message: {
-                Text("L'épreuve « \(titre) » a été créée avec succès.")
             }
         }
     }
 
-    private func createEpreuve() async {
-        isSaving = true
-        errorMessage = nil
-        // TODO(SECT-MOBILE-PHASE-C) : brancher repository.createEpreuve() quand
-        // le ViewModel exposera la création. Pour l'instant, succès simulé.
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        isSaving = false
-        showSuccess = true
+    /// Construit le CreateEpreuveInput et appelle viewModel.createEpreuve().
+    /// Sur succès, ferme le formulaire.
+    private func submit() async {
+        guard let userId = authViewModel.currentUser?.id, !userId.isEmpty else {
+            return
+        }
+        let debutIso = toIso(dateDebut, hour: 8, minute: 0)
+        let finIso = toIso(dateFin, hour: 23, minute: 59)
+        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let input = CreateEpreuveInput(
+            enseignantId: userId,
+            titre: titre.trimmingCharacters(in: .whitespaces),
+            duree: Int32(duree),
+            dateDebut: debutIso,
+            dateFin: finIso,
+            uniteEnseignementId: uniteEnseignementId.trimmingCharacters(in: .whitespaces),
+            description: trimmedDesc.isEmpty ? nil : trimmedDesc,
+            melangeQuestions: KotlinBoolean(bool: melangeQuestions),
+            melangePropositions: KotlinBoolean(bool: melangePropositions),
+            blocageRetour: KotlinBoolean(bool: blocageRetour),
+            filiereId: nil,
+            niveau: nil,
+            sessionExamen: nil,
+            anneeAcademiqueId: nil,
+            generationMode: nil,
+            noteTotal: KotlinDouble(double: noteTotal),
+            delaiGrace: nil,
+            documentIds: nil
+        )
+        let success = await viewModel.createEpreuve(input)
+        if success {
+            dismiss()
+        }
+    }
+
+    /// Convertit une Date en chaîne ISO8601 (RFC3339) en forçant l'heure donnée.
+    private func toIso(_ date: Date, hour: Int, minute: Int) -> String {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month, .day], from: date)
+        comps.hour = hour
+        comps.minute = minute
+        comps.second = 0
+        let d = cal.date(from: comps) ?? date
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: d)
     }
 }
 
