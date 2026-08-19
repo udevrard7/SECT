@@ -18,8 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sect.mobile.android.ui.components.KenteDivider
+import com.sect.mobile.android.ui.viewmodel.CreateEpreuveState
 import com.sect.mobile.android.ui.viewmodel.EpreuveViewModel
-import com.sect.mobile.android.ui.viewmodel.UiState
 import com.sect.mobile.shared.domain.model.CreateEpreuveInput
 import org.koin.androidx.compose.koinViewModel
 import java.time.Instant
@@ -63,7 +63,7 @@ fun EpreuveFormScreen(
     // Surveille l'état de création pour auto-fermer sur succès
     val createState by viewModel.createState.collectAsState()
     LaunchedEffect(createState) {
-        if (createState is UiState.Success) {
+        if (createState is CreateEpreuveState.Success) {
             viewModel.resetCreateState()
             onSuccess()
         }
@@ -71,14 +71,14 @@ fun EpreuveFormScreen(
     // Reset au moment de quitter l'écran (si on revient sans succès)
     DisposableEffect(Unit) {
         onDispose {
-            if (createState is UiState.Error || createState is UiState.Loading) {
+            if (createState is CreateEpreuveState.Error || createState is CreateEpreuveState.Loading) {
                 viewModel.resetCreateState()
             }
         }
     }
 
-    val isLoading = createState is UiState.Loading
-    val errorMessage = (createState as? UiState.Error)?.message
+    val isLoading = createState is CreateEpreuveState.Loading
+    val errorMessage = (createState as? CreateEpreuveState.Error)?.message
 
     Scaffold(
         topBar = {
