@@ -22,7 +22,9 @@ import com.sect.mobile.shared.data.dto.EpreuveQuestionInfoDto
 import com.sect.mobile.shared.data.dto.EpreuveQuestionDetailDto
 import com.sect.mobile.shared.domain.model.EnseignantStats
 import com.sect.mobile.shared.domain.model.EtudiantStats
+import com.sect.mobile.shared.domain.model.EpreuveAVenir
 import com.sect.mobile.shared.domain.model.EpreuveAVenirEtudiant
+import com.sect.mobile.shared.domain.model.EvolutionMoyenne
 import com.sect.mobile.shared.domain.model.EvolutionScore
 import com.sect.mobile.shared.domain.model.PerformanceData
 import com.sect.mobile.shared.domain.model.PerformanceType
