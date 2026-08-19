@@ -2,6 +2,7 @@ package com.sect.mobile.shared.network.api
 
 import com.sect.mobile.shared.data.dto.ResultatDetailDto
 import com.sect.mobile.shared.data.dto.ResultatDto
+import com.sect.mobile.shared.data.dto.SessionResultatDto
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
