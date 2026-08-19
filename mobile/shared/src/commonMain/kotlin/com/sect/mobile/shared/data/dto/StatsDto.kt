@@ -1,6 +1,7 @@
 // SECT Mobile — Stats DTOs (Enseignant & Étudiant)
 package com.sect.mobile.shared.data.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 // ──────────────────────────────────────────────────────────────────────
