@@ -633,44 +633,6 @@ function HeroMockup() {
   )
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   2. TRUST BAR (animated stats)
-   ════════════════════════════════════════════════════════════════════ */
-function TrustBar() {
-  const stats = [
-    { value: 10000, suffix: '+', label: 'Copies corrigées', icon: FileText },
-    { value: 15, suffix: '+', label: 'Universités partenaires', icon: Users },
-    { value: 98, suffix: '%', label: 'Satisfaction enseignant', icon: Star },
-    { value: 2, suffix: ' min', label: 'Correction moyenne', icon: Clock },
-  ]
-
-  return (
-    <section className="relative py-10 sm:py-12 bg-[#0D1B30] border-y border-white/[0.05]">
-      <div className="max-w-6xl mx-auto px-6">
-        <Reveal>
-          <p className="text-center text-xs uppercase tracking-[0.2em] text-zinc-500 mb-8 font-medium">
-            Ils font confiance à SECT
-          </p>
-        </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-          {stats.map((s, i) => (
-            <Reveal key={s.label} delay={i * 0.1}>
-              <div className="text-center">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 border border-violet-400/15 mb-3">
-                  <s.icon className="h-4.5 w-4.5 text-violet-300" />
-                </div>
-                <div className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                  <CountUp end={s.value} suffix={s.suffix} />
-                </div>
-                <div className="text-xs text-zinc-500 mt-1">{s.label}</div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
 
 /* ════════════════════════════════════════════════════════════════════
    3. PROBLEM (empathy)
@@ -1253,83 +1215,6 @@ function InteractiveDemo() {
   )
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   8. TESTIMONIALS
-   ════════════════════════════════════════════════════════════════════ */
-function Testimonials() {
-  const items = [
-    {
-      quote: 'Je récupère mes samedis. 200 copies corrigées avant ma pause café.',
-      name: 'Dr. Aminata Diallo',
-      role: 'Maître de conférences',
-      org: 'Université Cheikh Anta Diop',
-      initials: 'AD',
-      color: 'from-violet-500 to-indigo-600',
-    },
-    {
-      quote: 'Les résultats tombent en 48 h au lieu de 3 semaines. Les étudiants adorent.',
-      name: 'Prof. Kwame Mensah',
-      role: 'Doyen de faculté',
-      org: 'KNUST, Kumasi',
-      initials: 'KM',
-      color: 'from-orange-500 to-amber-600',
-    },
-    {
-      quote: 'Zéro fraude cette session. Le proctoring IA a tout changé pour nous.',
-      name: 'Dr. Fatou Touré',
-      role: 'Responsable pédagogique',
-      org: 'Université de Bamako',
-      initials: 'FT',
-      color: 'from-indigo-500 to-violet-600',
-    },
-  ]
-
-  return (
-    <section className="relative py-12 sm:py-16 bg-[#0D1B30] overflow-hidden">
-      <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <Reveal className="text-center mb-8">
-          <p className="text-sm uppercase tracking-[0.2em] text-violet-400 font-semibold mb-3">
-            Témoignages
-          </p>
-          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
-            Ils ont <VioletText>transformé leurs évaluations</VioletText>
-          </h2>
-        </Reveal>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {items.map((t, i) => (
-            <Reveal key={t.name} delay={i * 0.12}>
-              <div className="h-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 flex flex-col">
-                <div className="flex gap-0.5 mb-4">
-                  {[0, 1, 2, 3, 4].map((s) => (
-                    <Star key={s} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                  ))}
-                </div>
-                <blockquote className="text-base text-zinc-100 leading-relaxed mb-6 flex-1">
-                  &ldquo;{t.quote}&rdquo;
-                </blockquote>
-                <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
-                  <Avatar className="h-10 w-10 border border-white/10">
-                    <AvatarFallback className={`bg-gradient-to-br ${t.color} text-white text-xs font-semibold`}>
-                      {t.initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="text-sm font-semibold text-white">{t.name}</div>
-                    <div className="text-xs text-zinc-500">{t.role} · {t.org}</div>
-                  </div>
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-        <p className="text-center text-[11px] text-zinc-600 mt-6">
-          Témoignages illustratifs — remplacez-les par vos vrais retours établissements.
-        </p>
-      </div>
-    </section>
-  )
-}
 
 /* ════════════════════════════════════════════════════════════════════
    9. PRICING (monthly/annual toggle, FCFA)
@@ -2009,14 +1894,12 @@ export function LandingPage({ onLogin, onDemo, onSignUp }: LandingPageProps) {
       <Navbar onLogin={onLogin} />
       <main className="flex-1">
         <HeroSection onDemo={onDemo} onLogin={onLogin} onSignUp={onSignUp} />
-        <TrustBar />
         <ProblemSection />
         <SolutionSection />
         <ExamPrepShowcase />
         <FeaturesBento />
         <HowItWorks />
         <InteractiveDemo />
-        <Testimonials />
         <PricingSection onDemo={onDemo} />
         <DifferentiatorsStrip />
         <FAQSection />
