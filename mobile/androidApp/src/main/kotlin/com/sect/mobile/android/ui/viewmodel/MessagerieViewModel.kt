@@ -272,6 +272,9 @@ class MessagerieViewModel(
     private val _typingUsers = MutableStateFlow<Set<String>>(emptySet())
     val typingUsers: StateFlow<Set<String>> = _typingUsers.asStateFlow()
 
+    private var typingJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private var lastIaStreamingTime = 0L
+
     /**
      * Démarre la connexion SSE temps réel.
      * À appeler quand l'utilisateur ouvre la messagerie.
@@ -333,23 +336,27 @@ class MessagerieViewModel(
                 loadConversations()
             }
             "typing" -> {
-                // Indicateur de frappe : ajouter temporairement l'utilisateur
-                // (le backend envoie {userId, conversationId})
-                // On nettoie après 3s
+                // Indicateur de frappe : réinitialise proprement le timer de 3s par userId
                 if (event.conversationId == _selectedConversationId.value) {
-                    // Marquer comme "typing" — le UI affiche "..." pendant 3s
-                    viewModelScope.launch {
-                        _typingUsers.value = _typingUsers.value + event.conversationId.orEmpty()
+                    val userKey = event.userId ?: event.conversationId.orEmpty()
+                    typingJobs[userKey]?.cancel()
+                    _typingUsers.value = _typingUsers.value + userKey
+                    typingJobs[userKey] = viewModelScope.launch {
                         kotlinx.coroutines.delay(3_000)
-                        _typingUsers.value = _typingUsers.value - event.conversationId.orEmpty()
+                        _typingUsers.value = _typingUsers.value - userKey
+                        typingJobs.remove(userKey)
                     }
                 }
             }
             "ia_streaming" -> {
-                // Streaming IA : recharger pour afficher le contenu accumulé
+                // Streaming IA : throttling à 1s max par appel REST loadMessages
                 val activeConvId = _selectedConversationId.value
                 if (activeConvId != null && event.conversationId == activeConvId) {
-                    loadMessages(activeConvId)
+                    val now = System.currentTimeMillis()
+                    if (now - lastIaStreamingTime > 1_000L) {
+                        lastIaStreamingTime = now
+                        loadMessages(activeConvId)
+                    }
                 }
             }
             "hello" -> {
