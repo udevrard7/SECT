@@ -21,7 +21,8 @@ import kotlinx.serialization.json.Json
 class SSEClient(
     private val client: HttpClient,
     private val baseUrl: String,
-    private val json: Json = Json { ignoreUnknownKeys = true }
+    private val json: Json = Json { ignoreUnknownKeys = true },
+    private val maxEventsBuffer: Int = 50
 ) {
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -30,9 +31,12 @@ class SSEClient(
     val events: StateFlow<List<SSEEvent>> = _events
 
     private var connectJob: Job? = null
+    private var lastEventId: String? = null
+    private var currentBackoffMs: Long = 1_000L
 
     /**
-     * Se connecter à un flux SSE.
+     * Se connecter à un flux SSE avec gestion du Last-Event-ID,
+     * backoff exponentiel et limite de tampon d'événements.
      */
     fun connect(
         endpoint: String,
@@ -50,15 +54,21 @@ class SSEClient(
                         append("Authorization", "Bearer $token")
                         append("Accept", "text/event-stream")
                         append("Cache-Control", "no-cache")
+                        lastEventId?.let { id ->
+                            append("Last-Event-ID", id)
+                        }
                     }
                 }
 
                 _connectionState.value = ConnectionState.CONNECTED
+                // Réinitialiser le backoff après connexion réussie
+                currentBackoffMs = 1_000L
 
                 // Lire le flux SSE ligne par ligne via ByteReadChannel
                 val channel: ByteReadChannel = response.bodyAsChannel()
                 var currentEvent = ""
                 var currentData = StringBuilder()
+                var currentId: String? = null
 
                 while (!channel.isClosedForRead && isActive) {
                     val line = channel.readUTF8Line() ?: continue
@@ -70,30 +80,39 @@ class SSEClient(
                         line.startsWith("data:") -> {
                             currentData.appendLine(line.removePrefix("data:").trim())
                         }
+                        line.startsWith("id:") -> {
+                            currentId = line.removePrefix("id:").trim()
+                        }
+                        line.startsWith("retry:") -> {
+                            val retryMs = line.removePrefix("retry:").trim().toLongOrNull()
+                            if (retryMs != null && retryMs > 0) {
+                                currentBackoffMs = retryMs
+                            }
+                        }
                         line.isBlank() && currentData.isNotEmpty() -> {
                             // Fin d'événement — dispatch
+                            if (currentId != null) {
+                                lastEventId = currentId
+                            }
                             val event = SSEEvent(
                                 event = currentEvent,
-                                data = currentData.toString().trim()
+                                data = currentData.toString().trim(),
+                                id = lastEventId
                             )
-                            _events.value = _events.value + event
+                            _events.value = (_events.value + event).takeLast(maxEventsBuffer)
                             onEvent(event)
                             currentEvent = ""
                             currentData = StringBuilder()
-                        }
-                        line.startsWith("id:") -> {
-                            // Event ID pour reconnexion — ignoré pour l'instant
-                        }
-                        line.startsWith("retry:") -> {
-                            // Retry interval — ignoré pour l'instant
+                            currentId = null
                         }
                     }
                 }
             } catch (e: Exception) {
                 if (isActive) {
                     _connectionState.value = ConnectionState.ERROR
-                    // Auto-reconnect après 5 secondes
-                    delay(5_000)
+                    // Backoff exponentiel capé à 30s
+                    delay(currentBackoffMs)
+                    currentBackoffMs = (currentBackoffMs * 2).coerceAtMost(30_000L)
                     connect(endpoint, token, scope, onEvent)
                 }
             }
@@ -122,5 +141,6 @@ class SSEClient(
  */
 data class SSEEvent(
     val event: String,  // "message", "notification", "correction", etc.
-    val data: String     // JSON payload
+    val data: String,   // JSON payload
+    val id: String? = null
 )
