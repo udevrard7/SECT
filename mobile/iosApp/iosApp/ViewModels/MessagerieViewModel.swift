@@ -193,17 +193,24 @@ class MessagerieViewModel: ObservableObject {
     @Published var realtimeState: String = "disconnected" // disconnected, connecting, connected, error
     @Published var typingIndicator: Bool = false
     private var sseTask: Task<Void, Never>?
+    private var typingResetTask: Task<Void, Never>?
+    private var lastEventId: String? = nil
+    private var currentBackoffNanoseconds: UInt64 = 1_000_000_000 // 1s initial
+    private var lastIaStreamingTime: Date = .distantPast
 
     /**
-     * Démarre la connexion SSE temps réel.
+     * Démarre la connexion SSE temps réel avec gestion Last-Event-ID et backoff exponentiel.
      * À appeler quand l'utilisateur ouvre la messagerie.
      */
     func startRealtime() {
-        guard sseTask == nil else { return }
+        stopRealtime()
         realtimeState = "connecting"
 
         let token = KoinRepositoryProvider.shared.cachedAccessToken
-        guard !token.isEmpty else { return }
+        guard !token.isEmpty else {
+            realtimeState = "error"
+            return
+        }
 
         let streamPath = "/api/messagerie/stream"
         let fullUrl = "https://sect-zead.onrender.com\(streamPath)"
@@ -214,15 +221,25 @@ class MessagerieViewModel: ObservableObject {
             request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
 
+            if let lastId = await self?.lastEventId {
+                request.setValue(lastId, forHTTPHeaderField: "Last-Event-ID")
+            }
+
             do {
                 let (bytes, response) = try await URLSession.shared.bytes(for: request)
                 guard let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else { return }
+                      httpResponse.statusCode == 200 else {
+                    throw URLError(.badServerResponse)
+                }
 
-                await MainActor.run { self?.realtimeState = "connected" }
+                await MainActor.run {
+                    self?.realtimeState = "connected"
+                    self?.currentBackoffNanoseconds = 1_000_000_000 // Reset backoff sur succès
+                }
 
                 var currentEvent = ""
                 var currentData = ""
+                var currentId: String? = nil
 
                 for try await line in bytes.lines {
                     if Task.isCancelled { break }
@@ -231,19 +248,39 @@ class MessagerieViewModel: ObservableObject {
                         currentEvent = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
                     } else if line.hasPrefix("data:") {
                         currentData += String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                    } else if line.hasPrefix("id:") {
+                        currentId = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                    } else if line.hasPrefix("retry:") {
+                        if let retryMs = UInt64(line.dropFirst(6).trimmingCharacters(in: .whitespaces)), retryMs > 0 {
+                            await MainActor.run {
+                                self?.currentBackoffNanoseconds = retryMs * 1_000_000
+                            }
+                        }
                     } else if line.isEmpty && !currentData.isEmpty {
                         // Fin d'événement — traiter
+                        if let id = currentId {
+                            await MainActor.run { self?.lastEventId = id }
+                        }
                         await self?.handleRealtimeEvent(type: currentEvent, data: currentData)
                         currentEvent = ""
                         currentData = ""
+                        currentId = nil
                     }
                 }
             } catch {
                 if !Task.isCancelled {
-                    await MainActor.run { self?.realtimeState = "error" }
-                    // Auto-reconnect après 5s
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
-                    await MainActor.run { self?.startRealtime() }
+                    await MainActor.run {
+                        self?.realtimeState = "error"
+                    }
+                    let delayNs = await self?.currentBackoffNanoseconds ?? 1_000_000_000
+                    try? await Task.sleep(nanoseconds: delayNs)
+                    if !Task.isCancelled {
+                        await MainActor.run {
+                            // Backoff exponentiel capé à 30s
+                            self?.currentBackoffNanoseconds = min(delayNs * 2, 30_000_000_000)
+                            self?.startRealtime()
+                        }
+                    }
                 }
             }
         }
@@ -255,6 +292,8 @@ class MessagerieViewModel: ObservableObject {
     func stopRealtime() {
         sseTask?.cancel()
         sseTask = nil
+        typingResetTask?.cancel()
+        typingResetTask = nil
         realtimeState = "disconnected"
         typingIndicator = false
     }
@@ -289,16 +328,27 @@ class MessagerieViewModel: ObservableObject {
             await loadConversations()
 
         case "typing":
-            // Indicateur de frappe pendant 3s
+            // Indicateur de frappe pendant 3s avec annulation propre du précédent timer
             if conversationId == activeConvId {
-                await MainActor.run { self.typingIndicator = true }
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                await MainActor.run { self.typingIndicator = false }
+                typingResetTask?.cancel()
+                typingIndicator = true
+                typingResetTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if !Task.isCancelled {
+                        await MainActor.run { self?.typingIndicator = false }
+                    }
+                }
             }
 
         case "ia_streaming":
-            // Streaming IA : recharger pour afficher le contenu accumulé
-            if conversationId == activeConvId { await loadMessages() }
+            // Streaming IA : throttling à 1s max
+            if conversationId == activeConvId {
+                let now = Date()
+                if now.timeIntervalSince(lastIaStreamingTime) > 1.0 {
+                    lastIaStreamingTime = now
+                    await loadMessages()
+                }
+            }
 
         case "hello":
             // Connexion établie — pas d'action nécessaire
