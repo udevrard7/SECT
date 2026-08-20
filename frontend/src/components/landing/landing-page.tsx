@@ -53,6 +53,10 @@ import {
   Rocket,
   PenTool,
   AlertCircle,
+  BookOpen,
+  Headphones,
+  Target,
+  Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -402,9 +406,8 @@ function HeroSection({ onDemo, onLogin, onSignUp }: { onDemo: () => void; onLogi
           transition={{ delay: 0.2, duration: 0.6 }}
           className="max-w-2xl mx-auto text-base sm:text-lg text-zinc-400 leading-relaxed mb-9"
         >
-          SECT génère vos sujets par IA, surveille les examens en ligne et corrige
-          automatiquement — pendant que vous dormez. Pensé pour les universités et écoles
-          africaines.
+          SECT génère vos sujets par IA, surveille les examens en ligne, corrige
+          automatiquement et accompagne vos étudiants 365j/an avec le compagnon de révision <span className="text-violet-300 font-semibold">ExamPrep IA</span>.
         </motion.p>
 
         {/* CTAs */}
@@ -808,6 +811,103 @@ function SolutionSection() {
 /* ════════════════════════════════════════════════════════════════════
    5. FEATURES (bento grid, benefit-driven)
    ════════════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════════════
+   EXAMPREP SHOWCASE (L'argument d'apprentissage continu par IA)
+   ════════════════════════════════════════════════════════════════════ */
+function ExamPrepShowcase() {
+  return (
+    <section className="relative py-14 sm:py-20 bg-gradient-to-b from-[#0A1628] via-[#0D1B30] to-[#0A1628] overflow-hidden border-y border-white/[0.06]">
+      <DotGrid />
+      <GlowOrb x="20%" y="40%" color="violet" />
+      <GlowOrb x="80%" y="60%" color="indigo" />
+
+      <div className="relative z-10 max-w-6xl mx-auto px-6">
+        <Reveal className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 mb-4 rounded-full border border-violet-400/30 bg-violet-500/15">
+            <Sparkles className="h-4 w-4 text-violet-300" />
+            <span className="text-xs font-bold text-violet-200 uppercase tracking-wider">
+              Exclusivité SECT ExamPrep™
+            </span>
+          </div>
+          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+            Au-delà de l&apos;évaluation : <VioletText>Un tuteur IA personnel 24/7</VioletText>
+          </h2>
+          <p className="mt-4 text-zinc-400 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed">
+            SECT ne se contente pas d&apos;évaluer. Il transforme chaque support de cours en un compagnon de révision interactif adapté au rythme de chaque étudiant.
+          </p>
+        </Reveal>
+
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Card 1: SRS Flashcards */}
+          <Reveal delay={0.1}>
+            <div className="h-full rounded-2xl border border-violet-400/25 bg-white/[0.02] p-6 hover:border-violet-400/40 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/15 border border-violet-400/20 text-violet-300 mb-5">
+                  <Layers className="h-6 w-6" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Fiches SRS & Répétition Spacée</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+                  Algorithme intelligent qui planifie les révisions au moment exact où la mémoire flanche pour ancrer les connaissances durablement.
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-[#0A1628] border border-white/[0.06] text-xs space-y-2">
+                <div className="flex justify-between items-center text-zinc-400">
+                  <span>Mémoire à long terme</span>
+                  <span className="text-emerald-400 font-bold">92% rétention</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div className="h-full bg-emerald-400 w-[92%]" />
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Card 2: RAG Q&A sur cours */}
+          <Reveal delay={0.2}>
+            <div className="h-full rounded-2xl border border-indigo-400/25 bg-white/[0.02] p-6 hover:border-indigo-400/40 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/15 border border-indigo-400/20 text-indigo-300 mb-5">
+                  <BookOpen className="h-6 w-6" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Q&A RAG sur vos Propres Cours</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+                  L&apos;étudiant interroge l&apos;IA sur son polycopié PDF ou Word et obtient des réponses sourcées tirées directement du cours de son professeur.
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-[#0A1628] border border-white/[0.06] text-xs">
+                <p className="text-violet-300 font-medium mb-1">« Peux-tu m&apos;expliquer le théorème p.42 ? »</p>
+                <p className="text-zinc-400 italic">« D&apos;après le chapitre 3 (p.42 de votre cours), le principe s&apos;applique ainsi... »</p>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Card 3: Résumés Audio & Lacunes */}
+          <Reveal delay={0.3}>
+            <div className="h-full rounded-2xl border border-amber-400/25 bg-white/[0.02] p-6 hover:border-amber-400/40 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-400/20 text-amber-300 mb-5">
+                  <Headphones className="h-6 w-6" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Résumés Audio & Radar de Lacunes</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+                  Génération de podcasts de révision pour écouter ses cours en mobilité et détection automatique des chapitres fragiles à retravailler.
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-[#0A1628] border border-white/[0.06] flex items-center gap-3 text-xs">
+                <Headphones className="h-5 w-5 text-amber-400 shrink-0" />
+                <div>
+                  <div className="text-white font-medium">Podcast de révision - Chapitre 4</div>
+                  <div className="text-zinc-500">Audio Synthétisé IA • 4 min 30 s</div>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function FeaturesBento() {
   const features = [
     {
@@ -825,18 +925,18 @@ function FeaturesBento() {
       glow: 'indigo',
     },
     {
+      icon: Target,
+      title: 'ExamPrep™ — Révision guidée par IA',
+      text: 'Fiches SRS, tuteur RAG sur cours, résumés audio et détection des lacunes.',
+      span: '',
+      glow: 'violet',
+    },
+    {
       icon: Shield,
       title: 'Détectez la fraude avant qu\'elle n\'arrive',
       text: 'Proctoring IA, détection de similarité et surveillance vidéo en temps réel.',
       span: '',
       glow: 'orange',
-    },
-    {
-      icon: Eye,
-      title: 'Surveillez chaque examen en direct',
-      text: 'Un centre de commande live pour suivre la progression de chaque étudiant.',
-      span: '',
-      glow: 'indigo',
     },
     {
       icon: Code2,
@@ -1912,6 +2012,7 @@ export function LandingPage({ onLogin, onDemo, onSignUp }: LandingPageProps) {
         <TrustBar />
         <ProblemSection />
         <SolutionSection />
+        <ExamPrepShowcase />
         <FeaturesBento />
         <HowItWorks />
         <InteractiveDemo />
