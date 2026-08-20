@@ -36,6 +36,7 @@ enum class RealtimeState {
 data class MessagerieRealtimeEvent(
     val type: String,         // message_new, message_edited, etc.
     val conversationId: String?, // conversation concernée (si applicable)
+    val userId: String? = null,  // utilisateur à l'origine de l'événement (ex: typing)
     val timestamp: String
 )
 
@@ -66,18 +67,20 @@ class MessagerieRealtimeService(
      * @param onEvent Callback appelé pour chaque event reçu
      */
     fun connect(scope: CoroutineScope, onEvent: (MessagerieRealtimeEvent) -> Unit) {
+        disconnect()
         this.scope = scope
         _state.value = RealtimeState.CONNECTING
 
-        scope.launch {
+        connectJob = scope.launch {
             val token = tokenProvider()
             if (token.isEmpty()) {
                 _state.value = RealtimeState.ERROR
                 return@launch
             }
 
-            sseClient = SSEClient(client, baseUrl, json)
-            sseClient?.connect(
+            val newSseClient = SSEClient(client, baseUrl, json)
+            sseClient = newSseClient
+            newSseClient.connect(
                 endpoint = "/api/messagerie/stream",
                 token = token,
                 scope = scope
@@ -126,10 +129,13 @@ class MessagerieRealtimeService(
             val data = jsonObj["data"]?.let { it.jsonObject }
             val conversationId = data?.get("conversationId")?.jsonPrimitive?.contentOrNull
                 ?: data?.get("sessionId")?.jsonPrimitive?.contentOrNull
+            val userId = data?.get("userId")?.jsonPrimitive?.contentOrNull
+                ?: data?.get("senderId")?.jsonPrimitive?.contentOrNull
 
             MessagerieRealtimeEvent(
                 type = type,
                 conversationId = conversationId,
+                userId = userId,
                 timestamp = timestamp
             )
         } catch (_: Exception) {

@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.sect.mobile.android.navigation.DeepLinkTarget
 import com.sect.mobile.android.navigation.SECTNavigation
+import com.sect.mobile.android.navigation.toRoute
 import com.sect.mobile.android.theme.SECTTheme
 
 /**
