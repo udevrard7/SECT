@@ -27,7 +27,7 @@ security(backend): GetClientIP lit CF-Connecting-IP en priorité
 ## Structure du monorepo
 
 - `frontend/` — Next.js 16 (UI uniquement, déployé sur Vercel)
-- `backend/` — Go 1.24 (API REST, déployé sur Render)
+- `backend/` — Go 1.27 (API REST, déployé sur Render)
 
 ## Sécurité
 

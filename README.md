@@ -3,7 +3,7 @@
 > Plateforme d'évaluation en ligne propulsée par l'IA pour l'enseignement supérieur en Afrique.
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
-[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go)](https://go.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql)](https://www.postgresql.org)
 [![Migrations](https://img.shields.io/badge/migrations-103-brightgreen)](backend/db/db/migrations)
 [![Vercel](https://img.shields.io/badge/Vercel-Frontend-000?logo=vercel)](https://sect-app.vercel.app)
@@ -62,7 +62,7 @@ sect/
 │   ├── playwright.config.ts
 │   └── vitest.config.ts
 │
-├── backend/                      # Go 1.24 (API REST) → Render
+├── backend/                      # Go 1.27 (API REST) → Render
 │   ├── cmd/
 │   │   ├── api/                  # Point d'entrée (main.go, ~413 lignes)
 │   │   └── loadtest-submit/      # Outil de load testing (soumission massive)
@@ -90,7 +90,7 @@ sect/
 │   │   ├── queries/              # Requêtes sqlc
 │   │   ├── MIGRATIONS_RECONCILIATION.md
 │   │   └── sqlc.yaml
-│   ├── Dockerfile                # Multi-stage (golang:1.24-alpine → alpine:3.20)
+│   ├── Dockerfile                # Multi-stage (golang:1.27-alpine → alpine:3.20)
 │   ├── Makefile                  # dev / build / migrate-up / sqlc-gen…
 │   └── go.mod
 │
@@ -107,7 +107,7 @@ sect/
 | Composant | Technologie | Hébergement | URL |
 |-----------|-------------|-------------|-----|
 | **Frontend** | Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui | Vercel | [sect-app.vercel.app](https://sect-app.vercel.app) |
-| **Backend** | Go 1.24 + chi/v5 + pgx/v5 | Render (Docker) | [sect-zead.onrender.com](https://sect-zead.onrender.com) |
+| **Backend** | Go 1.27 + chi/v5 + pgx/v5 | Render (Docker) | [sect-zead.onrender.com](https://sect-zead.onrender.com) |
 | **Base de données** | PostgreSQL 18 + RLS | Neon | endpoint `ep-muddy-river-asz862wj` (region `eu-central-1`) |
 | **Stockage fichiers** | Cloudflare R2 (S3-compatible) | Cloudflare | bucket `sect-documents` |
 | **Emails** | Resend (prioritaire) + SMTP (fallback) | Resend | `noreply@sect.ftci.fr` |
@@ -441,7 +441,7 @@ Test de charge réel exécuté contre le backend Render en production via `cmd/l
 ### Prérequis
 
 - [Bun](https://bun.sh/) (frontend)
-- [Go 1.24+](https://go.dev/dl/) (backend)
+- [Go 1.27+](https://go.dev/dl/) (backend)
 - [golang-migrate](https://github.com/golang-migrate/migrate) (migrations DB)
 - PostgreSQL (Neon, Supabase, ou local)
 
