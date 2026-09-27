@@ -34,23 +34,25 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
+      # Bun (pas npm) : le projet frontend est géré avec bun (bun.lock).
+      # L'ancien setup-node avec cache npm échouait car frontend/package-lock.json
+      # n'existe pas → "unable to cache dependencies" → CI rouge à chaque run.
+      # Version épinglée = celle validée localement (build Next.js 16 OK).
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          bun-version: '1.3.14'
 
       - name: 📦 Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: 🔍 Lint
-        run: npm run lint
+        run: bun run lint
 
       - name: 🧪 Tests unitaires
-        run: npm test -- --passWithNoTests || true
+        run: bun run test -- --passWithNoTests || true
 
       - name: 🏗️ Build Next.js
-        run: npm run build
+        run: bun run build
         env:
           NEXT_PUBLIC_API_URL: https://sect-zead.onrender.com
