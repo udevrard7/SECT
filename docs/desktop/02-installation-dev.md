@@ -6,7 +6,7 @@
 
 | Outil | Version | Usage |
 |---|---|---|
-| Go | 1.24+ | Build desktop + bindings |
+| Go | 1.27+ | Build desktop + bindings |
 | Node.js | 24+ | Build frontend Wails |
 | Wails CLI | Dernière stable (voir ADR-0001) | Scaffolding + build |
 | Git | 2.40+ | Versioning |

@@ -9,7 +9,7 @@
 
 | Outil | Version | Installation |
 |---|---|---|
-| Go | 1.24+ | https://go.dev/dl/ |
+| Go | 1.27+ | https://go.dev/dl/ |
 | Node.js | 24+ | https://nodejs.org/ |
 | Wails CLI | v2.13+ | `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
 | GCC/Clang | récent | Linux: `build-essential`, macOS: Xcode CLT, Windows: MSVC |

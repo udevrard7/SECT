@@ -1,12 +1,12 @@
 # ============================================================
-# SECT API — Dockerfile multi-stage (Go 1.24)
+# SECT API — Dockerfile multi-stage (Go 1.27)
 # ============================================================
 # Stage 1: Build (compile le binaire Go)
 # Stage 2: Runtime (image minimale Alpine avec le binaire)
 # ============================================================
 
 # --- Stage 1: Build ---
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app
 
