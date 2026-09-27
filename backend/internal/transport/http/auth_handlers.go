@@ -2,6 +2,7 @@ package http
 
 import (
         "encoding/json"
+        "log"
         "net/http"
 
         "github.com/udevrard7/sect/backend/internal/middleware"
@@ -23,6 +24,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
         resp, err := s.authUC.Login(r.Context(), req, ip, userAgent)
         if err != nil {
+                // BUGFIX (SEED-LOGIN-LOG) : les erreurs non-domain (SQL/pooler) étaient
+                // avalées par MapDomainError → 500 "erreur interne" sans aucune trace.
+                // Désormais l'erreur est journalisée côté serveur.
+                log.Printf("[auth] login failed identifier=%q err=%v", req.Identifier, err)
                 middleware.MapDomainError(w, err)
                 return
         }
