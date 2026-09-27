@@ -1369,7 +1369,13 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
                 for rows.Next() {
                         d := devoir{}
                         var (
-                                descr, consignes, renduFichiers, datePub                  *string
+                                // BUGFIX (SEED-DEVOIRS-1) : datePub était *string — pgx ne peut pas
+                                // scanner un timestamp (OID 1114, format binaire) en **string →
+                                // erreur de scan avalée par le `_ =` de WithTx → liste TOUJOURS
+                                // vide dès qu'un devoir a une datePublication non NULL.
+                                // Détecté en peuplant les devoirs (aucune donnée réelle avant).
+                                descr, consignes, renduFichiers                        *string
+                                datePub                                                  *time.Time
                                 dateLimite                                               *time.Time
                                 createdAt, updatedAt                                     time.Time
                                 ueNiveau                                                 string
@@ -1416,7 +1422,8 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
                         d.Consignes = consignes
                         d.RenduFichiers = renduFichiers
                         if datePub != nil {
-                                d.DatePublication = datePub
+                                ts := datePub.UTC().Format(time.RFC3339)
+                                d.DatePublication = &ts
                         }
                         if dateLimite != nil {
                                 d.DateLimite = dateLimite.UTC().Format(time.RFC3339)
