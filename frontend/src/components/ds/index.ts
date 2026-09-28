@@ -36,7 +36,6 @@ export {
   type AcademicCalendarProps,
   type CalendarEvent,
 } from './academic-calendar'
-export { DesignSystemShowcase } from './showcase'
 export {
   GradeTable,
   type GradeEntry,

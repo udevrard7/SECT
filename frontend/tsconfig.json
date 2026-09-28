@@ -38,8 +38,8 @@
   ],
   "exclude": [
     "node_modules",
-    "mini-services",
-    "skills",
-    "examples"
+    "e2e/.auth",
+    "playwright-report",
+    "test-results"
   ]
 }
