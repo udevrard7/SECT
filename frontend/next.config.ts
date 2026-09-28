@@ -5,7 +5,9 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: true,
-  serverExternalPackages: ['unpdf', 'pdfjs-dist', 'mammoth'],
+  // CLEANUP (audit 2026-09) : unpdf/pdfjs-dist/mammoth retirés — seul
+  // src/lib/text-extraction.ts (supprimé, code mort) les utilisait.
+  // La génération PDF passe par @react-pdf/renderer (routes /api/**/pdf).
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com' },

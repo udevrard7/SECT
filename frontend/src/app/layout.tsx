@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { Providers } from "@/components/providers";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
@@ -118,8 +117,7 @@ export default function RootLayout({
         </Providers>
         <ServiceWorkerRegister />
         <PushNotificationManager />
-        <Toaster />
-        {/* BUGFIX (DUP-SRCDocs-1) : Sonner Toaster manquait — 57 fichiers
+        {/* BUGFIX (DUP-SRCDocs-1) : Sonner Toaster — 82 fichiers
             utilisent `import { toast } from 'sonner'` mais le Toaster Sonner
             n'était jamais monté → tous les toasts (succès/erreur) étaient
             silencieusement ignorés. z-[100] pour apparaître au-dessus des
