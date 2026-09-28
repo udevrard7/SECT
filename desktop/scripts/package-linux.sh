@@ -27,6 +27,9 @@ BUILD_DIR="$PROJECT_DIR/build/bin"
 mkdir -p "$BUILD_DIR"
 
 # Générer nfpm.yaml temporaire
+# NOTE (audit 2026-09) : nfpm v2.35+ a remplacé les champs files/files_glob par
+# contents (cette étape n'avait jamais tourné — condition CI erronée — donc le
+# champ obsolète n'avait jamais été détecté).
 cat > /tmp/sect-nfpm.yaml <<EOF
 name: sect-desktop
 arch: amd64
@@ -39,7 +42,7 @@ license: MIT
 depends:
   - libgtk-3-0
   - libwebkit2gtk-4.0-0
-files:
+contents:
   ${BINARY}: /usr/bin/sect-desktop
   ${PROJECT_DIR}/build/linux/sect.desktop: /usr/share/applications/sect-desktop.desktop
   ${PROJECT_DIR}/build/linux/icon.png: /usr/share/icons/hicolor/512x512/apps/sect-desktop.png
