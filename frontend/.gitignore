@@ -40,3 +40,6 @@ next-env.d.ts
 
 # vitest coverage
 /coverage/
+
+# Playwright : état d'authentification (contient des cookies/tokens)
+/e2e/.auth/

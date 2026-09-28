@@ -1,0 +1,52 @@
+name: 🐛 Rapport de bug
+description: Quelque chose ne fonctionne pas comme prévu
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Composant concerné
+      options:
+        - Frontend web (sect.ftci.fr)
+        - Backend API (Go)
+        - Mobile (Kotlin Multiplatform)
+        - Desktop (Wails)
+        - Infrastructure / CI / déploiement
+        - Base de données / migrations
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Comportement observé
+      description: Décrivez le problème et collez les messages d'erreur complets (console, réseau, logs).
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Étapes de reproduction
+      placeholder: |
+        1. Se connecter en tant que …
+        2. Ouvrir …
+        3. Cliquer sur …
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environnement
+      description: URL, navigateur + version, OS, rôle du compte utilisé.
+      placeholder: "Chrome 130 / Windows 11 / compte étudiant"
+    validations:
+      required: true

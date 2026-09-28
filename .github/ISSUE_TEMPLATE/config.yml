@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Signaler une vulnérabilité
+    url: mailto:ulrichdouh@gmail.com
+    about: Les failles de sécurité ne doivent JAMAIS être signalées via un ticket public — voir SECURITY.md

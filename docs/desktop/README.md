@@ -113,7 +113,7 @@ SectCore si nécessaire (Phase E — conditionnel)
 - **Documents vivants** : chaque fichier `.md` peut être modifié indépendamment
 - **ADR immuables** : un ADR accepté n'est jamais modifié, il est "superseded by" un nouvel ADR
 - **Conventional Commits** : `SECT-DESKTOP-<TASK>: description`
-- **Worklog** : toute évolution est tracée dans [`worklog.md`](../../worklog.md)
+- **Worklog** : toute évolution est tracée dans [`docs/worklog.md`](../worklog.md)
 
 ---
 
