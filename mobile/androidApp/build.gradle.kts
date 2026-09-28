@@ -80,7 +80,7 @@ dependencies {
     implementation(project(":shared"))
 
     // Ktor OkHttp engine (explicit for DI module)
-    implementation("io.ktor:ktor-client-okhttp:3.1.3")
+    implementation("io.ktor:ktor-client-okhttp:3.6.0") // aligné sur shared (3.6.0)
 
     // Jetpack Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
