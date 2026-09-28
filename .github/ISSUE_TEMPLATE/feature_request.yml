@@ -1,0 +1,37 @@
+name: ✨ Proposition d'amélioration
+description: Nouvelle fonctionnalité ou amélioration existante
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Composant concerné
+      options:
+        - Frontend web (sect.ftci.fr)
+        - Backend API (Go)
+        - Mobile (Kotlin Multiplatform)
+        - Desktop (Wails)
+        - Infrastructure / CI / déploiement
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème ou besoin
+      description: Quel contexte motive cette demande ? Qui est concerné (étudiants, enseignants, responsables) ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution souhaitée
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées
+      description: Optionnel — autres approches déjà repoussées et pourquoi.

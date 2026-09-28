@@ -95,8 +95,7 @@ sect/
 │   └── go.mod
 │
 ├── render.yaml                   # Config déploiement Render (backend, rootDir: backend)
-├── vercel.json                   # Config déploiement Vercel (miroir de frontend/vercel.json)
-├── worklog.md                    # Journal des évolutions (Task IDs SECT-*)
+├── .github/                     # CI (6 workflows), SECURITY.md, CODEOWNERS, templates
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── .gitignore
@@ -365,7 +364,7 @@ migrate -path db/db/migrations -database "$NEON_DIRECT_URL" up
 
 > ℹ️ Un audit des migrations (doublons historiques 000039/000040 et 000050, réconciliation `schema_migrations`) est documenté dans [`backend/db/MIGRATIONS_RECONCILIATION.md`](backend/db/MIGRATIONS_RECONCILIATION.md).
 >
-> 📋 Migrations récentes notables : `000055` (refonte B2B/B2C + capitation), `000059` (IA usage tracking), `000061` (GeniusPay Wave), `000067`→`000074` (self-service B2B/B2C, facturation, anti-abus, multi-établissements), `000075` (fix `validate_b2b_establishment`), `000099`→`000101` (session capture, similarity report, identity photo), `000102` (SecuritySettings RLS admin full access), `000103` (durée validité accès 24h). Voir `worklog.md` pour le détail des Task IDs `SECT-*`.
+> 📋 Migrations récentes notables : `000055` (refonte B2B/B2C + capitation), `000059` (IA usage tracking), `000061` (GeniusPay Wave), `000067`→`000074` (self-service B2B/B2C, facturation, anti-abus, multi-établissements), `000075` (fix `validate_b2b_establishment`), `000099`→`000101` (session capture, similarity report, identity photo), `000102` (SecuritySettings RLS admin full access), `000103` (durée validité accès 24h). Voir `docs/worklog.md` pour le détail des Task IDs `SECT-*`.
 
 ### Modèle de données (entités clés)
 
@@ -431,7 +430,7 @@ Test de charge réel exécuté contre le backend Render en production via `cmd/l
 
 - **Conventional Commits** (en français) : `<SCOPE>-<TASK>: description` — exemples : `EPREUVES-DATES-FIX-V4:`, `feat:`, `fix:`
 - **Une seule branche** : `main` (pas de dev/feature branches, déploiement continu auto)
-- **Worklog obligatoire** : chaque tâche append une section dans `worklog.md` avec Task ID, Agent, Work Log, Stage Summary
+- **Worklog obligatoire** : chaque tâche append une section dans `docs/worklog.md` avec Task ID, Agent, Work Log, Stage Summary
 - **Structure monorepo** : `frontend/` (Next.js → Vercel) + `backend/` (Go → Render), pas de code à la racine
 
 ---
@@ -548,7 +547,7 @@ go run ./cmd/loadtest-submit -n 200 -url https://sect-zead.onrender.com \
 
 ## Évolutions récentes
 
-Le journal complet des évolutions est dans [`worklog.md`](worklog.md). Points marquants :
+Le journal complet des évolutions est dans [`docs/worklog.md`](docs/worklog.md). Points marquants :
 
 - **`SECT-LOGIN-TIMEOUT-FIX-1`** — Fix erreur "serveur d'authentification met trop de temps" (cold start Render free) : warmup préventif au montage du login form, timeout backend 25s + maxDuration Vercel 30s, retry automatique au timeout, message pédagogique.
 - **`EPREUVES-DATES-FIX` (V1→V4)** — Bug "impossible de modifier les dates d'une épreuve" (format datetime-local vs RFC3339). Fix : parser tolérant Go + conversion `toRFC3339()` front. Refonte UX dialog : presets, auto-calc, validation, layout responsive flex-col sm:flex-row.

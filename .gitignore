@@ -1,60 +1,64 @@
-```
-# Kotlin/Android build artifacts
+# ============================================================
+# SECT — .gitignore racine (monorepo)
+# Les règles spécifiques à chaque app sont dans
+# backend/.gitignore, frontend/.gitignore, desktop/.gitignore
+# et mobile/.gitignore.
+# ============================================================
+
+# ── Environnement & secrets (JAMAIS committer) ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.pfx
+
+# ── Node / Next.js ──
+node_modules/
+.next/
+out/
+coverage/
+
+# ── Go (binaires gérés par backend/.gitignore) ──
+*.test
+*.out
+
+# ── Kotlin / Android / Gradle ──
 *.class
 *.jar
+!mobile/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.aar
 *.apk
 *.dex
-
-# Gradle
-.gradle/
-build/
-!gradle.properties
-!gradlew
-!gradlew.bat
-
-# Android
 *.ap_
 *.aab
-local.properties
-captures/
-
-# iOS
-*.ipa
-*.app
-*.dSYM/
-Pods/
-build/
-
-# Kotlin Multiplatform
-.kotlin/
-!gradle/
+.gradle/
 !gradlew
 !gradlew.bat
+local.properties
+captures/
+.kotlin/
 
-# Temporary files
+# ── iOS ──
+*.ipa
+*.dSYM/
+Pods/
+
+# ── Fichiers temporaires & logs ──
 *.tmp
 *.temp
 *.log
 
-# IDE
+# ── IDE ──
 .idea/
 *.iml
 *.ipr
 *.iws
 .vscode/
 
-# Environment
-.env
-.env.local
-.env.*
-
-# Coverage
-.coverage
-htmlcov/
-
-# OS generated files
+# ── Fichiers OS ──
 .DS_Store
 Thumbs.db
-```

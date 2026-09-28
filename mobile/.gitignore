@@ -12,3 +12,13 @@ FastlaneApiKey.json
 # Environment
 .env
 .env.*
+
+# ── Builds Gradle / KMP ──
+**/build/
+.gradle/
+*.kotlin_metadata
+
+# ── iOS ──
+*.ipa
+*.dSYM/
+Pods/

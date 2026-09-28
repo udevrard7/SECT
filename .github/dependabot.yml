@@ -1,0 +1,55 @@
+# Dependabot — mises à jour automatiques des dépendances et actions
+# Documentation : https://docs.github.com/fr/code-security/dependabot
+version: 2
+updates:
+  # Actions GitHub utilisées dans les 6 workflows (suivant l'épinglage SHA)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["ci", "dependencies"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    reviewers:
+      - "udevrard7"
+
+  # Backend Go
+  - package-ecosystem: "gomod"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["backend", "dependencies"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    reviewers:
+      - "udevrard7"
+
+  # Frontend (bun.lock — écosystème npm)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["frontend", "dependencies"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    reviewers:
+      - "udevrard7"
+
+  # Mobile (Kotlin Multiplatform / Gradle)
+  - package-ecosystem: "gradle"
+    directory: "/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["mobile", "dependencies"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    reviewers:
+      - "udevrard7"

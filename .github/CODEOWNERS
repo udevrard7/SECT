@@ -1,0 +1,19 @@
+# CODEOWNERS — revue automatique des zones sensibles
+# Documentation : https://docs.github.com/fr/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Propriétaire par défaut de tout le dépôt
+* @udevrard7
+
+# ── Infrastructure & CI/CD ──
+/.github/ @udevrard7
+/render.yaml @udevrard7
+/frontend/vercel.json @udevrard7
+
+# ── Backend : sécurité & déploiement ──
+/backend/Dockerfile @udevrard7
+/backend/cmd/ @udevrard7
+/backend/internal/middleware/ @udevrard7
+/backend/internal/config/ @udevrard7
+
+# ── Migrations de base (105 paires up/down) ──
+/backend/db/ @udevrard7
