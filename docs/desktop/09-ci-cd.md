@@ -6,8 +6,8 @@
 
 | Workflow | Déclencheur | Action |
 |---|---|---|
-| `build.yml` | Push sur `desktop/**` | Build 3 plateformes (sans signing), upload artifacts |
-| `release.yml` | Tag `desktop-v*` | Build + signing + upload GitHub Release |
+| `build-desktop.yml` | Push/PR sur `desktop/**` | Build 3 OS (sans signing), packaging Linux, upload artifacts |
+| `release-desktop.yml` | Tag `desktop-v*` | Build + signing + GitHub Release + `latest.json` (auto-update) |
 
 ## 2. Workflow `build.yml` (chaque push)
 

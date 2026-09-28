@@ -5,7 +5,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go)](https://go.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql)](https://www.postgresql.org)
-[![Migrations](https://img.shields.io/badge/migrations-103-brightgreen)](backend/db/db/migrations)
+[![Migrations](https://img.shields.io/badge/migrations-105-brightgreen)](backend/db/db/migrations)
 [![Vercel](https://img.shields.io/badge/Vercel-Frontend-000?logo=vercel)](https://sect-app.vercel.app)
 [![Render](https://img.shields.io/badge/Render-Backend-46E3B7?logo=render)](https://sect-zead.onrender.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -58,7 +58,6 @@ sect/
 │   ├── vercel.json               # Rewrites /api/* → Render + headers sécurité
 │   ├── next.config.ts            # serverExternalPackages, rewrites dev-only
 │   ├── tsconfig.json             # TypeScript strict
-│   ├── tailwind.config.ts
 │   ├── playwright.config.ts
 │   └── vitest.config.ts
 │
@@ -85,14 +84,17 @@ sect/
 │   │   ├── usecase/              # Logique métier (auth, CRUD, grading, messagerie…)
 │   │   └── worker/               # 13 workers asynchrones
 │   ├── db/                       # Couche données
-│   │   ├── db/migrations/        # 103 migrations golang-migrate (000001→000103)
-│   │   ├── db/reference/         # Schéma consolidé (schema.sql, pour sqlc)
-│   │   ├── queries/              # Requêtes sqlc
-│   │   ├── MIGRATIONS_RECONCILIATION.md
-│   │   └── sqlc.yaml
-│   ├── Dockerfile                # Multi-stage (golang:1.27-alpine → alpine:3.20)
-│   ├── Makefile                  # dev / build / migrate-up / sqlc-gen…
+│   │   ├── db/migrations/        # 105 migrations golang-migrate (000001→000105)
+│   │   ├── db/reference/         # Schéma consolidé (schema.sql, documentation)
+│   │   └── MIGRATIONS_RECONCILIATION.md
+│   ├── cmd/seed/                 # Peuplement démo Neon + liaison R2 (idempotent)
+│   ├── Dockerfile                # Multi-stage, USER non-root + healthcheck
+│   ├── Makefile                  # dev / build / migrate-up…
 │   └── go.mod
+│
+├── mobile/                       # Kotlin Multiplatform (shared + androidApp + iosApp) → CI GitHub
+├── desktop/                      # Wails v2 (Go + Vite) — Windows/macOS/Linux → tags desktop-v*
+├── docs/                         # worklog.md, desktop/ (vision + ADR), mobile/, design-system
 │
 ├── render.yaml                   # Config déploiement Render (backend, rootDir: backend)
 ├── .github/                     # CI (6 workflows), SECURITY.md, CODEOWNERS, templates
@@ -342,7 +344,7 @@ Le backend expose **222 routes HTTP** réparties sur **40+ domaines** :
 
 ## Base de données
 
-Statistiques vérifiées sur la base Neon PostgreSQL de production (migration version 103) :
+Statistiques vérifiées sur la base Neon PostgreSQL de production (migration version 105) :
 
 - **71 tables** + **1 vue** (schéma `public`, PascalCase)
 - **30 types enum** (131 valeurs au total) :
@@ -352,7 +354,7 @@ Statistiques vérifiées sur la base Neon PostgreSQL de production (migration ve
 - **173 policies RLS** (Row Level Security) sur **67 tables activées**, claims de session posés via `SET LOCAL app.claims.*`
 - **39 triggers** (essentiellement `updated_at` automatique)
 - **86 fonctions** dont **84 `SECURITY DEFINER`** (helpers RLS, invitations, validation B2B, agrégats stats, capitation B2B, promotion…)
-- **103 migrations** versionnées dans `backend/db/db/migrations/` (golang-migrate), numérotées `000001`→`000103`, toutes appliquées
+- **105 migrations** versionnées dans `backend/db/db/migrations/` (golang-migrate), numérotées `000001`→`000105`, toutes appliquées
 
 ```bash
 # Appliquer les migrations
@@ -428,10 +430,10 @@ Test de charge réel exécuté contre le backend Render en production via `cmd/l
 
 ### Conventions
 
-- **Conventional Commits** (en français) : `<SCOPE>-<TASK>: description` — exemples : `EPREUVES-DATES-FIX-V4:`, `feat:`, `fix:`
+- **Conventional Commits** : `type(scope): description` — `feat`, `fix`, `chore`, `docs`, `ci`, `refactor`, `perf`, `test` (détail dans [CONTRIBUTING.md](CONTRIBUTING.md))
 - **Une seule branche** : `main` (pas de dev/feature branches, déploiement continu auto)
 - **Worklog obligatoire** : chaque tâche append une section dans `docs/worklog.md` avec Task ID, Agent, Work Log, Stage Summary
-- **Structure monorepo** : `frontend/` (Next.js → Vercel) + `backend/` (Go → Render), pas de code à la racine
+- **Structure monorepo** : `frontend/` (Next.js → Vercel) + `backend/` (Go → Render) + `mobile/` (KMP) + `desktop/` (Wails), pas de code à la racine
 
 ---
 

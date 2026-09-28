@@ -5,8 +5,11 @@ Backend Go du projet SECT, connecté à **Neon Postgres** avec **RLS** (Row Leve
 ## Architecture
 
 ```
-apps/api/
-├── cmd/api/main.go              # Point d'entrée
+backend/
+├── cmd/
+│   ├── api/                     # Point d'entrée (main.go)
+│   ├── seed/                    # Peuplement démo Neon + liaison R2 (idempotent)
+│   └── loadtest-submit/         # Outil de load testing
 ├── internal/
 │   ├── config/                  # Chargement .env
 │   ├── db/                      # pgxpool + helpers RLS (SetClaimsTx, WithTx)
@@ -14,9 +17,14 @@ apps/api/
 │   ├── usecase/                 # Logique métier (orchestre les repositories)
 │   ├── repository/              # Implémentations pgx (UserRepository, ...)
 │   ├── transport/http/          # Routeur chi + handlers HTTP
-│   └── middleware/              # Auth JWT, RLS claims, logging
-├── db/queries/                  # Requêtes SQL pour sqlc
-├── sqlc.yaml                    # Config sqlc (génération code type-safe)
+│   ├── middleware/              # Auth JWT, RLS claims, logging
+│   ├── storage/                 # Client Cloudflare R2 (S3)
+│   ├── worker/                  # 13 workers asynchrones
+│   └── …                        # ai/, cache/, mailer/, monitoring/, notification/
+├── db/db/
+│   ├── migrations/              # 105 migrations golang-migrate (up/down)
+│   └── reference/               # Schéma consolidé (documentation)
+├── Dockerfile                   # Multi-stage, USER non-root + healthcheck
 ├── go.mod
 └── Makefile
 ```
