@@ -58,8 +58,8 @@ kotlin {
             implementation("io.insert-koin:koin-core:4.1.1")
 
             // SQLDelight (base SQLite native — offline mode)
-            implementation("app.cash.sqldelight:runtime:2.1.0")
-            implementation("app.cash.sqldelight:coroutines-extensions:2.1.0")
+            implementation("app.cash.sqldelight:runtime:2.4.0")
+            implementation("app.cash.sqldelight:coroutines-extensions:2.4.0")
         }
 
         commonTest.dependencies {
@@ -83,7 +83,7 @@ kotlin {
             implementation("androidx.biometric:biometric:1.1.0")
 
             // SQLDelight Android driver
-            implementation("app.cash.sqldelight:android-driver:2.1.0")
+            implementation("app.cash.sqldelight:android-driver:2.4.0")
 
             // Firebase (FCM) — AndroidNotificationServiceAdapter utilise FirebaseMessaging
             // compileOnly : la dépendance réelle est fournie par androidApp (Firebase BOM)
@@ -96,7 +96,7 @@ kotlin {
             implementation("io.ktor:ktor-client-darwin:3.1.3")
 
             // SQLDelight iOS native driver
-            implementation("app.cash.sqldelight:native-driver:2.1.0")
+            implementation("app.cash.sqldelight:native-driver:2.4.0")
         }
     }
 }
