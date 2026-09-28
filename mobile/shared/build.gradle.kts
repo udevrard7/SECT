@@ -45,14 +45,14 @@ kotlin {
             implementation("io.ktor:ktor-client-cio:3.1.3")
 
             // Sérialisation JSON
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
             // Coroutines
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
 
             // Date/Time + serialization
             implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1") // ensure json available for datetime serializers
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0") // ensure json available for datetime serializers
 
             // Koin DI (shared)
             implementation("io.insert-koin:koin-core:4.1.1")
