@@ -28,6 +28,7 @@ jobs:
   release-android:
     name: 🤖 Release Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: startsWith(github.ref, 'refs/tags/v')
     defaults:
       run:
@@ -35,21 +36,27 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: ☕ Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
 
       - name: 🐘 Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - name: 🔑 Déployer google-services.json
         env:
           GS_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
-        run: echo "$GS_JSON_B64" | base64 -d > androidApp/google-services.json
+        run: |
+          # Un release SANS secret = échec explicite (pas un build cassé 10 min plus tard)
+          if [ -z "$GS_JSON_B64" ]; then
+            echo "❌ GOOGLE_SERVICES_JSON_B64 absent — impossible de signer un release"
+            exit 1
+          fi
+          echo "$GS_JSON_B64" | base64 -d > androidApp/google-services.json
 
       - name: 🔐 Déployer keystore + properties
         env:
@@ -58,6 +65,10 @@ jobs:
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ] || [ -z "$KS_ALIAS" ] || [ -z "$KEY_PASS" ]; then
+            echo "❌ Secrets keystore absents — impossible de signer un release Android"
+            exit 1
+          fi
           echo "$KS_B64" | base64 -d > androidApp/sect-release.jks
           cat > keystore.properties <<EOF
           storeFile=sect-release.jks
@@ -76,7 +87,7 @@ jobs:
           echo "📱 APK: $(basename $APK) ($SIZE)"
 
       - name: 📦 Upload APK artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sect-release-apk
           path: mobile/androidApp/build/outputs/apk/release/*.apk
@@ -86,6 +97,7 @@ jobs:
   release-ios:
     name: 🍎 Release iOS App
     runs-on: macos-14
+    timeout-minutes: 60
     if: startsWith(github.ref, 'refs/tags/v')
     defaults:
       run:
@@ -93,16 +105,16 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: ☕ Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
 
       - name: 🐘 Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - name: 🍎 Select Xcode
         run: sudo xcode-select -s "$(xcode-select -p)" && xcodebuild -version
@@ -186,22 +198,37 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
 
-      # ── Upload IPA (si signé) ou .app (simulateur) ──
+      # ── Upload IPA (si signé) ou .app zippé (simulateur) ──
       - name: 📦 Upload IPA
         if: ${{ vars.APPLE_CERT_B64 != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sect-release-ipa
           path: mobile/iosApp/build/ipa/*.ipa
           retention-days: 90
           if-no-files-found: warn
 
+      # BUGFIX : un .app est un RÉPERTOIRE — actions/upload-artifact le zippe,
+      # mais softprops/action-gh-release ne peut pas attacher un dossier à une
+      # Release. On zippe explicitement (comme mobile-ci.yml) et on attache le .zip.
+      - name: 📦 Zip iOS Simulator App
+        if: ${{ vars.APPLE_CERT_B64 == '' }}
+        run: |
+          APP_DIR=$(find iosApp/build/Build/Products/Release-iphonesimulator -name "*.app" -type d | head -1)
+          if [ -n "$APP_DIR" ]; then
+            cd "$(dirname "$APP_DIR")"
+            zip -r sect-ios-simulator.zip "$(basename "$APP_DIR")"
+            echo "✓ .app zippé"
+          else
+            echo "⚠️ Aucun .app trouvé"
+          fi
+
       - name: 📦 Upload iOS Simulator App
         if: ${{ vars.APPLE_CERT_B64 == '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sect-release-ios-simulator
-          path: mobile/iosApp/build/Build/Products/Release-iphonesimulator/*.app
+          path: mobile/iosApp/build/Build/Products/Release-iphonesimulator/*.zip
           retention-days: 90
           if-no-files-found: warn
 
@@ -209,6 +236,7 @@ jobs:
   create-release:
     name: 🎉 Create GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [release-android, release-ios]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -216,30 +244,30 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: 📥 Download APK
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sect-release-apk
           path: release/
 
       - name: 📥 Download IPA
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sect-release-ipa
           path: release/
         continue-on-error: true
 
       - name: 📥 Download iOS Simulator App
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sect-release-ios-simulator
           path: release/
         continue-on-error: true
 
       - name: 🎉 Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}
           name: SECT Mobile ${{ github.ref_name }}
@@ -258,13 +286,13 @@ jobs:
 
             #### iOS
             1. `.ipa` : installez via TestFlight ou Xcode → Devices
-            2. `.app` : ouvrez avec le simulateur iOS (`xcrun simctl install`)
+            2. `.zip` (simulateur) : décompressez puis `xcrun simctl install` le `.app`
 
             ### Test dans le navigateur
             Glissez l'APK sur [Appetize.io](https://appetize.io) pour tester sans installer.
           files: |
             release/*.apk
             release/*.ipa
-            release/*.app
+            release/*.zip
           draft: false
           prerelease: false

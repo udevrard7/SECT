@@ -5,15 +5,26 @@ name: Build Desktop
 
 on:
   push:
+    branches: [main, develop]
     paths:
       - 'desktop/**'
       - '.github/workflows/build-desktop.yml'
   pull_request:
     paths:
       - 'desktop/**'
+  workflow_dispatch:
+
+# Évite l'empilement de builds sur push successifs (desktop = builds lourds)
+concurrency:
+  group: build-desktop-${{ github.ref }}-${{ matrix.os }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -26,13 +37,13 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.27'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
 
@@ -43,24 +54,27 @@ jobs:
           sudo apt install -y libgtk-3-dev libwebkit2gtk-4.0-dev
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        # v2.13.0 épinglé (reproductibilité) — même ligne majeure que CI et docs
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
       - name: Install frontend deps
         working-directory: desktop/frontend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Build
         working-directory: desktop
         run: wails build -platform ${{ matrix.target }} -clean
 
       - name: Package Linux (.deb, .rpm)
-        if: matrix.os == 'ubuntu-latest'
+        # BUGFIX : la condition comparait à 'ubuntu-latest' alors que la matrice
+        # définit 'ubuntu-22.04' → l'étape ne pouvait jamais s'exécuter.
+        if: matrix.os == 'ubuntu-22.04'
         run: |
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
           desktop/scripts/package-linux.sh desktop/build/bin/sect-desktop 0.2.0
         working-directory: ${{ github.workspace }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sect-desktop-${{ matrix.name }}
           path: |
