@@ -445,7 +445,7 @@ function FactureDocument({ data }: { data: FacturePDFData }) {
               <Text style={styles.partyName}>SECT — Plateforme d'évaluation</Text>
               <Text style={styles.partyLine}>Système d'Évaluation Casse-Tête</Text>
               <Text style={styles.partyLine}>contact@sect.app</Text>
-              <Text style={styles.partyLine}>www.sect-app.vercel.app</Text>
+              <Text style={styles.partyLine}>sect.ftci.fr</Text>
             </View>
             <View style={styles.partyBlock}>
               <Text style={styles.partyLabel}>Destinataire</Text>
@@ -587,7 +587,7 @@ function FactureDocument({ data }: { data: FacturePDFData }) {
           <Text style={styles.footerText}>
             Facture générée le {formatDate(new Date().toISOString())} — SECT — Plateforme d'évaluation IA
           </Text>
-          <Text style={styles.footerBrand}>www.sect-app.vercel.app</Text>
+          <Text style={styles.footerBrand}>sect.ftci.fr</Text>
         </View>
       </Page>
     </Document>

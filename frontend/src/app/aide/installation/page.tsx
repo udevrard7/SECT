@@ -160,14 +160,14 @@ export default function InstallationHelpPage() {
             <div className="space-y-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Windows (fichier .bat)</p>
               <pre className="rounded-lg bg-slate-950 text-slate-50 p-4 text-xs overflow-x-auto"><code>{`@echo off
-start chrome --kiosk --app=https://sect-app.vercel.app/dashboard ^
+start chrome --kiosk --app=https://sect.ftci.fr/dashboard ^
   --disable-translate --no-first-run --no-default-browser-check ^
   --disable-popup-blocking --disable-extensions`}</code></pre>
             </div>
             <div className="space-y-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Linux (fichier .sh)</p>
               <pre className="rounded-lg bg-slate-950 text-slate-50 p-4 text-xs overflow-x-auto"><code>{`#!/bin/bash
-google-chrome --kiosk --app=https://sect-app.vercel.app/dashboard \\
+google-chrome --kiosk --app=https://sect.ftci.fr/dashboard \\
   --disable-translate --no-first-run --no-default-browser-check \\
   --disable-popup-blocking --disable-extensions`}</code></pre>
             </div>
