@@ -41,9 +41,9 @@ func B2BExpirationHTML(d B2BExpirationData) string {
 </p>
 
 ` + infoBoxHTML(fmt.Sprintf(
-	`Pour éviter toute interruption de service pour vos %s étudiants, enseignants et évaluations,
+		`Pour éviter toute interruption de service pour vos %s étudiants, enseignants et évaluations,
 	renouvelez votre abonnement. Montant : <strong style="color:%s;">%s/an</strong> (capitation %s étudiants).`,
-	d.NbEtudiants, ColorLimeDark, d.MontantTTC, d.NbEtudiants)) + `
+		d.NbEtudiants, ColorLimeDark, d.MontantTTC, d.NbEtudiants)) + `
 
 ` + buttonHTML("🔄 Renouveler l'abonnement", d.RenouvellementURL) + `
 

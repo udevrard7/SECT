@@ -52,11 +52,11 @@ func (v *TurnstileVerifier) Enabled() bool {
 type turnstileVerifyResponse struct {
 	Success     bool     `json:"success"`
 	ErrorCodes  []string `json:"error-codes"`
-	ChallengeTS string   `json:"challenge_ts"`        // RFC 3339 (ex: "2022-02-28T15:14:30.000Z")
-	Hostname    string   `json:"hostname"`            // hostname du client (pour vérif optionnelle)
-	Action      string   `json:"action"`              // action attendue (si configurée côté widget)
-	Cdata       string   `json:"cdata"`               // customdata (passé côté widget)
-	Metadata    any      `json:"metadata,omitempty"`  // données additionnelles (info client)
+	ChallengeTS string   `json:"challenge_ts"`       // RFC 3339 (ex: "2022-02-28T15:14:30.000Z")
+	Hostname    string   `json:"hostname"`           // hostname du client (pour vérif optionnelle)
+	Action      string   `json:"action"`             // action attendue (si configurée côté widget)
+	Cdata       string   `json:"cdata"`              // customdata (passé côté widget)
+	Metadata    any      `json:"metadata,omitempty"` // données additionnelles (info client)
 }
 
 // Verify valide un token Turnstile côté serveur.

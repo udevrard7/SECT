@@ -576,6 +576,7 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
 		"total":              len(etudiants),
 	})
 }
+
 // ──────────────────────────────────────────────────────────────────────────
 // 2. GET /api/enseignant/context — filieres (avec niveaux[] + UEs) + etudiants
 // ──────────────────────────────────────────────────────────────────────────

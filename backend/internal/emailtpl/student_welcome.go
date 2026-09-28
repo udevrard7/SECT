@@ -50,8 +50,8 @@ type StudentWelcomeData struct {
 //   - Header DS unifié (logo + bande kente) via baseTemplate
 //   - Titre "Bienvenue sur SECT !" + carte établissement/filière
 //   - Variant B2C vs B2B dans l'intro (Phase 3) :
-//     * B2C (EtablissementType == "PERSONNEL") : "Bienvenue chez votre enseignant {EnseignantNom}"
-//     * B2B (sinon) : "Bienvenue dans votre établissement {EtablissementNom}"
+//   - B2C (EtablissementType == "PERSONNEL") : "Bienvenue chez votre enseignant {EnseignantNom}"
+//   - B2B (sinon) : "Bienvenue dans votre établissement {EtablissementNom}"
 //   - Bloc message personnalisé du créateur (Phase 3) si CustomMessage != ""
 //   - Bloc matricule (si présent)
 //   - Bouton "Se connecter" (vert lime)

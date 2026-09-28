@@ -1,8 +1,9 @@
 // Package http — handlers enrichis pour /api/correction (P1b-CORRECTION).
 //
 // Complète les routes correction pour matcher le frontend use-correction.ts :
-//   PATCH /api/correction/{sessionId}/ai-grade  — save grade OU finalize (dispatch body)
-//   POST  /api/correction/{sessionId}/ai-grade-batch — batch IA grade pour toute la session
+//
+//	PATCH /api/correction/{sessionId}/ai-grade  — save grade OU finalize (dispatch body)
+//	POST  /api/correction/{sessionId}/ai-grade-batch — batch IA grade pour toute la session
 package http
 
 import (
@@ -131,7 +132,7 @@ func (s *Server) saveGradeOrFinalize(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"message":             "Note sauvegardée",
+		"message":              "Note sauvegardée",
 		"needsCorrectionCount": needsCorrection,
 		"allCorrected":         allCorrected,
 	})

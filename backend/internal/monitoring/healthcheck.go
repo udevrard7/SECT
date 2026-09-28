@@ -16,22 +16,22 @@ import (
 
 // ServiceStatus représente l'état d'un service monitoré.
 type ServiceStatus struct {
-	Name        string `json:"name"`
-	Status      string `json:"status"`      // OPERATIONNEL | DEGRADE | INDISPONIBLE
-	Uptime      string `json:"uptime"`      // pourcentage calculé (ex: "99.95%")
-	Latency     int64  `json:"latency"`     // ms
-	LastCheck   string `json:"lastCheck"`   // ISO timestamp
-	LastError   string `json:"lastError"`   // message d'erreur (vide si OK)
-	CheckedAt   time.Time `json:"-"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`    // OPERATIONNEL | DEGRADE | INDISPONIBLE
+	Uptime    string    `json:"uptime"`    // pourcentage calculé (ex: "99.95%")
+	Latency   int64     `json:"latency"`   // ms
+	LastCheck string    `json:"lastCheck"` // ISO timestamp
+	LastError string    `json:"lastError"` // message d'erreur (vide si OK)
+	CheckedAt time.Time `json:"-"`
 }
 
 // HealthReport est le rapport complet de santé des services.
 type HealthReport struct {
-	Services    []ServiceStatus `json:"services"`
-	Overall     string          `json:"overall"`     // OPERATIONNEL | DEGRADE | INDISPONIBLE
-	HealthyCount int            `json:"healthyCount"`
-	TotalCount  int             `json:"totalCount"`
-	CheckedAt   time.Time       `json:"checkedAt"`
+	Services     []ServiceStatus `json:"services"`
+	Overall      string          `json:"overall"` // OPERATIONNEL | DEGRADE | INDISPONIBLE
+	HealthyCount int             `json:"healthyCount"`
+	TotalCount   int             `json:"totalCount"`
+	CheckedAt    time.Time       `json:"checkedAt"`
 }
 
 // HealthChecker vérifie l'état réel des services.
@@ -43,7 +43,7 @@ type HealthChecker struct {
 // NewHealthChecker crée un nouveau HealthChecker.
 func NewHealthChecker(pool *pgxpool.Pool) *HealthChecker {
 	return &HealthChecker{
-		pool: pool,
+		pool:   pool,
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
 }

@@ -26,12 +26,13 @@
 // automatique via retry).
 //
 // CONFIGURATION
-//   SUBMIT_MAX_CONCURRENT (défaut 5) — nombre de submits traités en parallèle.
-//     5 est adapté à Render free (0,1 vCPU, ~6-7 submits/s théoriques, on
-//     garde une marge). Sur Render Starter (0,5 vCPU), monter à 20-25.
-//   SUBMIT_QUEUE_RETRY_AFTER (défaut 3s) — délai conseillé au frontend
-//     quand la file est pleine. Assez court pour ne pas frustrer, assez
-//     long pour vider ~15-20 submits du slot.
+//
+//	SUBMIT_MAX_CONCURRENT (défaut 5) — nombre de submits traités en parallèle.
+//	  5 est adapté à Render free (0,1 vCPU, ~6-7 submits/s théoriques, on
+//	  garde une marge). Sur Render Starter (0,5 vCPU), monter à 20-25.
+//	SUBMIT_QUEUE_RETRY_AFTER (défaut 3s) — délai conseillé au frontend
+//	  quand la file est pleine. Assez court pour ne pas frustrer, assez
+//	  long pour vider ~15-20 submits du slot.
 package http
 
 import (
@@ -130,4 +131,3 @@ func getEnvIntDefault(key string, fallback int) int {
 	}
 	return fallback
 }
-
