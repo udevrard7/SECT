@@ -18,10 +18,19 @@
 
 | Fichier | Trigger | Ce qu'il fait |
 |---------|---------|---------------|
-| `mobile-ci.yml` | push/PR sur main | Compile shared → APK Android → .app iOS → Appetize |
+| `backend-ci.yml` | push/PR sur `backend/**` | golangci-lint → go test → build binaire → vérif migrations (105 paires up/down) |
+| `frontend-ci.yml` | push/PR sur `frontend/**` | bun lint → tests vitest → build Next.js 16 |
+| `mobile-ci.yml` | push/PR sur `mobile/**` | Compile shared KMP → APK Android → .app iOS → deploy Appetize (main) |
 | `mobile-release.yml` | tag `v*` | Build release signé → GitHub Release avec binaires |
-| `backend-ci.yml` | push/PR | Lint Go → Tests → Build binary → Check migrations |
-| `frontend-ci.yml` | push/PR | Lint Next.js → Tests → Build |
+| `build-desktop.yml` | push/PR sur `desktop/**` | Build Wails v2 3 OS (Windows/macOS/Linux) + packaging .deb/.rpm |
+| `release-desktop.yml` | tag `desktop-v*` | Build + signing (optionnel) → GitHub Release + `latest.json` auto-update |
+
+### Normes appliquées (audit DevOps 2026-09)
+- **Actions épinglées par SHA** (anti supply-chain) — mises à jour via Dependabot
+- **`timeout-minutes`** sur tous les jobs (CI 10-30 min, builds OS 60-90 min)
+- **`permissions: contents: read`** par défaut (jobs de release seulement : `write`)
+- **`concurrency` + `cancel-in-progress`** sur les CI (pas d'empilement de runs)
+- Outils épinglés : golangci-lint `v2.14.0` (config `backend/.golangci.yml`), Wails `v2.13.0`, nfpm `v2.47.0`, bun `1.3.14`
 
 ## 🤖 Comment ça marche concrètement
 

@@ -1,0 +1,13 @@
+# golangci-lint — configuration CI (version épinglée v2.14.0 dans backend-ci.yml)
+# Documentation : https://golangci-lint.run/usage/configuration/
+#
+# Principe : linters par défaut (errcheck, govet, ineffassign, staticcheck,
+# unused) + gofmt en garde-fou. Le code historique était indenté aux espaces
+# (contraire à la norme gofmt) ; après le passage `gofmt -w` de septembre 2026,
+# cette config empêche toute régression.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - gofmt
