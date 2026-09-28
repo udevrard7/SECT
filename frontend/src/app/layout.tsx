@@ -25,7 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://sect-app.vercel.app"),
+  metadataBase: new URL("https://sect.ftci.fr"),
   title: "SECT — Vos examens corrigés par l'IA en 2 minutes",
   description:
     "SECT génère vos sujets par IA, surveille les examens en ligne et corrige automatiquement. Conçu pour les universités et écoles d'Afrique. Essai gratuit, sans carte bancaire.",
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     description:
       "Génération de sujets, surveillance anti-fraude et correction automatique pour les universités africaines. Essai gratuit.",
     images: ["/logo.png"],
-    url: "https://sect-app.vercel.app",
+    url: "https://sect.ftci.fr",
     siteName: "SECT",
     type: "website",
     locale: "fr_FR",

@@ -13,6 +13,8 @@ import jsPDF from 'jspdf'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+// Génération @react-pdf + plusieurs fetch backend : au-delà du défaut 10 s (Hobby)
+export const maxDuration = 60
 
 const BACKEND_URL = 'https://sect-zead.onrender.com'
 

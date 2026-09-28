@@ -9,13 +9,23 @@
  * context.addCookies(). Cela évite les problèmes de partage de cookie jar entre
  * page.request et la navigation.
  *
- * Credentials : lus depuis env (ADMIN_EMAIL / ADMIN_PASSWORD).
- * Sortie : e2e/.auth/admin.json (cookies + localStorage)
+ * Credentials : OBLIGATOIREMENT depuis env (ADMIN_EMAIL / ADMIN_PASSWORD).
+ * SECURITY-FIX (audit 2026-09) : les fallbacks en dur (email + mot de passe
+ * d'un compte admin) étaient commités dans le repo — un test doit échouer
+ * explicitement si les variables ne sont pas fournies. ⚠️ Le mot de passe
+ * historique exposé dans git doit être ROTÉ côté production.
+ * Sortie : e2e/.auth/admin.json (cookies + localStorage — gitignoré)
  */
 import { test as setup, expect } from '@playwright/test'
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ulrichdouh@gmail.com'
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '***REMOVED***'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error(
+    'E2E : ADMIN_EMAIL et ADMIN_PASSWORD sont requis (compte de test dédié, ' +
+    'jamais un compte de production). Voir frontend/.env.example.',
+  )
+}
 const BACKEND_URL = process.env.BACKEND_URL || 'https://sect-zead.onrender.com'
 
 setup('authenticate as admin', async ({ page, request }) => {
@@ -36,8 +46,8 @@ setup('authenticate as admin', async ({ page, request }) => {
 
   // 2. Poser les cookies httpOnly manuellement dans le contexte navigateur.
   //    On déduit le domaine depuis baseURL (Vercel) pour que les cookies soient
-  //    envoyés lors des navigations vers sect-app.vercel.app.
-  const baseUrl = new URL(process.env.BASE_URL || 'https://sect-app.vercel.app')
+  //    envoyés lors des navigations vers sect.ftci.fr.
+  const baseUrl = new URL(process.env.BASE_URL || 'https://sect.ftci.fr')
   const domain = baseUrl.hostname
 
   await page.context().addCookies([

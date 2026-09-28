@@ -22,8 +22,9 @@
  */
 import { test, expect } from '@playwright/test'
 
-// L'app est déployée, les identifiants viennent de l'env (fallback dev).
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ulrichdouh@gmail.com'
+// SECURITY-FIX (audit 2026-09) : plus de fallback en dur — le mail admin
+// doit venir exclusivement de l'env (compte de test dédié).
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. ACCÈS & KPIs

@@ -25,7 +25,7 @@
 set -e
 
 # URL de connexion SECT (page de login)
-SECT_URL="https://sect-app.vercel.app/login"
+SECT_URL="https://sect.ftci.fr/login"
 
 # Détecter le navigateur disponible (Chrome > Chromium > Firefox)
 if command -v google-chrome >/dev/null 2>&1; then

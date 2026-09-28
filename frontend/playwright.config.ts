@@ -18,7 +18,7 @@
  */
 import { defineConfig, devices } from '@playwright/test'
 
-const BASE_URL = process.env.BASE_URL || 'https://sect-app.vercel.app'
+const BASE_URL = process.env.BASE_URL || 'https://sect.ftci.fr'
 
 export default defineConfig({
   testDir: './e2e',

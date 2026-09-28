@@ -25,7 +25,7 @@ REM ============================================================
 title SECT - Mode Examen
 
 REM URL de connexion SECT (page de login)
-set SECT_URL=https://sect-app.vercel.app/login
+set SECT_URL=https://sect.ftci.fr/login
 
 REM Lancement Chrome en mode kiosk
 REM Options :
