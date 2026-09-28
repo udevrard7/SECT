@@ -2,26 +2,26 @@
 package repository
 
 import (
-        "context"
-        "fmt"
-        "strings"
-        "time"
+	"context"
+	"fmt"
+	"strings"
+	"time"
 
-        "github.com/google/uuid"
-        "github.com/jackc/pgx/v5"
-        "github.com/jackc/pgx/v5/pgxpool"
-        "github.com/udevrard7/sect/backend/internal/db"
-        "github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udevrard7/sect/backend/internal/db"
+	"github.com/udevrard7/sect/backend/internal/domain"
 )
 
 // ExamPrepRepository implémente domain.ExamPrepRepository.
 type ExamPrepRepository struct {
-        pool *pgxpool.Pool
+	pool *pgxpool.Pool
 }
 
 // NewExamPrepRepository crée un nouveau ExamPrepRepository.
 func NewExamPrepRepository(pool *pgxpool.Pool) *ExamPrepRepository {
-        return &ExamPrepRepository{pool: pool}
+	return &ExamPrepRepository{pool: pool}
 }
 
 // ============================================================
@@ -30,63 +30,63 @@ func NewExamPrepRepository(pool *pgxpool.Pool) *ExamPrepRepository {
 
 // GetDashboard calcule le tableau de bord de progression.
 func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, documentID string) (*domain.ExamPrepDashboard, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        dash := &domain.ExamPrepDashboard{
-                LacunesParChapitre: []domain.ChapterLacune{},
-        }
+	dash := &domain.ExamPrepDashboard{
+		LacunesParChapitre: []domain.ChapterLacune{},
+	}
 
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // PracticeAttempt agrégats
-                var where string
-                var args []any
-                if documentID != "" {
-                        where = `WHERE "userId" = $1 AND "documentId" = $2`
-                        args = []any{userID, documentID}
-                } else {
-                        where = `WHERE "userId" = $1`
-                        args = []any{userID}
-                }
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// PracticeAttempt agrégats
+		var where string
+		var args []any
+		if documentID != "" {
+			where = `WHERE "userId" = $1 AND "documentId" = $2`
+			args = []any{userID, documentID}
+		} else {
+			where = `WHERE "userId" = $1`
+			args = []any{userID}
+		}
 
-                // Score moyen, total, taux réussite, temps révision
-                row := tx.QueryRow(ctx, `
+		// Score moyen, total, taux réussite, temps révision
+		row := tx.QueryRow(ctx, `
                         SELECT count(*)::int,
                                COALESCE(avg("score"), 0)::float,
                                COALESCE(sum(CASE WHEN "correct" THEN 1 ELSE 0 END)::float / NULLIF(count(*), 0), 0),
                                COALESCE(sum("dureeSec"), 0)::int
                         FROM "PracticeAttempt" `+where+`
                 `, args...)
-                err := row.Scan(&dash.TotalAttempts, &dash.ScoreMoyen, &dash.TauxReussite, &dash.TempsRevision)
-                if err != nil {
-                        return fmt.Errorf("query practice stats: %w", err)
-                }
+		err := row.Scan(&dash.TotalAttempts, &dash.ScoreMoyen, &dash.TauxReussite, &dash.TempsRevision)
+		if err != nil {
+			return fmt.Errorf("query practice stats: %w", err)
+		}
 
-                // Sessions à venir
-                err = tx.QueryRow(ctx, `
+		// Sessions à venir
+		err = tx.QueryRow(ctx, `
                         SELECT count(*) FROM "StudySession"
                         WHERE "userId" = $1 AND "statut" = 'PLANIFIEE' AND "dateDebut" >= CURRENT_TIMESTAMP
                 `, userID).Scan(&dash.SessionsAVenir)
-                if err != nil {
-                        return fmt.Errorf("query sessions a venir: %w", err)
-                }
+		if err != nil {
+			return fmt.Errorf("query sessions a venir: %w", err)
+		}
 
-                // SRS stats
-                err = tx.QueryRow(ctx, `
+		// SRS stats
+		err = tx.QueryRow(ctx, `
                         SELECT count(*)::int,
                                COALESCE(sum(CASE WHEN "nextReviewAt" <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0)::int,
                                COALESCE(sum(CASE WHEN "repetitions" >= 5 THEN 1 ELSE 0 END), 0)::int,
                                COALESCE(avg("easeFactor"), 0)::float
                         FROM "ReviewItem" WHERE "userId" = $1
                 `, userID).Scan(&dash.ItemsSrs.Total, &dash.ItemsSrs.DusAujourdhui, &dash.ItemsSrs.Masterises, &dash.ItemsSrs.AvgMastery)
-                if err != nil {
-                        return fmt.Errorf("query srs stats: %w", err)
-                }
+		if err != nil {
+			return fmt.Errorf("query srs stats: %w", err)
+		}
 
-                // Lacunes par chapitre (avgScore < 0.5)
-                rows, err := tx.Query(ctx, `
+		// Lacunes par chapitre (avgScore < 0.5)
+		rows, err := tx.Query(ctx, `
                         SELECT c."id", c."titre", avg(p."score") as avg_score, count(*) as attempts
                         FROM "PracticeAttempt" p
                         JOIN "Chapter" c ON c."id" = p."chapterId"
@@ -96,25 +96,25 @@ func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, do
                         ORDER BY avg_score ASC
                         LIMIT 10
                 `, userID)
-                if err != nil {
-                        return fmt.Errorf("query lacunes: %w", err)
-                }
-                defer rows.Close()
+		if err != nil {
+			return fmt.Errorf("query lacunes: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        var lac domain.ChapterLacune
-                        if err := rows.Scan(&lac.ChapterID, &lac.Titre, &lac.AvgScore, &lac.Attempts); err != nil {
-                                return fmt.Errorf("scan lacune: %w", err)
-                        }
-                        dash.LacunesParChapitre = append(dash.LacunesParChapitre, lac)
-                }
+		for rows.Next() {
+			var lac domain.ChapterLacune
+			if err := rows.Scan(&lac.ChapterID, &lac.Titre, &lac.AvgScore, &lac.Attempts); err != nil {
+				return fmt.Errorf("scan lacune: %w", err)
+			}
+			dash.LacunesParChapitre = append(dash.LacunesParChapitre, lac)
+		}
 
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return dash, nil
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return dash, nil
 }
 
 // ============================================================
@@ -130,14 +130,14 @@ func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, do
 // strict filière + niveau est ASSURÉ EN OUTRE par la clause WHERE ci-dessous
 // (défense en profondeur : RLS + SQL).
 func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, filiereID, niveau string) ([]*domain.Document, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.Document
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                query := fmt.Sprintf(`
+	var result []*domain.Document
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		query := fmt.Sprintf(`
                         SELECT %s FROM "Document" d
                         WHERE d."deletedAt" IS NULL
                           AND d."uniteEnseignementId" IN (
@@ -146,28 +146,28 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
                           )
                         ORDER BY d."dateUpload" DESC
                 `, columnsDocument)
-                rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
-                if err != nil {
-                        return fmt.Errorf("query student documents: %w", err)
-                }
-                defer rows.Close()
+		rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
+		if err != nil {
+			return fmt.Errorf("query student documents: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        d, err := scanDocument(rows)
-                        if err != nil {
-                                return fmt.Errorf("scan document: %w", err)
-                        }
-                        result = append(result, d)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        if result == nil {
-                result = []*domain.Document{}
-        }
-        return result, nil
+		for rows.Next() {
+			d, err := scanDocument(rows)
+			if err != nil {
+				return fmt.Errorf("scan document: %w", err)
+			}
+			result = append(result, d)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = []*domain.Document{}
+	}
+	return result, nil
 }
 
 // GetUserNiveau récupère le niveau d'un utilisateur depuis la table User.
@@ -178,31 +178,31 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx (la policy
 // User_select exige current_user_id() = User.id pour les étudiants).
 func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (string, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return "", fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("no RLS claims in context")
+	}
 
-        var niveau *string
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                err := tx.QueryRow(ctx, `
+	var niveau *string
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
                         SELECT "niveau" FROM "User" WHERE "id" = $1
                 `, userID).Scan(&niveau)
-                if err != nil {
-                        if err == pgx.ErrNoRows {
-                                return nil // pas d'erreur : niveau vide
-                        }
-                        return fmt.Errorf("query user niveau: %w", err)
-                }
-                return nil
-        })
-        if err != nil {
-                return "", err
-        }
-        if niveau == nil {
-                return "", nil
-        }
-        return *niveau, nil
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil // pas d'erreur : niveau vide
+			}
+			return fmt.Errorf("query user niveau: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if niveau == nil {
+		return "", nil
+	}
+	return *niveau, nil
 }
 
 // GetDocumentContent récupère le contenu textuel d'un document.
@@ -214,38 +214,38 @@ func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (
 // (appelé avant cette méthode pour les étudiants) + RLS Document_select.
 // Si le document n'existe pas ou est supprimé, retourne une chaîne vide.
 func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID string) (string, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return "", fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("no RLS claims in context")
+	}
 
-        var contenu *string
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                err := tx.QueryRow(ctx, `
+	var contenu *string
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
                         SELECT "contenuTexte" FROM "Document"
                         WHERE "id" = $1 AND "deletedAt" IS NULL
                 `, documentID).Scan(&contenu)
-                if err != nil {
-                        if err == pgx.ErrNoRows {
-                                return nil // pas d'erreur : contenu vide
-                        }
-                        return fmt.Errorf("query document content: %w", err)
-                }
-                return nil
-        })
-        if err != nil {
-                return "", err
-        }
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil // pas d'erreur : contenu vide
+			}
+			return fmt.Errorf("query document content: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
 
-        if contenu == nil {
-                return "", nil
-        }
-        // Tronquer à 12k caractères (cohérent avec epreuvesGenerate).
-        c := *contenu
-        if len(c) > 12_000 {
-                c = c[:12_000] + "\n... [contenu tronqué]"
-        }
-        return c, nil
+	if contenu == nil {
+		return "", nil
+	}
+	// Tronquer à 12k caractères (cohérent avec epreuvesGenerate).
+	c := *contenu
+	if len(c) > 12_000 {
+		c = c[:12_000] + "\n... [contenu tronqué]"
+	}
+	return c, nil
 }
 
 // GetDocumentForReader récupère un document complet (avec contenuTexte) pour
@@ -255,28 +255,28 @@ func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID 
 // strict filière+niveau est assuré côté usecase via CheckDocumentAccess
 // (appelé avant pour les étudiants) + RLS Document_select.
 func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentID string) (*domain.Document, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var d *domain.Document
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`, columnsDocument), documentID)
-                doc, err := scanDocument(row)
-                if err != nil {
-                        if err == pgx.ErrNoRows {
-                                return &domain.NotFoundError{Entity: "Document", ID: documentID}
-                        }
-                        return fmt.Errorf("query document for reader: %w", err)
-                }
-                d = doc
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return d, nil
+	var d *domain.Document
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`, columnsDocument), documentID)
+		doc, err := scanDocument(row)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return &domain.NotFoundError{Entity: "Document", ID: documentID}
+			}
+			return fmt.Errorf("query document for reader: %w", err)
+		}
+		d = doc
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 // CheckDocumentAccess vérifie qu'un document appartient à une UE de la
@@ -284,14 +284,14 @@ func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentI
 //
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return false, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return false, fmt.Errorf("no RLS claims in context")
+	}
 
-        var exists bool
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                return tx.QueryRow(ctx, `
+	var exists bool
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
                         SELECT EXISTS(
                                 SELECT 1 FROM "Document" d
                                 JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
@@ -300,11 +300,11 @@ func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID
                                         AND (ue."niveau" = $3 OR ue."niveaux" LIKE $4)
                         )
                 `, documentID, filiereID, niveau, "%\""+niveau+"\"%").Scan(&exists)
-        })
-        if err != nil {
-                return false, fmt.Errorf("check document access: %w", err)
-        }
-        return exists, nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("check document access: %w", err)
+	}
+	return exists, nil
 }
 
 // ============================================================
@@ -318,49 +318,49 @@ func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID
 // Chapter_select a maintenant une branche is_etudiant() via la filière de
 // l'UE du document parent — migration 000034).
 func (r *ExamPrepRepository) ListChaptersByDocumentIDs(ctx context.Context, docIDs []string) (map[string][]*domain.Chapter, error) {
-        result := make(map[string][]*domain.Chapter)
-        if len(docIDs) == 0 {
-                return result, nil
-        }
+	result := make(map[string][]*domain.Chapter)
+	if len(docIDs) == 0 {
+		return result, nil
+	}
 
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        placeholders := make([]string, len(docIDs))
-        args := make([]any, len(docIDs))
-        for i, id := range docIDs {
-                placeholders[i] = fmt.Sprintf("$%d", i+1)
-                args[i] = id
-        }
-        query := fmt.Sprintf(`
+	placeholders := make([]string, len(docIDs))
+	args := make([]any, len(docIDs))
+	for i, id := range docIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
                 SELECT "id", "documentId", "titre", "ordre", "sujets", "createdAt"
                 FROM "Chapter"
                 WHERE "documentId" IN (%s)
                 ORDER BY "ordre" ASC
         `, strings.Join(placeholders, ", "))
 
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query chapters: %w", err)
-                }
-                defer rows.Close()
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query chapters: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        ch := &domain.Chapter{}
-                        if err := rows.Scan(&ch.ID, &ch.DocumentID, &ch.Titre, &ch.Ordre, &ch.Sujets, &ch.CreatedAt); err != nil {
-                                return fmt.Errorf("scan chapter: %w", err)
-                        }
-                        result[ch.DocumentID] = append(result[ch.DocumentID], ch)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			ch := &domain.Chapter{}
+			if err := rows.Scan(&ch.ID, &ch.DocumentID, &ch.Titre, &ch.Ordre, &ch.Sujets, &ch.CreatedAt); err != nil {
+				return fmt.Errorf("scan chapter: %w", err)
+			}
+			result[ch.DocumentID] = append(result[ch.DocumentID], ch)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ListUEsByIDs retourne les unités d'enseignement par ID (batch).
@@ -369,48 +369,48 @@ func (r *ExamPrepRepository) ListChaptersByDocumentIDs(ctx context.Context, docI
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx (la policy
 // UniteEnseignement_select a déjà une branche is_etudiant() depuis 000024).
 func (r *ExamPrepRepository) ListUEsByIDs(ctx context.Context, ueIDs []string) (map[string]*domain.UniteEnseignement, error) {
-        result := make(map[string]*domain.UniteEnseignement)
-        if len(ueIDs) == 0 {
-                return result, nil
-        }
+	result := make(map[string]*domain.UniteEnseignement)
+	if len(ueIDs) == 0 {
+		return result, nil
+	}
 
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        placeholders := make([]string, len(ueIDs))
-        args := make([]any, len(ueIDs))
-        for i, id := range ueIDs {
-                placeholders[i] = fmt.Sprintf("$%d", i+1)
-                args[i] = id
-        }
-        query := fmt.Sprintf(`
+	placeholders := make([]string, len(ueIDs))
+	args := make([]any, len(ueIDs))
+	for i, id := range ueIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
                 SELECT "id", "code", "nom", "creditsECTS"
                 FROM "UniteEnseignement"
                 WHERE "id" IN (%s)
         `, strings.Join(placeholders, ", "))
 
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query UEs: %w", err)
-                }
-                defer rows.Close()
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query UEs: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        ue := &domain.UniteEnseignement{}
-                        if err := rows.Scan(&ue.ID, &ue.Code, &ue.Nom, &ue.CreditsECTS); err != nil {
-                                return fmt.Errorf("scan UE: %w", err)
-                        }
-                        result[ue.ID] = ue
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			ue := &domain.UniteEnseignement{}
+			if err := rows.Scan(&ue.ID, &ue.Code, &ue.Nom, &ue.CreditsECTS); err != nil {
+				return fmt.Errorf("scan UE: %w", err)
+			}
+			result[ue.ID] = ue
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ListUserRefsByIDs retourne des références utilisateurs par ID (batch).
@@ -421,48 +421,48 @@ func (r *ExamPrepRepository) ListUEsByIDs(ctx context.Context, ueIDs []string) (
 // filière — ce qui est exactement le périmètre attendu pour afficher le
 // nom du propriétaire d'un document consulté par l'étudiant.
 func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []string) (map[string]*domain.UserRef, error) {
-        result := make(map[string]*domain.UserRef)
-        if len(userIDs) == 0 {
-                return result, nil
-        }
+	result := make(map[string]*domain.UserRef)
+	if len(userIDs) == 0 {
+		return result, nil
+	}
 
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        placeholders := make([]string, len(userIDs))
-        args := make([]any, len(userIDs))
-        for i, id := range userIDs {
-                placeholders[i] = fmt.Sprintf("$%d", i+1)
-                args[i] = id
-        }
-        query := fmt.Sprintf(`
+	placeholders := make([]string, len(userIDs))
+	args := make([]any, len(userIDs))
+	for i, id := range userIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
                 SELECT "id", "name", "email"
                 FROM "User"
                 WHERE "id" IN (%s)
         `, strings.Join(placeholders, ", "))
 
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query users: %w", err)
-                }
-                defer rows.Close()
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query users: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        u := &domain.UserRef{}
-                        if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
-                                return fmt.Errorf("scan user: %w", err)
-                        }
-                        result[u.ID] = u
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			u := &domain.UserRef{}
+			if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+				return fmt.Errorf("scan user: %w", err)
+			}
+			result[u.ID] = u
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ============================================================
@@ -475,59 +475,59 @@ func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []st
 // userId est déjà en SQL WHERE clause, mais la pose des claims reste
 // obligatoire (RLS FORCED sur ReviewItem sous le rôle sect_app NOBYPASSRLS).
 func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.ReviewListParams) ([]*domain.ReviewItem, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var where []string
-        var args []any
-        argIdx := 1
+	var where []string
+	var args []any
+	argIdx := 1
 
-        where = append(where, fmt.Sprintf(`"userId" = $%d`, argIdx))
-        args = append(args, params.UserID)
-        argIdx++
+	where = append(where, fmt.Sprintf(`"userId" = $%d`, argIdx))
+	args = append(args, params.UserID)
+	argIdx++
 
-        if params.DueOnly {
-                where = append(where, `"nextReviewAt" <= CURRENT_TIMESTAMP`)
-        }
-        if params.DocumentID != "" {
-                where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Chapter" c WHERE c."id" = "ReviewItem"."chapterId" AND c."documentId" = $%d)`, argIdx))
-                args = append(args, params.DocumentID)
-        }
+	if params.DueOnly {
+		where = append(where, `"nextReviewAt" <= CURRENT_TIMESTAMP`)
+	}
+	if params.DocumentID != "" {
+		where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Chapter" c WHERE c."id" = "ReviewItem"."chapterId" AND c."documentId" = $%d)`, argIdx))
+		args = append(args, params.DocumentID)
+	}
 
-        query := fmt.Sprintf(`
+	query := fmt.Sprintf(`
                 SELECT "id", "userId", "chapterId", "questionId", "interval", "easeFactor",
                        "nextReviewAt", "lastReviewedAt", "repetitions", "createdAt", "updatedAt"
                 FROM "ReviewItem" WHERE %s ORDER BY "nextReviewAt" ASC
         `, strings.Join(where, " AND "))
 
-        var result []*domain.ReviewItem
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query review items: %w", err)
-                }
-                defer rows.Close()
+	var result []*domain.ReviewItem
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query review items: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        item := &domain.ReviewItem{}
-                        if err := rows.Scan(&item.ID, &item.UserID, &item.ChapterID, &item.QuestionID,
-                                &item.Interval, &item.EaseFactor, &item.NextReviewAt, &item.LastReviewAt,
-                                &item.Repetitions, &item.CreatedAt, &item.UpdatedAt); err != nil {
-                                return fmt.Errorf("scan review item: %w", err)
-                        }
-                        result = append(result, item)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        if result == nil {
-                result = []*domain.ReviewItem{}
-        }
-        return result, nil
+		for rows.Next() {
+			item := &domain.ReviewItem{}
+			if err := rows.Scan(&item.ID, &item.UserID, &item.ChapterID, &item.QuestionID,
+				&item.Interval, &item.EaseFactor, &item.NextReviewAt, &item.LastReviewAt,
+				&item.Repetitions, &item.CreatedAt, &item.UpdatedAt); err != nil {
+				return fmt.Errorf("scan review item: %w", err)
+			}
+			result = append(result, item)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = []*domain.ReviewItem{}
+	}
+	return result, nil
 }
 
 // MarkReviewed marque un item comme révisé (SM-2 simplified).
@@ -535,46 +535,46 @@ func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. SELECT + UPDATE
 // dans la même tx ; NotFoundError propagé depuis la closure si l'item n'existe pas.
 func (r *ExamPrepRepository) MarkReviewed(ctx context.Context, itemID string, quality int) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // SM-2 simplified: quality 0-5
-                // interval = (repetitions+1) * easeFactor days (simplified)
-                // easeFactor = max(1.3, easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
-                var interval, repetitions int
-                var easeFactor float64
-                err := tx.QueryRow(ctx, `SELECT "interval", "repetitions", "easeFactor" FROM "ReviewItem" WHERE "id" = $1`, itemID).Scan(&interval, &repetitions, &easeFactor)
-                if err != nil {
-                        if err == pgx.ErrNoRows {
-                                return &domain.NotFoundError{Entity: "ReviewItem", ID: itemID}
-                        }
-                        return fmt.Errorf("get review item: %w", err)
-                }
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// SM-2 simplified: quality 0-5
+		// interval = (repetitions+1) * easeFactor days (simplified)
+		// easeFactor = max(1.3, easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
+		var interval, repetitions int
+		var easeFactor float64
+		err := tx.QueryRow(ctx, `SELECT "interval", "repetitions", "easeFactor" FROM "ReviewItem" WHERE "id" = $1`, itemID).Scan(&interval, &repetitions, &easeFactor)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return &domain.NotFoundError{Entity: "ReviewItem", ID: itemID}
+			}
+			return fmt.Errorf("get review item: %w", err)
+		}
 
-                newEase := easeFactor + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
-                if newEase < 1.3 {
-                        newEase = 1.3
-                }
-                newRepetitions := repetitions + 1
-                newInterval := int(float64(newRepetitions) * newEase)
-                if newInterval < 1 {
-                        newInterval = 1
-                }
+		newEase := easeFactor + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+		if newEase < 1.3 {
+			newEase = 1.3
+		}
+		newRepetitions := repetitions + 1
+		newInterval := int(float64(newRepetitions) * newEase)
+		if newInterval < 1 {
+			newInterval = 1
+		}
 
-                _, err = tx.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
                         UPDATE "ReviewItem" SET "interval" = $2, "easeFactor" = $3, "repetitions" = $4,
                                 "nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
                                 "lastReviewedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
                         WHERE "id" = $1
                 `, itemID, newInterval, newEase, newRepetitions)
-                if err != nil {
-                        return fmt.Errorf("update review item: %w", err)
-                }
-                return nil
-        })
+		if err != nil {
+			return fmt.Errorf("update review item: %w", err)
+		}
+		return nil
+	})
 }
 
 // ============================================================
@@ -583,46 +583,46 @@ func (r *ExamPrepRepository) MarkReviewed(ctx context.Context, itemID string, qu
 
 // ListStudySessions liste les sessions de révision d'un utilisateur.
 func (r *ExamPrepRepository) ListStudySessions(ctx context.Context, userID string) ([]*domain.StudySession, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.StudySession
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, `
+	var result []*domain.StudySession
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                         SELECT "id", "userId", "documentId", "chapterIds", "titre",
                                "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
                         FROM "StudySession" WHERE "userId" = $1 ORDER BY "dateDebut" DESC
                 `, userID)
-                if err != nil {
-                        return fmt.Errorf("query study sessions: %w", err)
-                }
-                defer rows.Close()
+		if err != nil {
+			return fmt.Errorf("query study sessions: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        s := &domain.StudySession{}
-                        var chapterIds, titre *string
-                        var dureeMin *int
-                        var rappelEnvoye *bool
-                        if err := rows.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
-                                &s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
-                                return fmt.Errorf("scan study session: %w", err)
-                        }
-                        if titre != nil {
-                                s.Type = *titre
-                        }
-                        result = append(result, s)
-                }
-                if result == nil {
-                        result = []*domain.StudySession{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			s := &domain.StudySession{}
+			var chapterIds, titre *string
+			var dureeMin *int
+			var rappelEnvoye *bool
+			if err := rows.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
+				&s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
+				return fmt.Errorf("scan study session: %w", err)
+			}
+			if titre != nil {
+				s.Type = *titre
+			}
+			result = append(result, s)
+		}
+		if result == nil {
+			result = []*domain.StudySession{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // CreateStudySession crée une session de révision.
@@ -630,20 +630,20 @@ func (r *ExamPrepRepository) ListStudySessions(ctx context.Context, userID strin
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. La validation
 // du format date reste hors closure (échec avant d'ouvrir la tx).
 func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID string, input domain.CreateStudySessionInput) (*domain.StudySession, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
-        if err != nil {
-                return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
-        }
+	dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
+	if err != nil {
+		return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
+	}
 
-        var s *domain.StudySession
-        err = db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                id := uuid.NewString()
-                row := tx.QueryRow(ctx, `
+	var s *domain.StudySession
+	err = db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		id := uuid.NewString()
+		row := tx.QueryRow(ctx, `
                         INSERT INTO "StudySession" ("id", "userId", "documentId", "chapterIds", "titre",
                                 "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt")
                         VALUES ($1, $2, $3, NULL, $4, $5, 0, 'PLANIFIEE', false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -651,23 +651,23 @@ func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID stri
                                 "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
                 `, id, userID, nullableStrPtr(input.DocumentID), input.Type, dateDebut)
 
-                s = &domain.StudySession{}
-                var chapterIds, titre *string
-                var dureeMin *int
-                var rappelEnvoye *bool
-                if err := row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
-                        &s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
-                        return fmt.Errorf("create study session: %w", err)
-                }
-                if titre != nil {
-                        s.Type = *titre
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return s, nil
+		s = &domain.StudySession{}
+		var chapterIds, titre *string
+		var dureeMin *int
+		var rappelEnvoye *bool
+		if err := row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
+			&s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return fmt.Errorf("create study session: %w", err)
+		}
+		if titre != nil {
+			s.Type = *titre
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // UpdateStudySession modifie une session existante (PATCH /planning/{id}).
@@ -685,77 +685,77 @@ func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID stri
 // (migration 000002) et sont donc ignorés — cohérent avec CreateStudySession
 // qui ne les persiste pas non plus.
 func (r *ExamPrepRepository) UpdateStudySession(ctx context.Context, id string, input domain.UpdateStudySessionInput) (*domain.StudySession, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        // Validation du format date (hors closure — échec avant d'ouvrir la tx).
-        var dateDebut time.Time
-        if input.DateDebut != nil {
-                var err error
-                dateDebut, err = time.Parse(time.RFC3339, *input.DateDebut)
-                if err != nil {
-                        return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
-                }
-        }
+	// Validation du format date (hors closure — échec avant d'ouvrir la tx).
+	var dateDebut time.Time
+	if input.DateDebut != nil {
+		var err error
+		dateDebut, err = time.Parse(time.RFC3339, *input.DateDebut)
+		if err != nil {
+			return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
+		}
+	}
 
-        var s *domain.StudySession
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // Construction dynamique du SET — seuls les champs non-nil.
-                var setClauses []string
-                var args []any
-                argIdx := 1
+	var s *domain.StudySession
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// Construction dynamique du SET — seuls les champs non-nil.
+		var setClauses []string
+		var args []any
+		argIdx := 1
 
-                addSet := func(col string, val any) {
-                        setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
-                        args = append(args, val)
-                        argIdx++
-                }
+		addSet := func(col string, val any) {
+			setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
+			args = append(args, val)
+			argIdx++
+		}
 
-                if input.Type != nil {
-                        addSet("titre", *input.Type)
-                }
-                if input.DateDebut != nil {
-                        addSet("dateDebut", dateDebut)
-                }
-                if input.Statut != nil {
-                        addSet("statut", *input.Statut)
-                }
+		if input.Type != nil {
+			addSet("titre", *input.Type)
+		}
+		if input.DateDebut != nil {
+			addSet("dateDebut", dateDebut)
+		}
+		if input.Statut != nil {
+			addSet("statut", *input.Statut)
+		}
 
-                // Toujours rafraîchir "updatedAt" (le trigger 000005 le ferait
-                // aussi, mais on l'explicité pour cohérence avec UpdateUser).
-                setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
+		// Toujours rafraîchir "updatedAt" (le trigger 000005 le ferait
+		// aussi, mais on l'explicité pour cohérence avec UpdateUser).
+		setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
 
-                // id placeholder (après les args du SET).
-                args = append(args, id)
-                updateSQL := fmt.Sprintf(`
+		// id placeholder (après les args du SET).
+		args = append(args, id)
+		updateSQL := fmt.Sprintf(`
                         UPDATE "StudySession" SET %s WHERE "id" = $%d
                         RETURNING "id", "userId", "documentId", "chapterIds", "titre",
                                 "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
                 `, strings.Join(setClauses, ", "), argIdx)
 
-                row := tx.QueryRow(ctx, updateSQL, args...)
-                s = &domain.StudySession{}
-                var chapterIds, titre *string
-                var dureeMin *int
-                var rappelEnvoye *bool
-                if err := row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
-                        &s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
-                        if err == pgx.ErrNoRows {
-                                return &domain.NotFoundError{Entity: "StudySession", ID: id}
-                        }
-                        return fmt.Errorf("update study session: %w", err)
-                }
-                if titre != nil {
-                        s.Type = *titre
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return s, nil
+		row := tx.QueryRow(ctx, updateSQL, args...)
+		s = &domain.StudySession{}
+		var chapterIds, titre *string
+		var dureeMin *int
+		var rappelEnvoye *bool
+		if err := row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
+			&s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			if err == pgx.ErrNoRows {
+				return &domain.NotFoundError{Entity: "StudySession", ID: id}
+			}
+			return fmt.Errorf("update study session: %w", err)
+		}
+		if titre != nil {
+			s.Type = *titre
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // DeleteStudySession supprime une session.
@@ -763,21 +763,21 @@ func (r *ExamPrepRepository) UpdateStudySession(ctx context.Context, id string, 
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. NotFoundError
 // propagé depuis la closure si RowsAffected == 0.
 func (r *ExamPrepRepository) DeleteStudySession(ctx context.Context, id string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                tag, err := tx.Exec(ctx, `DELETE FROM "StudySession" WHERE "id" = $1`, id)
-                if err != nil {
-                        return fmt.Errorf("delete study session: %w", err)
-                }
-                if tag.RowsAffected() == 0 {
-                        return &domain.NotFoundError{Entity: "StudySession", ID: id}
-                }
-                return nil
-        })
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `DELETE FROM "StudySession" WHERE "id" = $1`, id)
+		if err != nil {
+			return fmt.Errorf("delete study session: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "StudySession", ID: id}
+		}
+		return nil
+	})
 }
 
 // ============================================================
@@ -786,46 +786,46 @@ func (r *ExamPrepRepository) DeleteStudySession(ctx context.Context, id string) 
 
 // ListPracticeAttempts liste les tentatives d'un utilisateur.
 func (r *ExamPrepRepository) ListPracticeAttempts(ctx context.Context, userID, documentID string) ([]*domain.PracticeAttempt, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.PracticeAttempt
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                var query string
-                var args []any
-                if documentID != "" {
-                        query = `SELECT "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt" FROM "PracticeAttempt" WHERE "userId" = $1 AND "documentId" = $2 ORDER BY "createdAt" DESC`
-                        args = []any{userID, documentID}
-                } else {
-                        query = `SELECT "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt" FROM "PracticeAttempt" WHERE "userId" = $1 ORDER BY "createdAt" DESC`
-                        args = []any{userID}
-                }
+	var result []*domain.PracticeAttempt
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var query string
+		var args []any
+		if documentID != "" {
+			query = `SELECT "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt" FROM "PracticeAttempt" WHERE "userId" = $1 AND "documentId" = $2 ORDER BY "createdAt" DESC`
+			args = []any{userID, documentID}
+		} else {
+			query = `SELECT "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt" FROM "PracticeAttempt" WHERE "userId" = $1 ORDER BY "createdAt" DESC`
+			args = []any{userID}
+		}
 
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query practice attempts: %w", err)
-                }
-                defer rows.Close()
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query practice attempts: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        p := &domain.PracticeAttempt{}
-                        if err := rows.Scan(&p.ID, &p.UserID, &p.QuestionID, &p.DocumentID, &p.ChapterID,
-                                &p.Score, &p.Correct, &p.DureeSec, &p.CreatedAt); err != nil {
-                                return fmt.Errorf("scan practice attempt: %w", err)
-                        }
-                        result = append(result, p)
-                }
-                if result == nil {
-                        result = []*domain.PracticeAttempt{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			p := &domain.PracticeAttempt{}
+			if err := rows.Scan(&p.ID, &p.UserID, &p.QuestionID, &p.DocumentID, &p.ChapterID,
+				&p.Score, &p.Correct, &p.DureeSec, &p.CreatedAt); err != nil {
+				return fmt.Errorf("scan practice attempt: %w", err)
+			}
+			result = append(result, p)
+		}
+		if result == nil {
+			result = []*domain.PracticeAttempt{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // SubmitPractice enregistre une tentative.
@@ -842,65 +842,65 @@ func (r *ExamPrepRepository) ListPracticeAttempts(ctx context.Context, userID, d
 // PracticeAttempt + SELECT/INSERT/UPDATE ReviewItem restent dans la même
 // tx ; les erreurs best-effort du SRS sont avalées (comportement préservé).
 func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, input domain.SubmitPracticeInput) (*domain.PracticeAttempt, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var p *domain.PracticeAttempt
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                id := uuid.NewString()
-                row := tx.QueryRow(ctx, `
+	var p *domain.PracticeAttempt
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		id := uuid.NewString()
+		row := tx.QueryRow(ctx, `
                         INSERT INTO "PracticeAttempt" ("id", "userId", "questionId", "documentId", "chapterId",
                                 "score", "correct", "dureeSec", "createdAt")
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
                         RETURNING "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt"
                 `, id, userID, input.QuestionID, nullableStrPtr(input.DocumentID), nullableStrPtr(input.ChapterID),
-                        input.Score, input.Correct, nullableIntPtr(input.DureeSec))
+			input.Score, input.Correct, nullableIntPtr(input.DureeSec))
 
-                attempt := &domain.PracticeAttempt{}
-                if err := row.Scan(&attempt.ID, &attempt.UserID, &attempt.QuestionID, &attempt.DocumentID, &attempt.ChapterID,
-                        &attempt.Score, &attempt.Correct, &attempt.DureeSec, &attempt.CreatedAt); err != nil {
-                        return fmt.Errorf("create practice attempt: %w", err)
-                }
-                p = attempt
+		attempt := &domain.PracticeAttempt{}
+		if err := row.Scan(&attempt.ID, &attempt.UserID, &attempt.QuestionID, &attempt.DocumentID, &attempt.ChapterID,
+			&attempt.Score, &attempt.Correct, &attempt.DureeSec, &attempt.CreatedAt); err != nil {
+			return fmt.Errorf("create practice attempt: %w", err)
+		}
+		p = attempt
 
-                // ── SRS automatique : upsert ReviewItem ────────────────────────────────
-                // Conversion du score (0..1) en qualité SM-2 (0..5).
-                quality := computeSM2Quality(input.Score, input.Correct)
+		// ── SRS automatique : upsert ReviewItem ────────────────────────────────
+		// Conversion du score (0..1) en qualité SM-2 (0..5).
+		quality := computeSM2Quality(input.Score, input.Correct)
 
-                var chapID any
-                if input.ChapterID != nil && *input.ChapterID != "" {
-                        chapID = *input.ChapterID
-                }
+		var chapID any
+		if input.ChapterID != nil && *input.ChapterID != "" {
+			chapID = *input.ChapterID
+		}
 
-                // Lire l'état courant du ReviewItem pour ce couple (userId, questionId).
-                var (
-                        existingID   string
-                        existingEase float64
-                        existingReps int
-                )
-                err := tx.QueryRow(ctx, `
+		// Lire l'état courant du ReviewItem pour ce couple (userId, questionId).
+		var (
+			existingID   string
+			existingEase float64
+			existingReps int
+		)
+		err := tx.QueryRow(ctx, `
                         SELECT "id", "easeFactor", "repetitions"
                         FROM "ReviewItem"
                         WHERE "userId" = $1 AND "questionId" = $2
                 `, userID, input.QuestionID).Scan(&existingID, &existingEase, &existingReps)
 
-                switch err {
-                case pgx.ErrNoRows:
-                        // Premier review sur cette question → INSERT.
-                        // Initialise easeFactor=2.5, repetitions=1, interval calculé SM-2.
-                        newEase := 2.5 + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
-                        if newEase < 1.3 {
-                                newEase = 1.3
-                        }
-                        newReps := 1
-                        newInterval := int(float64(newReps) * newEase)
-                        if newInterval < 1 {
-                                newInterval = 1
-                        }
-                        reviewID := uuid.NewString()
-                        if _, err := tx.Exec(ctx, `
+		switch err {
+		case pgx.ErrNoRows:
+			// Premier review sur cette question → INSERT.
+			// Initialise easeFactor=2.5, repetitions=1, interval calculé SM-2.
+			newEase := 2.5 + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+			if newEase < 1.3 {
+				newEase = 1.3
+			}
+			newReps := 1
+			newInterval := int(float64(newReps) * newEase)
+			if newInterval < 1 {
+				newInterval = 1
+			}
+			reviewID := uuid.NewString()
+			if _, err := tx.Exec(ctx, `
                                 INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
                                         "interval", "easeFactor", "repetitions", "nextReviewAt",
                                         "lastReviewedAt", "createdAt", "updatedAt")
@@ -908,23 +908,23 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
                                         CURRENT_TIMESTAMP + ($5 || ' days')::interval,
                                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         `, reviewID, userID, chapID, input.QuestionID, newInterval, newEase, newReps); err != nil {
-                                // Non-fatal : on log via fmt.Errorf mais on ne fait pas échouer SubmitPractice.
-                                // L'attempt a déjà été inséré ; le SRS est best-effort.
-                                // On continue vers le commit.
-                                _ = err
-                        }
-                case nil:
-                        // ReviewItem existe déjà → appliquer SM-2 puis UPDATE.
-                        newEase := existingEase + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
-                        if newEase < 1.3 {
-                                newEase = 1.3
-                        }
-                        newReps := existingReps + 1
-                        newInterval := int(float64(newReps) * newEase)
-                        if newInterval < 1 {
-                                newInterval = 1
-                        }
-                        if _, err := tx.Exec(ctx, `
+				// Non-fatal : on log via fmt.Errorf mais on ne fait pas échouer SubmitPractice.
+				// L'attempt a déjà été inséré ; le SRS est best-effort.
+				// On continue vers le commit.
+				_ = err
+			}
+		case nil:
+			// ReviewItem existe déjà → appliquer SM-2 puis UPDATE.
+			newEase := existingEase + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+			if newEase < 1.3 {
+				newEase = 1.3
+			}
+			newReps := existingReps + 1
+			newInterval := int(float64(newReps) * newEase)
+			if newInterval < 1 {
+				newInterval = 1
+			}
+			if _, err := tx.Exec(ctx, `
                                 UPDATE "ReviewItem" SET
                                         "interval" = $2,
                                         "easeFactor" = $3,
@@ -934,17 +934,17 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
                                         "updatedAt" = CURRENT_TIMESTAMP
                                 WHERE "id" = $1
                         `, existingID, newInterval, newEase, newReps); err != nil {
-                                // Non-fatal : best-effort, on continue.
-                                _ = err
-                        }
-                }
-                // ── Fin SRS ────────────────────────────────────────────────────────────
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return p, nil
+				// Non-fatal : best-effort, on continue.
+				_ = err
+			}
+		}
+		// ── Fin SRS ────────────────────────────────────────────────────────────
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // computeSM2Quality convertit un score (0..1) + flag correct en qualité SM-2 (0..5).
@@ -957,23 +957,23 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
 //
 // Le score est sinon mappé linéairement sur 0..5.
 func computeSM2Quality(score float64, correct bool) int {
-        if correct && score >= 0.8 {
-                return 5
-        }
-        if correct {
-                return 3
-        }
-        if score <= 0 {
-                return 1
-        }
-        q := int(score * 5)
-        if q < 1 {
-                q = 1
-        }
-        if q > 5 {
-                q = 5
-        }
-        return q
+	if correct && score >= 0.8 {
+		return 5
+	}
+	if correct {
+		return 3
+	}
+	if score <= 0 {
+		return 1
+	}
+	q := int(score * 5)
+	if q < 1 {
+		q = 1
+	}
+	if q > 5 {
+		q = 5
+	}
+	return q
 }
 
 // ============================================================
@@ -982,29 +982,29 @@ func computeSM2Quality(score float64, correct bool) int {
 
 // ListHelpThreads liste les fils d'aide (ETUDIANT: own, ENSEIGNANT: own documents).
 func (r *ExamPrepRepository) ListHelpThreads(ctx context.Context, userID string, role string) ([]*domain.HelpThread, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.HelpThread
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                var where string
-                var args []any
-                if role == "ENSEIGNANT" {
-                        // P1-A5 : filtrer par document owner au lieu de enseignantId IS NULL
-                        // (enseignantId est toujours NULL → l'ancien filtre matchait tous les threads)
-                        where = `WHERE d."ownerId" = $1`
-                        args = []any{userID}
-                } else {
-                        where = `WHERE t."etudiantId" = $1`
-                        args = []any{userID}
-                }
+	var result []*domain.HelpThread
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var where string
+		var args []any
+		if role == "ENSEIGNANT" {
+			// P1-A5 : filtrer par document owner au lieu de enseignantId IS NULL
+			// (enseignantId est toujours NULL → l'ancien filtre matchait tous les threads)
+			where = `WHERE d."ownerId" = $1`
+			args = []any{userID}
+		} else {
+			where = `WHERE t."etudiantId" = $1`
+			args = []any{userID}
+		}
 
-                // BUGFIX (ENS-AUDIT-3) : LEFT JOIN User (étudiant) + Document pour
-                // peupler les refs. LEFT JOIN (et non INNER) pour ne pas perdre les
-                // threads dont l'étudiant/document aurait été supprimé.
-                query := fmt.Sprintf(`
+		// BUGFIX (ENS-AUDIT-3) : LEFT JOIN User (étudiant) + Document pour
+		// peupler les refs. LEFT JOIN (et non INNER) pour ne pas perdre les
+		// threads dont l'étudiant/document aurait été supprimé.
+		query := fmt.Sprintf(`
                         SELECT t."id", t."documentId", t."etudiantId", t."enseignantId", t."sujet", t."statut", t."createdAt", t."updatedAt",
                                u."id", u."name", u."email",
                                d."id", d."nomFichier"
@@ -1014,46 +1014,46 @@ func (r *ExamPrepRepository) ListHelpThreads(ctx context.Context, userID string,
                         %s
                         ORDER BY t."createdAt" DESC`, where)
 
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query help threads: %w", err)
-                }
-                defer rows.Close()
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query help threads: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        t := &domain.HelpThread{}
-                        var etuID, etuName, etuEmail *string
-                        var docID, docNom *string
-                        if err := rows.Scan(&t.ID, &t.DocumentID, &t.EtudiantID, &t.EnseignantID,
-                                &t.Sujet, &t.Statut, &t.CreatedAt, &t.UpdatedAt,
-                                &etuID, &etuName, &etuEmail,
-                                &docID, &docNom); err != nil {
-                                return fmt.Errorf("scan help thread: %w", err)
-                        }
-                        if etuID != nil && etuName != nil {
-                                t.Etudiant = &domain.UserRef{
-                                        ID:    *etuID,
-                                        Name:  *etuName,
-                                        Email: derefStr(etuEmail),
-                                }
-                        }
-                        if docID != nil && docNom != nil {
-                                t.Document = &domain.DocumentRef{
-                                        ID:         *docID,
-                                        NomFichier: *docNom,
-                                }
-                        }
-                        result = append(result, t)
-                }
-                if result == nil {
-                        result = []*domain.HelpThread{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			t := &domain.HelpThread{}
+			var etuID, etuName, etuEmail *string
+			var docID, docNom *string
+			if err := rows.Scan(&t.ID, &t.DocumentID, &t.EtudiantID, &t.EnseignantID,
+				&t.Sujet, &t.Statut, &t.CreatedAt, &t.UpdatedAt,
+				&etuID, &etuName, &etuEmail,
+				&docID, &docNom); err != nil {
+				return fmt.Errorf("scan help thread: %w", err)
+			}
+			if etuID != nil && etuName != nil {
+				t.Etudiant = &domain.UserRef{
+					ID:    *etuID,
+					Name:  *etuName,
+					Email: derefStr(etuEmail),
+				}
+			}
+			if docID != nil && docNom != nil {
+				t.Document = &domain.DocumentRef{
+					ID:         *docID,
+					NomFichier: *docNom,
+				}
+			}
+			result = append(result, t)
+		}
+		if result == nil {
+			result = []*domain.HelpThread{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // CreateHelpThread crée un fil d'aide.
@@ -1061,42 +1061,42 @@ func (r *ExamPrepRepository) ListHelpThreads(ctx context.Context, userID string,
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. INSERT HelpThread
 // + INSERT HelpMessage (si message initial) dans la même tx.
 func (r *ExamPrepRepository) CreateHelpThread(ctx context.Context, etudiantID string, input domain.CreateHelpThreadInput) (*domain.HelpThread, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var t *domain.HelpThread
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                threadID := uuid.NewString()
-                row := tx.QueryRow(ctx, `
+	var t *domain.HelpThread
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		threadID := uuid.NewString()
+		row := tx.QueryRow(ctx, `
                         INSERT INTO "HelpThread" ("id", "documentId", "chapterId", "etudiantId", "enseignantId", "sujet", "statut", "passageContext", "createdAt", "updatedAt")
                         VALUES ($1, $2, NULL, $3, NULL, $4, 'OUVERT', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
                 `, threadID, input.DocumentID, etudiantID, input.Sujet)
 
-                th := &domain.HelpThread{}
-                if err := row.Scan(&th.ID, &th.DocumentID, &th.EtudiantID, &th.EnseignantID, &th.Sujet, &th.Statut, &th.CreatedAt, &th.UpdatedAt); err != nil {
-                        return fmt.Errorf("create help thread: %w", err)
-                }
+		th := &domain.HelpThread{}
+		if err := row.Scan(&th.ID, &th.DocumentID, &th.EtudiantID, &th.EnseignantID, &th.Sujet, &th.Statut, &th.CreatedAt, &th.UpdatedAt); err != nil {
+			return fmt.Errorf("create help thread: %w", err)
+		}
 
-                // Créer le message initial si fourni
-                if input.MessageInitial != "" {
-                        msgID := uuid.NewString()
-                        if _, err := tx.Exec(ctx, `
+		// Créer le message initial si fourni
+		if input.MessageInitial != "" {
+			msgID := uuid.NewString()
+			if _, err := tx.Exec(ctx, `
                                 INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
                                 VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
                         `, msgID, threadID, etudiantID, input.MessageInitial); err != nil {
-                                return fmt.Errorf("create help message: %w", err)
-                        }
-                }
-                t = th
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return t, nil
+				return fmt.Errorf("create help message: %w", err)
+			}
+		}
+		t = th
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 // CloseHelpThread ferme un fil d'aide.
@@ -1104,21 +1104,21 @@ func (r *ExamPrepRepository) CreateHelpThread(ctx context.Context, etudiantID st
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. NotFoundError
 // propagé depuis la closure si RowsAffected == 0.
 func (r *ExamPrepRepository) CloseHelpThread(ctx context.Context, threadID string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                tag, err := tx.Exec(ctx, `UPDATE "HelpThread" SET "statut" = 'CLOS', "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
-                if err != nil {
-                        return fmt.Errorf("close help thread: %w", err)
-                }
-                if tag.RowsAffected() == 0 {
-                        return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
-                }
-                return nil
-        })
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE "HelpThread" SET "statut" = 'CLOS', "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
+		if err != nil {
+			return fmt.Errorf("close help thread: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
+		}
+		return nil
+	})
 }
 
 // DeleteHelpThread supprime un fil + ses messages (hard delete cascade).
@@ -1127,63 +1127,63 @@ func (r *ExamPrepRepository) CloseHelpThread(ctx context.Context, threadID strin
 // + DELETE HelpThread dans la même tx ; NotFoundError propagé si le thread
 // n'existait pas.
 func (r *ExamPrepRepository) DeleteHelpThread(ctx context.Context, threadID string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // Supprimer les messages d'abord (pas de FK cascade garantie)
-                if _, err := tx.Exec(ctx, `DELETE FROM "HelpMessage" WHERE "threadId" = $1`, threadID); err != nil {
-                        return fmt.Errorf("delete help messages: %w", err)
-                }
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// Supprimer les messages d'abord (pas de FK cascade garantie)
+		if _, err := tx.Exec(ctx, `DELETE FROM "HelpMessage" WHERE "threadId" = $1`, threadID); err != nil {
+			return fmt.Errorf("delete help messages: %w", err)
+		}
 
-                // Supprimer le thread
-                tag, err := tx.Exec(ctx, `DELETE FROM "HelpThread" WHERE "id" = $1`, threadID)
-                if err != nil {
-                        return fmt.Errorf("delete help thread: %w", err)
-                }
-                if tag.RowsAffected() == 0 {
-                        return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
-                }
-                return nil
-        })
+		// Supprimer le thread
+		tag, err := tx.Exec(ctx, `DELETE FROM "HelpThread" WHERE "id" = $1`, threadID)
+		if err != nil {
+			return fmt.Errorf("delete help thread: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
+		}
+		return nil
+	})
 }
 
 // ListHelpMessages liste les messages d'un fil.
 func (r *ExamPrepRepository) ListHelpMessages(ctx context.Context, threadID string) ([]*domain.HelpMessage, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.HelpMessage
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, `
+	var result []*domain.HelpMessage
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                         SELECT "id", "threadId", "auteurId", "content", "createdAt"
                         FROM "HelpMessage" WHERE "threadId" = $1 ORDER BY "createdAt" ASC
                 `, threadID)
-                if err != nil {
-                        return fmt.Errorf("query help messages: %w", err)
-                }
-                defer rows.Close()
+		if err != nil {
+			return fmt.Errorf("query help messages: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        m := &domain.HelpMessage{}
-                        if err := rows.Scan(&m.ID, &m.ThreadID, &m.AuteurID, &m.Contenu, &m.CreatedAt); err != nil {
-                                return fmt.Errorf("scan help message: %w", err)
-                        }
-                        result = append(result, m)
-                }
-                if result == nil {
-                        result = []*domain.HelpMessage{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			m := &domain.HelpMessage{}
+			if err := rows.Scan(&m.ID, &m.ThreadID, &m.AuteurID, &m.Contenu, &m.CreatedAt); err != nil {
+				return fmt.Errorf("scan help message: %w", err)
+			}
+			result = append(result, m)
+		}
+		if result == nil {
+			result = []*domain.HelpMessage{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // CreateHelpMessage ajoute un message à un fil.
@@ -1191,39 +1191,39 @@ func (r *ExamPrepRepository) ListHelpMessages(ctx context.Context, threadID stri
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. INSERT HelpMessage
 // + UPDATE HelpThread (best-effort, erreurs avalées) dans la même tx.
 func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, auteurID, role string, input domain.CreateHelpMessageInput) (*domain.HelpMessage, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var m *domain.HelpMessage
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // P1-A4 : utiliser le rôle réel (claims.Role) au lieu de hardcoded 'ETUDIANT'
-                id := uuid.NewString()
-                row := tx.QueryRow(ctx, `
+	var m *domain.HelpMessage
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// P1-A4 : utiliser le rôle réel (claims.Role) au lieu de hardcoded 'ETUDIANT'
+		id := uuid.NewString()
+		row := tx.QueryRow(ctx, `
                         INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
                         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
                         RETURNING "id", "threadId", "auteurId", "content", "createdAt"
                 `, id, threadID, auteurID, role, input.Contenu)
 
-                msg := &domain.HelpMessage{}
-                if err := row.Scan(&msg.ID, &msg.ThreadID, &msg.AuteurID, &msg.Contenu, &msg.CreatedAt); err != nil {
-                        return fmt.Errorf("create help message: %w", err)
-                }
+		msg := &domain.HelpMessage{}
+		if err := row.Scan(&msg.ID, &msg.ThreadID, &msg.AuteurID, &msg.Contenu, &msg.CreatedAt); err != nil {
+			return fmt.Errorf("create help message: %w", err)
+		}
 
-                // P1-A8 : si l'enseignant répond, passer le thread à REPONDU
-                if role == "ENSEIGNANT" {
-                        _, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP, "statut" = 'REPONDU' WHERE "id" = $1`, threadID)
-                } else {
-                        _, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
-                }
-                m = msg
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return m, nil
+		// P1-A8 : si l'enseignant répond, passer le thread à REPONDU
+		if role == "ENSEIGNANT" {
+			_, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP, "statut" = 'REPONDU' WHERE "id" = $1`, threadID)
+		} else {
+			_, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
+		}
+		m = msg
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // ============================================================
@@ -1239,34 +1239,34 @@ func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, au
 // HIGHLIGHT-FLASHCARD-1 : la table Flashcard n'a pas de colonne userId.
 // L'appartenance est dérivée via ReviewItem (cf. CreateFlashcardReviewItem).
 func (r *ExamPrepRepository) CreateFlashcard(ctx context.Context, input domain.CreateFlashcardInput) (*domain.Flashcard, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var f *domain.Flashcard
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                id := uuid.NewString()
-                row := tx.QueryRow(ctx, `
+	var f *domain.Flashcard
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		id := uuid.NewString()
+		row := tx.QueryRow(ctx, `
                         INSERT INTO "Flashcard" ("id", "chapterId", "documentId", "recto", "verso", "createdAt")
                         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
                         RETURNING "id", "chapterId", "documentId", "recto", "verso", "createdAt"
                 `, id, nullableStrPtr(input.ChapterID), nullableStrPtr(input.DocumentID), input.Recto, input.Verso)
 
-                card := &domain.Flashcard{}
-                var chapterID, documentID *string
-                if err := row.Scan(&card.ID, &chapterID, &documentID, &card.Recto, &card.Verso, &card.CreatedAt); err != nil {
-                        return fmt.Errorf("create flashcard: %w", err)
-                }
-                card.ChapterID = chapterID
-                card.DocumentID = documentID
-                f = card
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return f, nil
+		card := &domain.Flashcard{}
+		var chapterID, documentID *string
+		if err := row.Scan(&card.ID, &chapterID, &documentID, &card.Recto, &card.Verso, &card.CreatedAt); err != nil {
+			return fmt.Errorf("create flashcard: %w", err)
+		}
+		card.ChapterID = chapterID
+		card.DocumentID = documentID
+		f = card
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // ListFlashcards liste les flashcards d'un utilisateur. Le lien user↔flashcard
@@ -1277,60 +1277,60 @@ func (r *ExamPrepRepository) CreateFlashcard(ctx context.Context, input domain.C
 // requête avec un seul paramètre ($1 = userID) ; sinon avec deux ($1=userID,
 // $2=documentID). Compatible pgx Simple Protocol.
 func (r *ExamPrepRepository) ListFlashcards(ctx context.Context, userID, documentID string) ([]*domain.Flashcard, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.Flashcard
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                var query string
-                var args []any
-                if documentID != "" {
-                        query = `
+	var result []*domain.Flashcard
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var query string
+		var args []any
+		if documentID != "" {
+			query = `
                                 SELECT f."id", f."chapterId", f."documentId", f."recto", f."verso", f."createdAt"
                                 FROM "Flashcard" f
                                 JOIN "ReviewItem" r ON r."questionId" = f."id"
                                 WHERE r."userId" = $1 AND f."documentId" = $2
                                 ORDER BY f."createdAt" DESC
                         `
-                        args = []any{userID, documentID}
-                } else {
-                        query = `
+			args = []any{userID, documentID}
+		} else {
+			query = `
                                 SELECT f."id", f."chapterId", f."documentId", f."recto", f."verso", f."createdAt"
                                 FROM "Flashcard" f
                                 JOIN "ReviewItem" r ON r."questionId" = f."id"
                                 WHERE r."userId" = $1
                                 ORDER BY f."createdAt" DESC
                         `
-                        args = []any{userID}
-                }
+			args = []any{userID}
+		}
 
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query flashcards: %w", err)
-                }
-                defer rows.Close()
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query flashcards: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        f := &domain.Flashcard{}
-                        var chapterID, documentID *string
-                        if err := rows.Scan(&f.ID, &chapterID, &documentID, &f.Recto, &f.Verso, &f.CreatedAt); err != nil {
-                                return fmt.Errorf("scan flashcard: %w", err)
-                        }
-                        f.ChapterID = chapterID
-                        f.DocumentID = documentID
-                        result = append(result, f)
-                }
-                if result == nil {
-                        result = []*domain.Flashcard{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			f := &domain.Flashcard{}
+			var chapterID, documentID *string
+			if err := rows.Scan(&f.ID, &chapterID, &documentID, &f.Recto, &f.Verso, &f.CreatedAt); err != nil {
+				return fmt.Errorf("scan flashcard: %w", err)
+			}
+			f.ChapterID = chapterID
+			f.DocumentID = documentID
+			result = append(result, f)
+		}
+		if result == nil {
+			result = []*domain.Flashcard{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // DeleteFlashcard supprime la flashcard ET son ReviewItem associé.
@@ -1342,30 +1342,30 @@ func (r *ExamPrepRepository) ListFlashcards(ctx context.Context, userID, documen
 // (best-effort) + DELETE Flashcard dans la même tx ; NotFoundError propagé
 // si RowsAffected == 0.
 func (r *ExamPrepRepository) DeleteFlashcard(ctx context.Context, userID, flashcardID string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // 1. Supprimer le ReviewItem associé (s'il existe). La condition
-                //    userId + questionId garantit qu'on ne touche que le ReviewItem de CET
-                //    utilisateur pour CETTE flashcard.
-                _, _ = tx.Exec(ctx, `
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// 1. Supprimer le ReviewItem associé (s'il existe). La condition
+		//    userId + questionId garantit qu'on ne touche que le ReviewItem de CET
+		//    utilisateur pour CETTE flashcard.
+		_, _ = tx.Exec(ctx, `
                         DELETE FROM "ReviewItem" WHERE "userId" = $1 AND "questionId" = $2
                 `, userID, flashcardID)
 
-                // 2. Supprimer la Flashcard. Si RowsAffected == 0, elle n'existe pas
-                //    (ou a déjà été supprimée) → NotFoundError.
-                tag, err := tx.Exec(ctx, `DELETE FROM "Flashcard" WHERE "id" = $1`, flashcardID)
-                if err != nil {
-                        return fmt.Errorf("delete flashcard: %w", err)
-                }
-                if tag.RowsAffected() == 0 {
-                        return &domain.NotFoundError{Entity: "Flashcard", ID: flashcardID}
-                }
-                return nil
-        })
+		// 2. Supprimer la Flashcard. Si RowsAffected == 0, elle n'existe pas
+		//    (ou a déjà été supprimée) → NotFoundError.
+		tag, err := tx.Exec(ctx, `DELETE FROM "Flashcard" WHERE "id" = $1`, flashcardID)
+		if err != nil {
+			return fmt.Errorf("delete flashcard: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "Flashcard", ID: flashcardID}
+		}
+		return nil
+	})
 }
 
 // CreateFlashcardReviewItem insère un ReviewItem pour une flashcard fraîchement
@@ -1380,30 +1380,30 @@ func (r *ExamPrepRepository) DeleteFlashcard(ctx context.Context, userID, flashc
 //
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, userID, flashcardID string, chapterID *string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                var chapArg any
-                if chapterID != nil && *chapterID != "" {
-                        chapArg = *chapterID
-                }
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var chapArg any
+		if chapterID != nil && *chapterID != "" {
+			chapArg = *chapterID
+		}
 
-                reviewID := uuid.NewString()
-                _, err := tx.Exec(ctx, `
+		reviewID := uuid.NewString()
+		_, err := tx.Exec(ctx, `
                         INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
                                 "interval", "easeFactor", "repetitions", "nextReviewAt",
                                 "lastReviewedAt", "createdAt", "updatedAt")
                         VALUES ($1, $2, $3, $4, 0, 2.5, 0,
                                 CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 `, reviewID, userID, chapArg, flashcardID)
-                if err != nil {
-                        return fmt.Errorf("create flashcard review item: %w", err)
-                }
-                return nil
-        })
+		if err != nil {
+			return fmt.Errorf("create flashcard review item: %w", err)
+		}
+		return nil
+	})
 }
 
 // ============================================================
@@ -1419,53 +1419,53 @@ func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, user
 // sa filière) ; le backend trust le questionID passé par un utilisateur
 // authentifié.
 func (r *ExamPrepRepository) VoteQuestion(ctx context.Context, userID, questionID string, value int) (*domain.QuestionVote, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        id := uuid.NewString()
-        vote := &domain.QuestionVote{
-                ID:         id,
-                QuestionID: questionID,
-                UserID:     userID,
-                Value:      value,
-        }
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // Tentative d'INSERT. Si l'utilisateur a déjà voté → 23505 → on bascule en UPDATE.
-                err := tx.QueryRow(ctx, `
+	id := uuid.NewString()
+	vote := &domain.QuestionVote{
+		ID:         id,
+		QuestionID: questionID,
+		UserID:     userID,
+		Value:      value,
+	}
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// Tentative d'INSERT. Si l'utilisateur a déjà voté → 23505 → on bascule en UPDATE.
+		err := tx.QueryRow(ctx, `
                         INSERT INTO "QuestionVote" ("id", "questionId", "userId", "value", "createdAt", "updatedAt")
                         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "id", "questionId", "userId", "value", "createdAt", "updatedAt"
                 `, id, questionID, userID, value).Scan(
-                        &vote.ID, &vote.QuestionID, &vote.UserID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt,
-                )
-                if err == nil {
-                        return nil
-                }
+			&vote.ID, &vote.QuestionID, &vote.UserID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt,
+		)
+		if err == nil {
+			return nil
+		}
 
-                // INSERT a échoué. Si ce n'est PAS une violation de contrainte unique → propager.
-                if !isUniqueViolation(err) {
-                        return fmt.Errorf("insert question vote: %w", err)
-                }
+		// INSERT a échoué. Si ce n'est PAS une violation de contrainte unique → propager.
+		if !isUniqueViolation(err) {
+			return fmt.Errorf("insert question vote: %w", err)
+		}
 
-                // 23505 → l'utilisateur a déjà voté → UPDATE de la valeur existante.
-                // On réutilise la variable `vote` déclarée plus haut (QuestionID/UserID
-                // déjà positionnés) ; le UPDATE RETURNING rescanne ID/Value/timestamps.
-                err = tx.QueryRow(ctx, `
+		// 23505 → l'utilisateur a déjà voté → UPDATE de la valeur existante.
+		// On réutilise la variable `vote` déclarée plus haut (QuestionID/UserID
+		// déjà positionnés) ; le UPDATE RETURNING rescanne ID/Value/timestamps.
+		err = tx.QueryRow(ctx, `
                         UPDATE "QuestionVote" SET "value" = $3, "updatedAt" = CURRENT_TIMESTAMP
                         WHERE "questionId" = $1 AND "userId" = $2
                         RETURNING "id", "value", "createdAt", "updatedAt"
                 `, questionID, userID, value).Scan(&vote.ID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt)
-                if err != nil {
-                        return fmt.Errorf("update question vote: %w", err)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return vote, nil
+		if err != nil {
+			return fmt.Errorf("update question vote: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return vote, nil
 }
 
 // RemoveVote supprime le vote d'un utilisateur sur une question (un-vote).
@@ -1473,20 +1473,20 @@ func (r *ExamPrepRepository) VoteQuestion(ctx context.Context, userID, questionI
 //
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) RemoveVote(ctx context.Context, userID, questionID string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                _, err := tx.Exec(ctx, `
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
                         DELETE FROM "QuestionVote" WHERE "questionId" = $1 AND "userId" = $2
                 `, questionID, userID)
-                if err != nil {
-                        return fmt.Errorf("delete question vote: %w", err)
-                }
-                return nil
-        })
+		if err != nil {
+			return fmt.Errorf("delete question vote: %w", err)
+		}
+		return nil
+	})
 }
 
 // ListQuestionBank liste les questions validées d'un document avec les stats
@@ -1504,21 +1504,21 @@ func (r *ExamPrepRepository) RemoveVote(ctx context.Context, userID, questionID 
 // Placeholders : $1=documentId, $2=userId, $3=limit, $4=offset (tous distincts
 // → compatible pgx Simple Protocol).
 func (r *ExamPrepRepository) ListQuestionBank(ctx context.Context, userID, documentID string, chapterID *string, limit, offset int) ([]*domain.QuestionBankItem, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        if limit <= 0 || limit > 200 {
-                limit = 50
-        }
-        if offset < 0 {
-                offset = 0
-        }
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
-        var result []*domain.QuestionBankItem
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, `
+	var result []*domain.QuestionBankItem
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                         SELECT q."id", q."documentId", q."auteurId", q."type", q."enonce",
                                q."propositions", q."reponseCorrecte", q."explication",
                                q."difficulte", q."themes", q."validee", q."createdAt",
@@ -1536,34 +1536,34 @@ func (r *ExamPrepRepository) ListQuestionBank(ctx context.Context, userID, docum
                         ORDER BY netvotes DESC, q."createdAt" DESC
                         LIMIT $3 OFFSET $4
                 `, documentID, userID, limit, offset)
-                if err != nil {
-                        return fmt.Errorf("query question bank: %w", err)
-                }
-                defer rows.Close()
+		if err != nil {
+			return fmt.Errorf("query question bank: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        item := &domain.QuestionBankItem{}
-                        var userVote *int
-                        if err := rows.Scan(
-                                &item.ID, &item.DocumentID, &item.AuteurID, &item.Type, &item.Enonce,
-                                &item.Propositions, &item.ReponseCorrecte, &item.Explication,
-                                &item.Difficulte, &item.Themes, &item.Validee, &item.CreatedAt,
-                                &item.Upvotes, &item.Downvotes, &item.NetVotes, &userVote,
-                        ); err != nil {
-                                return fmt.Errorf("scan question bank item: %w", err)
-                        }
-                        item.UserVote = userVote
-                        result = append(result, item)
-                }
-                if result == nil {
-                        result = []*domain.QuestionBankItem{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			item := &domain.QuestionBankItem{}
+			var userVote *int
+			if err := rows.Scan(
+				&item.ID, &item.DocumentID, &item.AuteurID, &item.Type, &item.Enonce,
+				&item.Propositions, &item.ReponseCorrecte, &item.Explication,
+				&item.Difficulte, &item.Themes, &item.Validee, &item.CreatedAt,
+				&item.Upvotes, &item.Downvotes, &item.NetVotes, &userVote,
+			); err != nil {
+				return fmt.Errorf("scan question bank item: %w", err)
+			}
+			item.UserVote = userVote
+			result = append(result, item)
+		}
+		if result == nil {
+			result = []*domain.QuestionBankItem{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // CountQuestionsByDocument compte les questions validées d'un document.
@@ -1572,25 +1572,25 @@ func (r *ExamPrepRepository) ListQuestionBank(ctx context.Context, userID, docum
 //
 // RLS activé : lecture student-scoped.
 func (r *ExamPrepRepository) CountQuestionsByDocument(ctx context.Context, documentID string, chapterID *string, difficulte *string) (int, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return 0, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return 0, fmt.Errorf("no RLS claims in context")
+	}
 
-        var count int
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                query := `SELECT count(*)::int FROM "Question" WHERE "documentId" = $1 AND "deletedAt" IS NULL AND "validee" = true`
-                args := []any{documentID}
-                if difficulte != nil && *difficulte != "" {
-                        query += ` AND "difficulte" = $2`
-                        args = append(args, *difficulte)
-                }
-                return tx.QueryRow(ctx, query, args...).Scan(&count)
-        })
-        if err != nil {
-                return 0, err
-        }
-        return count, nil
+	var count int
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		query := `SELECT count(*)::int FROM "Question" WHERE "documentId" = $1 AND "deletedAt" IS NULL AND "validee" = true`
+		args := []any{documentID}
+		if difficulte != nil && *difficulte != "" {
+			query += ` AND "difficulte" = $2`
+			args = append(args, *difficulte)
+		}
+		return tx.QueryRow(ctx, query, args...).Scan(&count)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // ListExistingQuestions retourne des questions validées existantes pour servir
@@ -1601,60 +1601,60 @@ func (r *ExamPrepRepository) CountQuestionsByDocument(ctx context.Context, docum
 //
 // RLS activé : lecture student-scoped.
 func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, documentID string, chapterID *string, difficulte *string, limit int) ([]*domain.QuestionBankItem, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        if limit <= 0 || limit > 200 {
-                limit = 50
-        }
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
 
-        var result []*domain.QuestionBankItem
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                query := `
+	var result []*domain.QuestionBankItem
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		query := `
                         SELECT "id", "documentId", "auteurId", "type", "enonce",
                                "propositions", "reponseCorrecte", "explication",
                                "difficulte", "themes", "validee", "createdAt"
                         FROM "Question"
                         WHERE "documentId" = $1 AND "deletedAt" IS NULL AND "validee" = true
                 `
-                args := []any{documentID}
-                argIdx := 2
-                if difficulte != nil && *difficulte != "" {
-                        query += fmt.Sprintf(` AND "difficulte" = $%d`, argIdx)
-                        args = append(args, *difficulte)
-                        argIdx++
-                }
-                query += fmt.Sprintf(` ORDER BY "createdAt" DESC LIMIT $%d`, argIdx)
-                args = append(args, limit)
+		args := []any{documentID}
+		argIdx := 2
+		if difficulte != nil && *difficulte != "" {
+			query += fmt.Sprintf(` AND "difficulte" = $%d`, argIdx)
+			args = append(args, *difficulte)
+			argIdx++
+		}
+		query += fmt.Sprintf(` ORDER BY "createdAt" DESC LIMIT $%d`, argIdx)
+		args = append(args, limit)
 
-                rows, err := tx.Query(ctx, query, args...)
-                if err != nil {
-                        return fmt.Errorf("query existing questions: %w", err)
-                }
-                defer rows.Close()
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query existing questions: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        item := &domain.QuestionBankItem{}
-                        if err := rows.Scan(
-                                &item.ID, &item.DocumentID, &item.AuteurID, &item.Type, &item.Enonce,
-                                &item.Propositions, &item.ReponseCorrecte, &item.Explication,
-                                &item.Difficulte, &item.Themes, &item.Validee, &item.CreatedAt,
-                        ); err != nil {
-                                return fmt.Errorf("scan existing question: %w", err)
-                        }
-                        result = append(result, item)
-                }
-                if result == nil {
-                        result = []*domain.QuestionBankItem{}
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return result, nil
+		for rows.Next() {
+			item := &domain.QuestionBankItem{}
+			if err := rows.Scan(
+				&item.ID, &item.DocumentID, &item.AuteurID, &item.Type, &item.Enonce,
+				&item.Propositions, &item.ReponseCorrecte, &item.Explication,
+				&item.Difficulte, &item.Themes, &item.Validee, &item.CreatedAt,
+			); err != nil {
+				return fmt.Errorf("scan existing question: %w", err)
+			}
+			result = append(result, item)
+		}
+		if result == nil {
+			result = []*domain.QuestionBankItem{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ============================================================
@@ -1668,36 +1668,36 @@ func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, document
 // l'appelant est un worker sans claims HTTP, le usecase/handler doit poser
 // les claims dans le ctx avant d'appeler cette méthode (sinon erreur explicite).
 func (r *ExamPrepRepository) CreateDocumentAudio(ctx context.Context, input domain.CreateDocumentAudioInput) (*domain.DocumentAudio, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        id := uuid.NewString()
-        audio := &domain.DocumentAudio{
-                ID:         id,
-                DocumentID: input.DocumentID,
-                UserID:     input.UserID,
-                Script:     input.Script,
-                Status:     "EN_COURS",
-        }
+	id := uuid.NewString()
+	audio := &domain.DocumentAudio{
+		ID:         id,
+		DocumentID: input.DocumentID,
+		UserID:     input.UserID,
+		Script:     input.Script,
+		Status:     "EN_COURS",
+	}
 
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                if err := tx.QueryRow(ctx, `
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
                         INSERT INTO "DocumentAudio" ("id", "documentId", "userId", "script",
                                 "r2Key", "durationSec", "status", "errorMessage",
                                 "createdAt", "updatedAt")
                         VALUES ($1, $2, $3, $4, NULL, NULL, $5, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "createdAt", "updatedAt"
                 `, id, input.DocumentID, input.UserID, input.Script, "EN_COURS").Scan(&audio.CreatedAt, &audio.UpdatedAt); err != nil {
-                        return fmt.Errorf("insert document audio: %w", err)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return audio, nil
+			return fmt.Errorf("insert document audio: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return audio, nil
 }
 
 // UpdateDocumentAudioStatus met à jour le statut d'un audio (+ r2Key et/ou
@@ -1707,43 +1707,43 @@ func (r *ExamPrepRepository) CreateDocumentAudio(ctx context.Context, input doma
 // claims reste obligatoire même pour un appel worker — le caller doit les
 // injecter dans le ctx.
 func (r *ExamPrepRepository) UpdateDocumentAudioStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                var err error
-                if r2Key != nil && errorMessage != nil {
-                        _, err = tx.Exec(ctx, `
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var err error
+		if r2Key != nil && errorMessage != nil {
+			_, err = tx.Exec(ctx, `
                                 UPDATE "DocumentAudio"
                                 SET "status" = $1, "r2Key" = $2, "errorMessage" = $3, "updatedAt" = CURRENT_TIMESTAMP
                                 WHERE "id" = $4
                         `, status, *r2Key, *errorMessage, audioID)
-                } else if r2Key != nil {
-                        _, err = tx.Exec(ctx, `
+		} else if r2Key != nil {
+			_, err = tx.Exec(ctx, `
                                 UPDATE "DocumentAudio"
                                 SET "status" = $1, "r2Key" = $2, "updatedAt" = CURRENT_TIMESTAMP
                                 WHERE "id" = $3
                         `, status, *r2Key, audioID)
-                } else if errorMessage != nil {
-                        _, err = tx.Exec(ctx, `
+		} else if errorMessage != nil {
+			_, err = tx.Exec(ctx, `
                                 UPDATE "DocumentAudio"
                                 SET "status" = $1, "errorMessage" = $2, "updatedAt" = CURRENT_TIMESTAMP
                                 WHERE "id" = $3
                         `, status, *errorMessage, audioID)
-                } else {
-                        _, err = tx.Exec(ctx, `
+		} else {
+			_, err = tx.Exec(ctx, `
                                 UPDATE "DocumentAudio"
                                 SET "status" = $1, "updatedAt" = CURRENT_TIMESTAMP
                                 WHERE "id" = $2
                         `, status, audioID)
-                }
-                if err != nil {
-                        return fmt.Errorf("update document audio status: %w", err)
-                }
-                return nil
-        })
+		}
+		if err != nil {
+			return fmt.Errorf("update document audio status: %w", err)
+		}
+		return nil
+	})
 }
 
 // UpdateDocumentAudioScript met à jour uniquement le script d'un audio
@@ -1751,22 +1751,22 @@ func (r *ExamPrepRepository) UpdateDocumentAudioStatus(ctx context.Context, audi
 //
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) UpdateDocumentAudioScript(ctx context.Context, audioID, script string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                _, err := tx.Exec(ctx, `
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
                         UPDATE "DocumentAudio"
                         SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
                         WHERE "id" = $2
                 `, script, audioID)
-                if err != nil {
-                        return fmt.Errorf("update document audio script: %w", err)
-                }
-                return nil
-        })
+		if err != nil {
+			return fmt.Errorf("update document audio script: %w", err)
+		}
+		return nil
+	})
 }
 
 // ListDocumentAudio liste tous les audios d'un document, ordonnés par
@@ -1775,44 +1775,44 @@ func (r *ExamPrepRepository) UpdateDocumentAudioScript(ctx context.Context, audi
 //
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) ListDocumentAudio(ctx context.Context, documentID string) ([]*domain.DocumentAudio, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        var result []*domain.DocumentAudio
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, `
+	var result []*domain.DocumentAudio
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                         SELECT "id", "documentId", "userId", "script", "r2Key",
                                "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
                         FROM "DocumentAudio"
                         WHERE "documentId" = $1
                         ORDER BY "createdAt" DESC
                 `, documentID)
-                if err != nil {
-                        return fmt.Errorf("query document audio: %w", err)
-                }
-                defer rows.Close()
+		if err != nil {
+			return fmt.Errorf("query document audio: %w", err)
+		}
+		defer rows.Close()
 
-                for rows.Next() {
-                        a := &domain.DocumentAudio{}
-                        if err := rows.Scan(
-                                &a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
-                                &a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
-                        ); err != nil {
-                                return fmt.Errorf("scan document audio: %w", err)
-                        }
-                        result = append(result, a)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        if result == nil {
-                result = []*domain.DocumentAudio{}
-        }
-        return result, nil
+		for rows.Next() {
+			a := &domain.DocumentAudio{}
+			if err := rows.Scan(
+				&a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
+				&a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
+			); err != nil {
+				return fmt.Errorf("scan document audio: %w", err)
+			}
+			result = append(result, a)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = []*domain.DocumentAudio{}
+	}
+	return result, nil
 }
 
 // GetDocumentAudio récupère un audio par son ID.
@@ -1820,30 +1820,30 @@ func (r *ExamPrepRepository) ListDocumentAudio(ctx context.Context, documentID s
 // EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Si l'audio
 // n'existe pas, retourne une erreur wrappée (comportement original préservé).
 func (r *ExamPrepRepository) GetDocumentAudio(ctx context.Context, audioID string) (*domain.DocumentAudio, error) {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
 
-        a := &domain.DocumentAudio{}
-        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                if err := tx.QueryRow(ctx, `
+	a := &domain.DocumentAudio{}
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
                         SELECT "id", "documentId", "userId", "script", "r2Key",
                                "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
                         FROM "DocumentAudio"
                         WHERE "id" = $1
                 `, audioID).Scan(
-                        &a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
-                        &a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
-                ); err != nil {
-                        return fmt.Errorf("get document audio: %w", err)
-                }
-                return nil
-        })
-        if err != nil {
-                return nil, err
-        }
-        return a, nil
+			&a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
+			&a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return fmt.Errorf("get document audio: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 
 // DeleteDocumentAudio supprime une ligne DocumentAudio par son ID.
@@ -1857,19 +1857,19 @@ func (r *ExamPrepRepository) GetDocumentAudio(ctx context.Context, audioID strin
 // (EN_COURS, ERREUR ou PRET). L'objet R2 associé est supprimé côté usecase
 // (best-effort) AVANT la suppression DB pour pouvoir lire le r2Key.
 func (r *ExamPrepRepository) DeleteDocumentAudio(ctx context.Context, audioID string) error {
-        claims, ok := db.ClaimsFromContext(ctx)
-        if !ok {
-                return fmt.Errorf("no RLS claims in context")
-        }
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no RLS claims in context")
+	}
 
-        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                tag, err := tx.Exec(ctx, `DELETE FROM "DocumentAudio" WHERE "id" = $1`, audioID)
-                if err != nil {
-                        return fmt.Errorf("delete document audio: %w", err)
-                }
-                if tag.RowsAffected() == 0 {
-                        return &domain.NotFoundError{Entity: "DocumentAudio", ID: audioID}
-                }
-                return nil
-        })
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `DELETE FROM "DocumentAudio" WHERE "id" = $1`, audioID)
+		if err != nil {
+			return fmt.Errorf("delete document audio: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "DocumentAudio", ID: audioID}
+		}
+		return nil
+	})
 }

@@ -8,25 +8,25 @@ import (
 type B2BContractData struct {
 	EmailData
 	// Établissement
-	EtabNom    string
-	EtabVille  string
-	EtabPays   string
-	EtabTel    string
+	EtabNom   string
+	EtabVille string
+	EtabPays  string
+	EtabTel   string
 	// Responsable
 	RespName  string
 	RespEmail string
 	// Abonnement
-	PlanNom       string
-	DateDebut     string // JJ/MM/AAAA
-	DateFin       string // JJ/MM/AAAA
-	NbEtudiants   int
-	PrixEtudiant  string // "900 FCFA/an"
-	MontantTotal  string // "45 000 FCFA/an"
-	ModePaiement  string // "virement bancaire"
-	ReferenceTx   string // "VIR-2026-001"
+	PlanNom      string
+	DateDebut    string // JJ/MM/AAAA
+	DateFin      string // JJ/MM/AAAA
+	NbEtudiants  int
+	PrixEtudiant string // "900 FCFA/an"
+	MontantTotal string // "45 000 FCFA/an"
+	ModePaiement string // "virement bancaire"
+	ReferenceTx  string // "VIR-2026-001"
 	// Légal
-	ContractNum   string // "CTR-2026-001"
-	LoginURL      string
+	ContractNum string // "CTR-2026-001"
+	LoginURL    string
 }
 
 // B2BContractHTML génère le HTML du contrat B2B.

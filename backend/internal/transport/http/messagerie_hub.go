@@ -14,7 +14,7 @@
 //     2. Plus simple à coder (5 méthodes vs ~15 pour WS).
 //     3. Compatible avec le hub notification existant (notification_hub.go).
 //     4. Render free tier gère mieux les SSE (connection keep-alive simple)
-//        que les WebSockets (qui nécessitent un upgrade HTTP).
+//     que les WebSockets (qui nécessitent un upgrade HTTP).
 //     5. EventSource natif côté navigateur (auto-reconnect intégré).
 //   - Inconvénient SSE : unidirectionnel (server → client uniquement). Pour la
 //     messagerie, c'est suffisant : le client envoie les messages via POST
@@ -23,14 +23,14 @@
 package http
 
 import (
-        "encoding/json"
-        "fmt"
-        "net/http"
-        "sync"
-        "time"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sync"
+	"time"
 
-        "github.com/udevrard7/sect/backend/internal/domain"
-        "github.com/udevrard7/sect/backend/internal/middleware"
+	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/middleware"
 )
 
 // ============================================================
@@ -39,9 +39,9 @@ import (
 
 // MessagerieEvent est l'événement poussé via SSE aux clients messagerie.
 type MessagerieEvent struct {
-        Type      string          `json:"type"`      // "message_new" | "message_edited" | "message_deleted" | "read" | "typing" | "hello"
-        Data      json.RawMessage `json:"data"`      // payload JSON (nil pour heartbeat)
-        Timestamp string          `json:"timestamp"` // RFC3339
+	Type      string          `json:"type"`      // "message_new" | "message_edited" | "message_deleted" | "read" | "typing" | "hello"
+	Data      json.RawMessage `json:"data"`      // payload JSON (nil pour heartbeat)
+	Timestamp string          `json:"timestamp"` // RFC3339
 }
 
 // ============================================================
@@ -58,9 +58,9 @@ type MessagerieEvent struct {
 // /api/messagerie/conversations (polling 15s côté frontend). Un user est
 // considéré "en ligne" si son lastSeen < PresenceTimeout (45s = 3 polls manqués).
 type MessagerieHub struct {
-        mu         sync.RWMutex
-        clients    map[string][]chan MessagerieEvent // userID → channels (1 par onglet)
-        presences  map[string]time.Time              // userID → lastSeen (pour présence)
+	mu        sync.RWMutex
+	clients   map[string][]chan MessagerieEvent // userID → channels (1 par onglet)
+	presences map[string]time.Time              // userID → lastSeen (pour présence)
 }
 
 // PresenceTimeout définit la durée au-delà de laquelle un utilisateur est
@@ -72,30 +72,30 @@ const PresenceTimeout = 45 * time.Second
 // Lance un goroutine de cleanup qui purge les entrées de présence expirées
 // toutes les 60s pour éviter la fuite mémoire.
 func NewMessagerieHub() *MessagerieHub {
-        h := &MessagerieHub{
-                clients:   make(map[string][]chan MessagerieEvent),
-                presences: make(map[string]time.Time),
-        }
-        go h.cleanupPresences()
-        return h
+	h := &MessagerieHub{
+		clients:   make(map[string][]chan MessagerieEvent),
+		presences: make(map[string]time.Time),
+	}
+	go h.cleanupPresences()
+	return h
 }
 
 // cleanupPresences supprime périodiquement les entrées de présence expirées
 // pour éviter l'accumulation de users déconnectés. Lancé en goroutine par
 // NewMessagerieHub.
 func (h *MessagerieHub) cleanupPresences() {
-        ticker := time.NewTicker(60 * time.Second)
-        defer ticker.Stop()
-        for range ticker.C {
-                cutoff := time.Now().Add(-PresenceTimeout)
-                h.mu.Lock()
-                for uid, last := range h.presences {
-                        if last.Before(cutoff) {
-                                delete(h.presences, uid)
-                        }
-                }
-                h.mu.Unlock()
-        }
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		cutoff := time.Now().Add(-PresenceTimeout)
+		h.mu.Lock()
+		for uid, last := range h.presences {
+			if last.Before(cutoff) {
+				delete(h.presences, uid)
+			}
+		}
+		h.mu.Unlock()
+	}
 }
 
 // ============================================================
@@ -106,43 +106,43 @@ func (h *MessagerieHub) cleanupPresences() {
 // Appelé par le handler listConversations à chaque polling (15s côté frontend).
 // Thread-safe.
 func (h *MessagerieHub) UpdatePresence(userID string) {
-        if userID == "" {
-                return
-        }
-        h.mu.Lock()
-        defer h.mu.Unlock()
-        h.presences[userID] = time.Now()
+	if userID == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.presences[userID] = time.Now()
 }
 
 // IsOnline retourne true si l'utilisateur a été actif récemment
 // (dernière activité < PresenceTimeout). Thread-safe.
 func (h *MessagerieHub) IsOnline(userID string) bool {
-        if userID == "" {
-                return false
-        }
-        h.mu.RLock()
-        defer h.mu.RUnlock()
-        last, ok := h.presences[userID]
-        if !ok {
-                return false
-        }
-        return time.Since(last) < PresenceTimeout
+	if userID == "" {
+		return false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	last, ok := h.presences[userID]
+	if !ok {
+		return false
+	}
+	return time.Since(last) < PresenceTimeout
 }
 
 // OnlineUsers retourne la liste des userIDs actuellement en ligne
 // (activité < PresenceTimeout). Thread-safe. Utilisé par l'endpoint
 // /api/messagerie/presence pour que le frontend affiche les badges "en ligne".
 func (h *MessagerieHub) OnlineUsers() []string {
-        h.mu.RLock()
-        defer h.mu.RUnlock()
-        cutoff := time.Now().Add(-PresenceTimeout)
-        online := make([]string, 0, len(h.presences))
-        for uid, last := range h.presences {
-                if last.After(cutoff) {
-                        online = append(online, uid)
-                }
-        }
-        return online
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	cutoff := time.Now().Add(-PresenceTimeout)
+	online := make([]string, 0, len(h.presences))
+	for uid, last := range h.presences {
+		if last.After(cutoff) {
+			online = append(online, uid)
+		}
+	}
+	return online
 }
 
 // ============================================================
@@ -153,30 +153,30 @@ func (h *MessagerieHub) OnlineUsers() []string {
 // sur lequel le client doit écouter. Le client DOIT appeler unregister à la
 // déconnexion pour éviter les fuites.
 func (h *MessagerieHub) register(userID string) chan MessagerieEvent {
-        ch := make(chan MessagerieEvent, 32) // buffer 32 pour éviter le blocage
-        h.mu.Lock()
-        defer h.mu.Unlock()
-        h.clients[userID] = append(h.clients[userID], ch)
-        return ch
+	ch := make(chan MessagerieEvent, 32) // buffer 32 pour éviter le blocage
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.clients[userID] = append(h.clients[userID], ch)
+	return ch
 }
 
 // unregister désinscrit un client SSE. Ferme le channel et le retire de la slice.
 func (h *MessagerieHub) unregister(userID string, ch chan MessagerieEvent) {
-        h.mu.Lock()
-        defer h.mu.Unlock()
-        channels := h.clients[userID]
-        for i, c := range channels {
-                if c == ch {
-                        // Retire le channel de la slice (préserve l'ordre des autres).
-                        h.clients[userID] = append(channels[:i], channels[i+1:]...)
-                        close(ch)
-                        break
-                }
-        }
-        // Nettoie si plus aucun client pour ce user.
-        if len(h.clients[userID]) == 0 {
-                delete(h.clients, userID)
-        }
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	channels := h.clients[userID]
+	for i, c := range channels {
+		if c == ch {
+			// Retire le channel de la slice (préserve l'ordre des autres).
+			h.clients[userID] = append(channels[:i], channels[i+1:]...)
+			close(ch)
+			break
+		}
+	}
+	// Nettoie si plus aucun client pour ce user.
+	if len(h.clients[userID]) == 0 {
+		delete(h.clients, userID)
+	}
 }
 
 // ============================================================
@@ -187,45 +187,45 @@ func (h *MessagerieHub) unregister(userID string, ch chan MessagerieEvent) {
 // Non-bloquant : si le buffer du channel est plein, l'event est droppé
 // (le client rattrapera via le prochain poll ou rechargement de page).
 func (h *MessagerieHub) BroadcastMessage(participantIDs []string, msg *domain.Message) {
-        if msg == nil || len(participantIDs) == 0 {
-                return
-        }
-        data, _ := json.Marshal(msg)
-        h.broadcast(participantIDs, "message_new", data)
+	if msg == nil || len(participantIDs) == 0 {
+		return
+	}
+	data, _ := json.Marshal(msg)
+	h.broadcast(participantIDs, "message_new", data)
 }
 
 // BroadcastEvent envoie un event génrique (typing, read, edit, delete) aux
 // userIDs donnés. Non-bloquant.
 func (h *MessagerieHub) BroadcastEvent(participantIDs []string, eventType string, data any) {
-        if len(participantIDs) == 0 || eventType == "" {
-                return
-        }
-        payload, err := json.Marshal(data)
-        if err != nil {
-                return
-        }
-        h.broadcast(participantIDs, eventType, payload)
+	if len(participantIDs) == 0 || eventType == "" {
+		return
+	}
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	h.broadcast(participantIDs, eventType, payload)
 }
 
 // broadcast est le helper interne qui pousse un event à tous les channels
 // des userIDs donnés. Drop silencieux si buffer plein (client lent).
 func (h *MessagerieHub) broadcast(participantIDs []string, eventType string, data json.RawMessage) {
-        event := MessagerieEvent{
-                Type:      eventType,
-                Data:      data,
-                Timestamp: time.Now().UTC().Format(time.RFC3339),
-        }
-        h.mu.RLock()
-        defer h.mu.RUnlock()
-        for _, uid := range participantIDs {
-                for _, ch := range h.clients[uid] {
-                        select {
-                        case ch <- event:
-                        default:
-                                // Channel plein, drop l'event (client trop lent).
-                        }
-                }
-        }
+	event := MessagerieEvent{
+		Type:      eventType,
+		Data:      data,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, uid := range participantIDs {
+		for _, ch := range h.clients[uid] {
+			select {
+			case ch <- event:
+			default:
+				// Channel plein, drop l'event (client trop lent).
+			}
+		}
+	}
 }
 
 // ============================================================
@@ -236,72 +236,72 @@ func (h *MessagerieHub) broadcast(participantIDs []string, eventType string, dat
 // Mounted at GET /api/messagerie/stream (RequireAuth appliqué par le routeur).
 //
 // Protocole :
-//   1. Le client ouvre une connexion EventSource vers /api/messagerie/stream.
-//   2. Le serveur envoie un event "hello" avec le userId (pour confirmer la connexion).
-//   3. Le serveur pousse les events "message_new", "message_edited",
-//      "message_deleted", "read" au fur et à mesure (via BroadcastMessage/Event).
-//   4. Un heartbeat est envoyé toutes les 45s pour maintenir la connexion
-//      (anti-proxy-timeout, notamment Vercel/Render).
-//   5. Le client se déconnecte → r.Context().Done() → unregister propre.
+//  1. Le client ouvre une connexion EventSource vers /api/messagerie/stream.
+//  2. Le serveur envoie un event "hello" avec le userId (pour confirmer la connexion).
+//  3. Le serveur pousse les events "message_new", "message_edited",
+//     "message_deleted", "read" au fur et à mesure (via BroadcastMessage/Event).
+//  4. Un heartbeat est envoyé toutes les 45s pour maintenir la connexion
+//     (anti-proxy-timeout, notamment Vercel/Render).
+//  5. Le client se déconnecte → r.Context().Done() → unregister propre.
 //
 // Format SSE : `data: <json>\n\n` (séparateur \n\n obligatoire).
 // Commentaires SSE : `: heartbeat\n\n` (ignorés par EventSource mais maintiennent
 // la connexion ouverte).
 func (h *MessagerieHub) HandleSSE(w http.ResponseWriter, r *http.Request) {
-        claims, ok := middleware.ClaimsFromContext(r.Context())
-        if !ok || claims.UserID == "" {
-                http.Error(w, "unauthorized", http.StatusUnauthorized)
-                return
-        }
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-        // Headers SSE standards. X-Accel-Buffering: no pour Nginx (Render proxy).
-        w.Header().Set("Content-Type", "text/event-stream")
-        w.Header().Set("Cache-Control", "no-cache")
-        w.Header().Set("Connection", "keep-alive")
-        w.Header().Set("X-Accel-Buffering", "no")
+	// Headers SSE standards. X-Accel-Buffering: no pour Nginx (Render proxy).
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
-        flusher, _ := w.(http.Flusher)
-        flushIfNeeded := func() {
-                if flusher != nil {
-                        flusher.Flush()
-                }
-        }
+	flusher, _ := w.(http.Flusher)
+	flushIfNeeded := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
 
-        // 1. Event "hello" initial (confirme la connexion au client).
-        helloData, _ := json.Marshal(map[string]string{
-                "userId": claims.UserID,
-                "role":   claims.Role,
-        })
-        helloEvent, _ := json.Marshal(MessagerieEvent{
-                Type:      "hello",
-                Data:      helloData,
-                Timestamp: time.Now().UTC().Format(time.RFC3339),
-        })
-        _, _ = fmt.Fprintf(w, "data: %s\n\n", helloEvent)
-        flushIfNeeded()
+	// 1. Event "hello" initial (confirme la connexion au client).
+	helloData, _ := json.Marshal(map[string]string{
+		"userId": claims.UserID,
+		"role":   claims.Role,
+	})
+	helloEvent, _ := json.Marshal(MessagerieEvent{
+		Type:      "hello",
+		Data:      helloData,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	})
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", helloEvent)
+	flushIfNeeded()
 
-        // 2. Inscrire le client SSE pour recevoir les events broadcastés.
-        ch := h.register(claims.UserID)
-        defer h.unregister(claims.UserID, ch)
+	// 2. Inscrire le client SSE pour recevoir les events broadcastés.
+	ch := h.register(claims.UserID)
+	defer h.unregister(claims.UserID, ch)
 
-        // 3. Heartbeat 45s (anti-proxy-timeout).
-        heartbeat := time.NewTicker(45 * time.Second)
-        defer heartbeat.Stop()
+	// 3. Heartbeat 45s (anti-proxy-timeout).
+	heartbeat := time.NewTicker(45 * time.Second)
+	defer heartbeat.Stop()
 
-        // 4. Boucle principale : push events au client.
-        for {
-                select {
-                case <-r.Context().Done():
-                        // Client déconnecté (fermeture onglet / network drop).
-                        return
-                case event := <-ch:
-                        payload, _ := json.Marshal(event)
-                        _, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
-                        flushIfNeeded()
-                case <-heartbeat.C:
-                        // Commentaire SSE (ignoré par EventSource mais maintient la connexion).
-                        _, _ = fmt.Fprintf(w, ": heartbeat\n\n")
-                        flushIfNeeded()
-                }
-        }
+	// 4. Boucle principale : push events au client.
+	for {
+		select {
+		case <-r.Context().Done():
+			// Client déconnecté (fermeture onglet / network drop).
+			return
+		case event := <-ch:
+			payload, _ := json.Marshal(event)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+			flushIfNeeded()
+		case <-heartbeat.C:
+			// Commentaire SSE (ignoré par EventSource mais maintient la connexion).
+			_, _ = fmt.Fprintf(w, ": heartbeat\n\n")
+			flushIfNeeded()
+		}
+	}
 }

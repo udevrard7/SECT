@@ -38,8 +38,8 @@ func (s *Server) mobilePushRegisterHandler(w http.ResponseWriter, r *http.Reques
 	var body struct {
 		UserID   string `json:"userId"`
 		Token    string `json:"token"`
-		Platform string `json:"platform"`  // "android" or "ios"
-		BundleID string `json:"bundleId"`  // "ci.sect.app" or "ci.sect.app.ios"
+		Platform string `json:"platform"` // "android" or "ios"
+		BundleID string `json:"bundleId"` // "ci.sect.app" or "ci.sect.app.ios"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "JSON invalide")

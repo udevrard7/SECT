@@ -1,15 +1,15 @@
 package worker
 
 import (
-        "context"
-        "encoding/json"
-        "fmt"
-        "log/slog"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
 
-        "github.com/jackc/pgx/v5"
-        "github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-        "github.com/udevrard7/sect/backend/internal/ai"
+	"github.com/udevrard7/sect/backend/internal/ai"
 )
 
 // IA-CORRECTION-1 : Worker asynchrone pour la correction IA des QRC/CODE.
@@ -19,10 +19,10 @@ import (
 
 // CorrectionJob représente une tâche de correction IA pour une réponse.
 type CorrectionJob struct {
-        ReponseID   string `json:"reponseId"`
-        SessionID   string `json:"sessionId"`
-        QuestionID  string `json:"questionId"`
-        EnseignantID string `json:"enseignantId"`
+	ReponseID    string `json:"reponseId"`
+	SessionID    string `json:"sessionId"`
+	QuestionID   string `json:"questionId"`
+	EnseignantID string `json:"enseignantId"`
 }
 
 // CorrectionQueue est la file d'attente pour les corrections IA.
@@ -31,130 +31,130 @@ var CorrectionQueue = make(chan CorrectionJob, 500)
 
 // CorrectionWorker est le worker qui consomme la queue de correction.
 type CorrectionWorker struct {
-        dbPool    *pgxpool.Pool
-        logger    *slog.Logger
-        aiService *ai.AIService // failover support
+	dbPool    *pgxpool.Pool
+	logger    *slog.Logger
+	aiService *ai.AIService // failover support
 }
 
 // NewCorrectionWorker crée un nouveau worker de correction.
 func NewCorrectionWorker(dbPool *pgxpool.Pool, logger *slog.Logger, aiService *ai.AIService) *CorrectionWorker {
-        return &CorrectionWorker{dbPool: dbPool, logger: logger, aiService: aiService}
+	return &CorrectionWorker{dbPool: dbPool, logger: logger, aiService: aiService}
 }
 
 // Start lance le worker en goroutine.
 func (w *CorrectionWorker) Start(ctx context.Context) {
-        w.logger.Info("Correction IA Worker started, waiting for jobs...")
+	w.logger.Info("Correction IA Worker started, waiting for jobs...")
 
-        go func() {
-                for {
-                        select {
-                        case <-ctx.Done():
-                                w.logger.Info("Correction IA Worker stopping...")
-                                return
-                        case job := <-CorrectionQueue:
-                                w.logger.Info("Processing correction job",
-                                        "reponseId", job.ReponseID,
-                                        "sessionId", job.SessionID,
-                                )
-                                w.processCorrectionJob(ctx, job)
-                        }
-                }
-        }()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				w.logger.Info("Correction IA Worker stopping...")
+				return
+			case job := <-CorrectionQueue:
+				w.logger.Info("Processing correction job",
+					"reponseId", job.ReponseID,
+					"sessionId", job.SessionID,
+				)
+				w.processCorrectionJob(ctx, job)
+			}
+		}
+	}()
 }
 
 // processCorrectionJob corrige une réponse via l'IA.
 func (w *CorrectionWorker) processCorrectionJob(ctx context.Context, job CorrectionJob) {
-        defer func() {
-                if r := recover(); r != nil {
-                        w.logger.Error("Correction Worker panic recovered", "error", r, "reponseId", job.ReponseID)
-                        w.markReponseError(ctx, job.ReponseID, fmt.Sprintf("erreur interne: %v", r))
-                }
-        }()
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("Correction Worker panic recovered", "error", r, "reponseId", job.ReponseID)
+			w.markReponseError(ctx, job.ReponseID, fmt.Sprintf("erreur interne: %v", r))
+		}
+	}()
 
-        // 1. Marquer statusIA = EN_COURS
-        w.updateReponseStatusIA(ctx, job.ReponseID, "EN_COURS", nil, nil)
+	// 1. Marquer statusIA = EN_COURS
+	w.updateReponseStatusIA(ctx, job.ReponseID, "EN_COURS", nil, nil)
 
-        // 2. Récupérer la question (énoncé, barème, réponse type) + réponse étudiant
-        question, reponse, err := w.getQuestionAndReponse(ctx, job.ReponseID)
-        if err != nil {
-                w.logger.Error("Failed to get question/reponse", "error", err, "reponseId", job.ReponseID)
-                w.markReponseError(ctx, job.ReponseID, "données introuvables")
-                return
-        }
+	// 2. Récupérer la question (énoncé, barème, réponse type) + réponse étudiant
+	question, reponse, err := w.getQuestionAndReponse(ctx, job.ReponseID)
+	if err != nil {
+		w.logger.Error("Failed to get question/reponse", "error", err, "reponseId", job.ReponseID)
+		w.markReponseError(ctx, job.ReponseID, "données introuvables")
+		return
+	}
 
-        // 3. Construire le prompt de notation
-        messages := w.buildCorrectionPrompt(question, reponse)
+	// 3. Construire le prompt de notation
+	messages := w.buildCorrectionPrompt(question, reponse)
 
-        // 4. Convertir worker.ChatMessage → ai.ChatMessage et appeler l'IA avec failover
-        aiMessages := make([]ai.ChatMessage, len(messages))
-        for i, m := range messages {
-                aiMessages[i] = ai.ChatMessage{Role: m.Role, Content: m.Content}
-        }
-        result, err := w.aiService.ChatCompletion(ctx, aiMessages)
-        if err != nil {
-                w.logger.Error("AI call failed (all providers exhausted)", "error", err)
-                w.markReponseError(ctx, job.ReponseID, fmt.Sprintf("erreur API IA: %v", err))
-                return
-        }
+	// 4. Convertir worker.ChatMessage → ai.ChatMessage et appeler l'IA avec failover
+	aiMessages := make([]ai.ChatMessage, len(messages))
+	for i, m := range messages {
+		aiMessages[i] = ai.ChatMessage{Role: m.Role, Content: m.Content}
+	}
+	result, err := w.aiService.ChatCompletion(ctx, aiMessages)
+	if err != nil {
+		w.logger.Error("AI call failed (all providers exhausted)", "error", err)
+		w.markReponseError(ctx, job.ReponseID, fmt.Sprintf("erreur API IA: %v", err))
+		return
+	}
 
-        // 5. Extraire le contenu textuel du résultat
-        rawContent := result.Content
+	// 5. Extraire le contenu textuel du résultat
+	rawContent := result.Content
 
-        // 6. Parser la réponse JSON { noteIA, justificationIA }
-        noteIA, justification, err := w.parseCorrectionResponse(rawContent)
-        if err != nil {
-                // FIX (audit 2025): utiliser truncate au lieu de rawContent[:200] qui panique si < 200 chars
-                w.logger.Error("Failed to parse AI response", "error", err, "raw", truncate(rawContent, 200))
-                w.markReponseError(ctx, job.ReponseID, "réponse IA illisible")
-                return
-        }
+	// 6. Parser la réponse JSON { noteIA, justificationIA }
+	noteIA, justification, err := w.parseCorrectionResponse(rawContent)
+	if err != nil {
+		// FIX (audit 2025): utiliser truncate au lieu de rawContent[:200] qui panique si < 200 chars
+		w.logger.Error("Failed to parse AI response", "error", err, "raw", truncate(rawContent, 200))
+		w.markReponseError(ctx, job.ReponseID, "réponse IA illisible")
+		return
+	}
 
-        // 7. FIX (audit 2025): clamper noteIA au bareme maximum pour empêcher les notes impossibles
-        // (l'IA peut halluciner une note supérieure au barème).
-        maxNote := question.Bareme
-        if noteIA > maxNote {
-                w.logger.Warn("noteIA exceeds bareme, clamping", "noteIA", noteIA, "bareme", maxNote, "reponseId", job.ReponseID)
-                noteIA = maxNote
-        }
-        if noteIA < 0 {
-                noteIA = 0
-        }
+	// 7. FIX (audit 2025): clamper noteIA au bareme maximum pour empêcher les notes impossibles
+	// (l'IA peut halluciner une note supérieure au barème).
+	maxNote := question.Bareme
+	if noteIA > maxNote {
+		w.logger.Warn("noteIA exceeds bareme, clamping", "noteIA", noteIA, "bareme", maxNote, "reponseId", job.ReponseID)
+		noteIA = maxNote
+	}
+	if noteIA < 0 {
+		noteIA = 0
+	}
 
-        // 8. Écrire noteIA + justificationIA en DB
-        w.updateReponseStatusIA(ctx, job.ReponseID, "TERMINE", &noteIA, &justification)
-        w.logger.Info("Correction completed", "reponseId", job.ReponseID, "noteIA", noteIA)
+	// 8. Écrire noteIA + justificationIA en DB
+	w.updateReponseStatusIA(ctx, job.ReponseID, "TERMINE", &noteIA, &justification)
+	w.logger.Info("Correction completed", "reponseId", job.ReponseID, "noteIA", noteIA)
 }
 
 // questionData contient les données de la question pour le prompt.
 type questionData struct {
-        Enonce       string
-        Bareme       float64
-        Type         string
-        ReponseType  *string // réponse modèle / correction type
+	Enonce      string
+	Bareme      float64
+	Type        string
+	ReponseType *string // réponse modèle / correction type
 }
 
 // reponseData contient la réponse de l'étudiant.
 type reponseData struct {
-        Contenu string
+	Contenu string
 }
 
 // getQuestionAndReponse récupère la question et la réponse depuis la DB.
 func (w *CorrectionWorker) getQuestionAndReponse(ctx context.Context, reponseID string) (*questionData, *reponseData, error) {
-        tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer func() { _ = tx.Rollback(ctx) }()
+	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
-        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+	_, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
-        var q questionData
-        var r reponseData
-        var contenu *string
-        var reponseType *string
+	var q questionData
+	var r reponseData
+	var contenu *string
+	var reponseType *string
 
-        // Joindre Reponse → EpreuveQuestion → Question pour récupérer l'énoncé
-        err = tx.QueryRow(ctx, `
+	// Joindre Reponse → EpreuveQuestion → Question pour récupérer l'énoncé
+	err = tx.QueryRow(ctx, `
                 SELECT
                         q."enonce",
                         eq."bareme",
@@ -167,36 +167,36 @@ func (w *CorrectionWorker) getQuestionAndReponse(ctx context.Context, reponseID 
                 WHERE r."id" = $1
         `, reponseID).Scan(&q.Enonce, &q.Bareme, &q.Type, &reponseType, &contenu)
 
-        if err != nil {
-                return nil, nil, fmt.Errorf("query question/reponse: %w", err)
-        }
+	if err != nil {
+		return nil, nil, fmt.Errorf("query question/reponse: %w", err)
+	}
 
-        q.ReponseType = reponseType
-        if contenu != nil {
-                r.Contenu = *contenu
-        }
+	q.ReponseType = reponseType
+	if contenu != nil {
+		r.Contenu = *contenu
+	}
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, nil, fmt.Errorf("commit: %w", err)
-        }
-        return &q, &r, nil
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, fmt.Errorf("commit: %w", err)
+	}
+	return &q, &r, nil
 }
 
 // buildCorrectionPrompt construit les messages pour l'IA.
 func (w *CorrectionWorker) buildCorrectionPrompt(q *questionData, r *reponseData) []ChatMessage {
-        systemPrompt := `Tu es un enseignant expert et impartial. Ton rôle est de corriger la réponse d'un étudiant à partir d'un barème strict.
+	systemPrompt := `Tu es un enseignant expert et impartial. Ton rôle est de corriger la réponse d'un étudiant à partir d'un barème strict.
 Tu dois renvoyer UNIQUEMENT un objet JSON valide contenant deux champs :
 {
   "noteIA": (nombre, ne doit jamais dépasser la note maximale du barème),
   "justificationIA": "Explication claire, constructive et concise des points attribués ou retirés à l'étudiant."
 }`
 
-        correctionType := "Non fournie"
-        if q.ReponseType != nil && *q.ReponseType != "" {
-                correctionType = *q.ReponseType
-        }
+	correctionType := "Non fournie"
+	if q.ReponseType != nil && *q.ReponseType != "" {
+		correctionType = *q.ReponseType
+	}
 
-        userPrompt := fmt.Sprintf(`[ÉNONCÉ DE LA QUESTION]
+	userPrompt := fmt.Sprintf(`[ÉNONCÉ DE LA QUESTION]
 %s
 
 [CORRECTION TYPE / ATTENTES]
@@ -210,50 +210,50 @@ Tu dois renvoyer UNIQUEMENT un objet JSON valide contenant deux champs :
 
 Évalue la réponse de l'étudiant en fonction des attentes et du barème. Sois indulgent sur l'orthographe mais strict sur le fond. Réponds UNIQUEMENT avec le JSON demandé.`, q.Enonce, correctionType, q.Bareme, r.Contenu)
 
-        return []ChatMessage{
-                {Role: "system", Content: systemPrompt},
-                {Role: "user", Content: userPrompt},
-        }
+	return []ChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
 }
 
 // parseCorrectionResponse extrait noteIA et justification du JSON retourné par l'IA.
 func (w *CorrectionWorker) parseCorrectionResponse(raw string) (float64, string, error) {
-        // Extraire le JSON (l'IA peut l'enrober dans des markdown code blocks)
-        jsonStr := raw
-        if idx := indexOf(raw, "{"); idx >= 0 {
-                endIdx := lastIndexOf(raw, "}")
-                if endIdx > idx {
-                        jsonStr = raw[idx : endIdx+1]
-                }
-        }
+	// Extraire le JSON (l'IA peut l'enrober dans des markdown code blocks)
+	jsonStr := raw
+	if idx := indexOf(raw, "{"); idx >= 0 {
+		endIdx := lastIndexOf(raw, "}")
+		if endIdx > idx {
+			jsonStr = raw[idx : endIdx+1]
+		}
+	}
 
-        var result struct {
-                NoteIA          float64 `json:"noteIA"`
-                JustificationIA string  `json:"justificationIA"`
-        }
-        if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-                return 0, "", fmt.Errorf("parse JSON: %w", err)
-        }
-        return result.NoteIA, result.JustificationIA, nil
+	var result struct {
+		NoteIA          float64 `json:"noteIA"`
+		JustificationIA string  `json:"justificationIA"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return 0, "", fmt.Errorf("parse JSON: %w", err)
+	}
+	return result.NoteIA, result.JustificationIA, nil
 }
 
 // updateReponseStatusIA met à jour le statut IA + noteIA + justification en DB.
 // FIX (audit 2025): la colonne "statusIA" est maintenant mise à jour (avant, le
 // paramètre statusIA était ignoré → le frontend ne voyait jamais EN_COURS/TERMINE).
 func (w *CorrectionWorker) updateReponseStatusIA(ctx context.Context, reponseID, statusIA string, noteIA *float64, justification *string) {
-        tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                w.logger.Error("Failed to begin tx for IA status update", "error", err)
-                return
-        }
-        defer func() { _ = tx.Rollback(ctx) }()
+	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		w.logger.Error("Failed to begin tx for IA status update", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
-                w.logger.Error("Failed to set system claims", "error", err)
-                return
-        }
+	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+		w.logger.Error("Failed to set system claims", "error", err)
+		return
+	}
 
-        _, err = tx.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
                 UPDATE "Reponse"
                 SET "statusIA" = $1,
                     "noteIA" = $2,
@@ -262,35 +262,35 @@ func (w *CorrectionWorker) updateReponseStatusIA(ctx context.Context, reponseID,
                 WHERE "id" = $4
         `, statusIA, noteIA, justification, reponseID)
 
-        if err != nil {
-                w.logger.Error("Failed to update reponse IA", "error", err, "reponseId", reponseID)
-                return
-        }
+	if err != nil {
+		w.logger.Error("Failed to update reponse IA", "error", err, "reponseId", reponseID)
+		return
+	}
 
-        if err := tx.Commit(ctx); err != nil {
-                w.logger.Error("Failed to commit reponse IA update", "error", err, "reponseId", reponseID)
-        }
+	if err := tx.Commit(ctx); err != nil {
+		w.logger.Error("Failed to commit reponse IA update", "error", err, "reponseId", reponseID)
+	}
 }
 
 // markReponseError marque la réponse en erreur (noteIA = 0, justification = erreur).
 func (w *CorrectionWorker) markReponseError(ctx context.Context, reponseID, errorMsg string) {
-        errMsg := errorMsg
-        w.updateReponseStatusIA(ctx, reponseID, "ERREUR", nil, &errMsg)
+	errMsg := errorMsg
+	w.updateReponseStatusIA(ctx, reponseID, "ERREUR", nil, &errMsg)
 }
 
 // RecoverInterruptedCorrections reprend les corrections interrompues au redémarrage.
 func (w *CorrectionWorker) RecoverInterruptedCorrections(ctx context.Context) {
-        tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                w.logger.Error("RecoverCorrections: failed to begin tx", "error", err)
-                return
-        }
-        defer func() { _ = tx.Rollback(ctx) }()
+	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		w.logger.Error("RecoverCorrections: failed to begin tx", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
-        _, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+	_, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
-        // Chercher les réponses QRC/CODE sans noteIA (correction IA en attente)
-        rows, err := tx.Query(ctx, `
+	// Chercher les réponses QRC/CODE sans noteIA (correction IA en attente)
+	rows, err := tx.Query(ctx, `
                 SELECT r."id", r."sessionId", r."questionId"
                 FROM "Reponse" r
                 JOIN "Question" q ON q."id" = r."questionId"
@@ -300,54 +300,54 @@ func (w *CorrectionWorker) RecoverInterruptedCorrections(ctx context.Context) {
                   AND q."type" IN ('QRC', 'CODE', 'REFLEXION')
                   AND s."statut" = 'SOUMISE'
         `)
-        if err != nil {
-                w.logger.Error("RecoverCorrections: query failed", "error", err)
-                return
-        }
-        defer rows.Close()
+	if err != nil {
+		w.logger.Error("RecoverCorrections: query failed", "error", err)
+		return
+	}
+	defer rows.Close()
 
-        recovered := 0
-        for rows.Next() {
-                var reponseID, sessionID, questionID string
-                if err := rows.Scan(&reponseID, &sessionID, &questionID); err != nil {
-                        continue
-                }
-                w.logger.Warn("Recovering interrupted correction", "reponseId", reponseID)
-                // Réinjecter dans la queue
-                select {
-                case CorrectionQueue <- CorrectionJob{ReponseID: reponseID, SessionID: sessionID, QuestionID: questionID}:
-                        recovered++
-                default:
-                        w.logger.Warn("CorrectionQueue full, skipping recovery", "reponseId", reponseID)
-                }
-        }
+	recovered := 0
+	for rows.Next() {
+		var reponseID, sessionID, questionID string
+		if err := rows.Scan(&reponseID, &sessionID, &questionID); err != nil {
+			continue
+		}
+		w.logger.Warn("Recovering interrupted correction", "reponseId", reponseID)
+		// Réinjecter dans la queue
+		select {
+		case CorrectionQueue <- CorrectionJob{ReponseID: reponseID, SessionID: sessionID, QuestionID: questionID}:
+			recovered++
+		default:
+			w.logger.Warn("CorrectionQueue full, skipping recovery", "reponseId", reponseID)
+		}
+	}
 
-        if err := tx.Commit(ctx); err != nil {
-                w.logger.Error("commit failed", "error", err)
-        }
+	if err := tx.Commit(ctx); err != nil {
+		w.logger.Error("commit failed", "error", err)
+	}
 
-        if recovered > 0 {
-                w.logger.Info("Recovered interrupted corrections", "count", recovered)
-        } else {
-                w.logger.Info("No interrupted corrections to recover")
-        }
+	if recovered > 0 {
+		w.logger.Info("Recovered interrupted corrections", "count", recovered)
+	} else {
+		w.logger.Info("No interrupted corrections to recover")
+	}
 }
 
 // Helper: indexOf / lastIndexOf for string
 func indexOf(s, substr string) int {
-        for i := 0; i <= len(s)-len(substr); i++ {
-                if s[i:i+len(substr)] == substr {
-                        return i
-                }
-        }
-        return -1
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
 }
 
 func lastIndexOf(s, substr string) int {
-        for i := len(s) - len(substr); i >= 0; i-- {
-                if s[i:i+len(substr)] == substr {
-                        return i
-                }
-        }
-        return -1
+	for i := len(s) - len(substr); i >= 0; i-- {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
 }

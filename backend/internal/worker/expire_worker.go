@@ -9,67 +9,67 @@ package worker
 // Le check est côté DB (fonction expire_b2c_subscriptions) pour atomicité.
 
 import (
-        "context"
-        "fmt"
-        "log/slog"
-        "time"
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
 
-        "github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-        "github.com/udevrard7/sect/backend/internal/emailtpl"
-        "github.com/udevrard7/sect/backend/internal/mailer"
+	"github.com/udevrard7/sect/backend/internal/emailtpl"
+	"github.com/udevrard7/sect/backend/internal/mailer"
 )
 
 // ExpireWorker vérifie périodiquement les abonnements à expirer.
 type ExpireWorker struct {
-        dbPool    *pgxpool.Pool
-        logger    *slog.Logger
-        mailer    mailer.Mailer
-        appBaseURL string
+	dbPool     *pgxpool.Pool
+	logger     *slog.Logger
+	mailer     mailer.Mailer
+	appBaseURL string
 }
 
 // NewExpireWorker crée un nouveau worker d'expiration.
 func NewExpireWorker(dbPool *pgxpool.Pool, logger *slog.Logger, m mailer.Mailer, appBaseURL string) *ExpireWorker {
-        return &ExpireWorker{
-                dbPool:    dbPool,
-                logger:    logger,
-                mailer:    m,
-                appBaseURL: appBaseURL,
-        }
+	return &ExpireWorker{
+		dbPool:     dbPool,
+		logger:     logger,
+		mailer:     m,
+		appBaseURL: appBaseURL,
+	}
 }
 
 // Start lance le worker en goroutine (non-bloquant).
 // Vérifie toutes les 1h (plus fréquent que relance car l'expiration doit être rapide).
 func (w *ExpireWorker) Start(ctx context.Context) {
-        w.logger.Info("Expire Worker started, checking every 1h...")
+	w.logger.Info("Expire Worker started, checking every 1h...")
 
-        go func() {
-                // Premier check immédiat au démarrage.
-                w.checkAndExpire(ctx)
+	go func() {
+		// Premier check immédiat au démarrage.
+		w.checkAndExpire(ctx)
 
-                ticker := time.NewTicker(1 * time.Hour)
-                defer ticker.Stop()
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
 
-                for {
-                        select {
-                        case <-ctx.Done():
-                                w.logger.Info("Expire Worker stopping...")
-                                return
-                        case <-ticker.C:
-                                w.checkAndExpire(ctx)
-                        }
-                }
-        }()
+		for {
+			select {
+			case <-ctx.Done():
+				w.logger.Info("Expire Worker stopping...")
+				return
+			case <-ticker.C:
+				w.checkAndExpire(ctx)
+			}
+		}
+	}()
 }
 
 // expiredCandidate — un abonnement qui vient d'être expiré.
 type expiredCandidate struct {
-        AboID     string
-        UserEmail string
-        UserName  string
-        PlanNom   string
-        PlanPrix  float64
-        DateFin   time.Time
+	AboID     string
+	UserEmail string
+	UserName  string
+	PlanNom   string
+	PlanPrix  float64
+	DateFin   time.Time
 }
 
 // checkAndExpire appelle les fonctions SQL expire_b2c_subscriptions +
@@ -79,178 +79,178 @@ type expiredCandidate struct {
 // actif=false les StudentSignupLinks expirés) + sendStudentSignupLinkReminders
 // (envoie un email 24h avant expiration au créateur).
 func (w *ExpireWorker) checkAndExpire(ctx context.Context) {
-        // 1. Expirer les abonnements B2C (ACTIF avec dateFin < NOW())
-        w.expireB2C(ctx)
-        // 2. Expirer les abonnements B2B (ESSAI 14j + ACTIF dateFin < NOW())
-        w.expireB2B(ctx)
-        // 3. SECT-REG-LINK-PHASE3-BACKEND-1 — expirer les StudentSignupLinks (actif=false)
-        w.expireStudentSignupLinks(ctx)
-        // 4. SECT-REG-LINK-PHASE3-BACKEND-1 — envoyer reminders 24h aux créateurs
-        w.sendStudentSignupLinkReminders(ctx)
+	// 1. Expirer les abonnements B2C (ACTIF avec dateFin < NOW())
+	w.expireB2C(ctx)
+	// 2. Expirer les abonnements B2B (ESSAI 14j + ACTIF dateFin < NOW())
+	w.expireB2B(ctx)
+	// 3. SECT-REG-LINK-PHASE3-BACKEND-1 — expirer les StudentSignupLinks (actif=false)
+	w.expireStudentSignupLinks(ctx)
+	// 4. SECT-REG-LINK-PHASE3-BACKEND-1 — envoyer reminders 24h aux créateurs
+	w.sendStudentSignupLinkReminders(ctx)
 }
 
 // expireB2C expire les abonnements B2C (étab PERSONNEL).
 func (w *ExpireWorker) expireB2C(ctx context.Context) {
-        rows, err := w.dbPool.Query(ctx, `
+	rows, err := w.dbPool.Query(ctx, `
                 SELECT o_abonnement_id, o_user_email, o_user_name, o_plan_nom, o_plan_prix, o_date_fin
                 FROM expire_b2c_subscriptions()
         `)
-        if err != nil {
-                w.logger.Error("Expire Worker B2C: SQL failed", "error", err.Error())
-                return
-        }
-        defer rows.Close()
+	if err != nil {
+		w.logger.Error("Expire Worker B2C: SQL failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
 
-        var candidates []expiredCandidate
-        for rows.Next() {
-                var c expiredCandidate
-                if err := rows.Scan(&c.AboID, &c.UserEmail, &c.UserName, &c.PlanNom, &c.PlanPrix, &c.DateFin); err != nil {
-                        w.logger.Error("Expire Worker: scan failed", "error", err.Error())
-                        continue
-                }
-                candidates = append(candidates, c)
-        }
+	var candidates []expiredCandidate
+	for rows.Next() {
+		var c expiredCandidate
+		if err := rows.Scan(&c.AboID, &c.UserEmail, &c.UserName, &c.PlanNom, &c.PlanPrix, &c.DateFin); err != nil {
+			w.logger.Error("Expire Worker: scan failed", "error", err.Error())
+			continue
+		}
+		candidates = append(candidates, c)
+	}
 
-        if len(candidates) == 0 {
-                return // rien à expirer
-        }
+	if len(candidates) == 0 {
+		return // rien à expirer
+	}
 
-        w.logger.Info("Expire Worker: subscriptions expired", "count", len(candidates))
+	w.logger.Info("Expire Worker: subscriptions expired", "count", len(candidates))
 
-        if w.mailer == nil {
-                return // dev mode, pas d'email
-        }
+	if w.mailer == nil {
+		return // dev mode, pas d'email
+	}
 
-        // 2. Envoyer un email à chaque prof expiré
-        for _, c := range candidates {
-                w.sendExpiredEmail(ctx, c)
-        }
+	// 2. Envoyer un email à chaque prof expiré
+	for _, c := range candidates {
+		w.sendExpiredEmail(ctx, c)
+	}
 }
 
 // sendExpiredEmail envoie l'email "abonnement expiré" avec options renouvellement/downgrade.
 func (w *ExpireWorker) sendExpiredEmail(ctx context.Context, c expiredCandidate) {
-        renouvellementURL := w.appBaseURL + "/paiement/renouvellement?abo=" + c.AboID
-        downgradeURL := w.appBaseURL + "/abonnement-expire?abo=" + c.AboID + "&action=downgrade"
-        loginURL := w.appBaseURL + "/login"
+	renouvellementURL := w.appBaseURL + "/paiement/renouvellement?abo=" + c.AboID
+	downgradeURL := w.appBaseURL + "/abonnement-expire?abo=" + c.AboID + "&action=downgrade"
+	loginURL := w.appBaseURL + "/login"
 
-        tplData := emailtpl.AbonnementExpiredData{
-                EmailData:         emailtpl.DefaultData(c.UserName, w.appBaseURL),
-                PlanNom:           c.PlanNom,
-                MontantTTC:        formatFCFA(c.PlanPrix),
-                DateFin:           c.DateFin.Format("02/01/2006"),
-                RenouvellementURL: renouvellementURL,
-                DowngradeURL:      downgradeURL,
-                LoginURL:          loginURL,
-        }
+	tplData := emailtpl.AbonnementExpiredData{
+		EmailData:         emailtpl.DefaultData(c.UserName, w.appBaseURL),
+		PlanNom:           c.PlanNom,
+		MontantTTC:        formatFCFA(c.PlanPrix),
+		DateFin:           c.DateFin.Format("02/01/2006"),
+		RenouvellementURL: renouvellementURL,
+		DowngradeURL:      downgradeURL,
+		LoginURL:          loginURL,
+	}
 
-        if err := w.mailer.Send(mailer.Email{
-                To:      c.UserEmail,
-                Subject: "Votre abonnement SECT a expiré — Renouvelez ou continuez en gratuit",
-                Body:    emailtpl.AbonnementExpiredText(tplData),
-                HTML:    emailtpl.AbonnementExpiredHTML(tplData),
-        }); err != nil {
-                w.logger.Error("Expire Worker: email send failed",
-                        "aboId", c.AboID, "email", c.UserEmail, "error", err.Error())
-                return
-        }
+	if err := w.mailer.Send(mailer.Email{
+		To:      c.UserEmail,
+		Subject: "Votre abonnement SECT a expiré — Renouvelez ou continuez en gratuit",
+		Body:    emailtpl.AbonnementExpiredText(tplData),
+		HTML:    emailtpl.AbonnementExpiredHTML(tplData),
+	}); err != nil {
+		w.logger.Error("Expire Worker: email send failed",
+			"aboId", c.AboID, "email", c.UserEmail, "error", err.Error())
+		return
+	}
 
-        w.logger.Info("Expiration email sent",
-                "aboId", c.AboID, "email", c.UserEmail, "planNom", c.PlanNom)
+	w.logger.Info("Expiration email sent",
+		"aboId", c.AboID, "email", c.UserEmail, "planNom", c.PlanNom)
 }
 
 // b2bExpiredCandidate — un abonnement B2B qui vient d'être expiré.
 type b2bExpiredCandidate struct {
-        AboID        string
-        UserEmail    string
-        UserName     string
-        EtabNom      string
-        PlanNom      string
-        ExpireReason string // ESSAI_EXPIRE ou ABONNEMENT_EXPIRE
-        DateFin      *time.Time
+	AboID        string
+	UserEmail    string
+	UserName     string
+	EtabNom      string
+	PlanNom      string
+	ExpireReason string // ESSAI_EXPIRE ou ABONNEMENT_EXPIRE
+	DateFin      *time.Time
 }
 
 // expireB2B expire les abonnements B2B (ESSAI 14j + ACTIF annuel).
 func (w *ExpireWorker) expireB2B(ctx context.Context) {
-        rows, err := w.dbPool.Query(ctx, `
+	rows, err := w.dbPool.Query(ctx, `
                 SELECT o_abonnement_id, o_user_email, o_user_name, o_etab_nom,
                        o_plan_nom, o_expire_reason, o_date_fin
                 FROM expire_b2b_subscriptions()
         `)
-        if err != nil {
-                w.logger.Error("Expire Worker B2B: SQL failed", "error", err.Error())
-                return
-        }
-        defer rows.Close()
+	if err != nil {
+		w.logger.Error("Expire Worker B2B: SQL failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
 
-        var candidates []b2bExpiredCandidate
-        for rows.Next() {
-                var c b2bExpiredCandidate
-                if err := rows.Scan(&c.AboID, &c.UserEmail, &c.UserName, &c.EtabNom,
-                        &c.PlanNom, &c.ExpireReason, &c.DateFin); err != nil {
-                        w.logger.Error("Expire Worker B2B: scan failed", "error", err.Error())
-                        continue
-                }
-                candidates = append(candidates, c)
-        }
+	var candidates []b2bExpiredCandidate
+	for rows.Next() {
+		var c b2bExpiredCandidate
+		if err := rows.Scan(&c.AboID, &c.UserEmail, &c.UserName, &c.EtabNom,
+			&c.PlanNom, &c.ExpireReason, &c.DateFin); err != nil {
+			w.logger.Error("Expire Worker B2B: scan failed", "error", err.Error())
+			continue
+		}
+		candidates = append(candidates, c)
+	}
 
-        if len(candidates) == 0 {
-                return
-        }
+	if len(candidates) == 0 {
+		return
+	}
 
-        w.logger.Info("Expire Worker B2B: subscriptions expired", "count", len(candidates))
+	w.logger.Info("Expire Worker B2B: subscriptions expired", "count", len(candidates))
 
-        if w.mailer == nil {
-                return
-        }
+	if w.mailer == nil {
+		return
+	}
 
-        for _, c := range candidates {
-                w.sendB2BExpiredEmail(ctx, c)
-        }
+	for _, c := range candidates {
+		w.sendB2BExpiredEmail(ctx, c)
+	}
 }
 
 // sendB2BExpiredEmail envoie l'email d'expiration B2B au RESPONSABLE.
 func (w *ExpireWorker) sendB2BExpiredEmail(ctx context.Context, c b2bExpiredCandidate) {
-        // Pour B2B, on réutilise le template d'expiration B2C (le message est similaire).
-        // Le responsable peut contacter l'admin SECT pour renouveler.
-        renouvellementURL := w.appBaseURL + "/login"
-        loginURL := w.appBaseURL + "/login"
+	// Pour B2B, on réutilise le template d'expiration B2C (le message est similaire).
+	// Le responsable peut contacter l'admin SECT pour renouveler.
+	renouvellementURL := w.appBaseURL + "/login"
+	loginURL := w.appBaseURL + "/login"
 
-        dateFinStr := ""
-        if c.DateFin != nil {
-                dateFinStr = c.DateFin.Format("02/01/2006")
-        } else {
-                dateFinStr = "essai expiré"
-        }
+	dateFinStr := ""
+	if c.DateFin != nil {
+		dateFinStr = c.DateFin.Format("02/01/2006")
+	} else {
+		dateFinStr = "essai expiré"
+	}
 
-        tplData := emailtpl.AbonnementExpiredData{
-                EmailData:         emailtpl.DefaultData(c.UserName, w.appBaseURL),
-                PlanNom:           c.PlanNom + " — " + c.EtabNom,
-                MontantTTC:        "voir facture",
-                DateFin:           dateFinStr,
-                RenouvellementURL: renouvellementURL,
-                DowngradeURL:      loginURL,
-                LoginURL:          loginURL,
-        }
+	tplData := emailtpl.AbonnementExpiredData{
+		EmailData:         emailtpl.DefaultData(c.UserName, w.appBaseURL),
+		PlanNom:           c.PlanNom + " — " + c.EtabNom,
+		MontantTTC:        "voir facture",
+		DateFin:           dateFinStr,
+		RenouvellementURL: renouvellementURL,
+		DowngradeURL:      loginURL,
+		LoginURL:          loginURL,
+	}
 
-        subject := "Votre abonnement SECT a expiré — " + c.EtabNom
-        if c.ExpireReason == "ESSAI_EXPIRE" {
-                subject = "Votre période d'essai SECT est expirée — " + c.EtabNom
-        }
+	subject := "Votre abonnement SECT a expiré — " + c.EtabNom
+	if c.ExpireReason == "ESSAI_EXPIRE" {
+		subject = "Votre période d'essai SECT est expirée — " + c.EtabNom
+	}
 
-        if err := w.mailer.Send(mailer.Email{
-                To:      c.UserEmail,
-                Subject: subject,
-                Body:    emailtpl.AbonnementExpiredText(tplData),
-                HTML:    emailtpl.AbonnementExpiredHTML(tplData),
-        }); err != nil {
-                w.logger.Error("Expire Worker B2B: email send failed",
-                        "aboId", c.AboID, "email", c.UserEmail, "error", err.Error())
-                return
-        }
+	if err := w.mailer.Send(mailer.Email{
+		To:      c.UserEmail,
+		Subject: subject,
+		Body:    emailtpl.AbonnementExpiredText(tplData),
+		HTML:    emailtpl.AbonnementExpiredHTML(tplData),
+	}); err != nil {
+		w.logger.Error("Expire Worker B2B: email send failed",
+			"aboId", c.AboID, "email", c.UserEmail, "error", err.Error())
+		return
+	}
 
-        w.logger.Info("B2B expiration email sent",
-                "aboId", c.AboID, "email", c.UserEmail,
-                "etab", c.EtabNom, "reason", c.ExpireReason)
+	w.logger.Info("B2B expiration email sent",
+		"aboId", c.AboID, "email", c.UserEmail,
+		"etab", c.EtabNom, "reason", c.ExpireReason)
 }
 
 // _ évite unused import warning (formatFCFA est dans relance_worker.go)
@@ -265,13 +265,13 @@ var _ = fmt.Sprintf
 // utilisées (le worker n'envoie pas d'email "votre lien a expiré"), mais
 // elles sont disponibles pour une future feature.
 type signupLinkExpiredCandidate struct {
-        ID            string
-        Token         string
-        Label         *string
-        CreatorEmail  *string
-        CreatorName   *string
-        EtabNom       *string
-        ExpiresAt     time.Time
+	ID           string
+	Token        string
+	Label        *string
+	CreatorEmail *string
+	CreatorName  *string
+	EtabNom      *string
+	ExpiresAt    time.Time
 }
 
 // expireStudentSignupLinks marque actif=false les StudentSignupLinks dont
@@ -282,45 +282,45 @@ type signupLinkExpiredCandidate struct {
 // avant migration 000081), on log l'erreur et on continue. Les liens seront
 // expirés au prochain tick (1h plus tard).
 func (w *ExpireWorker) expireStudentSignupLinks(ctx context.Context) {
-        rows, err := w.dbPool.Query(ctx, `
+	rows, err := w.dbPool.Query(ctx, `
                 SELECT o_id, o_token, o_label, o_creator_email, o_creator_name, o_etab_nom, o_expires_at
                 FROM expire_student_signup_links()
         `)
-        if err != nil {
-                w.logger.Error("ExpireWorker: expire_student_signup_links query failed", "error", err.Error())
-                return
-        }
-        defer rows.Close()
+	if err != nil {
+		w.logger.Error("ExpireWorker: expire_student_signup_links query failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
 
-        count := 0
-        for rows.Next() {
-                var c signupLinkExpiredCandidate
-                if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.CreatorEmail, &c.CreatorName, &c.EtabNom, &c.ExpiresAt); err != nil {
-                        w.logger.Error("ExpireWorker: expire_student_signup_links scan failed", "error", err.Error())
-                        continue
-                }
-                count++
-                // Note : pas d'email envoyé ici pour éviter le spam. Le reminder
-                // 24h (avant expiration) est envoyé par sendStudentSignupLinkReminders.
-        }
-        if count > 0 {
-                w.logger.Info("ExpireWorker: expired student signup links", "count", count)
-        }
+	count := 0
+	for rows.Next() {
+		var c signupLinkExpiredCandidate
+		if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.CreatorEmail, &c.CreatorName, &c.EtabNom, &c.ExpiresAt); err != nil {
+			w.logger.Error("ExpireWorker: expire_student_signup_links scan failed", "error", err.Error())
+			continue
+		}
+		count++
+		// Note : pas d'email envoyé ici pour éviter le spam. Le reminder
+		// 24h (avant expiration) est envoyé par sendStudentSignupLinkReminders.
+	}
+	if count > 0 {
+		w.logger.Info("ExpireWorker: expired student signup links", "count", count)
+	}
 }
 
 // signupLinkReminderCandidate — un StudentSignupLink actif expirant dans 24h,
 // pour lequel le reminder n'a pas encore été envoyé.
 type signupLinkReminderCandidate struct {
-        ID        string
-        Token     string
-        Label     *string
-        ExpiresAt time.Time
-        UseCount  int
-        MaxUses   *int
-        Email     string
-        Name      string
-        EtabNom   string
-        EtabType  string
+	ID        string
+	Token     string
+	Label     *string
+	ExpiresAt time.Time
+	UseCount  int
+	MaxUses   *int
+	Email     string
+	Name      string
+	EtabNom   string
+	EtabType  string
 }
 
 // sendStudentSignupLinkReminders envoie un email 24h avant expiration au
@@ -346,11 +346,11 @@ type signupLinkReminderCandidate struct {
 // Si le lien a été créé à expiresAt = now + 30j pile, le reminder partira
 // à J-23 environ (29j après création). Tolérance OK pour un rappel.
 func (w *ExpireWorker) sendStudentSignupLinkReminders(ctx context.Context) {
-        if w.mailer == nil {
-                return // dev mode, pas d'email
-        }
+	if w.mailer == nil {
+		return // dev mode, pas d'email
+	}
 
-        rows, err := w.dbPool.Query(ctx, `
+	rows, err := w.dbPool.Query(ctx, `
                 SELECT s."id", s."token", s."label", s."expiresAt", s."useCount", s."maxUses",
                        u."email", u."name",
                        e."nom" AS etab_nom, e."type" AS etab_type
@@ -362,42 +362,42 @@ func (w *ExpireWorker) sendStudentSignupLinkReminders(ctx context.Context) {
                   AND s."expiryReminderSent" = false
                   AND s."expiresAt" BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
         `)
-        if err != nil {
-                w.logger.Error("ExpireWorker: signup link reminder query failed", "error", err.Error())
-                return
-        }
-        defer rows.Close()
+	if err != nil {
+		w.logger.Error("ExpireWorker: signup link reminder query failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
 
-        var candidates []signupLinkReminderCandidate
-        for rows.Next() {
-                var c signupLinkReminderCandidate
-                if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
-                        &c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
-                        w.logger.Error("ExpireWorker: signup link reminder scan failed", "error", err.Error())
-                        continue
-                }
-                candidates = append(candidates, c)
-        }
-        if len(candidates) == 0 {
-                return
-        }
+	var candidates []signupLinkReminderCandidate
+	for rows.Next() {
+		var c signupLinkReminderCandidate
+		if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
+			&c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
+			w.logger.Error("ExpireWorker: signup link reminder scan failed", "error", err.Error())
+			continue
+		}
+		candidates = append(candidates, c)
+	}
+	if len(candidates) == 0 {
+		return
+	}
 
-        w.logger.Info("ExpireWorker: sending signup link reminders", "count", len(candidates))
+	w.logger.Info("ExpireWorker: sending signup link reminders", "count", len(candidates))
 
-        for _, c := range candidates {
-                w.sendSignupLinkReminderEmail(ctx, c)
-                // Marquer reminder envoyé (anti-spam) — idempotent.
-                // NB : on marque même si l'envoi a échoué, pour éviter de retry
-                // indéfiniment (un email cassé restera cassé au prochain tick).
-                // Si le flag ne peut pas être posé (DB error), on log et on
-                // continue — le reminder sera ré-envoyé au prochain tick (acceptable).
-                if _, err := w.dbPool.Exec(ctx,
-                        `UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
-                        c.ID); err != nil {
-                        w.logger.Error("ExpireWorker: failed to mark reminder sent",
-                                "linkId", c.ID, "error", err.Error())
-                }
-        }
+	for _, c := range candidates {
+		w.sendSignupLinkReminderEmail(ctx, c)
+		// Marquer reminder envoyé (anti-spam) — idempotent.
+		// NB : on marque même si l'envoi a échoué, pour éviter de retry
+		// indéfiniment (un email cassé restera cassé au prochain tick).
+		// Si le flag ne peut pas être posé (DB error), on log et on
+		// continue — le reminder sera ré-envoyé au prochain tick (acceptable).
+		if _, err := w.dbPool.Exec(ctx,
+			`UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+			c.ID); err != nil {
+			w.logger.Error("ExpireWorker: failed to mark reminder sent",
+				"linkId", c.ID, "error", err.Error())
+		}
+	}
 }
 
 // sendSignupLinkReminderEmail envoie un email de reminder 24h au créateur
@@ -406,31 +406,31 @@ func (w *ExpireWorker) sendStudentSignupLinkReminders(ctx context.Context) {
 // Non bloquant : si l'envoi échoue, on log et on continue (le flag
 // expiryReminderSent sera quand même posé côté caller pour éviter le spam).
 func (w *ExpireWorker) sendSignupLinkReminderEmail(ctx context.Context, c signupLinkReminderCandidate) {
-        emailCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-        defer cancel()
-        _ = emailCtx // ctx de travail (actuellement le template n'utilise pas le ctx)
+	emailCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	_ = emailCtx // ctx de travail (actuellement le template n'utilise pas le ctx)
 
-        label := "Sans libellé"
-        if c.Label != nil && *c.Label != "" {
-                label = *c.Label
-        }
-        tplData := emailtpl.StudentSignupLinkReminderData{
-                EmailData: emailtpl.DefaultData(c.Name, w.appBaseURL),
-                Label:     label,
-                ExpiresAt: c.ExpiresAt,
-                UseCount:  c.UseCount,
-                MaxUses:   c.MaxUses,
-                EtabNom:   c.EtabNom,
-                EtabType:  c.EtabType,
-                LinkURL:   w.appBaseURL + "/etudiants",
-        }
-        if err := w.mailer.Send(mailer.Email{
-                To:      c.Email,
-                Subject: "SECT — Votre lien d'inscription expire dans 24h",
-                Body:    emailtpl.StudentSignupLinkReminderText(tplData),
-                HTML:    emailtpl.StudentSignupLinkReminderHTML(tplData),
-        }); err != nil {
-                w.logger.Error("ExpireWorker: signup link reminder email failed",
-                        "linkId", c.ID, "email", c.Email, "error", err.Error())
-        }
+	label := "Sans libellé"
+	if c.Label != nil && *c.Label != "" {
+		label = *c.Label
+	}
+	tplData := emailtpl.StudentSignupLinkReminderData{
+		EmailData: emailtpl.DefaultData(c.Name, w.appBaseURL),
+		Label:     label,
+		ExpiresAt: c.ExpiresAt,
+		UseCount:  c.UseCount,
+		MaxUses:   c.MaxUses,
+		EtabNom:   c.EtabNom,
+		EtabType:  c.EtabType,
+		LinkURL:   w.appBaseURL + "/etudiants",
+	}
+	if err := w.mailer.Send(mailer.Email{
+		To:      c.Email,
+		Subject: "SECT — Votre lien d'inscription expire dans 24h",
+		Body:    emailtpl.StudentSignupLinkReminderText(tplData),
+		HTML:    emailtpl.StudentSignupLinkReminderHTML(tplData),
+	}); err != nil {
+		w.logger.Error("ExpireWorker: signup link reminder email failed",
+			"linkId", c.ID, "email", c.Email, "error", err.Error())
+	}
 }

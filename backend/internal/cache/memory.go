@@ -39,8 +39,8 @@ type CachedSession struct {
 
 // SessionCache — store en mémoire thread-safe (sync.Map).
 type SessionCache struct {
-	store           sync.Map // sessionID → *CachedSession
-	verifiedOwners  sync.Map // sessionID → ownerEtudiantID (OWNERSHIP-CACHE-1)
+	store          sync.Map // sessionID → *CachedSession
+	verifiedOwners sync.Map // sessionID → ownerEtudiantID (OWNERSHIP-CACHE-1)
 }
 
 // NewSessionCache crée un nouveau cache de sessions vide.

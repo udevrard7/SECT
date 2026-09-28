@@ -35,9 +35,9 @@ func AbonnementExpiredHTML(d AbonnementExpiredData) string {
 </p>
 
 ` + infoBoxHTML(fmt.Sprintf(
-	`Pour continuer à profiter de l'IA illimitée, de la correction automatique et de
+		`Pour continuer à profiter de l'IA illimitée, de la correction automatique et de
 	l'export PDF, renouvelez votre abonnement pour <strong style="color:%s;">%s/mois</strong>.`,
-	ColorLimeDark, d.MontantTTC)) + `
+		ColorLimeDark, d.MontantTTC)) + `
 
 <!-- CTA Renouveler -->
 ` + buttonHTML("🔄 Renouveler mon abonnement", d.RenouvellementURL) + `

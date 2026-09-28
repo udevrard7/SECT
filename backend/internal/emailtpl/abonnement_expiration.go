@@ -37,10 +37,10 @@ func AbonnementExpirationHTML(d AbonnementExpirationData) string {
 </p>
 
 ` + infoBoxHTML(fmt.Sprintf(
-	`Pour éviter toute interruption de service (génération IA, correction automatique, export PDF),
+		`Pour éviter toute interruption de service (génération IA, correction automatique, export PDF),
 	renouvelez votre abonnement dès maintenant. Un paiement de <strong style="color:%s;">%s</strong>
 	vous donnera accès à votre plan pour une nouvelle période.`,
-	ColorLimeDark, d.MontantTTC)) + `
+		ColorLimeDark, d.MontantTTC)) + `
 
 <!-- CTA Renouveler -->
 ` + buttonHTML("🔄 Renouveler mon abonnement", d.RenouvellementURL) + `
