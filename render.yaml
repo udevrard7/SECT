@@ -23,13 +23,14 @@ services:
       - key: JWT_SECRET
         generateValue: true
       # ── CORS (frontends autorisés) ──
-      # Domaine public : section.ftci.fr (les URLs *.vercel.app restent
-      # autorisées : prod d'origine + previews git).
+      # Domaine public : sect.ftci.fr (domaine custom Vercel, vérifié, en prod ;
+      # sect-app.vercel.app redirige vers lui). Les URLs *.vercel.app restent
+      # autorisées : prod d'origine + previews git.
       - key: CORS_ORIGINS
-        value: "https://sect-app.vercel.app,https://sect-app-git-*.vercel.app,https://section.ftci.fr"
+        value: "https://sect-app.vercel.app,https://sect-app-git-*.vercel.app,https://sect.ftci.fr"
       # ── URL publique du frontend (pour liens reset password, etc.) ──
       - key: APP_BASE_URL
-        value: "https://section.ftci.fr"
+        value: "https://sect.ftci.fr"
       # ── Cloudflare R2 (stockage documents) ──
       - key: R2_ACCOUNT_ID
         sync: false
