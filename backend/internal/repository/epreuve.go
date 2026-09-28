@@ -433,7 +433,6 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                                         &ueID, &ueNom, &ueCode, &ueNiveau,
                                 )
                                 if err != nil {
-                                        fmt.Printf("DEBUG scan epreuve error: %v\n", err)
                                         return fmt.Errorf("scan epreuve: %w", err)
                                 }
                                 // Sanitize json.RawMessage fields (reproduit scanEpreuve)
@@ -534,7 +533,6 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                                 var rScoreFinal, rTotalPossible *float64
                                 var rDetail *string
                                 if err := sessRows.Scan(&sr.ID, &epreuveID, &sr.EtudiantID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score, &etuID, &etuName, &etuEmail, &rID, &rScoreFinal, &rTotalPossible, &rDetail); err != nil {
-                                        fmt.Printf("DEBUG scan session ref error: %v\n", err)
                                         return fmt.Errorf("scan session ref: %w", err)
                                 }
                                 if etuID != nil && etuName != nil {

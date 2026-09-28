@@ -38,7 +38,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -132,5 +131,3 @@ func getEnvIntDefault(key string, fallback int) int {
 	return fallback
 }
 
-// _ pour forcer l'usage de sync dans le package (clarité intentionnelle).
-var _ = sync.Once{}

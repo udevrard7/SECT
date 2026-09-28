@@ -4,6 +4,7 @@ package usecase
 import (
         "context"
         "fmt"
+        "log/slog"
 
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
@@ -656,7 +657,7 @@ func (uc *ExamPrepUseCase) DeleteAudio(ctx context.Context, claims db.SessionCla
                         // Log best-effort : on continue malgré l'échec R2 (objet orphelin
                         // acceptable vs ligne DB fantôme). Le worker de cleanup pourrait
                         // ramasser les orphelins plus tard si besoin.
-                        fmt.Printf("warn: failed to delete R2 object %q: %v (proceeding with DB delete)\n", *audio.R2Key, delErr)
+                        slog.Warn("suppression objet R2 échouée (suppression DB poursuivie)", "r2Key", *audio.R2Key, "error", delErr)
                 }
         }
 

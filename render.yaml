@@ -89,3 +89,20 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: "mailto:ulrichdouh@gmail.com"
+      # ── Firebase Cloud Messaging (push mobile — audit 2026-09) ──
+      # AVANT : absentes du blueprint → le push mobile ne fonctionnait en prod
+      # que via config manuelle dashboard (dérive IaC silencieuse).
+      # FIREBASE_SERVICE_ACCOUNT_KEY = JSON complet du service account.
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_KEY
+        sync: false
+      # ── Tuning optionnel (défauts dans backend/.env.example) ──
+      # - key: DB_MAX_CONNS
+      #   value: "100"
+      # - key: DB_MIN_CONNS
+      #   value: "5"
+      # - key: SUBMIT_MAX_CONCURRENT
+      #   value: "5"
+      # - key: SUBMIT_QUEUE_RETRY_AFTER
+      #   value: "3"

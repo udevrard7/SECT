@@ -19,11 +19,10 @@ db/MIGRATIONS_RECONCILIATION.md
 
 # Build tools (pas nécessaires dans l'image Docker)
 Makefile
-sqlc.yaml
 
-# SQL queries et référence (générés par sqlc, pas utilisés au runtime)
-db/queries/
-db/reference/
+# Référence du schéma (doc, 112 Ko — inutile au build, chemin corrigé
+# de db/reference/ qui ne matchait rien)
+db/db/reference/
 
 # Migrations DB (appliquées séparément via golang-migrate, pas au runtime)
 db/db/migrations/
