@@ -14,16 +14,17 @@ on:
       - 'desktop/**'
   workflow_dispatch:
 
-# Évite l'empilement de builds sur push successifs (desktop = builds lourds)
-concurrency:
-  group: build-desktop-${{ github.ref }}-${{ matrix.os }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
 jobs:
   build:
+    # Évite l'empilement de builds sur push successifs (desktop = builds lourds).
+    # NOTE : la concurrency est au niveau JOB car le contexte matrix
+    # n'existe pas au niveau workflow (échec silencieux sinon).
+    concurrency:
+      group: build-desktop-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     timeout-minutes: 60
     strategy:
       fail-fast: false

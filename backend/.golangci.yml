@@ -9,5 +9,9 @@ version: "2"
 
 linters:
   default: standard
+
+formatters:
+  # NB : en golangci-lint v2, gofmt est un FORMATTER (section dédiée),
+  # pas un linter — le déclarer dans linters.enable casse le chargement.
   enable:
     - gofmt
