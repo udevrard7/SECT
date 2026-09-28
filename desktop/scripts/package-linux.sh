@@ -43,9 +43,12 @@ depends:
   - libgtk-3-0
   - libwebkit2gtk-4.0-0
 contents:
-  ${BINARY}: /usr/bin/sect-desktop
-  ${PROJECT_DIR}/build/linux/sect.desktop: /usr/share/applications/sect-desktop.desktop
-  ${PROJECT_DIR}/build/linux/icon.png: /usr/share/icons/hicolor/512x512/apps/sect-desktop.png
+  - src: ${BINARY}
+    dst: /usr/bin/sect-desktop
+  - src: ${PROJECT_DIR}/build/linux/sect.desktop
+    dst: /usr/share/applications/sect-desktop.desktop
+  - src: ${PROJECT_DIR}/build/linux/icon.png
+    dst: /usr/share/icons/hicolor/512x512/apps/sect-desktop.png
 EOF
 
 echo "→ Building .deb..."
