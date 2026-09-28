@@ -17,6 +17,7 @@ import (
         "encoding/base64"
         "encoding/json"
         "fmt"
+        "log/slog"
         "net/http"
         "strings"
         "time"
@@ -300,7 +301,7 @@ func (s *Server) captureSession(w http.ResponseWriter, r *http.Request) {
                 })
                 if err != nil {
                         // Log l'erreur mais ne pas bloquer la capture — on stocke juste les métadonnées
-                        fmt.Printf("[captureSession] R2 upload failed: %v\n", err)
+                        slog.Warn("captureSession: upload R2 échoué (métadonnées seules conservées)", "error", err)
                         r2Key = ""
                         fileSize = 0
                 }
@@ -1441,7 +1442,7 @@ func (s *Server) uploadIdentityPhoto(w http.ResponseWriter, r *http.Request) {
                         ContentLength: int64(len(imageBytes)),
                 })
                 if err != nil {
-                        fmt.Printf("[uploadIdentityPhoto] R2 upload failed: %v\n", err)
+                        slog.Warn("uploadIdentityPhoto: upload R2 échoué", "error", err)
                         r2Key = ""
                 }
         }

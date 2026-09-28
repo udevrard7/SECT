@@ -5,6 +5,7 @@ import (
         "context"
         "encoding/json"
         "fmt"
+        "log/slog"
         "time"
 
         "github.com/udevrard7/sect/backend/internal/db"
@@ -465,7 +466,7 @@ func (uc *SessionUseCase) Submit(ctx context.Context, claims db.SessionClaims, s
         resultatUpserted, upsertErr := uc.resultatRepo.Upsert(ctx, resultat)
         if upsertErr != nil {
                 // Log mais ne pas échouer le submit
-                fmt.Printf("WARN upsert resultat (non-bloquant): %v\n", upsertErr)
+                slog.Warn("upsert resultat (non-bloquant)", "error", upsertErr)
         } else {
                 resultat = resultatUpserted
         }

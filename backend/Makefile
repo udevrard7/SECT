@@ -4,7 +4,7 @@
 GO ?= go
 PORT ?= 8080
 
-.PHONY: help dev build run test lint migrate-up migrate-down migrate-version sqlc-gen tidy clean
+.PHONY: help dev build run test lint migrate-up migrate-down migrate-version tidy clean
 
 help: ## Afficher cette aide
         @grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -41,11 +41,6 @@ migrate-down: ## Annuler la dernière migration
 
 migrate-version: ## Version de migration courante
         $(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" version
-
-# --- sqlc (génération de code type-safe) ---
-
-sqlc-gen: ## Générer le code Go depuis les requêtes SQL
-        sqlc generate
 
 # --- Nettoyage ---
 
