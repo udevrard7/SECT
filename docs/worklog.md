@@ -1742,3 +1742,90 @@ Stage Summary:
   RLS ; INSERT..RETURNING applique la policy SELECT aux lignes retournées ;
   policy subquery = RLS de la table référencée (d'où les helpers SECURITY
   DEFINER) ; set_config(is_local=false) annulé par ROLLBACK TO SAVEPOINT
+
+---
+
+## SECT-ANNEE-CHEVAUCHEMENT-1 — Fin de l'amalgame inter-années : une seule année active par établissement (migration 000110 + activation atomique + scoping par défaut)
+
+**Date** : 2026-09-29 · **Commit** : fc6751e · **Migration** : 000110 (appliquée, schema_migrations=110)
+
+### Demande
+« Lorsque le responsable active une nouvelle année académique, les données de
+l'année précédente demeurent actives, créant un amalgame et de l'incompréhension.
+Quelle solution proposes-tu pour la gestion des données des années précédentes
+(étudiants, responsable, enseignants) pour éviter le chevauchement ? »
+
+### Diagnostic (confirmé dans le code ET dans les données prod)
+1. **3 marqueurs incohérents de « l'année en cours »** :
+   - `AnneeAcademique.actif` (booléen SANS unicité) ;
+   - `Etablissement.anneeAcademiqueCouranteId` (FK, 000017 — la vraie notion) ;
+   - `Affectation.anneeUniversitaire` (label texte, filtrage optionnel).
+2. **Prod : 3 années actives simultanées** (2024-2025/2025-2026/2026-2027,
+   audit-log prouve des flips actif:true indépendants à 02:12) alors que la
+   courante était déjà 2026-2027.
+3. **Activation non atomique** : POST /annees-academiques → actif=true sans
+   désactiver l'ancienne ; POST /annee-courante ne touchait pas actif ;
+   PATCH actif:true ne touchait ni la FK ni les autres années.
+4. **Lectures non scopées** : /api/affectations sans param annee → TOUTES les
+   années → « Mes enseignants » étudiant mélangeait 2025-2026 + 2026-2027
+   (6 PUBLIEE au lieu de 3 — constaté en prod).
+
+### Solution — 3 couches
+1. **Intégrité structurelle (000110)** : invariant DB
+   `actif=true ⟺ année courante` — réconciliation prod (seule la courante reste
+   active) + index unique partiel `AnneeAcademique_one_active_per_etab` (même
+   un accès SQL direct ne peut plus créer 2 années actives → 23505).
+2. **Activation atomique (backend)** :
+   - `AnneeAcademiqueRepository.Activate` : 1 transaction = désactive les
+     autres années + active la cible + pointe la FK établissement ;
+   - `SetCurrentAnnee` : mêmes 3 statements → les 2 points d'entrée
+     (PATCH actif / POST annee-courante) gardent les marqueurs synchronisés ;
+   - `Create` : une nouvelle année naît « en préparation » (actif=false) si
+     une année est déjà active ;
+   - `Update(actif:false)` sur la courante → refusé (garde
+     anti-désynchronisation) ; `Update(actif:true)` + champs → champs d'abord,
+     activation ensuite (2 tx, échec bénin entre les deux) ;
+   - audit ANNEE_ACADEMIQUE_ACTIVATED.
+3. **Scoping par défaut des lectures** : /api/affectations sans
+   anneeUniversitaire → filtre auto sur le libellé de l'année courante de
+   l'étab (claims ; fallback param etabID pour ADMIN ; pas de filtre si aucune
+   année active). Historique consultable via filtre explicite (sélecteur
+   responsable — inchangé).
+
+### Frontend (UX)
+- création → toast SYSTÉMATIQUE « Définir comme courante ? » (l'activation
+  archive automatiquement l'année actuelle) ;
+- badges « Courante »/« Archivée », bouton « Activer comme année courante »
+  (ex-Réactiver), toggle « Afficher archivées » ;
+- invalidation du cache `annee-courante` sur update/reactivate (le marqueur
+  bouge désormais côté serveur).
+
+### Vérification (11/11 en prod, compte jetables supprimés, 0 résiduel)
+- T1 étudiant sans filtre → uniquement 2026-2027 (3) — l'amalgame a disparu ;
+- T2 filtre explicite 2025-2026 → 3 (historique consultable) ;
+- T3 PATCH actif:true (responsable) → état ATOMIQUE : cible active, ancienne
+  désactivée, FK courante basculée ;
+- T4 le scoping étudiant suit le switch immédiatement (même token) ;
+- T5 restore 2026-2027 → OK (état prod initial rétabli) ;
+- T6 désactivation de la courante → 400 « impossible de désactiver l'année
+  courante — activez d'abord l'année suivante » ;
+- T7 UPDATE SQL direct d'une 2e année active → 23505 (invariant DB) ;
+- T8 retour au scoping 2026-2027 après restore ;
+- audit-log : 2 ANNEE_ACADEMIQUE_ACTIVATED journalisées (T3+T5) ;
+- CI verte ×3 (migrations SQL, Next.js, Go) ; Render live fc6751e ;
+  dry-run en tx + rollback AVANT l'apply ; ordre sans rupture : code → live →
+  migration.
+
+### Dettes notées (hors périmètre, recommandées en phase 2)
+- Epreuves : valoriser `anneeAcademiqueId` à la création depuis l'année
+  courante + filtrage par défaut des listes (l'UI « Mes épreuves » enseignant
+  montre encore tout l'historique) ;
+- Stats dashboards : accepter `?anneeId=` et scoper par défaut (comparaison
+  N-1 en bonus) ;
+- Affectation : migrer le label texte `anneeUniversitaire` vers une FK
+  anneeAcademiqueId (typage faible — aujourd'hui réconcilié par libellé) ;
+- Salons CLASSE/PROMO messagerie : versionner par année ou archiver ceux des
+  années passées (transversaux aujourd'hui) ;
+- Workflow de clôture enrichi : à l'activation d'une nouvelle année,
+  checklist (épreuves non clôturées de l'ancienne, affectations à recréer /
+  copier vers la nouvelle année).
