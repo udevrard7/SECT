@@ -95,7 +95,12 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime")
     implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.navigation:navigation-compose:2.10.2")
+    // ⚠️ navigation-compose 2.10.2 (PR Dependabot #16) REVERTU vers 2.9.1 :
+    // 2.10.x exige compileSdk 37 + AGP 9.1.0+ (erreurs checkAarMetadata ×7
+    // sur la CI, run 36502438175). Migration AGP 9 à planifier séparément,
+    // puis re-bump possible. 2.9.x est la dernière ligne compatible
+    // compileSdk 36 / AGP 8.11.
+    implementation("androidx.navigation:navigation-compose:2.9.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
 
