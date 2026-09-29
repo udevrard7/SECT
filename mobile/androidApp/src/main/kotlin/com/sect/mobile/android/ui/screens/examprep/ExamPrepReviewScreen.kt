@@ -29,7 +29,7 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun ExamPrepReviewScreen(
     onBack: () -> Unit,
-    viewModel: ExamPrepReviewViewModel = koinViewModel()
+    viewModel: ExamPrepReviewViewModel = koinViewModel<ExamPrepReviewViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 

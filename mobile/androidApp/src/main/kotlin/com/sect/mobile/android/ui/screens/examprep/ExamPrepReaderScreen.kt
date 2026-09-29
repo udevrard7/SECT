@@ -27,7 +27,7 @@ import org.koin.androidx.compose.koinViewModel
 fun ExamPrepReaderScreen(
     documentId: String,
     onBack: () -> Unit,
-    viewModel: ExamPrepReaderViewModel = koinViewModel()
+    viewModel: ExamPrepReaderViewModel = koinViewModel<ExamPrepReaderViewModel>()
 ) {
     LaunchedEffect(documentId) { viewModel.loadDocument(documentId) }
     val state by viewModel.state.collectAsState()

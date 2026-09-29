@@ -36,7 +36,7 @@ fun ExamPrepHomeScreen(
     onNavigateToFlashcards: () -> Unit,
     onNavigateToAudio: (String) -> Unit,
     onNavigateToHelp: () -> Unit,
-    viewModel: ExamPrepHomeViewModel = koinViewModel()
+    viewModel: ExamPrepHomeViewModel = koinViewModel<ExamPrepHomeViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 

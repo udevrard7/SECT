@@ -26,7 +26,9 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun ExamPrepProgressScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel = koinViewModel()
+    // Kotlin 2.3 : type argument explicite — l'inférence du reified T depuis le
+    // type attendu d'un ViewModel KMP (:shared) produit une intersection désormais en erreur.
+    viewModel: com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -76,7 +78,7 @@ fun ExamPrepProgressScreen(
 @Composable
 fun ExamPrepQaScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel = koinViewModel()
+    viewModel: com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -141,7 +143,7 @@ fun ExamPrepQaScreen(
 @Composable
 fun ExamPrepFlashcardsScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel = koinViewModel()
+    viewModel: com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -182,7 +184,7 @@ fun ExamPrepFlashcardsScreen(
 fun ExamPrepAudioScreen(
     documentId: String,
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel = koinViewModel()
+    viewModel: com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel>()
 ) {
     LaunchedEffect(documentId) { viewModel.loadAudios(documentId) }
     val state by viewModel.state.collectAsState()
@@ -227,7 +229,7 @@ fun ExamPrepAudioScreen(
 @Composable
 fun ExamPrepPlanningScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel = koinViewModel()
+    viewModel: com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -266,7 +268,7 @@ fun ExamPrepPlanningScreen(
 @Composable
 fun ExamPrepHelpScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel = koinViewModel()
+    viewModel: com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(

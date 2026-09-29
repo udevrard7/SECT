@@ -25,7 +25,10 @@ import org.koin.androidx.compose.koinViewModel
 fun ExamPrepDocumentsScreen(
     onDocumentClick: (String) -> Unit,
     onBack: () -> Unit,
-    viewModel: ExamPrepDocumentsViewModel = koinViewModel()
+    // Kotlin 2.3 : l'inférence du reified T depuis le type attendu produit une
+    // intersection [ViewModel & ExamPrepDocumentsViewModel] — désormais ERREUR.
+    // Type argument explicite obligatoire.
+    viewModel: ExamPrepDocumentsViewModel = koinViewModel<ExamPrepDocumentsViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 
