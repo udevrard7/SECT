@@ -98,6 +98,36 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 		var where []string
 		var args []any
 		argIdx := 1
+
+		// SECT-MES-ENSEIGNANTS-RLS-1 (defense-in-depth) : le rôle de connexion
+		// prod (neondb_owner, BYPASSRLS=true) contourne les policies RLS — la
+		// branche étudiant de Affectation_select (migration 000091, fonction
+		// affectation_visible_by_student) n'est donc PAS appliquée en prod, et
+		// un étudiant voit TOUTES les affectations (VALIDEE/PROVISOIRE comprises,
+		// toutes filières). On ré-applique les mêmes sémantiques côté handler :
+		//   1. statut = PUBLIEE (uniquement le publié aux étudiants)
+		//   2. filière PRIMAIRE de l'UE = filière de l'étudiant (claims JWT,
+		//      non-spoofable — jamais les query params)
+		//   3. deny-by-default si l'étudiant n'a pas de filière
+		// NB : filière primaire uniquement (pas les UE multi-filières N:N) —
+		// identique à affectation_visible_by_student(), pour un comportement
+		// cohérent si la RLS est réactivée un jour (bascule vers sect_app).
+		if claims.Role == "ETUDIANT" {
+			if claims.FiliereID == "" {
+				// Pas de filière → rien à voir (même sémantique deny-by-default
+				// que la RLS : affectation_visible_by_student retourne false si
+				// la filière de l'étudiant est NULL). Condition FALSE → 0 ligne,
+				// réponse vide standard {"affectations":[]}.
+				where = append(where, "FALSE")
+			} else {
+				where = append(where, `a."statut"::text = 'PUBLIEE'`)
+				where = append(where, fmt.Sprintf(
+					`EXISTS (SELECT 1 FROM "UniteEnseignement" ues WHERE ues."id" = a."uniteEnseignementId" AND ues."filiereId" IS NOT DISTINCT FROM $%d)`,
+					argIdx))
+				args = append(args, claims.FiliereID)
+				argIdx++
+			}
+		}
 		if enseignantID != "" {
 			where = append(where, fmt.Sprintf(`a."enseignantId" = $%d`, argIdx))
 			args = append(args, enseignantID)
