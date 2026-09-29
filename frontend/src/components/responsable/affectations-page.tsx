@@ -737,7 +737,8 @@ export function AffectationsPage() {
     setAddDialogOpen(true)
   }
 
-  // ─── Submit add (batch) — volumes par élément (SECT-AFFECTATIONS-VOL-AUTO-2) ───
+  // ─── Submit add — batch atomique (SECT-AFFECTATIONS-BATCH-3), volumes par
+  // élément (SECT-AFFECTATIONS-VOL-AUTO-2) ───
   const handleAddSubmit = async () => {
     if (!addEnseignantId) {
       toast.error('Champ manquant', { description: 'Sélectionnez un enseignant.' })
@@ -770,44 +771,39 @@ export function AffectationsPage() {
 
     setIsSubmitting(true)
     try {
-      // Create one affectation per selected typeSeance — le volume envoyé est
-      // exactement celui affiché dans le champ de l'élément (WYSIWYG).
-      const results = await Promise.allSettled(
-        Array.from(addTypeSeances).map(async (typeSeance) => {
-          const volume = parseFloat(addVolumes[typeSeance as 'CM' | 'TD' | 'TP'])
-          const res = await fetch('/api/affectations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              enseignantId: addEnseignantId,
-              uniteEnseignementId: addUEId,
-              typeSeance,
-              groupe: addGroupe || null,
-              volumeHeures: volume,
-              anneeUniversitaire: addAnnee,
-              commentaire: addCommentaire || null,
-            }),
-          })
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err.error || `Erreur pour ${typeSeance}`)
-          }
-          return typeSeance
-        })
-      )
-
-      const succeeded = results.filter((r) => r.status === 'fulfilled').length
-      const failed = results.filter((r) => r.status === 'rejected').length
-
-      if (succeeded > 0) {
-        toast.success('Affectation créée', {
-          description: `${succeeded} élément(s) affecté(s) avec succès.${failed > 0 ? ` ${failed} en échec.` : ''}`,
-        })
-        setAddDialogOpen(false)
-        await refreshAffectations()
-      } else {
-        toast.error('Erreur', { description: 'Aucune affectation n\'a pu être créée.' })
+      // SECT-AFFECTATIONS-BATCH-3 : un seul appel POST /api/affectations/batch
+      // remplace les N POSTs séquentiels (Promise.allSettled) d'avant. Le
+      // serveur insère les N lignes dans UNE transaction : tout-ou-rien —
+      // si un élément échoue (ex. doublon TD), rien n'est créé, plus d'état
+      // partiel à nettoyer à la main. Le volume envoyé reste exactement
+      // celui affiché dans le champ de l'élément (WYSIWYG).
+      const items = Array.from(addTypeSeances).map((typeSeance) => ({
+        typeSeance,
+        volumeHeures: parseFloat(addVolumes[typeSeance as 'CM' | 'TD' | 'TP']),
+      }))
+      const res = await fetch('/api/affectations/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enseignantId: addEnseignantId,
+          uniteEnseignementId: addUEId,
+          groupe: addGroupe || null,
+          anneeUniversitaire: addAnnee,
+          commentaire: addCommentaire || null,
+          items,
+        }),
+      })
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(err.error || `Erreur (${res.status})`)
       }
+      const data = (await res.json()) as { created?: number }
+
+      toast.success('Affectation créée', {
+        description: `${data.created ?? items.length} élément(s) affecté(s) avec succès.`,
+      })
+      setAddDialogOpen(false)
+      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
