@@ -725,6 +725,43 @@ func (r *MessagerieRepository) ListParticipants(ctx context.Context, conversatio
 	return result, nil
 }
 
+// ListParticipantsSystem retourne les participants actifs (leftAt IS NULL)
+// d'une conversation avec les claims SYSTÈME (RLS bypass).
+//
+// SECT-DEBTS-FIX-1 : réservé au ciblage de broadcast SSE/WS. Avec les claims
+// de l'expéditeur, la policy Participant_select ne renvoie que SA ligne
+// (userId = me) — le broadcast d'un message envoyé par un étudiant
+// n'atteignait que lui-même depuis la bascule sect_app (NOBYPASSRLS).
+func (r *MessagerieRepository) ListParticipantsSystem(ctx context.Context, conversationID string) ([]*domain.ConversationParticipant, error) {
+	var result []*domain.ConversationParticipant
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT %s FROM "ConversationParticipant"
+			WHERE "conversationId" = $1 AND "leftAt" IS NULL
+			ORDER BY "joinedAt" ASC
+		`, colonnesParticipant), conversationID)
+		if err != nil {
+			return fmt.Errorf("query participants (system): %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			p, err := scanParticipant(rows)
+			if err != nil {
+				return fmt.Errorf("scan participant (system): %w", err)
+			}
+			result = append(result, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = []*domain.ConversationParticipant{}
+	}
+	return result, nil
+}
+
 // ListParticipantsWithUsers retourne les participants enrichis avec les infos
 // utilisateur (name, email, role) via LEFT JOIN sur la table User.
 // Utilisé par l'UI pour afficher la liste des participants avec badges online.
@@ -957,12 +994,22 @@ func (r *MessagerieRepository) ListMessages(ctx context.Context, conversationID 
 //
 // RLS :
 //   - Message user : userId = current_user_id() ET accès à la conversation
-//   - Message IA   : isIA = true (réservé au backend, qui utilise des claims
-//     système ou un user admin pour insérer les réponses IA)
+//   - Message IA   : isIA = true RÉSERVÉ aux claims système (SECT-DEBTS-FIX-1 :
+//     la policy Message_insert n'autorise plus isIA=true pour un user ;
+//     l'anti-spoofing usecase interdit isIA=true côté client, seuls les
+//     chemins serveur — réponse IA privée, @assistant en salon — l'utilisent)
 func (r *MessagerieRepository) CreateMessage(ctx context.Context, msg *domain.Message) (*domain.Message, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok || claims.UserID == "" {
 		return nil, fmt.Errorf("CreateMessage: claims manquants dans le context")
+	}
+
+	// SECT-DEBTS-FIX-1 : les messages IA s'insèrent avec les claims système
+	// (la policy Message_insert réserve isIA=true à is_system()). Les messages
+	// user gardent les claims du demandeur.
+	txClaims := claims
+	if msg.IsIA {
+		txClaims = db.SystemClaims()
 	}
 
 	if msg.ID == "" {
@@ -972,7 +1019,7 @@ func (r *MessagerieRepository) CreateMessage(ctx context.Context, msg *domain.Me
 	msg.CreatedAt = now
 
 	var created *domain.Message
-	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+	err := db.WithTx(ctx, r.pool, txClaims, func(tx pgx.Tx) error {
 		// 1. INSERT le message.
 		if _, err := tx.Exec(ctx, `
                         INSERT INTO "Message" ("id", "conversationId", "userId", "isIA", "contenu", "contenuHtml",

@@ -328,6 +328,12 @@ type MessagerieRepository interface {
 	// ListParticipants retourne les participants actifs d'une conversation.
 	ListParticipants(ctx context.Context, conversationID string) ([]*ConversationParticipant, error)
 
+	// ListParticipantsSystem retourne les participants actifs d'une
+	// conversation avec les claims système (RLS bypass). Réservé aux usages
+	// internes backend (ciblage de broadcast SSE/WS) — ne pas exposer via
+	// les handlers HTTP (la visibilité RLS utilisateur doit s'y appliquer).
+	ListParticipantsSystem(ctx context.Context, conversationID string) ([]*ConversationParticipant, error)
+
 	// ListParticipantsWithUsers retourne les participants enrichis avec les
 	// infos utilisateur (name, email, role) via JOIN sur la table User.
 	// Utilisé par l'UI pour afficher la liste des participants + badges online.

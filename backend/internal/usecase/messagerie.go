@@ -780,7 +780,9 @@ func (uc *MessagerieUseCase) broadcastToParticipants(ctx context.Context, conver
 // participantIDs retourne la liste des userIDs des participants actifs.
 // En cas d'erreur, retourne une slice vide (best-effort pour le broadcast).
 func (uc *MessagerieUseCase) participantIDs(ctx context.Context, conversationID string) []string {
-	participants, err := uc.messagerieRepo.ListParticipants(ctx, conversationID)
+	// SECT-DEBTS-FIX-1 : claims système — cf. ListParticipantsSystem (le ciblage
+	// de broadcast ne doit pas dépendre de la visibilité RLS de l'expéditeur).
+	participants, err := uc.messagerieRepo.ListParticipantsSystem(ctx, conversationID)
 	if err != nil {
 		slog.Warn("ListParticipants for broadcast failed", "conversationId", conversationID, "error", err)
 		return nil

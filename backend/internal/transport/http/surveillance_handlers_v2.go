@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
@@ -772,10 +773,13 @@ func (s *Server) surveillanceFlagSession(w http.ResponseWriter, r *http.Request)
 
 		// 4. Insérer l'alerte.
 		err = tx.QueryRow(r.Context(), `
-                        INSERT INTO "Alerte" ("titre", "description", "severity", "type", "epreuveId", "userId", "lue", "resolu", "createdAt")
-                        VALUES ($1, $2, 'WARNING', 'FRAUDE', $3, $4, false, false, now())
+                        -- SECT-DEBTS-FIX-1 : "id" et "updatedAt" sont NOT NULL sans default
+                        -- — les omettre faisait échouer l'INSERT : le signalement fraude
+                        -- ne persistait jamais (erreur 500 sur /flag).
+                        INSERT INTO "Alerte" ("id", "titre", "description", "severity", "type", "epreuveId", "userId", "lue", "resolu", "createdAt", "updatedAt")
+                        VALUES ($5, $1, $2, 'WARNING', 'FRAUDE', $3, $4, false, false, now(), now())
                         RETURNING "id"
-                `, titre, description, epreuveID, etudiantID).Scan(&alerteID)
+                `, titre, description, epreuveID, etudiantID, uuid.NewString()).Scan(&alerteID)
 		if err != nil {
 			return fmt.Errorf("insert alerte: %w", err)
 		}

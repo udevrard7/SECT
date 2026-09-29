@@ -215,8 +215,11 @@ func (w *AutoCloseWorker) closeAllSubmittedEpreuves(ctx context.Context) (int, e
 func (w *AutoCloseWorker) createAutoCloseAlertes(ctx context.Context, closeTime time.Time) {
 	// Récupérer les épreuves clôturées automatiquement à ce tick (clotureeAt ≈ closeTime)
 	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (Epreuve_all_system) —
-	// collecte en tx courte, INSERT Alerte hors tx (policy Alerte_insert_system
-	// WITH CHECK(true) — pas de claims requis).
+	// collecte en tx courte. SECT-DEBTS-FIX-1 : l'INSERT Alerte passe aussi en
+	// tx système (la policy Alerte_insert_system exige désormais is_system())
+	// et fournit "updatedAt" (colonne NOT NULL sans default à l'origine :
+	// l'ancien INSERT l'omettait → échec silencieux, les alertes
+	// d'auto-clôture ne persistaient jamais).
 	type closedEpreuve struct {
 		epreuveID, titre, enseignantID string
 	}
@@ -252,15 +255,26 @@ func (w *AutoCloseWorker) createAutoCloseAlertes(ctx context.Context, closeTime 
 	for _, ce := range epreuves {
 		epreuveID, titre, enseignantID := ce.epreuveID, ce.titre, ce.enseignantID
 
-		// INSERT Alerte SYSTEME (avec SystemClaims pour bypass RLS)
+		// INSERT Alerte SYSTEME en tx système (claims posés par WithSystemTx).
+		// SECT-DEBTS-FIX-1 : "updatedAt" fourni explicitement (NOT NULL) et
+		// erreur loggée — l'ancien code jetait l'erreur (`_, _ =`) tout en
+		// loggant « créée » quoi qu'il arrive.
 		alerteID := uuid.NewString()
-		_, _ = w.dbPool.Exec(ctx, `
-                        INSERT INTO "Alerte" ("id", "titre", "description", "severity", "type", "epreuveId", "userId", "lue", "resolu", "createdAt")
-                        VALUES ($1, $2, $3, 'INFO', 'SYSTEME', $4, $5, false, false, NOW())`,
-			alerteID,
-			"Épreuve clôturée automatiquement",
-			fmt.Sprintf("L'épreuve « %s » a été clôturée automatiquement (délai dépassé).", titre),
-			epreuveID, enseignantID)
+		description := fmt.Sprintf("L'épreuve « %s » a été clôturée automatiquement (délai dépassé).", titre)
+		if err := db.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `
+                        INSERT INTO "Alerte" ("id", "titre", "description", "severity", "type", "epreuveId", "userId", "lue", "resolu", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, 'INFO', 'SYSTEME', $4, $5, false, false, NOW(), NOW())`,
+				alerteID,
+				"Épreuve clôturée automatiquement",
+				description,
+				epreuveID, enseignantID)
+			return err
+		}); err != nil {
+			w.logger.Error("AutoClose: échec création alerte SYSTEME",
+				"epreuveId", epreuveID, "enseignantId", enseignantID, "error", err)
+			continue
+		}
 
 		w.logger.Info("AutoClose: alerte SYSTEME créée", "epreuveId", epreuveID, "enseignantId", enseignantID)
 	}
