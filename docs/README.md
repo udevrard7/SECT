@@ -29,7 +29,10 @@ Index central de la documentation du monorepo.
 
 ## Gestion des versions
 
-- **Pas encore de tag posé** — schéma prévu : `v*` (mobile, workflow
-  `mobile-release.yml`) et `desktop-v*` (desktop, workflow
-  `release-desktop.yml`). Le premier tag exercera les pipelines de release.
+- **`v0.1.0` posé le 2026-09-29** (première release, exercice pipelines) —
+  schéma : `v*` (mobile, workflow `mobile-release.yml`) et `desktop-v*`
+  (desktop, workflow `release-desktop.yml`).
 - Backend/frontend : déploiement continu, le SHA du commit est la référence.
+- ⚠️ Un éventuel nettoyage d'historique git (`filter-repo`, voir
+  [`ops/git-history-cleanup-runbook.md`](./ops/git-history-cleanup-runbook.md))
+  réécrira les tags — re-vérifier `git tag -l` après.
