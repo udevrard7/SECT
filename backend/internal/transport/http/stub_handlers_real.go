@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -1054,7 +1055,7 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 
 		query := fmt.Sprintf(`
                         UPDATE "Alerte" SET %s WHERE "id" = $%d
-                        RETURNING "id", "titre", "description", "severity"::text, "type"::text",
+                        RETURNING "id", "titre", "description", "severity"::text, "type"::text,
                                   "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt",
                                   (SELECT "id" FROM "Filiere" WHERE "id" = "Alerte"."filiereId"),
                                   (SELECT "nom" FROM "Filiere" WHERE "id" = "Alerte"."filiereId"),
@@ -1100,6 +1101,10 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if txErr != nil {
+		// NOTIF-BELL-FIX-7 : l'erreur SQL de alerteUpdate restait invisible
+		// (mappée en 500 sans log) — c'est comme ça qu'une quote parasite
+		// dans le RETURNING a survécu des mois sans diagnostic.
+		slog.Error("alerteUpdate failed", "error", txErr, "alerteId", alerteID, "userId", claims.UserID)
 		middleware.MapDomainError(w, txErr)
 		return
 	}
