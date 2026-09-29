@@ -325,18 +325,21 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     onSuccess: (data) => {
       setShowForm(false)
       queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
-      // Proposition auto « Définir comme courante ? » si aucune courante définie.
-      if (anneeCouranteId === null) {
-        toast.success('Année académique créée', {
-          description: 'Voulez-vous la définir comme année courante ?',
-          action: {
-            label: 'Définir',
-            onClick: () => setCurrentAnneeMutation.mutate(data.id),
-          },
-        })
-      } else {
-        toast.success('Année académique créée')
-      }
+      // SECT-ANNEE-CHEVAUCHEMENT-1 : proposer SYSTÉMATIQUEMENT de définir la
+      // nouvelle année comme courante. Depuis la migration 000110, une année
+      // naît « en préparation » (actif=false si une année est déjà active) et
+      // l'activation est ATOMIQUE côté backend : désactive l'année précédente
+      // + pointe l'année courante → plus d'amalgame entre les années.
+      toast.success('Année académique créée', {
+        description:
+          anneeCouranteId === null
+            ? 'Voulez-vous la définir comme année courante ?'
+            : 'Voulez-vous la définir comme année courante ? L\'année actuelle sera automatiquement archivée.',
+        action: {
+          label: 'Définir',
+          onClick: () => setCurrentAnneeMutation.mutate(data.id),
+        },
+      })
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -366,13 +369,19 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       toast.success('Année académique modifiée')
       setEditingAnnee(null)
       queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+      // SECT-ANNEE-CHEVAUCHEMENT-1 : le formulaire d'édition peut envoyer
+      // actif=true → activation atomique côté backend → rafraîchir aussi le
+      // marqueur d'année courante.
+      queryClient.invalidateQueries({ queryKey: ['annee-courante', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
 
   // ─── Mutation : réactiver (PATCH /api/annees-academiques/{id} { actif: true }) ───
   // SECT-ANNEE-HARDDELETE-SAFE-1 : bouton « Réactiver » sur les cartes inactives.
-  // Permet de restaurer une année soft-deleted sans repasser par le formulaire.
+  // SECT-ANNEE-CHEVAUCHEMENT-1 : actif=true est désormais une ACTIVATION
+  // ATOMIQUE côté backend — l'année devient l'année COURANTE et l'année
+  // précédente est automatiquement archivée (plus de multi-activations).
   const reactivateMutation = useMutation<AnneeAcademique, Error, string>({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/annees-academiques/${id}`, {
@@ -387,8 +396,11 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       return (await res.json()) as AnneeAcademique
     },
     onSuccess: () => {
-      toast.success('Année réactivée')
+      toast.success('Année activée comme courante', {
+        description: 'L\'année précédente a été automatiquement archivée.',
+      })
       queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+      queryClient.invalidateQueries({ queryKey: ['annee-courante', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -742,8 +754,13 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                             </Badge>
                           )}
                           {!annee.actif && (
-                            <Badge className="bg-muted text-muted-foreground border-transparent text-[10px]">
-                              Désactivée
+                            // SECT-ANNEE-CHEVAUCHEMENT-1 : post-000110, actif=false
+                            // = année PASSÉE (historique consultable) ou soft-deleted.
+                            <Badge
+                              className="bg-muted text-muted-foreground border-transparent text-[10px]"
+                              title="Année hors périmètre courant : ses données ne s'affichent plus dans les vues actives (elles restent consultables)"
+                            >
+                              Archivée
                             </Badge>
                           )}
                           <PeriodeBadge statut={periode} />
@@ -852,8 +869,8 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                               className="h-8 w-8 p-0 text-xs text-success-text border-success/30 hover:text-success-text hover:bg-success/10 hover:border-success/50"
                               onClick={() => reactivateMutation.mutate(annee.id)}
                               disabled={isReactivating}
-                              aria-label={`Réactiver ${annee.libelle}`}
-                              title="Réactiver (actif=true)"
+                              aria-label={`Activer ${annee.libelle} comme année courante`}
+                              title="Activer comme année courante (l'année actuelle sera automatiquement archivée)"
                             >
                               {isReactivating ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1212,21 +1229,23 @@ function SectionHeader({
                 </SelectContent>
               </Select>
 
-              {/* Toggle « Afficher les années inactives » */}
+              {/* Toggle « Afficher les années archivées » — SECT-ANNEE-CHEVAUCHEMENT-1 :
+                  les années passées (actif=false post-000110) sont masquées par
+                  défaut pour ne pas créer d'amalgame avec l'année courante. */}
               {hasInactive && (
                 <label
                   htmlFor="show-inactive-annees"
                   className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground transition-colors h-9 px-2 rounded-md border border-border bg-background/50"
-                  title="Afficher les années désactivées"
+                  title="Afficher les années archivées / passées (hors année courante)"
                 >
                   <Switch
                     id="show-inactive-annees"
                     checked={showInactive}
                     onCheckedChange={setShowInactive}
-                    aria-label="Afficher les années inactives"
+                    aria-label="Afficher les années archivées"
                   />
                   <Power className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span className="hidden md:inline">Afficher inactives</span>
+                  <span className="hidden md:inline">Afficher archivées</span>
                 </label>
               )}
 

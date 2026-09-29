@@ -95,6 +95,40 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 	result := []affRow{}
 
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// ── SECT-ANNEE-CHEVAUCHEMENT-1 : scoping par défaut sur l'année COURANTE ──
+		// Sans filtre anneeUniversitaire explicite, on ne retourne que les
+		// affectations de l'année courante de l'établissement. Avant : toutes
+		// les années étaient mélangées → l'étudiant voyait sur « Mes
+		// enseignants » les enseignants de 2025-2026 ET 2026-2027 en même
+		// temps dès qu'une nouvelle année était activée (l'amalgame signalé).
+		// Post-000110 : une seule année actif=true par étab (= la courante) ;
+		// pré-000110 (fenêtre de déploiement) : la plus récente des actives.
+		// Si aucune année active/courante → pas de filtre (comportement
+		// inchangé, l'établissement n'a pas encore d'année académique).
+		// Un client qui veut TOUTES les années ou une année précise passe le
+		// param anneeUniversitaire explicitement (sélecteur responsable).
+		if annee == "" {
+			scopeEtab := claims.EtablissementID
+			if scopeEtab == "" {
+				scopeEtab = etabID // ADMIN : paramètre explicite éventuel
+			}
+			if scopeEtab != "" {
+				var libelle *string
+				if errS := tx.QueryRow(r.Context(), `
+                                        SELECT "libelle" FROM "AnneeAcademique"
+                                        WHERE "etablissementId" = $1 AND "actif" = true
+                                        ORDER BY "dateDebut" DESC LIMIT 1`, scopeEtab).Scan(&libelle); errS == nil && libelle != nil {
+					annee = *libelle
+					slog.Info("affectations: scoping par défaut sur l'année courante",
+						"etablissementId", scopeEtab, "anneeUniversitaire", annee)
+				} else if errS != nil && errS != pgx.ErrNoRows {
+					// Résolution impossible (RLS/connexion) → pas de scoping, on
+					// log et on continue avec le comportement historique.
+					slog.Warn("affectations: résolution de l'année courante échouée (pas de scoping par défaut)",
+						"etablissementId", scopeEtab, "error", errS)
+				}
+			}
+		}
 		var where []string
 		var args []any
 		argIdx := 1

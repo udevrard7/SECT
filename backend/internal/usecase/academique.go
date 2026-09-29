@@ -557,11 +557,18 @@ func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id 
 	// Validation des dates si fournies. On doit charger l'année existante pour
 	// comparer avec les valeurs non modifiées (ex: si seul dateDebut est fourni,
 	// on compare avec le dateFin existant).
-	if input.DateDebut != nil || input.DateFin != nil {
-		existing, err := uc.anneeRepo.FindByID(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("Update: load existing: %w", err)
+	// SECT-ANNEE-CHEVAUCHEMENT-1 : le chargement est aussi nécessaire si Actif
+	// est fourni (garde de désactivation de l'année courante + etablissementID
+	// pour l'activation atomique).
+	var existing *domain.AnneeAcademique
+	if input.DateDebut != nil || input.DateFin != nil || input.Actif != nil {
+		var errL error
+		existing, errL = uc.anneeRepo.FindByID(ctx, id)
+		if errL != nil {
+			return nil, fmt.Errorf("Update: load existing: %w", errL)
 		}
+	}
+	if input.DateDebut != nil || input.DateFin != nil {
 		// existing.DateDebut/DateFin sont des time.Time ; input.DateDebut/DateFin
 		// sont des *string (format YYYY-MM-DD depuis le frontend).
 		debut := existing.DateDebut
@@ -584,6 +591,61 @@ func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id 
 			return nil, &domain.ValidationError{Field: "dateFin", Message: "la date de fin doit être après la date de début"}
 		}
 	}
+
+	// ── SECT-ANNEE-CHEVAUCHEMENT-1 : ACTIVATION ATOMIQUE ──
+	// actif=true ne doit PLUS être un simple flip de booléen (c'est ce qui
+	// créait l'amalgame : plusieurs années actives simultanément, les données
+	// de l'année précédente restaient « actives »). C'est désormais une
+	// activation transactionnelle : désactivation de l'année courante
+	// précédente + activation de la cible + pointage de
+	// Etablissement.anneeAcademiqueCouranteId — invariant garanti en DB par
+	// l'index unique partiel (migration 000110).
+	if input.Actif != nil && *input.Actif {
+		// 1. Appliquer d'abord les autres champs éventuels (libelle/dates) — le
+		//    formulaire d'édition envoie actif + champs ensemble dans le même
+		//    PATCH. Sans ça, l'early-return perdrait les modifications de champs.
+		fieldInput := domain.UpdateAnneeInput{
+			Libelle:   input.Libelle,
+			DateDebut: input.DateDebut,
+			DateFin:   input.DateFin,
+		}
+		if fieldInput.Libelle != nil || fieldInput.DateDebut != nil || fieldInput.DateFin != nil {
+			if _, errF := uc.anneeRepo.Update(ctx, id, fieldInput); errF != nil {
+				return nil, errF
+			}
+		}
+		// 2. Activation atomique (repo, une seule transaction SQL).
+		activated, errA := uc.anneeRepo.Activate(ctx, existing.EtablissementID, id)
+		if errA != nil {
+			return nil, errA
+		}
+		// SECT-ANNEE-AUDITLOG-1 : journaliser l'activation (non bloquant).
+		uc.auditAnnee(ctx, claims, domain.AuditActionAnneeActivated, activated, map[string]any{
+			"etablissementId": existing.EtablissementID,
+			"libelle":         activated.Libelle,
+			"dateDebut":       activated.DateDebut.Format("2006-01-02"),
+			"dateFin":         activated.DateFin.Format("2006-01-02"),
+		})
+		return activated, nil
+	}
+
+	// ── SECT-ANNEE-CHEVAUCHEMENT-1 : garde anti-désynchronisation ──
+	// Interdire la désactivation (actif=false) de l'année COURANTE : sinon
+	// Etablissement.anneeAcademiqueCouranteId pointerait une année désactivée
+	// (l'inscription à l'inscription étudiante échouerait, les vues « courante » casseraient).
+	// Le responsable doit d'abord activer l'année suivante (activation atomique
+	// qui désactive automatiquement l'ancienne).
+	if input.Actif != nil && !*input.Actif {
+		if isCurrent, errC := uc.anneeRepo.IsCurrent(ctx, id); errC == nil && isCurrent {
+			return nil, &domain.ValidationError{
+				Field:   "actif",
+				Message: "impossible de désactiver l'année courante — activez d'abord l'année suivante (elle sera automatiquement clôturée)",
+			}
+		} else if errC != nil {
+			slog.Warn("AnneeUseCase: IsCurrent échec — désactivation autorisée par défaut", "anneeId", id, "error", errC)
+		}
+	}
+
 	updated, err := uc.anneeRepo.Update(ctx, id, input)
 	if err != nil {
 		return nil, err

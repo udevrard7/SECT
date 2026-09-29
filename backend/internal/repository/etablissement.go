@@ -432,9 +432,30 @@ func (r *EtablissementRepository) SetCurrentAnnee(ctx context.Context, etablisse
 
 	var etab *domain.Etablissement
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// SECT-ANNEE-CHEVAUCHEMENT-1 (migration 000110) : l'activation est
+		// ATOMIQUE — avant de pointer la FK, on désactive les autres années
+		// actives puis on active la cible. Ainsi les DEUX marqueurs de
+		// « courant » restent toujours synchronisés :
+		//   AnneeAcademique.actif=true (unique par étab, index partiel)
+		//   ⟺ Etablissement.anneeAcademiqueCouranteId.
+		// Mêmes 3 statements que AnneeAcademiqueRepository.Activate (l'autre
+		// point d'entrée : PATCH /annees-academiques {actif:true}).
+		if _, err := tx.Exec(ctx, `
+                        UPDATE "AnneeAcademique" SET "actif" = false, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "etablissementId" = $1 AND "actif" = true AND "id" <> $2`,
+			etablissementID, anneeID); err != nil {
+			return fmt.Errorf("set current annee (désactivation des anciennes): %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+                        UPDATE "AnneeAcademique" SET "actif" = true, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $2 AND "etablissementId" = $1`,
+			etablissementID, anneeID); err != nil {
+			return fmt.Errorf("set current annee (activation de la cible): %w", err)
+		}
 		// UPDATE avec clause d'appartenance + actif=true : 0 ligne affectée si
 		// l'année n'existe pas, n'appartient pas à l'établissement, OU est
-		// désactivée (soft-deleted).
+		// désactivée (soft-deleted) — désormais garantie vraie par nos propres
+		// UPDATE ci-dessus (l'année vient d'être activée dans cette transaction).
 		// SECT-ANNEE-SETCURRENT-GUARD-1 : avant, on n'exigeait pas actif=true →
 		// on pouvait définir une année soft-deleted comme courante (incohérence :
 		// invisible dans le sélecteur de la page Clôture qui filtre actif=true,

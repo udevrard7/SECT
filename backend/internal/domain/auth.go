@@ -294,6 +294,10 @@ const (
 	AuditActionAnneeSoftDeleted = "ANNEE_ACADEMIQUE_SOFT_DELETED"
 	AuditActionAnneeHardDeleted = "ANNEE_ACADEMIQUE_HARD_DELETED"
 	AuditActionAnneeSetCurrent  = "ANNEE_ACADEMIQUE_SET_CURRENT"
+	// SECT-ANNEE-CHEVAUCHEMENT-1 : activation atomique d'une année (via
+	// PATCH actif=true ou POST annee-courante) — désactive l'année précédente
+	// et pointe Etablissement.anneeAcademiqueCouranteId en une transaction.
+	AuditActionAnneeActivated = "ANNEE_ACADEMIQUE_ACTIVATED"
 
 	// SECT-AFFECTATION-PUBLISH-ENRICH-1 — publication d'une affectation
 	// enseignant↔UE. Journalisée dans AuditLog par le handler

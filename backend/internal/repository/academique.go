@@ -902,9 +902,16 @@ func (r *AnneeAcademiqueRepository) Create(ctx context.Context, input domain.Cre
 		}
 
 		id := uuid.NewString()
+		// SECT-ANNEE-CHEVAUCHEMENT-1 (migration 000110) : une nouvelle année
+		// n'est PLUS auto-active si l'établissement a déjà une année active
+		// (l'index unique partiel refuserait de toute façon l'INSERT). Elle naît
+		// « en préparation » (actif=false) — le responsable l'active
+		// explicitement (activation atomique : désactive l'ancienne + pointe
+		// l'année courante). Première année d'un établissement → actif=true
+		// directement (pas d'année courante à remplacer).
 		row := tx.QueryRow(ctx, `
                         INSERT INTO "AnneeAcademique" ("id", "libelle", "dateDebut", "dateFin", "etablissementId", "actif", "createdAt", "updatedAt")
-                        VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        VALUES ($1, $2, $3, $4, $5, NOT EXISTS (SELECT 1 FROM "AnneeAcademique" ax WHERE ax."etablissementId" = $5 AND ax."actif"), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING `+columnsAnnee,
 			id, input.Libelle, dateDebut, dateFin, input.EtablissementID)
 
@@ -1037,6 +1044,107 @@ func (r *AnneeAcademiqueRepository) HardDelete(ctx context.Context, id string) e
 		}
 		return nil
 	})
+}
+
+// Activate active une année académique comme année COURANTE de son
+// établissement, de manière ATOMIQUE — SECT-ANNEE-CHEVAUCHEMENT-1
+// (migration 000110). En UNE transaction (RLS actif, claims du context) :
+//  1. désactive les autres années actives de l'établissement (actif=false,
+//     updatedAt bumped) — l'année précédente sort du périmètre « courant » ;
+//  2. active l'année cible (actif=true) — 0 ligne si introuvable ou hors
+//     établissement → NotFoundError ;
+//  3. pointe Etablissement.anneeAcademiqueCouranteId dessus (le 2e marqueur
+//     de « courant » reste toujours synchronisé avec le 1er).
+//
+// Invariant post-000110 : actif=true ⟺ année courante (index unique partiel
+// AnneeAcademique_one_active_per_etab — même un accès SQL direct ne peut plus
+// créer 2 années actives).
+//
+// C'est LE point d'entrée unique de l'activation : PATCH /annees-academiques
+// {actif:true} (via AnneeUseCase.Update) et POST /etablissements/{id}/
+// annee-courante (via EtablissementRepository.SetCurrentAnnee, qui applique
+// les mêmes 3 statements) arrivent ici aux mêmes sémantiques.
+//
+// RLS : les UPDATE AnneeAcademique passent par AnneeAcademique_modify_
+// responsable (is_responsable() AND etablissementId = current_etab) ;
+// l'UPDATE Etablissement par Etablissement_modify_responsable — mêmes
+// policies que l'ancien SetCurrentAnnee, comportement inchangé.
+func (r *AnneeAcademiqueRepository) Activate(ctx context.Context, etablissementID, anneeID string) (*domain.AnneeAcademique, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return nil, fmt.Errorf("AnneeAcademiqueRepository.Activate: claims manquants dans le context")
+	}
+
+	var a *domain.AnneeAcademique
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// 1. Désactiver les autres années actives de l'établissement.
+		if _, err := tx.Exec(ctx, `
+                        UPDATE "AnneeAcademique" SET "actif" = false, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "etablissementId" = $1 AND "actif" = true AND "id" <> $2`,
+			etablissementID, anneeID); err != nil {
+			return fmt.Errorf("activate annee (désactivation des anciennes): %w", err)
+		}
+
+		// 2. Activer l'année cible (appartenance vérifiée par le WHERE).
+		row := tx.QueryRow(ctx, `
+                        UPDATE "AnneeAcademique" SET "actif" = true, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $2 AND "etablissementId" = $1
+                        RETURNING `+columnsAnnee, etablissementID, anneeID)
+		u, err := scanAnnee(row)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return &domain.NotFoundError{Entity: "AnneeAcademique", ID: anneeID}
+			}
+			return fmt.Errorf("activate annee: %w", err)
+		}
+		a = u
+
+		// 3. Pointer l'année courante de l'établissement.
+		tag, err := tx.Exec(ctx, `
+                        UPDATE "Etablissement" SET "anneeAcademiqueCouranteId" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1`,
+			etablissementID, anneeID)
+		if err != nil {
+			return fmt.Errorf("activate annee (année courante établissement): %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "Etablissement", ID: etablissementID}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// IsCurrent retourne true si l'année est l'année courante d'un établissement
+// (Etablissement.anneeAcademiqueCouranteId) — SECT-ANNEE-CHEVAUCHEMENT-1.
+// Utilisé par AnneeUseCase.Update pour REFUSER la désactivation (actif=false)
+// de l'année courante : sinon l'établissement pointerait une année désactivée
+// (désynchronisation des 2 marqueurs de « courant »).
+//
+// RLS : Etablissement_select est TO PUBLIC ((NOT is_admin()) AND
+// id = current_etablissement_id()) → un RESPONSABLE/ENSEIGNANT/ÉTUDIANT lit
+// son propre établissement ; un ADMIN sans accès approuvé voit 0 ligne →
+// isCurrent=false → désactivation autorisée (l'ADMIN bypass via RLS policies
+// dédiées, cf. admin_has_etablissement_access).
+func (r *AnneeAcademiqueRepository) IsCurrent(ctx context.Context, anneeID string) (bool, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return false, fmt.Errorf("AnneeAcademiqueRepository.IsCurrent: claims manquants dans le context")
+	}
+
+	var isCurrent bool
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+                        SELECT EXISTS(SELECT 1 FROM "Etablissement" WHERE "anneeAcademiqueCouranteId" = $1)`,
+			anneeID).Scan(&isCurrent)
+	})
+	if err != nil {
+		return false, err
+	}
+	return isCurrent, nil
 }
 
 // GetDependencies récupère les counts des 5 dépendances liées à une année

@@ -414,6 +414,17 @@ type AnneeAcademiqueRepository interface {
 	// sur Epreuve/ValidationUE/Etablissement.anneeAcademiqueCouranteId perdront
 	// leur référence — pas de cascade bloquante.
 	HardDelete(ctx context.Context, id string) error
+	// Activate active une année comme année COURANTE de son établissement, de
+	// manière ATOMIQUE (SECT-ANNEE-CHEVAUCHEMENT-1, migration 000110) :
+	//   1. désactive les autres années actives de l'établissement (actif=false) ;
+	//   2. active l'année cible (actif=true) ;
+	//   3. pointe Etablissement.anneeAcademiqueCouranteId dessus.
+	// Invariant post-000110 : actif=true ⟺ année courante (index unique partiel).
+	Activate(ctx context.Context, etablissementID, anneeID string) (*AnneeAcademique, error)
+	// IsCurrent retourne true si l'année est l'année courante d'un
+	// établissement (Etablissement.anneeAcademiqueCouranteId). Utilisé pour
+	// interdire la désactivation de l'année courante (garde anti-désynchronisation).
+	IsCurrent(ctx context.Context, anneeID string) (bool, error)
 	// GetDependencies récupère les counts de dépendances cascade-DELETE ou
 	// SET NULL liés à une année académique (SECT-ANNEE-HARDDELETE-SAFE-1).
 	// CanHardDelete = true si tous les counts valent 0.
