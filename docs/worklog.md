@@ -1222,3 +1222,28 @@ Stage Summary:
 - ✅ Tous les états asynchrones intégrés (Practice, Audio, QA)
 - ✅ Limitations backend documentées dans le code (dateFin/Notes, audioUrl 15min)
 - ⏳ CI mobile à vérifier après push (Shared KMP compile + tests)
+
+---
+Task ID: SECT-SESSION-TIMEOUT-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: « Timeout de session » — déconnexion d'utilisateurs ACTIFS en pleine utilisation + implémentation de la politique demandée (déconnexion après 30 min d'inactivité)
+
+Work Log:
+- Diagnostic : 4 causes racines identifiées dans la chaîne access 15 min / refresh 7 j :
+  1. Rotation STRICTE single-use du refresh token (revoke_refresh_token_by_hash_if_active) : toute réponse HTTP perdue (timeout Next 12 s pendant cold start Render 30-50 s, 502) laissait le navigateur avec un token déjà consommé → 401 « déjà utilisé » au check suivant → cookies supprimés → déconnexion.
+  2. Race multi-onglets : deux /api/go-auth/session concurrents → même refresh token → le perdant recevait 401 et clearSessionResponse() supprimait AUSSI les cookies fraîchement posés par le gagnant.
+  3. Aucun retry réseau : un check transient n'était retenté que 10 min plus tard (l'access token expirait entre-temps).
+  4. La politique « déconnexion après 30 min d'inactivité » n'existait pas (session réelle : 7 jours glissants).
+- Migration 000106 (appliquée sur Neon, v105→v106) : colonne RefreshToken.rotatedAt + fonction rotate_refresh_token(hash, grâce) — UPDATE atomique avec verrou FOR UPDATE ; distingue rotation (rotatedAt) de révocation administrative (revokedAt : logout, change-password = kill-switchs immédiats).
+- usecase/auth.go Refresh : rotation avec grâce 60 s (RefreshRotationGrace) + expiration par inactivité glissante (sessionIdleTimeout, env SESSION_IDLE_MINUTES défaut 30, 0 = désactivé) + kill-switch RevokeRefreshToken sur idle-expiry + audit TOKEN_REFRESH_GRACE sur replay en grâce (surveillance replay attack).
+- middleware MapDomainError : reason « idle » → message « session expirée après une période d'inactivité ».
+- Frontend : lib/session-lock.ts (navigator.locks, sérialisation multi-onglets des checks), use-session-keepalive (interval 10→5 min, retries réseau 8 s/20 s dans la fenêtre de grâce, verdicts ok/invalid/transient), auth-store.refreshSession sous verrou, route session : timeout POST refresh 12→45 s (appel critique qui consomme le token).
+- gofmt + go build + go vet OK ; bun run lint 0 erreur (1 warning préexistant).
+- Tests fonctionnels sur Neon (token synthétique) : T1 première rotation OK (prev NULL), T2 replay < 60 s ACCEPTÉ, T3 hors grâce REFUSÉ, T4 token révoqué REFUSÉ même en grâce. Nettoyage (tokens inertes).
+
+Stage Summary:
+- ✅ Déconnexions d'utilisateurs actifs éliminées aux 3 niveaux : grâce backend 60 s (réponse perdue + race multi-onglets), verrou navigateur (prévention), retries réseau (rattrapage).
+- ✅ Politique demandée implémentée : session glissante 30 min d'inactivité (SESSION_IDLE_MINUTES, défaut 30, configurable Render sans redéploiement).
+- ✅ Sécurité préservée : replay > 60 s refusé, logout/change-password = kill-switchs immédiats non contournables, replays en grâce journalisés (TOKEN_REFRESH_GRACE).
+- ⏳ Vérifier Render deploy (log TOKEN_REFRESH_GRACE absent = normal) et Vercel deploy après push.
+- ⚠️ Note UX : un onglet caché > 30 min sera déconnecté au retour (définition de l'inactivité = onglet non visible) — comportement demandé.

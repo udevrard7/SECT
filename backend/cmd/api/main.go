@@ -131,7 +131,7 @@ func main() {
 		ResendAPIKey: cfg.ResendAPIKey,
 		ResendFrom:   cfg.ResendFrom,
 	}, logger)
-	authUC := usecase.NewAuthUseCase(authRepo, signer, mailSvc, cfg.AppBaseURL)
+	authUC := usecase.NewAuthUseCase(authRepo, signer, mailSvc, cfg.AppBaseURL, cfg.SessionIdleTimeout)
 	// E1/E6/U1/U7 : accessUC doit être créé AVANT etabUC et userUC car les
 	// deux dépendent de accessUC pour valider l'autorisation ADMIN sur les writes.
 	accessUC := usecase.NewAccessUseCase(accessRepo)

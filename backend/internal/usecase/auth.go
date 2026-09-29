@@ -44,19 +44,35 @@ const (
 	resetTokenLen = 32
 )
 
+// Constantes de session (SESSION-TIMEOUT-1).
+const (
+	// RefreshRotationGrace : fenêtre pendant laquelle un refresh token déjà
+	// consommé par rotation reste acceptable. Absorbe : (1) la réponse HTTP
+	// perdue (timeout client pendant un cold start Render — le backend a traité
+	// la rotation mais le navigateur n'a jamais reçu le nouveau token), (2) le
+	// replay quasi-simultané de deux onglets. 60 s = standard du secteur (Auth0 : 30 s).
+	RefreshRotationGrace = 60 * time.Second
+)
+
 // AuthUseCase implémente les cas d'usage d'authentification.
 type AuthUseCase struct {
 	authRepo   domain.AuthRepository
 	signer     *jwt.Signer
 	mailer     mailer.Mailer
 	appBaseURL string
+	// sessionIdleTimeout (SESSION-TIMEOUT-1) : durée d'inactivité maximale avant
+	// expiration de la session (glissante : chaque refresh réussi la repousse).
+	// 0 = désactivé (comportement pré-000106 : expiration absolue 7 j uniquement).
+	sessionIdleTimeout time.Duration
 }
 
 // NewAuthUseCase crée un nouveau AuthUseCase.
 // mailer peut être un SMTPMailer (production) ou un LogMailer (dev/fallback).
 // appBaseURL sert à construire le lien de reset (ex: https://sect-app.vercel.app).
-func NewAuthUseCase(authRepo domain.AuthRepository, signer *jwt.Signer, ml mailer.Mailer, appBaseURL string) *AuthUseCase {
-	return &AuthUseCase{authRepo: authRepo, signer: signer, mailer: ml, appBaseURL: appBaseURL}
+// sessionIdleTimeout : déconnexion après inactivité (ex: 30 min). Le keep-alive
+// frontend (toutes les 5 min) fait glisser la fenêtre pendant l'activité.
+func NewAuthUseCase(authRepo domain.AuthRepository, signer *jwt.Signer, ml mailer.Mailer, appBaseURL string, sessionIdleTimeout time.Duration) *AuthUseCase {
+	return &AuthUseCase{authRepo: authRepo, signer: signer, mailer: ml, appBaseURL: appBaseURL, sessionIdleTimeout: sessionIdleTimeout}
 }
 
 // LoginRequest est le payload de /api/auth/login.
@@ -242,14 +258,21 @@ type RefreshRequest struct {
 }
 
 // Refresh valide un refresh token et émet un nouveau token pair.
-// L'ancien refresh token est révoqué (rotation).
+// L'ancien refresh token est consommé par rotation (rotatedAt, migration 000106).
 //
-// U10 (HIGH) : utilise RevokeRefreshTokenByHashIfActive (UPDATE atomique) au lieu
-// de FindRefreshTokenByHash + RevokeRefreshToken (deux queries séparées). Avant ce
-// fix, deux requêtes concurrentes avec le même refresh token pouvaient toutes les
-// deux passer le check IsValid, puis révoquer chacune → deux nouveaux tokens valides
-// (race condition). Maintenant, seule la première requête gagne (UPDATE affecte 1 row) ;
-// la deuxième obtient nil → InvalidTokenError.
+// SESSION-TIMEOUT-1 (rotation avec grâce) : héritier du fix U10 (UPDATE atomique
+// anti-race). La rotation STRICTE single-use d'origine déconnectait les
+// utilisateurs actifs dès que la réponse HTTP était perdue (timeout 12 s pendant
+// un cold start Render, 502 passager) ou que deux onglets rafraîchissaient le
+// même token quasi simultanément : le navigateur gardait un token déjà consommé
+// → 401 « déjà utilisé » au check suivant → cookies supprimés → déconnexion.
+// Désormais le token tourné reste acceptable 60 s (grâce) : replay légitime =
+// nouveau couple de tokens ; replay au-delà de la grâce = InvalidTokenError.
+// Un replay dans la grâce est journalisé TOKEN_REFRESH_GRACE (surveillance).
+//
+// SESSION-TIMEOUT-1 (inactivité 30 min) : la session expire si la dernière
+// activité (dernière rotation réussie) est plus vieille que sessionIdleTimeout.
+// Glissante : le keep-alive frontend (5 min) la repousse pendant l'activité.
 func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, userAgent string) (*LoginResponse, error) {
 	if req.RefreshToken == "" {
 		return nil, &domain.InvalidTokenError{Reason: "empty token"}
@@ -258,36 +281,57 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, user
 	// 1. Hasher le refresh token
 	hash := jwt.HashRefreshToken(req.RefreshToken)
 
-	// 2. U10 : UPDATE atomique — révoque le token ET le retourne seulement s'il
-	// était encore actif. Évite la race condition.
-	rt, err := uc.authRepo.RevokeRefreshTokenByHashIfActive(ctx, hash)
+	// 2. SESSION-TIMEOUT-1 : rotation atomique AVEC grâce (remplace la rotation
+	// stricte RevokeRefreshTokenByHashIfActive). Le token consommé reste
+	// acceptable 60 s → un replay légitime (2e onglet, retry réseau après réponse
+	// perdue pendant un cold start Render) obtient un nouveau couple de tokens au
+	// lieu d'un 401 « déjà utilisé » → fin des déconnexions d'utilisateurs actifs.
+	// prevRotatedAt : nil = première rotation (flux normal), non-nil = replay dans
+	// la grâce → audit TOKEN_REFRESH_GRACE (surveillance replay attack).
+	rt, prevRotatedAt, err := uc.authRepo.RotateRefreshTokenByHash(ctx, hash, int(RefreshRotationGrace.Seconds()))
 	if err != nil {
-		return nil, fmt.Errorf("revoke refresh token if active: %w", err)
+		return nil, fmt.Errorf("rotate refresh token: %w", err)
 	}
 	if rt == nil {
 		return nil, &domain.InvalidTokenError{Reason: "not found, revoked, or already used"}
 	}
 
-	// 3. Vérifier qu'il n'est pas expiré. Note : on ne check pas IsRevoked()
-	// ici car le token vient d'être révoqué par RevokeRefreshTokenByHashIfActive
-	// (revokedAt est maintenant non-nil). La rotation est le comportement attendu.
-	// Si le token était déjà révoqué avant, rt serait nil (UPDATE n'aurait matché aucune row).
+	// 3. Expiration absolue (plafond 7 j — garde-fou indépendant de l'inactivité).
+	// Note : on ne check pas IsRevoked() ici car revokedAt est posé par les
+	// kill-switchs administratifs (logout / change-password) et la fonction SQL
+	// filtre déjà revokedAt IS NULL — un token révoqué ne sort jamais d'ici.
 	if rt.IsExpired() {
 		return nil, &domain.InvalidTokenError{Reason: "expired"}
 	}
 
-	// 4. Récupérer l'utilisateur
+	// 4. SESSION-TIMEOUT-1 — expiration par INACTIVITÉ (glissante). La dernière
+	// activité = dernière rotation réussie (ou création si jamais tourné). Le
+	// keep-alive frontend (5 min) la fait glisser en continu pendant l'activité.
+	// Refus → kill-switch immédiat (RevokeRefreshToken pose revokedAt → contourne
+	// la grâce, impossible de re-entrer) → déconnexion légitime.
+	lastActivity := rt.CreatedAt
+	if prevRotatedAt != nil {
+		lastActivity = *prevRotatedAt
+	} else if rt.RotatedAt != nil {
+		lastActivity = *rt.RotatedAt
+	}
+	if rt.IsIdleExpired(lastActivity, uc.sessionIdleTimeout) {
+		_ = uc.authRepo.RevokeRefreshToken(ctx, rt.ID)
+		return nil, &domain.InvalidTokenError{Reason: "idle"}
+	}
+
+	// 5. Récupérer l'utilisateur
 	user, err := uc.authRepo.GetUserByID(ctx, rt.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user by id: %w", err)
 	}
 
-	// 5. Vérifier actif
+	// 6. Vérifier actif
 	if !user.Actif {
 		return nil, &domain.AccountDisabledError{}
 	}
 
-	// 5b. SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : même check que Login —
+	// 6b. SECT-GENIUSPAY-WAVE-SECURITY + SECT-B2C-EXPIRE : même check que Login —
 	// si l'utilisateur a un abonnement bloquant (pending ou expired), bloquer le
 	// refresh (sinon un user pourrait obtenir un nouvel access token via refresh
 	// même sans avoir payé / après expiration).
@@ -298,7 +342,7 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, user
 		}
 	}
 
-	// 6. Créer un nouveau refresh token
+	// 7. Créer un nouveau refresh token
 	newRefreshPlaintext, newRefreshHash, err := jwt.GenerateRefreshToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
@@ -316,15 +360,20 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, user
 		return nil, fmt.Errorf("create refresh token: %w", err)
 	}
 
-	// 7. Nouvel access token
+	// 8. Nouvel access token
 	claims := sessionClaimsFromUser(user)
 	accessToken, expiresAt, err := uc.signer.GenerateAccessToken(claims, user.Email, user.Name)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
 
-	// 8. Audit
-	_ = uc.audit(ctx, strPtr(user.ID), strPtr(user.Email), domain.AuditActionRefreshToken, ip, nil)
+	// 9. Audit — action distincte si replay dans la grâce (détection d'anomalie :
+	// un volume anormal de TOKEN_REFRESH_GRACE signale un replay attack).
+	auditAction := domain.AuditActionRefreshToken
+	if prevRotatedAt != nil {
+		auditAction = domain.AuditActionRefreshGrace
+	}
+	_ = uc.audit(ctx, strPtr(user.ID), strPtr(user.Email), auditAction, ip, nil)
 
 	return &LoginResponse{
 		User:         user.User,

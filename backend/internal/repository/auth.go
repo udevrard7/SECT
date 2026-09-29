@@ -149,23 +149,27 @@ func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenID string)
 	return nil
 }
 
-// RevokeRefreshTokenByHashIfActive (U10) : UPDATE atomique qui révoque le token
-// ET le retourne seulement s'il était encore actif (revokedAt IS NULL).
-// Permet d'éviter la race condition : deux requêtes concurrentes avec le même
-// refresh token → seule la première obtient le token (et le révoque), la deuxième
-// obtient nil (le token est déjà révoqué entre-temps).
-// Fonction SECURITY DEFINER revoke_refresh_token_by_hash_if_active.
-func (r *AuthRepository) RevokeRefreshTokenByHashIfActive(ctx context.Context, hash string) (*domain.RefreshToken, error) {
-	row := r.pool.QueryRow(ctx, `SELECT * FROM revoke_refresh_token_by_hash_if_active($1)`, hash)
+// RotateRefreshTokenByHash (SESSION-TIMEOUT-1) : UPDATE atomique qui consomme
+// le token par rotation (rotatedAt = now) et le retourne SEULEMENT s'il est
+// consommable : revokedAt IS NULL ET (jamais tourné OU tourné depuis < grâce).
+// Remplace RevokeRefreshTokenByHashIfActive : la consommation n'est plus une
+// révocation — un token tourné reste acceptable pendant la grâce (60 s) pour
+// absorber les replay multi-onglets et les retry réseau après réponse perdue.
+// Fonction SECURITY DEFINER rotate_refresh_token (migration 000106).
+// Le second retour prevRotatedAt : nil = première rotation, non-nil = replay
+// dans la grâce.
+func (r *AuthRepository) RotateRefreshTokenByHash(ctx context.Context, hash string, graceSeconds int) (*domain.RefreshToken, *time.Time, error) {
+	row := r.pool.QueryRow(ctx, `SELECT * FROM rotate_refresh_token($1, $2)`, hash, graceSeconds)
 	rt := &domain.RefreshToken{}
-	err := row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
+	var prevRotatedAt *time.Time
+	err := row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.RotatedAt, &prevRotatedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, nil // token introuvable ou déjà révoqué
+			return nil, nil, nil // token introuvable, révoqué, ou tourné hors grâce
 		}
-		return nil, fmt.Errorf("query refresh token: %w", err)
+		return nil, nil, fmt.Errorf("query refresh token: %w", err)
 	}
-	return rt, nil
+	return rt, prevRotatedAt, nil
 }
 
 // RevokeAllUserRefreshTokens révoque tous les refresh tokens actifs d'un user.

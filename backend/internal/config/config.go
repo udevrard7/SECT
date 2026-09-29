@@ -5,7 +5,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -29,6 +31,12 @@ type Config struct {
 
 	// Environment (dev / staging / production)
 	Environment string `env:"ENVIRONMENT" default:"development"`
+
+	// SessionIdleTimeout (SESSION-TIMEOUT-1) : déconnexion après inactivité
+	// (glissante — chaque refresh réussi repousse la fenêtre). Env
+	// SESSION_IDLE_MINUTES, défaut 30. 0 = désactivé (retour au comportement
+	// pré-000106 : expiration absolue du refresh token 7 j uniquement).
+	SessionIdleTimeout time.Duration
 
 	// SMTP (emails transactionnels — mot de passe oublié)
 	// Fallback si Resend n'est pas configuré. Si SMTP_HOST est vide, un LogMailer
@@ -96,6 +104,9 @@ func Load() (*Config, error) {
 		JWTSecret:   getEnv("JWT_SECRET", ""),
 		Environment: getEnv("ENVIRONMENT", "development"),
 
+		// SESSION-TIMEOUT-1 : idle timeout glissant (défaut 30 min).
+		SessionIdleTimeout: getSessionIdleTimeout(),
+
 		SMTPHost:     getEnv("SMTP_HOST", ""),
 		SMTPPort:     getEnv("SMTP_PORT", "587"),
 		SMTPUser:     getEnv("SMTP_USER", ""),
@@ -154,4 +165,19 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getSessionIdleTimeout lit SESSION_IDLE_MINUTES (défaut 30, 0 = désactivé).
+// Valeurs invalides (non numériques, négatives) → fallback 30 min + warning.
+func getSessionIdleTimeout() time.Duration {
+	raw := os.Getenv("SESSION_IDLE_MINUTES")
+	if raw == "" {
+		return 30 * time.Minute
+	}
+	minutes, err := strconv.Atoi(raw)
+	if err != nil || minutes < 0 {
+		fmt.Printf("[config] SESSION_IDLE_MINUTES invalide (%q) → défaut 30 min\n", raw)
+		return 30 * time.Minute
+	}
+	return time.Duration(minutes) * time.Minute
 }

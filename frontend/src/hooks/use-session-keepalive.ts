@@ -1,25 +1,36 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { withSessionLock } from '@/lib/session-lock'
 
 /**
  * useSessionKeepAlive — maintient la session active en rafraîchissant
  * proactivement le token d'accès AVANT qu'il n'expire.
  *
- * BUGFIX (FLICKER-FIX-1) : le refresh au visibilitychange déclenchait
- * refreshSession() qui set isLoading: true → re-render de
- * AuthenticatedLayout → remontage de PageContent → flash/clignotement.
+ * SESSION-TIMEOUT-1 (ancien KEEPALIVE-1/FLICKER-FIX-1) :
  *
- * Fix : le refresh au refocus est maintenant SILENCIEUX — il ne modifie
- * PAS isLoading. On appelle directement l'API /api/go-auth/session sans
- * passer par refreshSession (qui set isLoading). Si la session est
- * invalide, on déclenche alors refreshSession (qui gère le logout).
+ * 1. Interval 10 min → 5 MIN. L'access token dure 15 min ; un check toutes
+ *    les 5 min laisse une marge x3 (un check transient raté ne fait plus
+ *    expirer le token avant le suivant). Chaque check réussi fait aussi
+ *    glisser la fenêtre d'inactivité backend (30 min) — un utilisateur actif
+ *    n'est jamais déconnecté.
  *
- * Le cleanup (return () => removeEventListener) est CRITIQUE : comme
- * AuthenticatedLayout se remonte à chaque navigation (catch-all route),
- * sans cleanup les listeners s'accumuleraient → dizaines de refresh
- * simultanés au retour sur l'onglet.
+ * 2. Verrou multi-onglets (navigator.locks, cf. lib/session-lock.ts) : les
+ *    checks concurrents sont sérialisés → plus jamais deux refresh simultanés
+ *    du même token (cause historique de déconnexions en cascade).
+ *
+ * 3. RETRY réseau (backoff 8 s / 20 s, max 2) : avant, un check transient
+ *    (backend indisponible, cold start Render) n'était PAS retenté avant
+ *    10 min. Si le refresh avait été consommé côté backend mais la réponse
+ *    perdue, le token du navigateur était périmé → déconnexion au check
+ *    suivant. Désormais on retente immédiatement — la grâce backend (60 s)
+ *    accepte le replay → le retry repart sur des tokens sains.
+ *
+ * 4. Le check reste SILENCIEUX (ne modifie PAS isLoading — 0 flash, cf.
+ *    FLICKER-FIX-1) et ne déconnecte JAMAIS sur erreur réseau (KEEPALIVE-1) :
+ *    seul un verdict « session invalide » confirmé par le backend (refresh
+ *    token refusé) déclenche refreshSession (qui gère le logout).
  *
  * Monté dans AuthenticatedLayout (toutes les pages authentifiées).
  */
@@ -27,46 +38,84 @@ export function useSessionKeepAlive() {
   const refreshSession = useAuthStore((s) => s.refreshSession)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const retryTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
-  // Check silencieux : ne modifie PAS isLoading (0 flash).
-  // Déclaré via useCallback pour être stable (évite re-renders).
-  const silentSessionCheck = useCallback(async () => {
+  /** Annule tous les retries réseau en attente. */
+  const clearRetries = () => {
+    retryTimeoutsRef.current.forEach((t) => clearTimeout(t))
+    retryTimeoutsRef.current = []
+  }
+
+  /**
+   * Check silencieux sous verrou multi-onglets.
+   * Retourne 'ok' | 'invalid' | 'transient' pour piloter les retries.
+   */
+  const silentSessionCheck = async (): Promise<'ok' | 'invalid' | 'transient'> => {
     try {
-      const res = await fetch('/api/go-auth/session')
+      const res = await withSessionLock(() => fetch('/api/go-auth/session', { cache: 'no-store' }))
       const data = await res.json()
-      if (!data.user && !data.transient) {
-        // Session vraiment invalide (pas transitoire) → logout propre
-        refreshSession()
-      }
-      // Si data.user ou data.transient → ne rien faire (silencieux)
+      if (data?.user) return 'ok'
+      if (data?.transient) return 'transient'
+      return 'invalid'
     } catch {
-      // Erreur réseau → ne rien faire (silencieux, ne pas déconnecter)
+      return 'transient'
     }
-  }, [refreshSession])
+  }
+
+  /**
+   * Check + retries réseau. Un verdict 'ok' ou 'invalid' est définitif :
+   * on annule les retries restants. Un verdict 'transient' déclenche le
+   * retry suivant (8 s puis 20 s — tous dans la fenêtre de grâce backend
+   * de 60 s pour le cas « réponse perdue »).
+   */
+  const checkWithRetries = async (attempt = 0) => {
+    const verdict = await silentSessionCheck()
+
+    if (verdict === 'invalid') {
+      // Session vraiment invalide (refresh token refusé par le backend) →
+      // refreshSession gère le logout propre.
+      clearRetries()
+      refreshSession()
+      return
+    }
+
+    if (verdict === 'transient' && attempt < 2) {
+      const delay = attempt === 0 ? 8_000 : 20_000
+      const t = setTimeout(() => {
+        checkWithRetries(attempt + 1).catch(() => {})
+      }, delay)
+      retryTimeoutsRef.current.push(t)
+      return // transitoire : on garde l'utilisateur connecté
+    }
+    // 'ok' (ou transient après épuisement des retries) : rien à faire.
+    // Ne jamais déconnecter sur une erreur réseau.
+  }
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated) {
+      clearRetries()
+      return
+    }
 
-    // --- 1. Refresh périodique (toutes les 10 min) ---
-    const REFRESH_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
+    // --- 1. Refresh périodique (toutes les 5 min) ---
+    const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
     const doRefresh = async () => {
-      // Ne refresh que si l'onglet est visible
+      // Ne refresh que si l'onglet est visible (les onglets cachés seront
+      // rattrapés par le visibilitychange au retour).
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        await silentSessionCheck()
+        await checkWithRetries()
       }
     }
 
-    intervalRef.current = setInterval(doRefresh, REFRESH_INTERVAL_MS)
+    intervalRef.current = setInterval(() => {
+      doRefresh().catch(() => {})
+    }, REFRESH_INTERVAL_MS)
 
     // --- 2. Refresh SILENCIEUX au refocus de l'onglet ---
-    // BUGFIX (FLICKER-FIX-1) : ne PAS appeler refreshSession() directement
-    // car il set isLoading: true → re-render → flash. À la place, on fait
-    // un check silencieux : si la session est encore valide, on ne touche
-    // à rien. Si invalide, on appelle refreshSession (qui gère le logout).
-    const handleVisibilityChange = async () => {
+    const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        await silentSessionCheck()
+        checkWithRetries().catch(() => {})
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -79,7 +128,8 @@ export function useSessionKeepAlive() {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
+      clearRetries()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [isAuthenticated, silentSessionCheck])
+  }, [isAuthenticated, refreshSession])
 }

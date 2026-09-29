@@ -26,6 +26,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-zead.onrender.c
 // longtemps — on réessaiera via le keep-alive).
 const BACKEND_TIMEOUT_MS = 12000
 
+// SESSION-TIMEOUT-1 : timeout ÉTENDU pour le POST /api/auth/refresh (45 s).
+// C'est l'appel CRITIQUE : il consomme le refresh token (rotation). Un abort
+// client à 12 s pendant un cold start Render (30-50 s) laissait le backend
+// exécuter la rotation SANS que le navigateur reçoive le nouveau token →
+// l'ancien token était déjà consommé → déconnexion au check suivant.
+// 45 s couvre le pire cold start observé ; /api/me (lecture seule, rejouable)
+// reste à 12 s. En dernier recours, la grâce backend (60 s) + le retry réseau
+// du keep-alive (8 s / 20 s) rattrapent une réponse quand même perdue.
+const REFRESH_TIMEOUT_MS = 45000
+
 /** fetch avec timeout explicite via AbortController. */
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = BACKEND_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController()
@@ -112,13 +122,17 @@ export async function GET(request: NextRequest) {
 async function tryRefresh(refreshToken: string) {
   let refreshResp: Response
   try {
+    // SESSION-TIMEOUT-1 : timeout étendu (45 s) — cf. REFRESH_TIMEOUT_MS.
     refreshResp = await fetchWithTimeout(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
-    })
+    }, REFRESH_TIMEOUT_MS)
   } catch {
-    // Erreur réseau sur le refresh → transitoire (backend indisponible)
+    // Erreur réseau sur le refresh → transitoire (backend indisponible).
+    // SESSION-TIMEOUT-1 : le backend a PU traiter la rotation avant l'abort —
+    // le keep-alive frontend retente à +8 s / +20 s et la grâce backend (60 s)
+    // accepte le replay → pas de déconnexion.
     return transientErrorResponse()
   }
 

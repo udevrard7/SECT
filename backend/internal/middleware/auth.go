@@ -168,6 +168,11 @@ func MapDomainError(w http.ResponseWriter, err error) {
 			msg = "jeton manquant dans la requête"
 		case "not found or already used":
 			msg = "ce lien a déjà été utilisé ou n'est plus valide. Demandez un nouveau lien."
+		case "idle":
+			// SESSION-TIMEOUT-1 : expiration par inactivité (glissante).
+			// Message distinct pour que l'utilisateur comprenne QUOI s'est
+			// passé (pas un bug, la politique de session).
+			msg = "session expirée après une période d'inactivité. Reconnectez-vous."
 		}
 		writeJSONErrorMsg(w, http.StatusUnauthorized, msg)
 	case *domain.NotFoundError:

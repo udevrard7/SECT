@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { withSessionLock } from '@/lib/session-lock'
 
 export type UserRole = 'ADMIN' | 'RESPONSABLE' | 'ENSEIGNANT' | 'ETUDIANT'
 
@@ -191,9 +192,15 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     // déconnecter un étudiant en pleine passation est critique.
     // La route /api/go-auth/session retourne { transient: true } quand
     // l'erreur est transitoire : on garde l'utilisateur connecté.
+    //
+    // SESSION-TIMEOUT-1 : le fetch passe sous verrou multi-onglets
+    // (navigator.locks) — deux onglets qui hydratent leur session au
+    // démarrage ne peuvent plus rafraîchir le même refresh token en
+    // parallèle (l'onglet sérialisé repart avec l'access_token déjà
+    // renouvelé par le premier → /api/me 200, zéro rotation).
     set({ isLoading: true })
     try {
-      const resp = await fetch('/api/go-auth/session')
+      const resp = await withSessionLock(() => fetch('/api/go-auth/session', { cache: 'no-store' }))
       const session = await resp.json()
       if (session?.user) {
         get().syncFromSession(session)

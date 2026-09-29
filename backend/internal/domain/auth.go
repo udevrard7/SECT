@@ -28,6 +28,11 @@ type RefreshToken struct {
 	TokenHash string // SHA-256 du refresh token
 	ExpiresAt time.Time
 	RevokedAt *time.Time // nil = actif
+	// RotatedAt (SESSION-TIMEOUT-1) : date de dernière consommation par rotation.
+	// nil = jamais consommé. Distinct de RevokedAt (révocation administrative
+	// logout / change-password) : un token tourné reste acceptable pendant une
+	// courte fenêtre de grâce (multi-onglets, retry réseau après réponse perdue).
+	RotatedAt *time.Time
 	CreatedAt time.Time
 	UserAgent string
 	IP        string
@@ -102,16 +107,18 @@ type AuthRepository interface {
 	// Retourne nil + NotFoundError si introuvable.
 	FindRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error)
 
-	// RevokeRefreshToken marque un refresh token comme révoqué (revokedAt = now).
-	RevokeRefreshToken(ctx context.Context, tokenID string) error
+	// RotateRefreshTokenByHash (SESSION-TIMEOUT-1) : remplace
+	// RevokeRefreshTokenByHashIfActive. UPDATE atomique qui pose rotatedAt=now
+	// et retourne le token SEULEMENT s'il est consommable : non révoqué
+	// (revokedAt IS NULL) ET (jamais tourné OU tourné depuis < grâce).
+	// Le second retour est prevRotatedAt : nil = première rotation (flux normal),
+	// non-nil = replay dans la grâce (multi-onglets / retry réseau) → à
+	// journaliser côté usecase comme TOKEN_REFRESH_GRACE.
+	RotateRefreshTokenByHash(ctx context.Context, hash string, graceSeconds int) (*RefreshToken, *time.Time, error)
 
-	// RevokeRefreshTokenByHashIfActive (U10) : UPDATE atomique qui ne retourne
-	// le token que s'il était encore actif (revokedAt IS NULL). Permet d'éviter
-	// la race condition où deux requêtes concurrentes passent le check
-	// FindRefreshTokenByHash puis révoquent chacune (→ deux nouveaux tokens valides).
-	// Avec cette méthode, seule la première requête gagne ; la deuxième obtient
-	// nil → InvalidTokenError.
-	RevokeRefreshTokenByHashIfActive(ctx context.Context, hash string) (*RefreshToken, error)
+	// RevokeRefreshToken marque un refresh token comme révoqué (revokedAt = now).
+	// Kill-switch immédiat qui contourne la grâce (logout, idle-expiry).
+	RevokeRefreshToken(ctx context.Context, tokenID string) error
 
 	// RevokeAllUserRefreshTokens révoque tous les refresh tokens actifs d'un utilisateur.
 	RevokeAllUserRefreshTokens(ctx context.Context, userID string) error
@@ -210,11 +217,16 @@ type AuditLogEntry struct {
 
 // Actions d'audit standardisées
 const (
-	AuditActionLogin          = "LOGIN"
-	AuditActionLoginFailed    = "LOGIN_FAILED"
-	AuditActionLoginLocked    = "LOGIN_LOCKED"
-	AuditActionLogout         = "LOGOUT"
-	AuditActionRefreshToken   = "TOKEN_REFRESHED"
+	AuditActionLogin        = "LOGIN"
+	AuditActionLoginFailed  = "LOGIN_FAILED"
+	AuditActionLoginLocked  = "LOGIN_LOCKED"
+	AuditActionLogout       = "LOGOUT"
+	AuditActionRefreshToken = "TOKEN_REFRESHED"
+	// AuditActionRefreshGrace (SESSION-TIMEOUT-1) : un refresh token a été
+	// rejoué pendant la fenêtre de grâce de rotation. Légitime dans 99 % des
+	// cas (2e onglet, retry réseau après réponse perdue), mais un volume
+	// anormal signale un replay attack → à surveiller dans /logs.
+	AuditActionRefreshGrace   = "TOKEN_REFRESH_GRACE"
 	AuditActionChangePassword = "CHANGE_PASSWORD"
 	AuditActionPasswordReset  = "PASSWORD_RESET"
 
@@ -325,3 +337,13 @@ type InvalidTokenError struct {
 }
 
 func (e *InvalidTokenError) Error() string { return "token invalide: " + e.Reason }
+
+// IsIdleExpired (SESSION-TIMEOUT-1) : true si la dernière activité du token
+// (rotation ou création) est plus vieille que le timeout d'inactivité.
+// lastActivity = COALESCE(rotatedAt, createdAt) fourni par l'appelant.
+func (rt *RefreshToken) IsIdleExpired(lastActivity time.Time, idleTimeout time.Duration) bool {
+	if idleTimeout <= 0 {
+		return false // idle timeout désactivé
+	}
+	return time.Since(lastActivity) > idleTimeout
+}
