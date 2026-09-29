@@ -7,6 +7,7 @@ Index central de la documentation du monorepo.
 | [`worklog.md`](./worklog.md) | Journal des évolutions (Task IDs `SECT-*`) — chaque tâche notable y append une section |
 | [`desktop/`](./desktop/README.md) | Vision, installation, CI/CD, matrice de décisions + 5 ADR (Architecture Decision Records) |
 | [`mobile/`](./mobile/rbac-analysis.md) | Analyses mobile (RBAC multi-plateforme) |
+| [`ops/`](./ops/git-history-cleanup-runbook.md) | Runbooks ops (nettoyage historique git `filter-repo` — planifié) |
 | [`../frontend/docs/design-system.md`](../frontend/docs/design-system.md) | Design system frontend (tokens, composants DS) |
 | [`../.github/CI-CD.md`](../.github/CI-CD.md) | Les 6 workflows GitHub Actions : triggers, secrets, normes |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Conventions de commit, structure, sécurité, tests |
