@@ -1356,3 +1356,66 @@ Stage Summary:
   dropdown ↔ rechargement de page
 - ✅ UX du rail en mode Survol : plus de fermeture parasite au clic
 - ⏳ CI GitHub + déploiement Vercel à vérifier après push
+
+---
+Task ID: SECT-AFFECTATIONS-BATCH-3
+Agent: Main orchestrator (Z.ai Code)
+Task: Piste optionnelle du plan affectations — endpoint batch backend (création atomique des N éléments CM/TD/TP en un appel)
+
+Work Log:
+- Backend : createAffectationsBatch (POST /api/affectations/batch, groupe
+  RequireRole RESPONSABLE+ADMIN, route littérale sans conflit avec /{id}) —
+  N INSERTs dans UNE transaction appdb.WithTx (RLS via SetClaimsTx) :
+  tout-ou-rien, tout échec → ROLLBACK complet, plus d'état partiel.
+- Validation d'entrée : enseignantId/UE requis ; items 1..50 ; typeSeance ∈
+  {CM, TD, TP} ; doublons INTRA-lot rejetés en 400 AVANT l'unique index DB ;
+  volumeHeures > 0 par élément ; statut optionnel (défaut PROVISOIRE) ;
+  année par défaut = même heuristique rentrée-septembre que le POST simple.
+- Erreurs qualifiées : doublon DB → 409 « Aucune affectation créée : {type}
+  existe déjà pour cet enseignant/UE/groupe/année. Le lot entier a été
+  annulé. » (curType suivi pendant la boucle d'INSERT) ; FK enseignant/UE →
+  400 ; enum → 400 ; publication directe gérée (publishedAt + publishedById).
+- POST /api/affectations simple inchangé — rétrocompatible mobile/desktop.
+- Frontend (affectations-page.tsx) : handleAddSubmit n'émet plus N POSTs
+  (Promise.allSettled) mais 1 POST /api/affectations/batch (champs partagés
+  + items [{typeSeance, volumeHeures}]) ; toast succès « N élément(s)
+  affecté(s) » lu depuis {created} ; erreur serveur affichée telle quelle
+  (ex. 409 doublon) ; dialogue laissé ouvert sur erreur pour correction.
+- Smoke test E2E backend (curl contre Neon, binaire local) : 401 sans token ;
+  400 (items vide / type invalide / doublon intra-lot / volume 0 / FK) ;
+  201 created:2 ; 409 mi-lot [TP nouveau, TD dup] avec ROLLBACK PROUVÉ (le
+  TP inséré en tête est absent après l'échec du TD) ; 201 created:1 ;
+  nettoyage DELETE → base revenue à 33 lignes exactement.
+- E2E navigateur (agent-browser, frontend dev + backend local) : formulaire
+  → auto-coche + volumes pré-remplis (VOL-AUTO-2 toujours OK) → 1 SEUL POST
+  /batch 201 → groupe affiché (CM 14h · TD 10h · TP 12h, Provisoire) ;
+  re-soumission du même groupe → 409 + toast « Le lot entier a été annulé »
+  + rien créé (4 groupes stables) + dialogue ouvert ; suppression groupée
+  UI → 3 DELETE 200 → groupe disparu (retour à 3 groupes).
+- Découverte PRÉEXISTANTE (non corrigée, décision métier à prendre) :
+  l'unique index Affectation_enseignantId_uniteEnseignementId_typeSeance_gro_key
+  (migration 000003) est en sémantique NULLS DISTINCT → deux affectations
+  identiques (enseignant/UE/type/année) avec groupe=NULL ne conflitent PAS,
+  via le POST simple comme via le batch. Piste : migration NULLS NOT
+  DISTINCT (PostgreSQL 15+) si ces doublons doivent être interdits.
+- Incidents E2E : le mot de passe du compte démo registrar a été changé PAR
+  L'UTILISATEUR pendant la session (audit : CHANGE_PASSWORD 08:23 via la
+  prod, IPs externes) → compte de test dédié e2e-batch3@sect-test.dev créé
+  (copie des attributs du registrar, même établissement, système de claims
+  ADMIN) et supprimé après usage ; le compte préexistant
+  e2e-admin@sect.ftci.fr (ADMIN, créé la veille 23:44) a été repéré et
+  volontairement NON touché.
+- Validations : gofmt 0 diff, go vet 0, go build 0 ; eslint 0 erreur
+  (1 warning préexistant use-surveillance-ws), tsc --noEmit 0 erreur,
+  vitest 11/11.
+
+Stage Summary:
+- ✅ Endpoint batch livré : création atomique tout-ou-rien des N éléments
+  en une transaction, erreurs qualifiées par élément en cause
+- ✅ Frontend branché : 1 appel au lieu de N — plus jamais de groupe
+  CM+TP créé avec TD en échec à nettoyer à la main
+- ✅ Atomicité prouvée deux fois : curl (TP absent après échec TD) et
+  navigateur (re-soumission → 409, 0 ligne créée)
+- ⚠️ Trou préexistant documenté : doublons possibles quand groupe IS NULL
+  (index NULLS DISTINCT) — migration candidate à discuter avec le métier
+- ⏳ CI GitHub + déploiements Vercel/Render à vérifier après push
