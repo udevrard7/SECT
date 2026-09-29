@@ -1486,3 +1486,26 @@ Stage Summary:
 - 🔍 Méthodo validée pour vérifier un déploiement Vercel : HTML authentifié
   (cookies → MISS edge) + comparaison des noms de chunks contre un build
   local de référence ; les statuts GitHub et le HTTP 200 ne suffisent PAS.
+
+---
+Task ID: SECT-EMAIL-TEMPLATES-1
+Agent: main (Z.ai)
+Task: Vérifier que les templates de mail configurés dans le système sont toujours d'actualité après l'ajout des variables Resend sur Render
+
+Work Log:
+- Audit des 15 templates backend/internal/emailtpl/ : tous câblés à leurs points d'appel (facture_paid ×3, affectation_published ×1, welcome_b2c ×2, demo_request ×1, abonnement_expiration ×2, abonnement_expired ×4, student_signup_link_reminder ×2, welcome_invitation ×2, invitation ×1, student_welcome ×1, password_reset ×1, b2b_contract ×1, b2b_expiration ×1, b2b_validated ×1) — aucun template orphelin
+- Aucune URL codée en dur dans les templates : tous les liens passent par AppURL ← APP_BASE_URL (=https://sect.ftci.fr sur Render)
+- Les 10 routes frontend utilisées dans les emails testées en prod : HTTP 200 (/login, /reset-password, /inscription, /inscription-enseignant, /invitation, /b2b/verify, /abonnement-expire, /paiement/renouvellement, /etudiants, /enseignants)
+- Prix vérifiés cohérents code ↔ templates : Premium 4 900 FCFA/mois, B2B 900 FCFA/étudiant/an plancher 50 ; limites Solo (2 classes via classeesMax, 5 filières, 40 étudiants, 3 épreuves IA/mois) conformes à la migration 000055
+- Variables Render vérifiées : RESEND_API_KEY + RESEND_FROM_EMAIL=noreply@sect.ftci.fr + APP_BASE_URL=https://sect.ftci.fr (ajoutées par l'utilisateur)
+- Preuve bout-en-bout : POST /api/auth/password-reset (prod Render) → Resend → delivered, template rendu correct (bouton CTA, motif kente, lien https://sect.ftci.fr/reset-password?token=...)
+- Obsolescences détectées et corrigées : footer support@sect.ftci.fr (sous-domaine sans MX — bounce garanti, testé : ulrichdouh@ftci.fr → bounced) → ulrichdouh@gmail.com (base.go, demo_request.go, commentaire handler) ; page /paiement/erreur support@sect.app (domaine jamais possédé) → ulrichdouh@gmail.com ; .env.example RESEND_FROM_EMAIL noreply@sect.app → noreply@sect.ftci.fr
+- Anomalie outillage corrigée : l'éditeur a converti tabs→espaces sur les fichiers Go entiers ; fichiers restaurés depuis git puis retouche chirurgicale sed (diff final = 6 lignes exactement)
+- Commit 219a544 poussé vers GitHub (auteur udevrard7 <ulrichdouh@gmail.com>) → Render deploy live + Vercel deploy READY
+- Post-déploiement : nouvel email reset prod → delivered avec footer ulrichdouh@gmail.com ; bundle JS de /paiement/erreur vérifié (ulrichdouh@gmail.com présent, support@sect.app absent)
+
+Stage Summary:
+- ✅ 15/15 templates d'actualité, câblés, prix/quota/routes conformes — système email 100 % opérationnel en prod
+- ✅ Envoi réel prouvé deux fois (delivered) depuis noreply@sect.ftci.fr via Render → Resend
+- ✅ 3 adresses mortes corrigées et déployées (Render live + Vercel ready, vérifiées en prod)
+- 🔁 Revert support → quand une vraie boîte support existera (Infomaniak sur ftci.fr ou Cloudflare Email Routing sur sect.ftci.fr)
