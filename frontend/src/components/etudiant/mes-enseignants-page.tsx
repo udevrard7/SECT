@@ -77,6 +77,26 @@ const TYPE_BADGE: Record<string, { label: string; className: string }> = {
   },
 }
 
+// ─── Helper date de publication de groupe ─────────────────────────────────
+// SECT-MES-ENSEIGNANTS-COSMETIC-1 : les affectations d'un même groupe
+// (CM/TD/TP d'un enseignant ou d'une UE) peuvent être publiées à des moments
+// différents par le responsable. On affiche la période réelle
+// [plus ancienne → plus récente] au lieu de la date de la 1re affectation du
+// groupe, qui pouvait être trompeuse (ex : TP publié 3 jours après le CM).
+function publishedRangeLabel(affs: AffectationEtudiant[]): string | null {
+  const dates = affs
+    .map((a) => a.publishedAt)
+    .filter((d): d is string => Boolean(d))
+  if (dates.length === 0) return null
+  const min = dates.reduce((a, b) => (a < b ? a : b))
+  const max = dates.reduce((a, b) => (a > b ? a : b))
+  const minFmt = formatDateUTC(min)
+  const maxFmt = formatDateUTC(max)
+  return minFmt === maxFmt
+    ? `Publiée le ${minFmt}`
+    : `Publiée du ${minFmt} au ${maxFmt}`
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────
 
 export function MesEnseignantsPage() {
@@ -291,11 +311,12 @@ function MesEnseignantsTab({
               ))}
             </div>
 
-            {/* Date publication */}
-            {affs[0]?.publishedAt && (
+            {/* Date publication — période réelle du groupe (CM/TD/TP
+                peuvent être publiés séparément par le responsable) */}
+            {publishedRangeLabel(affs) && (
               <p className="text-[11px] text-muted-foreground flex items-center gap-1 pt-1">
                 <Clock className="h-3 w-3" aria-hidden="true" />
-                Publiée le {formatDateUTC(affs[0].publishedAt)}
+                {publishedRangeLabel(affs)}
               </p>
             )}
           </CardContent>
@@ -439,11 +460,12 @@ function MesUESTab({
               ))}
             </div>
 
-            {/* Date publication */}
-            {affs[0]?.publishedAt && (
+            {/* Date publication — période réelle du groupe (CM/TD/TP
+                peuvent être publiés séparément par le responsable) */}
+            {publishedRangeLabel(affs) && (
               <p className="text-[11px] text-muted-foreground flex items-center gap-1 pt-1">
                 <Clock className="h-3 w-3" aria-hidden="true" />
-                Publiée le {formatDateUTC(affs[0].publishedAt)}
+                {publishedRangeLabel(affs)}
               </p>
             )}
           </CardContent>
