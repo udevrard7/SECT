@@ -15,7 +15,9 @@ import type { NextRequest } from 'next/server'
  * vers /login même si sa session était encore valide (refresh_token 7j).
  */
 
-const PUBLIC_PATHS = ['/', '/login', '/reset-password', '/invitation', '/inscription', '/verify', '/offline', '/maintenance', '/aide', '/downloads', '/souscrire-b2c', '/souscrire-b2b', '/b2b/verify', '/paiement', '/abonnement-expire']
+// SECT-TEACHER-REG-LINK-1 : '/inscription-enseignant' ajouté (page publique
+// d'inscription enseignante via lien direct — même statut que '/inscription').
+const PUBLIC_PATHS = ['/', '/login', '/reset-password', '/invitation', '/inscription', '/inscription-enseignant', '/verify', '/offline', '/maintenance', '/aide', '/downloads', '/souscrire-b2c', '/souscrire-b2b', '/b2b/verify', '/paiement', '/abonnement-expire']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

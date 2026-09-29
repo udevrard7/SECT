@@ -36,6 +36,9 @@ type Server struct {
 	invitationUC *usecase.InvitationUseCase
 	// SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (B2C/B2B).
 	studentSignupLinkUC *usecase.StudentSignupLinkUseCase
+	// SECT-TEACHER-REG-LINK-1 : liens d'inscription direct enseignant
+	// (page /enseignants — même pattern que les liens étudiant).
+	teacherSignupLinkUC *usecase.TeacherSignupLinkUseCase
 	epreuveUC           *usecase.EpreuveUseCase
 	questionUC          *usecase.QuestionUseCase
 	sessionUC           *usecase.SessionUseCase
@@ -153,6 +156,9 @@ func NewServer(
 	// SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (ajouté en fin
 	// de signature pour minimiser le diff avec les callers existants).
 	studentSignupLinkUC *usecase.StudentSignupLinkUseCase,
+	// SECT-TEACHER-REG-LINK-1 : liens d'inscription direct enseignant (même
+	// pattern — ajouté en fin de signature pour minimiser le diff).
+	teacherSignupLinkUC *usecase.TeacherSignupLinkUseCase,
 	// SECT-ETABLISSEMENT-AUDIT-1 : AuthRepository pour le handler
 	// listEtablissementAuditLogs (lecture du journal d'audit scoped par
 	// établissement). Ajouté en fin de signature pour minimiser le diff.
@@ -180,6 +186,7 @@ func NewServer(
 		anneeUC:             anneeUC,
 		invitationUC:        invitationUC,
 		studentSignupLinkUC: studentSignupLinkUC,
+		teacherSignupLinkUC: teacherSignupLinkUC,
 		epreuveUC:           epreuveUC,
 		questionUC:          questionUC,
 		sessionUC:           sessionUC,
@@ -322,6 +329,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	// Phase 2 (SECT-REG-LINK-PHASE2-BACKEND-1) : rate-limit + Turnstile + audit.
 	r.Get("/api/student-signup/verify", s.verifyStudentSignupLink)
 	r.Post("/api/student-signup", s.acceptStudentSignup)
+
+	// SECT-TEACHER-REG-LINK-1 : endpoints publics d'inscription enseignant via
+	// lien direct (page /inscription-enseignant?token=xxx). Même design que
+	// /api/student-signup : le token du lien EST l'authentification (bypass RLS
+	// via fonctions SECURITY DEFINER), rate-limit par IP + Turnstile + audit
+	// TeacherRegistrationEvent côté handler/usecase.
+	r.Get("/api/teacher-signup/verify", s.verifyTeacherSignupLink)
+	r.Post("/api/teacher-signup", s.acceptTeacherSignup)
 
 	// SECT-REG-LINK-PHASE2-BACKEND-1 : site key publique Cloudflare Turnstile.
 	// Endpoint public (le frontend doit pouvoir récupérer la key avant de rendre
@@ -624,6 +639,22 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Get("/stats", s.studentSignupLinkStats)
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/", s.createStudentSignupLink)
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Delete("/{id}", s.revokeStudentSignupLink)
+		})
+
+		// SECT-TEACHER-REG-LINK-1 : gestion des liens d'inscription direct
+		// enseignant (page /enseignants — même pattern que les liens étudiant).
+		// Le GET / est ouvert à tous les authentifiés (RLS auto-scoping par
+		// createdById). Les mutations requièrent ADMIN ou RESPONSABLE (un
+		// ENSEIGNANT ne peut pas inviter d'autres enseignants — cohérent avec
+		// POST /api/invitations).
+		// NB : /stats DOIT être déclaré AVANT /{id} (conflit de routage chi
+		// sinon "stats" serait interprété comme un {id}).
+		r.Route("/api/teacher-signup-links", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listTeacherSignupLinks)
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Get("/stats", s.teacherSignupLinkStats)
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createTeacherSignupLink)
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.revokeTeacherSignupLink)
 		})
 
 		// /api/epreuves

@@ -242,6 +242,12 @@ const (
 	AuditActionSignupLinkCreated = "SIGNUP_LINK_CREATED"
 	AuditActionSignupLinkRevoked = "SIGNUP_LINK_REVOKED"
 
+	// SECT-TEACHER-REG-LINK-1 — actions sur les liens d'inscription
+	// enseignante (TeacherSignupLink). Même logique que les liens étudiant :
+	// la révocation est initiée par un RESPONSABLE (ou ADMIN) et journalisée
+	// avec l'établissement + la raison optionnelle.
+	AuditActionTeacherSignupLinkRevoked = "TEACHER_SIGNUP_LINK_REVOKED"
+
 	// SECT-USER-CLEANUP-INFRA-1 — actions de soft/hard-delete des users.
 	// USER_SOFT_DELETED : admin a soft-deleted un user (actif=false +
 	// deletedAt=NOW()). Le user reste en DB pour audit, sera hard-deleted

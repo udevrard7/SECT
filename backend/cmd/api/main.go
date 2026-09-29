@@ -75,6 +75,10 @@ func main() {
 	// SECT-REG-LINK-B2C-MVP-1 : liens d'inscription direct étudiant (migration 000079).
 	// 2 fonctions SECURITY DEFINER (find_student_signup_link_by_token + accept_student_signup).
 	studentSignupLinkRepo := repository.NewStudentSignupLinkRepository(pool)
+	// SECT-TEACHER-REG-LINK-1 : liens d'inscription direct enseignant (migration
+	// 000107). Même pattern — 2 fonctions SECURITY DEFINER
+	// (find_teacher_signup_link_by_token + accept_teacher_signup).
+	teacherSignupLinkRepo := repository.NewTeacherSignupLinkRepository(pool)
 	// SECT-INSCRIPTION-SIGNUP-HOOK-1 : InscriptionRepository pour le hook de
 	// création automatique d'Inscription à l'inscription étudiante (migration 000088).
 	inscriptionRepo := repository.NewInscriptionRepository(pool)
@@ -158,6 +162,13 @@ func main() {
 	// révocation d'un lien dans AuditLog (avec etablissementId + reason).
 	studentSignupLinkUC := usecase.NewStudentSignupLinkUseCase(studentSignupLinkRepo, pool, mailSvc, cfg.AppBaseURL, quotaRepo, authRepo, inscriptionRepo)
 	studentSignupLinkUC.SetLogger(func(msg string, args ...any) { logger.Warn(msg, args...) })
+	// SECT-TEACHER-REG-LINK-1 : usecase des liens d'inscription enseignant
+	// (page /enseignants — même pattern que les liens étudiant).
+	// - quotaRepo : check capitation enseignants (CheckEnseignantsQuota).
+	// - authRepo  : journalisation AuditLog (TEACHER_SIGNUP_LINK_REVOKED).
+	// - mailer    : email de bienvenue WelcomeInvitation (rôle ENSEIGNANT).
+	teacherSignupLinkUC := usecase.NewTeacherSignupLinkUseCase(teacherSignupLinkRepo, pool, mailSvc, cfg.AppBaseURL, quotaRepo, authRepo)
+	teacherSignupLinkUC.SetLogger(func(msg string, args ...any) { logger.Warn(msg, args...) })
 	// SECT-PROMOTION-BACKEND-1 : usecase de clôture d'année académique.
 	// - promoRepo : port d'accès PromotionBatch + ReglesPassage + cloturer_annee_etudiant.
 	// - authRepo  : journalisation AuditLog (PROMOTION_BATCH_STARTED — pattern
@@ -282,7 +293,7 @@ func main() {
 	// channel in-memory ne fonctionnait pas de façon fiable sur Render free
 	// (cold start tue le worker goroutine avant traitement du job).
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, authRepo, promotionUC, inscriptionRepo)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo)
 
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications.
 	// Instancié APRÈS le serveur (le hub SSE global est dans transport/http,

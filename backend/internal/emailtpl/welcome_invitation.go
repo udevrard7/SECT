@@ -2,6 +2,7 @@ package emailtpl
 
 import (
 	"fmt"
+	"html"
 	"strings"
 )
 
@@ -23,6 +24,12 @@ type WelcomeInvitationData struct {
 	LoginURL string
 	// Avantages : liste des avantages selon le rôle.
 	Avantages []string
+	// CustomMessage : message optionnel du créateur du lien (max 500 chars
+	// côté usecase) — SECT-TEACHER-REG-LINK-1. Vide = rendu inchangé
+	// (rétrocompatible avec le flux Invitation qui ne le définit pas).
+	// Affiché dans une infoBox "Message de votre responsable" si non vide.
+	// HTML-échappé pour prévenir XSS.
+	CustomMessage string
 }
 
 // WelcomeInvitationHTML génère le HTML de l'email de bienvenue après invitation.
@@ -53,6 +60,21 @@ func WelcomeInvitationHTML(d WelcomeInvitationData) string {
 		avantagesHTML += fmt.Sprintf(`<li style="margin-bottom:8px;padding-left:8px;">%s</li>`, a)
 	}
 
+	// SECT-TEACHER-REG-LINK-1 : bloc message personnalisé du créateur (optionnel).
+	// Même design que le flux étudiant (infoBox + html.EscapeString anti-XSS).
+	customMessageHTML := ""
+	if d.CustomMessage != "" {
+		customMessageHTML = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px;background-color:#FEF9E7;border-radius:12px;border:1px solid rgba(245,158,11,0.3);">
+  <tr>
+    <td style="padding:16px 20px;font-size:14px;line-height:1.7;color:#1E1B4B;">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#B45309;">Message de votre responsable</p>
+      <p style="margin:0;">` + html.EscapeString(d.CustomMessage) + `</p>
+    </td>
+  </tr>
+</table>
+`
+	}
+
 	body := `<h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:` + ColorNavy + `;letter-spacing:-0.3px;">Bienvenue sur SECT ! 🎓</h2>
 <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#4B5563;">
   ` + d.greeting() + `
@@ -69,7 +91,7 @@ func WelcomeInvitationHTML(d WelcomeInvitationData) string {
   </tr>
 </table>
 
-<!-- Avantages -->
+` + customMessageHTML + `<!-- Avantages -->
 <div style="margin:20px 0;">
   <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:` + ColorNavy + `;">Voici vos accès :</p>
   <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;color:` + ColorNavy + `;">
@@ -118,6 +140,10 @@ func WelcomeInvitationText(d WelcomeInvitationData) string {
 	}
 	if d.InviterName != "" {
 		fmt.Fprintf(&b, "  - Invité par : %s\n", d.InviterName)
+	}
+	// SECT-TEACHER-REG-LINK-1 : message personnalisé optionnel du créateur.
+	if d.CustomMessage != "" {
+		fmt.Fprintf(&b, "\nMessage de votre responsable :\n%s\n", d.CustomMessage)
 	}
 	b.WriteString("\nVos avantages :\n")
 	for _, a := range d.Avantages {

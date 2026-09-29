@@ -73,11 +73,15 @@ type expiredCandidate struct {
 }
 
 // checkAndExpire appelle les fonctions SQL expire_b2c_subscriptions +
-// expire_b2b_subscriptions + expire_student_signup_links + envoie emails.
+// expire_b2b_subscriptions + expire_student_signup_links + expire_teacher_
+// signup_links + envoie emails.
 //
 // SECT-REG-LINK-PHASE3-BACKEND-1 : ajout de expireStudentSignupLinks (marque
 // actif=false les StudentSignupLinks expirés) + sendStudentSignupLinkReminders
 // (envoie un email 24h avant expiration au créateur).
+//
+// SECT-TEACHER-REG-LINK-1 : ajout de expireTeacherSignupLinks +
+// sendTeacherSignupLinkReminders (même logique pour les liens enseignant).
 func (w *ExpireWorker) checkAndExpire(ctx context.Context) {
 	// 1. Expirer les abonnements B2C (ACTIF avec dateFin < NOW())
 	w.expireB2C(ctx)
@@ -87,6 +91,10 @@ func (w *ExpireWorker) checkAndExpire(ctx context.Context) {
 	w.expireStudentSignupLinks(ctx)
 	// 4. SECT-REG-LINK-PHASE3-BACKEND-1 — envoyer reminders 24h aux créateurs
 	w.sendStudentSignupLinkReminders(ctx)
+	// 5. SECT-TEACHER-REG-LINK-1 — expirer les TeacherSignupLinks (actif=false)
+	w.expireTeacherSignupLinks(ctx)
+	// 6. SECT-TEACHER-REG-LINK-1 — envoyer reminders 24h aux créateurs (liens enseignant)
+	w.sendTeacherSignupLinkReminders(ctx)
 }
 
 // expireB2C expire les abonnements B2C (étab PERSONNEL).
@@ -431,6 +439,140 @@ func (w *ExpireWorker) sendSignupLinkReminderEmail(ctx context.Context, c signup
 		HTML:    emailtpl.StudentSignupLinkReminderHTML(tplData),
 	}); err != nil {
 		w.logger.Error("ExpireWorker: signup link reminder email failed",
+			"linkId", c.ID, "email", c.Email, "error", err.Error())
+	}
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECT-TEACHER-REG-LINK-1 — expiration + reminders TeacherSignupLinks
+// (clones adaptés des méthodes StudentSignupLinks ci-dessus)
+// ════════════════════════════════════════════════════════════════════════════
+
+// expireTeacherSignupLinks marque actif=false les TeacherSignupLinks dont
+// expiresAt < NOW(). Appelle la fonction SQL expire_teacher_signup_links()
+// (SECURITY DEFINER — migration 000107). Pas d'email ici (anti-spam) : le
+// reminder 24h AVANT expiration est envoyé par sendTeacherSignupLinkReminders.
+func (w *ExpireWorker) expireTeacherSignupLinks(ctx context.Context) {
+	rows, err := w.dbPool.Query(ctx, `
+		SELECT o_id, o_token, o_label, o_creator_email, o_creator_name, o_etab_nom, o_expires_at
+		FROM expire_teacher_signup_links()
+	`)
+	if err != nil {
+		w.logger.Error("ExpireWorker: expire_teacher_signup_links query failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var id, token, creatorEmail, creatorName string
+		var label *string
+		var etabNom *string
+		var expiresAt time.Time
+		if err := rows.Scan(&id, &token, &label, &creatorEmail, &creatorName, &etabNom, &expiresAt); err != nil {
+			w.logger.Error("ExpireWorker: expire_teacher_signup_links scan failed", "error", err.Error())
+			continue
+		}
+		count++
+		// Pas d'email (anti-spam) — le reminder 24h est géré par
+		// sendTeacherSignupLinkReminders.
+	}
+	if count > 0 {
+		w.logger.Info("ExpireWorker: expired teacher signup links", "count", count)
+	}
+}
+
+// sendTeacherSignupLinkReminders envoie un email 24h avant expiration au
+// créateur des TeacherSignupLinks éligibles (clone de
+// sendStudentSignupLinkReminders — mêmes critères : actif, non supprimé,
+// reminder pas envoyé, expiresAt dans [now, now+24h]).
+//
+// Après envoi (ou tentative), marque expiryReminderSent=true via UPDATE direct.
+// Non bloquant : si le mailer est nil (dev mode), return immédiat.
+func (w *ExpireWorker) sendTeacherSignupLinkReminders(ctx context.Context) {
+	if w.mailer == nil {
+		return // dev mode, pas d'email
+	}
+
+	rows, err := w.dbPool.Query(ctx, `
+		SELECT s."id", s."token", s."label", s."expiresAt", s."useCount", s."maxUses",
+		       u."email", u."name",
+		       e."nom" AS etab_nom, e."type" AS etab_type
+		FROM "TeacherSignupLink" s
+		JOIN "User" u ON u."id" = s."createdById"
+		LEFT JOIN "Etablissement" e ON e."id" = s."etablissementId"
+		WHERE s."actif" = true
+		  AND s."deletedAt" IS NULL
+		  AND s."expiryReminderSent" = false
+		  AND s."expiresAt" BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
+	`)
+	if err != nil {
+		w.logger.Error("ExpireWorker: teacher signup link reminder query failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var candidates []signupLinkReminderCandidate
+	for rows.Next() {
+		var c signupLinkReminderCandidate
+		if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
+			&c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
+			w.logger.Error("ExpireWorker: teacher signup link reminder scan failed", "error", err.Error())
+			continue
+		}
+		candidates = append(candidates, c)
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	w.logger.Info("ExpireWorker: sending teacher signup link reminders", "count", len(candidates))
+
+	for _, c := range candidates {
+		w.sendTeacherSignupLinkReminderEmail(ctx, c)
+		// Marquer reminder envoyé (anti-spam) — idempotent. On marque même si
+		// l'envoi échoue pour éviter le spam de retries.
+		if _, err := w.dbPool.Exec(ctx,
+			`UPDATE "TeacherSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+			c.ID); err != nil {
+			w.logger.Error("ExpireWorker: failed to mark teacher reminder sent",
+				"linkId", c.ID, "error", err.Error())
+		}
+	}
+}
+
+// sendTeacherSignupLinkReminderEmail envoie l'email de reminder 24h au créateur
+// d'un TeacherSignupLink. Réutilise le template StudentSignupLinkReminder (le
+// libellé "lien d'inscription" est générique — seul le LinkURL diffère : la
+// page /enseignants au lieu de /etudiants).
+//
+// Non bloquant : si l'envoi échoue, on log et on continue.
+func (w *ExpireWorker) sendTeacherSignupLinkReminderEmail(ctx context.Context, c signupLinkReminderCandidate) {
+	emailCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	_ = emailCtx
+
+	label := "Sans libellé"
+	if c.Label != nil && *c.Label != "" {
+		label = *c.Label
+	}
+	tplData := emailtpl.StudentSignupLinkReminderData{
+		EmailData: emailtpl.DefaultData(c.Name, w.appBaseURL),
+		Label:     label,
+		ExpiresAt: c.ExpiresAt,
+		UseCount:  c.UseCount,
+		MaxUses:   c.MaxUses,
+		EtabNom:   c.EtabNom,
+		EtabType:  c.EtabType,
+		LinkURL:   w.appBaseURL + "/enseignants",
+	}
+	if err := w.mailer.Send(mailer.Email{
+		To:      c.Email,
+		Subject: "SECT — Votre lien d'inscription enseignant expire dans 24h",
+		Body:    emailtpl.StudentSignupLinkReminderText(tplData),
+		HTML:    emailtpl.StudentSignupLinkReminderHTML(tplData),
+	}); err != nil {
+		w.logger.Error("ExpireWorker: teacher signup link reminder email failed",
 			"linkId", c.ID, "email", c.Email, "error", err.Error())
 	}
 }

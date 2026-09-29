@@ -31,7 +31,21 @@ import {
   LayoutGrid,
   List,
   MoreHorizontal,
+  // SECT-TEACHER-REG-LINK-1 : icônes du pattern « Créer un lien d'inscription »
+  // (cloné depuis etudiants-page.tsx).
+  Link2,
+  BarChart3,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  QrCode,
+  PartyPopper,
+  Sparkles,
+  AtSign,
+  MessageCircle,
+  MessageSquare,
 } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -64,7 +78,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { PulseSkeleton } from '@/components/ds'
+import { PulseSkeleton, Badge as DSBadge } from '@/components/ds'
+import { Textarea } from '@/components/ui/textarea'
+import { QRCodeSVG } from 'qrcode.react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table,
@@ -147,6 +163,63 @@ interface InvitationItem {
 type RegistrationMode = 'invitation' | 'direct'
 type ViewMode = 'cards' | 'table'
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SECT-TEACHER-REG-LINK-1 : types pour les liens d'inscription direct
+// enseignant (clonés/adaptés depuis etudiants-page.tsx — sans filiereId/
+// niveau/requireMatricule).
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface TeacherSignupLink {
+  id: string
+  token?: string // présent dans la liste (permettre de copier le lien à nouveau)
+  url?: string // URL complète prête à copier
+  etablissementId: string
+  createdById: string
+  expiresAt: string
+  maxUses: number | null
+  useCount: number
+  actif: boolean
+  label: string | null
+  createdAt: string
+  emailDomainRestriction?: string | null
+  customWelcomeMessage?: string | null
+}
+
+interface CreateTeacherLinkResponse {
+  id: string
+  token: string
+  url: string
+  expiresAt: string
+  maxUses: number | null
+  label: string | null
+  etablissementId: string
+  createdAt: string
+  emailDomainRestriction?: string | null
+  customWelcomeMessage?: string | null
+}
+
+// Agrégats stats retournés par GET /api/teacher-signup-links/stats.
+interface TeacherSignupLinkStats {
+  total: number
+  active: number
+  expired: number
+  revoked: number
+  totalUses: number
+  expiringSoon: number
+  successCount: number
+  failureCount: number
+  topLinks: Array<{
+    id: string
+    label: string
+    useCount: number
+    maxUses: number | null
+    expiresAt: string
+    actif: boolean
+  }>
+  dailyCreations: Array<{ day: string; count: number }>
+  failureBreakdown: Record<string, number>
+}
+
 const NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2'] as const
 
 // ─── Utility functions ───
@@ -214,6 +287,74 @@ function parseCSV(text: string): Array<{ name: string; email: string }> {
     })
     .filter((r) => r.name && r.email)
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECT-TEACHER-REG-LINK-1 : helpers du pattern « lien d'inscription »
+// (clonés depuis etudiants-page.tsx).
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getExpiryCountdown(expiresAt: string): string {
+  const now = new Date()
+  const expiry = new Date(expiresAt)
+  const diff = expiry.getTime() - now.getTime()
+
+  if (diff <= 0) return 'Expirée'
+
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (hours > 24) {
+    const days = Math.floor(hours / 24)
+    return `${days}j ${hours % 24}h`
+  }
+  if (hours > 0) return `${hours}h ${minutes}min`
+  return `${minutes}min`
+}
+
+function isLinkExpired(expiresAt: string): boolean {
+  return new Date(expiresAt).getTime() <= Date.now()
+}
+
+// Presets de durée de validité du lien d'inscription (valeurs en heures,
+// cohérent avec le champ backend expiresInHours). Default = 30 jours.
+const LINK_VALIDITY_PRESETS: Array<{ hours: number; label: string; hint: string }> = [
+  { hours: 24, label: '24 h', hint: '1 jour' },
+  { hours: 24 * 7, label: '7 j', hint: '1 semaine' },
+  { hours: 24 * 14, label: '14 j', hint: '2 semaines' },
+  { hours: 24 * 30, label: '30 j', hint: '1 mois' },
+  { hours: 24 * 90, label: '90 j', hint: '3 mois' },
+]
+
+// Formate un nombre d'heures en libellé lisible (ex: 720 → "30 jours").
+function formatValidityLabel(hours: number): string {
+  if (hours < 24) return `${hours} heure${hours > 1 ? 's' : ''}`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days} jour${days > 1 ? 's' : ''}`
+  const months = Math.round(days / 30)
+  return `${months} mois`
+}
+
+// Calcule la date d'expiration affichée dans le formulaire (now + hours).
+function computeExpiryDate(hours: number): string {
+  const d = new Date(Date.now() + hours * 60 * 60 * 1000)
+  return d.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+// Couleurs des confettis de l'écran de succès (palette Savane EdTech).
+const CONFETTI_COLORS = [
+  '#84CC16', // lime (success)
+  '#F59E0B', // gold
+  '#C2410C', // terracotta
+  '#1E1B4B', // navy (inscription dark)
+  '#3B82F6', // info blue
+  '#84CC16',
+]
 
 function getInitials(name: string): string {
   return name
@@ -392,6 +533,198 @@ export function EnseignantsPage() {
 
   // ─── View mode state ───
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // SECT-TEACHER-REG-LINK-1 : liens d'inscription direct enseignant
+  // (pattern cloné depuis etudiants-page.tsx — wizard 3 étapes, liste,
+  // stats, révocation avec raison journalisée dans AuditLog).
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // 3 Dialogs séparés : wizard de création / liens existants / statistiques.
+  const [showWizard, setShowWizard] = useState(false)
+  const [showLinksDialog, setShowLinksDialog] = useState(false)
+  const [showStatsDialog, setShowStatsDialog] = useState(false)
+  // Étape courante du wizard (1-2-3).
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
+  // Lien créé (écran de succès — token + url retournés une seule fois).
+  const [createdLink, setCreatedLink] = useState<CreateTeacherLinkResponse | null>(null)
+  const [isCreatingLink, setIsCreatingLink] = useState(false)
+
+  // Champs du wizard.
+  // Étape 1 : libellé (les enseignants n'ont pas de filière/niveau à
+  // l'inscription — les affectations se gèrent après embauche).
+  const [tLinkLabel, setTLinkLabel] = useState('')
+  // Étape 2 : restrictions (domaine email B2B + max inscriptions) + message.
+  const [tLinkMaxUses, setTLinkMaxUses] = useState('')
+  const [tLinkEmailDomain, setTLinkEmailDomain] = useState('')
+  const [tLinkCustomMessage, setTLinkCustomMessage] = useState('')
+  // Étape 3 : durée de validité (heures ; défaut 30 jours).
+  const [tLinkValidityHours, setTLinkValidityHours] = useState(30 * 24)
+  const [tLinkValidityCustom, setTLinkValidityCustom] = useState('')
+
+  // Révocation : lien cible + raison optionnelle (journalisée dans AuditLog).
+  const [revokeLinkTarget, setRevokeLinkTarget] = useState<TeacherSignupLink | null>(null)
+  const [revokeReason, setRevokeReason] = useState('')
+  const [isRevokingLink, setIsRevokingLink] = useState(false)
+
+  // Query TanStack : lister les liens existants (fetch déclenché à l'ouverture
+  // du Dialog « Liens existants » — enabled: showLinksDialog).
+  const teacherSignupLinksQuery = useQuery<{ links: TeacherSignupLink[] }>({
+    queryKey: ['teacher-signup-links'],
+    queryFn: async () => {
+      const res = await fetch('/api/teacher-signup-links', { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch teacher signup links')
+      return res.json()
+    },
+    enabled: showLinksDialog,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const teacherSignupLinks = teacherSignupLinksQuery.data?.links ?? []
+  const isLoadingTeacherSignupLinks =
+    teacherSignupLinksQuery.isFetching && !teacherSignupLinksQuery.data
+
+  // Agrégats stats (lazy fetch — déclenché à l'ouverture du Dialog Stats).
+  const teacherStatsQuery = useQuery<TeacherSignupLinkStats>({
+    queryKey: ['teacher-signup-links-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/teacher-signup-links/stats', { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch stats')
+      return res.json()
+    },
+    enabled: showStatsDialog,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Ouvrir le wizard de création (3 étapes) — reset complet.
+  const handleOpenTeacherWizard = () => {
+    setTLinkLabel('')
+    setTLinkMaxUses('')
+    setTLinkEmailDomain('')
+    setTLinkCustomMessage('')
+    setTLinkValidityHours(30 * 24)
+    setTLinkValidityCustom('')
+    setCreatedLink(null)
+    setIsCreatingLink(false)
+    setWizardStep(1)
+    setShowWizard(true)
+  }
+
+  // Fermer le wizard — reset complet pour la prochaine ouverture.
+  const handleCloseTeacherWizard = () => {
+    setShowWizard(false)
+    setCreatedLink(null)
+    setTLinkLabel('')
+    setTLinkMaxUses('')
+    setTLinkEmailDomain('')
+    setTLinkCustomMessage('')
+    setTLinkValidityHours(30 * 24)
+    setTLinkValidityCustom('')
+    setWizardStep(1)
+  }
+
+  // Créer un nouveau lien d'inscription enseignant (POST /api/teacher-signup-links).
+  // Ne logue JAMAIS le token dans la console (sécurité frontend).
+  const handleCreateTeacherLink = async () => {
+    setIsCreatingLink(true)
+    try {
+      const body: Record<string, string | number> = {}
+      if (tLinkLabel.trim()) body.label = tLinkLabel.trim()
+      if (tLinkMaxUses) {
+        const n = parseInt(tLinkMaxUses, 10)
+        if (!Number.isNaN(n) && n > 0) body.maxUses = n
+      }
+      // Restriction de domaine email (B2B). Normalisation : trim + strip '@'
+      // initial + lower. Validation regex côté frontend (le backend refait la
+      // même validation en defense in depth).
+      if (tLinkEmailDomain.trim()) {
+        const d = tLinkEmailDomain.trim().replace(/^@/, '').toLowerCase()
+        if (!/^[a-z0-9.-]+$/.test(d)) {
+          toast.error('Domaine invalide', { description: 'Exemple : univ-ci.edu' })
+          setIsCreatingLink(false)
+          return
+        }
+        body.emailDomainRestriction = d
+      }
+      // Message de bienvenue personnalisé : trim + max 500 chars (backend idem).
+      if (tLinkCustomMessage.trim()) {
+        const msg = tLinkCustomMessage.trim()
+        if (msg.length > 500) {
+          toast.error('Message trop long', { description: 'Maximum 500 caractères.' })
+          setIsCreatingLink(false)
+          return
+        }
+        body.customWelcomeMessage = msg
+      }
+      // Durée de validité personnalisée : on n'envoie expiresInHours que si
+      // != 720 (30j, valeur par défaut du backend — rétro-compatibilité).
+      if (tLinkValidityHours !== 30 * 24) {
+        if (tLinkValidityHours < 1 || tLinkValidityHours > 24 * 365) {
+          toast.error('Durée invalide', {
+            description: 'La validité doit être comprise entre 1 heure et 365 jours.',
+          })
+          setIsCreatingLink(false)
+          return
+        }
+        body.expiresInHours = tLinkValidityHours
+      }
+      const res = await fetch('/api/teacher-signup-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de la création du lien')
+      }
+      setCreatedLink(data as CreateTeacherLinkResponse)
+      queryClient.invalidateQueries({ queryKey: ['teacher-signup-links'] })
+      toast.success('Lien généré', {
+        description: 'Partagez-le aux enseignants concernés.',
+      })
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de créer le lien.',
+      })
+    } finally {
+      setIsCreatingLink(false)
+    }
+  }
+
+  // Révoquer un lien (DELETE /api/teacher-signup-links/{id}) — soft delete.
+  // La raison optionnelle est journalisée dans l'AuditLog de l'établissement.
+  const handleRevokeTeacherLink = async () => {
+    if (!revokeLinkTarget) return
+    setIsRevokingLink(true)
+    try {
+      const res = await fetch(`/api/teacher-signup-links/${revokeLinkTarget.id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: revokeReason.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Erreur lors de la révocation')
+      }
+      queryClient.invalidateQueries({ queryKey: ['teacher-signup-links'] })
+      toast.success('Lien révoqué', {
+        description: revokeReason.trim()
+          ? 'Le lien a été révoqué et journalisé dans l\'audit de l\'établissement.'
+          : 'Le lien a été révoqué et journalisé dans l\'audit.',
+      })
+      setRevokeLinkTarget(null)
+      setRevokeReason('')
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de révoquer le lien.',
+      })
+    } finally {
+      setIsRevokingLink(false)
+    }
+  }
 
   // ─── Bulk operations state ───
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -1151,6 +1484,55 @@ export function EnseignantsPage() {
             <Upload className="h-4 w-4" />
             Importer CSV
           </Button>
+          {/* SECT-TEACHER-REG-LINK-1 : lien d'inscription direct enseignant
+              (même pattern que la page /etudiants). Masqué pour l'ADMIN (pas
+              d'établissement rattaché → le usecase refuse). Visible pour
+              RESPONSABLE (B2B). 3 entrées : Créer un lien (wizard 3 étapes),
+              Liens existants (liste + révocation), Statistiques (KPIs). */}
+          {user?.role !== 'ADMIN' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="Actions d'inscription enseignante">
+                  <Link2 className="h-4 w-4" />
+                  Inscription
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64" sideOffset={4}>
+                <DropdownMenuItem
+                  onClick={handleOpenTeacherWizard}
+                  className="items-start gap-2.5 focus:bg-success/10 focus:text-accent-foreground hover:bg-success/10"
+                >
+                  <Plus className="h-4 w-4 text-success-text" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-success-text">Créer un lien</span>
+                    <span className="text-xs text-muted-foreground">Wizard 3 étapes : contexte, restrictions, validité</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setShowLinksDialog(true)}
+                  className="items-start gap-2.5"
+                >
+                  <List className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex flex-col gap-0.5">
+                    <span>Liens existants</span>
+                    <span className="text-xs text-muted-foreground">Consulter, révoquer les liens déjà créés</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowStatsDialog(true)}
+                  className="items-start gap-2.5"
+                >
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex flex-col gap-0.5">
+                    <span>Statistiques</span>
+                    <span className="text-xs text-muted-foreground">KPIs, top liens, échecs, créations/jour</span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button className="bg-success hover:bg-success/90" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
             Ajouter un enseignant
@@ -2517,6 +2899,1143 @@ export function EnseignantsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECT-TEACHER-REG-LINK-1 : (1) Wizard Dialog — 3 étapes + écran de
+          succès (cloné depuis etudiants-page.tsx, adapté enseignant : pas de
+          filière/niveau/matricule).
+          ══════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={showWizard} onOpenChange={(open) => { if (!open) handleCloseTeacherWizard() }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-success-text" />
+              {createdLink ? 'Lien créé avec succès' : 'Créer un lien d\'inscription enseignant'}
+            </DialogTitle>
+            <DialogDescription>
+              {createdLink
+                ? undefined
+                : 'Partagez ce lien aux enseignants. Ils s\'inscrivent eux-mêmes, votre équipe se constitue automatiquement.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdLink ? (
+            /* ─── Écran de succès — animations Framer Motion (stagger + spring
+                + pulse rings), icône success animée avec sparkles, share card
+                unifiée (QR + URL + actions de partage), badges métadonnées. ─── */
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
+              }}
+              className="relative space-y-4"
+            >
+              {/* Background glow — halo subtil derrière l'écran de succès */}
+              <motion.div
+                aria-hidden
+                className="absolute top-0 right-0 w-40 h-40 rounded-full bg-success/10 blur-3xl pointer-events-none"
+                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              />
+
+              {/* Icône succès animée (spring pop-in + pulse rings + sparkles + confetti) */}
+              <motion.div
+                variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
+                className="relative flex flex-col items-center text-center py-2"
+              >
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, scale: 0 },
+                    visible: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 200, damping: 15 } },
+                  }}
+                  className="relative flex h-16 w-16 items-center justify-center mb-3"
+                >
+                  {/* Pulse rings */}
+                  <motion.div
+                    aria-hidden
+                    className="absolute inset-0 rounded-full bg-success/20"
+                    animate={{ scale: [1, 1.6], opacity: [0.6, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+                  />
+                  <motion.div
+                    aria-hidden
+                    className="absolute inset-0 rounded-full bg-success/15"
+                    animate={{ scale: [1, 1.8], opacity: [0.4, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
+                  />
+
+                  {/* Confetti burst — 10 particules */}
+                  {CONFETTI_COLORS.map((color, i) => {
+                    const angle = (i / CONFETTI_COLORS.length) * Math.PI * 2
+                    const distance = 38
+                    return (
+                      <motion.div
+                        key={`confetti-${i}`}
+                        aria-hidden
+                        className="absolute h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: color, left: '50%', top: '50%' }}
+                        initial={{ x: 0, y: 0, opacity: 0, scale: 0 }}
+                        animate={{
+                          x: Math.cos(angle) * distance,
+                          y: Math.sin(angle) * distance,
+                          opacity: [0, 1, 0],
+                          scale: [0, 1, 0.5],
+                        }}
+                        transition={{ duration: 1, delay: 0.35, ease: 'easeOut' }}
+                      />
+                    )
+                  })}
+
+                  {/* Icône principale — gradient + ombre colorée */}
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-success to-success/80 shadow-lg shadow-success/30">
+                    <CheckCircle2 className="h-8 w-8 text-success-foreground" />
+                  </div>
+
+                  {/* Sparkles autour de l'icône */}
+                  <motion.div
+                    aria-hidden
+                    className="absolute -top-1 -right-1 text-gold"
+                    animate={{ scale: [0, 1.2, 0], rotate: [0, 180, 360] }}
+                    transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </motion.div>
+                  <motion.div
+                    aria-hidden
+                    className="absolute -bottom-1 -left-1 text-gold/70"
+                    animate={{ scale: [0, 1, 0], rotate: [0, -180, -360] }}
+                    transition={{ duration: 2.4, repeat: Infinity, delay: 0.9 }}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                  </motion.div>
+                </motion.div>
+
+                <motion.div
+                  variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                  className="flex items-center gap-1.5 mb-1"
+                >
+                  <PartyPopper className="h-4 w-4 text-gold" />
+                  <h3 className="text-base font-semibold text-foreground">
+                    Lien d&apos;inscription créé&nbsp;!
+                  </h3>
+                </motion.div>
+                <motion.p
+                  variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                  className="text-sm text-muted-foreground mb-3 max-w-md"
+                >
+                  Voici votre lien d&apos;inscription enseignant. Partagez-le aux candidats —
+                  ils s&apos;inscrivent en moins de 2 minutes.
+                </motion.p>
+              </motion.div>
+
+              {/* Share Card — QR + URL unifiés */}
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+                }}
+                className="relative rounded-2xl border-2 border-success/30 bg-gradient-to-br from-success/5 via-card to-info/5 p-5 overflow-hidden"
+              >
+                {/* Bande kent décorative en haut */}
+                <div
+                  aria-hidden
+                  className="absolute top-0 left-0 right-0 h-1"
+                  style={{
+                    background:
+                      'linear-gradient(90deg, #84CC16 0%, #84CC16 25%, #C2410C 25%, #C2410C 50%, #F59E0B 50%, #F59E0B 75%, #1E1B4B 75%)',
+                  }}
+                />
+
+                {/* Header de la carte */}
+                <div className="flex items-center gap-2 mb-4 mt-1">
+                  <QrCode className="h-4 w-4 text-success-text" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-success-text">
+                    Carte de partage
+                  </p>
+                  <Zap className="h-3.5 w-3.5 text-gold ml-auto" aria-hidden />
+                </div>
+
+                {/* QR + URL côte à côte (sm+) ou empilés (mobile) */}
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  {/* QR code */}
+                  <div className="flex-shrink-0 p-3 bg-white rounded-xl shadow-md">
+                    <QRCodeSVG
+                      value={createdLink.url}
+                      size={140}
+                      level="M"
+                      marginSize={0}
+                      aria-label="QR code d inscription enseignant"
+                    />
+                  </div>
+
+                  {/* URL + bouton copier */}
+                  <div className="flex-1 w-full space-y-2">
+                    <Label htmlFor="created-teacher-link-url" className="text-xs text-muted-foreground">
+                      Lien d&apos;inscription enseignant
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="created-teacher-link-url"
+                        readOnly
+                        value={createdLink.url}
+                        className="font-mono text-xs h-10"
+                        onFocus={(e) => e.currentTarget.select()}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyToClipboard(createdLink.url, 'Lien')}
+                        aria-label="Copier le lien"
+                        className="h-10"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Scannez le QR code ou partagez le lien. Les enseignants s&apos;inscrivent
+                      en moins de 2 minutes.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions de partage unifiées — WhatsApp / Copier message */}
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-border/50">
+                  <motion.a
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    href={`https://wa.me/?text=${encodeURIComponent('Rejoignez notre équipe pédagogique sur SECT : ' + createdLink.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-success/10 border border-success/30 px-3 py-2 text-sm font-medium text-success-text hover:bg-success/20 transition-colors"
+                  >
+                    <Send className="h-4 w-4" />
+                    WhatsApp
+                  </motion.a>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    onClick={() =>
+                      handleCopyToClipboard(
+                        `Rejoignez notre équipe pédagogique sur SECT : ${createdLink.url}`,
+                        'Message de partage',
+                      )
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-muted/40 border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copier le message
+                  </motion.button>
+                </div>
+              </motion.div>
+
+              {/* Badges métadonnées */}
+              <motion.div
+                variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
+                className="flex flex-wrap gap-2"
+              >
+                <DSBadge variant="info" size="sm">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Expire le {formatDateTimeFR(createdLink.expiresAt)}
+                </DSBadge>
+                {createdLink.maxUses != null ? (
+                  <DSBadge variant="warning" size="sm">
+                    <Users className="h-3 w-3 mr-1" />
+                    Max {createdLink.maxUses} inscriptions
+                  </DSBadge>
+                ) : (
+                  <DSBadge variant="success" size="sm">
+                    <Users className="h-3 w-3 mr-1" />
+                    Illimité
+                  </DSBadge>
+                )}
+                {createdLink.emailDomainRestriction && (
+                  <DSBadge variant="danger" size="sm">
+                    <AtSign className="h-3 w-3 mr-1" />
+                    @{createdLink.emailDomainRestriction}
+                  </DSBadge>
+                )}
+                {createdLink.customWelcomeMessage && (
+                  <DSBadge variant="info" size="sm">
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    Message perso
+                  </DSBadge>
+                )}
+              </motion.div>
+
+              {/* Message personnalisé (preview si défini) */}
+              {createdLink.customWelcomeMessage && (
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 12 },
+                    visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
+                  }}
+                  className="rounded-md bg-info/10 border border-info/20 p-3 space-y-1"
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-info">
+                    <MessageSquare className="h-3 w-3" />
+                    Message aux Enseignants
+                  </div>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">
+                    {createdLink.customWelcomeMessage}
+                  </p>
+                </motion.div>
+              )}
+
+              {/* Actions finales — Fermer + Créer un autre lien */}
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0, transition: { delay: 0.5, duration: 0.4, ease: 'easeOut' } },
+                }}
+                className="flex flex-wrap gap-2 pt-2"
+              >
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1 min-w-[120px]">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCloseTeacherWizard}
+                    className="w-full"
+                  >
+                    Fermer
+                  </Button>
+                </motion.div>
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1 min-w-[160px]">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="w-full bg-gradient-to-r from-success to-success/80 hover:from-success/90 hover:to-success/70"
+                    onClick={() => {
+                      setCreatedLink(null)
+                      setTLinkLabel('')
+                      setTLinkMaxUses('')
+                      setTLinkEmailDomain('')
+                      setTLinkCustomMessage('')
+                      setTLinkValidityHours(30 * 24)
+                      setTLinkValidityCustom('')
+                      setWizardStep(1)
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Créer un autre lien
+                  </Button>
+                </motion.div>
+              </motion.div>
+            </motion.div>
+          ) : (
+            /* ─── Wizard 3 étapes + StepIndicator ─── */
+            <div className="space-y-5">
+              <TeacherWizardStepIndicator currentStep={wizardStep} />
+
+              {wizardStep === 1 && (
+                /* ── Step 1 : Contexte ── */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <GraduationCap className="h-4 w-4 text-info" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-info">
+                      Étape 1 — Contexte du lien
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="t-link-label" className="text-sm">
+                        Libellé <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Input
+                        id="t-link-label"
+                        placeholder="ex: Vacataires Maths 2026"
+                        value={tLinkLabel}
+                        onChange={(e) => setTLinkLabel(e.target.value)}
+                        className="h-10"
+                      />
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Un libellé pour retrouver ce lien dans vos statistiques. Les enseignants
+                        rejoignent votre établissement ; leurs affectations aux filières se
+                        gèrent après leur inscription.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleCloseTeacherWizard}
+                      aria-label="Annuler et fermer le wizard"
+                    >
+                      <X className="h-4 w-4 mr-1.5" />
+                      Annuler
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setWizardStep(2)}
+                      className="bg-success hover:bg-success/90 text-success-foreground"
+                    >
+                      Continuer
+                      <ChevronRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 2 && (
+                /* ── Step 2 : Restrictions & message ── */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4 text-gold" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gold">
+                      Étape 2 — Restrictions &amp; message
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-card/40 p-4">
+                    {/* Restriction de domaine email (B2B). */}
+                    <div className="space-y-2">
+                      <Label htmlFor="t-link-email-domain" className="flex items-center gap-1.5 text-sm">
+                        <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+                        Domaine email autorisé <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Input
+                        id="t-link-email-domain"
+                        type="text"
+                        placeholder="ex: univ-ci.edu"
+                        value={tLinkEmailDomain}
+                        onChange={(e) => setTLinkEmailDomain(e.target.value)}
+                        className="h-10"
+                        aria-describedby="t-link-email-domain-hint"
+                      />
+                      <p id="t-link-email-domain-hint" className="text-xs text-muted-foreground leading-relaxed">
+                        Laissez vide pour autoriser tous les domaines. Ex: univ-ci.edu
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="t-link-max-uses" className="text-sm">
+                        Max inscriptions <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Input
+                        id="t-link-max-uses"
+                        type="number"
+                        min={1}
+                        placeholder="Vide = illimité"
+                        value={tLinkMaxUses}
+                        onChange={(e) => setTLinkMaxUses(e.target.value)}
+                        className="h-10"
+                        aria-describedby="t-link-max-uses-hint"
+                      />
+                      <p id="t-link-max-uses-hint" className="text-xs text-muted-foreground leading-relaxed">
+                        Vide = illimité. Une fois le quota atteint, le lien désactive automatiquement.
+                      </p>
+                    </div>
+
+                    {/* Message de bienvenue personnalisé (optionnel, max 500 chars). */}
+                    <div className="space-y-2">
+                      <Label htmlFor="t-link-custom-message" className="flex items-center gap-1.5 text-sm">
+                        <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                        Message de bienvenue <span className="text-muted-foreground font-normal">(optionnel)</span>
+                      </Label>
+                      <Textarea
+                        id="t-link-custom-message"
+                        placeholder="Ex : Bienvenue dans l'équipe ! Le démarrage se fait le lundi en salle 12."
+                        value={tLinkCustomMessage}
+                        onChange={(e) => setTLinkCustomMessage(e.target.value)}
+                        maxLength={500}
+                        rows={3}
+                        className="resize-none"
+                        aria-describedby="t-link-custom-message-hint"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <p id="t-link-custom-message-hint" className="text-xs text-muted-foreground leading-relaxed">
+                          Affiché dans l&apos;email de bienvenue des enseignants.
+                        </p>
+                        <span className={`text-xs font-mono tabular-nums ${tLinkCustomMessage.length >= 480 ? 'text-warning' : 'text-muted-foreground'}`}>
+                          {tLinkCustomMessage.length}/500
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setWizardStep(1)}
+                      aria-label="Revenir à l'étape précédente"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1.5" />
+                      Retour
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setWizardStep(3)}
+                      className="bg-success hover:bg-success/90 text-success-foreground"
+                    >
+                      Continuer
+                      <ChevronRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 3 && (
+                /* ── Step 3 : Validité & Confirmation ── */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-warning" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-warning">
+                      Étape 3 — Validité &amp; confirmation
+                    </span>
+                  </div>
+
+                  {/* Durée de validité */}
+                  <div className="space-y-3 rounded-lg border-2 border-warning/30 bg-warning/5 p-4">
+                    <div className="flex items-center gap-1.5 pb-1">
+                      <Clock className="h-4 w-4 text-warning" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-warning">
+                        Durée de validité du lien
+                      </span>
+                    </div>
+
+                    {/* Presets : 5 durées rapides */}
+                    <div className="flex flex-wrap gap-2">
+                      {LINK_VALIDITY_PRESETS.map((preset) => {
+                        const isActive = tLinkValidityCustom === '' && tLinkValidityHours === preset.hours
+                        return (
+                          <button
+                            key={preset.hours}
+                            type="button"
+                            onClick={() => {
+                              setTLinkValidityHours(preset.hours)
+                              setTLinkValidityCustom('')
+                            }}
+                            aria-pressed={isActive}
+                            className={`group flex min-w-[64px] flex-col items-center rounded-md border px-3 py-2 transition-all ${
+                              isActive
+                                ? 'border-success bg-success/15 text-success-text shadow-sm'
+                                : 'border-border bg-background hover:border-warning/40 hover:bg-warning/10 text-foreground'
+                            }`}
+                          >
+                            <span className="text-sm font-semibold leading-none">{preset.label}</span>
+                            <span className={`mt-1 text-[10px] leading-none ${isActive ? 'text-success-text/80' : 'text-muted-foreground'}`}>
+                              {preset.hint}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Champ custom : nombre de jours */}
+                    <div className="flex items-end gap-2 pt-1">
+                      <div className="flex-1 space-y-2">
+                        <Label htmlFor="t-link-validity-custom" className="text-xs text-muted-foreground">
+                          Ou durée personnalisée (en jours)
+                        </Label>
+                        <Input
+                          id="t-link-validity-custom"
+                          type="number"
+                          min={1}
+                          max={365}
+                          placeholder="ex: 45"
+                          value={tLinkValidityCustom}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setTLinkValidityCustom(v)
+                            const days = parseInt(v, 10)
+                            if (!Number.isNaN(days) && days >= 1 && days <= 365) {
+                              setTLinkValidityHours(days * 24)
+                            }
+                          }}
+                          className="h-10"
+                          aria-describedby="t-link-validity-custom-hint"
+                        />
+                      </div>
+                      <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3">
+                        <span className="text-sm font-medium text-muted-foreground">jours</span>
+                      </div>
+                    </div>
+                    <p id="t-link-validity-custom-hint" className="text-xs text-muted-foreground leading-relaxed">
+                      Entre 1 et 365 jours. Au-delà, créez un nouveau lien.
+                    </p>
+
+                    {/* Affichage de l'expiration calculée */}
+                    <div className="flex items-center gap-2 rounded-md border border-info/20 bg-info/5 px-3 py-2">
+                      <Clock className="h-4 w-4 flex-shrink-0 text-info" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs leading-tight text-info">
+                          <span className="font-semibold">{formatValidityLabel(tLinkValidityHours)}</span>
+                          {' '}— expire le{' '}
+                          <span className="font-mono font-semibold">{computeExpiryDate(tLinkValidityHours)}</span>
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+                          Vous pourrez révoquer ce lien à tout moment.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Récapitulatif (read-only) */}
+                  <div className="rounded-lg border border-border/60 bg-muted/30 p-4 space-y-2">
+                    <div className="flex items-center gap-1.5 pb-1">
+                      <CheckCircle2 className="h-4 w-4 text-success-text" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-success-text">
+                        Récapitulatif
+                      </span>
+                    </div>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Libellé</dt>
+                        <dd className="font-medium truncate">
+                          {tLinkLabel.trim() || <span className="text-muted-foreground italic">Sans libellé</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Domaine email</dt>
+                        <dd className="font-medium truncate">
+                          {tLinkEmailDomain.trim()
+                            ? `@${tLinkEmailDomain.trim().replace(/^@/, '')}`
+                            : <span className="text-muted-foreground italic">Tous</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Max inscriptions</dt>
+                        <dd className="font-medium">
+                          {tLinkMaxUses
+                            ? tLinkMaxUses
+                            : <span className="text-muted-foreground italic">Illimité</span>}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start">
+                        <dt className="text-muted-foreground">Durée de validité</dt>
+                        <dd className="font-medium">{formatValidityLabel(tLinkValidityHours)}</dd>
+                      </div>
+                      <div className="flex justify-between sm:flex-col sm:items-start sm:col-span-2">
+                        <dt className="text-muted-foreground">Message de bienvenue</dt>
+                        <dd className="font-medium truncate max-w-full">
+                          {tLinkCustomMessage.trim()
+                            ? <span className="truncate">{tLinkCustomMessage.trim().slice(0, 80)}{tLinkCustomMessage.trim().length > 80 ? '…' : ''}</span>
+                            : <span className="text-muted-foreground italic">Aucun</span>}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setWizardStep(2)}
+                      aria-label="Revenir à l'étape précédente"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1.5" />
+                      Retour
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleCreateTeacherLink}
+                      disabled={isCreatingLink}
+                      className="bg-success hover:bg-success/90 text-success-foreground font-semibold"
+                    >
+                      {isCreatingLink ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Génération...
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="h-4 w-4" />
+                          Créer le lien
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECT-TEACHER-REG-LINK-1 : (2) Liens existants Dialog
+          ══════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={showLinksDialog} onOpenChange={setShowLinksDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <List className="h-5 w-5 text-info" />
+              Liens d&apos;inscription enseignant existants
+            </DialogTitle>
+            <DialogDescription>
+              {teacherSignupLinks.length > 0
+                ? `${teacherSignupLinks.length} lien(s) — vos liens d'inscription enseignant`
+                : 'Consultez, gérez et révoquez les liens déjà créés'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto max-h-[65vh] pr-1 scrollbar-thin space-y-2">
+            {isLoadingTeacherSignupLinks ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <PulseSkeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : teacherSignupLinks.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                <Link2 className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">Aucun lien créé pour le moment.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Utilisez « Créer un lien » pour générer votre premier lien d&apos;inscription enseignant.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {teacherSignupLinks.map((link) => {
+                  const expired = isLinkExpired(link.expiresAt)
+                  const placesRestantes =
+                    link.maxUses != null ? Math.max(0, link.maxUses - link.useCount) : null
+                  return (
+                    <div
+                      key={link.id}
+                      className={`rounded-lg border p-3 space-y-2 ${
+                        expired || !link.actif
+                          ? 'border-destructive/30 bg-destructive/5 opacity-75'
+                          : 'border-border'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">
+                            {link.label || <span className="text-muted-foreground italic">Sans libellé</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Créé le {formatDateFR(link.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {!link.actif && (
+                            <DSBadge variant="danger" size="sm">Révoqué</DSBadge>
+                          )}
+                          {link.actif && expired && (
+                            <DSBadge variant="warning" size="sm">Expiré</DSBadge>
+                          )}
+                          {link.actif && !expired && (
+                            <DSBadge variant="success" size="sm">Actif</DSBadge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        {link.emailDomainRestriction && (
+                          <DSBadge variant="info" size="sm">
+                            <AtSign className="h-3 w-3 mr-0.5" />
+                            @{link.emailDomainRestriction}
+                          </DSBadge>
+                        )}
+                        {link.customWelcomeMessage && (
+                          <DSBadge variant="info" size="sm">
+                            <MessageSquare className="h-3 w-3 mr-0.5" />
+                            Message perso
+                          </DSBadge>
+                        )}
+                        <span className="text-muted-foreground">
+                          <Users className="h-3 w-3 inline mr-0.5" />
+                          {link.useCount}
+                          {link.maxUses != null ? ` / ${link.maxUses}` : ' inscriptions'}
+                          {placesRestantes != null && placesRestantes === 0 && ' (complet)'}
+                        </span>
+                        <span className="text-muted-foreground">
+                          <Clock className="h-3 w-3 inline mr-0.5" />
+                          {getExpiryCountdown(link.expiresAt)}
+                        </span>
+                      </div>
+                      {link.actif && !expired && (
+                        <div className="flex justify-end gap-1.5 pt-1">
+                          {/* Bouton copier le lien — visible tant que le lien est
+                              actif + non expiré (token + url retournés par le
+                              backend dans la liste). */}
+                          {link.url && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-success-text border-success/30 hover:bg-success/10"
+                              onClick={() => handleCopyToClipboard(link.url!, 'Lien d\'inscription')}
+                              aria-label={`Copier le lien ${link.label || 'sans libellé'}`}
+                            >
+                              <Copy className="h-3.5 w-3.5 mr-1" />
+                              Copier
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive h-7 px-2"
+                            onClick={() => {
+                              setRevokeLinkTarget(link)
+                              // Reset de la raison à chaque ouverture du dialog.
+                              setRevokeReason('')
+                            }}
+                            aria-label={`Révoquer le lien ${link.label || 'sans libellé'}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Révoquer
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECT-TEACHER-REG-LINK-1 : (3) Stats Dialog
+          ══════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={showStatsDialog} onOpenChange={setShowStatsDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-info" />
+              Statistiques d&apos;inscription enseignante
+            </DialogTitle>
+            <DialogDescription>
+              Aperçu de l&apos;utilisation de vos liens d&apos;inscription enseignant
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {teacherStatsQuery.isLoading ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <PulseSkeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+                <PulseSkeleton className="h-40 w-full" />
+              </div>
+            ) : teacherStatsQuery.isError ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
+                <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Impossible de charger les statistiques. Veuillez réessayer.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => teacherStatsQuery.refetch()}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Réessayer
+                </Button>
+              </div>
+            ) : teacherStatsQuery.data ? (
+              <>
+                {/* KPIs grid — 2 cols mobile, 4 cols desktop */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <TeacherStatCard
+                    label="Liens actifs"
+                    value={teacherStatsQuery.data.active}
+                    accent="success"
+                    icon={<Link2 className="h-4 w-4" />}
+                  />
+                  <TeacherStatCard
+                    label="Inscriptions"
+                    value={teacherStatsQuery.data.totalUses}
+                    accent="info"
+                    icon={<Users className="h-4 w-4" />}
+                  />
+                  <TeacherStatCard
+                    label="Expirent bientôt"
+                    value={teacherStatsQuery.data.expiringSoon}
+                    accent="warning"
+                    icon={<Clock className="h-4 w-4" />}
+                  />
+                  <TeacherStatCard
+                    label="Taux succès"
+                    value={`${Math.round(
+                      (teacherStatsQuery.data.successCount /
+                        Math.max(
+                          1,
+                          teacherStatsQuery.data.successCount +
+                            teacherStatsQuery.data.failureCount,
+                        )) *
+                        100,
+                    )}%`}
+                    accent="info"
+                    icon={<CheckCircle2 className="h-4 w-4" />}
+                  />
+                </div>
+
+                {/* Top links */}
+                {teacherStatsQuery.data.topLinks.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold font-display">
+                      Top liens par inscriptions
+                    </h4>
+                    <div className="space-y-1">
+                      {teacherStatsQuery.data.topLinks.slice(0, 5).map((link) => (
+                        <div
+                          key={link.id}
+                          className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                        >
+                          <span className="text-sm truncate pr-2">
+                            {link.label || 'Sans libellé'}
+                          </span>
+                          <DSBadge variant="info" size="sm">
+                            {link.useCount}
+                            {link.maxUses ? `/${link.maxUses}` : ''}
+                          </DSBadge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Failure breakdown */}
+                {Object.keys(teacherStatsQuery.data.failureBreakdown).length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold font-display">
+                      Échecs par cause
+                    </h4>
+                    <div className="space-y-1">
+                      {Object.entries(teacherStatsQuery.data.failureBreakdown).map(
+                        ([code, count]) => (
+                          <div
+                            key={code}
+                            className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                          >
+                            <span className="text-sm font-mono">{code}</span>
+                            <DSBadge variant="danger" size="sm">{count}</DSBadge>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Daily creations trend — simple bar chart */}
+                {teacherStatsQuery.data.dailyCreations.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold font-display">
+                      Créations (30 derniers jours)
+                    </h4>
+                    <div className="flex items-end gap-1 h-20">
+                      {teacherStatsQuery.data.dailyCreations
+                        .slice()
+                        .reverse()
+                        .map((d) => {
+                          const max = Math.max(
+                            ...teacherStatsQuery.data!.dailyCreations.map(
+                              (x) => x.count,
+                            ),
+                            1,
+                          )
+                          const h = Math.max(2, (d.count / max) * 100)
+                          return (
+                            <div
+                              key={d.day}
+                              className="flex-1 bg-info/70 hover:bg-info rounded-sm transition-colors"
+                              style={{ height: `${h}%` }}
+                              title={`${d.day}: ${d.count}`}
+                            />
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECT-TEACHER-REG-LINK-1 : Révocation — confirmation + raison
+          (journalisée dans AuditLog côté backend).
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AlertDialog
+        open={!!revokeLinkTarget}
+        onOpenChange={(open) => !open && setRevokeLinkTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Révoquer le lien d&apos;inscription
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {revokeLinkTarget
+                ? <>Le lien «&nbsp;<strong>{revokeLinkTarget.label || 'sans libellé'}</strong>&nbsp;»
+                   ({revokeLinkTarget.useCount} inscription{revokeLinkTarget.useCount > 1 ? 's' : ''})
+                   sera définitivement désactivé. Les enseignants qui n&apos;ont pas encore
+                   inscrit ne pourront plus l&apos;utiliser.</>
+                : 'Cette action désactive définitivement le lien.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 py-1">
+            <Label htmlFor="revoke-teacher-reason" className="text-sm">
+              Raison <span className="text-muted-foreground font-normal">(optionnel — journalisée dans l&apos;audit)</span>
+            </Label>
+            <Textarea
+              id="revoke-teacher-reason"
+              placeholder="ex: Vacances de recrutement terminées, lien partagé par erreur…"
+              value={revokeReason}
+              onChange={(e) => setRevokeReason(e.target.value)}
+              maxLength={500}
+              rows={2}
+              className="resize-none"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRevokingLink}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={handleRevokeTeacherLink}
+              disabled={isRevokingLink}
+            >
+              {isRevokingLink && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Révoquer le lien
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECT-TEACHER-REG-LINK-1 : TeacherStatCard — petite carte KPI compacte avec
+// icône accentuée + valeur + libellé (cloné depuis etudiants-page.tsx).
+// ═══════════════════════════════════════════════════════════════════════════
+function TeacherStatCard({
+  label,
+  value,
+  accent,
+  icon,
+}: {
+  label: string
+  value: number | string
+  accent: 'success' | 'warning' | 'info' | 'danger'
+  icon: React.ReactNode
+}) {
+  const accentClass = {
+    success: 'text-success-text bg-success/10',
+    warning: 'text-warning bg-warning/10',
+    info: 'text-info bg-info/10',
+    danger: 'text-destructive bg-destructive/10',
+  }[accent]
+  return (
+    <div className="p-3 rounded-lg border bg-card">
+      <div className={`inline-flex p-1.5 rounded-md ${accentClass} mb-2`}>
+        {icon}
+      </div>
+      <div className="text-2xl font-bold font-mono tabular-nums">{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECT-TEACHER-REG-LINK-1 : TeacherWizardStepIndicator — indicateur d'étapes
+// numérotées (1-2-3) avec connecteur (cloné depuis etudiants-page.tsx —
+// LinkWizardStepIndicator), responsive mobile-first.
+// ═══════════════════════════════════════════════════════════════════════════
+function TeacherWizardStepIndicator({ currentStep }: { currentStep: 1 | 2 | 3 }) {
+  return (
+    <div
+      className="flex items-center justify-center gap-2 sm:gap-3 mb-2"
+      role="navigation"
+      aria-label="Étapes du wizard de création de lien enseignant"
+    >
+      {/* Step 1 — Contexte */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-colors ${
+            currentStep >= 1
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          aria-current={currentStep === 1 ? 'step' : undefined}
+        >
+          {currentStep > 1 ? <CheckCircle2 className="h-4 w-4" /> : '1'}
+        </div>
+        <span
+          className={`text-xs sm:text-sm font-medium transition-colors ${
+            currentStep >= 1 ? 'text-success-text' : 'text-muted-foreground'
+          }`}
+        >
+          Contexte
+        </span>
+      </div>
+
+      {/* Connector 1-2 */}
+      <div
+        className={`h-0.5 w-4 sm:w-8 transition-colors ${
+          currentStep >= 2 ? 'bg-success' : 'bg-muted'
+        }`}
+        aria-hidden="true"
+      />
+
+      {/* Step 2 — Restrictions */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-colors ${
+            currentStep >= 2
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          aria-current={currentStep === 2 ? 'step' : undefined}
+        >
+          {currentStep > 2 ? <CheckCircle2 className="h-4 w-4" /> : '2'}
+        </div>
+        <span
+          className={`text-xs sm:text-sm font-medium transition-colors ${
+            currentStep >= 2 ? 'text-success-text' : 'text-muted-foreground'
+          }`}
+        >
+          Restrictions
+        </span>
+      </div>
+
+      {/* Connector 2-3 */}
+      <div
+        className={`h-0.5 w-4 sm:w-8 transition-colors ${
+          currentStep >= 3 ? 'bg-success' : 'bg-muted'
+        }`}
+        aria-hidden="true"
+      />
+
+      {/* Step 3 — Validité */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-semibold transition-colors ${
+            currentStep >= 3
+              ? 'bg-success text-success-foreground'
+              : 'bg-muted text-muted-foreground'
+          }`}
+          aria-current={currentStep === 3 ? 'step' : undefined}
+        >
+          3
+        </div>
+        <span
+          className={`text-xs sm:text-sm font-medium transition-colors ${
+            currentStep >= 3 ? 'text-success-text' : 'text-muted-foreground'
+          }`}
+        >
+          Validité
+        </span>
+      </div>
     </div>
   )
 }
