@@ -1247,3 +1247,49 @@ Stage Summary:
 - ✅ Sécurité préservée : replay > 60 s refusé, logout/change-password = kill-switchs immédiats non contournables, replays en grâce journalisés (TOKEN_REFRESH_GRACE).
 - ⏳ Vérifier Render deploy (log TOKEN_REFRESH_GRACE absent = normal) et Vercel deploy après push.
 - ⚠️ Note UX : un onglet caché > 30 min sera déconnecté au retour (définition de l'inactivité = onglet non visible) — comportement demandé.
+Task ID: SECT-AFFECTATIONS-GROUPED-1 + SECT-AFFECTATIONS-VOL-AUTO-2
+Agent: Z.ai Code (tuteur)
+Task: /affectations — fusion d'affichage CM/TD/TP en une ligne par affectation + automatisation des volumes horaires par élément
+
+Work Log:
+- Analyse préalable (données Neon prod) : 33 lignes, 11 groupes
+  (enseignant, UE, groupe, année) — 100 % des groupes avaient CM+TD+TP au même
+  enseignant → douleur UX réelle et universelle sur les données existantes.
+- Décision d'architecture : groupement d'AFFICHAGE uniquement, schéma DB
+  inchangé (1 ligne par élément reste le standard métier — service par
+  composant, paiement des heures, vues matrice/charge par type). Aucune
+  migration, zéro impact backend/mobile/desktop/API.
+- frontend/src/components/responsable/affectations-page.tsx :
+  - AffectationGroup (key = enseignant|UE|groupe|année, items[], byType{},
+    totalVolume, statut de groupe = min des éléments, publishedAt le plus récent)
+  - groupAffectations() + computeGroupStatut() helpers module-level
+  - Table « Vue par affectation » : une ligne par groupe — badges
+    « CM 10h · TD 20h · TP 22h », volume total + nb éléments, statut de groupe
+    (+ mention « statuts mixtes »), chevron dépliable → détail par élément
+    (type, volume, statut, publiée le, suppression unitaire)
+  - Actions groupées : Valider (tous les PROVISOIRE du groupe), Publier (tous
+    les non-PUBLIEE), Modifier (dialog groupe), Supprimer (groupe entier ou
+    élément unique depuis la vue dépliée) — Promise.allSettled, gestion 409
+    (lock PUBLIEE) par élément
+  - Filtre statut passé côté client (filtrage serveur = groupes partiels),
+    stats et « Valider tout » comptés au niveau groupe
+  - Dependencies preview suppression : somme sur les éléments du groupe
+- VOL-AUTO-2 : Select UE event-driven — coche auto des éléments dont l'UE
+  définit un volume + pré-remplissage des volumes par élément (modifiables).
+  Champ « Volume horaire » unique supprimé ; inputs par élément avec libellé
+  « · UE : Xh » / « · non défini sur l'UE », total calculé en direct,
+  validation précise (« Volume requis pour TP — l'UE ne définit pas de
+  volume »). Le volume envoyé = exactement celui affiché (WYSIWYG) —
+  corrige l'incohérence où la saisie manuelle était requis mais ignorée.
+- Edit dialog groupe : volumes par élément, éléments PUBLIEE verrouillés
+  (icône Lock + notice + disabled), submit ne PATCH que les éditables.
+- Validation : eslint 0 erreur (1 warning préexistant use-surveillance-ws),
+  tsc --noEmit 0 erreur, vitest 11/11. Backend non modifié → pas de
+  déploiement Render ni sync Neon nécessaire.
+
+Stage Summary:
+- ✅ Une affectation CM+TD+TP au même enseignant = UNE ligne (dépliable)
+- ✅ Cas contraire inchangé : une ligne par enseignant/élément (clé de groupe)
+- ✅ Volumes auto par élément depuis l'UE, édition manuelle ciblée, total live
+- ✅ Zéro migration DB, zéro changement API — frontend only
+- ⏳ CI GitHub + déploiement Vercel à vérifier après push

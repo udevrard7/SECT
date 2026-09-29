@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   UserCheck,
@@ -21,6 +21,8 @@ import {
   Filter,
   Share2,
   Clock,
+  ChevronDown,
+  Lock,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -224,6 +226,76 @@ const TYPE_STYLES: Record<string, { checked: string; unchecked: string }> = {
   },
 }
 
+// ─── SECT-AFFECTATIONS-GROUPED-1 : groupement d'affichage ───
+// Une « affectation » métier = 1..n lignes DB (une par élément CM/TD/TP).
+// Le groupement fusionne les lignes partageant (enseignant, UE, groupe, année)
+// en une seule entrée UI. Le schéma DB reste inchangé (1 ligne par élément),
+// conformément au standard métier (service d'enseignement par composant).
+
+interface AffectationGroup {
+  key: string
+  enseignant: AffectationItem['enseignant']
+  uniteEnseignement: AffectationItem['uniteEnseignement']
+  groupe: string | null
+  anneeUniversitaire: string
+  items: AffectationItem[]
+  byType: Partial<Record<'CM' | 'TD' | 'TP', AffectationItem>>
+  totalVolume: number
+  // Statut de groupe = statut le moins avancé de ses éléments (une seule
+  // ligne PROVISOIRE suffit à considérer le groupe provisoire).
+  statut: 'PROVISOIRE' | 'VALIDEE' | 'PUBLIEE'
+  publishedAt?: string
+  publishedBy?: { id: string; name: string }
+}
+
+function computeGroupStatut(items: AffectationItem[]): AffectationGroup['statut'] {
+  let statut: AffectationGroup['statut'] = 'PUBLIEE'
+  for (const it of items) {
+    if (it.statut === 'PROVISOIRE') return 'PROVISOIRE'
+    if (it.statut === 'VALIDEE') statut = 'VALIDEE'
+  }
+  return statut
+}
+
+function groupAffectations(affectations: AffectationItem[]): AffectationGroup[] {
+  const map = new Map<string, AffectationGroup>()
+  for (const a of affectations) {
+    const key = `${a.enseignantId}|${a.uniteEnseignementId}|${a.groupe ?? ''}|${a.anneeUniversitaire}`
+    let g = map.get(key)
+    if (!g) {
+      g = {
+        key,
+        enseignant: a.enseignant,
+        uniteEnseignement: a.uniteEnseignement,
+        groupe: a.groupe,
+        anneeUniversitaire: a.anneeUniversitaire,
+        items: [],
+        byType: {},
+        totalVolume: 0,
+        statut: 'PROVISOIRE',
+      }
+      map.set(key, g)
+    }
+    g.items.push(a)
+    g.byType[a.typeSeance] = a
+    g.totalVolume += a.volumeHeures
+  }
+  const groups = Array.from(map.values())
+  for (const g of groups) {
+    g.statut = computeGroupStatut(g.items)
+    // publishedAt le plus récent du groupe (affichage « Publiée le … »)
+    const published = g.items.filter((it) => it.publishedAt)
+    if (published.length > 0) {
+      g.publishedAt = published.reduce(
+        (max, it) => (it.publishedAt! > max ? it.publishedAt! : max),
+        published[0].publishedAt!,
+      )
+      g.publishedBy = published.find((it) => it.publishedBy)?.publishedBy
+    }
+  }
+  return groups
+}
+
 // ─── Current academic year (dynamic, ANNEE-COURANTE-NIVEAU-2) ───
 // Avant : heuristique date système (septembre = rentrée) — fausse si calendrier
 // custom ou année suivante pas encore créée. Désormais : fetch de l'année
@@ -265,13 +337,15 @@ export function AffectationsPage() {
   // instantanée. Les 4 ressources sont indépendantes → 4 useQuery séparés.
   // Les filtres d'affectations sont dans le queryKey pour refetch automatique.
   const affectationsQuery = useQuery<{ affectations: AffectationItem[] }>({
-    queryKey: ['affectations', etabId, filiereFilter, niveauFilter, statutFilter, anneeFilter],
+    // SECT-AFFECTATIONS-GROUPED-1 : le filtre statut s'applique côté client sur
+    // le statut de GROUPE (le filtrage serveur retournerait des groupes
+    // « partiels » — uniquement les lignes du statut filtré).
+    queryKey: ['affectations', etabId, filiereFilter, niveauFilter, anneeFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set('etablissementId', etabId!)
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (niveauFilter !== 'all') params.set('niveau', niveauFilter)
-      if (statutFilter !== 'all') params.set('statut', statutFilter)
       if (anneeFilter) params.set('anneeUniversitaire', anneeFilter)
 
       const res = await fetch(`/api/affectations?${params.toString()}`)
@@ -412,33 +486,58 @@ export function AffectationsPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [editingAffectation, setEditingAffectation] = useState<AffectationItem | null>(null)
+  // SECT-AFFECTATIONS-GROUPED-1 : édition au niveau du groupe.
+  const [editingGroup, setEditingGroup] = useState<AffectationGroup | null>(null)
 
-  // ─── Confirm dialog state ───
+  // ─── SECT-AFFECTATIONS-GROUPED-1 : lignes dépliables (détail par élément) ───
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set())
+  const toggleExpanded = (key: string) => {
+    setExpandedGroupKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // ─── Confirm dialog state (niveau groupe) ───
   const [confirmAction, setConfirmAction] = useState<{
     type: 'validate' | 'publish' | 'delete'
-    affectation: AffectationItem
+    group: AffectationGroup
+    // itemId défini = suppression d'un seul élément du groupe (vue dépliée)
+    itemId?: string
   } | null>(null)
 
-  // AFFECTATIONS-FIX-A12 : query dependencies pour preview suppression.
-  // Se déclenche uniquement quand l'utilisateur ouvre le dialog de suppression
-  // (confirmAction.type === 'delete'). Retourne le nb d'épreuves + sessions
-  // liés au couple (enseignant, UE) de l'affectation ciblée.
+  // AFFECTATIONS-FIX-A12 + SECT-AFFECTATIONS-GROUPED-1 : dependencies pour
+  // preview suppression — au niveau groupe (somme sur les éléments) ou élément
+  // unique (itemId défini, suppression depuis la vue dépliée).
   const deleteDepsQuery = useQuery<{
     epreuves: number
     sessions: number
     canDelete: boolean
   }>({
-    queryKey: ['affectation-dependencies', confirmAction?.affectation.id],
+    queryKey: ['affectation-dependencies', confirmAction?.group.key, confirmAction?.itemId ?? 'all'],
     queryFn: async () => {
-      const res = await fetch(`/api/affectations/${confirmAction!.affectation.id}/dependencies`)
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error ?? 'Failed to fetch dependencies')
+      const items = confirmAction?.itemId
+        ? confirmAction.group.items.filter((it) => it.id === confirmAction.itemId)
+        : confirmAction!.group.items
+      const results = await Promise.all(
+        items.map(async (it) => {
+          const res = await fetch(`/api/affectations/${it.id}/dependencies`)
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err?.error ?? 'Failed to fetch dependencies')
+          }
+          return res.json() as Promise<{ epreuves: number; sessions: number; canDelete: boolean }>
+        }),
+      )
+      return {
+        epreuves: results.reduce((s, r) => s + (r.epreuves ?? 0), 0),
+        sessions: results.reduce((s, r) => s + (r.sessions ?? 0), 0),
+        canDelete: results.every((r) => r.canDelete),
       }
-      return res.json()
     },
-    enabled: confirmAction?.type === 'delete' && !!confirmAction?.affectation.id,
+    enabled: confirmAction?.type === 'delete' && !!confirmAction?.group.key,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   })
@@ -448,14 +547,29 @@ export function AffectationsPage() {
   const [addUEId, setAddUEId] = useState('')
   const [addTypeSeances, setAddTypeSeances] = useState<Set<string>>(new Set(['CM']))
   const [addGroupe, setAddGroupe] = useState('')
-  const [addVolumeHeures, setAddVolumeHeures] = useState('')
+  // SECT-AFFECTATIONS-VOL-AUTO-2 : volume par élément (CM/TD/TP), pré-rempli
+  // depuis les volumes de l'UE — le champ volume unique disparaît.
+  const [addVolumes, setAddVolumes] = useState<Record<'CM' | 'TD' | 'TP', string>>({
+    CM: '',
+    TD: '',
+    TP: '',
+  })
   const [addAnnee, setAddAnnee] = useState('')
   const [addCommentaire, setAddCommentaire] = useState('')
 
-  // ─── Edit form state ───
-  const [editTypeSeance, setEditTypeSeance] = useState<'CM' | 'TD' | 'TP'>('CM')
+  // SECT-AFFECTATIONS-VOL-AUTO-2 : total calculé des volumes saisis.
+  const addTotalVolume = useMemo(
+    () =>
+      Array.from(addTypeSeances).reduce(
+        (sum, t) => sum + (parseFloat(addVolumes[t as 'CM' | 'TD' | 'TP']) || 0),
+        0,
+      ),
+    [addTypeSeances, addVolumes],
+  )
+
+  // ─── Edit form state (niveau groupe — SECT-AFFECTATIONS-GROUPED-1) ───
+  const [editVolumes, setEditVolumes] = useState<Record<string, string>>({})
   const [editGroupe, setEditGroupe] = useState('')
-  const [editVolumeHeures, setEditVolumeHeures] = useState('')
   const [editCommentaire, setEditCommentaire] = useState('')
 
   // ─── Batch validate state ───
@@ -470,30 +584,41 @@ export function AffectationsPage() {
     )
   }, [enseignants, enseignantSearch])
 
-  // ─── Filtered affectations for table ───
-  const filteredAffectations = useMemo(() => {
-    let result = affectations
+  // ─── SECT-AFFECTATIONS-GROUPED-1 : groupes (enseignant, UE, groupe, année) ───
+  // Fusion d'affichage : les lignes partageant (enseignant, UE, groupe, année)
+  // sont affichées en une seule entrée (une ligne DB par élément CM/TD/TP).
+  const affectationGroups = useMemo(() => groupAffectations(affectations), [affectations])
+
+  const filteredGroups = useMemo(() => {
+    let result = affectationGroups
 
     if (enseignantSearch) {
       const searchLower = enseignantSearch.toLowerCase()
       result = result.filter(
-        (a) =>
-          a.enseignant.name.toLowerCase().includes(searchLower) ||
-          a.enseignant.email.toLowerCase().includes(searchLower)
+        (g) =>
+          g.enseignant.name.toLowerCase().includes(searchLower) ||
+          g.enseignant.email.toLowerCase().includes(searchLower)
       )
     }
 
+    if (statutFilter !== 'all') {
+      result = result.filter((g) => g.statut === statutFilter)
+    }
+
     return result
-  }, [affectations, enseignantSearch])
+  }, [affectationGroups, enseignantSearch, statutFilter])
 
   // ─── Stats ───
   // AFFECTATIONS-FIX-A13 : séparé VALIDEE / PUBLIEE pour éviter le label
   // ambigu "Validées" qui comptait aussi les publiées. Désormais 2 counts
   // distincts + un count combiné "confirmées" pour la carte.
-  const totalAffectations = affectations.length
-  const affectationsValidees = affectations.filter((a) => a.statut === 'VALIDEE').length
-  const affectationsPubliees = affectations.filter((a) => a.statut === 'PUBLIEE').length
+  // SECT-AFFECTATIONS-GROUPED-1 : les compteurs suivent le groupement —
+  // « Total affectations » = nombre de groupes (lignes CM/TD/TP fusionnées).
+  const totalAffectations = affectationGroups.length
+  const affectationsValidees = affectationGroups.filter((g) => g.statut === 'VALIDEE').length
+  const affectationsPubliees = affectationGroups.filter((g) => g.statut === 'PUBLIEE').length
   const affectationsConfirmees = affectationsValidees + affectationsPubliees
+  const provisoireGroups = affectationGroups.filter((g) => g.statut === 'PROVISOIRE')
   const uesWithAffectation = new Set(affectations.map((a) => a.uniteEnseignementId)).size
   const totalUEs = unitesEnseignement.length
   const tauxCouverture = totalUEs > 0 ? Math.round((uesWithAffectation / totalUEs) * 100) : 0
@@ -594,40 +719,11 @@ export function AffectationsPage() {
     return { grouped, rows }
   }, [unitesEnseignement, affectations, matrixFiliereFilter, matrixNiveauFilter])
 
-  // ─── Auto-check types when UE selection changes ───
-  useEffect(() => {
-    if (addUEId) {
-      const ue = unitesEnseignement.find((u) => u.id === addUEId)
-      if (ue) {
-        const autoTypes = new Set<string>()
-        if (ue.volumeHeuresCM > 0) autoTypes.add('CM')
-        if (ue.volumeHeuresTD > 0) autoTypes.add('TD')
-        if (ue.volumeHeuresTP > 0) autoTypes.add('TP')
-        if (autoTypes.size > 0) setAddTypeSeances(autoTypes)
-      }
-      // Auto-fill volume when only one type is selected
-      const selectedUE = unitesEnseignement.find((u) => u.id === addUEId)
-      if (selectedUE && addTypeSeances.size === 1) {
-        const onlyType = Array.from(addTypeSeances)[0]
-        if (onlyType === 'CM' && selectedUE.volumeHeuresCM > 0) setAddVolumeHeures(selectedUE.volumeHeuresCM.toString())
-        else if (onlyType === 'TD' && selectedUE.volumeHeuresTD > 0) setAddVolumeHeures(selectedUE.volumeHeuresTD.toString())
-        else if (onlyType === 'TP' && selectedUE.volumeHeuresTP > 0) setAddVolumeHeures(selectedUE.volumeHeuresTP.toString())
-      } else if (addTypeSeances.size > 1) {
-        setAddVolumeHeures('')
-      }
-    }
-  }, [addUEId, unitesEnseignement])
-
-  // ─── Auto-fill volume when type selection changes ───
-  useEffect(() => {
-    if (!addUEId || addTypeSeances.size !== 1) return
-    const selectedUE = unitesEnseignement.find((u) => u.id === addUEId)
-    if (!selectedUE) return
-    const onlyType = Array.from(addTypeSeances)[0]
-    if (onlyType === 'CM' && selectedUE.volumeHeuresCM > 0) setAddVolumeHeures(selectedUE.volumeHeuresCM.toString())
-    else if (onlyType === 'TD' && selectedUE.volumeHeuresTD > 0) setAddVolumeHeures(selectedUE.volumeHeuresTD.toString())
-    else if (onlyType === 'TP' && selectedUE.volumeHeuresTP > 0) setAddVolumeHeures(selectedUE.volumeHeuresTP.toString())
-  }, [addTypeSeances])
+  // SECT-AFFECTATIONS-VOL-AUTO-2 : l'auto-coche des éléments et le
+  // pré-remplissage des volumes par élément sont désormais pilotés par le
+  // handler onValueChange du Select UE (event-driven) — plus d'useEffect à
+  // dépendances stales. Les anciens effects vidaient le champ volume et le
+  // rendaient requis même quand le submit l'ignorait au profit des volumes UE.
 
   // ─── Open add dialog ───
   const handleOpenAdd = () => {
@@ -635,13 +731,13 @@ export function AffectationsPage() {
     setAddUEId('')
     setAddTypeSeances(new Set(['CM']))
     setAddGroupe('')
-    setAddVolumeHeures('')
+    setAddVolumes({ CM: '', TD: '', TP: '' })
     setAddAnnee(anneeFilter || currentAnneeUniversitaireHeuristic())
     setAddCommentaire('')
     setAddDialogOpen(true)
   }
 
-  // ─── Submit add (batch) ───
+  // ─── Submit add (batch) — volumes par élément (SECT-AFFECTATIONS-VOL-AUTO-2) ───
   const handleAddSubmit = async () => {
     if (!addEnseignantId) {
       toast.error('Champ manquant', { description: 'Sélectionnez un enseignant.' })
@@ -655,8 +751,16 @@ export function AffectationsPage() {
       toast.error('Champ manquant', { description: 'Sélectionnez au moins un élément d\'enseignement.' })
       return
     }
-    if (!addVolumeHeures || parseFloat(addVolumeHeures) <= 0) {
-      toast.error('Champ manquant', { description: 'Le volume horaire doit être un nombre positif.' })
+    // SECT-AFFECTATIONS-VOL-AUTO-2 : le volume n'est requis à la main que pour
+    // les éléments cochés dont l'UE ne définit pas de volume (pré-remplis sinon).
+    const missingVolumes = Array.from(addTypeSeances).filter((t) => {
+      const v = addVolumes[t as 'CM' | 'TD' | 'TP']
+      return !v || parseFloat(v) <= 0
+    })
+    if (missingVolumes.length > 0) {
+      toast.error('Volume horaire manquant', {
+        description: `Volume requis pour ${missingVolumes.join(', ')} — l'UE ne définit pas de volume pour ce(s) élément(s).`,
+      })
       return
     }
     if (!addAnnee) {
@@ -666,20 +770,11 @@ export function AffectationsPage() {
 
     setIsSubmitting(true)
     try {
-      // Get the selected UE to determine volume per type
-      const selectedUE = unitesEnseignement.find((ue) => ue.id === addUEId)
-
-      // Create one affectation per selected typeSeance
+      // Create one affectation per selected typeSeance — le volume envoyé est
+      // exactement celui affiché dans le champ de l'élément (WYSIWYG).
       const results = await Promise.allSettled(
         Array.from(addTypeSeances).map(async (typeSeance) => {
-          // Auto-determine volume from UE if available
-          let volume = parseFloat(addVolumeHeures)
-          if (selectedUE && addTypeSeances.size > 1) {
-            if (typeSeance === 'CM') volume = selectedUE.volumeHeuresCM || volume
-            else if (typeSeance === 'TD') volume = selectedUE.volumeHeuresTD || volume
-            else if (typeSeance === 'TP') volume = selectedUE.volumeHeuresTP || volume
-          }
-
+          const volume = parseFloat(addVolumes[typeSeance as 'CM' | 'TD' | 'TP'])
           const res = await fetch('/api/affectations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -705,8 +800,8 @@ export function AffectationsPage() {
       const failed = results.filter((r) => r.status === 'rejected').length
 
       if (succeeded > 0) {
-        toast.success('Affectation(s) créée(s)', {
-          description: `${succeeded} affectation(s) ajoutée(s) avec succès.${failed > 0 ? ` ${failed} en échec.` : ''}`,
+        toast.success('Affectation créée', {
+          description: `${succeeded} élément(s) affecté(s) avec succès.${failed > 0 ? ` ${failed} en échec.` : ''}`,
         })
         setAddDialogOpen(false)
         await refreshAffectations()
@@ -720,52 +815,75 @@ export function AffectationsPage() {
     }
   }
 
-  // ─── Open edit dialog ───
-  const handleOpenEdit = (affectation: AffectationItem) => {
-    setEditingAffectation(affectation)
-    setEditTypeSeance(affectation.typeSeance)
-    setEditGroupe(affectation.groupe ?? '')
-    setEditVolumeHeures(affectation.volumeHeures.toString())
-    setEditCommentaire(affectation.commentaire ?? '')
+  // ─── Open edit dialog (niveau groupe — SECT-AFFECTATIONS-GROUPED-1) ───
+  const handleOpenEdit = (group: AffectationGroup) => {
+    setEditingGroup(group)
+    setEditGroupe(group.groupe ?? '')
+    setEditCommentaire(group.items.find((it) => it.commentaire)?.commentaire ?? '')
+    const vols: Record<string, string> = {}
+    for (const it of group.items) vols[it.typeSeance] = String(it.volumeHeures)
+    setEditVolumes(vols)
     setEditDialogOpen(true)
   }
 
-  // ─── Submit edit ───
+  // ─── Submit edit (groupe) ───
   const handleEditSubmit = async () => {
-    if (!editingAffectation) return
+    if (!editingGroup) return
 
-    if (!editVolumeHeures || parseFloat(editVolumeHeures) <= 0) {
-      toast.error('Champ invalide', { description: 'Le volume horaire doit être un nombre positif.' })
-      return
+    // Les éléments PUBLIEE sont verrouillés côté backend (lock publication) —
+    // on ne PATCH que les éléments éditables (PROVISOIRE/VALIDEE).
+    const editable = editingGroup.items.filter((it) => it.statut !== 'PUBLIEE')
+    if (editable.length === 0) return
+
+    for (const it of editable) {
+      const v = editVolumes[it.typeSeance]
+      if (!v || parseFloat(v) <= 0) {
+        toast.error('Champ invalide', { description: `Le volume horaire pour ${it.typeSeance} doit être un nombre positif.` })
+        return
+      }
     }
 
     setIsSubmitting(true)
     try {
-      const res = await fetch(`/api/affectations/${editingAffectation.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          typeSeance: editTypeSeance,
-          groupe: editGroupe || null,
-          volumeHeures: parseFloat(editVolumeHeures),
-          commentaire: editCommentaire || null,
+      const results = await Promise.allSettled(
+        editable.map(async (it) => {
+          const res = await fetch(`/api/affectations/${it.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              groupe: editGroupe || null,
+              volumeHeures: parseFloat(editVolumes[it.typeSeance]),
+              commentaire: editCommentaire || null,
+            }),
+          })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = élément PUBLIEE verrouillé.
+            if (res.status === 409) {
+              throw new Error(affectationLockedMessage(err.error))
+            }
+            throw new Error(err.error || `Erreur pour l'élément ${it.typeSeance}`)
+          }
+          return it.typeSeance
         }),
-      })
+      )
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = affectation PUBLIEE verrouillée.
-        // Message spécifique pour guider le responsable (repasser en PROVISOIRE).
-        if (res.status === 409) {
-          throw new Error(affectationLockedMessage(err.error))
-        }
-        throw new Error(err.error || 'Erreur lors de la modification')
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - succeeded
+
+      if (succeeded > 0) {
+        toast.success('Affectation modifiée', {
+          description: `${succeeded} élément(s) mis à jour.${failed > 0 ? ` ${failed} en échec.` : ''}`,
+        })
+        setEditDialogOpen(false)
+        setEditingGroup(null)
+        await refreshAffectations()
+      } else {
+        const firstErr = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+        toast.error('Erreur', {
+          description: firstErr?.reason instanceof Error ? firstErr.reason.message : 'Une erreur est survenue.',
+        })
       }
-
-      toast.success('Affectation modifiée', { description: 'Les modifications ont été enregistrées.' })
-      setEditDialogOpen(false)
-      setEditingAffectation(null)
-      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -773,80 +891,124 @@ export function AffectationsPage() {
     }
   }
 
-  // ─── Validate affectation ───
+  // ─── Validate (groupe) — SECT-AFFECTATIONS-GROUPED-1 ───
   const handleValidate = async () => {
     if (!confirmAction) return
+    const targets = confirmAction.group.items.filter((it) => it.statut === 'PROVISOIRE')
+    if (targets.length === 0) return
     try {
-      const res = await fetch(`/api/affectations/${confirmAction.affectation.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statut: 'VALIDEE' }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = on tente de modifier une
-        // affectation déjà PUBLIEE (validate est un cas pathologique mais
-        // possible si la ligne a été publiée entre-temps par un autre admin).
-        if (res.status === 409) {
-          throw new Error(affectationLockedMessage(err.error))
-        }
-        throw new Error(err.error || 'Erreur lors de la validation')
+      const results = await Promise.allSettled(
+        targets.map(async (it) => {
+          const res = await fetch(`/api/affectations/${it.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ statut: 'VALIDEE' }),
+          })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = publiée entre-temps.
+            if (res.status === 409) {
+              throw new Error(affectationLockedMessage(err.error))
+            }
+            throw new Error(err.error || 'Erreur lors de la validation')
+          }
+          return true
+        })
+      )
+      const okCount = results.filter((r) => r.status === 'fulfilled').length
+      if (okCount > 0) {
+        toast.success('Affectation validée', {
+          description: `${confirmAction.group.enseignant.name} → ${confirmAction.group.uniteEnseignement.nom} (${okCount}/${targets.length} élément(s))`,
+        })
+        setConfirmAction(null)
+        await refreshAffectations()
+      } else {
+        const firstErr = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+        toast.error('Erreur', {
+          description: firstErr?.reason instanceof Error ? firstErr.reason.message : 'Aucun élément n\'a pu être validé.',
+        })
       }
-      toast.success('Affectation validée', {
-        description: `${confirmAction.affectation.enseignant.name} → ${confirmAction.affectation.uniteEnseignement.nom}`,
-      })
-      setConfirmAction(null)
-      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
   }
 
-  // ─── Publish affectation ───
+  // ─── Publish (groupe) — SECT-AFFECTATIONS-GROUPED-1 ───
   const handlePublish = async () => {
     if (!confirmAction) return
+    const targets = confirmAction.group.items.filter((it) => it.statut !== 'PUBLIEE')
+    if (targets.length === 0) return
     try {
-      const res = await fetch(`/api/affectations/${confirmAction.affectation.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statut: 'PUBLIEE' }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = déjà PUBLIEE (cas rare :
-        // double-clic ou publication concurrente par un autre responsable).
-        // On n'affiche pas le message serveur brut mais un message guidé.
-        if (res.status === 409) {
-          throw new Error(affectationLockedMessage(err.error))
-        }
-        throw new Error(err.error || 'Erreur lors de la publication')
+      const results = await Promise.allSettled(
+        targets.map(async (it) => {
+          const res = await fetch(`/api/affectations/${it.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ statut: 'PUBLIEE' }),
+          })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            // SECT-AFFECTATION-PUBLISH-ENRICH-1 : 409 = déjà PUBLIEE (cas rare :
+            // double-clic ou publication concurrente par un autre responsable).
+            if (res.status === 409) {
+              throw new Error(affectationLockedMessage(err.error))
+            }
+            throw new Error(err.error || 'Erreur lors de la publication')
+          }
+          return true
+        })
+      )
+      const okCount = results.filter((r) => r.status === 'fulfilled').length
+      if (okCount > 0) {
+        toast.success('Affectation publiée', {
+          description: `${confirmAction.group.enseignant.name} → ${confirmAction.group.uniteEnseignement.nom} (${okCount}/${targets.length} élément(s))`,
+        })
+        setConfirmAction(null)
+        await refreshAffectations()
+      } else {
+        const firstErr = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+        toast.error('Erreur', {
+          description: firstErr?.reason instanceof Error ? firstErr.reason.message : 'Aucun élément n\'a pu être publié.',
+        })
       }
-      toast.success('Affectation publiée', {
-        description: `${confirmAction.affectation.enseignant.name} → ${confirmAction.affectation.uniteEnseignement.nom}`,
-      })
-      setConfirmAction(null)
-      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
   }
 
-  // ─── Delete affectation ───
+  // ─── Delete (groupe ou élément unique) — SECT-AFFECTATIONS-GROUPED-1 ───
   const handleDelete = async () => {
     if (!confirmAction) return
+    const targets = confirmAction.itemId
+      ? confirmAction.group.items.filter((it) => it.id === confirmAction.itemId)
+      : confirmAction.group.items
+    if (targets.length === 0) return
     try {
-      const res = await fetch(`/api/affectations/${confirmAction.affectation.id}`, {
-        method: 'DELETE',
+      const results = await Promise.allSettled(
+        targets.map(async (it) => {
+          const res = await fetch(`/api/affectations/${it.id}`, {
+            method: 'DELETE',
+          })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err.error || 'Erreur lors de la suppression')
+          }
+          return true
         })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Erreur lors de la suppression')
+      )
+      const okCount = results.filter((r) => r.status === 'fulfilled').length
+      if (okCount > 0) {
+        toast.success(okCount === 1 ? 'Élément supprimé' : 'Affectation supprimée', {
+          description: `${okCount} élément(s) supprimé(s) avec succès.`,
+        })
+        setConfirmAction(null)
+        await refreshAffectations()
+      } else {
+        const firstErr = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+        toast.error('Erreur', {
+          description: firstErr?.reason instanceof Error ? firstErr.reason.message : 'Aucun élément n\'a pu être supprimé.',
+        })
       }
-      toast.success('Affectation supprimée', {
-        description: 'L\'affectation a été supprimée avec succès.',
-      })
-      setConfirmAction(null)
-      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
@@ -905,7 +1067,8 @@ export function AffectationsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {affectations.filter(a => a.statut === 'PROVISOIRE').length > 0 && (
+          {/* SECT-AFFECTATIONS-GROUPED-1 : compte au niveau groupe */}
+          {provisoireGroups.length > 0 && (
             <Button
               variant="outline"
               className="border-success/30 text-success-text hover:bg-success/10"
@@ -913,7 +1076,7 @@ export function AffectationsPage() {
               disabled={isBatchValidating}
             >
               {isBatchValidating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-              Valider tout ({affectations.filter(a => a.statut === 'PROVISOIRE').length})
+              Valider tout ({provisoireGroups.length})
             </Button>
           )}
           <Button className="bg-success hover:bg-success/90" onClick={handleOpenAdd}>
@@ -1098,7 +1261,7 @@ export function AffectationsPage() {
           )}
 
           {/* ─── Empty state ─── */}
-          {!isLoading && filteredAffectations.length === 0 && (
+          {!isLoading && filteredGroups.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <UserCheck className="h-10 w-10 text-success-text" />
@@ -1118,20 +1281,23 @@ export function AffectationsPage() {
             </div>
           )}
 
-          {/* ─── Affectations table ─── */}
-          {!isLoading && filteredAffectations.length > 0 && (
+          {/* ─── Affectations table (groupée — SECT-AFFECTATIONS-GROUPED-1) ───
+              Les lignes DB partageant (enseignant, UE, groupe, année) sont
+              fusionnées en une entrée ; le chevron déplie le détail par
+              élément CM/TD/TP (volume, statut, publication, suppression). */}
+          {!isLoading && filteredGroups.length > 0 && (
             <Card>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10 font-display" />
                         <TableHead className="font-display">Enseignant</TableHead>
                         <TableHead className="font-display">Unité d&apos;enseignement</TableHead>
                         <TableHead className="font-display">Filière</TableHead>
                         <TableHead className="font-display">Niveau</TableHead>
-                        <TableHead className="font-display">Type</TableHead>
-                        <TableHead className="font-display">Groupe</TableHead>
+                        <TableHead className="font-display">Éléments</TableHead>
                         <TableHead className="font-display">Volume</TableHead>
                         <TableHead className="font-display">Année</TableHead>
                         <TableHead className="font-display">Statut</TableHead>
@@ -1139,127 +1305,207 @@ export function AffectationsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredAffectations.map((affectation) => (
-                        <TableRow key={affectation.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium text-sm">{affectation.enseignant.name}</p>
-                              <p className="text-xs text-muted-foreground">{affectation.enseignant.email}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="text-sm font-medium">{affectation.uniteEnseignement.code}</p>
-                              <p className="text-xs text-muted-foreground">{affectation.uniteEnseignement.nom}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <div className="flex flex-wrap gap-1">
-                              <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
-                                {affectation.uniteEnseignement?.filiere?.nom ?? '—'}
-                              </Badge>
-                              {affectation.uniteEnseignement.filieresSuppl?.map((s) => (
-                                <Badge key={s.id} className="bg-success/10 text-success-text border-success/30 text-xs">
-                                  <Share2 className="h-3 w-3 mr-1" />
-                                  {s.filiere?.nom ?? '—'}
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const nivArr = affectation.uniteEnseignement.niveaux
-                                ? (() => { try { return JSON.parse(affectation.uniteEnseignement.niveaux) as string[] } catch { return [affectation.uniteEnseignement.niveau] } })()
-                                : [affectation.uniteEnseignement.niveau]
-                              return (
-                                <div className="flex flex-wrap gap-1">
-                                  {nivArr.map((n) => <span key={n}>{getNiveauBadge(n)}</span>)}
+                      {filteredGroups.map((group) => {
+                        const isExpanded = expandedGroupKeys.has(group.key)
+                        const hasMixedStatuts = new Set(group.items.map((it) => it.statut)).size > 1
+                        const hasEditable = group.items.some((it) => it.statut !== 'PUBLIEE')
+                        return (
+                          <Fragment key={group.key}>
+                            <TableRow
+                              className="cursor-pointer"
+                              onClick={() => toggleExpanded(group.key)}
+                            >
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() => toggleExpanded(group.key)}
+                                  title={isExpanded ? 'Réduire le détail' : 'Voir le détail par élément'}
+                                >
+                                  <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                                </Button>
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium text-sm">{group.enseignant.name}</p>
+                                  <p className="text-xs text-muted-foreground">{group.enseignant.email}</p>
                                 </div>
-                              )
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            {getTypeSeanceBadge(affectation.typeSeance)}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {affectation.groupe || '—'}
-                          </TableCell>
-                          <TableCell className="text-sm font-medium">
-                            {affectation.volumeHeures}h
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {affectation.anneeUniversitaire}
-                          </TableCell>
-                          <TableCell>
-                            {getStatutBadge(affectation.statut)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              {affectation.statut === 'PROVISOIRE' && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
-                                    onClick={() => handleOpenEdit(affectation)}
-                                    title="Modifier"
-                                  >
-                                    <Edit3 className="h-3.5 w-3.5" />
-                                  </Button>
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="text-sm font-medium">{group.uniteEnseignement.code}</p>
+                                  <p className="text-xs text-muted-foreground">{group.uniteEnseignement.nom}</p>
+                                  {group.groupe && (
+                                    <p className="text-xs text-muted-foreground">Groupe {group.groupe}</p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                <div className="flex flex-wrap gap-1">
+                                  <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
+                                    {group.uniteEnseignement?.filiere?.nom ?? '—'}
+                                  </Badge>
+                                  {group.uniteEnseignement.filieresSuppl?.map((s) => (
+                                    <Badge key={s.id} className="bg-success/10 text-success-text border-success/30 text-xs">
+                                      <Share2 className="h-3 w-3 mr-1" />
+                                      {s.filiere?.nom ?? '—'}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {(() => {
+                                  const nivArr = group.uniteEnseignement.niveaux
+                                    ? (() => { try { return JSON.parse(group.uniteEnseignement.niveaux) as string[] } catch { return [group.uniteEnseignement.niveau] } })()
+                                    : [group.uniteEnseignement.niveau]
+                                  return (
+                                    <div className="flex flex-wrap gap-1">
+                                      {nivArr.map((n) => <span key={n}>{getNiveauBadge(n)}</span>)}
+                                    </div>
+                                  )
+                                })()}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {(['CM', 'TD', 'TP'] as const)
+                                    .filter((t) => group.byType[t])
+                                    .map((t) => (
+                                      <Badge
+                                        key={t}
+                                        className={t === 'TP'
+                                          ? 'bg-warning/10 text-warning border-warning/30 text-xs'
+                                          : 'bg-success/10 text-success-text border-success/30 text-xs'}
+                                      >
+                                        {t} {group.byType[t]!.volumeHeures}h
+                                      </Badge>
+                                    ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm font-medium">
+                                <span className="font-mono tabular-nums">{group.totalVolume}h</span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {group.items.length} élément{group.items.length > 1 ? 's' : ''}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {group.anneeUniversitaire}
+                              </TableCell>
+                              <TableCell>
+                                {getStatutBadge(group.statut)}
+                                {hasMixedStatuts && (
+                                  <span className="block text-xs text-warning mt-0.5">statuts mixtes</span>
+                                )}
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1">
+                                  {group.statut === 'PROVISOIRE' && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 px-2 text-success-text hover:text-success-text hover:bg-success/10"
+                                      onClick={() => setConfirmAction({ type: 'validate', group })}
+                                      title="Valider tous les éléments"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                      <span className="text-xs">Valider</span>
+                                    </Button>
+                                  )}
+                                  {group.statut === 'VALIDEE' && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 px-2 text-info hover:text-info hover:bg-info/10"
+                                      onClick={() => setConfirmAction({ type: 'publish', group })}
+                                      title="Publier tous les éléments"
+                                    >
+                                      <Send className="h-3.5 w-3.5 mr-1" />
+                                      <span className="text-xs">Publier</span>
+                                    </Button>
+                                  )}
+                                  {group.statut === 'PUBLIEE' && (
+                                    <span
+                                      className="flex items-center gap-1.5 text-xs text-muted-foreground px-2"
+                                      title={
+                                        group.publishedAt
+                                          ? `Publiée le ${formatPublishedDate(group.publishedAt)}${
+                                              group.publishedBy?.name ? ` par ${group.publishedBy.name}` : ''
+                                            }`
+                                          : 'Affectation publiée'
+                                      }
+                                    >
+                                      <Clock className="h-3 w-3" />
+                                      {group.publishedAt
+                                        ? `Publiée le ${formatPublishedDate(group.publishedAt)}`
+                                        : 'Publiée'}
+                                    </span>
+                                  )}
+                                  {hasEditable && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                                      onClick={() => handleOpenEdit(group)}
+                                      title="Modifier"
+                                    >
+                                      <Edit3 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
                                   <Button
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    onClick={() => setConfirmAction({ type: 'delete', affectation })}
-                                    title="Supprimer"
+                                    onClick={() => setConfirmAction({ type: 'delete', group })}
+                                    title="Supprimer l'affectation"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 px-2 text-success-text hover:text-success-text hover:bg-success/10"
-                                    onClick={() => setConfirmAction({ type: 'validate', affectation })}
-                                    title="Valider"
-                                  >
-                                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                                    <span className="text-xs">Valider</span>
-                                  </Button>
-                                </>
-                              )}
-                              {affectation.statut === 'VALIDEE' && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 px-2 text-info hover:text-info hover:bg-info/10"
-                                  onClick={() => setConfirmAction({ type: 'publish', affectation })}
-                                  title="Publier"
-                                >
-                                  <Send className="h-3.5 w-3.5 mr-1" />
-                                  <span className="text-xs">Publier</span>
-                                </Button>
-                              )}
-                              {affectation.statut === 'PUBLIEE' && (
-                                <span
-                                  className="flex items-center gap-1.5 text-xs text-muted-foreground px-2"
-                                  title={
-                                    affectation.publishedAt
-                                      ? `Publiée le ${formatPublishedDate(affectation.publishedAt)}${
-                                          affectation.publishedBy?.name ? ` par ${affectation.publishedBy.name}` : ''
-                                        }`
-                                      : 'Affectation publiée'
-                                  }
-                                >
-                                  <Clock className="h-3 w-3" />
-                                  {affectation.publishedAt
-                                    ? `Publiée le ${formatPublishedDate(affectation.publishedAt)}`
-                                    : 'Publiée'}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            {isExpanded && (
+                              <TableRow className="bg-muted/20 hover:bg-muted/20">
+                                <TableCell colSpan={10} className="py-3">
+                                  <div className="rounded-lg border bg-background p-3">
+                                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                                      Détail par élément d&apos;enseignement
+                                    </p>
+                                    <div className="space-y-1.5">
+                                      {group.items.map((it) => (
+                                        <div
+                                          key={it.id}
+                                          className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2"
+                                        >
+                                          <div className="flex flex-1 flex-wrap items-center gap-3">
+                                            {getTypeSeanceBadge(it.typeSeance)}
+                                            <span className="text-sm font-medium font-mono tabular-nums">{it.volumeHeures}h</span>
+                                            {getStatutBadge(it.statut)}
+                                            {it.statut === 'PUBLIEE' && it.publishedAt && (
+                                              <span className="text-xs text-muted-foreground">
+                                                Publiée le {formatPublishedDate(it.publishedAt)}
+                                                {it.publishedBy?.name ? ` par ${it.publishedBy.name}` : ''}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => setConfirmAction({ type: 'delete', group, itemId: it.id })}
+                                            title={`Supprimer l'élément ${it.typeSeance}`}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -1503,7 +1749,28 @@ export function AffectationsPage() {
 
             <div className="space-y-2">
               <Label>Unité d&apos;enseignement *</Label>
-              <Select value={addUEId} onValueChange={setAddUEId}>
+              <Select
+                value={addUEId}
+                onValueChange={(v) => {
+                  setAddUEId(v)
+                  // SECT-AFFECTATIONS-VOL-AUTO-2 : à la sélection de l'UE —
+                  // (1) coche auto des éléments dont l'UE définit un volume,
+                  // (2) pré-remplissage des volumes par élément (modifiables).
+                  const ue = unitesEnseignement.find((u) => u.id === v)
+                  const autoTypes = new Set<string>()
+                  if (ue) {
+                    if (ue.volumeHeuresCM > 0) autoTypes.add('CM')
+                    if (ue.volumeHeuresTD > 0) autoTypes.add('TD')
+                    if (ue.volumeHeuresTP > 0) autoTypes.add('TP')
+                  }
+                  if (autoTypes.size > 0) setAddTypeSeances(autoTypes)
+                  setAddVolumes({
+                    CM: ue && ue.volumeHeuresCM > 0 ? String(ue.volumeHeuresCM) : '',
+                    TD: ue && ue.volumeHeuresTD > 0 ? String(ue.volumeHeuresTD) : '',
+                    TP: ue && ue.volumeHeuresTP > 0 ? String(ue.volumeHeuresTP) : '',
+                  })
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner une UE" />
                 </SelectTrigger>
@@ -1573,26 +1840,49 @@ export function AffectationsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Volume horaire (h) *</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  step="0.5"
-                  placeholder="Ex: 24"
-                  value={addVolumeHeures}
-                  onChange={(e) => setAddVolumeHeures(e.target.value)}
-                />
+            {/* SECT-AFFECTATIONS-VOL-AUTO-2 : volumes par élément, pré-remplis
+                depuis l'UE (volumeHeuresCM/TD/TP). Le volume n'est requis à la
+                main que si l'UE ne le définit pas. Total calculé en direct. */}
+            <div className="space-y-2">
+              <Label>Volumes horaires par élément *</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {(['CM', 'TD', 'TP'] as const)
+                  .filter((t) => addTypeSeances.has(t))
+                  .map((t) => {
+                    const volKey = t === 'CM' ? 'volumeHeuresCM' : t === 'TD' ? 'volumeHeuresTD' : 'volumeHeuresTP'
+                    const selectedUE = unitesEnseignement.find((ue) => ue.id === addUEId)
+                    const ueVol = selectedUE ? (selectedUE[volKey as keyof UEItem] as number) : 0
+                    return (
+                      <div key={t} className="space-y-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          {t} {ueVol > 0 ? `· UE : ${ueVol}h` : '· non défini sur l\'UE'}
+                        </span>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="0.5"
+                          placeholder={ueVol > 0 ? `${ueVol}` : 'Requis'}
+                          value={addVolumes[t]}
+                          onChange={(e) => setAddVolumes((prev) => ({ ...prev, [t]: e.target.value }))}
+                        />
+                      </div>
+                    )
+                  })}
               </div>
-              <div className="space-y-2">
-                <Label>Année universitaire *</Label>
-                <Input
-                  placeholder="Ex: 2024-2025"
-                  value={addAnnee}
-                  onChange={(e) => setAddAnnee(e.target.value)}
-                />
-              </div>
+              {addTotalVolume > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Volume total : <span className="font-medium text-foreground">{addTotalVolume}h</span>
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Année universitaire *</Label>
+              <Input
+                placeholder="Ex: 2024-2025"
+                value={addAnnee}
+                onChange={(e) => setAddAnnee(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
@@ -1616,13 +1906,15 @@ export function AffectationsPage() {
               disabled={isSubmitting}
             >
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {addTypeSeances.size > 1 ? `Créer ${addTypeSeances.size} affectations` : 'Créer l\'affectation'}
+              {addTypeSeances.size > 1
+                ? `Affecter ${Array.from(addTypeSeances).sort().join('+')} · ${addTotalVolume}h`
+                : 'Créer l\'affectation'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Edit Affectation Dialog ─── */}
+      {/* ─── Edit Affectation Dialog (niveau groupe — SECT-AFFECTATIONS-GROUPED-1) ─── */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => { if (!open) setEditDialogOpen(false) }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
@@ -1631,9 +1923,9 @@ export function AffectationsPage() {
               Modifier l&apos;affectation
             </DialogTitle>
             <DialogDescription>
-              {editingAffectation && (
+              {editingGroup && (
                 <span>
-                  {editingAffectation.enseignant.name} → {editingAffectation.uniteEnseignement.code} ({editingAffectation.uniteEnseignement.nom})
+                  {editingGroup.enseignant.name} → {editingGroup.uniteEnseignement.code} ({editingGroup.uniteEnseignement.nom}) — {editingGroup.items.map((it) => it.typeSeance).join('+')}
                 </span>
               )}
             </DialogDescription>
@@ -1644,50 +1936,62 @@ export function AffectationsPage() {
             <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Enseignant</span>
-                <span className="font-medium">{editingAffectation?.enseignant.name}</span>
+                <span className="font-medium">{editingGroup?.enseignant.name}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">UE</span>
-                <span className="font-medium">{editingAffectation?.uniteEnseignement.code} — {editingAffectation?.uniteEnseignement.nom}</span>
+                <span className="font-medium">{editingGroup?.uniteEnseignement.code} — {editingGroup?.uniteEnseignement.nom}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Filière</span>
-                <span className="font-medium">{editingAffectation ? [editingAffectation.uniteEnseignement?.filiere?.nom ?? '—', ...(editingAffectation.uniteEnseignement?.filieresSuppl ?? []).map(s => s.filiere?.nom ?? '—')].join(', ') : ''}</span>
+                <span className="font-medium">{editingGroup ? [editingGroup.uniteEnseignement?.filiere?.nom ?? '—', ...(editingGroup.uniteEnseignement?.filieresSuppl ?? []).map(s => s.filiere?.nom ?? '—')].join(', ') : ''}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Année</span>
+                <span className="font-medium">{editingGroup?.anneeUniversitaire}</span>
               </div>
             </div>
+
+            {/* Avertissement éléments publiés (lock backend PUBLIEE) */}
+            {editingGroup && editingGroup.items.some((it) => it.statut === 'PUBLIEE') && (
+              <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-xs text-info flex items-start gap-2">
+                <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  {editingGroup.items.filter((it) => it.statut === 'PUBLIEE').length} élément(s) déjà
+                  publié(s) — verrouillé(s). Repassez-les en PROVISOIRE pour les modifier.
+                </span>
+              </div>
+            )}
 
             <div className="space-y-2">
-              <Label>Type de séance</Label>
-              <Select value={editTypeSeance} onValueChange={(v) => setEditTypeSeance(v as 'CM' | 'TD' | 'TP')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CM">CM — Cours Magistral</SelectItem>
-                  <SelectItem value="TD">TD — Travaux Dirigés</SelectItem>
-                  <SelectItem value="TP">TP — Travaux Pratiques</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Groupe</Label>
+              <Input
+                placeholder="Ex: Groupe A"
+                value={editGroupe}
+                onChange={(e) => setEditGroupe(e.target.value)}
+              />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Groupe</Label>
-                <Input
-                  placeholder="Ex: Groupe A"
-                  value={editGroupe}
-                  onChange={(e) => setEditGroupe(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Volume horaire (h)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  step="0.5"
-                  value={editVolumeHeures}
-                  onChange={(e) => setEditVolumeHeures(e.target.value)}
-                />
+            {/* SECT-AFFECTATIONS-GROUPED-1 + VOL-AUTO-2 : volume par élément */}
+            <div className="space-y-2">
+              <Label>Volumes horaires par élément *</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {editingGroup?.items.map((it) => (
+                  <div key={it.id} className="space-y-1.5">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      {it.typeSeance}
+                      {it.statut === 'PUBLIEE' && <Lock className="h-3 w-3" />}
+                    </span>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="0.5"
+                      disabled={it.statut === 'PUBLIEE'}
+                      value={editVolumes[it.typeSeance] ?? ''}
+                      onChange={(e) => setEditVolumes((prev) => ({ ...prev, [it.typeSeance]: e.target.value }))}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1709,7 +2013,7 @@ export function AffectationsPage() {
             <Button
               className="bg-success hover:bg-success/90"
               onClick={handleEditSubmit}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !editingGroup?.items.some((it) => it.statut !== 'PUBLIEE')}
             >
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Enregistrer
@@ -1737,24 +2041,35 @@ export function AffectationsPage() {
               {confirmAction?.type === 'validate' && (
                 <>
                   Êtes-vous sûr de vouloir valider l&apos;affectation de{' '}
-                  <strong>{confirmAction.affectation.enseignant.name}</strong> à{' '}
-                  <strong>{confirmAction.affectation.uniteEnseignement.nom}</strong> ({confirmAction.affectation.typeSeance}) ?
-                  L&apos;affectation passera au statut <em>Validée</em>.
+                  <strong>{confirmAction.group.enseignant.name}</strong> à{' '}
+                  <strong>{confirmAction.group.uniteEnseignement.nom}</strong>{' '}
+                  ({confirmAction.group.items.map((it) => it.typeSeance).join('+')}) ?
+                  Les éléments provisoires passeront au statut <em>Validé</em>.
                 </>
               )}
               {confirmAction?.type === 'publish' && (
                 <>
                   Êtes-vous sûr de vouloir publier l&apos;affectation de{' '}
-                  <strong>{confirmAction.affectation.enseignant.name}</strong> à{' '}
-                  <strong>{confirmAction.affectation.uniteEnseignement.nom}</strong> ({confirmAction.affectation.typeSeance}) ?
+                  <strong>{confirmAction.group.enseignant.name}</strong> à{' '}
+                  <strong>{confirmAction.group.uniteEnseignement.nom}</strong>{' '}
+                  ({confirmAction.group.items.map((it) => it.typeSeance).join('+')}) ?
                   L&apos;affectation sera visible par l&apos;enseignant et passera au statut <em>Publiée</em>.
                 </>
               )}
               {confirmAction?.type === 'delete' && (
                 <>
-                  Êtes-vous sûr de vouloir supprimer l&apos;affectation de{' '}
-                  <strong>{confirmAction.affectation.enseignant.name}</strong> à{' '}
-                  <strong>{confirmAction.affectation.uniteEnseignement.nom}</strong> ({confirmAction.affectation.typeSeance}) ?
+                  Êtes-vous sûr de vouloir supprimer{' '}
+                  {confirmAction.itemId ? (
+                    <>
+                      l&apos;élément <strong>{confirmAction.group.items.find((it) => it.id === confirmAction.itemId)?.typeSeance}</strong> de l&apos;affectation
+                    </>
+                  ) : (
+                    <>
+                      l&apos;affectation complète ({confirmAction.group.items.length} élément(s) : {confirmAction.group.items.map((it) => it.typeSeance).join(', ')})
+                    </>
+                  )} de{' '}
+                  <strong>{confirmAction.group.enseignant.name}</strong> à{' '}
+                  <strong>{confirmAction.group.uniteEnseignement.nom}</strong> ?
                   Cette action est irréversible.
                   {/* AFFECTATIONS-FIX-A12 : preview des dépendances (épreuves + sessions) */}
                   {deleteDepsQuery.isLoading ? (
@@ -1769,7 +2084,7 @@ export function AffectationsPage() {
                       {deleteDepsQuery.data.sessions > 0 && (
                         <> et <strong>{deleteDepsQuery.data.sessions}</strong> session(s) étudiant</>
                       )}{' '}
-                      sur cette UE. La suppression de l&apos;affectation ne supprimera pas ces évaluations, mais l&apos;enseignant ne sera plus officiellement affecté à cette UE.
+                      sur cette UE. La suppression ne touchera pas ces évaluations, mais l&apos;enseignant ne sera plus officiellement affecté à cette UE.
                     </span>
                   ) : deleteDepsQuery.data ? (
                     <span className="block mt-2 text-xs text-success-text">
