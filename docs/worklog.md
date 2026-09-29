@@ -1531,3 +1531,101 @@ Stage Summary:
 - ✅ Workflow : créer → valider → publier → consulter, fonctionnel de bout en bout (l'email de publication enseignant avait déjà été vérifié dans SECT-EMAIL-TEMPLATES-1)
 - 🚨 DÉCOUVERTE SYSTÉMIQUE (hors périmètre de ce fix) : BYPASSRLS sur neondb_owner → toutes les autres policies RLS (72 tables) restent contournées en prod ; recommandation : bascule Render vers sect_app (NOBYPASSRLS, migration 000020) après audit des GRANT des migrations 000092-000107 — les autres pages qui passent leurs filtres côté client (responsable : etablissementId) sont moins exposées, mais les endpoints reposant uniquement sur la RLS fuient
 - ℹ️ Cosmétique non bloquante : l'onglet « Mes UE » affiche la date de publication de la 1re affectation du groupe (peut différer si CM/TD/TP publiés à des moments différents)
+
+---
+Task ID: SECT-RLS-SECT-APP-SWITCH-1
+Agent: main (Z.ai)
+Task: Bascule du runtime Render vers le rôle sect_app (NOBYPASSRLS) — exécution
+de la migration 000020 restée lettre morte depuis l'audit sécurité 2025 — avec
+audit GRANTs/policies, tests et procédure de rollback (confirmation utilisateur
+après SECT-MES-ENSEIGNANTS-AUDIT-1) + fix cosmétique « Mes UE »
+
+Work Log:
+- AUDIT EXHAUSTIF pré-bascule (source de vérité = DB live, pas le repo) :
+  75 tables, 180 policies live dont 110 absentes des fichiers de migration ;
+  GRANTs sect_app complets (default privileges 000020 opérationnels : CRUD sur
+  les 75 tables, 0 séquence) ; sect_app existait (LOGIN, NOBYPASSRLS, sans
+  mot de passe exploitable) ; anomaly schema_migrations corrompue (2 lignes
+  106+107) découverte puis normalisée
+- 4 familles de trous bloquants identifiées et comblées :
+  (1) 13 policies TO neondb_owner ne s'appliquaient PAS à sect_app →
+  Filiere/UE/EnseignantFiliere modify par RESPONSABLE, IdentityPhoto,
+  SessionCapture, SimilarityReport, SecuritySettings = deny-all potentiel ;
+  (2) Filiere_select sans branche is_system (comptages quota + subqueries) ;
+  (3) NotificationPreference sans select_system (dispatcher notifications) ;
+  (4) QuestionVote sans aucune policy (banque de questions = deny-all)
+- Migration 000108_rls_sect_app_readiness écrite (up+down, expressions
+  reprises à l'identique de pg_get_expr live) et appliquée sur Neon en
+  transaction + normalisation schema_migrations → ligne unique (108, false)
+- AUDIT CODE : 84 requêtes pool directes inventoriées dans 26 fichiers ;
+  classification : 45 passent par des fonctions SECURITY DEFINER (sûres) ;
+  ~31 sites en SQL direct auraient cassé silencieusement sous sect_app
+  (quota.go ×7 → inscriptions/quota IA, geniuspay ×3 → webhooks paiements,
+  b2c helpers/middleware ×2 → gating B2C, healthcheck ×4, dispatcher ×3 →
+  notifications, workers relance/auto_close/expire ×8, handlers notification
+  devoir/surveillance/certificat/segments ×7, signup links ×2) ; AuditLog/
+  Alerte INSERT couverts par policies WITH CHECK(true) — laissés tels quels
+- Fixes code : helper db.WithSystemTx (claims system-worker/ADMIN) + les 31
+  sites convertis au pattern établi (AUDIT-RLS-REPOS-001) ; restructurations
+  « collecte en tx courte, I/O réseau hors tx » pour sendPush, fanout
+  segments, certificat batch, auto_close ; éditions chirurgicales Python
+  (tabs préservés) après 2 incidents regex glouton corrigés par restauration
+  git + patterns ancrés [^`]*
+- Validation locale : go build/vet/gofmt OK ; sonde Go jetable avec le VRAI
+  pool pgx (DescribeExec + SET LOCAL via pooler, chemin historiquement
+  buggy) : 7/7 ; probes node-pg as sect_app : 34/34 sites système (SQL exact
+  des 31 sites + fonctions auth) + 16/16 user-claims (étudiant/responsable/
+  enseignant, données réelles) + deny-by-default prouvé (sans claims → 0
+  ligne partout)
+- Découverte annexe (hors périmètre, non corrigée) : l'INSERT Alerte du
+  auto_close_worker omet updatedAt NOT NULL → échec silencieux préexistant
+  (erreur ignorée par _, _ =) — les alertes d'auto-clôture ne persistent
+  probablement jamais depuis l'origine ; candidat micro-fix ultérieur
+- Commits ecd1523 (backend+migration, 18 fichiers) + d5177d5 (frontend cosmétique,
+  head du push → Vercel a buildé) poussés avec l'identité udevrard7 ; CI GitHub
+  verte (Frontend + Backend) ; Render dep-dau2d4rr live
+- BASCULE EXÉCUTÉE : mot de passe fort sect_app généré (40 char) + ALTER ROLE ;
+  NEON_DATABASE_URL Render → sect_app via API ; deploy dep-dau2eopsrm live en
+  ~15 s ; preuve pg_stat_activity : 6 connexions pgbouncer usename=sect_app
+  (anciennes neondb_owner évacuées par MaxConnLifetime 30 min)
+- VÉRIFICATIONS PROD POST-BASCULE (compte jetable e2e-rls-switch@sect-test.dev,
+  créé/supprimé as owner, pattern des sessions précédentes) : login OK
+  (find_user_for_auth + bcrypt + create_refresh_token sous sect_app) ; refresh
+  OK (rotate_refresh_token) ; étudiant filière sans publications → 0
+  affectation ; déplacé vers la filière INFORMATIQUE → exactement 3 PUBLIEE
+  (CM/TP/TD UE-INFO-L201, enseignant visible) — RLS appliquée au niveau DB
+  cette fois (et non plus seulement le filtre handler d7fc4b3) ; /api/monitoring/
+  health : 6/6 services OPERATIONNEL (les 4 healthchecks WithSystemTx inclus) ;
+  re-login post-suppression → 401 ; AUCUNE erreur RLS/42501
+- Vérification UI bout-en-bout via agent-browser : login réel sur sect.ftci.fr →
+  /mes-enseignants : onglet enseignants + onglet « Mes UE » OK, date de groupe
+  « Publiée le 21/07/2026 » affichée ALORS QUE la 1re affectation (CM) n'a pas
+  de publishedAt — preuve que publishedRangeLabel est déployé (l'ancien code
+  affs[0]?.publishedAt aurait masqué la date entièrement) ; console propre ;
+  screenshot mes-ue-final.png archivé
+- Fix cosmétique livré (d5177d5) : publishedRangeLabel — « Publiée le X » si
+  dates identiques, « Publiée du X au Y » sinon (CM/TD/TP publiés séparément)
+
+Stage Summary:
+- ✅ BASCULE sect_app LIVE ET STABLE : les 74 policies RLS des 75 tables sont
+  réellement appliquées en prod (deny-by-default vérifié), mettant fin au
+  contournement systémique BYPASSRLS découvert dans SECT-MES-ENSEIGNANTS-AUDIT-1
+- ✅ 0 régression : login/refresh/paiements/quota/notifications/workers
+  couverts par 31 conversions WithSystemTx + 16 policies corrigées/ajoutées
+  (000108) ; CI verte, 6/6 services OPERATIONNEL, e2e UI prouvé en prod
+- ✅ Fix cosmétique « Mes enseignants/Mes UE » déployé : période de publication
+  réelle du groupe au lieu de la date de la 1re affectation (souvent absente →
+  date totalement masquée avant le fix)
+- 🔄 ROLLBACK (si besoin, ~2 min) : PUT env-var Render NEON_DATABASE_URL avec
+  l'URL neondb_owner archivée dans /home/z/sect-rls-switch/rollback_url.txt
+  (postgresql://neondb_owner:npg_V2liEWmLAq6e@ep-muddy-river-asz862wj-pooler.
+  c-4.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require)
+  → trigger deploy → les policies 000108 deviennent inertes sous BYPASSRLS ;
+  down de 000108 optionnel (inutile au rollback de la bascule)
+- ⚠️ Mot de passe sect_app : /home/z/sect-rls-switch/sect_app_pwd.txt (40 char,
+  uniquement dans l'URL Render + ce fichier local) ; recommandation long terme :
+  le déplacer dans un secret manager et le roter
+- ⚠️ Dettes notées (hors périmètre) : INSERT Alerte auto-close updatedAt NOT
+  NULL (échec silencieux préexistant) ; Message_select/Conversation policies
+  permissives (defense-in-depth à renforcer un jour) ; IAUsage sans RLS (pas de
+  régression vs avant — usage filtré côté requêtes)
