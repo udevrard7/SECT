@@ -184,6 +184,21 @@ jobs:
             | xcpretty
 
       # ── Fallback : build simulateur si pas de code signing Apple ──
+      # ⚠️ SDKROOT=auto rend le scheme macOS-only sur les runners GitHub : un
+      # -destination concret échoue (« Unable to find a destination »). On build
+      # par SDK+arch sans destination — recette validée en CI (mobile-ci.yml
+      # job build-ios, run 36506441163 du 2026-09-29).
+      - name: 🏗️ Compile Shared.framework (simulateur, fallback)
+        if: ${{ vars.APPLE_CERT_B64 == '' }}
+        run: ./gradlew :shared:linkReleaseFrameworkIosSimulatorArm64 --no-daemon
+
+      - name: 📦 Copy Shared.framework to Frameworks/ (fallback)
+        if: ${{ vars.APPLE_CERT_B64 == '' }}
+        run: |
+          mkdir -p iosApp/Frameworks
+          cp -R shared/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework iosApp/Frameworks/
+          echo "✓ Shared.framework (simulateur, release) copié"
+
       - name: 🏗️ Build iOS App (Simulator, fallback)
         if: ${{ vars.APPLE_CERT_B64 == '' }}
         run: |
@@ -193,8 +208,9 @@ jobs:
             -project iosApp.xcodeproj \
             -scheme iosApp \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -arch arm64 \
             -configuration Release \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
 
