@@ -506,6 +506,204 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// createAffectationsBatch — POST /api/affectations/batch
+//
+// SECT-AFFECTATIONS-BATCH-3 : création atomique de N affectations en UNE
+// transaction. Le formulaire responsable affecte un groupe CM+TD+TP au même
+// enseignant : avant, le frontend émettait N POSTs séquentiels
+// (Promise.allSettled) → si le 2e échouait (ex. doublon TD), les autres
+// étaient déjà créés : état partiel incohérent que l'utilisateur devait
+// nettoyer à la main. Ici c'est tout-ou-rien : si un INSERT échoue, la
+// transaction entière est annulée (ROLLBACK) et l'erreur qualifie l'élément
+// en cause. Le POST simple reste inchangé (rétrocompatible, mobile/desktop).
+func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var input struct {
+		EnseignantID        string  `json:"enseignantId"`
+		UniteEnseignementID string  `json:"uniteEnseignementId"`
+		Groupe              *string `json:"groupe"`
+		AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+		Commentaire         *string `json:"commentaire"`
+		Items               []struct {
+			TypeSeance   string  `json:"typeSeance"`
+			VolumeHeures float64 `json:"volumeHeures"`
+			Statut       string  `json:"statut"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if input.EnseignantID == "" || input.UniteEnseignementID == "" {
+		writeJSONError(w, http.StatusBadRequest, "enseignantId et uniteEnseignementId requis")
+		return
+	}
+	if len(input.Items) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "items requis : au moins un élément (typeSeance + volumeHeures)")
+		return
+	}
+	if len(input.Items) > 50 {
+		writeJSONError(w, http.StatusBadRequest, "trop d'éléments (max 50)")
+		return
+	}
+
+	// Validation enum alignée sur createAffectation (AFFECTATIONS-FIX-A2) :
+	// vraies valeurs DB. En prime : détection des doublons INTRA-lot (sinon
+	// c'est l'unique index DB qui les rejette au 2e INSERT, message opaque).
+	validTypes := map[string]bool{"CM": true, "TD": true, "TP": true}
+	validStatuts := map[string]bool{"PROVISOIRE": true, "VALIDEE": true, "PUBLIEE": true}
+	seenTypes := make(map[string]bool, len(input.Items))
+	for i := range input.Items {
+		it := &input.Items[i]
+		if !validTypes[it.TypeSeance] {
+			writeJSONError(w, http.StatusBadRequest,
+				fmt.Sprintf("typeSeance invalide pour l'élément %d (valeurs acceptées: CM, TD, TP)", i+1))
+			return
+		}
+		if seenTypes[it.TypeSeance] {
+			writeJSONError(w, http.StatusBadRequest,
+				fmt.Sprintf("doublon dans la requête : %s apparaît plusieurs fois dans items", it.TypeSeance))
+			return
+		}
+		seenTypes[it.TypeSeance] = true
+		if it.VolumeHeures <= 0 {
+			writeJSONError(w, http.StatusBadRequest,
+				fmt.Sprintf("volumeHeures doit être > 0 pour %s (élément %d)", it.TypeSeance, i+1))
+			return
+		}
+		if it.Statut == "" {
+			it.Statut = "PROVISOIRE"
+		} else if !validStatuts[it.Statut] {
+			writeJSONError(w, http.StatusBadRequest,
+				fmt.Sprintf("statut invalide pour %s (valeurs acceptées: PROVISOIRE, VALIDEE, PUBLIEE)", it.TypeSeance))
+			return
+		}
+	}
+	// Même heuristique que createAffectation (PROG-ACAD-CRITICAL-FIX-1) :
+	// année courante YYYY-YYYY+1, rentrée en septembre.
+	if input.AnneeUniversitaire == "" {
+		now := time.Now()
+		year := now.Year()
+		if now.Month() >= 9 { // rentrée = septembre
+			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year, year+1)
+		} else {
+			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year-1, year)
+		}
+	}
+
+	type affectationRow struct {
+		ID                  string
+		EnseignantID        string
+		UniteEnseignementID string
+		TypeSeance          string
+		Groupe              *string
+		VolumeHeures        float64
+		AnneeUniversitaire  string
+		Statut              string
+		Commentaire         *string
+		PublishedAt         *time.Time
+	}
+	rows := make([]affectationRow, 0, len(input.Items))
+	// curType mémorise le type de l'INSERT en cours pour qualifier l'erreur
+	// remontée (ex. doublon TD alors que CM/TP sont déjà insérés dans la tx).
+	curType := ""
+
+	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		for i := range input.Items {
+			it := &input.Items[i]
+			curType = it.TypeSeance
+
+			id := uuid.NewString()
+			insertCols := `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
+                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt"`
+			insertVals := `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP`
+			insertArgs := []any{
+				id, input.EnseignantID, input.UniteEnseignementID, it.TypeSeance,
+				input.Groupe, it.VolumeHeures, input.AnneeUniversitaire,
+				it.Statut, input.Commentaire,
+			}
+			// Publication directe (rare) : horodatage + auteur, comme le POST
+			// simple (SECT-AFFECTATION-PUBLISH-ENRICH-1).
+			if it.Statut == "PUBLIEE" {
+				insertCols = `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
+                                        "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt",
+                                        "publishedAt", "publishedById"`
+				insertVals = `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                                        CURRENT_TIMESTAMP, $10`
+				insertArgs = append(insertArgs, claims.UserID)
+			}
+
+			var row affectationRow
+			if err := tx.QueryRow(r.Context(), fmt.Sprintf(`
+                                INSERT INTO "Affectation" (%s)
+                                VALUES (%s)
+                                RETURNING "id", "enseignantId", "uniteEnseignementId", "typeSeance"::text,
+                                        "groupe", "volumeHeures", "anneeUniversitaire", "statut"::text, "commentaire",
+                                        "publishedAt"
+                        `, insertCols, insertVals), insertArgs...,
+			).Scan(
+				&row.ID, &row.EnseignantID, &row.UniteEnseignementID,
+				&row.TypeSeance, &row.Groupe, &row.VolumeHeures,
+				&row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
+				&row.PublishedAt,
+			); err != nil {
+				return fmt.Errorf("élément %s: %w", it.TypeSeance, err)
+			}
+			rows = append(rows, row)
+		}
+		return nil
+	})
+
+	if err != nil {
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "Affectation_enseignantId_fkey"),
+			strings.Contains(errMsg, "foreign key constraint") && strings.Contains(errMsg, "enseignantId"):
+			writeJSONError(w, http.StatusBadRequest, "Enseignant introuvable")
+		case strings.Contains(errMsg, "Affectation_uniteEnseignementId_fkey"),
+			strings.Contains(errMsg, "foreign key constraint") && strings.Contains(errMsg, "uniteEnseignementId"):
+			writeJSONError(w, http.StatusBadRequest, "Unité d'enseignement introuvable")
+		case strings.Contains(errMsg, "foreign key constraint"):
+			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide")
+		case strings.Contains(errMsg, "unique constraint"), strings.Contains(errMsg, "duplicate key"):
+			// Tout le lot a été annulé (ROLLBACK) : RIEN n'a été créé.
+			writeJSONError(w, http.StatusConflict,
+				fmt.Sprintf("Aucune affectation créée : %s existe déjà pour cet enseignant/UE/groupe/année. Le lot entier a été annulé.", curType))
+		case strings.Contains(errMsg, "invalid_enum_value"), strings.Contains(errMsg, "invalid input value for enum"):
+			writeJSONError(w, http.StatusBadRequest, "Valeur d'enum invalide (typeSeance ou statut)")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la création: "+errMsg)
+		}
+		return
+	}
+
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, map[string]any{
+			"id":                  row.ID,
+			"enseignantId":        row.EnseignantID,
+			"uniteEnseignementId": row.UniteEnseignementID,
+			"typeSeance":          row.TypeSeance,
+			"groupe":              row.Groupe,
+			"volumeHeures":        row.VolumeHeures,
+			"anneeUniversitaire":  row.AnneeUniversitaire,
+			"statut":              row.Statut,
+			"commentaire":         row.Commentaire,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"created":      len(out),
+		"affectations": out,
+	})
+}
+
 // errAffectationLocked — sentinel retournée par updateAffectation quand le
 // PATCH tente de modifier une affectation déjà PUBLIEE sans changer son
 // statut. Côté handler, on mappe → 409 Conflict.

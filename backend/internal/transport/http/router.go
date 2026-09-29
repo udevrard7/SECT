@@ -512,6 +512,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
 				r.Post("/", s.createAffectation)
+				// SECT-AFFECTATIONS-BATCH-3 : création atomique N éléments
+				// (CM/TD/TP) en une transaction — route littérale avant tout
+				// pattern paramétré, aucun conflit avec /{id} (PATCH/DELETE).
+				r.Post("/batch", s.createAffectationsBatch)
 				r.Patch("/{id}", s.updateAffectation)
 				r.Delete("/{id}", s.deleteAffectation)
 				// AFFECTATIONS-FIX-A12 : dependencies pour preview suppression
