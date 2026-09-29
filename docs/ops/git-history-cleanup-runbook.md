@@ -1,8 +1,9 @@
 # Runbook — Nettoyage de l'historique git (`git filter-repo`)
 
-> **Statut : PLANIFIÉ, NON EXÉCUTÉ** (décision 2026-09-29).
-> Ce runbook rend l'opération exécutable en ~30 min par un mainteneur,
-> au moment choisi (fenêtre de maintenance, aucun collaborateur actif).
+> **Statut : ✅ EXÉCUTÉ le 2026-09-29** — post-mortem au §8.
+> Ce runbook reste comme référence : il rend l'opération reproductible
+> en ~30 min par un mainteneur (fenêtre de maintenance, aucun
+> collaborateur actif).
 
 ## 1. Contexte et chiffres mesurés (2026-09-29)
 
@@ -81,13 +82,22 @@ journal racine ; le `docs/worklog.md` actuel n'est PAS touché (chemin
 différent). Vérifier dans le rapport d'analyse que rien d'utile n'est
 matché (les `.ttf` de polices, `bun.lock`, `package-lock.json` restent).
 
-Option renforcée (si l'on veut aussi écraser la chaîne
-`***REMOVED***` des messages/contenus historiques, malgré la rotation déjà
-faite) :
+Option renforcée (appliquée lors de l'exécution) : écraser la chaîne
+historique du mot de passe dans les blobs ET les messages de commits.
+
+⚠️ **Piège du séparateur** : le format `--replace-text` exige `==>`
+(double égal + chevron). La version initiale de ce runbook écrivait
+`Admin2025!==***REMOVED***` (sans `>`) — ligne invalide, remplacement
+silencieusement raté. Syntaxe correcte :
 
 ```bash
-git filter-repo --replace-text <(echo '***REMOVED***==***REMOVED***')
+printf 'Admin2025!==>***REMOVED***\n' > replacements.txt
+git filter-repo --replace-text replacements.txt \
+                --replace-message replacements.txt   # messages de commits aussi
 ```
+
+Le mot de passe apparaissait dans ~3 messages de commits (docs) en plus
+des blobs : sans `--replace-message`, il serait resté dans l'historique.
 
 …à combiner avec les `--path … --invert-paths` ci-dessus en une SEULE
 invocation (chaque run de filter-repo repart du résultat du précédent
@@ -97,22 +107,32 @@ sur un miroir, mais une seule passe = un seul rewrite = moins de risque).
 
 ```bash
 cd SECT-mirror
-# UNE seule invocation : paths + replace-text
+# UNE seule invocation : paths + replace-text + replace-message
 git filter-repo --path worklog.md --invert-paths \
+                --path worklog-phase5.md --invert-paths \
                 --path skills/ --invert-paths \
                 --path-glob 'frontend/.next/*' --invert-paths \
                 --path backend/bin/ --invert-paths \
                 --path windows-store/ --invert-paths \
                 --path verify-sect-landing.png --path verify-login.png \
-                --path sect-landing-page.png --invert-paths \
+                --path sect-landing-page.png --path sect-login-page.png \
+                --path audio-delete-ui.png \
+                --path etu1-dashboard.png --path etu2-dashboard.png \
+                --path etu2-dashboard-fixed.png --invert-paths \
+                --replace-text replacements.txt \
+                --replace-message replacements.txt \
                 --force                                   # miroir existant
 
 git for-each-ref                                # vérifier tags réécrits
 git log --oneline -5                            # SHAs neufs, messages intacts
-git count-objects -vH                           # pack attendu ~12–15 Mio
+git count-objects -vH                           # pack mesuré : 25,08 Mio (§8)
 
 git push --mirror --force origin
 ```
+
+(`worklog-phase5.md` et les captures racine supplémentaires ont été
+ajoutées à chaud après la passe à sec — cf. §8 : la passe à sec sert
+précisément à ça.)
 
 Post-opération immédiate :
 
@@ -152,3 +172,47 @@ l'historique d'origine à tout moment dans les ~90 jours précédant le GC
 GitHub : `git push --mirror --force` depuis l'archive. Les déploiements
 Render/Vercel étant immuables côté plateforme, aucun impact rétroactif
 sur la prod — seul le repo git revient en arrière.
+
+## 8. Post-mortem — exécution 2026-09-29
+
+**Checklist go/no-go respectée** : 0 PR ouvert (re-vérifié à l'instant du
+push), sauvegarde miroir poussée vers le repo privé
+`udevrard7/SECT-archive` (main + tag vérifiés), `git-filter-repo` 2.47.0,
+`main` non protégée (force-push possible — aucune protection à
+retirer/activer ; *recommandation résiduelle : activer une protection de
+branche*).
+
+**Passe à sec décisive** — elle a révélé deux écarts vs le plan :
+1. `worklog-phase5.md` (journal racine oublié de l'inventaire initial,
+   détecté en comparant les lignes `M` des flux fast-export) ;
+2. 5 captures racine supplémentaires (`sect-login-page.png`,
+   `audio-delete-ui.png`, `etu1-dashboard.png`, `etu2-dashboard.png`,
+   `etu2-dashboard-fixed.png`), même classe que les 3 du plan.
+Les deux familles ont été ajoutées à chaud. La passe à sec a aussi permis
+de valider le format des modes fast-export (`100644`/`100755`, pas
+`644`/`755`) — les greps naïfs sous-comptent silencieusement sinon.
+
+**Résultats mesurés** :
+
+| Indicateur | Avant | Après |
+|---|---|---|
+| Pack (clone neuf) | 115,04 Mio | **25,08 Mio** (−78 %) |
+| Commits (main) | 1561 | 1233 (vides purgés) |
+| Chemins pollueurs en historique | 5 familles | 0 |
+| `Admin2025!` blobs + messages | présent | **0** (pickaxe + grep) |
+| Diff arbre HEAD | — | 1 fichier (ce runbook : 3 mentions remplacées) |
+| `docs/worklog.md`, polices, `bun.lock` | — | intacts octet par octet |
+
+**Déploiements** : le push forcé a **auto-déclenché** Render
+(`trigger: new_commit`, LIVE en ~30 s — contenu identique, cache Docker)
+ET Vercel (déploiement BUILDING sur le SHA réécrit, conforme au piège
+`commandForIgnoringBuildStep` car le commit de tête touche `frontend/`).
+Le déploiement Render API déclenché en parallèle était donc redondant
+(mais inoffensif).
+
+**Restes assumés** :
+- GitHub conserve les anciens objets ~90 jours (refs `pull/*` cachées,
+  API) — GC naturel ; le clone neuf est déjà propre ;
+- Les PRs fusionnées #1–#22 référencent des SHAs orphelins (logs CI
+  historiques « commit not found ») — sans impact fonctionnel ;
+- `upload/pdf-images/` (~0 Mio packé) laissé en place : négligeable.
