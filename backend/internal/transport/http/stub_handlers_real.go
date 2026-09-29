@@ -7,6 +7,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -967,10 +968,14 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Déterminer les champs à updater selon action ou flags explicites.
+	// NOTIF-BELL-FIX-2 : accepter 'marquer_lu' ET 'marquer_lue' — le
+	// frontend (notification-bell.tsx) envoyait 'marquer_lu' (sans le e
+	// final) -> 400 « action invalide » : impossible de marquer une alerte
+	// comme lue depuis la cloche. Les deux graphies sont désormais valides.
 	setLue := body.Lue
 	setResolu := body.Resolu
 	switch body.Action {
-	case "marquer_lue":
+	case "marquer_lu", "marquer_lue":
 		t := true
 		setLue = &t
 	case "resoudre":
@@ -980,7 +985,7 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 	case "":
 		// ok — on utilise les flags explicites lue/resolu
 	default:
-		writeJSONError(w, http.StatusBadRequest, "action invalide (attendu: marquer_lue | resoudre)")
+		writeJSONError(w, http.StatusBadRequest, "action invalide (attendu: marquer_lu | marquer_lue | resoudre)")
 		return
 	}
 
@@ -1015,6 +1020,9 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updated alerte
+	notFound := false
+	// NOTIF-BELL-FIX-2b : alerte inexistante -> 404 (avant : pgx.ErrNoRows
+	// remontait en erreur interne -> 500 « erreur interne »).
 	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var sets []string
 		var args []any
@@ -1067,6 +1075,10 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 			&userID, &userName, &userEmail,
 		)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				notFound = true
+				return nil // rollback silencieux — pas une erreur interne
+			}
 			return fmt.Errorf("update alerte: %w", err)
 		}
 		updated.CreatedAt = createdAt.UTC().Format(time.RFC3339)
@@ -1081,6 +1093,11 @@ func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+
+	if notFound {
+		writeJSONError(w, http.StatusNotFound, "alerte non trouvée ou non autorisée")
+		return
+	}
 
 	if txErr != nil {
 		middleware.MapDomainError(w, txErr)

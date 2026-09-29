@@ -155,15 +155,14 @@ export function NotificationBell({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  // Compteur temps réel poussé par le SSE (null tant qu'aucun message reçu).
-  const [sseUnreadCount, setSseUnreadCount] = useState<number | null>(null)
 
   const unreadCount = notifications.filter((n) => !n.lue).length
   const criticalCount = notifications.filter((n) => n.severity === 'CRITICAL').length
-  // Le badge utilise le max du compteur fetched et du compteur SSE temps réel
-  // pour éviter le clignotement pendant un refetch (le SSE reste stable pendant
-  // que la liste se recharge).
-  const displayUnreadCount = Math.max(unreadCount, sseUnreadCount ?? 0)
+  // NOTIF-BELL-FIX-5 : le badge = compteur de la dernière liste fetchée.
+  // (Le SSE /api/notifications/stream a été retiré : il ne délivre AUCUN octet
+  // à travers les proxies Render/Vercel en prod, et WriteTimeout=30s côté Go
+  // tuerait de toute façon toute connexion longue. Polling léger ci-dessous.)
+  const displayUnreadCount = unreadCount
 
   // Rôle pour le routage admin (handleViewAll + handleMarkAllAsRead).
   // L'endpoint unifié gère tous les rôles côté fetch — isAdmin n'est plus
@@ -205,44 +204,21 @@ export function NotificationBell({ className }: { className?: string }) {
     }
   }, [open, fetchNotifications])
 
-  // Phase 3 : SSE EventSource pour le compteur temps réel.
-  // Le backend push le compteur de notifications non lues toutes les 15s +
-  // heartbeat 45s. EventSource se reconnecte automatiquement en cas de
-  // déconnexion (pas de gestion manuelle du retry).
-  // Remplace le polling adaptatif setInterval (30s/5min) de la Phase 2.
+  // NOTIF-BELL-FIX-5 : polling léger toutes les 30s (remplace le SSE
+  // /api/notifications/stream — mort en prod à travers les proxies :
+  // aucun octet n'était jamais délivré, le badge ne se mettait jamais à jour
+  // en temps réel et EventSource bouclait en reconnexions). 1 requête
+  // list?lu=false&limit=20 toutes les 30s = coût négligeable, et ça marche
+  // derrière Vercel (rewrite) + Render (proxy) sans dépendre du streaming.
   useEffect(() => {
     if (!user) return
-    const eventSource = new EventSource('/api/notifications/stream')
+    const interval = setInterval(() => {
+      fetchNotifications()
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [user, fetchNotifications])
 
-    eventSource.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data) as {
-          data?: { unreadCount?: number }
-        }
-        const serverUnreadCount = parsed.data?.unreadCount
-        if (typeof serverUnreadCount === 'number') {
-          // Met à jour le state local du compteur non lu (temps réel)
-          setSseUnreadCount(serverUnreadCount)
-          // Si le compteur a augmenté, refetch la liste complète
-          if (serverUnreadCount > unreadCount) {
-            fetchNotifications()
-          }
-        }
-      } catch {
-        // ignore parse errors (heartbeats, commentaires SSE)
-      }
-    }
-
-    eventSource.onerror = () => {
-      // EventSource se reconnecte automatiquement, pas besoin de gestion manuelle.
-    }
-
-    return () => {
-      eventSource.close()
-    }
-  }, [user, fetchNotifications, unreadCount])
-
-  // Re-fetch quand l'utilisateur revient sur l'onglet (complément au SSE).
+  // Re-fetch quand l'utilisateur revient sur l'onglet (complément au polling).
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -257,8 +233,10 @@ export function NotificationBell({ className }: { className?: string }) {
 
   // ─── Mark single as read ───
   // Phase 3 : route selon le préfixe de l'ID (au lieu de la `source`).
-  //  - 'a-' → PATCH /api/alertes/{id.slice(2)}        body { action: 'marquer_lu' }
+  //  - 'a-' → PATCH /api/alertes/{id.slice(2)}        body { action: 'marquer_lue' }
   //  - 'n-' → PATCH /api/notifications/me/{id.slice(2)}  body {}
+  // NOTIF-BELL-FIX-2 : graphie canonale 'marquer_lue' (le backend accepte
+  // désormais aussi 'marquer_lu' par compatibilité).
   const handleMarkAsRead = async (notification: UnifiedNotification) => {
     try {
       let apiPath: string
@@ -266,7 +244,7 @@ export function NotificationBell({ className }: { className?: string }) {
 
       if (notification.id.startsWith('a-')) {
         apiPath = `/api/alertes/${notification.id.slice(2)}`
-        body = JSON.stringify({ action: 'marquer_lu' })
+        body = JSON.stringify({ action: 'marquer_lue' })
       } else {
         // 'n-' → notification-admin destinée au user via RLS
         apiPath = `/api/notifications/me/${notification.id.slice(2)}`
@@ -283,9 +261,6 @@ export function NotificationBell({ className }: { className?: string }) {
         setNotifications((prev) =>
           prev.map((n) => (n.id === notification.id ? { ...n, lue: true } : n)),
         )
-        // Optimistic : décrémenter le compteur SSE pour garder le badge à jour
-        // en attendant le prochain push SSE (~15s).
-        setSseUnreadCount((prev) => Math.max(0, (prev ?? 0) - 1))
       } else {
         toast.error('Impossible de marquer comme lu')
       }
@@ -301,6 +276,10 @@ export function NotificationBell({ className }: { className?: string }) {
   //  - NotificationAdmin (préfixe 'n-') :
   //      • ADMIN → 1 batch POST /api/notifications/admin/mark-all-read
   //      • non-ADMIN → N PATCH /api/notifications/me/{id.slice(2)} (body {})
+  // NOTIF-BELL-FIX-6 : feedback honnête — succès affiché seulement si au
+  // moins une requête a RÉELLEMENT réussi. Avant : une seule réponse 200
+  // parmi N → toast succès + badge à 0 alors que rien n'était marqué côté
+  // serveur (le refetch faisait tout revenir non lu).
   const handleMarkAllAsRead = async () => {
     const unreadNotifs = notifications.filter((n) => !n.lue)
     if (unreadNotifs.length === 0) return
@@ -311,6 +290,8 @@ export function NotificationBell({ className }: { className?: string }) {
     const tasks: Promise<Response>[] = []
 
     // 1. Alertes → 1 batch POST /api/alertes/mark-all-read
+    //    (couvre tout le scope utilisateur côté serveur, pas seulement la
+    //    fenêtre des 20 affichées ; la réponse indique le nombre marqué.)
     if (alerteNotifs.length > 0) {
       tasks.push(
         fetch('/api/alertes/mark-all-read', {
@@ -346,16 +327,26 @@ export function NotificationBell({ className }: { className?: string }) {
 
     try {
       const results = await Promise.allSettled(tasks)
-      const anyOk =
-        tasks.length === 0 ||
-        results.some((r) => r.status === 'fulfilled' && r.value.ok)
-      if (anyOk) {
-        setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
-        // Optimistic : remettre le compteur SSE à 0 (le prochain push confirmera).
-        setSseUnreadCount(0)
-        toast.success('Toutes les notifications marquées comme lues')
+      const okCount = results.filter(
+        (r) => r.status === 'fulfilled' && r.value.ok,
+      ).length
+
+      if (okCount === 0) {
+        toast.error('Erreur lors de la mise à jour', {
+          description: 'Aucune notification n’a pu être marquée comme lue. Réessayez.',
+        })
+        return
+      }
+
+      // Optimiste : tout marquer localement (les batchs couvrent leur groupe
+      // entier ; le polling 30s resynchronisera avec le serveur si besoin).
+      setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
+      if (okCount < tasks.length) {
+        toast.warning('Marquage partiel', {
+          description: `${okCount}/${tasks.length} requête(s) réussie(s) — le polling resynchronisera le badge.`,
+        })
       } else {
-        toast.error('Erreur lors de la mise à jour')
+        toast.success('Toutes les notifications marquées comme lues')
       }
     } catch {
       toast.error('Erreur lors de la mise à jour')

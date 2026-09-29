@@ -472,20 +472,31 @@ func (s *Server) markAllReadAdmin(w http.ResponseWriter, r *http.Request) {
 	if categorieF != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf(`"categorie" = $%d`, argIdx))
 		args = append(args, categorieF)
+		argIdx++
 	}
 
 	whereClause := "WHERE " + joinStrings(whereClauses, " AND ")
 
 	updatedCount := 0
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	// NOTIF-MARKALL-FIX-1 : le template contenait deja `WHERE` alors que
+	// whereClause commence aussi par "WHERE " -> `UPDATE ... WHERE WHERE ...`
+	// -> erreur de syntaxe SQL. L'erreur etait avalee (`if err == nil` +
+	// `return nil`) -> HTTP 200 avec updatedCount=0 : le bouton « Tout
+	// marquer comme lu » ne faisait RIEN silencieusement.
+	if err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(r.Context(), fmt.Sprintf(`
-                        UPDATE "NotificationAdmin" SET "lu" = true WHERE %s
+                        UPDATE "NotificationAdmin" SET "lu" = true %s
                 `, whereClause), args...)
-		if err == nil {
-			updatedCount = int(tag.RowsAffected())
+		if err != nil {
+			return fmt.Errorf("mark all read admin: %w", err)
 		}
+		updatedCount = int(tag.RowsAffected())
 		return nil
-	})
+	}); err != nil {
+		slog.Error("markAllReadAdmin failed", "error", err, "userId", claims.UserID)
+		writeJSONError(w, http.StatusInternalServerError, "erreur base de données")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{

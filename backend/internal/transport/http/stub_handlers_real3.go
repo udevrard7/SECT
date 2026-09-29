@@ -4,6 +4,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -859,43 +860,67 @@ func (s *Server) alertesMarkAllRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updatedCount int64
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// SECT-ALERTES-FIX-1 P2 : RBAC élargi — le RESPONSABLE doit pouvoir
-		// marquer comme lues les alertes scopées à son établissement (pas
-		// seulement userId = self). On réutilise les mêmes conditions que
-		// alertesListReal (userId = self OR filière/épreuve de son étab).
-		// La RLS policy Alerte_update valide aussi ces conditions.
-		role := claims.Role
-		var whereParts []string
-		var args []any
-		argIdx := 1
+	// NOTIF-MARKALL-FIX-3 : la clause était `"userId" = $1 OR "lue" = false`
+	// -> tout ADMIN cliquant « Tout lire » marquait TOUTES les alertes non
+	// lues de TOUS les utilisateurs (corruption globale : la policy RLS
+	// Alerte_update laisse passer is_admin() sur toutes les lignes).
+	// Correction : un groupe de conditions de portée (OR entre elles),
+	// combiné par AND avec "lue" = false — exactement le scope de la liste
+	// unifiée affichée dans la cloche.
+	role := claims.Role
+	var scopeParts []string
+	var args []any
+	argIdx := 1
 
-		whereParts = append(whereParts, fmt.Sprintf(`"userId" = $%d`, argIdx))
+	// Alertes personnelles de l'utilisateur.
+	scopeParts = append(scopeParts, fmt.Sprintf(`"userId" = $%d`, argIdx))
+	args = append(args, claims.UserID)
+	argIdx++
+
+	// RESPONSABLE : alertes des filières/épreuves de son établissement
+	// (même scope qu'alertesListReal / la VIEW unifiée).
+	if role == "RESPONSABLE" && claims.EtablissementID != "" {
+		scopeParts = append(scopeParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Filiere" f WHERE f.id = "Alerte"."filiereId" AND f."etablissementId" = $%d)`, argIdx))
+		args = append(args, claims.EtablissementID)
+		argIdx++
+		scopeParts = append(scopeParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId" WHERE e.id = "Alerte"."epreuveId" AND f."etablissementId" = $%d)`, argIdx))
+		args = append(args, claims.EtablissementID)
+		argIdx++
+	}
+
+	// ENSEIGNANT : alertes des épreuves qu'il enseigne (même scope que la
+	// liste unifiée — sinon le bouton laisse des alertes non lues fantômes).
+	if role == "ENSEIGNANT" {
+		scopeParts = append(scopeParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = "Alerte"."epreuveId" AND e."enseignantId" = $%d)`, argIdx))
 		args = append(args, claims.UserID)
 		argIdx++
+	}
 
-		if role == "RESPONSABLE" && claims.EtablissementID != "" {
-			whereParts = append(whereParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Filiere" f WHERE f.id = "Alerte"."filiereId" AND f."etablissementId" = $%d)`, argIdx))
-			args = append(args, claims.EtablissementID)
-			argIdx++
-			whereParts = append(whereParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId" WHERE e.id = "Alerte"."epreuveId" AND f."etablissementId" = $%d)`, argIdx))
-			args = append(args, claims.EtablissementID)
-		}
+	// ADMIN PaaS : uniquement les alertes système (userId NULL, filiereId
+	// NULL, epreuveId NULL) — les seules que l'admin voit dans la liste
+	// unifiée. JAMAIS les alertes destinées aux autres utilisateurs.
+	if role == "ADMIN" {
+		scopeParts = append(scopeParts, `("userId" IS NULL AND "filiereId" IS NULL AND "epreuveId" IS NULL)`)
+	}
 
-		whereParts = append(whereParts, `"lue" = false`)
-		whereClause := "WHERE " + strings.Join(whereParts, " OR ")
+	whereClause := fmt.Sprintf(`WHERE ((%s) AND "lue" = false)`, strings.Join(scopeParts, " OR "))
 
+	var updatedCount int64
+	if err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(r.Context(), fmt.Sprintf(`
                         UPDATE "Alerte" SET "lue" = true, "updatedAt" = CURRENT_TIMESTAMP
                         %s
                 `, whereClause), args...)
 		if err != nil {
-			return fmt.Errorf("mark all read: %w", err)
+			return fmt.Errorf("mark all read alertes: %w", err)
 		}
 		updatedCount = tag.RowsAffected()
 		return nil
-	})
+	}); err != nil {
+		slog.Error("alertesMarkAllRead failed", "error", err, "userId", claims.UserID)
+		writeJSONError(w, http.StatusInternalServerError, "erreur base de données")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
