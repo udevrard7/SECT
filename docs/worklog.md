@@ -1509,3 +1509,25 @@ Stage Summary:
 - ✅ Envoi réel prouvé deux fois (delivered) depuis noreply@sect.ftci.fr via Render → Resend
 - ✅ 3 adresses mortes corrigées et déployées (Render live + Vercel ready, vérifiées en prod)
 - 🔁 Revert support → quand une vraie boîte support existera (Infomaniak sur ftci.fr ou Cloudflare Email Routing sur sect.ftci.fr)
+
+---
+Task ID: SECT-MES-ENSEIGNANTS-AUDIT-1
+Agent: main (Z.ai)
+Task: Audit de la page « Mes enseignants » (sidebar étudiante) — rôle, workflow, bugs
+
+Work Log:
+- Traçage du flux complet : sidebar ETUDIANT (catégorie « Mes cours », routes.ts:570-579, rôle ETUDIANT uniquement routes.ts:648) → page /mes-enseignants (mes-enseignants-page.tsx, 2 onglets : groupé par enseignant / groupé par UE) → GET /api/affectations SANS aucun filtre (comptait à 100 % sur la RLS) → handler listAffectations → RLS Affectation_select (migration 000091, fonction affectation_visible_by_student : PUBLIEE + filière primaire UE = filière étudiant)
+- Workflow nominal vérifié : responsable crée affectations (CM/TD/TP) → valide → publie (+ email enseignant) → étudiant consulte
+- BUG CRITIQUE trouvé et prouvé sur l'API de prod (JWT étudiant forgé avec le secret serveur, aucun compte touché) : l'étudiant recevait les 33 affectations (29 VALIDEE + 1 PROVISOIRE + 3 PUBLIEE, toutes filières/UE) au lieu de 3
+- Cause racine : la connexion Render → Neon utilise neondb_owner qui a BYPASSRLS=true (vérifié pg_roles) → TOUTES les policies RLS sont contournées en prod ; la migration 000020 (audit sécurité 2025) avait prévu la bascule vers le rôle sect_app (NOBYPASSRLS) mais elle n'a jamais été faite — NEON_DATABASE_URL pointe toujours sur neondb_owner
+- Fix appliqué (SECT-MES-ENSEIGNANTS-RLS-1, defense-in-depth) : dans listAffectations, si claims.Role == ETUDIANT → WHERE statut='PUBLIEE' + EXISTS UE filière primaire = claims.FiliereID (JWT non-spoofable) + FALSE (deny-by-default) si pas de filière ; sémantiques identiques à affectation_visible_by_student pour cohérence future si bascule sect_app
+- Anomalie outillage évitée : insertion via script Python préservant les tabs (l'éditeur avait corrompu l'indentation Go la fois précédente) ; un early-return dans la closure WithTx aurait causé une double écriture JSON → remplacé par condition FALSE
+- Validations : go1.24.11 build + go vet OK ; simulation SQL prod → 3 PUBLIEE exactement
+- Commit d7fc4b3 poussé (auteur udevrard7 <ulrichdouh@gmail.com>) → Render live en 35 s
+- Re-vérification prod post-déploiement, 4 tests : étudiant INFORMATIQUE → 3 PUBLIEE uniquement ✅ ; étudiant SEG → 0 ✅ ; responsable +etablissementId → 33 inchangé (anti-régression) ✅ ; spoof ?statut=PROVISOIRE → 0 (AND contradictoires) ✅
+
+Stage Summary:
+- ✅ Page « Mes enseignants » corrigée et prouvée en prod : l'étudiant ne voit plus que le PUBLIÉ de sa filière
+- ✅ Workflow : créer → valider → publier → consulter, fonctionnel de bout en bout (l'email de publication enseignant avait déjà été vérifié dans SECT-EMAIL-TEMPLATES-1)
+- 🚨 DÉCOUVERTE SYSTÉMIQUE (hors périmètre de ce fix) : BYPASSRLS sur neondb_owner → toutes les autres policies RLS (72 tables) restent contournées en prod ; recommandation : bascule Render vers sect_app (NOBYPASSRLS, migration 000020) après audit des GRANT des migrations 000092-000107 — les autres pages qui passent leurs filtres côté client (responsable : etablissementId) sont moins exposées, mais les endpoints reposant uniquement sur la RLS fuient
+- ℹ️ Cosmétique non bloquante : l'onglet « Mes UE » affiche la date de publication de la 1re affectation du groupe (peut différer si CM/TD/TP publiés à des moments différents)
