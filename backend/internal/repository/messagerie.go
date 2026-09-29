@@ -1637,7 +1637,14 @@ func (r *MessagerieRepository) IsUserStudentInSameEtablissement(ctx context.Cont
 	}
 
 	var isStudent bool
-	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+	// SECT-DEBTS-FIX-1 : requête en claims SYSTÈME. Depuis la bascule
+	// sect_app (NOBYPASSRLS), la policy User_select ne permet pas à un
+	// étudiant de voir les autres étudiants (id = me / enseignants de sa
+	// filière / resp-admin de l'étab) → l'EXISTS retournait false pour
+	// toute cible étudiante → 403 systématique sur les DM étudiant→étudiant.
+	// Check booléen métier (rôle + établissement de la cible) : aucune
+	// donnée exposée au-delà du booléen.
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
                         SELECT EXISTS(
                                 SELECT 1 FROM "User" u
