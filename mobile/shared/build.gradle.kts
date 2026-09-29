@@ -63,9 +63,15 @@ kotlin {
         }
 
         commonTest.dependencies {
+            // Kotlin 2.3 : kotlin-test-common / kotlin-test-annotations-common sont
+            // des artifacts LEGACY vides (relocatés vers kotlin-test, packaging=pom).
+            // Leur déclaration explicite cassait la résolution Gradle pour
+            // compileDebugUnitTestKotlinAndroid (« Unresolved reference 'Test' » :
+            // assertEquals résolvait, l'annotation Test non). La forme canonique
+            // 2.3.x est kotlin("test") seul — le klib unifié distribue les 3
+            // source sets (commonMain / annotationsCommonMain / assertionsCommonMain)
+            // vers toutes les cibles, y compris androidUnitTest.
             implementation(kotlin("test"))
-            implementation(kotlin("test-common"))
-            implementation(kotlin("test-annotations-common"))
             implementation("io.ktor:ktor-client-mock:3.6.0")
         }
 
