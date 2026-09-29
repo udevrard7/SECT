@@ -31,7 +31,7 @@ type demoRequestRequest struct {
 //
 // Body : { nom, email, telephone?, etablissementNom, ville?, nbEtudiants, message? }
 // Réponse : 200 si l'email a été envoyé, 400 si validation échoue.
-// L'email est envoyé à l'admin (support@sect.ftci.fr) via ResendMailer.
+// L'email est envoyé à l'admin (ulrichdouh@gmail.com) via ResendMailer.
 func (s *Server) submitDemoRequest(w http.ResponseWriter, r *http.Request) {
 	var req demoRequestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

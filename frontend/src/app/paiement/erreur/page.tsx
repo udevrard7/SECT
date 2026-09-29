@@ -274,10 +274,10 @@ function PaiementErreurContent() {
         <p className="text-xs text-[#1E1B4B]/50 mt-4">
           Besoin d'aide ? Contactez le support SECT à{' '}
           <a
-            href="mailto:support@sect.app"
+            href="mailto:ulrichdouh@gmail.com"
             className="text-[#84CC16] hover:underline font-medium"
           >
-            support@sect.app
+            ulrichdouh@gmail.com
           </a>
         </p>
       </motion.div>

@@ -51,7 +51,7 @@ func DefaultData(recipientName, appURL string) EmailData {
 		AppName:       "SECT",
 		AppTagline:    "Système d'Évaluation Casse-Tête",
 		AppURL:        appURL,
-		SupportEmail:  "support@sect.ftci.fr",
+		SupportEmail:  "ulrichdouh@gmail.com",
 		Year:          "2026",
 	}
 }

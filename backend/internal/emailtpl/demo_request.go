@@ -41,7 +41,7 @@ func DemoRequestHTML(d DemoRequestData) string {
 		AppName:       "SECT",
 		AppTagline:    "Système d'Évaluation Casse-Tête",
 		AppURL:        d.AppURL,
-		SupportEmail:  "support@sect.ftci.fr",
+		SupportEmail:  "ulrichdouh@gmail.com",
 		Year:          "2026",
 	}
 
