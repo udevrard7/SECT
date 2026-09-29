@@ -1293,3 +1293,66 @@ Stage Summary:
 - ✅ Volumes auto par élément depuis l'UE, édition manuelle ciblée, total live
 - ✅ Zéro migration DB, zéro changement API — frontend only
 - ⏳ CI GitHub + déploiement Vercel à vérifier après push
+
+---
+Task ID: SECT-SIDEBAR-CONTROL-1
+Agent: Z.ai Code (tuteur)
+Task: Contrôle de la sidebar ne fonctionne pas — inspection + correction
+
+Work Log:
+- Inspection : sidebar-control.tsx (dropdown 3 modes), layout/sidebar.tsx
+  (AppSidebar + handlers de survol), ui/sidebar.tsx (SidebarProvider shadcn),
+  authenticated-layout.tsx (defaultOpen), stores/sidebar-store.ts (zustand
+  persist localStorage).
+- Cause racine identifiée dans SidebarControl : useEffect de sync
+  `mode → setOpen(mode === 'expanded')` avec `setOpen` dans les dépendances.
+  Or le SidebarProvider recrée `setOpen` (useCallback deps [setOpenProp,
+  open]) à CHAQUE changement de `open` → l'effet se ré-exécutait après chaque
+  toggle (rail, Ctrl+B, survol) et l'écrasait aussitôt avec le mode persisté.
+  Symptômes : impossible de replier en mode Étendu, impossible d'ouvrir en
+  mode Réduit, la sidebar se refermait immédiatement après s'être ouverte au
+  survol en mode Survol.
+- Correction 1 — SidebarControl : effet supprimé (redondant : l'état initial
+  est couvert par defaultOpen = store persisté, chaque changement de mode
+  passe par applyMode qui appelle setOpen directement). Note de garde ajoutée
+  contre la réintroduction. Descriptions du dropdown corrigées (« Réduit :
+  Rail d'icônes uniquement », « Survol : Rail qui s'étend au survol » —
+  l'ancienne « toujours masquée » était fausse avec collapsible="icon").
+- Correction 2 — AppSidebar : les toggles DIRECTS (clic rail, Ctrl/Cmd+B)
+  sont désormais répercutés dans le store persisté (effet `state → mode`,
+  exclusions mobile + mode hover via modeRef, refs conformes react-hooks/refs
+  : mise à jour par effet dédié déclaré avant le consommateur). Avant, le
+  cookie shadcn sidebar_state était écrit mais jamais relu → rechargement
+  incohérent avec le radio affiché par le dropdown.
+- Correction 3 — AppSidebar : clic sur le SidebarRail neutralisé en mode
+  Survol (le prop onClick écrase le toggle par défaut) : la souris étant sur
+  le rail, mouseEnter vient d'ouvrir la sidebar ; un clic la refermait
+  instantanément alors que le pointeur était encore dessus.
+- Vérification navigateur (agent-browser headless, frontend dev local +
+  backend Go local, compte démo registrar@uniabidjan.com) : état initial
+  expanded (gap 256px) ; clic rail → collapsed STABLE après délai + store
+  persisté collapsed + gap 48px (le bug le rouvrait avant le fix) ;
+  re-clic rail → expanded + store expanded ; dropdown : radio actif correct,
+  sélection Survol → rail 48px + store hover ; SURVOL → s'étend (256px) ET
+  RESTE étendu (le bug la refermait aussitôt) ; mouseLeave → refermée ;
+  clic rail en Survol → no-op (reste ouverte) ; Ctrl+B → toggle libre sans
+  corrompre le mode store ; rechargement en mode expanded → expanded
+  persisté. Aucune erreur console/page. T8 strict (reload spécifiquement en
+  mode hover) et T9 (retour Étendu via dropdown) non rejoués isolément —
+  mécanismes couverts individuellement (persistance reload + applyMode).
+- Validations : eslint 0 erreur (1 warning préexistant use-surveillance-ws),
+  tsc --noEmit 0 erreur, vitest 11/11. Frontend only — aucun changement
+  backend/API/DB.
+- Note environnement démo : mot de passe du compte démo
+  registrar@uniabidjan.com réinitialisé à SectDemo2026! (procédure officielle
+  du cmd/seed --reset-passwords, appliquée chirurgicalement à ce seul compte
+  via outil temporaire supprimé après usage ; ulrichdouh@gmail.com non touché).
+
+Stage Summary:
+- ✅ Bug racine corrigé et prouvé en navigateur : les toggles (rail, Ctrl+B)
+  ne sont plus annulés, le mode Survol fonctionne (s'ouvre au survol et
+  reste ouvert tant que le pointeur est dessus)
+- ✅ Cohérence de la persistance : toggles directs ↔ store ↔ radio du
+  dropdown ↔ rechargement de page
+- ✅ UX du rail en mode Survol : plus de fermeture parasite au clic
+- ⏳ CI GitHub + déploiement Vercel à vérifier après push

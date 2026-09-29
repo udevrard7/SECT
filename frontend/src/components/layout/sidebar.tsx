@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -102,7 +102,34 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { user } = useAuthStore()
   const mode = useSidebarModeStore((s) => s.mode)
-  const { setOpen, isMobile } = useSidebar()
+  const setMode = useSidebarModeStore((s) => s.setMode)
+  const { state, setOpen, toggleSidebar, isMobile } = useSidebar()
+
+  // Réf du mode pour l'effet de sync ci-dessous (qui ne doit se ré-exécuter
+  // QUE sur changement d'état de la sidebar, pas sur changement de mode —
+  // sinon boucle mode ⇄ effet). La mise à jour de la ref passe par un effet
+  // dédié, déclaré AVANT le consommateur : les effets d'un même commit
+  // s'exécutent séquentiellement dans l'ordre de déclaration, donc la ref
+  // est toujours à jour quand la sync lit modeRef.current.
+  const modeRef = useRef(mode)
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
+
+  // SIDEBAR-CONTROL-1 : répercute les toggles DIRECTS de la sidebar (clic sur
+  // le rail, raccourci Ctrl/Cmd+B) dans le store persisté, pour que le mode
+  // affiché par le SidebarControl et l'état au rechargement restent cohérents
+  // avec ce que voit l'utilisateur (le cookie shadcn `sidebar_state` est écrit
+  // par setOpen mais jamais relu — le store zustand EST la source de vérité).
+  // Exclusions :
+  //   - mobile : la Sheet mobile a son propre état (openMobile), `state`
+  //     desktop ne bouge pas → rien à synchroniser ;
+  //   - mode 'hover' : l'état open y est éphémère (piloté par le survol),
+  //     le radio doit rester sur « Survol ».
+  useEffect(() => {
+    if (isMobile || modeRef.current === 'hover') return
+    setMode(state === 'expanded' ? 'expanded' : 'collapsed')
+  }, [state, isMobile, setMode])
 
   if (!user) return null
 
@@ -133,6 +160,18 @@ export function AppSidebar() {
   }
   const handleMouseLeave = () => {
     if (!isMobile && mode === 'hover') setOpen(false)
+  }
+
+  // Clic sur le rail : toggle normal, SAUF en mode 'hover' où le rail ne
+  // doit rien faire — la souris étant sur le rail, mouseEnter vient d'ouvrir
+  // la sidebar ; un clic la refermerait instantanément alors que le pointeur
+  // est encore dessus (comportement déroutant). En mode survol, seul le
+  // survol pilote l'ouverture.
+  // NB : le prop `onClick` passé ici écrase le `onClick={toggleSidebar}` par
+  // défaut du SidebarRail (le spread {...props} vient après dans shadcn/ui).
+  const handleRailClick = () => {
+    if (!isMobile && mode === 'hover') return
+    toggleSidebar()
   }
 
   const navigateTo = (pageId: PageId) => {
@@ -182,7 +221,7 @@ export function AppSidebar() {
         <SidebarUserCard />
       </SidebarFooter>
 
-      <SidebarRail className="after:bg-sidebar-border" />
+      <SidebarRail className="after:bg-sidebar-border" onClick={handleRailClick} />
     </Sidebar>
   )
 }

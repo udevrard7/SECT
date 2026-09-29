@@ -9,8 +9,8 @@ import { cn } from '@/lib/utils'
 
 const MODES: { id: SidebarMode; label: string; icon: typeof PanelLeftClose; description: string }[] = [
   { id: 'expanded', label: 'Étendu', icon: PanelLeftClose, description: 'Sidebar toujours visible' },
-  { id: 'collapsed', label: 'Réduit', icon: PanelLeftOpen, description: 'Sidebar toujours masquée' },
-  { id: 'hover', label: 'Survol', icon: PanelLeftDashed, description: "S'ouvre au survol" },
+  { id: 'collapsed', label: 'Réduit', icon: PanelLeftOpen, description: 'Rail d’icônes uniquement' },
+  { id: 'hover', label: 'Survol', icon: PanelLeftDashed, description: 'Rail qui s’étend au survol' },
 ]
 
 /**
@@ -30,6 +30,20 @@ const MODES: { id: SidebarMode; label: string; icon: typeof PanelLeftClose; desc
  * qui contrôlent la Sheet. La fonction `toggleSidebar()` gère les deux
  * correctement. L'ancien code ouvrait un dropdown inutile sur mobile au lieu
  * d'ouvrir la sidebar Sheet.
+ *
+ * BUGFIX (SIDEBAR-CONTROL-1) : un useEffect de sync `mode → setOpen(...)`
+ * existait ici avec `setOpen` dans ses dépendances. Or, dans le
+ * SidebarProvider, `setOpen` est un `useCallback` recréé à CHAQUE changement
+ * de `open` (deps `[setOpenProp, open]`) : l'effet se ré-exécutait donc après
+ * CHAQUE toggle (rail, Ctrl+B, survol) et l'écrasait aussitôt avec
+ * `mode === 'expanded'`. Symptômes : impossible de replier la sidebar en
+ * mode Étendu, impossible de l'ouvrir en mode Réduit, et en mode Survol la
+ * sidebar se refermait immédiatement après s'être ouverte au survol.
+ * L'effet est supprimé : l'état initial est couvert par `defaultOpen`
+ * (AuthenticatedLayout lit le store persisté) et chaque changement de mode
+ * passe par `applyMode()` qui appelle `setOpen` directement. Les toggles
+ * directs (rail, Ctrl+B) sont répercutés dans le store persisté par
+ * AppSidebar (voir sync `state → mode` dans layout/sidebar.tsx).
  */
 export function SidebarControl({ className }: { className?: string }) {
   const { state, setOpen, toggleSidebar } = useSidebar()
@@ -39,13 +53,11 @@ export function SidebarControl({ className }: { className?: string }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Au montage et à chaque changement de mode, on synchronise l'état `open`
-  // de la sidebar avec le mode persisté. Uniquement sur desktop.
-  useEffect(() => {
-    if (!isMobile) {
-      setOpen(mode === 'expanded')
-    }
-  }, [mode, isMobile, setOpen])
+  // NOTE (SIDEBAR-CONTROL-1) : ne PAS réintroduire d'effet de sync
+  // `mode → setOpen` ici : `setOpen` change d'identité à chaque changement
+  // de `open`, ce qui transformerait l'effet en écraseur de toggles (voir
+  // docstring du composant). L'initialisation passe par `defaultOpen` et
+  // les changements de mode par `applyMode` ci-dessous.
 
   // Sync mode avec l'état réel de la sidebar : en mode 'hover' le radio
   // reste sur 'Survol' même quand la sidebar s'ouvre au survol.
