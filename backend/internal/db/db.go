@@ -209,3 +209,19 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, claims SessionClaims, fn fu
 
 	return tx.Commit(ctx)
 }
+
+// WithSystemTx exécute une fonction dans une transaction avec les claims
+// système (system-worker / ADMIN) — pour les chemins backend qui doivent
+// passer les policies RLS sans identité utilisateur (workers, dispatch de
+// notifications, quotas, healthchecks, webhooks paiement). Équivalent court
+// de db.WithTx(ctx, pool, db.SystemClaims(), fn).
+//
+// RLS-ACTUAL-SWITCH-1 : indispensable dès que le runtime se connecte en tant
+// que sect_app (NOBYPASSRLS) — une requête exécutée directement sur le pool
+// (hors transaction) s'exécute SANS claims et se voit refuser par les
+// policies (deny-by-default). Les fonctions SECURITY DEFINER (auth, paiements
+// B2C/B2B, invitations…) restent utilisables hors transaction : elles
+// s'exécutent en tant que neondb_owner (BYPASSRLS).
+func WithSystemTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) error {
+	return WithTx(ctx, pool, SystemClaims(), fn)
+}

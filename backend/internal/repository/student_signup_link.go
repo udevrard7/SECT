@@ -357,9 +357,12 @@ func (r *StudentSignupLinkRepository) LogRegistrationEvent(
 // booléen de dédoublonnage — pas une donnée métier). L'UPDATE ne peut pas être
 // utilisé pour élever des privilèges.
 func (r *StudentSignupLinkRepository) MarkReminderSent(ctx context.Context, linkID string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
-		linkID)
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+			linkID)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("mark reminder sent: %w", err)
 	}

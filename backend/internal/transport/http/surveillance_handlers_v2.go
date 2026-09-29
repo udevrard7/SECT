@@ -792,17 +792,21 @@ func (s *Server) surveillanceFlagSession(w http.ResponseWriter, r *http.Request)
 	if s.notifDispatcher != nil {
 		// Récupérer l'épreuve (ID + titre + enseignant) + le responsable de l'étab
 		var epreuveIDEnv, epreuveTitreEnv, enseignantID, responsableID string
-		_ = s.dbPool.QueryRow(r.Context(), `
+		_ = appdb.WithSystemTx(r.Context(), s.dbPool, func(tx pgx.Tx) error {
+			return tx.QueryRow(r.Context(), `
                         SELECT e."id", e."titre", e."enseignantId"
                         FROM "SessionPassation" s JOIN "Epreuve" e ON e."id" = s."epreuveId"
                         WHERE s."id" = $1`, sessionID).Scan(&epreuveIDEnv, &epreuveTitreEnv, &enseignantID)
+		})
 		if epreuveIDEnv != "" {
-			_ = s.dbPool.QueryRow(r.Context(), `
+			_ = appdb.WithSystemTx(r.Context(), s.dbPool, func(tx pgx.Tx) error {
+				return tx.QueryRow(r.Context(), `
                                 SELECT u.id FROM "User" u
                                 WHERE u.role = 'RESPONSABLE' AND u."etablissementId" = (
                                         SELECT f."etablissementId" FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId"
                                         WHERE e.id = $1
                                 ) AND u."deletedAt" IS NULL LIMIT 1`, epreuveIDEnv).Scan(&responsableID)
+			})
 		}
 
 		notifEvent := notification.Event{

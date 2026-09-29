@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 )
 
@@ -33,9 +34,13 @@ func NewQuotaRepository(pool *pgxpool.Pool) *QuotaRepository {
 // GetActivePlanLimits récupère les limites du plan actif pour un établissement.
 // Retourne nil si aucun abonnement actif (pas de limites).
 func (r *QuotaRepository) GetActivePlanLimits(ctx context.Context, etablissementID string) (*domain.PlanLimits, error) {
-	// On interroge directement le pool (pas de RLS — on lit Plan + Abonnement
-	// qui sont des tables admin/lecture seule côté établissement).
-	row := r.pool.QueryRow(ctx, `
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (system-worker/ADMIN) —
+	// Plan_all_admin et Abonnement_select ne rendent rien sans claims dès que le
+	// runtime connecte sect_app (NOBYPASSRLS).
+	var p domain.PlanLimits
+	found := false
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `
                 SELECT p."id", p."nom", COALESCE(p."branche", ''),
                        p."nbEtudiantsMax", p."nbEnseignantsMax", p."nbFilieresMax",
                        p."nbEvaluationsMois",
@@ -49,20 +54,26 @@ func (r *QuotaRepository) GetActivePlanLimits(ctx context.Context, etablissement
                 ORDER BY a."createdAt" DESC
                 LIMIT 1
         `, etablissementID)
-
-	var p domain.PlanLimits
-	err := row.Scan(
-		&p.PlanID, &p.PlanNom, &p.Branche,
-		&p.NbEtudiantsMax, &p.NbEnseignantsMax, &p.NbFilieresMax,
-		&p.NbEvaluationsMois,
-		&p.QuotaIAGeneration, &p.QuotaIACorrection,
-		&p.ClasseesMax,
-	)
-	if err == pgx.ErrNoRows {
-		return nil, nil // pas d'abonnement actif → pas de limites
-	}
+		if err := row.Scan(
+			&p.PlanID, &p.PlanNom, &p.Branche,
+			&p.NbEtudiantsMax, &p.NbEnseignantsMax, &p.NbFilieresMax,
+			&p.NbEvaluationsMois,
+			&p.QuotaIAGeneration, &p.QuotaIACorrection,
+			&p.ClasseesMax,
+		); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil // pas d'abonnement actif → pas de limites
+			}
+			return err
+		}
+		found = true
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get active plan limits: %w", err)
+	}
+	if !found {
+		return nil, nil
 	}
 	return &p, nil
 }
@@ -87,11 +98,13 @@ func (r *QuotaRepository) CheckStudentsQuota(ctx context.Context, etablissementI
 	// en a déjà N actifs, on bloque (il doit payer la régularisation).
 	if plan.Branche == "B2B" {
 		var nbPaye *int
-		err = r.pool.QueryRow(ctx, `
+		err = db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `
                         SELECT "nbrEtudiantsPayes" FROM "Abonnement"
                         WHERE "etablissementId" = $1 AND "statut" = 'ACTIF' AND "deletedAt" IS NULL
                         ORDER BY "createdAt" DESC LIMIT 1
                 `, etablissementID).Scan(&nbPaye)
+		})
 		if err == nil && nbPaye != nil && *nbPaye > 0 {
 			if count >= *nbPaye {
 				return &domain.QuotaExceededError{
@@ -150,10 +163,12 @@ func (r *QuotaRepository) CheckFilieresQuota(ctx context.Context, etablissementI
 		return nil
 	}
 	var count int
-	err = r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM "Filiere" WHERE "etablissementId" = $1`,
-		etablissementID,
-	).Scan(&count)
+	err = db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT count(*) FROM "Filiere" WHERE "etablissementId" = $1`,
+			etablissementID,
+		).Scan(&count)
+	})
 	if err != nil {
 		return fmt.Errorf("count filieres: %w", err)
 	}
@@ -179,11 +194,13 @@ func (r *QuotaRepository) CheckEvaluationsQuota(ctx context.Context, etablisseme
 		return nil
 	}
 	var count int
-	err = r.pool.QueryRow(ctx, `
+	err = db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
                 SELECT count(*) FROM "Epreuve"
                 WHERE "etablissementId" = $1
                   AND "createdAt" >= date_trunc('month', now())
         `, etablissementID).Scan(&count)
+	})
 	if err != nil {
 		return fmt.Errorf("count evaluations this month: %w", err)
 	}
@@ -269,7 +286,8 @@ func (r *QuotaRepository) CheckActiveStudentsUsageQuota(ctx context.Context, eta
 	// Epreuve n'a pas d'etablissementId direct → on joint via Filiere.
 	// dateDebut IS NOT NULL = session réellement démarrée (pas juste créée).
 	var count int
-	err = r.pool.QueryRow(ctx, `
+	err = db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
                 SELECT count(DISTINCT sp."etudiantId")
                 FROM "SessionPassation" sp
                 JOIN "Epreuve" e ON e."id" = sp."epreuveId"
@@ -278,6 +296,7 @@ func (r *QuotaRepository) CheckActiveStudentsUsageQuota(ctx context.Context, eta
                   AND sp."dateDebut" IS NOT NULL
                   AND date_trunc('month', sp."dateDebut") = date_trunc('month', NOW())
         `, etablissementID).Scan(&count)
+	})
 	if err != nil {
 		return fmt.Errorf("count active students usage: %w", err)
 	}
@@ -307,10 +326,12 @@ func (r *QuotaRepository) IncrementIACorrection(ctx context.Context, etablisseme
 
 func (r *QuotaRepository) countUsersByRole(ctx context.Context, etablissementID, role string) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM "User" WHERE "etablissementId" = $1 AND "role" = $2::"Role" AND "actif" = true`,
-		etablissementID, role,
-	).Scan(&count)
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT count(*) FROM "User" WHERE "etablissementId" = $1 AND "role" = $2::"Role" AND "actif" = true`,
+			etablissementID, role,
+		).Scan(&count)
+	})
 	if err != nil {
 		return 0, fmt.Errorf("count users by role: %w", err)
 	}
@@ -350,10 +371,12 @@ func (r *QuotaRepository) incrementIAUsage(ctx context.Context, etablissementID,
 // mais besoin de l'etablissementId.
 func (r *QuotaRepository) GetPlanLimitsForUser(ctx context.Context, userID string) (*domain.PlanLimits, string, error) {
 	var etablissementID string
-	err := r.pool.QueryRow(ctx,
-		`SELECT "etablissementId" FROM "User" WHERE "id" = $1`,
-		userID,
-	).Scan(&etablissementID)
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT "etablissementId" FROM "User" WHERE "id" = $1`,
+			userID,
+		).Scan(&etablissementID)
+	})
 	if err != nil {
 		return nil, "", fmt.Errorf("get user etablissement: %w", err)
 	}

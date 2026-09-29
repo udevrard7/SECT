@@ -214,7 +214,15 @@ func (w *AutoCloseWorker) closeAllSubmittedEpreuves(ctx context.Context) (int, e
 // SECT-ALERTES-FIX-1 P5.
 func (w *AutoCloseWorker) createAutoCloseAlertes(ctx context.Context, closeTime time.Time) {
 	// Récupérer les épreuves clôturées automatiquement à ce tick (clotureeAt ≈ closeTime)
-	rows, err := w.dbPool.Query(ctx, `
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (Epreuve_all_system) —
+	// collecte en tx courte, INSERT Alerte hors tx (policy Alerte_insert_system
+	// WITH CHECK(true) — pas de claims requis).
+	type closedEpreuve struct {
+		epreuveID, titre, enseignantID string
+	}
+	var epreuves []closedEpreuve
+	err := db.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                 SELECT e."id", e."titre", e."enseignantId", e."filiereId"
                 FROM "Epreuve" e
                 WHERE e."statut" = 'CLOTUREE'
@@ -222,18 +230,27 @@ func (w *AutoCloseWorker) createAutoCloseAlertes(ctx context.Context, closeTime 
                   AND e."clotureeAt" IS NOT NULL
                   AND e."clotureeAt" >= $1
         `, closeTime.Add(-5*time.Second))
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var ce closedEpreuve
+			var filiereID *string
+			if err := rows.Scan(&ce.epreuveID, &ce.titre, &ce.enseignantID, &filiereID); err != nil {
+				continue
+			}
+			epreuves = append(epreuves, ce)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		w.logger.Warn("createAutoCloseAlertes: query failed", "error", err)
 		return
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var epreuveID, titre, enseignantID string
-		var filiereID *string
-		if err := rows.Scan(&epreuveID, &titre, &enseignantID, &filiereID); err != nil {
-			continue
-		}
+	for _, ce := range epreuves {
+		epreuveID, titre, enseignantID := ce.epreuveID, ce.titre, ce.enseignantID
 
 		// INSERT Alerte SYSTEME (avec SystemClaims pour bypass RLS)
 		alerteID := uuid.NewString()

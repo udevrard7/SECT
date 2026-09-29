@@ -279,9 +279,12 @@ func (r *TeacherSignupLinkRepository) LogRegistrationEvent(
 // claims utilisateur). La colonne expiryReminderSent n'est pas sensible (un flag
 // booléen de dédoublonnage — pas une donnée métier).
 func (r *TeacherSignupLinkRepository) MarkReminderSent(ctx context.Context, linkID string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE "TeacherSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
-		linkID)
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`UPDATE "TeacherSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+			linkID)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("mark teacher reminder sent: %w", err)
 	}

@@ -317,10 +317,12 @@ func (s *Server) retournerSession(w http.ResponseWriter, r *http.Request) {
 	// SECT-NOTIF-RESULTAT-1 : notifier l'étudiant que son résultat est disponible.
 	if s.notifDispatcher != nil {
 		var etudiantID, epreuveNom string
-		_ = s.dbPool.QueryRow(r.Context(), `
+		_ = appdb.WithSystemTx(r.Context(), s.dbPool, func(tx pgx.Tx) error {
+			return tx.QueryRow(r.Context(), `
                         SELECT sp."etudiantId", e."titre"
                         FROM "SessionPassation" sp JOIN "Epreuve" e ON e."id" = sp."epreuveId"
                         WHERE sp."id" = $1`, sessionID).Scan(&etudiantID, &epreuveNom)
+		})
 		if etudiantID != "" {
 			s.notifDispatcher.Dispatch(r.Context(), notification.Event{
 				UserID:      etudiantID,
@@ -393,28 +395,43 @@ func (s *Server) retournerBatch(w http.ResponseWriter, r *http.Request) {
 
 	// SECT-NOTIF-RESULTAT-1 : notifier chaque étudiant du batch.
 	if s.notifDispatcher != nil && count > 0 {
-		rows, _ := s.dbPool.Query(r.Context(), `
+		// RLS-ACTUAL-SWITCH-1 : lecture via claims système, collecte en tx courte
+		// puis dispatch hors transaction.
+		type etuRow struct{ etuID, epreuveNom string }
+		var etuRows []etuRow
+		_ = appdb.WithSystemTx(r.Context(), s.dbPool, func(tx pgx.Tx) error {
+			rows, err := tx.Query(r.Context(), `
                         SELECT DISTINCT sp."etudiantId", e."titre"
                         FROM "SessionPassation" sp JOIN "Epreuve" e ON e."id" = sp."epreuveId"
                         WHERE sp."id" = ANY($1)`, sessionIDs)
-		if rows != nil {
-			for rows.Next() {
-				var etuID, epreuveNom string
-				if rows.Scan(&etuID, &epreuveNom) == nil && etuID != "" {
-					s.notifDispatcher.Dispatch(r.Context(), notification.Event{
-						UserID:      etuID,
-						Type:        "RESULTAT_PUBLIE",
-						Titre:       "Résultat disponible 📋",
-						Message:     fmt.Sprintf("Votre résultat pour « %s » est disponible.", epreuveNom),
-						Categorie:   "evaluation",
-						Priorite:    "info",
-						ActionURL:   "/mes-resultats",
-						ActionLabel: "Voir mon résultat",
-						Icone:       "FileCheck",
-					})
-				}
+			if err != nil {
+				return err
 			}
-			rows.Close()
+			defer rows.Close()
+			for rows.Next() {
+				var er etuRow
+				if err := rows.Scan(&er.etuID, &er.epreuveNom); err != nil {
+					continue
+				}
+				etuRows = append(etuRows, er)
+			}
+			return rows.Err()
+		})
+		for _, er := range etuRows {
+			etuID, epreuveNom := er.etuID, er.epreuveNom
+			if etuID != "" {
+				s.notifDispatcher.Dispatch(r.Context(), notification.Event{
+					UserID:      etuID,
+					Type:        "RESULTAT_PUBLIE",
+					Titre:       "Résultat disponible 📋",
+					Message:     fmt.Sprintf("Votre résultat pour « %s » est disponible.", epreuveNom),
+					Categorie:   "evaluation",
+					Priorite:    "info",
+					ActionURL:   "/mes-resultats",
+					ActionLabel: "Voir mon résultat",
+					Icone:       "FileCheck",
+				})
+			}
 		}
 	}
 

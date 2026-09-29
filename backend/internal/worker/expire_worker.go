@@ -14,8 +14,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/emailtpl"
 	"github.com/udevrard7/sect/backend/internal/mailer"
 )
@@ -358,7 +360,11 @@ func (w *ExpireWorker) sendStudentSignupLinkReminders(ctx context.Context) {
 		return // dev mode, pas d'email
 	}
 
-	rows, err := w.dbPool.Query(ctx, `
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (SignupLink_select
+	// is_admin, User_select is_system, Etablissement_select is_system).
+	var candidates []signupLinkReminderCandidate
+	err := appdb.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                 SELECT s."id", s."token", s."label", s."expiresAt", s."useCount", s."maxUses",
                        u."email", u."name",
                        e."nom" AS etab_nom, e."type" AS etab_type
@@ -370,21 +376,24 @@ func (w *ExpireWorker) sendStudentSignupLinkReminders(ctx context.Context) {
                   AND s."expiryReminderSent" = false
                   AND s."expiresAt" BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
         `)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c signupLinkReminderCandidate
+			if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
+				&c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
+				w.logger.Error("ExpireWorker: signup link reminder scan failed", "error", err.Error())
+				continue
+			}
+			candidates = append(candidates, c)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		w.logger.Error("ExpireWorker: signup link reminder query failed", "error", err.Error())
 		return
-	}
-	defer rows.Close()
-
-	var candidates []signupLinkReminderCandidate
-	for rows.Next() {
-		var c signupLinkReminderCandidate
-		if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
-			&c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
-			w.logger.Error("ExpireWorker: signup link reminder scan failed", "error", err.Error())
-			continue
-		}
-		candidates = append(candidates, c)
 	}
 	if len(candidates) == 0 {
 		return
@@ -399,9 +408,12 @@ func (w *ExpireWorker) sendStudentSignupLinkReminders(ctx context.Context) {
 		// indéfiniment (un email cassé restera cassé au prochain tick).
 		// Si le flag ne peut pas être posé (DB error), on log et on
 		// continue — le reminder sera ré-envoyé au prochain tick (acceptable).
-		if _, err := w.dbPool.Exec(ctx,
-			`UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
-			c.ID); err != nil {
+		if err := appdb.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx,
+				`UPDATE "StudentSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+				c.ID)
+			return err
+		}); err != nil {
 			w.logger.Error("ExpireWorker: failed to mark reminder sent",
 				"linkId", c.ID, "error", err.Error())
 		}
@@ -494,7 +506,11 @@ func (w *ExpireWorker) sendTeacherSignupLinkReminders(ctx context.Context) {
 		return // dev mode, pas d'email
 	}
 
-	rows, err := w.dbPool.Query(ctx, `
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (SignupLink_select
+	// is_admin, User_select is_system, Etablissement_select is_system).
+	var candidates []signupLinkReminderCandidate
+	err := appdb.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
 		SELECT s."id", s."token", s."label", s."expiresAt", s."useCount", s."maxUses",
 		       u."email", u."name",
 		       e."nom" AS etab_nom, e."type" AS etab_type
@@ -506,21 +522,24 @@ func (w *ExpireWorker) sendTeacherSignupLinkReminders(ctx context.Context) {
 		  AND s."expiryReminderSent" = false
 		  AND s."expiresAt" BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
 	`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c signupLinkReminderCandidate
+			if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
+				&c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
+				w.logger.Error("ExpireWorker: teacher signup link reminder scan failed", "error", err.Error())
+				continue
+			}
+			candidates = append(candidates, c)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		w.logger.Error("ExpireWorker: teacher signup link reminder query failed", "error", err.Error())
 		return
-	}
-	defer rows.Close()
-
-	var candidates []signupLinkReminderCandidate
-	for rows.Next() {
-		var c signupLinkReminderCandidate
-		if err := rows.Scan(&c.ID, &c.Token, &c.Label, &c.ExpiresAt, &c.UseCount, &c.MaxUses,
-			&c.Email, &c.Name, &c.EtabNom, &c.EtabType); err != nil {
-			w.logger.Error("ExpireWorker: teacher signup link reminder scan failed", "error", err.Error())
-			continue
-		}
-		candidates = append(candidates, c)
 	}
 	if len(candidates) == 0 {
 		return
@@ -532,9 +551,12 @@ func (w *ExpireWorker) sendTeacherSignupLinkReminders(ctx context.Context) {
 		w.sendTeacherSignupLinkReminderEmail(ctx, c)
 		// Marquer reminder envoyé (anti-spam) — idempotent. On marque même si
 		// l'envoi échoue pour éviter le spam de retries.
-		if _, err := w.dbPool.Exec(ctx,
-			`UPDATE "TeacherSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
-			c.ID); err != nil {
+		if err := appdb.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx,
+				`UPDATE "TeacherSignupLink" SET "expiryReminderSent" = true, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`,
+				c.ID)
+			return err
+		}); err != nil {
 			w.logger.Error("ExpireWorker: failed to mark teacher reminder sent",
 				"linkId", c.ID, "error", err.Error())
 		}

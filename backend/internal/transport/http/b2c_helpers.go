@@ -10,6 +10,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	db "github.com/udevrard7/sect/backend/internal/db"
 )
 
@@ -23,10 +24,12 @@ func (s *Server) isB2CSelfService(ctx context.Context, claims db.SessionClaims) 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	var etabType string
-	err := s.dbPool.QueryRow(ctx,
-		`SELECT "type" FROM "Etablissement" WHERE "id" = $1`,
-		claims.EtablissementID,
-	).Scan(&etabType)
+	err := db.WithSystemTx(ctx, s.dbPool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT "type" FROM "Etablissement" WHERE "id" = $1`,
+			claims.EtablissementID,
+		).Scan(&etabType)
+	})
 	if err != nil {
 		return false, err
 	}

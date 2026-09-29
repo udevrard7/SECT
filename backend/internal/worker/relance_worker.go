@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	appdb "github.com/udevrard7/sect/backend/internal/db"
@@ -88,7 +89,11 @@ func (w *RelanceWorker) checkAndSend(ctx context.Context) {
 	// Query : abonnements ACTIF, dateFin dans [now, now+7j], relanceEnvoyee=false
 	// SECT-B2B-FACTURATION : pour le B2B, on cible le RESPONSABLE (pas ENSEIGNANT).
 	// On utilise un UNION pour gérer les deux cas (B2C=ENSEIGNANT, B2B=RESPONSABLE).
-	rows, err := w.dbPool.Query(ctx, `
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (Abonnement_select,
+	// Plan_all_admin, User_select is_system, Etablissement_select is_system).
+	var candidates []relanceCandidate
+	err := appdb.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                 -- B2C : cibler l'ENSEIGNANT
                 SELECT a."id", u."email", u."name", p."nom", p."prixMensuel",
                        COALESCE(a."periodeAbonnement", 'mensuel'), a."dateFin",
@@ -121,22 +126,25 @@ func (w *RelanceWorker) checkAndSend(ctx context.Context) {
                   AND a."deletedAt" IS NULL
                   AND (e."type" IS NULL OR e."type" <> 'PERSONNEL')
         `)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c relanceCandidate
+			if err := rows.Scan(&c.AboID, &c.UserEmail, &c.UserName, &c.PlanNom,
+				&c.PlanPrix, &c.Periode, &c.DateFin, &c.Branche, &c.EtabNom); err != nil {
+				w.logger.Error("Relance Worker: scan failed", "error", err.Error())
+				continue
+			}
+			c.JoursRest = int(time.Until(c.DateFin).Hours() / 24)
+			candidates = append(candidates, c)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		w.logger.Error("Relance Worker: query failed", "error", err.Error())
 		return
-	}
-	defer rows.Close()
-
-	var candidates []relanceCandidate
-	for rows.Next() {
-		var c relanceCandidate
-		if err := rows.Scan(&c.AboID, &c.UserEmail, &c.UserName, &c.PlanNom,
-			&c.PlanPrix, &c.Periode, &c.DateFin, &c.Branche, &c.EtabNom); err != nil {
-			w.logger.Error("Relance Worker: scan failed", "error", err.Error())
-			continue
-		}
-		c.JoursRest = int(time.Until(c.DateFin).Hours() / 24)
-		candidates = append(candidates, c)
 	}
 
 	if len(candidates) == 0 {
@@ -208,10 +216,13 @@ func (w *RelanceWorker) sendRelance(ctx context.Context, c relanceCandidate) {
 	}
 
 	// Marquer relanceEnvoyee=true (évite le spam — 1 seule relance par cycle)
-	_, err := w.dbPool.Exec(emailCtx, `
+	err := appdb.WithSystemTx(emailCtx, w.dbPool, func(tx pgx.Tx) error {
+		_, err := tx.Exec(emailCtx, `
                 UPDATE "Abonnement" SET "relanceEnvoyee" = true, "updatedAt" = NOW()
                 WHERE "id" = $1
         `, c.AboID)
+		return err
+	})
 	if err != nil {
 		w.logger.Error("Relance Worker: failed to set relanceEnvoyee",
 			"aboId", c.AboID, "error", err.Error())

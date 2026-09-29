@@ -11,7 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/udevrard7/sect/backend/internal/db"
 )
 
 // ServiceStatus représente l'état d'un service monitoré.
@@ -163,7 +166,9 @@ func (h *HealthChecker) checkAuth(ctx context.Context) ServiceStatus {
 	defer cancel()
 
 	var count int
-	err := h.pool.QueryRow(authCtx, `SELECT count(*) FROM "User" WHERE "role" = 'ADMIN' LIMIT 1`).Scan(&count)
+	err := db.WithSystemTx(authCtx, h.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(authCtx, `SELECT count(*) FROM "User" WHERE "role" = 'ADMIN' LIMIT 1`).Scan(&count)
+	})
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -202,7 +207,9 @@ func (h *HealthChecker) checkEvaluation(ctx context.Context) ServiceStatus {
 	defer cancel()
 
 	var count int
-	err := h.pool.QueryRow(evalCtx, `SELECT count(*) FROM "Epreuve" WHERE "deletedAt" IS NULL LIMIT 1`).Scan(&count)
+	err := db.WithSystemTx(evalCtx, h.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(evalCtx, `SELECT count(*) FROM "Epreuve" WHERE "deletedAt" IS NULL LIMIT 1`).Scan(&count)
+	})
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -233,7 +240,9 @@ func (h *HealthChecker) checkPayment(ctx context.Context) ServiceStatus {
 	defer cancel()
 
 	var count int
-	err := h.pool.QueryRow(payCtx, `SELECT count(*) FROM "Abonnement" LIMIT 1`).Scan(&count)
+	err := db.WithSystemTx(payCtx, h.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(payCtx, `SELECT count(*) FROM "Abonnement" LIMIT 1`).Scan(&count)
+	})
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -264,7 +273,9 @@ func (h *HealthChecker) checkAI(ctx context.Context) ServiceStatus {
 	defer cancel()
 
 	var count int
-	err := h.pool.QueryRow(aiCtx, `SELECT count(*) FROM "AIProviderConfig" WHERE "isActive" = true LIMIT 1`).Scan(&count)
+	err := db.WithSystemTx(aiCtx, h.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(aiCtx, `SELECT count(*) FROM "AIProviderConfig" WHERE "isActive" = true LIMIT 1`).Scan(&count)
+	})
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {

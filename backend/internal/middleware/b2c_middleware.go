@@ -16,7 +16,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	appdb "github.com/udevrard7/sect/backend/internal/db"
 )
 
 // EtabTypeChecker est une interface pour vérifier le type d'établissement.
@@ -35,10 +38,12 @@ func (c *etabTypeCheckerImpl) IsPersonalEtab(ctx context.Context, etablissementI
 		return false, nil
 	}
 	var etabType string
-	err := c.pool.QueryRow(ctx,
-		`SELECT "type" FROM "Etablissement" WHERE "id" = $1`,
-		etablissementID,
-	).Scan(&etabType)
+	err := appdb.WithSystemTx(ctx, c.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT "type" FROM "Etablissement" WHERE "id" = $1`,
+			etablissementID,
+		).Scan(&etabType)
+	})
 	if err != nil {
 		return false, err
 	}

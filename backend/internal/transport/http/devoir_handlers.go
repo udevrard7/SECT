@@ -957,10 +957,12 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 	// (la correction est visible par l'étudiant). Non bloquant.
 	if s.notifDispatcher != nil && respStatut == "RETOURNE" {
 		var etudiantID, devoirTitre string
-		_ = s.dbPool.QueryRow(r.Context(), `
+		_ = appdb.WithSystemTx(r.Context(), s.dbPool, func(tx pgx.Tx) error {
+			return tx.QueryRow(r.Context(), `
                         SELECT s."etudiantId", d."titre"
                         FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId"
                         WHERE s."id" = $1`, soumissionID).Scan(&etudiantID, &devoirTitre)
+		})
 		if etudiantID != "" {
 			s.notifDispatcher.Dispatch(r.Context(), notification.Event{
 				UserID:      etudiantID,

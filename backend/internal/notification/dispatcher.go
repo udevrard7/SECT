@@ -266,10 +266,12 @@ type preferenceResult struct {
 func (d *Dispatcher) fetchPreferences(ctx context.Context, userID, categorie string) preferenceResult {
 	def := preferenceResult{pushEnabled: true, emailEnabled: true}
 	var push, email bool
-	err := d.pool.QueryRow(ctx, `
+	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
                 SELECT "pushEnabled", "emailEnabled"
                 FROM "NotificationPreference"
                 WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email)
+	})
 	if err != nil {
 		// Pas de ligne (ou erreur) → défauts
 		return def
@@ -289,15 +291,32 @@ func (d *Dispatcher) sendPush(ctx context.Context, userID string, payload map[st
 	}
 
 	// Récupérer les PushSubscription actives pour cet utilisateur.
-	rows, err := d.pool.Query(ctx,
-		`SELECT "endpoint", "p256dh", "auth" FROM "PushSubscription" WHERE "userId" = $1`,
-		userID)
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (policy
+	// PushSubscription_select_system) — collecte en tx courte, envoi réseau hors tx.
+	type pushSub struct{ endpoint, p256dh, auth string }
+	var subs []pushSub
+	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT "endpoint", "p256dh", "auth" FROM "PushSubscription" WHERE "userId" = $1`,
+			userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var s pushSub
+			if err := rows.Scan(&s.endpoint, &s.p256dh, &s.auth); err != nil {
+				continue
+			}
+			subs = append(subs, s)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		d.logger.Warn("notification.sendPush: query subscriptions failed",
 			"userId", userID, "error", err)
 		return
 	}
-	defer rows.Close()
 
 	// Sérialiser le payload en JSON compact.
 	payloadBytes, err := json.Marshal(payload)
@@ -306,11 +325,8 @@ func (d *Dispatcher) sendPush(ctx context.Context, userID string, payload map[st
 	}
 
 	subCount := 0
-	for rows.Next() {
-		var endpoint, p256dh, auth string
-		if err := rows.Scan(&endpoint, &p256dh, &auth); err != nil {
-			continue
-		}
+	for _, s := range subs {
+		endpoint, p256dh, auth := s.endpoint, s.p256dh, s.auth
 
 		sub := webpush.Subscription{
 			Endpoint: endpoint,
@@ -348,8 +364,10 @@ func (d *Dispatcher) sendPush(ctx context.Context, userID string, payload map[st
 func (d *Dispatcher) sendEmail(userID string, email EmailContent) {
 	// Récupérer l'email du user
 	var to string
-	err := d.pool.QueryRow(context.Background(),
-		`SELECT email FROM "User" WHERE id = $1`, userID).Scan(&to)
+	err := db.WithSystemTx(context.Background(), d.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(),
+			`SELECT email FROM "User" WHERE id = $1`, userID).Scan(&to)
+	})
 	if err != nil {
 		d.logger.Warn("notification.Dispatcher: sendEmail user email not found",
 			"userId", userID, "error", err)

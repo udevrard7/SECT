@@ -405,9 +405,11 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
 	aboID := payload.Data.Metadata["abonnement_id"]
 	if aboID == "" {
 		// Fallback : lookup par geniuspayReference
-		err := s.dbPool.QueryRow(ctx, `
+		err := appdb.WithSystemTx(ctx, s.dbPool, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `
                         SELECT "id" FROM "Abonnement" WHERE "geniuspayReference" = $1
                 `, ref).Scan(&aboID)
+		})
 		if err != nil {
 			slog.Error("handleGeniusPaySuccess: abonnement non trouvé par référence",
 				"ref", ref, "error", err.Error())
@@ -417,11 +419,13 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
 
 	// Vérifier le montant attendu vs montant payé (sécurité doc GeniusPay)
 	var expectedAmount float64
-	_ = s.dbPool.QueryRow(ctx, `
+	_ = appdb.WithSystemTx(ctx, s.dbPool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
                 SELECT p."prixMensuel" FROM "Abonnement" a
                 JOIN "Plan" p ON p."id" = a."planId"
                 WHERE a."id" = $1
         `, aboID).Scan(&expectedAmount)
+	})
 	if expectedAmount > 0 && payload.Data.Amount > 0 && payload.Data.Amount != expectedAmount {
 		slog.Error("handleGeniusPaySuccess: montant mismatch — ABANDON",
 			"aboId", aboID, "ref", ref,
@@ -441,7 +445,8 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
 
 	if isB2BCapitation {
 		// B2B : activer l'abonnement (ESSAI→ACTIF) + créer facture capitation
-		_, err := s.dbPool.Exec(ctx, `
+		err := appdb.WithSystemTx(ctx, s.dbPool, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `
                         UPDATE "Abonnement"
                         SET "statut" = 'ACTIF'::"StatutAbonnement",
                             "dateFin" = NOW() + INTERVAL '1 year',
@@ -451,6 +456,8 @@ func (s *Server) handleGeniusPaySuccess(ctx context.Context, payload geniuspay.W
                             "updatedAt" = NOW()
                         WHERE "id" = $1 AND "statut" IN ('ESSAI', 'EXPIRE')
                 `, aboID, ref)
+			return err
+		})
 		if err != nil {
 			slog.Error("handleGeniusPaySuccess: B2B activation failed",
 				"aboId", aboID, "ref", ref, "error", err.Error())

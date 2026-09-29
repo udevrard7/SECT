@@ -287,11 +287,29 @@ func (s *Server) fanoutSegmentNotification(n *notifAdminResponse) {
 		return
 	}
 
-	rows, err := s.dbPool.Query(ctx, query, args...)
+	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (User_select is_system,
+	// Etablissement_select is_system, Abonnement_select is_admin, Plan_all_admin)
+	// — collecte en tx courte puis dispatch hors transaction.
+	type segmentRecipient struct{ userID, email, name string }
+	var recipients []segmentRecipient
+	err := appdb.WithSystemTx(ctx, s.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var rcpt segmentRecipient
+			if err := rows.Scan(&rcpt.userID, &rcpt.email, &rcpt.name); err != nil {
+				continue
+			}
+			recipients = append(recipients, rcpt)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		return
 	}
-	defer rows.Close()
 
 	var actionURL, actionLabel, icone string
 	if n.ActionURL != nil {
@@ -308,11 +326,8 @@ func (s *Server) fanoutSegmentNotification(n *notifAdminResponse) {
 	// On ne rejoue pas l'expiration ici (déjà stockée en DB).
 
 	count := 0
-	for rows.Next() {
-		var userID, email, name string
-		if err := rows.Scan(&userID, &email, &name); err != nil {
-			continue
-		}
+	for _, rcpt := range recipients {
+		userID, name := rcpt.userID, rcpt.name // email non utilisé par le fanout (déduit côté mailer)
 		count++
 
 		event := notification.Event{
