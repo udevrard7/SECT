@@ -19,7 +19,10 @@
 
 // SECT-PWA-AUDIT-1 : bump de version pour forcer l'invalidation du cache
 // après tous les fixes (notifications, alertes, affectations, annee-academique).
-const CACHE_VERSION = 'sect-v6'
+// SECT-AFFECTATIONS-BATCH-3 : v7 — invalider les caches SW après la release
+// batch (stale-while-revalidate aurait continué à servir l'ancien chunk
+// affectations, marqué immutable 1 an côté HTTP).
+const CACHE_VERSION = 'sect-v7'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
