@@ -1419,3 +1419,70 @@ Stage Summary:
 - ⚠️ Trou préexistant documenté : doublons possibles quand groupe IS NULL
   (index NULLS DISTINCT) — migration candidate à discuter avec le métier
 - ⏳ CI GitHub + déploiements Vercel/Render à vérifier après push
+
+---
+Task ID: SECT-AFFECTATIONS-BATCH-3-VERIFY
+Agent: Main orchestrator (Z.ai Code)
+Task: Vérification post-push de BATCH-3 (CI, Render, Vercel) — incident détecté et résolu : la prod Vercel restait figée sur le build précédent
+
+Work Log:
+- CI GitHub vérifiée sur les 5 commits : 15ad6098→1373dbe0 tous verts
+  (Migrations/Go/Next.js success) ; les 3 commits du push 08:45 partagent
+  le même timestamp → un seul push → Actions n'a tourné que sur le head.
+- Backend Render : endpoint batch PROUVÉ live en prod — compte e2e jetable
+  (e2e-deployverify@sect-test.dev, RESPONSABLE, mêmes attributs que le
+  registrar, pattern cmd/seed withClaims) → login prod → POST /batch avec
+  items vide → 400 « items requis : au moins un élément (typeSeance +
+  volumeHeures) » — message qui n'existe que dans le nouveau handler.
+  Attention méthodo : un 401 ne prouve RIEN (middleware auth global,
+  route inexistante → 401 aussi — testé). Compte supprimé après usage
+  (RefreshToken CASCADE, re-login → 401 vérifié ; AuditLog LOGIN conservé,
+  traces honnêtes append-only).
+- Frontend Vercel : INCIDENT — la prod servait le build a43dab53 (08:15)
+  malgré un statut « success » sur 1373dbe0 (08:46). Triple preuve :
+  (1) bundle : ancien pattern `fetch("/api/affectations",{method:"POST"})`
+  présent, `/api/affectations/batch` absent ; (2) test comportemental
+  non mutatif (window.fetch patché + dialogue rempli + soumission →
+  requêtes interceptées) : 3 POSTs /api/affectations ≠ 1 batch ;
+  (3) HTML frais MISS (cookies → pas de cache edge) référençant
+  ae61158550e299ce.js (chunk ancien) alors qu'un build local de HEAD
+  produit 0ad2da42e871005b.js contenant le code batch (nommage Turbopack
+  déterministe ET sensible au contenu — 11 chunks inchangés partagent
+  leurs noms local↔prod).
+- Cause racine : le push 08:45 avait un commit HEAD DOCS-ONLY
+  (1373dbe0 = worklog.md) — le changement frontend était dans e93e036c,
+  commit intermédiaire. Le filtre de build Vercel (Root Directory
+  frontend/) ne voit que le diff du commit head → déploiement SKIPPÉ
+  sans build réel (« success » en 10-60 s). Même chose pour le commit
+  vide 7b782c57 (skip en 10 s, aucun check-run Actions non plus).
+  Entries de cache edge d'âge continu à travers le déploiement 09:24 →
+  la production n'avait jamais changé de deployment.
+- Correctif : commit touchant frontend/ (sw.js CACHE_VERSION v6→v7,
+  doublement utile : le SW stale-while-revalidate aurait servi l'ancien
+  chunk immutable 1 an côté clients) → build réel ~2 min → promotion.
+- Preuve de résolution : HTML MISS référence 0ad2da42e871005b.js ;
+  chunk servi contient /api/affectations/batch (taille identique au
+  build local de référence, 3 340 733 o) ; sw.js v7 servi ; caches SW
+  v6 purgés au activate (sect-v7-static/runtime seuls présents) ;
+  E2E comportemental final : soumission → 1 SEUL appel
+  /api/affectations/batch. VOL-AUTO-2 re-vérifié au passage (sélection
+  UE → auto-coche CM/TD/TP + volumes 14/10/12 pré-remplis).
+- Validations du commit correctif : CI ⚡ Build Next.js success sur
+  73509ada ; Render reconstruit (health OK, route batch toujours 401
+  sans token = live) ; sect.ftci.fr 200.
+
+Stage Summary:
+- ✅ BATCH-3 maintenant réellement LIVE end-to-end : backend Render
+  (endpoint atomique) + frontend Vercel (1 appel batch au lieu de N
+  POSTs) + SW v7 (caches clients invalidés)
+- ✅ Aucune casse pendant l'incident : ancien frontend + nouveau backend
+  = rétrocompatible (POST simple inchangé)
+- ⚠️ LEÇON OPÉRATIONNELLE (à respecter pour TOUS les futurs pushs) :
+  ne JAMAIS terminer un push multi-commits par un commit qui ne touche
+  pas frontend/ (docs-only, backend-only) — Vercel skippe le build et
+  la prod ne bouge pas (statut « success » trompeur, aucun signal
+  d'erreur). Soit squasher le changement frontend dans le head, soit
+  pousser le worklog dans un push séparé.
+- 🔍 Méthodo validée pour vérifier un déploiement Vercel : HTML authentifié
+  (cookies → MISS edge) + comparaison des noms de chunks contre un build
+  local de référence ; les statuts GitHub et le HTTP 200 ne suffisent PAS.
