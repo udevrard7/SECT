@@ -472,7 +472,6 @@ func (s *Server) markAllReadAdmin(w http.ResponseWriter, r *http.Request) {
 	if categorieF != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf(`"categorie" = $%d`, argIdx))
 		args = append(args, categorieF)
-		argIdx++
 	}
 
 	whereClause := "WHERE " + joinStrings(whereClauses, " AND ")

@@ -893,7 +893,6 @@ func (s *Server) alertesMarkAllRead(w http.ResponseWriter, r *http.Request) {
 	if role == "ENSEIGNANT" {
 		scopeParts = append(scopeParts, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = "Alerte"."epreuveId" AND e."enseignantId" = $%d)`, argIdx))
 		args = append(args, claims.UserID)
-		argIdx++
 	}
 
 	// ADMIN PaaS : uniquement les alertes système (userId NULL, filiereId
