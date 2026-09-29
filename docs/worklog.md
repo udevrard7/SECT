@@ -1629,3 +1629,116 @@ Stage Summary:
   NULL (échec silencieux préexistant) ; Message_select/Conversation policies
   permissives (defense-in-depth à renforcer un jour) ; IAUsage sans RLS (pas de
   régression vs avant — usage filtré côté requêtes)
+
+---
+Task ID: SECT-DEBTS-FIX-1
+Agent: main (Z.ai)
+Task: Régler les dettes notées dans SECT-RLS-SECT-APP-SWITCH-1 (confirmation
+utilisateur « réglé ce problème selon tes recommandations ») : 1) INSERT Alerte
+du worker auto-close omettant updatedAt NOT NULL (échec silencieux — les alertes
+d'auto-clôture ne persistaient jamais) ; 2) policies Message/Conversation
+permissives (defense-in-depth) ; avec en cascade : même bug sur /flag, broadcast
+SSE dégradé depuis la bascule, et DM étudiant→étudiant cassé par User_select
+
+Work Log:
+- Audit des policies réellement déployées (pg_policies, source de vérité ≠
+  repo) : Message_insert avait une branche OR "isIA" = true INCONDITIONNELLE
+  (n'importe quel user pouvait insérer un message IA dans n'importe quelle
+  conversation) ; Participant_insert : branche userId = current_user_id() non
+  contrainte sur la conversation (auto-inscription dans le DM d'autrui puis
+  lecture via la branche DIRECT de Conversation_select) ; Participant_select :
+  is_enseignant()/is_responsable()/is_admin() GLOBALES (héritage anti-récursion
+  000038 — un enseignant voyait les participants de TOUS les établissements) ;
+  Alerte_insert_system TO PUBLIC WITH CHECK(true) (encore plus permissive que
+  le TO neondb_owner des fichiers) ; Conversation_update sans WITH CHECK (le
+  créateur pouvait muter type/etablissementId/filiereId/niveau)
+- Détections complémentaires au bug noté : le worker insérait l'Alerte sans
+  claims (pool direct → deny sous sect_app) ET sans updatedAt (NOT NULL sans
+  default) ET jetait l'erreur (_, _ =) tout en loggant « créée » ; le handler
+  /flag (surveillance) omettait AUSSI "id" (PK TEXT sans default) et updatedAt
+  → le signalement fraude ne persistait jamais (500) ; CreateMessage insérait
+  les réponses IA avec les claims de l'ÉTUDIANT (ce que la branche permissive
+  autorisait) ; participantIDs ciblait le broadcast SSE avec les claims de
+  l'EXPÉDITEUR → depuis la bascule, le broadcast d'un message étudiant
+  n'atteignait que lui-même (Participant_select : userId = me)
+- Fix Go (commit 9bebbda, rétrocompatible avec les policies d'alors) :
+  worker → WithSystemTx + updatedAt + erreur loggée ; /flag → id (uuid) +
+  updatedAt ; CreateMessage → SystemClaims si IsIA ; ListParticipantsSystem +
+  participantIDs → ciblage broadcast en claims système
+- Migration 000109 (créée + down exact) : Message_insert isIA réservé à
+  is_system() ; Participant_insert contraint à conversation visible + branche
+  créateur-DM via helper SECURITY DEFINER conversation_created_by_me_direct —
+  INDISPENSABLE : un EXISTS simple est filtré par Conversation_select (branche
+  DIRECT = participant actif requis) alors qu'au CreateDIRECT le créateur
+  n'a pas encore sa ligne participant → création de DM bloquée (prouvé en
+  test) ; Participant_select scopée via conversation_in_my_etab /
+  conversation_admin_accessible (SECURITY DEFINER, pas de récursion RLS) ;
+  Conversation_update WITH CHECK conversation_scope_unchanged (gel du scope) ;
+  Alerte_insert_system → is_system() ; ceinture DEFAULT CURRENT_TIMESTAMP sur
+  Alerte.updatedAt
+- Découverte PostgreSQL documentée pour la suite : les RI checks FK bypassent
+  la RLS (testé : userId invisible pour l'enseignant → INSERT quand même OK) ;
+  en revanche INSERT ... RETURNING APPLIQUE la policy SELECT aux lignes
+  retournées (un /flag dont l'alerte serait invisible du demandeur échouerait
+  — OK ici car epreuve_in_my_etab rend l'alerte visible) ; les GUC posés par
+  set_config(is_local=false) sont annulés par ROLLBACK TO SAVEPOINT (faux
+  positifs A5/F4 du harness v1 — harness v2 : SET LOCAL dans le savepoint)
+- Tests : 27/27 en transaction rollback sur les données réelles (deny des
+  attaques : isIA étudiant, auto-inscription DM d'autrui/STAFF, mutation du
+  scope, insert sans claims, enseignant sans etab ; pass des flux légitimes :
+  salons CLASSE/PROMO visibles, CreateDIRECT 3 étapes complet, leave, IA,
+  broadcast système, bump updatedAt) ; build/vet/gofmt Go OK (toolchain
+  go1.24.10 réinstallé, ~78 Mo)
+- Déploiement SANS fenêtre de rupture (ordre inverse des dépendances) : code
+  d'abord (Render live dep-dau3ch3rj, 22:07) → migration ensuite (apply
+  transactionnel as owner + schema_migrations=109, 22:09) → fichiers poussés
+  (9568062)
+- PREUVE PROD du worker (le bug historique) : épreuve jetable EN_COURS dateFin
+  passée insérée as owner → tick 60 s → épreuve CLOTUREE (clotureeAutomatiquement,
+  raisonCloture « Délai dépassé ») ET Alerte PERSISTÉE (type SYSTEME, userId=
+  enseignant, createdAt = updatedAt = 22:09:01) — la première alerte
+  d'auto-clôture persistée de l'histoire de la table ; épreuve + alerte
+  supprimées ensuite (CASCADE), 0 résiduel
+- Smoke test API prod (compte étudiant jetable e2e-debts-fix@sect-test.dev,
+  même pattern que les sessions précédentes, supprimé en fin) : login ✅,
+  GET /conversations (salon CLASSE de sa filière) ✅, POST /conversations/
+  direct (CreateDIRECT complet sous 000109) ✅, POST message ✅, GET messages
+  persisté ✅, POST /conversations/ia-private (conv IA + participant) ✅ ;
+  re-login post-suppression → 401 ✅ ; CI GitHub verte sur les 3 commits
+- RÉGRESSION DÉCOUVERTE au smoke (préexistante, causée par la bascule
+  sect_app, pas par 000109) : DM étudiant→étudiant → 403 systématique —
+  IsUserStudentInSameEtablissement interrogeait User avec les claims étudiant
+  or User_select ne permet pas à un étudiant de voir les autres étudiants →
+  EXISTS false sous RLS (vrai sous BYPASSRLS avant) ; fix d5c0235 : check
+  booléen métier en WithSystemTx (aucune donnée exposée au-delà du booléen),
+  Render live dep-dau3glff → smoke 6/6
+- Vercel : aucun changement frontend (auto-deploy non déclenché, rien à
+  vérifier côté UI)
+
+Stage Summary:
+- ✅ Dette 1 réglée et PROUVÉE en prod : les alertes d'auto-clôture
+  persistent désormais (WithSystemTx + updatedAt + erreur loggée) — preuve par
+  épreuve jetable clôturée + alerte en table, nettoyée ensuite
+- ✅ Dette 2 réglée : 5 policies durcies (Message_insert, Participant_insert,
+  Participant_select, Conversation_update, Alerte_insert_system) + ceinture
+  DEFAULT updatedAt ; 4 helpers SECURITY DEFINER anti-récursion créés ;
+  27/27 tests RLS en tx rollback sur données réelles
+- ✅ Bonus même classe : /flag (id + updatedAt manquants — n'a jamais
+  persisté), broadcast SSE restauré pour les messages d'étudiants
+  (ListParticipantsSystem), DM étudiant→étudiant réparé (d5c0235, régression
+  de la bascule sect_app découverte au smoke test)
+- ✅ Ordre de déploiement sans fenêtre de rupture : code → migration → push
+  fichiers ; CI verte ×3 ; Render live ×2 (9bebbda, d5c0235) ;
+  schema_migrations=109
+- 🔄 ROLLBACK 000109 si besoin : down exact fourni (ré-ouvre les failles —
+  confort uniquement, le code est compatible des deux côtés)
+- ⚠️ Dettes restantes (notées, hors périmètre) : IAUsage sans RLS (inchangé,
+  usage filtré côté requêtes) ; la branche CLASSE de Conversation_select ne
+  compare pas le niveau de l'étudiant (étudiant de filière X voit les salons
+  CLASSE L1/L2/L3 de X — comportement préexistant 000044, possiblement
+  intentionnel pour les salons de filière) ; D1 enseignant-sans-etab : son
+  User_select ne montre que lui-même → Partner_select 0 ligne (cohérent)
+- ℹ️ Semantique RLS documentée pour les futurs devs : RI checks bypassent la
+  RLS ; INSERT..RETURNING applique la policy SELECT aux lignes retournées ;
+  policy subquery = RLS de la table référencée (d'où les helpers SECURITY
+  DEFINER) ; set_config(is_local=false) annulé par ROLLBACK TO SAVEPOINT
