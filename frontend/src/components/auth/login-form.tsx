@@ -130,6 +130,10 @@ export function LoginForm() {
   const [loginMode, setLoginMode] = useState<LoginMode>('personnel')
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
+  // SESSION-TIMEOUT-1 : bannière informative quand on arrive de /login?error=SessionExpired
+  // (session expirée par inactivité 30 min ou tokens absents) — l'utilisateur
+  // comprend POURQUOI il a été déconnecté au lieu d'un login muet.
+  const [sessionNote, setSessionNote] = useState<string | null>(null)
 
   // Password reset state
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
@@ -171,6 +175,19 @@ export function LoginForm() {
       }
     }
     warmup()
+  }, [])
+
+  // SESSION-TIMEOUT-1 : bannière « session expirée » quand on arrive de la
+  // redirection proxy /login?error=SessionExpired (30 min d'inactivité ou
+  // tokens expirés). Utilise window.location (pas useSearchParams) pour éviter
+  // un suspense boundary sur une page 100 % statique.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('error') === 'SessionExpired') {
+      setSessionNote('Session expirée après une période d’inactivité. Reconnectez-vous pour continuer.')
+      // Nettoyer l'URL pour ne pas ré-afficher la bannière au refresh de la page.
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [])
 
   const handleModeChange = useCallback((newMode: LoginMode) => {
@@ -649,6 +666,16 @@ export function LoginForm() {
                     </button>
                   ))}
                 </div>
+              </motion.div>
+            )}
+            {sessionNote && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+                className="px-3 py-2.5 rounded-lg bg-[#1E1B4B]/5 border border-[#1E1B4B]/10 text-sm text-[#1E1B4B]/80 font-medium flex items-center gap-2"
+              >
+                <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#1E1B4B]/40" />
+                {sessionNote}
               </motion.div>
             )}
             {loginError && (
