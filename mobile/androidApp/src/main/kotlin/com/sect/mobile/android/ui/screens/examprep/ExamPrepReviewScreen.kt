@@ -23,13 +23,13 @@ import com.sect.mobile.android.ui.components.GlassCard
 import com.sect.mobile.android.ui.components.SectBadge
 import com.sect.mobile.android.ui.components.SectProgressBar
 import com.sect.mobile.android.theme.*
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExamPrepReviewScreen(
     onBack: () -> Unit,
-    viewModel: ExamPrepReviewViewModel = koinViewModel<ExamPrepReviewViewModel>()
+    viewModel: ExamPrepReviewViewModel = koinInject<ExamPrepReviewViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 

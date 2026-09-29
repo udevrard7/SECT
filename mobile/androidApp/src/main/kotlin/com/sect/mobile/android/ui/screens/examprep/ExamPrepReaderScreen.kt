@@ -20,14 +20,14 @@ import com.sect.mobile.shared.domain.model.examprep.QAState
 import com.sect.mobile.android.ui.components.GlassCard
 import com.sect.mobile.android.ui.components.SectBadge
 import com.sect.mobile.android.theme.*
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExamPrepReaderScreen(
     documentId: String,
     onBack: () -> Unit,
-    viewModel: ExamPrepReaderViewModel = koinViewModel<ExamPrepReaderViewModel>()
+    viewModel: ExamPrepReaderViewModel = koinInject<ExamPrepReaderViewModel>()
 ) {
     LaunchedEffect(documentId) { viewModel.loadDocument(documentId) }
     val state by viewModel.state.collectAsState()

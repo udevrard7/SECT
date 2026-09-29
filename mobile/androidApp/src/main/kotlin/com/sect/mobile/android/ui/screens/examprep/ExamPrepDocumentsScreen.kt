@@ -18,17 +18,19 @@ import com.sect.mobile.shared.presentation.examprep.documents.ExamPrepDocumentsV
 import com.sect.mobile.android.ui.components.GlassCard
 import com.sect.mobile.android.ui.components.SectBadge
 import com.sect.mobile.android.theme.*
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExamPrepDocumentsScreen(
     onDocumentClick: (String) -> Unit,
     onBack: () -> Unit,
-    // Kotlin 2.3 : l'inférence du reified T depuis le type attendu produit une
-    // intersection [ViewModel & ExamPrepDocumentsViewModel] — désormais ERREUR.
-    // Type argument explicite obligatoire.
-    viewModel: ExamPrepDocumentsViewModel = koinViewModel<ExamPrepDocumentsViewModel>()
+    // BUGFIX Kotlin 2.3 : ces VM :shared sont des classes plain Kotlin (BaseViewModel,
+    // sans androidx.lifecycle — voir shared/di/PresentationModule.kt), enregistrées
+    // en Koin `single`. koinViewModel() (reified T : ViewModel) était un bug latent :
+    // l'inférence produisait l'intersection [ViewModel & VM] reifiée en supertype
+    // commun — runtime KO. koinInject() (reified T : Any) est la fonction correcte.
+    viewModel: ExamPrepDocumentsViewModel = koinInject<ExamPrepDocumentsViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 

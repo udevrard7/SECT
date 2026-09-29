@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sect.mobile.android.ui.components.*
 import com.sect.mobile.android.theme.*
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 // ════════════════════════════════════════════════════════
 // VAGUE 3 — PROGRESS
@@ -26,9 +26,9 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun ExamPrepProgressScreen(
     onBack: () -> Unit,
-    // Kotlin 2.3 : type argument explicite — l'inférence du reified T depuis le
-    // type attendu d'un ViewModel KMP (:shared) produit une intersection désormais en erreur.
-    viewModel: com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel>()
+    // BUGFIX Kotlin 2.3 : VM :shared = classe plain Kotlin (single Koin, pas
+    // androidx.lifecycle.ViewModel) → koinInject(), pas koinViewModel().
+    viewModel: com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel = koinInject<com.sect.mobile.shared.presentation.examprep.progress.ExamPrepProgressViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -78,7 +78,7 @@ fun ExamPrepProgressScreen(
 @Composable
 fun ExamPrepQaScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel>()
+    viewModel: com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel = koinInject<com.sect.mobile.shared.presentation.examprep.qa.ExamPrepQaViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -143,7 +143,7 @@ fun ExamPrepQaScreen(
 @Composable
 fun ExamPrepFlashcardsScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel>()
+    viewModel: com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel = koinInject<com.sect.mobile.shared.presentation.examprep.flashcards.ExamPrepFlashcardsViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -184,7 +184,7 @@ fun ExamPrepFlashcardsScreen(
 fun ExamPrepAudioScreen(
     documentId: String,
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel>()
+    viewModel: com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel = koinInject<com.sect.mobile.shared.presentation.examprep.audio.ExamPrepAudioViewModel>()
 ) {
     LaunchedEffect(documentId) { viewModel.loadAudios(documentId) }
     val state by viewModel.state.collectAsState()
@@ -229,7 +229,7 @@ fun ExamPrepAudioScreen(
 @Composable
 fun ExamPrepPlanningScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel>()
+    viewModel: com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel = koinInject<com.sect.mobile.shared.presentation.examprep.planning.ExamPrepPlanningViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(
@@ -268,7 +268,7 @@ fun ExamPrepPlanningScreen(
 @Composable
 fun ExamPrepHelpScreen(
     onBack: () -> Unit,
-    viewModel: com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel = koinViewModel<com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel>()
+    viewModel: com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel = koinInject<com.sect.mobile.shared.presentation.examprep.help.ExamPrepHelpViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
     Scaffold(

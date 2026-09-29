@@ -18,13 +18,13 @@ import com.sect.mobile.shared.domain.model.examprep.PracticeGenerationState
 import com.sect.mobile.shared.presentation.examprep.practice.ExamPrepPracticeViewModel
 import com.sect.mobile.android.ui.components.*
 import com.sect.mobile.android.theme.*
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExamPrepPracticeScreen(
     onBack: () -> Unit,
-    viewModel: ExamPrepPracticeViewModel = koinViewModel<ExamPrepPracticeViewModel>()
+    viewModel: ExamPrepPracticeViewModel = koinInject<ExamPrepPracticeViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 

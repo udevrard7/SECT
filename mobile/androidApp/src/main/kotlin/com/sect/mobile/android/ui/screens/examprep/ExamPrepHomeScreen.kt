@@ -22,7 +22,7 @@ import com.sect.mobile.shared.presentation.examprep.home.ExamPrepHomeViewModel
 import com.sect.mobile.shared.presentation.examprep.home.ExamPrepHomeState
 import com.sect.mobile.android.ui.components.*
 import com.sect.mobile.android.theme.*
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +36,7 @@ fun ExamPrepHomeScreen(
     onNavigateToFlashcards: () -> Unit,
     onNavigateToAudio: (String) -> Unit,
     onNavigateToHelp: () -> Unit,
-    viewModel: ExamPrepHomeViewModel = koinViewModel<ExamPrepHomeViewModel>()
+    viewModel: ExamPrepHomeViewModel = koinInject<ExamPrepHomeViewModel>()
 ) {
     val state by viewModel.state.collectAsState()
 
