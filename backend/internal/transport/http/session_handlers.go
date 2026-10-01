@@ -316,11 +316,18 @@ func (s *Server) listResultats(w http.ResponseWriter, r *http.Request) {
 		etudiantID = r.URL.Query().Get("etudiantId")
 	}
 
+	// SECT-ANNEE-ARCHIVAGE-2 : scoping année (Branch A) — défaut = année
+	// COURANTE, ?anneeAcademiqueId=all = historique, ID explicite = override
+	// (même convention que /api/epreuves, SECT-ANNEE-HISTOIRE-2). Branch B
+	// (épreuve explicite) inchangée : consulter les résultats d'une épreuve
+	// précise reste possible sur toutes les années (vue explicite).
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), "")
 	params := domain.ResultatListParams{
-		EtudiantID: etudiantID,
-		EpreuveID:  r.URL.Query().Get("epreuveId"),
-		Page:       parseIntQueryParam(r.URL.Query().Get("page"), 1),
-		Limit:      parseIntQueryParam(r.URL.Query().Get("limit"), 50),
+		EtudiantID:        etudiantID,
+		EpreuveID:         r.URL.Query().Get("epreuveId"),
+		Page:              parseIntQueryParam(r.URL.Query().Get("page"), 1),
+		Limit:             parseIntQueryParam(r.URL.Query().Get("limit"), 50),
+		AnneeAcademiqueID: anneeID,
 	}
 
 	result, err := s.resultatUC.List(r.Context(), claims, params)
@@ -341,7 +348,9 @@ func (s *Server) resultatsEtudiantOverview(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	overview, err := s.resultatUC.GetEtudiantOverview(r.Context(), claims)
+	// SECT-ANNEE-ARCHIVAGE-2 : scoping année (miroir listResultats Branch A).
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), "")
+	overview, err := s.resultatUC.GetEtudiantOverview(r.Context(), claims, anneeID)
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return

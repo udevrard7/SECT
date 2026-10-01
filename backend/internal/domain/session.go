@@ -182,6 +182,10 @@ type ResultatListParams struct {
 	EpreuveID  string
 	Page       int
 	Limit      int
+	// SECT-ANNEE-ARCHIVAGE-2 : scoping année — Branch A uniquement (la
+	// consultation explicite d'une épreuve, Branch B, n'est pas scopée).
+	// "" = pas de scoping (clause auto-neutralisante côté SQL).
+	AnneeAcademiqueID string
 }
 
 // ============================================================
@@ -245,10 +249,13 @@ type SessionRepository interface {
 type ResultatRepository interface {
 	FindBySessionID(ctx context.Context, sessionID string) (*Resultat, error)
 	Upsert(ctx context.Context, r *Resultat) (*Resultat, error)
-	ListByEtudiant(ctx context.Context, etudiantID string) ([]*SessionPassation, error)
+	// SECT-ANNEE-ARCHIVAGE-2 : anneeAcademiqueID "" = pas de scoping
+	// (clause auto-neutralisante côté SQL — toutes années).
+	ListByEtudiant(ctx context.Context, etudiantID, anneeAcademiqueID string) ([]*SessionPassation, error)
 	ListByEpreuve(ctx context.Context, epreuveID string, page, limit int) ([]*SessionPassation, int, error)
 	GetOverview(ctx context.Context, enseignantID string) (overview *OverviewResult, err error)
-	GetEtudiantOverview(ctx context.Context, etudiantID string) (*EtudiantOverviewResult, error)
+	// SECT-ANNEE-ARCHIVAGE-2 : anneeAcademiqueID "" = pas de scoping.
+	GetEtudiantOverview(ctx context.Context, etudiantID, anneeAcademiqueID string) (*EtudiantOverviewResult, error)
 	// BUGFIX (SCORES-NORM-2): récupère le noteTotal d'une épreuve
 	GetEpreuveNoteTotal(ctx context.Context, epreuveID string) (float64, error)
 	// BUGFIX (RESULTATS-ENONCE-1): récupère contenu.questions pour enrichir

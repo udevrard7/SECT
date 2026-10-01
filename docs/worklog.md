@@ -2127,3 +2127,88 @@ Quelle solution proposes-tu pour la gestion des données des années précédent
   (quota évaluations 500, sentinel « all » affectations).
 - ✅ Base prod : schema_migrations=112, état initial préservé (6 épreuves,
   33 affectations, 4 salons vivants, 1 année active), 0 résiduel de test.
+
+---
+
+## Task ID: SECT-ANNEE-ARCHIVAGE-2
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Complément de SECT-ANNEE-HISTOIRE-2 — même demande utilisateur (« les données de l'ancienne année restent visibles au lieu d'être archivées : prof voit 6 évaluations, étudiant ses notes de L2 »), traitée en parallèle.
+
+### Contexte : collision de sessions (transparence)
+Une exécution parallèle a livré SECT-ANNEE-HISTOIRE-2 (bcf412b→e877891,
+000112) pendant que cette session développait SECT-ANNEE-ARCHIVAGE-1
+(scoping épreuves + stats + tampon + fix quota CheckEvaluationsQuota).
+Au push, divergence détectée → comparaison des périmètres → la version
+HISTOIRE-2 (déjà poussée/déployée, plus large : FK affectations, salons
+versionnés, checklist, comparaison N-1, MÊME fix quota en 7346535) a été
+conservée ; les commits locaux dupliqués ont été abandonnés (reset). Les
+fichiers cibles du complément étaient identiques des deux côtés → les
+parties non couvertes par HISTOIRE-2 ont été réappliquées et adaptées à
+ses conventions (sentinel `all` minuscule, switch param explicite).
+
+### Périmètre du complément (lectures restées non scopées par HISTOIRE-2)
+Symptômes exacts de la demande encore vivants côté ÉTUDIANT et sur
+l'overview ENSEIGNANT :
+1. **/api/validations-ue** — « l'étudiant voit ses notes de L2 » : plus aucun
+   filtre année (20 validations 2025-2026 visibles comme données actives).
+   → défaut = année courante ; `?anneeAcademiqueId=<id>` override ;
+   `?anneeAcademiqueId=all` = historique. anneeAcademiqueId NOT NULL (000086)
+   → pas de garde IS NULL.
+2. **/api/resultats Branch A** (sessions/résultats d'un étudiant —
+   mes-resultats-page + etudiant-notes-dialog) → idem, via
+   `ResultatListParams.AnneeAcademiqueID` + EXISTS épreuve dans
+   ListByEtudiant (clause auto-neutralisante `OR $2 = ''`).
+3. **/api/resultats/etudiant-overview** (vue d'ensemble étudiant) → idem
+   (GetEtudiantOverview threadé anneeAcademiqueID).
+4. **/api/resultats/overview V2** (analytics enseignant — y restait l'amalgame
+   des 6 vieilles épreuves) → idem (whereE + whereE2 + LATERAL derniere note).
+   Branch B (?epreuveId=X) volontairement NON scopée : consulter une épreuve
+   précise reste une vue explicite légitime (le sélecteur « toutes années »
+   de resultats-page envoie déjà all sur /api/epreuves).
+5. **Duplication « Modèles »** : le frontend envoyait
+   `anneeAcademiqueId: duplicateTarget.anneeAcademiqueId ?? null` → dupliquer
+   une épreuve 2024-2025 la faisait naître « archivée » (invisible en défaut).
+   → `null` : la copie est tamponnée sur l'année COURANTE par le backend.
+
+### Implémentation
+- `transport/http/annee_scope.go` : helper `resolveAnneeScopeID` (switch
+  param : "" → année courante ; "all" → tout ; sinon ID explicite) +
+  `resolveCurrentAnneeID` (année ACTIVE de l'étab des claims, RLS via tx
+  claims ; "" = dégradation gracieuse, jamais de masquage sur échec).
+- Handlers : session_handlers (listResultats + etudiant-overview),
+  resultats_overview_v2, stub_handlers_real (validations-ue).
+- Chaines : domain/session.go (params + interface),
+  repository/session.go (ListByEtudiant + GetEtudiantOverview),
+  usecase/session.go (Branch A + GetEtudiantOverview).
+- Clause SQL auto-neutralisante partout : `(e."anneeAcademiqueId" = $N OR
+  e."anneeAcademiqueId" IS NULL OR $N = '')` — zéro branchement Go.
+
+### Validation E2E (backend local + Neon réel, jetables, 9/9 PASSÉS)
+- C1 POST /api/epreuves → tampon année courante intact (2026-2027).
+- C2 /api/resultats étudiant défaut → 1 session courante (15) ; C3 all → 2.
+- C4 /api/stats/etudiant → nbTerminees=1, moyenne=15 (pas 11).
+- C5 etudiant-overview → totalEpreuves=1, moyenne 15.
+- C6 /api/validations-ue défaut → 1 EN_COURS courante (« note de L2 »
+  VALIDEE 2024-2025 archivée) ; C7 all → 2.
+- C8 /api/resultats/overview enseignant défaut → 1 épreuve ; C9 all → 2.
+- 0 erreur serveur loggée. Cleanup complet : 2 épreuves + 2 sessions +
+  2 validations + 3 users + refresh tokens + audit logs supprimés ; état
+  initial RESTAURÉ (6 épreuves / 30 sessions / 20 validations / 0 résidu
+  sect-test.dev). Outils jetables (cmd/tmpuser, cmd/tmpsql) effacés.
+- gofmt/vet/build OK ; frontend tsc + eslint OK (0 erreur).
+
+### Dettes notées
+- UI étudiant : mes-resultats/mes-certificats n'exposent pas encore le
+  `all` (backend prêt) — un « relevé de notes par année » reste la suite
+  logique produit.
+- statsAdmin : vue plateforme non scopée (ADMIN) — à décider.
+- POST /api/validations-ue appelé par mes-certificats-page : route
+  inexistante (405 silencieux) — re-sync jamais exécuté, à nettoyer.
+
+### Stage Summary
+- ✅ Derniers foyers d'amalgame inter-années éteints : validations UE,
+  résultats étudiant (Branch A + overview), overview enseignant — le même
+  contrat partout (défaut = année courante, all = historique, ID = override).
+- ✅ Duplication → année courante (fini les copies « nées archivées »).
+- ✅ Collision de sessions gérée proprement : pas de doublon poussé,
+  complément réaligné sur les conventions HISTOIRE-2.

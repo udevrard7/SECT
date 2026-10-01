@@ -397,6 +397,13 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := []validation{}
+	// SECT-ANNEE-ARCHIVAGE-2 : scoping année — défaut = année COURANTE,
+	// ?anneeAcademiqueId=all = historique, ID explicite = override (même
+	// convention que /api/epreuves). Avant, un étudiant voyait ses notes de
+	// L2 (validations 2025-2026) comme données actives après l'activation de
+	// 2026-2027. anneeAcademiqueId est NOT NULL (000086) → pas de garde
+	// IS NULL nécessaire.
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), "")
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		etudiantID := r.URL.Query().Get("etudiantId")
 		// For ENSEIGNANT/ETUDIANT, scope to their own validations
@@ -410,6 +417,15 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 		if etudiantID != "" {
 			whereClause = fmt.Sprintf(`WHERE v."etudiantId" = $%d`, argIdx)
 			args = append(args, etudiantID)
+			argIdx++
+		}
+		if anneeID != "" {
+			if whereClause == "" {
+				whereClause = fmt.Sprintf(`WHERE v."anneeAcademiqueId" = $%d`, argIdx)
+			} else {
+				whereClause += fmt.Sprintf(` AND v."anneeAcademiqueId" = $%d`, argIdx)
+			}
+			args = append(args, anneeID)
 		}
 
 		// P2b : LEFT JOIN UniteEnseignement pour le nested + LEFT JOIN Certificat

@@ -74,6 +74,12 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 
 	logger := slog.Default()
 
+	// SECT-ANNEE-ARCHIVAGE-2 : scoping année — défaut = année COURANTE de
+	// l'établissement, ?anneeAcademiqueId=all = historique, ID explicite =
+	// override. Clause auto-neutralisante dans les requêtes ($N = '' matche
+	// tout quand pas de scoping).
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), "")
+
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var args []any
 		argIdx := 1
@@ -81,37 +87,44 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		if enseignantID != "" {
 			whereE = fmt.Sprintf(`WHERE e."enseignantId" = $%d AND e."deletedAt" IS NULL`, argIdx)
 			args = append(args, enseignantID)
+			argIdx++
 		} else {
 			whereE = `WHERE e."deletedAt" IS NULL`
 		}
+		// SECT-ANNEE-ARCHIVAGE-2 : clause annee auto-neutralisante ($N = '' si pas
+		// d'année active) — l'overview enseignant ne reflète que l'année COURANTE,
+		// plus l'historique des années archivées.
+		whereE += fmt.Sprintf(` AND (e."anneeAcademiqueId" = $%d OR e."anneeAcademiqueId" IS NULL OR $%d = '')`, argIdx, argIdx)
+		args = append(args, anneeID)
+		argIdx++
 
 		// 1. Épreuves avec stats complètes
 		// P2-R9 : ROUND(taux, 1) pour éviter 42.857142857%
 		// P2-R13 : NULLIF(e."noteTotal", 0) pour éviter division par zéro
 		rows, err := tx.Query(r.Context(), fmt.Sprintf(`
-			SELECT e."id", e."titre", e."dateDebut"::text, e."dateFin"::text,
-			       e."statut"::text, e."noteTotal",
-			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id") AS nb_sessions,
-			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id"
-			        AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL) AS nb_corrigees,
-			       COALESCE((SELECT AVG(s2.score / NULLIF(e."noteTotal", 0) * 20) FROM "SessionPassation" s2
-			        WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL), 0) AS moyenne,
-			       COALESCE((SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY s3.score / NULLIF(e."noteTotal", 0) * 20)
-			        FROM "SessionPassation" s3
-			        WHERE s3."epreuveId" = e."id" AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL), 0) AS mediane,
-			       CASE WHEN (SELECT count(*) FROM "SessionPassation" s4 WHERE s4."epreuveId" = e."id"
-			        AND s4.statut IN ('CORRIGEE','RETOURNEE') AND s4.score IS NOT NULL) > 0
-			            THEN (SELECT count(*) FILTER (WHERE s5.score >= e."noteTotal" * 0.5)::numeric
-			             FROM "SessionPassation" s5 WHERE s5."epreuveId" = e."id"
-			             AND s5.statut IN ('CORRIGEE','RETOURNEE') AND s5.score IS NOT NULL) /
-			             (SELECT count(*) FROM "SessionPassation" s6 WHERE s6."epreuveId" = e."id"
-			             AND s6.statut IN ('CORRIGEE','RETOURNEE') AND s6.score IS NOT NULL) * 100
-			            ELSE 0 END AS taux
-			FROM "Epreuve" e
-			%s
-			ORDER BY e."createdAt" DESC
-			LIMIT 20
-		`, whereE), args...)
+                        SELECT e."id", e."titre", e."dateDebut"::text, e."dateFin"::text,
+                               e."statut"::text, e."noteTotal",
+                               (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id") AS nb_sessions,
+                               (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id"
+                                AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL) AS nb_corrigees,
+                               COALESCE((SELECT AVG(s2.score / NULLIF(e."noteTotal", 0) * 20) FROM "SessionPassation" s2
+                                WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL), 0) AS moyenne,
+                               COALESCE((SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY s3.score / NULLIF(e."noteTotal", 0) * 20)
+                                FROM "SessionPassation" s3
+                                WHERE s3."epreuveId" = e."id" AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL), 0) AS mediane,
+                               CASE WHEN (SELECT count(*) FROM "SessionPassation" s4 WHERE s4."epreuveId" = e."id"
+                                AND s4.statut IN ('CORRIGEE','RETOURNEE') AND s4.score IS NOT NULL) > 0
+                                    THEN (SELECT count(*) FILTER (WHERE s5.score >= e."noteTotal" * 0.5)::numeric
+                                     FROM "SessionPassation" s5 WHERE s5."epreuveId" = e."id"
+                                     AND s5.statut IN ('CORRIGEE','RETOURNEE') AND s5.score IS NOT NULL) /
+                                     (SELECT count(*) FROM "SessionPassation" s6 WHERE s6."epreuveId" = e."id"
+                                     AND s6.statut IN ('CORRIGEE','RETOURNEE') AND s6.score IS NOT NULL) * 100
+                                    ELSE 0 END AS taux
+                        FROM "Epreuve" e
+                        %s
+                        ORDER BY e."createdAt" DESC
+                        LIMIT 20
+                `, whereE), args...)
 		if err != nil {
 			// P1-R5 : logger l'erreur au lieu de l'avaler
 			logger.Error("resultatsOverview: query 1 (epreuves) failed", "error", err)
@@ -135,17 +148,22 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 			whereE2 = `AND e."enseignantId" = $1`
 			args2 = append(args2, enseignantID)
 		}
+		// SECT-ANNEE-ARCHIVAGE-2 : clause annee auto-neutralisante, réutilisée
+		// par les requêtes 2-4 (même placeholder $N, même arg anneeID).
+		idx2 := len(args2) + 1
+		whereE2 += fmt.Sprintf(` AND (e."anneeAcademiqueId" = $%d OR e."anneeAcademiqueId" IS NULL OR $%d = '')`, idx2, idx2)
+		args2 = append(args2, anneeID)
 		rows2, err := tx.Query(r.Context(), fmt.Sprintf(`
-			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moyenne,
-			       count(*) AS nb_eval
-			FROM "SessionPassation" s
-			JOIN "Epreuve" e ON e."id" = s."epreuveId"
-			WHERE s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
-			  AND s."updatedAt" > now() - interval '12 months'
-			  %s
-			GROUP BY mois ORDER BY mois ASC
-		`, whereE2), args2...)
+                        SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
+                               COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moyenne,
+                               count(*) AS nb_eval
+                        FROM "SessionPassation" s
+                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        WHERE s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
+                          AND s."updatedAt" > now() - interval '12 months'
+                          %s
+                        GROUP BY mois ORDER BY mois ASC
+                `, whereE2), args2...)
 		if err != nil {
 			logger.Error("resultatsOverview: query 2 (evolution) failed", "error", err)
 		} else {
@@ -164,23 +182,24 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		// P1-R3 : DerniereNote = dernière note chronologique (pas MAX)
 		// Utilise LATERAL pour récupérer la dernière session de l'étudiant
 		rows3, err := tx.Query(r.Context(), fmt.Sprintf(`
-			SELECT u."id", u."name", u."email", count(*) AS nb_exam,
-			       COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moy,
-			       COALESCE((SELECT s_last.score / NULLIF(e_last."noteTotal", 0) * 20
-			         FROM "SessionPassation" s_last
-			         JOIN "Epreuve" e_last ON e_last."id" = s_last."epreuveId"
-			         WHERE s_last."etudiantId" = u."id"
-			           AND s_last.statut IN ('CORRIGEE','RETOURNEE') AND s_last.score IS NOT NULL
-			         ORDER BY s_last."updatedAt" DESC LIMIT 1), 0) AS derniere
-			FROM "User" u
-			JOIN "SessionPassation" s ON s."etudiantId" = u."id"
-			  AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
-			JOIN "Epreuve" e ON e."id" = s."epreuveId"
-			WHERE u."role" = 'ETUDIANT' %s
-			GROUP BY u."id", u."name", u."email"
-			HAVING AVG(s.score / NULLIF(e."noteTotal", 0) * 20) < 8
-			ORDER BY moy ASC LIMIT 10
-		`, whereE2), args2...)
+                        SELECT u."id", u."name", u."email", count(*) AS nb_exam,
+                               COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moy,
+                               COALESCE((SELECT s_last.score / NULLIF(e_last."noteTotal", 0) * 20
+                                 FROM "SessionPassation" s_last
+                                 JOIN "Epreuve" e_last ON e_last."id" = s_last."epreuveId"
+                                 WHERE s_last."etudiantId" = u."id"
+                                   AND s_last.statut IN ('CORRIGEE','RETOURNEE') AND s_last.score IS NOT NULL
+                                   AND (e_last."anneeAcademiqueId" = $%d OR e_last."anneeAcademiqueId" IS NULL OR $%d = '')
+                                 ORDER BY s_last."updatedAt" DESC LIMIT 1), 0) AS derniere
+                        FROM "User" u
+                        JOIN "SessionPassation" s ON s."etudiantId" = u."id"
+                          AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
+                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        WHERE u."role" = 'ETUDIANT' %s
+                        GROUP BY u."id", u."name", u."email"
+                        HAVING AVG(s.score / NULLIF(e."noteTotal", 0) * 20) < 8
+                        ORDER BY moy ASC LIMIT 10
+                `, idx2, idx2, whereE2), args2...)
 		if err != nil {
 			logger.Error("resultatsOverview: query 3 (studentsAtRisk) failed", "error", err)
 		} else {
@@ -199,29 +218,29 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		// des IDs synthétiques ("q1", "q2"...) — pas dans la table Question.
 		// On joint contenu.questions avec detailParQuestion via l'ID synthétique.
 		rows4, err := tx.Query(r.Context(), fmt.Sprintf(`
-			SELECT e."id" AS epreuve_id, e."titre" AS epreuve_titre,
-			       je->>'id' AS question_id, je->>'enonce' AS enonce, je->>'type' AS type,
-			       count(*) AS nb_reponses,
-			       COALESCE(avg(
-			         CASE
-			           WHEN dp->>'bareme' IS NOT NULL AND (dp->>'bareme')::float > 0
-			             THEN COALESCE((dp->>'score')::float, 0) / (dp->>'bareme')::float * 100
-			           WHEN dp->>'pointsMax' IS NOT NULL AND (dp->>'pointsMax')::float > 0
-			             THEN COALESCE((dp->>'pointsObtenus')::float, 0) / (dp->>'pointsMax')::float * 100
-			           ELSE 0
-			         END
-			       ), 0) AS taux_reussite
-			FROM "Resultat" r
-			JOIN "SessionPassation" s ON s."id" = r."sessionId"
-			JOIN "Epreuve" e ON e."id" = s."epreuveId"
-			JOIN LATERAL jsonb_array_elements(e."contenu"::jsonb -> 'questions') AS je ON true
-			JOIN LATERAL jsonb_array_elements(r."detailParQuestion"::jsonb) AS dp
-			  ON dp->>'questionId' = je->>'id'
-			WHERE r."detailParQuestion" IS NOT NULL %s
-			GROUP BY e."id", e."titre", je->>'id', je->>'enonce', je->>'type'
-			ORDER BY taux_reussite ASC
-			LIMIT 10
-		`, whereE2), args2...)
+                        SELECT e."id" AS epreuve_id, e."titre" AS epreuve_titre,
+                               je->>'id' AS question_id, je->>'enonce' AS enonce, je->>'type' AS type,
+                               count(*) AS nb_reponses,
+                               COALESCE(avg(
+                                 CASE
+                                   WHEN dp->>'bareme' IS NOT NULL AND (dp->>'bareme')::float > 0
+                                     THEN COALESCE((dp->>'score')::float, 0) / (dp->>'bareme')::float * 100
+                                   WHEN dp->>'pointsMax' IS NOT NULL AND (dp->>'pointsMax')::float > 0
+                                     THEN COALESCE((dp->>'pointsObtenus')::float, 0) / (dp->>'pointsMax')::float * 100
+                                   ELSE 0
+                                 END
+                               ), 0) AS taux_reussite
+                        FROM "Resultat" r
+                        JOIN "SessionPassation" s ON s."id" = r."sessionId"
+                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        JOIN LATERAL jsonb_array_elements(e."contenu"::jsonb -> 'questions') AS je ON true
+                        JOIN LATERAL jsonb_array_elements(r."detailParQuestion"::jsonb) AS dp
+                          ON dp->>'questionId' = je->>'id'
+                        WHERE r."detailParQuestion" IS NOT NULL %s
+                        GROUP BY e."id", e."titre", je->>'id', je->>'enonce', je->>'type'
+                        ORDER BY taux_reussite ASC
+                        LIMIT 10
+                `, whereE2), args2...)
 		if err != nil {
 			logger.Error("resultatsOverview: query 4 (topQuestions) failed", "error", err)
 		} else {

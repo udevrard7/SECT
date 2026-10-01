@@ -538,7 +538,10 @@ function ModelesTab() {
  filiereId: duplicateTarget.filiere?.id ?? null,
  niveau: duplicateTarget.niveau ?? null,
  sessionExamen: duplicateTarget.sessionExamen ?? 'NORMALE',
- anneeAcademiqueId: duplicateTarget.anneeAcademiqueId ?? null,
+ // SECT-ANNEE-ARCHIVAGE-2 : la copie est tamponnée sur l'année COURANTE par
+ // le backend (on ne duplique plus l'année de la source : dupliquer une
+ // épreuve 2024-2025 la faisait naître « archivée », invisible par défaut).
+ anneeAcademiqueId: null,
  noteTotal: duplicateTarget.noteTotal ?? 20,
  }
  if (duplicateTarget.contenu) body.contenu = duplicateTarget.contenu

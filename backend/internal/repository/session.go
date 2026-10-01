@@ -667,7 +667,7 @@ func (r *ResultatRepository) Upsert(ctx context.Context, res *domain.Resultat) (
 // NULL → 0 session → la page de résultats étudiant était toujours vide.
 // Même bug classe que RESULTATS-RLS-1 (déjà corrigé sur ListByEpreuve).
 // Fix : db.WithTx avec claims du context (l'étudiant voit ses propres sessions).
-func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID string) ([]*domain.SessionPassation, error) {
+func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, anneeAcademiqueID string) ([]*domain.SessionPassation, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok || claims.UserID == "" {
 		return nil, fmt.Errorf("ListByEtudiant: claims manquants dans le context")
@@ -676,14 +676,22 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID stri
 	var result []*domain.SessionPassation
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		// Query 1 : sessions de l'étudiant (SOUMISE/CORRIGEE/RETOURNEE).
+		// SECT-ANNEE-ARCHIVAGE-2 : scoping année auto-neutralisant ($2 = ''
+		// matche tout) — ne retourne que les sessions dont l'épreuve
+		// appartient à l'année passée (ou non tamponnée, IS NULL).
 		rows, err := tx.Query(ctx, `
                         SELECT s."id", s."etudiantId", s."epreuveId", s."statut", s."dateDebut", s."dateFin",
                                s."score", s."logEvents", s."alertes", s."createdAt", s."updatedAt",
                                s."propositionMappings", s."penalite"
                         FROM "SessionPassation" s
                         WHERE s."etudiantId" = $1 AND s."statut" IN ('SOUMISE','CORRIGEE','RETOURNEE')
+                          AND EXISTS (
+                                SELECT 1 FROM "Epreuve" e
+                                WHERE e."id" = s."epreuveId"
+                                  AND (e."anneeAcademiqueId" = $2 OR e."anneeAcademiqueId" IS NULL OR $2 = '')
+                          )
                         ORDER BY s."createdAt" DESC
-                `, etudiantID)
+                `, etudiantID, anneeAcademiqueID)
 		if err != nil {
 			return fmt.Errorf("query sessions by etudiant: %w", err)
 		}
@@ -1023,7 +1031,7 @@ func (r *ResultatRepository) GetOverview(ctx context.Context, enseignantID strin
 // → claims NULL → policy SessionPassation_select (is_etudiant() AND etudiantId
 // = me) voyait NULL → 0 row → le dashboard étudiant était toujours vide.
 // Fix : db.WithTx avec claims du context.
-func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID string) (*domain.EtudiantOverviewResult, error) {
+func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID, anneeAcademiqueID string) (*domain.EtudiantOverviewResult, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok || claims.UserID == "" {
 		return nil, fmt.Errorf("GetEtudiantOverview: claims manquants dans le context")
@@ -1038,7 +1046,9 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
 
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		// Single JOIN query : sessions + resultat + epreuve + enseignant.
-		// Un seul placeholder $1 → compatible pgx Simple Protocol.
+		// SECT-ANNEE-ARCHIVAGE-2 : scoping année auto-neutralisant ($2 = ''
+		// matche tout) — l'overview étudiant ne reflète que l'année passée.
+		// (2 placeholders restent compatibles Simple Protocol.)
 		rows, err := tx.Query(ctx, `
                         SELECT s."id", s."epreuveId", s."statut"::text, s."score", s."dateDebut", s."dateFin",
                                s."createdAt",
@@ -1051,8 +1061,9 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
                         LEFT JOIN "Epreuve" e ON e."id" = s."epreuveId"
                         LEFT JOIN "User" u ON u."id" = e."enseignantId"
                         WHERE s."etudiantId" = $1 AND s."statut" IN ('SOUMISE','CORRIGEE','RETOURNEE')
+                          AND (e."anneeAcademiqueId" = $2 OR e."anneeAcademiqueId" IS NULL OR $2 = '')
                         ORDER BY s."createdAt" DESC
-                `, etudiantID)
+                `, etudiantID, anneeAcademiqueID)
 		if err != nil {
 			return fmt.Errorf("query etudiant sessions: %w", err)
 		}

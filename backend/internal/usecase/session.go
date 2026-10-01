@@ -535,7 +535,9 @@ func (uc *ResultatUseCase) List(ctx context.Context, claims db.SessionClaims, pa
 
 	if params.EtudiantID != "" {
 		// Branch A : résultats d'un étudiant
-		sessions, err := uc.resultatRepo.ListByEtudiant(ctx, params.EtudiantID)
+		// SECT-ANNEE-ARCHIVAGE-2 : params.AnneeAcademiqueID scope la lecture
+		// sur l'année courante ("" = pas de scoping — clause auto-neutralisante).
+		sessions, err := uc.resultatRepo.ListByEtudiant(ctx, params.EtudiantID, params.AnneeAcademiqueID)
 		if err != nil {
 			return nil, err
 		}
@@ -611,11 +613,12 @@ func (uc *ResultatUseCase) GetOverview(ctx context.Context, claims db.SessionCla
 }
 
 // GetEtudiantOverview récupère les analytics d'un étudiant (self only).
-func (uc *ResultatUseCase) GetEtudiantOverview(ctx context.Context, claims db.SessionClaims) (*domain.EtudiantOverviewResult, error) {
+// SECT-ANNEE-ARCHIVAGE-2 : anneeAcademiqueID "" = pas de scoping.
+func (uc *ResultatUseCase) GetEtudiantOverview(ctx context.Context, claims db.SessionClaims, anneeAcademiqueID string) (*domain.EtudiantOverviewResult, error) {
 	if claims.Role != string(domain.RoleEtudiant) {
 		return nil, &domain.UnauthorizedError{Message: "réservé aux étudiants"}
 	}
-	return uc.resultatRepo.GetEtudiantOverview(ctx, claims.UserID)
+	return uc.resultatRepo.GetEtudiantOverview(ctx, claims.UserID, anneeAcademiqueID)
 }
 
 // computeStats calcule les statistiques à partir des sessions.
