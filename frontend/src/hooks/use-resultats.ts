@@ -95,14 +95,22 @@ export function useRefreshResultats() {
 }
 
 // ─── Étudiant : tous ses résultats ───
-
-export function useMesResultats(etudiantId: string | undefined | null) {
+// SECT-ANNEE-DETTES-4 : anneeAcademiqueId optionnel — même contrat serveur
+// que /api/epreuves ('' = défaut backend = année courante ; 'all' = toutes
+// les années, vue historique ; ID explicite = override).
+export function useMesResultats(
+  etudiantId: string | undefined | null,
+  anneeAcademiqueId?: string
+) {
   return useQuery({
-    queryKey: [...resultatsKeys.all, 'mes-resultats', etudiantId ?? 'none'],
-    queryFn: () =>
-      fetchJSON<{ resultats: StudentSession[] }>(
-        `/api/resultats?etudiantId=${etudiantId}`
-      ).then((d) => d.resultats),
+    queryKey: [...resultatsKeys.all, 'mes-resultats', etudiantId ?? 'none', anneeAcademiqueId ?? ''],
+    queryFn: () => {
+      const params = new URLSearchParams({ etudiantId: etudiantId! })
+      if (anneeAcademiqueId) params.set('anneeAcademiqueId', anneeAcademiqueId)
+      return fetchJSON<{ resultats: StudentSession[] }>(
+        `/api/resultats?${params.toString()}`
+      ).then((d) => d.resultats)
+    },
     enabled: !!etudiantId,
     staleTime: 60 * 1000, // 1 min
     placeholderData: (prev) => prev,
@@ -110,11 +118,20 @@ export function useMesResultats(etudiantId: string | undefined | null) {
 }
 
 // ─── Étudiant : overview cross-exam ───
-
-export function useEtudiantOverview(etudiantId: string | undefined | null) {
+// SECT-ANNEE-DETTES-4 : anneeAcademiqueId optionnel — miroir useMesResultats
+// (l'overview suit la même année que la liste pour rester cohérent).
+export function useEtudiantOverview(
+  etudiantId: string | undefined | null,
+  anneeAcademiqueId?: string
+) {
   return useQuery({
-    queryKey: [...resultatsKeys.all, 'etudiant-overview', etudiantId ?? 'none'],
-    queryFn: () => fetchJSON<EtudiantOverviewResponse>('/api/resultats/etudiant-overview'),
+    queryKey: [...resultatsKeys.all, 'etudiant-overview', etudiantId ?? 'none', anneeAcademiqueId ?? ''],
+    queryFn: () =>
+      fetchJSON<EtudiantOverviewResponse>(
+        anneeAcademiqueId
+          ? `/api/resultats/etudiant-overview?anneeAcademiqueId=${encodeURIComponent(anneeAcademiqueId)}`
+          : '/api/resultats/etudiant-overview'
+      ),
     enabled: !!etudiantId,
     staleTime: 2 * 60 * 1000, // 2 min
     placeholderData: (prev) => prev,

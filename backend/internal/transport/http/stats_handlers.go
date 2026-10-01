@@ -751,6 +751,18 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECT-ANNEE-DETTES-4 (décision — dette « statsAdmin non scopée ») : PAS
+	// de scoping par année académique ici, PAR DESIGN. Ce dashboard est la
+	// vue propriétaire PaaS (billing + ops) : Abonnement, Facture, Plan,
+	// Etablissement, EtablissementAccess, MonitoringEvent — aucune de ces
+	// entités ne porte d'anneeAcademiqueId, et les compteurs par
+	// établissement (nbUsers/nbFilieres via SECURITY DEFINER) décrivent la
+	// structure d'organisation, pas une année de fonctionnement. Le contrat
+	// SECT-ANNEE (défaut = année courante, all = historique) concerne les
+	// vues académiques (étudiant/enseignant/responsable), pas la télémétrie
+	// plateforme. À revisiter si des compteurs académiques cross-étab
+	// (épreuves/sessions/devoirs) sont ajoutés ici.
+
 	ctx := r.Context()
 
 	// Types de réponse (toujours initialisés avec slices vides — JAMAIS nil).

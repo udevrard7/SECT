@@ -8,17 +8,26 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Trophy,
   LayoutDashboard,
   BookOpen,
   RefreshCw,
   AlertCircle,
+  CalendarRange,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Tabs,
   TabsContent,
@@ -95,14 +104,76 @@ function mapSessionsToGrades(sessions: StudentSession[]): GradeEntry[] {
   return grades
 }
 
+// SECT-ANNEE-DETTES-4 : option du sélecteur d'année académique
+// (GET /api/annees-academiques?etablissementId=… — réponse = array direct,
+// même source que Mes Épreuves / Mes Devoirs).
+interface AnneeAcademiqueOption {
+  id: string
+  libelle: string
+  actif: boolean
+}
+
 export function MesResultatsPage() {
   const user = useAuthStore((s) => s.user)
   const [tab, setTab] = useState('overview')
   const [detailOpen, setDetailOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<StudentSession | null>(null)
 
-  const overviewQuery = useEtudiantOverview(user?.id)
-  const resultatsQuery = useMesResultats(user?.id)
+  // SECT-ANNEE-DETTES-4 : filtre année académique. null = pas encore choisi
+  // (le défaut est DÉRIVÉ de l'année courante, cf. anneeParDefaut ci-dessous) ;
+  // « Toutes les années » = value 'all' pour l'historique. Même contrat que
+  // Mes Épreuves (SECT-ANNEE-HISTOIRE-2) : défaut backend = année courante —
+  // après l'activation d'une nouvelle année, les notes de l'ancienne ne
+  // polluent plus la vue par défaut.
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
+  // ─── Années académiques (SECT-ANNEE-DETTES-4) ───
+  // Liste des années de l'établissement de l'étudiant pour alimenter le
+  // sélecteur d'année de l'en-tête (cache partagé clé ['annees-academiques']).
+  const anneesAcademiquesQuery = useQuery<AnneeAcademiqueOption[]>({
+    queryKey: ['annees-academiques', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees academiques')
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesAcademiquesQuery.data ?? []
+
+  // Fallback : si la liste n'a aucune année actif=true, on interroge
+  // /annee-courante (l'ID retenu doit exister dans la liste pour que le
+  // Select affiche une option valide).
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${user!.etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled:
+      !!user?.etablissementId &&
+      anneesAcademiques.length > 0 &&
+      !anneesAcademiques.some((a) => a.actif),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Défaut du filtre : année COURANTE (actif) de la liste, sinon via
+  // /annee-courante. Sans établissement ni années → '' (défaut backend).
+  // Dérivation pendant le rendu (pas d'effet) : tant que l'utilisateur n'a
+  // pas choisi, le sélecteur suit l'année courante de l'établissement.
+  const anneeParDefaut =
+    anneesAcademiques.find((a) => a.actif)?.id ??
+    anneesAcademiques.find((a) => a.id === anneeCouranteQuery.data?.anneeCourante?.id)?.id ??
+    ''
+  const filterAnneeAcademiqueId = anneeChoisie ?? anneeParDefaut
+
+  const overviewQuery = useEtudiantOverview(user?.id, filterAnneeAcademiqueId)
+  const resultatsQuery = useMesResultats(user?.id, filterAnneeAcademiqueId)
   const refresh = useRefreshResultats()
 
   // Sessions disponibles (tableau vide tant que la requête charge).
@@ -157,16 +228,42 @@ export function MesResultatsPage() {
             Consultez vos notes, suivez votre progression et analysez vos performances
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          disabled={overviewQuery.isFetching || resultatsQuery.isFetching}
-          className="self-start sm:self-auto"
-        >
-          <RefreshCw className={`h-4 w-4 ${overviewQuery.isFetching || resultatsQuery.isFetching ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">Rafraîchir</span>
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {/* SECT-ANNEE-DETTES-4 : sélecteur d'année académique (défaut =
+              courante, « Toutes les années » pour l'historique). */}
+          {anneesAcademiques.length > 0 && (
+            <Select
+              value={filterAnneeAcademiqueId || 'all'}
+              onValueChange={(v) => setAnneeChoisie(v)}
+            >
+              <SelectTrigger className="h-9 w-full text-xs sm:w-[190px]">
+                <span className="flex items-center gap-1.5 truncate">
+                  <CalendarRange className="h-3.5 w-3.5 text-info" />
+                  <SelectValue placeholder="Année académique" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les années</SelectItem>
+                {anneesAcademiques.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.libelle}
+                    {a.actif ? ' · courante' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={overviewQuery.isFetching || resultatsQuery.isFetching}
+            className="self-start sm:self-auto"
+          >
+            <RefreshCw className={`h-4 w-4 ${overviewQuery.isFetching || resultatsQuery.isFetching ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Rafraîchir</span>
+          </Button>
+        </div>
       </div>
 
       {/* ─── Onglets ─── */}

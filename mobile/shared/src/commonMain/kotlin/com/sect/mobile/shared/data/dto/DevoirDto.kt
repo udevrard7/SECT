@@ -45,7 +45,12 @@ data class CreateDevoirRequest(
     val soumissionGroupe: Boolean = false,
     val nbMaxFichiers: Int = 5,
     val tailleMaxFichier: Int = 10_485_760,
-    val anneeUniversitaire: String = "2024-2025"
+    // SECT-ANNEE-DETTES-4 : null = champ OMIS du JSON (explicitNulls=false)
+    // → le backend résout l'année courante de l'établissement de l'UE à la
+    // création, et laisse l'année inchangée au PATCH. L'ancien défaut
+    // "2024-2025" épinglait les nouveaux devoirs (et chaque édition mobile)
+    // sur l'année 2024-2025.
+    val anneeUniversitaire: String? = null
 )
 
 @Serializable

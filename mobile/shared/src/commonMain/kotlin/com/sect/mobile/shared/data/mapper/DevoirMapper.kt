@@ -78,5 +78,8 @@ fun CreateDevoirInput.toRequest() = CreateDevoirRequest(
     soumissionGroupe = soumissionGroupe ?: false,
     nbMaxFichiers = nbMaxFichiers ?: 5,
     tailleMaxFichier = tailleMaxFichier ?: 10_485_760,
-    anneeUniversitaire = anneeUniversitaire ?: "2024-2025"
+    // SECT-ANNEE-DETTES-4 : pass-through null — plus de défaut "2024-2025" :
+    // null = champ omis du JSON → le backend résout l'année courante de
+    // l'établissement de l'UE (création) / laisse l'année inchangée (PATCH).
+    anneeUniversitaire = anneeUniversitaire
 )

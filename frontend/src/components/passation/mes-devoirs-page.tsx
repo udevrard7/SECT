@@ -18,6 +18,7 @@ import {
   PlusCircle,
   Inbox,
   CalendarDays,
+  CalendarRange,
   Award,
   RefreshCw,
   Trash2,
@@ -39,6 +40,13 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   EntityCard,
   GlassModal,
@@ -192,6 +200,15 @@ function typeSeanceIcon(type: string) {
   }
 }
 
+// SECT-ANNEE-DETTES-4 : option du sélecteur d'année académique
+// (GET /api/annees-academiques?etablissementId=… — réponse = array direct,
+// même source que Mes Épreuves / Mes Résultats).
+interface AnneeAcademiqueOption {
+  id: string
+  libelle: string
+  actif: boolean
+}
+
 // ═══════════════════════════════════════════
 //  MAIN COMPONENT — Page étudiant "Mes Devoirs"
 // ═══════════════════════════════════════════
@@ -200,6 +217,12 @@ export function MesDevoirsPage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'afaire' | 'soumis' | 'corriges'>('afaire')
+
+  // SECT-ANNEE-DETTES-4 : filtre année académique. null = pas encore choisi
+  // (le défaut est DÉRIVÉ de l'année courante, cf. anneeParDefaut ci-dessous) ;
+  // « Toutes les années » = value 'all' pour l'historique. Même contrat que
+  // Mes Épreuves (SECT-ANNEE-HISTOIRE-2) : défaut backend = année courante.
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
 
   // ─── Dialog soumission ───
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false)
@@ -223,10 +246,60 @@ export function MesDevoirsPage() {
   //  DATA FETCHING
   // ═══════════════════════════════════════
 
-  const devoirsQuery = useQuery<{ devoirs: Devoir[]; total: number }>({
-    queryKey: ['mes-devoirs', user?.id],
+  // ─── Années académiques (SECT-ANNEE-DETTES-4) ───
+  // Liste des années de l'établissement de l'étudiant pour alimenter le
+  // sélecteur d'année de l'en-tête (cache partagé clé ['annees-academiques']).
+  const anneesAcademiquesQuery = useQuery<AnneeAcademiqueOption[]>({
+    queryKey: ['annees-academiques', user?.etablissementId],
     queryFn: async () => {
-      const res = await fetch(`/api/devoirs?etudiantId=${user!.id}`)
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees academiques')
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesAcademiquesQuery.data ?? []
+
+  // Fallback : si la liste n'a aucune année actif=true, on interroge
+  // /annee-courante (l'ID retenu doit exister dans la liste pour que le
+  // Select affiche une option valide).
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${user!.etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled:
+      !!user?.etablissementId &&
+      anneesAcademiques.length > 0 &&
+      !anneesAcademiques.some((a) => a.actif),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Défaut du filtre : année COURANTE (actif) de la liste, sinon via
+  // /annee-courante. Sans établissement ni années → '' (défaut backend).
+  // Dérivation pendant le rendu (pas d'effet) : tant que l'utilisateur n'a
+  // pas choisi, le sélecteur suit l'année courante de l'établissement.
+  const anneeParDefaut =
+    anneesAcademiques.find((a) => a.actif)?.id ??
+    anneesAcademiques.find((a) => a.id === anneeCouranteQuery.data?.anneeCourante?.id)?.id ??
+    ''
+  const filterAnneeAcademiqueId = anneeChoisie ?? anneeParDefaut
+
+  const devoirsQuery = useQuery<{ devoirs: Devoir[]; total: number }>({
+    queryKey: ['mes-devoirs', user?.id, filterAnneeAcademiqueId],
+    queryFn: async () => {
+      // SECT-ANNEE-DETTES-4 : le filtre par année est serveur-side ('' =
+      // défaut backend = année courante ; 'all' = toutes les années, vue
+      // historique). Le partitionnement aFaire/soumis/corrigés reste client.
+      const params = new URLSearchParams({ etudiantId: user!.id })
+      if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
+      const res = await fetch(`/api/devoirs?${params.toString()}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur serveur')
@@ -534,10 +607,36 @@ export function MesDevoirsPage() {
                 </div>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => refresh()} disabled={isRefreshing} aria-label="Rafraîchir">
-              <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Actualiser
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {/* SECT-ANNEE-DETTES-4 : sélecteur d'année académique (défaut =
+                  courante, « Toutes les années » pour l'historique). */}
+              {anneesAcademiques.length > 0 && (
+                <Select
+                  value={filterAnneeAcademiqueId || 'all'}
+                  onValueChange={(v) => setAnneeChoisie(v)}
+                >
+                  <SelectTrigger className="h-9 w-full text-xs sm:w-[190px]">
+                    <span className="flex items-center gap-1.5 truncate">
+                      <CalendarRange className="h-3.5 w-3.5 text-info" />
+                      <SelectValue placeholder="Année académique" />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les années</SelectItem>
+                    {anneesAcademiques.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.libelle}
+                        {a.actif ? ' · courante' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button variant="outline" size="sm" onClick={() => refresh()} disabled={isRefreshing} aria-label="Rafraîchir">
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Actualiser
+              </Button>
+            </div>
           </div>
         </div>
       </header>

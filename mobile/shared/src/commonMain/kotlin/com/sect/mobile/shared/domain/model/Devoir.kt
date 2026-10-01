@@ -66,7 +66,7 @@ data class PresignedUrl(
  * @param soumissionGroupe Soumission en groupe (null = false)
  * @param nbMaxFichiers Nombre max de fichiers (null = 5)
  * @param tailleMaxFichier Taille max en octets (null = 10 Mo)
- * @param anneeUniversitaire Année universitaire (null = "2024-2025")
+ * @param anneeUniversitaire Année universitaire optionnelle (null = résolue par le backend : année courante de l'établissement de l'UE — SECT-ANNEE-DETTES-4)
  */
 data class CreateDevoirInput(
     val titre: String,
