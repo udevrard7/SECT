@@ -2233,22 +2233,21 @@ CREATE POLICY "Chapter_modify_owner" ON "Chapter"
   ));
 
 -- Devoir (créé par un enseignant — enseignantId)
+-- SECT-ANNEE-DETTES-4 (000115) : branche ÉTUDIANT restaurée (perdue par la
+-- réécriture 000024) — PUBLIE/FERME + datePublication écoulée + UE de sa
+-- filière et de son niveau (helper SECURITY DEFINER anti-récursion).
 CREATE POLICY "Devoir_select" ON "Devoir"
-  FOR SELECT TO neondb_owner
+  FOR SELECT TO PUBLIC
   USING (
     (is_enseignant() AND "enseignantId" = current_user_id())
-    OR (is_responsable() AND EXISTS (
-      SELECT 1 FROM "User" u WHERE u."id" = "Devoir"."enseignantId"
-        AND u."etablissementId" = current_etablissement_id()
-    ))
-    OR (is_etudiant() AND EXISTS (
-      SELECT 1 FROM "Soumission" s WHERE s."devoirId" = "Devoir"."id"
-        AND s."etudiantId" = current_user_id()
-    ))
-    OR (is_admin() AND EXISTS (
-      SELECT 1 FROM "User" u WHERE u."id" = "Devoir"."enseignantId"
-        AND admin_has_etablissement_access(u."etablissementId")
-    ))
+    OR (is_responsable() AND user_in_my_etab("enseignantId"))
+    OR (is_admin() AND admin_has_etablissement_access(devoir_etab_id(id)))
+    OR (
+      is_etudiant()
+      AND "statut" IN ('PUBLIE', 'FERME')
+      AND ("datePublication" IS NULL OR "datePublication" <= CURRENT_TIMESTAMP)
+      AND devoir_ue_matches_my_filiere_niveau("uniteEnseignementId")
+    )
   );
 CREATE POLICY "Devoir_modify_enseignant" ON "Devoir"
   FOR ALL TO neondb_owner
