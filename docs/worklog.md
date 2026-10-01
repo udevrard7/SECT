@@ -2205,6 +2205,19 @@ l'overview ENSEIGNANT :
 - POST /api/validations-ue appelé par mes-certificats-page : route
   inexistante (405 silencieux) — re-sync jamais exécuté, à nettoyer.
 
+### Livraison (push + CI + prod)
+- Push b2b76af → CI Backend ROUGE (ineffassign : argIdx++ final non lu dans
+  resultats_overview_v2 — même classe que f6147c3 HISTOIRE-2) → fixes
+  42a277b (ineffassign) + 609b4e7 (gofmt tabs) → CI VERTE (Backend +
+  Frontend) sur 609b4e7 ; Render LIVE 609b4e7.
+- **Smoke prod (Render live, jetables, 4/4 PASSÉS)** : P1 GET
+  /api/validations-ue → 1 (courante ; la VALIDEE 2024-2025 « note de L2 »
+  archivée) · P2 /api/resultats → 1 session courante (14) · P3
+  etudiant-overview → totalEpreuves=1, moyenne=14 (pas 10) · P4
+  ?anneeAcademiqueId=all → 2 (historique consultable). Cleanup complet,
+  état initial restauré (6 épreuves / 30 sessions / 20 validations /
+  0 résidu sect-test.dev), outils jetables effacés.
+
 ### Stage Summary
 - ✅ Derniers foyers d'amalgame inter-années éteints : validations UE,
   résultats étudiant (Branch A + overview), overview enseignant — le même
@@ -2212,3 +2225,5 @@ l'overview ENSEIGNANT :
 - ✅ Duplication → année courante (fini les copies « nées archivées »).
 - ✅ Collision de sessions gérée proprement : pas de doublon poussé,
   complément réaligné sur les conventions HISTOIRE-2.
+- ✅ Prouvé en prod (Render 609b4e7) : CI verte, déploiement live, smoke
+  comportemental 4/4.
