@@ -487,7 +487,10 @@ func (uc *EtablissementUseCase) SetCurrentAnnee(ctx context.Context, claims db.S
 // Retourne (nil, nil) si aucune année courante n'est définie.
 func (uc *EtablissementUseCase) GetCurrentAnnee(ctx context.Context, claims db.SessionClaims, etablissementID string) (*domain.AnneeAcademiqueRef, error) {
 	role := domain.Role(claims.Role)
-	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+	// SECT-ANNEE-DETTES-4 : ETUDIANT autorisé (fallback /annee-courante du
+	// sélecteur d'année étudiant). RLS Etablissement_select (000028) +
+	// AnneeAcademique_select (000085) filtrent déjà à son établissement.
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEtudiant {
 		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
 	}
 	if role == domain.RoleAdmin {
@@ -495,7 +498,7 @@ func (uc *EtablissementUseCase) GetCurrentAnnee(ctx context.Context, claims db.S
 			return nil, err
 		}
 	}
-	if role == domain.RoleResponsable && claims.EtablissementID != etablissementID {
+	if (role == domain.RoleResponsable || role == domain.RoleEtudiant) && claims.EtablissementID != etablissementID {
 		return nil, &domain.UnauthorizedError{Message: "vous ne pouvez consulter que votre établissement"}
 	}
 	return uc.etabRepo.GetCurrentAnnee(ctx, etablissementID)

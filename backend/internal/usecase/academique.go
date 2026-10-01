@@ -477,14 +477,20 @@ func (uc *AnneeUseCase) auditAnnee(ctx context.Context, claims db.SessionClaims,
 // List liste les années académiques d'un établissement.
 func (uc *AnneeUseCase) List(ctx context.Context, claims db.SessionClaims, etablissementID string, actif *bool) ([]*domain.AnneeAcademique, error) {
 	role := domain.Role(claims.Role)
-	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+	// SECT-ANNEE-DETTES-4 : ETUDIANT autorisé en LECTURE de son établissement
+	// (source du sélecteur d'année de Mes Épreuves / Mes Devoirs / Mes
+	// Résultats — avant ce fix, le 403 cachait SILENCIEUSEMENT le sélecteur
+	// côté étudiant : la query échouait → liste vide → Select non rendu).
+	// RLS AnneeAcademique_select (000085) filtre déjà : non-admin →
+	// uniquement les années de SON établissement. Lecture seule.
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant && role != domain.RoleEtudiant {
 		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
 	}
 	if etablissementID == "" {
 		return nil, &domain.ValidationError{Field: "etablissementId", Message: "requis"}
 	}
-	// RESPONSABLE/ENSEIGNANT : doit être leur établissement
-	if role == domain.RoleResponsable || role == domain.RoleEnseignant {
+	// RESPONSABLE/ENSEIGNANT/ETUDIANT (SECT-ANNEE-DETTES-4) : doit être leur établissement
+	if role == domain.RoleResponsable || role == domain.RoleEnseignant || role == domain.RoleEtudiant {
 		if etablissementID != claims.EtablissementID {
 			return nil, &domain.UnauthorizedError{Message: "hors de votre établissement"}
 		}
