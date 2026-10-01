@@ -137,3 +137,52 @@ export function useEtudiantOverview(
     placeholderData: (prev) => prev,
   })
 }
+
+// ─── Étudiant : validations UE (progression par UE) ───
+// SECT-ANNEE-DETTES-5 : expose l'historique des validations UE — alimente le
+// « Relevé par année » (sessions all groupées + validations groupées) et le
+// sélecteur d'année de mes-certificats. Même contrat serveur que
+// useMesResultats ('' = défaut backend = année courante ; 'all' = toutes les
+// années ; ID explicite = override). La réponse embarque désormais
+// anneeAcademiqueId + anneeLibelle par ligne (backend DTTES-5).
+export interface MesValidationUE {
+  id: string
+  etudiantId: string
+  uniteEnseignementId: string
+  anneeAcademiqueId?: string | null
+  anneeLibelle?: string | null
+  statut: 'EN_COURS' | 'VALIDEE' | 'NON_VALIDEE'
+  moyenneUE: number
+  noteNormale?: number | null
+  noteRattrapage?: number | null
+  noteFinale: number
+  nbEpreuvesTotal: number
+  nbEpreuvesCompletees: number
+  dateValidation?: string | null
+  uniteEnseignement?: {
+    id: string
+    code: string
+    nom: string
+    creditsECTS?: number | null
+  } | null
+  certificats?: Array<{ id: string; type?: string; statut?: string }>
+}
+
+export function useMesValidationsUE(
+  etudiantId: string | undefined | null,
+  anneeAcademiqueId?: string
+) {
+  return useQuery({
+    queryKey: [...resultatsKeys.all, 'validations-ue', etudiantId ?? 'none', anneeAcademiqueId ?? ''],
+    queryFn: () => {
+      const params = new URLSearchParams({ etudiantId: etudiantId! })
+      if (anneeAcademiqueId) params.set('anneeAcademiqueId', anneeAcademiqueId)
+      return fetchJSON<{ validations: MesValidationUE[] }>(
+        `/api/validations-ue?${params.toString()}`
+      ).then((d) => d.validations ?? [])
+    },
+    enabled: !!etudiantId,
+    staleTime: 60 * 1000, // 1 min
+    placeholderData: (prev) => prev,
+  })
+}

@@ -253,6 +253,15 @@ export interface StudentSession {
     contenu?: unknown
     enseignant: { name: string }
     questions: EpreuveQuestionInfo[]
+    /**
+     * SECT-ANNEE-DETTES-5 : année académique de l'épreuve (ID + libellé),
+     * peuplée par le backend dans ListByEtudiant (Branch A). Sert au
+     * groupement par année du « Relevé par année » quand la liste est
+     * demandée avec ?anneeAcademiqueId=all. Absents pour les épreuves
+     * legacy non tamponnées (groupe « Hors année académique »).
+     */
+    anneeAcademiqueId?: string | null
+    anneeLibelle?: string | null
   }
   reponses: ReponseInfo[]
   resultat: StudentSessionResultat | null

@@ -24,13 +24,20 @@
  *  - Toutes les couleurs via tokens oklch (jamais de hex brut) — compatible
  *    mode clair/sombre
  *
- * Sources de données inchangées :
- *  - GET /api/certificats (liste des certificats de l'étudiant)
- *  - GET /api/validations-ue (UEs en cours / validées / non validées)
+ * Sources de données :
+ *  - GET /api/certificats (liste des certificats de l'étudiant — tous
+ *    temps : un certificat est un acquis permanent, pas une donnée d'année)
+ *  - GET /api/validations-ue (UEs en cours / validées / non validées —
+ *    SECT-ANNEE-DETTES-5 : scopé par le sélecteur d'année de l'en-tête,
+ *    contrat /api/epreuves : défaut = année courante, all = historique)
  *  - GET /api/certificats/[id]/pdf?orientation=landscape|portrait (PDF)
  *
- * Aucun changement de comportement fonctionnel (téléchargement, partage,
- * impression, batch ZIP, filtres, recherche) — seule la présentation change.
+ * SECT-ANNEE-DETTES-5 : fin du POST /api/validations-ue « fantôme » (route
+ * jamais existée côté backend — 405 avalé silencieusement, « re-sync »
+ * jamais exécuté). Aucun writer de ValidationUE n'existe (ni trigger, ni
+ * fonction, ni worker — vérifié en base) : la lecture seule suffit, et un
+ * véritable moteur de calcul de validation reste une décision produit à
+ * part (il impacterait promotion & certificats).
  */
 
 import { useState, useMemo } from 'react'
@@ -39,7 +46,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Award, Shield, FileText, CheckCircle2, XCircle, Clock,
   Loader2, ScrollText, AlertCircle, TrendingUp, Trophy, Medal,
-  Share2, Printer, Search, FolderDown, RotateCw,
+  Share2, Printer, Search, FolderDown, RotateCw, CalendarRange,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -47,6 +54,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { PulseSkeleton, ProgressRing } from '@/components/ds'
 import { toast } from 'sonner'
 
@@ -68,6 +82,15 @@ interface Certificat {
 
 type StatutUE = 'EN_COURS' | 'VALIDEE' | 'NON_VALIDEE'
 
+// SECT-ANNEE-DETTES-5 : option du sélecteur d'année académique (même
+// source que Mes Épreuves / Mes Devoirs / Mes Résultats — cache partagé
+// clé ['annees-academiques'], réponse = array direct).
+interface AnneeAcademiqueOption {
+  id: string
+  libelle: string
+  actif: boolean
+}
+
 interface ValidationUE {
   id: string
   ueCode: string
@@ -78,6 +101,9 @@ interface ValidationUE {
   note: number | null
   statut: StatutUE
   certificatId: string | null
+  // SECT-ANNEE-DETTES-5 : année de la validation (affichée dans le tableau
+  // Progression UE quand « Toutes les années » est sélectionné).
+  anneeLibelle: string
 }
 
 // ─── Tier system (aligné sur la gamification BadgeCard / RewardCenter) ───
@@ -284,22 +310,68 @@ export function MesCertificatsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<CertificatType | 'all'>('all')
   const [isBatchDownloading, setIsBatchDownloading] = useState(false)
+  // SECT-ANNEE-DETTES-5 : filtre année académique de la progression UE.
+  // null = pas encore choisi (défaut DÉRIVÉ de l'année courante) ;
+  // 'all' = Toutes les années (historique). Les certificats eux-mêmes
+  // restent tous temps (acquis permanent).
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
+  // ─── Années académiques (SECT-ANNEE-DETTES-5, pattern DTTES-4) ───
+  const anneesAcademiquesQuery = useQuery<AnneeAcademiqueOption[]>({
+    queryKey: ['annees-academiques', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees academiques')
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesAcademiquesQuery.data ?? []
+
+  // Fallback : aucune année actif=true dans la liste → /annee-courante.
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${user!.etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled:
+      !!user?.etablissementId &&
+      anneesAcademiques.length > 0 &&
+      !anneesAcademiques.some((a) => a.actif),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Défaut du filtre : année COURANTE (actif) de la liste, sinon via
+  // /annee-courante. Sans établissement ni années → '' (défaut backend).
+  const anneeParDefaut =
+    anneesAcademiques.find((a) => a.actif)?.id ??
+    anneesAcademiques.find((a) => a.id === anneeCouranteQuery.data?.anneeCourante?.id)?.id ??
+    ''
+  const filterAnneeAcademiqueId = anneeChoisie ?? anneeParDefaut
 
   // ─── Fetch (TanStack Query) ───
   // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
   const dataQuery = useQuery<{ certificats: Certificat[]; validations: ValidationUE[] }>({
-    queryKey: ['mes-certificats', user?.id],
+    // SECT-ANNEE-DETTES-5 : la clé embarque l'année (le l'invalideur
+    // ['mes-certificats', user?.id] reste correct — préfixe).
+    queryKey: ['mes-certificats', user?.id, filterAnneeAcademiqueId],
     queryFn: async () => {
-      // Re-synchronise les validations (calcul côté serveur) avant lecture
-      await fetch('/api/validations-ue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }).catch(() => {})
-
+      // SECT-ANNEE-DETTES-5 : fin du POST /api/validations-ue fantôme — la
+      // route n'a jamais existé (405 avalé par .catch) et aucun writer de
+      // ValidationUE n'existe côté backend : le « re-sync » prétendu
+      // n'a jamais pu s'exécuter. Lecture seule, scopée par le sélecteur.
+      const valUrl = filterAnneeAcademiqueId
+        ? `/api/validations-ue?anneeAcademiqueId=${encodeURIComponent(filterAnneeAcademiqueId)}`
+        : '/api/validations-ue'
       const [certRes, valRes] = await Promise.all([
         fetch('/api/certificats'),
-        fetch('/api/validations-ue'),
+        fetch(valUrl),
       ])
 
       let certs: Certificat[] = []
@@ -338,6 +410,8 @@ export function MesCertificatsPage() {
             id: String(v.id ?? ''),
             ueCode: String(ue?.code ?? '—'),
             ueNom: String(ue?.nom ?? '—'),
+            // SECT-ANNEE-DETTES-5 : libellé d'année embarqué par le backend.
+            anneeLibelle: typeof v.anneeLibelle === 'string' ? v.anneeLibelle : '',
             creditsECTS: typeof ue?.creditsECTS === 'number' ? ue.creditsECTS : 0,
             epreuvesCompletees: typeof v.nbEpreuvesCompletees === 'number' ? v.nbEpreuvesCompletees : 0,
             epreuvesTotal: typeof v.nbEpreuvesTotal === 'number' ? v.nbEpreuvesTotal : 0,
@@ -575,19 +649,45 @@ export function MesCertificatsPage() {
           </div>
         </div>
 
-        {/* Stats inline (desktop) */}
-        <div className="flex items-center gap-2">
-          {([
-            { n: stats.expert, label: 'Expert', icon: Trophy, color: 'text-gold' },
-            { n: stats.avance, label: 'Avancé', icon: Medal, color: 'text-info' },
-            { n: stats.standard, label: 'Standard', icon: Award, color: 'text-success-text' },
-          ] as const).map((s, i) => (
-            <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-card/60 border border-border/50 backdrop-blur-sm">
-              <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
-              <span className="text-sm font-bold font-mono tabular-nums">{s.n}</span>
-              <span className="text-[10px] text-muted-foreground hidden sm:inline">{s.label}</span>
-            </div>
-          ))}
+        {/* SECT-ANNEE-DETTES-5 : sélecteur d'année (scope la progression UE)
+            + stats inline (desktop). Les certificats restent tous temps :
+            un certificat est un acquis permanent, pas une donnée d'année. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {anneesAcademiques.length > 0 && (
+            <Select
+              value={filterAnneeAcademiqueId || 'all'}
+              onValueChange={(v) => setAnneeChoisie(v)}
+            >
+              <SelectTrigger className="h-9 w-full text-xs sm:w-[190px]" aria-label="Année académique de la progression UE">
+                <span className="flex items-center gap-1.5 truncate">
+                  <CalendarRange className="h-3.5 w-3.5 text-info" />
+                  <SelectValue placeholder="Année académique" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les années</SelectItem>
+                {anneesAcademiques.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.libelle}
+                    {a.actif ? ' · courante' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="flex items-center gap-2">
+            {([
+              { n: stats.expert, label: 'Expert', icon: Trophy, color: 'text-gold' },
+              { n: stats.avance, label: 'Avancé', icon: Medal, color: 'text-info' },
+              { n: stats.standard, label: 'Standard', icon: Award, color: 'text-success-text' },
+            ] as const).map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-card/60 border border-border/50 backdrop-blur-sm">
+                <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
+                <span className="text-sm font-bold font-mono tabular-nums">{s.n}</span>
+                <span className="text-[10px] text-muted-foreground hidden sm:inline">{s.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -858,9 +958,33 @@ export function MesCertificatsPage() {
                 <TrendingUp className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucune progression</h3>
-              <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-                Vos résultats apparaîtront ici après vos premières évaluations.
-              </p>
+              {/* SECT-ANNEE-DETTES-5 : message guidé par année — les données de
+                  prod démo étant historiques (2025-2026), le défaut (année courante)
+                  peut être vide alors que l'historique existe. */}
+              {filterAnneeAcademiqueId && filterAnneeAcademiqueId !== 'all' ? (
+                <>
+                  <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+                    Aucune progression UE sur{' '}
+                    <span className="font-medium text-foreground">
+                      {anneesAcademiques.find((a) => a.id === filterAnneeAcademiqueId)?.libelle ?? 'cette année'}
+                    </span>
+                    .
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 gap-2 ds-press"
+                    onClick={() => setAnneeChoisie('all')}
+                  >
+                    <CalendarRange className="h-4 w-4" />
+                    Voir toutes les années
+                  </Button>
+                </>
+              ) : (
+                <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+                  Vos résultats apparaîtront ici après vos premières évaluations.
+                </p>
+              )}
             </div>
           ) : (
             <Card>
@@ -869,7 +993,12 @@ export function MesCertificatsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/40">
-                        {['Code UE', 'Nom', 'ECTS', 'Épreuves', 'Note', 'Statut', 'PDF'].map((h) => (
+                        {/* SECT-ANNEE-DETTES-5 : colonne Année seulement en vue
+                            historique (Toutes les années) — sinon redondante. */}
+                        {(filterAnneeAcademiqueId === 'all'
+                          ? ['Code UE', 'Nom', 'Année', 'ECTS', 'Épreuves', 'Note', 'Statut', 'PDF']
+                          : ['Code UE', 'Nom', 'ECTS', 'Épreuves', 'Note', 'Statut', 'PDF']
+                        ).map((h) => (
                           <th key={h} className="text-center p-3 font-display font-medium text-muted-foreground first:text-left">{h}</th>
                         ))}
                       </tr>
@@ -888,6 +1017,9 @@ export function MesCertificatsPage() {
                           >
                             <td className="p-3 font-mono text-xs text-left">{val.ueCode}</td>
                             <td className="p-3 font-medium text-left">{val.ueNom}</td>
+                            {filterAnneeAcademiqueId === 'all' && (
+                              <td className="p-3 text-center text-xs text-muted-foreground">{val.anneeLibelle || '—'}</td>
+                            )}
                             <td className="p-3 text-center font-mono tabular-nums">{val.creditsECTS}</td>
                             <td className="p-3 text-center text-muted-foreground font-mono tabular-nums">{val.epreuvesCompletees}/{val.epreuvesTotal}</td>
                             <td className="p-3 text-center font-semibold font-mono tabular-nums">

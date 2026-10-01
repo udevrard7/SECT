@@ -379,10 +379,14 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 		Statut string `json:"statut,omitempty"`
 	}
 	type validation struct {
-		ID                   string   `json:"id"`
-		EtudiantID           string   `json:"etudiantId"`
-		UniteEnseignementID  string   `json:"uniteEnseignementId"`
-		AnneeAcademiqueID    *string  `json:"anneeAcademiqueId,omitempty"`
+		ID                  string  `json:"id"`
+		EtudiantID          string  `json:"etudiantId"`
+		UniteEnseignementID string  `json:"uniteEnseignementId"`
+		AnneeAcademiqueID   *string `json:"anneeAcademiqueId,omitempty"`
+		// SECT-ANNEE-DETTES-5 : libellé de l'année (LEFT JOIN AnneeAcademique)
+		// — alimente le « relevé par année » étudiant et le groupement côté
+		// frontend quand la liste est demandée avec ?anneeAcademiqueId=all.
+		AnneeLibelle         *string  `json:"anneeLibelle,omitempty"`
 		Statut               string   `json:"statut"`
 		MoyenneUE            float64  `json:"moyenneUE"`
 		NoteNormale          *float64 `json:"noteNormale,omitempty"`
@@ -428,16 +432,21 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 			args = append(args, anneeID)
 		}
 
-		// P2b : LEFT JOIN UniteEnseignement pour le nested + LEFT JOIN Certificat
+		// P2b : LEFT JOIN UniteEnseignement pour le nested + LEFT JOIN Certificat.
+		// SECT-ANNEE-DETTES-5 : + LEFT JOIN AnneeAcademique pour le libellé
+		// (alimente le « relevé par année » étudiant — groupement côté
+		// frontend quand la liste est demandée avec ?anneeAcademiqueId=all).
 		query := fmt.Sprintf(`
                         SELECT v."id", v."etudiantId", v."uniteEnseignementId", v."anneeAcademiqueId",
                                v."statut"::text, v."moyenneUE", v."noteNormale", v."noteRattrapage",
                                v."noteFinale", v."nbEpreuvesTotal", v."nbEpreuvesCompletees", v."dateValidation",
                                ue."id", ue."code", ue."nom", ue."creditsECTS",
-                               c."id", c."type"::text, c."statut"::text
+                               c."id", c."type"::text, c."statut"::text,
+                               aa."libelle"
                         FROM "ValidationUE" v
                         LEFT JOIN "UniteEnseignement" ue ON ue."id" = v."uniteEnseignementId"
                         LEFT JOIN "Certificat" c ON c."validationUEId" = v."id"
+                        LEFT JOIN "AnneeAcademique" aa ON aa."id" = v."anneeAcademiqueId"
                         %s
                         ORDER BY v."createdAt" DESC
                 `, whereClause)
@@ -457,7 +466,7 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 				&v.Statut, &v.MoyenneUE, &v.NoteNormale, &v.NoteRattrapage,
 				&v.NoteFinale, &v.NbEpreuvesTotal, &v.NbEpreuvesCompletees, &dateVal,
 				&ueID, &ueCode, &ueNom, &ueCredits,
-				&certID, &certType, &certStatut); err != nil {
+				&certID, &certType, &certStatut, &v.AnneeLibelle); err != nil {
 				return err
 			}
 			if dateVal != nil {

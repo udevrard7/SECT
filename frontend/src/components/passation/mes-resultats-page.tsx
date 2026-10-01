@@ -1,9 +1,10 @@
-// ─────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────
 // Page principale "Mes Résultats" (étudiant) — refonte complète
-// 2 onglets : Vue d'ensemble | Mes épreuves
+// 3 onglets : Vue d'ensemble | Mes épreuves | Relevé par année
 // (l'onglet "Évolution" a été fusionné dans "Vue d'ensemble" car il
-//  rendait le même composant EtudiantOverviewTab — doublon)
-// ─────────────────────────────────────────────────────────────
+//  rendait le même composant EtudiantOverviewTab — doublon ; le
+//  « Relevé par année » arrive avec SECT-ANNEE-DETTES-5)
+// ───────────────────────────────────────────────────────────
 
 'use client'
 
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   AlertCircle,
   CalendarRange,
+  ScrollText,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -39,71 +41,13 @@ import { GradeTable, PulseSkeleton, type GradeEntry } from '@/components/ds'
 import { MesResultatsSkeleton, MesEpreuvesSkeleton } from '../mes-resultats/mes-resultats-skeletons'
 import { EtudiantOverviewTab } from '../mes-resultats/etudiant-overview-tab'
 import { MonResultatDialog } from '../mes-resultats/mon-resultat-dialog'
+import { ReleveParAnneeTab } from '../mes-resultats/releve-par-annee-tab'
+// SECT-ANNEE-DETTES-5 : mappers StudentSession → GradeEntry extraits vers
+// grade-mapping.ts (partagés avec le « Relevé par année »).
+import { mapSessionsToGrades } from '../mes-resultats/grade-mapping'
 import type { StudentSession } from '@/types/resultats'
 
-// ─────────────────────────────────────────────────────────────
-// Mapping StudentSession → GradeEntry (pour le GradeTable DS)
-//
-// Le modèle de données étudiant est centré sur la "session de passation"
-// (StudentSession) qui contient l'épreuve, les réponses et le résultat.
-// On projette ces données vers le format GradeEntry attendu par le DS :
-//
-//   GradeEntry.subject     ← session.epreuve.enseignant.name
-//                            (l'enseignant est le meilleur proxy de la
-//                             "matière" — la filière n'est pas exposée
-//                             dans le type StudentSession.epreuve)
-//   GradeEntry.examTitle   ← session.epreuve.titre
-//   GradeEntry.score       ← session.resultat?.scoreFinal ?? session.score ?? 0
-//   GradeEntry.maxScore    ← session.epreuve.noteTotal ?? 20
-//   GradeEntry.date        ← session.resultat?.dateCorrection
-//                            ?? session.dateFin
-//                            ?? session.dateDebut
-//                            (fallback now() si toutes null)
-//   GradeEntry.coefficient ← non disponible dans le modèle (omis)
-//   GradeEntry.comment     ← session.resultat?.commentaires (si non vide)
-//
-// On ne retient que les sessions ayant un score exploitable
-// (RETOURNEE ou CORRIGEE avec scoreFinal/score non null). Les
-// sessions SOUMISE (en attente de correction) sont exclues car
-// leur score n'est pas encore connu.
-// ─────────────────────────────────────────────────────────────
-
-function mapSessionToGrade(session: StudentSession): GradeEntry | null {
-  const scoreFinal = session.resultat?.scoreFinal
-  const rawScore = session.score
-  const score = scoreFinal ?? rawScore
-  // Skip sessions without a computable score (e.g. SOUMISE)
-  if (score === null || score === undefined) return null
-
-  const date =
-    session.resultat?.dateCorrection ??
-    session.dateFin ??
-    session.dateDebut ??
-    new Date().toISOString()
-
-  const comment = session.resultat?.commentaires?.trim() || undefined
-
-  return {
-    id: session.id,
-    subject: session.epreuve.enseignant.name,
-    examTitle: session.epreuve.titre,
-    score,
-    maxScore: session.epreuve.noteTotal ?? 20,
-    date,
-    // coefficient: non disponible dans StudentSession
-    comment,
-  }
-}
-
-function mapSessionsToGrades(sessions: StudentSession[]): GradeEntry[] {
-  const grades: GradeEntry[] = []
-  for (const s of sessions) {
-    const g = mapSessionToGrade(s)
-    if (g) grades.push(g)
-  }
-  return grades
-}
-
+// ───────────────────────────────────────────────────────────
 // SECT-ANNEE-DETTES-4 : option du sélecteur d'année académique
 // (GET /api/annees-academiques?etablissementId=… — réponse = array direct,
 // même source que Mes Épreuves / Mes Devoirs).
@@ -111,6 +55,7 @@ interface AnneeAcademiqueOption {
   id: string
   libelle: string
   actif: boolean
+  dateDebut?: string
 }
 
 export function MesResultatsPage() {
@@ -268,7 +213,7 @@ export function MesResultatsPage() {
 
       {/* ─── Onglets ─── */}
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
+        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
           <TabsTrigger value="overview" className="gap-1.5">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Vue d&apos;ensemble</span>
@@ -288,6 +233,13 @@ export function MesResultatsPage() {
                 {pendingCount}
               </Badge>
             )}
+          </TabsTrigger>
+          {/* SECT-ANNEE-DETTES-5 : relevé de notes multi-années — la suite
+              logique produit notée à la livraison de SECT-ANNEE-ARCHIVAGE-2. */}
+          <TabsTrigger value="releve" className="gap-1.5">
+            <ScrollText className="h-4 w-4" />
+            <span className="hidden sm:inline">Relevé par année</span>
+            <span className="sm:hidden">Relevé</span>
           </TabsTrigger>
         </TabsList>
 
@@ -369,6 +321,18 @@ export function MesResultatsPage() {
               onRowClick={handleGradeClick}
             />
           )}
+        </TabsContent>
+
+        {/* ─── Relevé par année (SECT-ANNEE-DETTES-5) ─── */}
+        {/* Multi-années par design : ce relevé consulte TOUTES les années
+            (?anneeAcademiqueId=all) et les regroupe — indépendant du
+            sélecteur d'année de l'en-tête qui pilote les 2 autres onglets. */}
+        <TabsContent value="releve" className="mt-6">
+          <ReleveParAnneeTab
+            userId={user?.id}
+            annees={anneesAcademiques}
+            onViewDetail={handleViewDetail}
+          />
         </TabsContent>
       </Tabs>
 

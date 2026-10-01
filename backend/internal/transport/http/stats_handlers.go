@@ -751,17 +751,18 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SECT-ANNEE-DETTES-4 (décision — dette « statsAdmin non scopée ») : PAS
-	// de scoping par année académique ici, PAR DESIGN. Ce dashboard est la
-	// vue propriétaire PaaS (billing + ops) : Abonnement, Facture, Plan,
-	// Etablissement, EtablissementAccess, MonitoringEvent — aucune de ces
-	// entités ne porte d'anneeAcademiqueId, et les compteurs par
-	// établissement (nbUsers/nbFilieres via SECURITY DEFINER) décrivent la
-	// structure d'organisation, pas une année de fonctionnement. Le contrat
-	// SECT-ANNEE (défaut = année courante, all = historique) concerne les
-	// vues académiques (étudiant/enseignant/responsable), pas la télémétrie
-	// plateforme. À revisiter si des compteurs académiques cross-étab
-	// (épreuves/sessions/devoirs) sont ajoutés ici.
+	// SECT-ANNEE-DETTES-5 (dette « statsAdmin non scopée » — complète la
+	// décision DTTES-4) : les compteurs billing/ops (Abonnement, Facture,
+	// Plan, Etablissement, EtablissementAccess, MonitoringEvent) restent NON
+	// scopés PAR DESIGN — aucune de ces entités ne porte d'anneeAcademiqueId,
+	// elles décrivent la structure SaaS, pas une année de fonctionnement.
+	// MAIS la dimension académique ajoutée au dashboard (activité par
+	// établissement) est SCOPÉE d'office sur l'année COURANTE de chaque
+	// établissement (fonction admin_get_etablissements_activite_annee,
+	// migration 000116) : épreuves/sessions de l'année active uniquement —
+	// même contrat SECT-ANNEE que les vues étudiant/enseignant/responsable
+	// (défaut = année courante). Un compteur « toutes années » mélangerait
+	// les archives et masquerait les établissements inactifs cette année.
 
 	ctx := r.Context()
 
@@ -793,6 +794,11 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		ProctoringActif  bool            `json:"proctoringActif"`
 		AdminHasAccess   bool            `json:"adminHasAccess"`
 		Responsable      *responsableRef `json:"responsable"`
+		// SECT-ANNEE-DETTES-5 : activité académique SCOPÉE année courante
+		// (merge depuis admin_get_etablissements_activite_annee, 000116).
+		AnneeCouranteLibelle *string `json:"anneeCouranteLibelle,omitempty"`
+		NbEpreuvesAnnee      int     `json:"nbEpreuvesAnnee"`
+		NbSessionsAnnee      int     `json:"nbSessionsAnnee"`
 	}
 
 	stats := map[string]any{
@@ -999,6 +1005,43 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			overviews = append(overviews, o)
 		}
 		slog.Info("stats: etablissementsOverview query result", "rowCount", rowCount, "appendedCount", len(overviews), "adminId", escapedAdminID)
+
+		// SECT-ANNEE-DETTES-5 : activité académique SCOPÉE année courante,
+		// merge par ID (fonction ADDITIVE 000116 — l'ancienne fonction overview
+		// reste inchangée, cf. commentaire de la migration). Tolérant aux
+		// erreurs : en cas d'échec les compteurs restent à zéro (jamais de 500
+		// sur le dashboard pour une dimension additive) — mais on logge pour ne
+		// pas masquer une régression.
+		rowsAct, q3err := s.dbPool.Query(ctx, `
+			SELECT * FROM admin_get_etablissements_activite_annee()
+		`)
+		if q3err != nil {
+			slog.Error("stats: query etablissements activite annee failed", "error", q3err)
+		} else {
+			activite := make(map[string]*etablissementOverview, len(overviews))
+			for i := range overviews {
+				activite[overviews[i].ID] = &overviews[i]
+			}
+			merged := 0
+			for rowsAct.Next() {
+				var etabID string
+				var anneeLib *string
+				var nbEpreuves, nbSessions int
+				if err := rowsAct.Scan(&etabID, &anneeLib, &nbEpreuves, &nbSessions); err != nil {
+					slog.Error("stats: scan etablissements activite annee failed", "error", err)
+					continue
+				}
+				if o, ok := activite[etabID]; ok {
+					o.AnneeCouranteLibelle = anneeLib
+					o.NbEpreuvesAnnee = nbEpreuves
+					o.NbSessionsAnnee = nbSessions
+					merged++
+				}
+			}
+			rowsAct.Close()
+			slog.Info("stats: etablissements activite annee merged", "merged", merged, "total", len(overviews))
+		}
+
 		stats["etablissementsOverview"] = overviews
 	}
 	if q2err != nil {

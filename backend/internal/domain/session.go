@@ -79,6 +79,13 @@ type SessionEpreuveRef struct {
 	DateFin    *time.Time            `json:"dateFin,omitempty"`
 	Enseignant SessionEnseignantRef  `json:"enseignant"`
 	Questions  []EpreuveQuestionInfo `json:"questions"`
+	// SECT-ANNEE-DETTES-5 : année académique de l'épreuve (ID + libellé),
+	// peuplée par ListByEtudiant via LEFT JOIN AnneeAcademique. Nécessaire
+	// au « relevé de notes par année » côté étudiant : avec
+	// ?anneeAcademiqueId=all le frontend groupe les sessions par année.
+	// Nil pour les épreuves legacy non tamponnées (groupe « Hors année »).
+	AnneeAcademiqueID *string `json:"anneeAcademiqueId,omitempty"`
+	AnneeLibelle      *string `json:"anneeLibelle,omitempty"`
 }
 
 // SessionEnseignantRef — enseignant allégé (résultat étudiant).

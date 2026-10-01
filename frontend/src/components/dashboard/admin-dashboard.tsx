@@ -20,6 +20,7 @@ import {
   Activity,
   ArrowRight,
   Clock,
+  CalendarRange,
 } from 'lucide-react'
 import {
   Card,
@@ -91,6 +92,12 @@ interface EtablissementOverview {
   proctoringActif: boolean
   adminHasAccess: boolean
   responsable: EtablissementResponsable | null
+  // SECT-ANNEE-DETTES-5 : activité académique SCOPÉE sur l'année courante
+  // de l'établissement (admin_get_etablissements_activite_annee, 000116).
+  // Optionnels : absents si le backend Render n'a pas encore redéployé.
+  anneeCouranteLibelle?: string | null
+  nbEpreuvesAnnee?: number
+  nbSessionsAnnee?: number
 }
 
 interface AccessRecord {
@@ -765,6 +772,41 @@ export function AdminDashboard() {
                           <BookOpen className="h-3 w-3" />
                           <span className="font-mono tabular-nums tracking-tight">{etab.nbFilieres}</span> filières
                         </span>
+                      </div>
+
+                      {/* SECT-ANNEE-DETTES-5 : activité académique de l'année
+                          COURANTE (scopée) — distingue un établissement actif
+                          cette année d'un établissement au seul historique. */}
+                      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <CalendarRange className="h-3 w-3" />
+                          {etab.anneeCouranteLibelle ?? (
+                            <span className="italic">Aucune année active</span>
+                          )}
+                        </span>
+                        {etab.anneeCouranteLibelle && (
+                          <>
+                            <span className="flex items-center gap-1 text-muted-foreground">
+                              <BookOpen className="h-3 w-3" />
+                              <span className="font-mono tabular-nums tracking-tight">
+                                {etab.nbEpreuvesAnnee ?? 0}
+                              </span>{' '}
+                              épreuve{(etab.nbEpreuvesAnnee ?? 0) > 1 ? 's' : ''}
+                            </span>
+                            <span className="flex items-center gap-1 text-muted-foreground">
+                              <Activity className="h-3 w-3" />
+                              <span className="font-mono tabular-nums tracking-tight">
+                                {etab.nbSessionsAnnee ?? 0}
+                              </span>{' '}
+                              session{(etab.nbSessionsAnnee ?? 0) > 1 ? 's' : ''}
+                            </span>
+                            {(etab.nbEpreuvesAnnee ?? 0) === 0 && (
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-warning/10 text-warning border-warning/30">
+                                Inactif cette année
+                              </Badge>
+                            )}
+                          </>
+                        )}
                       </div>
 
                       {/* Responsable */}

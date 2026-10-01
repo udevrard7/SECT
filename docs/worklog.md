@@ -2544,3 +2544,122 @@ mes-devoirs-mobile.png (jetables). Cleanup données UI → résidu 0.
   affectation (DTO aux champs vides, pas d'échec — à durcir si besoin) ;
   RLS Message/Conversation déjà durcies (000109) ; bascule sect_app déjà
   exécutée et stable. Plus aucune dette connue sur le fil SECT-ANNEE.
+
+---
+
+## SECT-ANNEE-DETTES-5 — les 3 dettes notées à la livraison de SECT-ANNEE-ARCHIVAGE-2 soldées
+
+Date : 2026-10-14 · Portée : frontend étudiant + statsAdmin + nettoyage
+fantôme · 1 migration (000116, FONCTION ADDITIVE — zéro rupture).
+
+### Contexte
+Les « Dettes notées » de SECT-ANNEE-ARCHIVAGE-2 restaient ouvertes malgré
+DTTES-3/DTTES-4 : (1) « mes-resultats/mes-certificats n'exposent pas encore
+le all — un relevé de notes par année reste la suite logique produit » ;
+(2) « statsAdmin : vue plateforme non scopée — à décider » (DTTES-4 l'avait
+close par décision "non scopé par design", complétée ici) ; (3) « POST
+/api/validations-ue appelé par mes-certificats-page : route inexistante (405
+silencieux) — re-sync jamais exécuté, à nettoyer ».
+
+### Dette 3 — POST /api/validations-ue fantôme : NETTOYÉ (suppression)
+Vérifié en base avant de décider : AUCUN writer de ValidationUE n'existe
+(ni trigger — seul trg_set_updated_at, ni fonction SQL, ni worker Go, ni
+seed). Le « re-sync » prétendu n'a donc jamais pu exécuter quoi que ce
+soit : 405 avalé par .catch(() => {}). L'appel est SUPPRIMÉ de
+mes-certificats-page.tsx (lecture seule, commenté au code). Un véritable
+moteur de calcul de validation (statut/moyenne depuis les sessions)
+impacterait promotion (ListEtudiantsForPromotion lit ValidationUE) et
+certificats → décision produit à part, NOTÉE comme suite possible.
+
+### Dette 1 — « Relevé par année » étudiant (backend `all` prêt → UI livrée)
+- Backend additif (2 DTOs, zéro migration) : SessionEpreuveRef porte
+  désormais anneeAcademiqueId + anneeLibelle (ListByEtudiant Query 2 :
+  LEFT JOIN AnneeAcademique) ; validationsUEListReal expose anneeLibelle
+  (LEFT JOIN idem). Branch A uniquement — Branch B (épreuve explicite)
+  inchangée.
+- Frontend : 3e onglet « Relevé par année » dans Mes Résultats
+  (releve-par-annee-tab.tsx) — consulte TOUTES les années (?anneeAcademiqueId=
+  all des DEUX endpoints) et regroupe par année : stats par année (notes,
+  moyenne /20, UE validées, ECTS validés), tableau UE (progression, note,
+  statut), GradeTable des notes (clic → détail existant). Tri par dateDebut
+  décroissant, badge « Année courante », groupe « Hors année académique »
+  pour les épreuves legacy non tamponnées. Mappers extraits vers
+  grade-mapping.ts (partagés page + relevé). Hint explicite : le sélecteur
+  d'en-tête pilote les 2 autres onglets, le relevé est multi-années par
+  design.
+- mes-certificats-page.tsx : sélecteur d'année (pattern DTTES-4 : défaut
+  dérivé = année courante, « Toutes les années », fallback /annee-courante)
+  qui scope GET /api/validations-ue — CRUCIAL en prod démo : les 20
+  validations sont TOUTES sur 2025-2026 (ancienne année) → le tab
+  « Progression UE » était VIDE par défaut depuis ARCHIVAGE-2. Empty state
+  guidé (« Aucune progression sur 2026-2027 → Voir toutes les années ») +
+  colonne « Année » dans le tableau quand « Toutes les années ». Les
+  certificats eux-mêmes restent tous temps (acquis permanent).
+
+### Dette 2 — statsAdmin : la décision DTTES-4 est COMPLÉTÉE par du scoping réel
+La décision « non scopé par design » restait incomplète : le dashboard
+n'avait AUCUNE dimension académique, donc rien à scopé. DTTES-5 AJOUTE la
+dimension académique et elle est scopée d'office :
+- Migration 000116 : NOUVELLE fonction SECURITY DEFINER
+  admin_get_etablissements_activite_annee() — (id,
+  annee_courante_libelle, nb_epreuves_annee, nb_sessions_annee) par étab,
+  scopée sur l'année ACTIVE (même sémantique que resolveCurrentAnneeID).
+  L'ancienne admin_get_etablissements_overview reste INTACTE : le handler
+  Go l'appelle via SELECT * + Scan positionnel sensible à la forme → une
+  fonction ADDITIVE évite toute fenêtre de rupture migration↔déploiement.
+  Agrégats uniquement (compteurs), conforme à l'exception 000097.
+- stats_handlers.go : 2e query + merge par ID (tolérant aux erreurs —
+  dimension additive jamais bloquante), struct +3 champs
+  (anneeCouranteLibelle, nbEpreuvesAnnee, nbSessionsAnnee), commentaire
+  décision mis à jour (billing/ops restent non scopés PAR DESIGN ;
+  académique = scopée année courante).
+- admin-dashboard.tsx : ligne « 📅 {année} · {n} épreuves · {m} sessions »
+  par carte établissement + badge « Inactif cette année » si 0 épreuve en
+  année courante — distingue un établissement actif cette année d'un
+  établissement au seul historique (cas réel prod démo : 0 épreuve en
+  2026-2027 contre 6 archivées).
+
+### Validation E2E (backend local :8080 + Neon réel, jetables + fixtures SQL)
+11/11 PASSÉS : T0a login étudiant · T1a /api/resultats?all = 2 sessions ·
+T1b anneeLibelle par session = ['2024-2025','2026-2027'] · T2 défaut = 1
+(courante) · T2b libellé 2026-2027 · T3a /api/validations-ue?all = 1 ·
+T3b anneeLibelle 2025-2026 + anneeAcademiqueId présent · T4 défaut = 0
+(archivée masquée) · T5 POST /api/validations-ue = 405 (confirmé fantôme,
+plus appelé) · T6a login admin jetable · T6b statsAdmin demo étab =
+« 2026-2027 1 1 » (fixture courante seule — PAS les 6+1 archivées :
+scoping prouvé). Login avec retries (26000/08P01 Neon pooler transitoires,
+documentés — aggravés par 2 instances concurrentes, cleaned).
+
+### Ordre de déploiement respecté (contrat additif)
+Migration 000116 APPLIQUÉE sur Neon AVANT le push (dry-run tx+rollback :
+sondes 4 colonnes nouvelle fonction + 15 colonnes ancienne INTACTE + demo
+étab « 2026-2027 / ep=0 / sess=0 ») — schema_migrations → 116. Fonction
+additive : l'ancien code Render l'ignore sainement, le nouveau code
+(merge tolérant) marche dès son déploiement → AUCUN ordre critique.
+
+### Cleanup
+Fixtures + jetables supprimés, état initial RESTAURÉ et vérifié SQL brut :
+6 épreuves (5× 2024-2025 + 1× 2025-2026) / 30 sessions / 20 validations /
+0 résidu e2e (users, épreuves, sessions, resultats, validations, refresh
+tokens, audit logs). Outils jetables (cmd/tmpe2e, cmd/tmpq, cmd/tmpquery)
+effacés, serveurs locaux tués, binaire /tmp supprimé.
+
+### Qualité
+gofmt -l vide · go build OK · go vet OK · frontend eslint 0 erreur (1
+warning préexistant use-surveillance-ws.ts non touché) · tsc 0 erreur ·
+vitest 11/11. Piège tabs→espaces de l'éditeur GO récidivé (3 fichiers) —
+protocole gofmt -w appliqué + patch Python chirurgical pour
+stats_handlers.go (chaînes SQL brutes non restaurables par gofmt).
+
+### Stage Summary
+- ✅ Dette 1 soldée : « Relevé par année » livré (onglet dédié multi-années
+  groupées, stats + UE + ECTS par année) + sélecteur d'année mes-certificats
+  (le tab Progression UE n'est plus vide par défaut en prod démo).
+- ✅ Dette 2 soldée pour de vrai : statsAdmin expose une activité académique
+  SCOPÉE année courante par établissement (000116 additive, zéro rupture) —
+  la décision DTTES-4 reste valable pour le billing/ops.
+- ✅ Dette 3 soldée : le POST fantôme est supprimé (aucun writer de
+  ValidationUE n'existe — vérifié base ; moteur de calcul = décision
+  produit à part, notée).
+- 🔍 Suite possible notée : moteur de recalcul des ValidationUE (impacte
+  promotion/certificats — décider seuils, rattrapage, déclencheurs).

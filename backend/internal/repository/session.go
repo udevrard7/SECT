@@ -724,6 +724,10 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, ann
 		}
 
 		// Query 2 : épreuves + enseignant (LEFT JOIN User).
+		// SECT-ANNEE-DETTES-5 : + année académique de l'épreuve
+		// (LEFT JOIN AnneeAcademique) — alimente le « relevé par
+		// année » étudiant (grouping client des sessions quand la
+		// liste est demandée avec ?anneeAcademiqueId=all).
 		epreuveMap := make(map[string]*domain.SessionEpreuveRef)
 		if len(distinctEpreuveIDs) > 0 {
 			ph := buildPlaceholders(1, len(distinctEpreuveIDs))
@@ -733,9 +737,10 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, ann
 			}
 			q := fmt.Sprintf(`
                                 SELECT e."id", e."titre", e."description", e."duree", e."noteTotal", e."dateFin",
-                                       e."enseignantId", u."name"
+                                       e."enseignantId", u."name", e."anneeAcademiqueId", aa."libelle"
                                 FROM "Epreuve" e
                                 LEFT JOIN "User" u ON u."id" = e."enseignantId"
+                                LEFT JOIN "AnneeAcademique" aa ON aa."id" = e."anneeAcademiqueId"
                                 WHERE e."id" IN (%s)
                         `, ph)
 			rows2, err := tx.Query(ctx, q, args...)
@@ -746,7 +751,7 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, ann
 				e := &domain.SessionEpreuveRef{Questions: []domain.EpreuveQuestionInfo{}}
 				var ensID, ensName *string
 				if err := rows2.Scan(&e.ID, &e.Titre, &e.Desc, &e.Duree, &e.NoteTotal,
-					&e.DateFin, &ensID, &ensName); err != nil {
+					&e.DateFin, &ensID, &ensName, &e.AnneeAcademiqueID, &e.AnneeLibelle); err != nil {
 					rows2.Close()
 					return fmt.Errorf("scan epreuve: %w", err)
 				}
