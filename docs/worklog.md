@@ -2359,3 +2359,82 @@ repassés. gofmt -l désormais vide.
   scopée (ADMIN, à décider) ; mobile Kotlin envoie encore le label
   anneeUniversitaire à la création (résolu côté backend par label→FK ;
   nettoyage mobile optionnel).
+
+---
+
+## SECT-ANNEE-DETTES-4 — dettes résiduelles SECT-ANNEE soldées (8844aa4)
+
+Date : 2026-10-14 · Portée : frontend étudiant + décision statsAdmin + mobile
+Kotlin · AUCUNE migration (backend déjà prêt depuis 000113/000114).
+
+### Contexte
+SECT-ANNEE-DETTES-3 avait livré le scoping année côté backend pour
+/api/devoirs (liste+stats) et /api/resultats (Branch A + etudiant-overview)
+mais laissait 3 dettes notées : (1) l'UI étudiant mes-devoirs/mes-resultats
+sans sélecteur « toutes années » ; (2) statsAdmin plateforme non scopée « à
+décider » ; (3) mobile Kotlin envoyant le label anneeUniversitaire.
+
+### Implémentation
+- **Mes Devoirs (mes-devoirs-page.tsx)** : sélecteur d'année académique en
+  en-tête (à côté d'Actualiser) — pattern strict de Mes Épreuves
+  (SECT-ANNEE-HISTOIRE-2) : état anneeChoisie=null, défaut DÉRIVÉ au rendu
+  (année actif de ['annees-academiques', etabId] → fallback
+  /etablissements/{id}/annee-courante si aucune actif → '' = défaut
+  backend), value 'all' = Toutes les années. queryKey
+  ['mes-devoirs', userId, filterAnneeAcademiqueId] + param
+  anneeAcademiqueId envoyé SEULEMENT si non vide. L'invalideur existant
+  ['mes-devoirs', userId] reste correct (préfixe). KPIs en-tête et
+  partition aFaire/soumis/corrigés suivent naturellement (dérivés de la
+  liste scopée) ; filtre client ARCHIVE inchangé.
+- **Mes Résultats (mes-resultats-page.tsx + hooks/use-resultats.ts)** :
+  useMesResultats / useEtudiantOverview acceptent un anneeAcademiqueId?
+  (queryKey + queryParam, encodeURIComponent). L'overview suit la même
+  année que la liste (cohérence Vue d'ensemble ↔ Mes épreuves).
+  useRefreshResultats invalide resultatsKeys.all → couvre tout. Sélecteur
+  UI identique dans l'en-tête kente.
+- **statsAdmin — DÉCISION (dette « à décider ») : NON SCOPÉ PAR DESIGN**,
+  documenté en commentaire dans stats_handlers.go (SECT-ANNEE-DETTES-4) :
+  dashboard propriétaire PaaS billing/ops — Abonnement, Facture, Plan,
+  Etablissement, EtablissementAccess, MonitoringEvent : aucune entité ne
+  porte d'anneeAcademiqueId ; nbUsers/nbFilieres (SECURITY DEFINER)
+  décrivent la structure d'org, pas une année de fonctionnement. À
+  revisiter uniquement si des compteurs académiques cross-étab sont
+  ajoutés. Diff Go = 12 lignes de COMMENTAIRE seul (protocole sed respecté,
+  gofmt/build/vet OK).
+- **Mobile Kotlin — la dette était un vrai bug, pas juste cosmétique** :
+  le mapper forçait anneeUniversitaire ?: "2024-2025" → (a) chaque création
+  mobile naissait épinglée sur 2024-2025 (le backend résout le label en FK
+  de l'année 2024-2025 si elle existe) ; (b) PIRE : chaque PATCH mobile
+  renvoyait le label non-nil → le handler (anneeUniversitaire != nil →
+  addSet label + FK résolue) réépinglait l'année de TOUT devoir édité depuis
+  mobile sur 2024-2025. Fix : CreateDevoirRequest.anneeUniversitaire
+  String? = null (omis du JSON, explicitNulls=false) + mapper pass-through
+  + doc CreateDevoirInput mise à jour. Android (DevoirFormScreen : défauts
+  nommés) et iOS (DevoirsView : anneeUniversitaire: nil) passent tous deux
+  par le défaut → aucun code appelant à changer.
+
+### Validation
+- Local : tsc + eslint (3 fichiers touchés) = 0 erreur ; vitest 11/11 ;
+  go build/vet/gofmt = OK (diff Go commentaire seul). Compilation KMP non
+  exécutable dans la sandbox (pas d'Android SDK) — couverte par la
+  mobile-ci au push (:shared:compileDebugKotlinAndroid +
+  :shared:compileKotlinIosSimulatorArm64).
+- Push 8844aa4 (identité udevrard7 <ulrichdouh@gmail.com>) — Backend /
+  Frontend / Mobile CI tous 3 déclenchés.
+- Aucune migration → aucun ordre à respecter ; backend additif-consommateur
+  (les nouveaux paramètres frontend n'ont d'effet que sur le code 63cdab8+
+  déjà LIVE sur Render).
+
+### Stage Summary
+- ✅ Dette 1 soldée : l'étudiant peut consulter l'historique de ses devoirs
+  et résultats (« Toutes les années ») — par défaut il ne voit plus que
+  l'année courante, comme les épreuves.
+- ✅ Dette 2 close par décision motivée : statsAdmin reste non scopé
+  (billing/ops, aucune entité année) — documenté dans le code.
+- ✅ Dette 3 soldée (bug latent réel) : mobile n'épingle plus 2024-2025 à
+  la création NI à l'édition de devoirs.
+- Dettes SECT-ANNEE restantes : bascule Render → sect_app (GRANT audit,
+  Neon password, DATABASE_URL, tests multi-rôles, rollback) ; RLS
+  Message/Conversation à resserrer ; auto-close worker Alerte INSERT
+  updatedAt. La race 401 « e is not iterable » est éteinte à la racine
+  (SECT-ANNEE-DETTES-3) — observation seule.
