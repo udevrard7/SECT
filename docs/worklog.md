@@ -2438,3 +2438,109 @@ décider » ; (3) mobile Kotlin envoyant le label anneeUniversitaire.
   Message/Conversation à resserrer ; auto-close worker Alerte INSERT
   updatedAt. La race 401 « e is not iterable » est éteinte à la racine
   (SECT-ANNEE-DETTES-3) — observation seule.
+
+---
+
+## SECT-ANNEE-DETTES-4 (suite) — le smoke a révélé 3 bugs de prod, tous corrigés et prouvés (5c1fe17 → 98b3ba3)
+
+Date : 2026-10-14 (suite de la section précédente, même session). Le smoke
+étudiant initialement prévu a échoué 3 fois de suite — chaque échec était
+un VRAI bug de prod, découvert puis corrigé dans l'ordre :
+
+### Bug 1 — l'ETUDIANT ne pouvait pas lister les années de son étab (403)
+`AnneeUseCase.List` (ADMIN/RESPONSABLE/ENSEIGNANT seulement) et
+`EtablissementUseCase.GetCurrentAnnee` (ADMIN/RESPONSABLE seulement)
+rejetaient l'ETUDIANT → depuis SECT-ANNEE-HISTOIRE-2, la query
+['annees-academiques'] 403 → liste vide → **le sélecteur d'année était
+SILENCIEUSEMENT absent de Mes Épreuves pour tous les étudiants** (et des
+nouveaux sélecteurs mes-devoirs/mes-resultats par construction) : l'étudiant
+ne pouvait JAMAIS choisir « Toutes les années ». Fix 5c1fe17 : RoleEtudiant
+autorisé en lecture aux DEUX usecases, contrainte « même établissement »
+(comme RESPONSABLE/ENSEIGNANT) — RLS AnneeAcademique_select (000085) et
+Etablissement_select (000028) filtrent déjà au niveau DB. Protocole sed
+ligne-par-ligne respecté après une première tentative globale qui avait
+touché 33 sites (Create/Update/Delete inclus !) — fichier reverté puis
+re-modifié chirurgicalement.
+
+### Bug 2 — Devoir_select n'a PLUS de branche étudiant (migration 000115)
+La policy live (réécrite par 000024 pour la vague TO PUBLIC/sect_app) ne
+contient que enseignant/responsable/admin : **la branche étudiant de 000010
+(filière + niveau, PUBLIE/FERME, datePublication écoulée) a été PERDUE dans
+la réécriture** → « Mes Devoirs » vide pour TOUS les étudiants en prod
+(0 ligne lue, silencieux) depuis que RLS s'applique réellement (sect_app
+NOBYPASSRLS). Migration 000115 (662ccef) : helper SECURITY DEFINER
+`devoir_ue_matches_my_filiere_niveau(ue_id)` (pattern 000023/000109,
+anti-récursion RLS) + Devoir_select recréée (3 branches 000024 à
+l'identique + branche étudiant 000010). schema.sql de référence resynchronisé
+(il portait encore la version 000007 !). Appliquée sur Neon via le pattern
+tmpmigrate : dry-run tx+rollback AVANT, apply réel, sondes comportementales
+sous sect_app : AVANT étudiant→PUBLIE=0 (bug) ; APRÈS=1 ; BROUILLON=0 ;
+étudiant d'une autre filière=0 (isolation) ; enseignant inchangé.
+schema_migrations → 115 (INSERT d'une ligne — la table est multi-lignes,
+max(version) = courant).
+
+### Bug 3 — scan NULL des LEFT JOIN → liste vide silencieuse (98b3ba3)
+Même après 000115, l'API retournait 0 devoir à l'étudiant alors que la
+REQUÊTE exacte du handler retourne 1 ligne sous sect_app… Cause racine :
+sous RLS, l'étudiant ne voit pas la ligne User de l'enseignant (User_select
+sans lien EnseignantFilière) ni l'UE (sans affectation) → LEFT JOIN NULL →
+le handler scannait u.*/ue.* dans des string NON-NULLABLES → erreur « can't
+scan NULL into *string » → return nil avalé par le _ = de WithTx (classe
+SEED-DEVOIRS-1 documentée dans le même fichier) → 200 + liste VIDE.
+Reproduit isolément sous sect_app (tmpprobe V0-V8), prouvé par scan typé
+AVANT/APRÈS. Fix : COALESCE(u.*, '') / COALESCE(ue.*, '') dans le SELECT
+(le niveau avait DÉJÀ son COALESCE — bug du même genre patché isolément
+sans généralisation). Latent côté enseignant (UE sans affectation) — couvert
+par le même fix.
+
+### Smoke final Render LIVE (jetables, tout passé)
+PROBE courante 2026-2027 + legacy 2024-2025 + UE Bureautique II L2 ·
+S0a login enseignant → 200 · **D1** POST /api/devoirs SANS année (payload
+du NOUVEAU mobile Kotlin) → 201 + FK=courante + label 2026-2027 · **D2**
+POST avec label « 2024-2025 » (payload ANCIEN mobile) → 201 + FK=2024-2025
+(compat ascendante prouvée) · **D3** PATCH anneeAcademiqueId=2024-2025 →
+200 + miroir DB vérifié · S0b login étudiant → 200 · **S1**
+annees-academiques (ETUDIANT) → 200, 3 années, 1 active · **S2** devoirs
+défaut → 200, **1 devoir [2026-2027]** · **S3** devoirs all → 200, **3
+devoirs [2024-2025 2026-2027]** · S4/S4b resultats + all → 200 shape OK ·
+S5 etudiant-overview + all → 200 · CLEANUP résidu 0 (3 devoirs, 2 users,
+refresh tokens, audit logs).
+
+### Vérification UI bout-en-bout (agent-browser, sect.ftci.fr, Vercel 8844aa4)
+Login réel étudiant jetable → dashboard : sélecteur « Année académique :
+2026-2027 · courante » rendu · **/mes-devoirs** : sélecteur rendu + défaut
+« À faire 1 » (devoir courant seul) → « Toutes les années » → **« À faire
+3 »** (2 legacy + 1 courant, headings vérifiés) → sélection explicite
+« 2024-2025 » → « À faire 2 » (override par année) · **/mes-resultats** :
+sélecteur rendu, bascule « Toutes les années » sans erreur, console propre
+(0 erreur, 0 page error) · viewport mobile 390×844 : sélecteur + tabs OK ·
+Screenshots mes-devoirs-all.png / mes-resultats-all.png /
+mes-devoirs-mobile.png (jetables). Cleanup données UI → résidu 0.
+
+### Livraison
+- Push 8844aa4 (frontend + statsAdmin commentaire + mobile) → CI verte ×3
+  (Backend/Frontend/**Mobile** — compile KMP Android+iOS, la Nullable du DTO
+  vérifiée) ; 5c1fe17 (fix usecases) → Backend CI verte, Render LIVE ;
+  662ccef (000115 + schema.sql) → Backend CI verte (migration APPLIQUÉE sur
+  Neon AVANT le push, ordre sans rupture) ; 98b3ba3 (fix scan) → Backend CI
+  verte, **Render LIVE dep-dav682s9v7es73c36jk0** ; Vercel production READY
+  8844aa4 (commits backend-only CANCELED, normal).
+- Outils jetables tmpsmoke/tmpprobe/tmpmigrate/tmpui effacés, arbre git
+  propre, /tmp vidé des URLs sect_app (mot de passe récupéré via l'API env
+  Render pour les sondes, jamais commité).
+
+### Stage Summary
+- ✅ Les 3 dettes de SECT-ANNEE-DETTES-3 soldées (section précédente) ET
+  fonctionnelles pour de vrai : le chemin étudiant complet est prouvé en UI.
+- ✅ 3 bugs de prod découverts par le smoke et corrigés : sélecteur
+  étudiant fantôme (403 usecases), « Mes Devoirs » vide pour tous les
+  étudiants (000115), liste silencieusement vide (scan NULL). Le dernier
+  n'était PAS spécifique aux années — il affectait toute liste /api/devoirs
+  étudiant avec enseignant/UE invisible RLS.
+- ✅ Contrat année confirmé côté étudiant en prod : défaut = courante,
+  all = historique, override par ID — aux DEUX extrémités (API + UI).
+- Dettes restantes (héritées, inchangées) : GET /api/devoirs/{id} et
+  createDevoir gardent des joints avalés silencieux pour enseignant sans
+  affectation (DTO aux champs vides, pas d'échec — à durcir si besoin) ;
+  RLS Message/Conversation déjà durcies (000109) ; bascule sect_app déjà
+  exécutée et stable. Plus aucune dette connue sur le fil SECT-ANNEE.
