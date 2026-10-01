@@ -414,6 +414,40 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
 			return fmt.Errorf("update user: %w", err)
 		}
 		user = updatedUser
+
+		// SECT-ETUDIANTS-NULL-FIX-2 : si ce PATCH change la filière d'un
+		// ETUDIANT (null explicite = retrait — sentinelle "" du handler —
+		// ou valeur = affectation/changement), synchroniser son Inscription
+		// de l'année courante via la fonction SECURITY DEFINER
+		// sync_inscription_filiere_change (migration 000111) :
+		//   - retrait  → Inscription EN_COURS clôturée REORIENTE ;
+		//   - (ré)affectation → Inscription (ré)ouverte EN_COURS avec la
+		//     nouvelle filière (ne ressuscite jamais PROMU/EXCLU/etc).
+		// Appelée DANS la transaction : atomique avec le UPDATE "User".
+		// SECURITY DEFINER car la policy Inscription_modify n'autorise que
+		// is_responsable — sans bypass, un retrait effectué par un ADMIN
+		// (utilisateurs-page envoie aussi filiereId) serait silencieusement
+		// ignoré par la RLS (0 ligne, pas d'erreur).
+		// Non-bloquant : la fonction ne lève jamais d'exception (codes de
+		// retour informatifs, pattern create_inscription_for_signup 000088) ;
+		// seules les erreurs de connexion propagent et rollback le tout.
+		if input.FiliereID != nil {
+			var newFiliere *string
+			if *input.FiliereID != "" {
+				newFiliere = input.FiliereID
+			}
+			var syncCode, syncMsg string
+			if err := tx.QueryRow(ctx, `
+                                SELECT o_code, o_message
+                                FROM public.sync_inscription_filiere_change($1, $2, $3)`,
+				id, newFiliere, claims.UserID,
+			).Scan(&syncCode, &syncMsg); err != nil {
+				return fmt.Errorf("sync inscription filiere: %w", err)
+			}
+			_ = syncCode
+			_ = syncMsg
+		}
+
 		return nil
 	})
 	if err != nil {

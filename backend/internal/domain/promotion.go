@@ -154,6 +154,15 @@ type EtudiantProgression struct {
 	CreditsTotaux     int               `json:"creditsTotaux"`
 	DecisionSuggeree  StatutInscription `json:"decisionSuggeree"`
 	InscriptionExiste bool              `json:"inscriptionExiste"`
+
+	// SECT-ETUDIANTS-NULL-FIX-2 : statut de l'Inscription de l'année source
+	// ("" si aucune inscription — backfill défensif à la clôture). Le worker
+	// de clôture SKIPPE les étudiants dont le statut n'est ni vide ni
+	// EN_COURS : leur inscription est déjà clôturée (REORIENTE suite à un
+	// retrait de filière, EXCLU/QUITTE/DIPLOME via décision manuelle, ou
+	// PROMU/REDOUBLANT d'un run précédent) — le batch ne doit pas écraser
+	// ces décisions (et une re-exécution ne doit pas re-promouvoir).
+	InscriptionStatut StatutInscription `json:"inscriptionStatut"`
 }
 
 // OverrideDecision — décision manuelle saisie par le RESPONSABLE dans le

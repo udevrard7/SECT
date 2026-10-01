@@ -716,6 +716,20 @@ func (uc *PromotionUseCase) RunPromotionSync(ctx context.Context, claims db.Sess
 	var batchIDPtr = &batch.ID
 
 	for _, etu := range etudiants {
+		// SECT-ETUDIANTS-NULL-FIX-2 : SKIPPER les étudiants dont l'Inscription
+		// de l'année source est déjà clôturée (REORIENTE suite à un retrait de
+		// filière, EXCLU/QUITTE/DIPLOME via décision manuelle, ou PROMU/
+		// REDOUBLANT d'un run précédent). Avant ce garde, le batch re-traitait
+		// tout le monde et écrasait ces décisions — une re-exécution du batch
+		// re-promouvait les PROMU (User.niveau incrémenté deux fois !).
+		// Exception : un override EXPLICITE de ce batch re-décide volontairement
+		// pour l'étudiant (le responsable a vu la liste, il force la décision).
+		if _, hasOverride := overrideMap[etu.EtudiantID]; !hasOverride &&
+			etu.InscriptionStatut != "" && etu.InscriptionStatut != domain.StatutInscriptionEnCours {
+			result.Progression++
+			continue
+		}
+
 		var decisionOverride *string
 		var motif *string
 		if ov, ok := overrideMap[etu.EtudiantID]; ok {

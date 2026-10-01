@@ -163,6 +163,10 @@ interface EtudiantProgression {
   creditsTotaux: number
   decisionSuggeree: string
   inscriptionExiste: boolean
+  // SECT-ETUDIANTS-NULL-FIX-2 : statut de l'Inscription de l'année source.
+  // Présent et ≠ 'EN_COURS' → déjà clôturée (REORIENTE/EXCLU/PROMU/…) : le
+  // worker de clôture l'ignore (sauf override explicite) — badge « Déjà clôturé ».
+  inscriptionStatut?: string
 }
 
 type DecisionStatut =
@@ -1675,7 +1679,14 @@ export function ClotureAnneePage({ onSwitchToAnnees }: { onSwitchToAnnees?: () =
                                   <p className="text-sm font-medium truncate">{e.nom}</p>
                                   <p className="text-xs text-muted-foreground truncate">{e.email}</p>
                                 </div>
-                                <DecisionBadge decision={decisionFinale} override={!!ov} />
+                                <div className="flex flex-col items-end gap-1">
+                                  <DecisionBadge decision={decisionFinale} override={!!ov} />
+                                  {e.inscriptionStatut && e.inscriptionStatut !== 'EN_COURS' && (
+                                    <Badge variant="outline" className="bg-muted/50 text-muted-foreground text-[9px] whitespace-nowrap">
+                                      Déjà clôturé
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                               <div className="grid grid-cols-2 gap-2 text-xs">
                                 <div>
@@ -1799,7 +1810,18 @@ export function ClotureAnneePage({ onSwitchToAnnees }: { onSwitchToAnnees?: () =
                                   {formatCredits(e.creditsValides, e.creditsTotaux)}
                                 </TableCell>
                                 <TableCell>
-                                  <DecisionBadge decision={decisionFinale} override={!!ov} />
+                                  <div className="flex items-center gap-1">
+                                    <DecisionBadge decision={decisionFinale} override={!!ov} />
+                                    {e.inscriptionStatut && e.inscriptionStatut !== 'EN_COURS' && (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-muted/50 text-muted-foreground text-[9px] whitespace-nowrap"
+                                        title={`Inscription ${e.inscriptionStatut} — ignorée par la clôture (sauf override explicite)`}
+                                      >
+                                        Déjà clôturé
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <DropdownMenu>

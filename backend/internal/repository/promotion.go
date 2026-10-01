@@ -484,10 +484,21 @@ func (r *PromotionRepository) ListEtudiantsForPromotion(ctx context.Context, eta
                                 EXISTS (
                                         SELECT 1 FROM "Inscription" i
                                         WHERE i."etudiantId" = u."id" AND i."anneeAcademiqueId" = $2
-                                ) AS inscription_existe
+                                ) AS inscription_existe,
+                                -- SECT-ETUDIANTS-NULL-FIX-2 : statut de l'inscription de
+                                -- l'année source (NULL si absente) — le worker skippe
+                                -- les déjà clôturées, le frontend badget « Déjà clôturé ».
+                                ins."statut"::text AS inscription_statut
                         FROM "User" u
                         LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
                         LEFT JOIN "ReglesPassage" rp ON rp."etablissementId" = u."etablissementId"
+                        LEFT JOIN LATERAL (
+                                SELECT i."statut"
+                                FROM "Inscription" i
+                                WHERE i."etudiantId" = u."id"
+                                  AND i."anneeAcademiqueId" = $2
+                                LIMIT 1
+                        ) ins ON true
                         LEFT JOIN LATERAL (
                                 SELECT AVG(vu."moyenneUE") AS moyenne
                                 FROM "ValidationUE" vu
@@ -527,16 +538,20 @@ func (r *PromotionRepository) ListEtudiantsForPromotion(ctx context.Context, eta
 			var e domain.EtudiantProgression
 			var niveauStr string
 			var decisionStr string
+			var inscriptionStatutStr *string
 			if err := rows.Scan(
 				&e.EtudiantID, &e.Nom, &e.Email, &niveauStr,
 				&e.FiliereID, &e.FiliereNom,
 				&e.MoyenneAnnuelle, &e.CreditsValides, &e.CreditsTotaux,
-				&decisionStr, &e.InscriptionExiste,
+				&decisionStr, &e.InscriptionExiste, &inscriptionStatutStr,
 			); err != nil {
 				return fmt.Errorf("ListEtudiantsForPromotion scan: %w", err)
 			}
 			e.Niveau = domain.NiveauEtude(niveauStr)
 			e.DecisionSuggeree = domain.StatutInscription(decisionStr)
+			if inscriptionStatutStr != nil {
+				e.InscriptionStatut = domain.StatutInscription(*inscriptionStatutStr)
+			}
 			etudiants = append(etudiants, e)
 		}
 		return rows.Err()

@@ -1903,3 +1903,81 @@ Quelle solution proposes-tu pour la gestion des données des années précédent
   frontend (le frontend envoyait déjà `null` correctement).
 - ⏳ Reste : commit + push → CI GitHub → déploiements auto Render (backend)
   + Vercel (frontend non impacté).
+
+---
+
+## Task ID: SECT-ETUDIANTS-NULL-FIX-2
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Correction de la dette notée dans SECT-ETUDIANTS-NULL-FIX-1 — « le retrait d'un étudiant de sa filière ne clôture pas son Inscription EN_COURS de l'année courante (un statut REORIENTE serait plus cohérent) »
+
+### Sémantique retenue (décision produit)
+- **Retrait** (filiereId → null) : l'Inscription EN_COURS de l'année courante est
+  clôturée en **REORIENTE** avec decisionManuelle=true, raisonDecision (nom de
+  l'ancienne filière), decideParId (le responsable), dateCloture. QUITTE écarté
+  (l'étudiant RESTE dans l'établissement — le dialog le garantit).
+- **(Ré)affectation** (filiereId → valeur) : l'Inscription EN_COURS ou REORIENTE
+  passe (retourne) en **EN_COURS** avec la nouvelle filière, champs de décision
+  nettoyés. Ne ressuscite JAMAIS PROMU/REDOUBLANT/DIPLOME/EXCLU/QUITTE (décisions
+  de clôture définitives). Sans le réouvrir, un étudiant retraité puis réaffecté
+  serait resté REORIENTE et exclu de la clôture suivante.
+- **Garde worker de clôture** : le batch SKIPPE désormais les étudiants dont
+  l'inscription de l'année source est déjà clôturée (sauf override explicite du
+  batch). Avant : le batch re-traitait tout le monde et écrasait les décisions
+  manuelles — une re-exécution re-promouvait les PROMU (User.niveau incrémenté
+  deux fois, bug préexistant). Ce garde rend le REORIENTE du retrait durable.
+
+### Implémentation
+1. **Migration 000111** `sync_inscription_filiere_change(etudiant, nouvelleFiliere,
+   decidePar)` — fonction SECURITY DEFINER (pattern 000087/000088), search_path=public,
+   codes de retour non-bloquants (NOT_STUDENT / NO_CURRENT_YEAR / CLOSED / SYNCED /
+   ERROR). SECURITY DEFINER nécessaire : la policy Inscription_modify n'autorise que
+   is_responsable — sans bypass, un retrait effectué par un ADMIN (utilisateurs-page
+   envoie aussi filiereId, vérifié lignes 749/805/868) serait silencieusement ignoré
+   par la RLS (0 ligne, pas d'erreur).
+   Appliquée à Neon (v110→v111) avec dry-run en tx + rollback AVANT l'apply
+   (pattern 000110) ; post-checks : prosecdef=true, proconfig search_path=public.
+2. **repository/user.go** `Update` : appel de la fonction DANS la transaction du
+   PATCH, juste après le UPDATE "User" (atomique) quand input.FiliereID != nil
+   (sentinelle "" du fix précédent = retrait, valeur = affectation).
+3. **promotion** (domain + repository + usecase) : `EtudiantProgression.
+   InscriptionStatut` exposé par ListEtudiantsForPromotion (LEFT JOIN LATERAL
+   sur l'Inscription de l'année source) + garde de skip dans RunPromotionSync
+   (sauf overrideMap explicite).
+4. **Frontend cloture-annee-page.tsx** : badge « Déjà clôturé » (desktop + mobile)
+   sur les étudiants dont l'inscription source n'est pas EN_COURS — explique
+   pourquoi ils seront ignorés par la clôture.
+
+### Validation E2E (backend local + Neon réel, responsable jetable nettoyé)
+- Étudiant créé avec filière X + Inscription EN_COURS insérée (simule hook
+  000088) → historique GET /api/etudiants/{id}/inscriptions affiche EN_COURS.
+- PATCH {"filiereId": null} → **inscription REORIENTE** : raison « Retiré de la
+  filière « X » — l'étudiant reste dans l'établissement (réaffectation
+  possible) », decidePar = responsable, dateCloture remplie, decisionManuelle=true
+  (prouvé en SQL brut + via l'endpoint historique).
+- PATCH {"filiereId": Y} → inscription **EN_COURS** sur Y, raison/decidePar/
+  dateCloture NULL, decisionManuelle=false.
+- Preview clôture → inscriptionStatut='EN_COURS' après réaffectation, puis
+  'REORIENTE' après retrait final (le worker le skippera — garde vérifiée par
+  le champ + revue de code ; le batch complet n'a PAS été exécuté sur l'étab
+  démo pour ne pas muter les données réelles).
+- gofmt/vet/build OK ; frontend eslint 0 erreur + tsc --noEmit OK.
+
+### Dettes résiduelles notées
+- La création directe d'étudiant (POST /api/users avec filière) ne crée PAS
+  d'Inscription (seul le signup-link a le hook 000088) — le backfill défensif
+  de cloturer_annee_etudiant couvre à la clôture ; un backfill à la création
+  serait plus cohérent (phase future).
+- Le niveau de l'Inscription n'est pas synchronisé si le PATCH change
+  User.niveau (seule la filière l'est — périmètre de la dette).
+- Le badge « Déjà clôturé » n'est qu'indicatif dans la preview ; les étudiants
+  déjà clôturés restent sélectionnables (le worker les ignore, l'override
+  explicite reste possible — comportement voulu).
+
+### Stage Summary
+- ✅ Dette corrigée : le retrait clôture l'Inscription en REORIENTE (prouvé
+  E2E en base + API), la réaffectation la rouvre en EN_COURS
+- ✅ Bonus robustesse : le batch de clôture n'écrase plus les décisions déjà
+  enregistrées et une re-exécution ne re-promeut plus les PROMU
+- ✅ Couvre RESPONSABLE et ADMIN (SECURITY DEFINER), zéro changement de
+  comportement pour les autres PATCH (seul filiereId déclenche la sync)
+- ⏳ Reste : commit + push → CI → Render (backend) + Vercel (badge frontend)
