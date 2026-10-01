@@ -1150,7 +1150,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
 		idx = appendFiltre(&wClauses, &args, idx, `e."filiereId"`, "=", filiereID)
-		idx = appendFiltre(&wClauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping)
+		appendFiltre(&wClauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping) // dernière : idx non relu
 		joinOn = buildAnd(jClauses)
 		where = buildAnd(wClauses)
 		return
@@ -1166,7 +1166,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
 		idx = appendFiltre(&wClauses, &args, idx, `u."filiereId"`, "=", filiereID)
-		idx = appendFiltre(&wClauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping)
+		appendFiltre(&wClauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping) // dernière : idx non relu
 		joinOn = buildAnd(jClauses)
 		where = buildAnd(wClauses)
 		return
@@ -1217,13 +1217,13 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 					var eA []any
 					idxE := 1
 					idxE = appendFiltre(&eC, &eA, idxE, `e."filiereId"`, "=", filiereID)
-					idxE = appendFiltre(&eC, &eA, idxE, `e."anneeAcademiqueId"`, "=", anneeID)
+					appendFiltre(&eC, &eA, idxE, `e."anneeAcademiqueId"`, "=", anneeID) // dernière : idxE non relu
 					_ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "Epreuve" e WHERE e."deletedAt" IS NULL %s`, buildAnd(eC)), eA...).Scan(&nbEval)
 					var sC []string
 					var sA []any
 					idxS := 1
 					idxS = appendFiltre(&sC, &sA, idxS, `e."filiereId"`, "=", filiereID)
-					idxS = appendFiltre(&sC, &sA, idxS, `e."anneeAcademiqueId"`, "=", anneeID)
+					appendFiltre(&sC, &sA, idxS, `e."anneeAcademiqueId"`, "=", anneeID) // dernière : idxS non relu
 					_ = tx.QueryRow(ctx, fmt.Sprintf(`
 						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
 						       CASE WHEN count(s.id) > 0
@@ -1255,7 +1255,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		var eArgs1 []any
 		idxE1 := 1
 		idxE1 = appendFiltre(&eClauses1, &eArgs1, idxE1, `e."filiereId"`, "=", filiereID)
-		idxE1 = appendFiltre(&eClauses1, &eArgs1, idxE1, `e."anneeAcademiqueId"`, "=", anneeScoping)
+		appendFiltre(&eClauses1, &eArgs1, idxE1, `e."anneeAcademiqueId"`, "=", anneeScoping) // dernière : idxE1 non relu
 		_ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "Epreuve" e WHERE e."deletedAt" IS NULL %s`, buildAnd(eClauses1)), eArgs1...).Scan(&nbEpreuves)
 		stats["nbEnseignants"] = nbEns
 		stats["nbEtudiants"] = nbEtu
