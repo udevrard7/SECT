@@ -2844,3 +2844,48 @@ sélecteur d'année.
   dans 000006 — le repo peut de nouveau reproduire la prod.
 - Dettes restantes inchangées (RLS Message/Conversation déjà durcies,
   sect_app basculé et stable) ; aucune nouvelle dette connue.
+
+### Livraison effective (addendum)
+- Rebase sur origin/main (SECT-ANNEE-DETTES-5 avait livvé entre-temps et pris
+  le numéro 000116 pour admin_get_etablissements_activite_annee) → notre
+  reconstruction des policies system-worker renumérotée **000117** (les
+  policies existaient en prod HORS schema_migrations — appliquées à la main ;
+  000117 est un no-op idempotent si exécutée sur la prod, et referme la
+  reproductibilité des bases fraîches).
+- Push cfd8eb8 → Backend CI FAILURE : golangci-lint/ineffassign sur un
+  `eIdx++` mort (options dropdown) → fix bffa8e5 → **Backend CI verte,
+  Frontend CI verte** (cfd8eb8 ; bffa8e5 backend-only → Frontend CI skip,
+  normal).
+- **Render LIVE** dep-dave442vcj2c73860fl0 (bffa8e5) ; **Vercel production
+  READY** dpl_GSDHnvVmcdo3KFiu7B4dqwtyWAom (cfd8eb8 — toutes les modifs
+  frontend ; bffa8e5 CANCELED backend-only, normal).
+- **Smoke HTTP live** (RESPONSABLE jetable, lecture seule) sur le backend
+  déployé : GET / défaut → 0 session/0 épreuve (vérité 2026-2027) ;
+  ?anneeAcademiqueId=all → 30 sessions toutes « 2024-2025 » (anneeLibelle
+  présent dans le DTO imbriqué) + 5 épreuves étiquetées 2024-2025 + stats
+  total=30 alertes=18 ; optionsOnly défaut → 0, all → 5. L'ancien
+  comportement « toutes années par défaut » n'apparaît plus qu'en opt-in
+  explicite.
+- **Vérification UI bout-en-bout** (agent-browser, sect.ftci.fr, production
+  Vercel) : login RESPONSABLE jetable → /surveillance → sélecteur « Année
+  académique » rendu avec défaut « 2026-2027 · courante » ; options
+  « Toutes les années / 2026-2027 · courante / 2025-2026 / 2024-2025 » ;
+  sélection 2024-2025 → dropdown épreuves « Composition - Génie Logiciel —
+  2024-2025 (4 alertes) » etc. (libellé année sur chaque option) ; epreuve +
+  date 2026-06-07 → « Sessions surveillées 3 » (3 sessions rendues = vérité
+  DB) ; bascule « Toutes les années » → KPI « 30 au total » ; retour
+  2026-2027 → KPI « 0 au total » (avant le fix : 32 toutes années par
+  défaut) ; 0 erreur console, 0 page error ; screenshots
+  surveillance-2024-2025.png / surveillance-2026-2027.png.
+- **Cleanup prod vérifié cross-table** : users/sessions/refresh/auditlog
+  tmp = 0, epreuves modifiées = 0, sessions NON_SOUMIS récentes = 0 (une
+  ligne AuditLog LOGIN orpheline détectée puis supprimée — résidu final 0).
+- golangci-lint v2.14.0 installé localement (parité CI) : 0 issue sur les
+  packages modifiés.
+
+### Stage Summary (final)
+- ✅ Les 6 bugs du module Surveillance au changement d'année sont corrigés,
+  déployés (Render + Vercel) et prouvés en prod aux deux extrémités (API
+  HTTP + UI navigateur), avec zéro résidu de données de test.
+- ✅ Le drift repo↔prod (000117 + is_system() dans 000006) est refermé : le
+  repo redevient reproductible depuis les migrations.
