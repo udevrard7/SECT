@@ -1363,8 +1363,14 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
                                 d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
                                 d."anneeAcademiqueId",
                                 d."createdAt", d."updatedAt",
-                                u."id", u."name", u."email",
-                                ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
+                                -- SECT-ANNEE-DETTES-4 : COALESCE sur les colonnes des LEFT
+                                -- JOIN — sous RLS, l'étudiant peut ne pas voir la ligne User
+                                -- de l'enseignant (sans lien EnseignantFilière) ni l'UE :
+                                -- le scan NULL → string non-nullable échouait silencieusement
+                                -- (return nil avalé) → liste VIDE avec 200. Idem côté
+                                -- enseignant pour l'UE sans affectation.
+                                COALESCE(u."id", ''), COALESCE(u."name", ''), COALESCE(u."email", ''),
+                                COALESCE(ue."id", ''), COALESCE(ue."code", ''), COALESCE(ue."nom", ''), COALESCE(ue."niveau"::text, ''),
                                 g."id", g."criteres",
                                 COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)%s
                         FROM "Devoir" d
