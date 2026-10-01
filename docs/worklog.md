@@ -2663,3 +2663,45 @@ stats_handlers.go (chaînes SQL brutes non restaurables par gofmt).
   produit à part, notée).
 - 🔍 Suite possible notée : moteur de recalcul des ValidationUE (impacte
   promotion/certificats — décider seuils, rattrapage, déclencheurs).
+
+### Livraison (push + CI + prod)
+- Push 4351038 (identité udevrard7 <ulrichdouh@gmail.com>) → CI Backend
+  ✅ success ; CI Frontend ❌ puis ✅ au rerun (attempt 2) : bug infra
+  Google Fonts/Turbopack transitoire déjà documenté (« next/font/google
+  queries have exactly one entry » sur layout.tsx NON modifié, build local
+  OK — classe d'incident connue de SECT-AFFECTATIONS-GROUPED-1).
+- Render : dep-davdku8473hc73f1akd0 LIVE sur 4351038f.
+- Vercel : preuve byte-à-byte — build local → chunk 2b025e2cc7a6a87d.js
+  (MD5 7e03192936acade79fa56cfdbdc84bfb, 3 384 069 o) servi par
+  sect.ftci.fr avec MD5 IDENTIQUE + chaînes « Relevé par année » /
+  « Inactif cette année » / « Hors année académique » présentes.
+- Sonde runtime : fonction 000116 exécutée sous sect_app (rôle Render
+  réel, DSN récupéré via API env — jamais commité) : OK + ancienne
+  fonction 15 colonnes intacte. EXECUTE public par défaut (aucun REVOKE
+  dans les migrations — même pattern que admin_get_etablissements_overview
+  qui tourne déjà sous sect_app).
+
+### Vérification UI bout-en-bout (agent-browser, sect.ftci.fr, jetables)
+- **/mes-resultats étudiant** : 3e onglet « Relevé par année » rendu →
+  3 groupes corrects : « 2026-2027 » (badge Année courante, note 15/20
+  épreuve courante), « 2025-2026 » (validation UE « 0/1 UE validée »,
+  tableau UE avec colonne ECTS, « 0 note »), « 2024-2025 » (note 8/20
+  archivée) ; stats globales « UE validées » + « crédits ECTS validés » ;
+  clic ligne → détail existant ; 0 erreur console/page.
+- **/mes-certificats étudiant** : sélecteur « Année académique de la
+  progression UE » (défaut 2026-2027 · courante) → tab Progression UE :
+  empty state guidé « Aucune progression UE sur 2026-2027 » + bouton
+  « Voir toutes les années » → tableau avec colonne « Année » (2025-2026,
+  1/2 épreuves, En cours).
+- **Réseau (preuve du fantôme mort)** : uniquement des GET
+  /api/validations-ue (all / défaut / ID explicite), TOUS 200 — ZÉRO
+  POST.
+- **/dashboard admin** : carte « The University of Abidjan » → avec
+  fixtures « 2026-2027 · 1 épreuve · 1 session » ; après cleanup, état
+  RÉEL de prod : « 2026-2027 » + badge « Inactif cette année » (0 épreuve
+  en année courante, 6 archivées) — l'objectif même de la dette.
+- Screenshots jetables : releve-prod.png / certificats-all.png /
+  admin-dashboard.png / admin-dashboard-inactif.png.
+- Cleanup final : fixtures + 2 jetables + refresh tokens + audit logs
+  supprimés, état vérifié SQL brut (6/30/20, 0 résidu), outils jetables
+  effacés, arbre git propre.
