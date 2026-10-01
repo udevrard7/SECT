@@ -89,6 +89,27 @@ AS $$
   SELECT current_role_claim() = 'ETUDIANT';
 $$;
 
+-- Vrai si la connexion est un worker système du backend Go (user_id =
+-- 'system-worker', posé uniquement via SystemClaims — jamais via les
+-- handlers HTTP).
+--
+-- SECT-ANNEE-SURVEILLANCE (retro-réparation de 000006) : cette fonction
+-- existait en production (créée hors migration, avant 000027 qui la
+-- référence dans ses policies) mais n'avait jamais été capturée dans le
+-- repo — une base reconstruite depuis les migrations échouait dès 000027.
+-- Corps identique à la version live dumpée via pg_get_functiondef
+-- (SECURITY DEFINER, search_path verrouillé, VOLATILE par défaut).
+CREATE OR REPLACE FUNCTION public.is_system()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  RETURN current_user_id() = 'system-worker';
+END;
+$$;
+
 -- Vrai si l'ADMIN courant a une autorisation d'accès explicite à l'établissement donné.
 -- Les autres rôles n'utilisent pas cette fonction (ils sont scoppés par leur propre etablissementId).
 CREATE OR REPLACE FUNCTION public.admin_has_etablissement_access(p_etablissement_id TEXT)

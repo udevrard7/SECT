@@ -1676,6 +1676,22 @@ AS $$
   SELECT current_role_claim() = 'ETUDIANT';
 $$;
 
+-- Vrai si la connexion est un worker système du backend Go (user_id =
+-- 'system-worker', posé uniquement via SystemClaims — jamais via les
+-- handlers HTTP). SECT-ANNEE-SURVEILLANCE : alignée sur la version live
+-- (SECURITY DEFINER, search_path verrouillé) — cf. migration 000006
+-- (retro-réparation) et 000117.
+CREATE OR REPLACE FUNCTION public.is_system()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  RETURN current_user_id() = 'system-worker';
+END;
+$$;
+
 -- Vrai si l'ADMIN courant a une autorisation d'accès EXPLICITE ET ACTIVE à l'établissement
 -- donné (statut=APPROUVE + dans la plage de dates). Les autres rôles n'utilisent pas cette
 -- fonction (ils sont scoppés par leur propre etablissementId).
@@ -2930,3 +2946,72 @@ CREATE POLICY "BadgeProgression_modify_system" ON "BadgeProgression"
   FOR ALL TO neondb_owner
   USING ("userId" = current_user_id())
   WITH CHECK ("userId" = current_user_id());
+
+-- ============================================================
+-- SECT-ANNEE-SURVEILLANCE — Policies system-worker (migration 000117)
+-- ============================================================
+-- Branches is_system() pour les tables écrites/lues par les workers Go
+-- (auto-close, flush sessions, similarité, devoirs/documents) + Filière
+-- par ADMIN. Miroir de la migration 000116 (reconstruction de l'état
+-- live). DocumentAudio n'est pas dans ce schéma de référence partiel.
+-- ============================================================
+
+CREATE POLICY "Epreuve_all_system" ON "Epreuve"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "EpreuveQuestion_all_system" ON "EpreuveQuestion"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "SessionPassation_all_system" ON "SessionPassation"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Reponse_all_system" ON "Reponse"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Soumission_all_system" ON "Soumission"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Question_all_system" ON "Question"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "GrilleEvaluation_all_system" ON "GrilleEvaluation"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Devoir_all_system" ON "Devoir"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Document_all_system" ON "Document"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Chapter_all_system" ON "Chapter"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "AIProviderConfig_all_system" ON "AIProviderConfig"
+    FOR ALL TO PUBLIC
+    USING (is_system())
+    WITH CHECK (is_system());
+
+CREATE POLICY "Filiere_modify_admin" ON "Filiere"
+    FOR ALL TO PUBLIC
+    USING (is_admin() AND admin_has_etablissement_access("etablissementId"))
+    WITH CHECK (is_admin() AND admin_has_etablissement_access("etablissementId"));

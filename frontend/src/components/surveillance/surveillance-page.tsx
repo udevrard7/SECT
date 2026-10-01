@@ -8,7 +8,7 @@ import {
   User, Mail, ChevronDown, ChevronRight, Loader2, Search, ImageOff,
   X, FileText, Activity, RefreshCw, Download, Flag, Zap, TrendingUp,
   Users, Bell, CheckCircle2, Radio, BarChart3, Flame, ScanEye,
-  Gauge, FileWarning, AlertOctagon, GitCompare, UserCheck,
+  Gauge, FileWarning, AlertOctagon, GitCompare, UserCheck, CalendarRange,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -174,6 +174,15 @@ function useDebounce<T>(value: T, delay = 350): T {
 // COMPOSANT PRINCIPAL
 // ════════════════════════════════════════════════════════════════
 
+// SECT-ANNEE-SURVEILLANCE : option du sélecteur d'année académique
+// (GET /api/annees-academiques?etablissementId=… — réponse = array direct,
+// même source que Mes Épreuves, cache partagé clé ['annees-academiques']).
+interface AnneeAcademiqueOption {
+  id: string
+  libelle: string
+  actif: boolean
+}
+
 export function SurveillancePage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
@@ -185,6 +194,12 @@ export function SurveillancePage() {
   // (jusqu'à 200) → scroll infini sur la page.
   const [epreuveId, setEpreuveId] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
+  // SECT-ANNEE-SURVEILLANCE : filtre année académique. null = pas encore
+  // choisi (le défaut est DÉRIVÉ de l'année courante, cf. anneeParDefaut) ;
+  // « Toutes les années » = value 'all' pour l'historique. Sans ce filtre,
+  // la page mélangeait les sessions/alertes de toutes les années après
+  // l'activation d'une nouvelle année académique.
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
   const [severity, setSeverity] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [searchInput, setSearchInput] = useState('')
@@ -218,6 +233,57 @@ export function SurveillancePage() {
   const isWSConnected = connectionStatus === 'connected'
 
   // ═══════════════════════════════════════════════════════════════
+  // SECT-ANNEE-SURVEILLANCE : années académiques (sélecteur d'année).
+  // Même pattern que Mes Épreuves — cache partagé ['annees-academiques'].
+  // ═══════════════════════════════════════════════════════════════
+  const anneesAcademiquesQuery = useQuery<AnneeAcademiqueOption[]>({
+    queryKey: ['annees-academiques', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees academiques')
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesAcademiquesQuery.data ?? []
+
+  // Fallback : si la liste n'a aucune année actif=true, on interroge
+  // /annee-courante (l'ID retenu doit exister dans la liste pour que le
+  // Select affiche une option valide).
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${user!.etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled:
+      !!user?.etablissementId &&
+      anneesAcademiques.length > 0 &&
+      !anneesAcademiques.some((a) => a.actif),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Défaut du filtre : année COURANTE (actif) de la liste, sinon via
+  // /annee-courante. Sans établissement ni années → '' (défaut backend).
+  const anneeParDefaut =
+    anneesAcademiques.find((a) => a.actif)?.id ??
+    anneesAcademiques.find((a) => a.id === anneeCouranteQuery.data?.anneeCourante?.id)?.id ??
+    ''
+  const filterAnneeAcademiqueId = anneeChoisie ?? anneeParDefaut
+
+  // SECT-ANNEE-SURVEILLANCE : changer d'année invalide l'épreuve sélectionnée
+  // (l'épreuve courante peut ne pas exister dans la nouvelle année — le
+  // dropdown options est rescopé côté serveur).
+  useEffect(() => {
+    setEpreuveId('')
+  }, [filterAnneeAcademiqueId])
+
+  // ═══════════════════════════════════════════════════════════════
   // DATA FETCHING (BUGFIX QUERY-MIGRATION-1 : TanStack Query)
   // ═══════════════════════════════════════════════════════════════
   //
@@ -233,10 +299,13 @@ export function SurveillancePage() {
   // renseignés. Avant, la query se lançait immédiatement avec epreuveId='all'
   // → toutes les sessions chargées d'un coup.
   const sessionsQuery = useQuery<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>({
-    queryKey: ['surveillance-sessions', user?.id, epreuveId, selectedDate, severity, typeFilter, debouncedSearch],
+    queryKey: ['surveillance-sessions', user?.id, epreuveId, selectedDate, severity, typeFilter, debouncedSearch, filterAnneeAcademiqueId],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (epreuveId) params.set('epreuveId', epreuveId)
+      // SECT-ANNEE-SURVEILLANCE : scoping année côté serveur ('' = défaut
+      // backend = année courante ; 'all' = toutes les années / historique).
+      if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
       // UX-IMPROVE : envoyer la date sélectionnée comme plage de 24h.
       // dateDebut = date 00:00, dateFin = date 23:59:59.
       if (selectedDate) {
@@ -270,9 +339,12 @@ export function SurveillancePage() {
   // enabled (pas besoin de filtres). Utilise optionsOnly=true pour ne pas
   // fetcher les sessions.
   const epreuvesQuery = useQuery<{ epreuves: EpreuveOption[] }>({
-    queryKey: ['surveillance-epreuves-options', user?.id],
+    queryKey: ['surveillance-epreuves-options', user?.id, filterAnneeAcademiqueId],
     queryFn: async () => {
-      const res = await fetch('/api/surveillance?optionsOnly=true')
+      // SECT-ANNEE-SURVEILLANCE : options scopées sur l'année sélectionnée
+      // (défaut backend = courante) et épreuves supprimées exclues.
+      const yearParam = filterAnneeAcademiqueId ? `&anneeAcademiqueId=${filterAnneeAcademiqueId}` : ''
+      const res = await fetch(`/api/surveillance?optionsOnly=true${yearParam}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       return { epreuves: data.epreuves ?? [] }
@@ -284,9 +356,12 @@ export function SurveillancePage() {
   const epreuves = epreuvesQuery.data?.epreuves ?? []
 
   const statsQuery = useQuery<SurveillanceStats>({
-    queryKey: ['surveillance-stats', user?.id],
+    queryKey: ['surveillance-stats', user?.id, filterAnneeAcademiqueId],
     queryFn: async () => {
-      const res = await fetch('/api/surveillance/stats')
+      // SECT-ANNEE-SURVEILLANCE : KPI/agrégats scopés sur l'année
+      // sélectionnée — avant, l'onglet Analyse mélangeait toutes les années.
+      const yearParam = filterAnneeAcademiqueId ? `?anneeAcademiqueId=${filterAnneeAcademiqueId}` : ''
+      const res = await fetch(`/api/surveillance/stats${yearParam}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return res.json()
     },
@@ -509,6 +584,30 @@ export function SurveillancePage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* SECT-ANNEE-SURVEILLANCE : sélecteur d'année académique (défaut =
+              courante, « Toutes les années » pour l'historique). */}
+          {anneesAcademiques.length > 0 && (
+            <Select
+              value={filterAnneeAcademiqueId || 'all'}
+              onValueChange={(v) => setAnneeChoisie(v)}
+            >
+              <SelectTrigger className="h-9 w-full text-xs sm:w-[190px]">
+                <span className="flex items-center gap-1.5 truncate">
+                  <CalendarRange className="h-3.5 w-3.5 text-info" />
+                  <SelectValue placeholder="Année académique" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les années</SelectItem>
+                {anneesAcademiques.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.libelle}
+                    {a.actif ? ' · courante' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button variant="outline" size="sm" onClick={() => setIsLive((v) => !v)} className="gap-1.5">
             {isLive ? <><span className="h-2 w-2 rounded-full bg-success animate-pulse" /> Live</> : <><span className="h-2 w-2 rounded-full bg-muted-foreground" /> Pause</>}
           </Button>
@@ -639,7 +738,7 @@ function SessionsTab({ sessions, epreuves, loading, error, filters, expandedSess
             <label className="text-xs font-medium text-muted-foreground">Épreuve <span className="text-destructive">*</span></label>
             <Select value={filters.epreuveId} onValueChange={filters.setEpreuveId}>
               <SelectTrigger><SelectValue placeholder="Sélectionnez une épreuve" /></SelectTrigger>
-              <SelectContent>{epreuves.map((ep) => (<SelectItem key={ep.id} value={ep.id}>{ep.titre} ({ep.totalAlerts} alertes)</SelectItem>))}</SelectContent>
+              <SelectContent>{epreuves.map((ep) => (<SelectItem key={ep.id} value={ep.id}>{ep.titre}{ep.anneeLibelle ? ` — ${ep.anneeLibelle}` : ''} ({ep.totalAlerts} alertes)</SelectItem>))}</SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">

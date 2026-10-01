@@ -54,6 +54,8 @@ export interface SurveillanceSession {
     dateDebut: string
     dateFin: string
     proctoringActif: boolean
+    /** SECT-ANNEE-SURVEILLANCE : libellé de l'année académique de l'épreuve */
+    anneeLibelle?: string
   }
   logEvents: LogEvent[]
   fraudEvents: LogEvent[]
@@ -75,6 +77,9 @@ export interface EpreuveOption {
   dateDebut: string
   dateFin: string
   proctoringActif: boolean
+  /** SECT-ANNEE-SURVEILLANCE : libellé de l'année académique de l'épreuve
+   *  (les titres se répètent d'une année sur l'autre — disambiguïsation) */
+  anneeLibelle?: string
   totalAlerts: number
   sessionsWithAlerts: number
   totalSessions: number

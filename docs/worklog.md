@@ -2705,3 +2705,142 @@ stats_handlers.go (chaînes SQL brutes non restaurables par gofmt).
 - Cleanup final : fixtures + 2 jetables + refresh tokens + audit logs
   supprimés, état vérifié SQL brut (6/30/20, 0 résidu), outils jetables
   effacés, arbre git propre.
+
+## SECT-ANNEE-SURVEILLANCE — le module Surveillance × changement d'année : investigation profonde, 6 bugs, tous corrigés et prouvés
+
+Date : 2026-10-01 (session dédiée, suite de SECT-ANNEE-DETTES-4). Demande
+utilisateur : « comment se comporte surveillance lors de la passation à une
+nouvelle année — il semble que ce module présente des bugs — investigation
+profonde et résolution ».
+
+### Contexte sandbox
+Le filesystem ayant été réinitialisé entre sessions, le repo a été
+re-cloné depuis GitHub (HEAD f5e4596) et Go 1.27.1 réinstallé. Aucune
+perte : tout le travail précédent était pushé.
+
+### Investigation (code + sondes live)
+Le module Surveillance n'avait JAMAIS été inclus dans le fil SECT-ANNEE
+(épreuves/devoirs/resultats/affectations scopés par 000110/000112/000113,
+mais pas /api/surveillance). Comportement constaté au passage à une
+nouvelle année — 6 bugs, tous confirmés sur le code ET la prod :
+
+- **B1 — liste + dropdown non scopés** : GET /api/surveillance mélangeait
+  les sessions de TOUTES les années, et le dropdown épreuves listait toutes
+  les épreuves toutes années (prod : 6 épreuves 2024-2025 + 1 de 2025-2026
+  + 1 de 2026-2027 mélangées), y compris les épreuves supprimées
+  (deletedAt ignoré). Titres identiques entre années indistinguables ;
+  LIMIT 100 alphabétique → à terme les épreuves courantes évincées du
+  dropdown par les anciennes.
+- **B2 — stats toutes années** : /api/surveillance/stats agrégeait KPIs,
+  fraudByType, topStudents, screenshots sur TOUTES les années. Preuve
+  live : totalSessions=32 / alertes=18 alors que l'année courante 2026-2027
+  ne compte qu'1 session — après activation de la nouvelle année, l'onglet
+  « Analyse fraude » affichait les chiffres de l'année précédente.
+- **B3 — KPI « signalées » incohérent** : stats comptait
+  `alertes >= 3` alors que la liste marque `flagged` via EXISTS Alerte
+  FRAUDE (même sémantique que POST /flag) → une session signalée sans 3
+  alertes n'était pas comptée, une non-signalée à 3 alertes l'était.
+- **B4 — filtre Date cassé** : il exigeait que TOUTE la fenêtre de
+  l'épreuve (e.dateDebut ≥ D ET e.dateFin ≤ D) soit contenue dans le jour
+  sélectionné → un examen à cheval sur minuit, ou une épreuve sans
+  dateFin, était invisible le jour même de sa passation.
+- **B5 — sessions zombies éternelles** : l'AutoCloseWorker clôture les
+  ÉPREUVES mais ne finalise jamais les SessionPassation EN_COURS restées
+  ouvertes (navigateur fermé) → à chaque frontière d'année, « Sessions
+  actives » gonflait à perpétuité (0 zombie en prod AUJOURD'HUI, mais le
+  mécanisme est structurellement cassé).
+- **B0 — drift CRITIQUE repo ↔ prod découvert en investigant** : la base
+  live porte la migration **000116** (13 policies system-worker :
+  SessionPassation_all_system, Epreuve_all_system, Reponse_all_system,
+  Soumission, Question, GrilleEvaluation, Devoir, Document, Chapter,
+  EpreuveQuestion, AIProviderConfig + Filiere_modify_admin) qui
+  **n'existaient dans AUCUNE migration du repo** (appliquées à la main sur la prod — session à contexte perdu, jamais commitées). En plus, la FONCTION `is_system()` elle-même n'était créée
+  par AUCUNE migration (créée à la main sur la prod avant 000027 qui la
+  référence) → une base reconstruite depuis le repo échouait dès 000027
+  et, passée ce cap, privait les workers Go de tout accès sous sect_app.
+
+### Résolution
+- **F0 (B0)** : reconstruction exacte de `000117_system_worker_policies`
+  (.up/.down) depuis un dump pg_policies de la prod (expressions
+  identiques, DROP IF EXISTS + CREATE) ; retro-réparation de
+  `000006_enable_rls_with_claims` qui crée désormais `is_system()` (corps
+  identique à la version live : SECURITY DEFINER, search_path public) ;
+  reference/schema.sql resynchronisé (fonction + les 12 policies des
+  tables présentes, DocumentAudio absent du schéma partiel). Sur la prod
+  la 116 (statsAdmin) est enregistrée ; la 117 est un no-op idempotent sur la prod → inert ; le repo redevient reproductible.
+- **F1 (B1+B2+B3+B4)** : `surveillance_handlers_v2.go` — scoping année
+  académique aux TROIS lectures (liste, options, stats) + SSE stream, via
+  `resolveAnneeScopeID` (même contrat que /api/epreuves : absent = année
+  courante de l'étab, `?anneeAcademiqueId=all` = historique, ID explicite
+  = override ; fallback param etablissementId pour l'ADMIN). La liste et
+  le dropdown filtrent sur `e."anneeAcademiqueId"` (FK NOT NULL 000086 —
+  SessionPassation n'a pas de colonne année) ; le dropdown exclut les
+  épreuves supprimées, JOIN le libellé d'année (`anneeLibelle` ajouté au
+  DTO option ET à l'epreuve imbriquée des sessions), et trie
+  année DESC puis titre. Le filtre Date porte désormais sur le DÉBUT DE
+  SESSION (COALESCE(s.dateDebut, s.createdAt)) dans la journée. Le KPI
+  flaggedSessions compte EXISTS Alerte FRAUDE (aligné sur la liste).
+  Toutes les requêtes stats (KPIs, screenshots, fraudByType, timeline,
+  topStudents) héritent du même prédicat année.
+- **F2 (frontend)** : `surveillance-page.tsx` — sélecteur « Année
+  académique » dans le hero (pattern Mes Épreuves : cache partagé
+  ['annees-academiques'], défaut = courante marquée « · courante »,
+  « Toutes les années » pour l'historique) ; les 3 queries
+  (sessions/options/stats) passent `anneeAcademiqueId` + queryKey ;
+  changer d'année réinitialise l'épreuve sélectionnée ; le dropdown
+  épreuve affiche « titre — année ». Types étendus
+  (`anneeLibelle` sur EpreuveOption + epreuve imbriquée).
+- **F3 (B5)** : `auto_close_worker.go` — 3e routine
+  `finalizeStaleSessions` : les sessions EN_COURS dont l'épreuve est
+  CLOTUREE (délai+grâce dépassés de > 24h) ou supprimée (deletedAt > 24h)
+  passent à NON_SOUMIS + dateFin + événement FORCE_SUBMIT appendé à
+  logEvents (JSON parsé côté Go — corruption tolérée, on repart d'un
+  tableau vide) ; batch UPDATE via unnest, statut re-vérifié EN_COURS
+  (idempotence + anti-race avec une soumission concurrente), claims
+  système (policy SessionPassation_all_system), LIMIT 500/tick pour le
+  rattrapage progressif.
+
+### Preuves (sondes comportementales sur la prod, sous sect_app — RLS réelle)
+Claims ENSEIGNANT réels (enseignant possédant 30 épreuves 2024-2025),
+année courante 2026-2027 résolue via la requête exacte de
+resolveCurrentAnneeID :
+- Liste sessions (requête exacte du handler) : défaut courante → **0** ;
+  explicite 2025-2026 → 0 ; all → **30**. Contraste avant/après exact.
+- Dropdown options (requête exacte) : défaut → **0 épreuve** (l'enseignant
+  n'a rien en 2026-2027 — vérité terrain) ; all → 30 épreuves toutes
+  étiquetées « 2024-2025 :: titre » (le libellé d'année désambiguïse).
+- Stats KPI (requête exacte, flag = EXISTS FRAUDE) : [2026-2027] 0/0/0/0 ;
+  [toutes années] total=30 alertes=18 — le mélange autrefois affiché par
+  défaut n'apparaît plus qu'en « Toutes les années » explicite.
+- Worker finalizeStaleSessions (tx jetable + ROLLBACK, zéro résidu) :
+  épreuve existante passée CLOTUREE + session EN_COURS insérée → SELECT
+  worker la détecte ✓ → UPDATE 1 ligne ✓ → statut NON_SOUMIS, dateFin
+  posé, logEvents = [SESSION_START, FORCE_SUBMIT{détails}] (JSON valide) ✓
+  → re-run idempotent 0 ligne ✓.
+
+### Qualité
+`go build ./...` + `go vet` + `gofmt -l` propres (protocole d'édition
+byte-exact tabs/espaces respecté via scripts python, diff revu
+ligne par ligne) ; frontend `bun run lint` (1 warning préexistant sans
+rapport) + `bun run build` verts ; `go test ./...` (aucun test dans le
+repo, conforme CI). Jetables effacés (tmpprobe, /home/z/tmp-edits hors
+repo) ; mot de passe sect_app récupéré via l'API env Render pour les
+sondes, jamais commité.
+
+### Livraison
+Commit(s) poussés sur main → CI (Backend/Frontend) ; Render redéploie le
+backend (les lectures scopées deviennent le comportement par défaut —
+aucun consommateur mobile de /api/surveillance, l'app mobile n'utilise
+que le WS push par épreuve) ; Vercel redéploie le frontend avec le
+sélecteur d'année.
+
+### Stage Summary
+- ✅ Surveillance entre enfin dans le contrat année : défaut = courante,
+  « Toutes les années » = historique, override explicite — aux DEUX
+  extrémités (API + UI), comme mes-epreuves/mes-devoirs/mes-resultats.
+- ✅ 6 bugs corrigés dont B4 (filtre Date) et B5 (zombies EN_COURS) qui
+  n'étaient pas spécifiques aux années mais ruinaint le module.
+- ✅ Drift CRITIQUE refermé : 000116 reconstruite + is_system() capturée
+  dans 000006 — le repo peut de nouveau reproduire la prod.
+- Dettes restantes inchangées (RLS Message/Conversation déjà durcies,
+  sect_app basculé et stable) ; aucune nouvelle dette connue.

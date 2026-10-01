@@ -14,6 +14,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -61,9 +62,11 @@ func (w *AutoCloseWorker) Start(ctx context.Context) {
 	}()
 }
 
-// checkAndClose effectue les deux types de clôture automatique :
+// checkAndClose effectue les trois types de clôture automatique :
 //  1. Délai dépassé : dateFin + delaiGrace < now
 //  2. TOUS_SOUMIS : toutes les sessions sont SOUMISES/CORRIGEE/RETOURNEE
+//  3. Sessions orphelines : EN_COURS sur épreuve close/supprimée
+//     depuis > 24h → NON_SOUMIS (SECT-ANNEE-SURVEILLANCE)
 func (w *AutoCloseWorker) checkAndClose(ctx context.Context) {
 	closedByTimeout, err := w.closeExpiredEpreuves(ctx)
 	if err != nil {
@@ -79,6 +82,20 @@ func (w *AutoCloseWorker) checkAndClose(ctx context.Context) {
 	}
 	if closedByAllSubmitted > 0 {
 		w.logger.Info("AutoClose: epreuves clôturées (tous soumis)", "count", closedByAllSubmitted)
+	}
+
+	// SECT-ANNEE-SURVEILLANCE : finaliser les sessions EN_COURS orphelines
+	// (épreuve close ou supprimée depuis > 24h). Sans ça, un étudiant ayant
+	// fermé son navigateur en plein examen — typiquement à la frontière d'un
+	// changement d'année académique — laissait une session « active » pour
+	// toujours : le KPI « Sessions actives » de la surveillance la comptait
+	// indéfiniment, toutes années confondues.
+	finalizedSessions, err := w.finalizeStaleSessions(ctx)
+	if err != nil {
+		w.logger.Error("AutoClose: finalizeStaleSessions failed", "error", err)
+	}
+	if finalizedSessions > 0 {
+		w.logger.Info("AutoClose: sessions EN_COURS finalisées (épreuve close/supprimée)", "count", finalizedSessions)
 	}
 }
 
@@ -206,6 +223,119 @@ func (w *AutoCloseWorker) closeAllSubmittedEpreuves(ctx context.Context) (int, e
 		w.logger.Info("AutoClose: TOUS_SOUMIS", "epreuveId", epreuveIDs[i], "titre", titre)
 	}
 
+	return int(cmd.RowsAffected()), nil
+}
+
+// finalizeStaleSessions passe les sessions EN_COURS « orphelines » à
+// NON_SOUMIS : sessions dont l'épreuve est CLOTUREE (délai + grâce
+// dépassés de plus de 24h) ou supprimée (deletedAt > 24h).
+//
+// Idempotent : ne touche que statut='EN_COURS' (re-vérifié dans
+// l'UPDATE contre une soumission concurrente entre le SELECT et
+// l'UPDATE). Un événement FORCE_SUBMIT est ajouté à logEvents — le JSON
+// est parsé côté Go : une valeur corrompue ne fait pas échouer le batch,
+// on repart d'un tableau vide.
+//
+// RLS : claims système (SystemClaims → is_system(), policy
+// SessionPassation_all_system, migration 000117).
+func (w *AutoCloseWorker) finalizeStaleSessions(ctx context.Context) (int, error) {
+	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := db.SetClaimsTx(ctx, tx, db.SystemClaims()); err != nil {
+		return 0, fmt.Errorf("set claims: %w", err)
+	}
+
+	now := time.Now().UTC()
+
+	// 1. Sessions candidates — plafonnées à 500 par tick (60s) : rattrapage
+	// progressif après un long arrêt du serveur ou un changement d'année.
+	rows, err := tx.Query(ctx, `
+		SELECT s."id", s."logEvents"
+		FROM "SessionPassation" s
+		JOIN "Epreuve" e ON e."id" = s."epreuveId"
+		WHERE s."statut" = 'EN_COURS'
+		  AND (
+			(e."statut" = 'CLOTUREE' AND e."deletedAt" IS NULL
+			  AND (e."dateFin" + make_interval(mins => COALESCE(e."delaiGrace", 0))) < $1 - interval '24 hours')
+			OR
+			(e."deletedAt" IS NOT NULL AND e."deletedAt" < $1 - interval '24 hours')
+		  )
+		LIMIT 500
+	`, now)
+	if err != nil {
+		return 0, fmt.Errorf("query stale sessions: %w", err)
+	}
+
+	type staleSession struct {
+		id        string
+		logEvents []byte
+	}
+	var stale []staleSession
+	for rows.Next() {
+		ss := staleSession{}
+		if err := rows.Scan(&ss.id, &ss.logEvents); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan stale session: %w", err)
+		}
+		stale = append(stale, ss)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("stale sessions rows: %w", err)
+	}
+	if len(stale) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return 0, fmt.Errorf("commit (no rows): %w", err)
+		}
+		return 0, nil
+	}
+
+	// 2. logEvents mis à jour côté Go (parse sûr, corruption tolérée).
+	ids := make([]string, 0, len(stale))
+	logs := make([]string, 0, len(stale))
+	for _, ss := range stale {
+		var events []map[string]any
+		if len(ss.logEvents) > 0 {
+			_ = json.Unmarshal(ss.logEvents, &events) // corrompu → events reste nil
+		}
+		if events == nil {
+			events = []map[string]any{}
+		}
+		events = append(events, map[string]any{
+			"type":      "FORCE_SUBMIT",
+			"timestamp": now.Format(time.RFC3339),
+			"details":   "Session clôturée automatiquement (épreuve close ou supprimée)",
+		})
+		newLog, _ := json.Marshal(events)
+		ids = append(ids, ss.id)
+		logs = append(logs, string(newLog))
+	}
+
+	// 3. UPDATE batch — le statut EN_COURS est re-vérifié pour écarter une
+	// soumission concurrente survenue entre le SELECT et l'UPDATE.
+	cmd, err := tx.Exec(ctx, `
+		UPDATE "SessionPassation" s
+		SET "statut" = 'NON_SOUMIS',
+		    "dateFin" = $1,
+		    "logEvents" = v.le,
+		    "updatedAt" = CURRENT_TIMESTAMP
+		FROM (
+		    SELECT unnest($2::text[]) AS id, unnest($3::text[]) AS le
+		) AS v
+		WHERE s."id" = v.id
+		  AND s."statut" = 'EN_COURS'
+	`, now, ids, logs)
+	if err != nil {
+		return 0, fmt.Errorf("update stale sessions: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
 	return int(cmd.RowsAffected()), nil
 }
 

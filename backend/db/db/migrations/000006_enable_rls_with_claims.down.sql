@@ -17,6 +17,7 @@ END
 $$;
 
 -- Supprimer les fonctions helper (ordre : dépendantes d'abord)
+DROP FUNCTION IF EXISTS public.is_system();
 DROP FUNCTION IF EXISTS public.belongs_to_etablissement(text);
 DROP FUNCTION IF EXISTS public.admin_has_etablissement_access(text);
 DROP FUNCTION IF EXISTS public.is_etudiant();

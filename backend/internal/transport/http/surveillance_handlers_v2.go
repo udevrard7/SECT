@@ -47,6 +47,7 @@ type survEpreuveRef struct {
 	DateDebut       *string `json:"dateDebut,omitempty"`
 	DateFin         *string `json:"dateFin,omitempty"`
 	ProctoringActif bool    `json:"proctoringActif"`
+	AnneeLibelle    string  `json:"anneeLibelle,omitempty"`
 }
 
 // survLogEvent — un événement du log (1:1 avec frontend LogEvent).
@@ -88,6 +89,7 @@ type survEpreuveOption struct {
 	DateDebut          *string `json:"dateDebut,omitempty"`
 	DateFin            *string `json:"dateFin,omitempty"`
 	ProctoringActif    bool    `json:"proctoringActif"`
+	AnneeLibelle       string  `json:"anneeLibelle,omitempty"`
 	TotalAlerts        int     `json:"totalAlerts"`
 	SessionsWithAlerts int     `json:"sessionsWithAlerts"`
 	TotalSessions      int     `json:"totalSessions"`
@@ -161,6 +163,20 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		enseignantID = claims.UserID
 	}
 
+	// SECT-ANNEE-SURVEILLANCE : scoping année académique — même contrat que
+	// /api/epreuves (SECT-ANNEE-HISTOIRE-2) :
+	//   absent                   → année COURANTE de l'établissement ;
+	//   ?anneeAcademiqueId=all   → TOUTES les années (vue historique) ;
+	//   ?anneeAcademiqueId=<id>  → l'année demandée.
+	// Avant : la liste ET le dropdown épreuves mélangeaient toutes les années
+	// — après activation d'une nouvelle année, la surveillance affichait les
+	// sessions/alertes de l'année précédente.
+	anneeScopeEtab := claims.EtablissementID
+	if anneeScopeEtab == "" {
+		anneeScopeEtab = r.URL.Query().Get("etablissementId") // ADMIN : fallback explicite
+	}
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), anneeScopeEtab)
+
 	// Filtres UI (SURVEILLANCE-FIX-2 S5) : epreuveId, severity, type, search.
 	// UX-IMPROVE : ajout dateDebut/dateFin pour filtrer par date d'épreuve.
 	epreuveFilter := r.URL.Query().Get("epreuveId")
@@ -193,6 +209,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		Penalite        float64
 		LogEventsRaw    []byte // logEvents TEXT parsé en []byte
 		Flagged         bool   // EXISTS Alerte FRAUDE
+		EpreuveAnnee    string // libellé année académique de l'épreuve
 	}
 
 	var rawSessions []rawSession
@@ -205,6 +222,14 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		if enseignantID != "" {
 			where = append(where, fmt.Sprintf(`e."enseignantId" = $%d`, argIdx))
 			args = append(args, enseignantID)
+			argIdx++
+		}
+		// SECT-ANNEE-SURVEILLANCE : sessions scopées sur l'année demandée
+		// (défaut = courante) — l'année vient de l'épreuve (FK NOT NULL
+		// depuis 000086), SessionPassation n'a pas de colonne année.
+		if anneeID != "" {
+			where = append(where, fmt.Sprintf(`e."anneeAcademiqueId" = $%d`, argIdx))
+			args = append(args, anneeID)
 			argIdx++
 		}
 		if epreuveFilter != "" {
@@ -222,13 +247,19 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		// UX-IMPROVE : filtre par date d'épreuve (dateDebut/dateFin).
 		// Permet à l'enseignant de cibler une session spécifique dans le temps
 		// au lieu de charger toutes les sessions d'un coup.
+		// SECT-ANNEE-SURVEILLANCE : le filtre Date porte désormais sur le
+		// DÉBUT DE SESSION (COALESCE(s.dateDebut, s.createdAt)) dans la journée
+		// sélectionnée. Avant : il exigeait que TOUTE la fenêtre de l'épreuve
+		// soit contenue dans le jour (e.dateDebut >= D ET e.dateFin <= D) → un
+		// examen à cheval sur minuit, ou une épreuve sans dateFin, était
+		// invisible le jour même de sa passation.
 		if dateDebutFilter != "" {
-			where = append(where, fmt.Sprintf(`e."dateDebut" >= $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`COALESCE(s."dateDebut", s."createdAt") >= $%d`, argIdx))
 			args = append(args, dateDebutFilter)
 			argIdx++
 		}
 		if dateFinFilter != "" {
-			where = append(where, fmt.Sprintf(`e."dateFin" <= $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`COALESCE(s."dateDebut", s."createdAt") <= $%d`, argIdx))
 			args = append(args, dateFinFilter)
 		}
 
@@ -248,6 +279,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
                                s."epreuveId",
                                COALESCE(e."titre", '') AS epreuve_titre,
                                COALESCE(e."statut"::text, '') AS epreuve_statut,
+                               COALESCE(a."libelle", '') AS epreuve_annee,
                                e."dateDebut" AS epreuve_debut,
                                e."dateFin" AS epreuve_fin,
                                COALESCE(e."proctoringActif", false) AS proctoring,
@@ -264,6 +296,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
                         FROM "SessionPassation" s
                         LEFT JOIN "User" u ON u."id" = s."etudiantId"
                         LEFT JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        LEFT JOIN "AnneeAcademique" a ON a."id" = e."anneeAcademiqueId"
                         %s
                         ORDER BY s."createdAt" DESC
                         LIMIT 200
@@ -279,7 +312,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 				rs := rawSession{}
 				if err := rows.Scan(
 					&rs.ID, &rs.EtudiantID, &rs.EtudiantNom, &rs.EtudiantEmail,
-					&rs.EpreuveID, &rs.EpreuveTitre, &rs.EpreuveStatut,
+					&rs.EpreuveID, &rs.EpreuveTitre, &rs.EpreuveStatut, &rs.EpreuveAnnee,
 					&rs.EpreuveDebut, &rs.EpreuveFin, &rs.ProctoringActif,
 					&rs.SessionStatut, &rs.DateDebut, &rs.DateFin, &rs.Score,
 					&rs.Alertes, &rs.Penalite, &rs.LogEventsRaw, &rs.Flagged,
@@ -294,24 +327,41 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		} // fin if !optionsOnly
 
 		// Récupération des épreuves pour le dropdown filtre (S4).
+		// SECT-ANNEE-SURVEILLANCE : le dropdown n'offre plus les épreuves
+		// supprimées (deletedAt) et est scopé sur l'année demandée (défaut =
+		// courante). Le libellé d'année est JOINé car les titres d'épreuves
+		// se répètent d'une année sur l'autre.
 		var eArgs []any
 		eIdx := 1
-		eWhere := ""
+		var ePreds []string
 		if enseignantID != "" {
-			eWhere = fmt.Sprintf(`WHERE e."enseignantId" = $%d`, eIdx)
+			ePreds = append(ePreds, fmt.Sprintf(`e."enseignantId" = $%d`, eIdx))
 			eArgs = append(eArgs, enseignantID)
+			eIdx++
+		}
+		ePreds = append(ePreds, `e."deletedAt" IS NULL`)
+		if anneeID != "" {
+			ePreds = append(ePreds, fmt.Sprintf(`e."anneeAcademiqueId" = $%d`, eIdx))
+			eArgs = append(eArgs, anneeID)
+			eIdx++
+		}
+		eWhere := ""
+		if len(ePreds) > 0 {
+			eWhere = "WHERE " + strings.Join(ePreds, " AND ")
 		}
 		epreuvesQuery := fmt.Sprintf(`
                         SELECT e."id", e."titre", e."statut"::text, e."dateDebut", e."dateFin",
                                COALESCE(e."proctoringActif", false),
+                               COALESCE(a."libelle", '') AS annee_libelle,
                                COALESCE(sum(s."alertes"), 0) AS total_alerts,
                                count(*) FILTER (WHERE s."alertes" > 0) AS sessions_with_alerts,
                                count(*) AS total_sessions
                         FROM "Epreuve" e
                         LEFT JOIN "SessionPassation" s ON s."epreuveId" = e."id"
+                        LEFT JOIN "AnneeAcademique" a ON a."id" = e."anneeAcademiqueId"
                         %s
-                        GROUP BY e."id", e."titre", e."statut", e."dateDebut", e."dateFin", e."proctoringActif"
-                        ORDER BY e."titre" ASC
+                        GROUP BY e."id", e."titre", e."statut", e."dateDebut", e."dateFin", e."proctoringActif", a."libelle", a."dateDebut"
+                        ORDER BY a."dateDebut" DESC NULLS LAST, e."titre" ASC
                         LIMIT 100
                 `, eWhere)
 		epRows, err := tx.Query(r.Context(), epreuvesQuery, eArgs...)
@@ -323,7 +373,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 			eo := survEpreuveOption{}
 			var debut, fin *time.Time
 			if err := epRows.Scan(&eo.ID, &eo.Titre, &eo.Statut, &debut, &fin,
-				&eo.ProctoringActif, &eo.TotalAlerts, &eo.SessionsWithAlerts, &eo.TotalSessions); err != nil {
+				&eo.ProctoringActif, &eo.AnneeLibelle, &eo.TotalAlerts, &eo.SessionsWithAlerts, &eo.TotalSessions); err != nil {
 				return fmt.Errorf("scan epreuve: %w", err)
 			}
 			if debut != nil {
@@ -432,6 +482,7 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 				Titre:           rs.EpreuveTitre,
 				Statut:          rs.EpreuveStatut,
 				ProctoringActif: rs.ProctoringActif,
+				AnneeLibelle:    rs.EpreuveAnnee,
 			},
 			LogEvents:        logEvents,
 			FraudEvents:      fraudEvents,
@@ -499,6 +550,16 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
 		enseignantID = claims.UserID
 	}
 
+	// SECT-ANNEE-SURVEILLANCE : scoping année — défaut = courante (même
+	// contrat que /api/surveillance). Avant : KPI/agrégats calculés sur
+	// TOUTES les années — après activation d'une nouvelle année, l'onglet
+	// Analyse fraude affichait les sessions/alertes de l'année précédente.
+	anneeScopeEtab := claims.EtablissementID
+	if anneeScopeEtab == "" {
+		anneeScopeEtab = r.URL.Query().Get("etablissementId") // ADMIN : fallback explicite
+	}
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), anneeScopeEtab)
+
 	type kpis struct {
 		TotalSessions      int     `json:"totalSessions"`
 		ActiveSessions     int     `json:"activeSessions"`
@@ -536,13 +597,30 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var args []any
 		argIdx := 1
-		whereE := ""
+		var wherePreds []string
 		if enseignantID != "" {
-			whereE = fmt.Sprintf(`AND e."enseignantId" = $%d`, argIdx)
+			wherePreds = append(wherePreds, fmt.Sprintf(`e."enseignantId" = $%d`, argIdx))
 			args = append(args, enseignantID)
+			argIdx++
+		}
+		// SECT-ANNEE-SURVEILLANCE : tous les agrégats sont scopés sur l'année
+		// demandée (défaut = courante) via la FK année de l'épreuve.
+		if anneeID != "" {
+			wherePreds = append(wherePreds, fmt.Sprintf(`e."anneeAcademiqueId" = $%d`, argIdx))
+			args = append(args, anneeID)
+		}
+		whereE := ""
+		if len(wherePreds) > 0 {
+			whereE = "AND " + strings.Join(wherePreds, " AND ")
 		}
 
 		// 1. KPIs globaux
+		// SECT-ANNEE-SURVEILLANCE : flaggedSessions compte désormais les
+		// sessions réellement SIGNALÉES (EXISTS Alerte FRAUDE, même
+		// sémantique que le champ `flagged` de la liste et que POST /flag).
+		// Avant : count(alertes >= 3) — une session signalée avec < 3
+		// alertes n'était pas comptée, une session à 3 alertes non
+		// signalée l'était → KPI incohérent avec la liste.
 		var total, active, withAlerts, totalAlerts, flagged int
 		var totalPen float64
 		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`
@@ -551,7 +629,12 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
                                count(*) FILTER (WHERE s."alertes" > 0),
                                COALESCE(sum(s."alertes"), 0),
                                COALESCE(sum(s."penalite"), 0),
-                               count(*) FILTER (WHERE s."alertes" >= 3)
+                               count(*) FILTER (WHERE EXISTS(
+                                 SELECT 1 FROM "Alerte" al
+                                 WHERE al."epreuveId" = s."epreuveId"
+                                   AND al."userId" = s."etudiantId"
+                                   AND al."type" = 'FRAUDE'
+                               ))
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e."id" = s."epreuveId"
                         WHERE 1=1 %s
@@ -910,6 +993,11 @@ func (s *Server) fetchSurveillanceStats(r *http.Request, enseignantID string) ma
 		return map[string]any{"error": "no claims"}
 	}
 
+	// SECT-ANNEE-SURVEILLANCE : scoping année (défaut = courante, même
+	// contrat que /api/surveillance/stats — le SSE suit le param
+	// ?anneeAcademiqueId= transmis par le client).
+	anneeID := s.resolveAnneeScopeID(r.Context(), claims, r.URL.Query().Get("anneeAcademiqueId"), claims.EtablissementID)
+
 	result := map[string]any{
 		"totalSessions":  0,
 		"activeSessions": 0,
@@ -920,10 +1008,20 @@ func (s *Server) fetchSurveillanceStats(r *http.Request, enseignantID string) ma
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var args []any
-		whereE := ""
+		argIdx := 1
+		var wherePreds []string
 		if enseignantID != "" {
-			whereE = `AND e."enseignantId" = $1`
+			wherePreds = append(wherePreds, fmt.Sprintf(`e."enseignantId" = $%d`, argIdx))
 			args = append(args, enseignantID)
+			argIdx++
+		}
+		if anneeID != "" {
+			wherePreds = append(wherePreds, fmt.Sprintf(`e."anneeAcademiqueId" = $%d`, argIdx))
+			args = append(args, anneeID)
+		}
+		whereE := ""
+		if len(wherePreds) > 0 {
+			whereE = "AND " + strings.Join(wherePreds, " AND ")
 		}
 
 		var total, active, alerts, flagged int
