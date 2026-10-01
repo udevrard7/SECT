@@ -426,6 +426,17 @@ func (uc *EtablissementUseCase) SetCurrentAnnee(ctx context.Context, claims db.S
 		return nil, err
 	}
 
+	// SECT-ANNEE-HISTOIRE-2 : archiver les salons CLASSE/PROMO des années
+	// précédentes (miroir du PATCH actif:true — les DEUX points d'entrée
+	// d'activation doivent rester synchrones). Best-effort + idempotent :
+	// une erreur ne fait pas échouer la définition d'année courante.
+	if uc.pool != nil {
+		if errArch := repository.ArchiveAnneeConversations(ctx, uc.pool, etablissementID, anneeID); errArch != nil {
+			slog.Warn("SetCurrentAnnee: archivage des salons CLASSE/PROMO échoué (best-effort)",
+				"etablissementId", etablissementID, "anneeId", anneeID, "error", errArch)
+		}
+	}
+
 	// SECT-ANNEE-AUDITLOG-1 : journaliser la définition d'année courante.
 	// On récupère l'AnneeAcademiqueRef (libelle) via GetCurrentAnnee — le repo
 	// SetCurrentAnnee ci-dessus a déjà validé que l'année appartient à l'étab,

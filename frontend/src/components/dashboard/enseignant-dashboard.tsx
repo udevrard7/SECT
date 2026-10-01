@@ -9,7 +9,10 @@ import {
   Clock,
   Plus,
   BarChart3,
+  CalendarRange,
   TrendingUp,
+  TrendingDown,
+  Minus,
   Inbox,
   CheckCircle,
   MessageSquareWarning,
@@ -20,6 +23,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
   Card,
@@ -30,6 +34,13 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { PulseSkeleton, StatCardSkeletonGrid, StatCard, AcademicCalendar, type CalendarEvent } from '@/components/ds'
 import { EvolutionChart, ComparisonChart, ChartCard } from '@/components/resultats/resultats-charts'
 import { ErrorState } from '@/components/shared/error-state'
@@ -259,14 +270,131 @@ function EmptyDashboard({ name }: { name: string }) {
   )
 }
 
+// ─── SECT-ANNEE-HISTOIRE-2 : comparaison N vs N-1 (enseignant) ───
+// Petite carte (moyenne générale + nb d'évaluations) affichée uniquement si
+// une année précédente existe. Delta % : TrendingUp = hausse = mieux.
+function ComparaisonAnneesCard({ data }: { data: EnseignantStatsData }) {
+  const comp = data.comparaisonAnnees
+  if (!comp?.precedente) return null
+
+  const courante = comp.courante ?? {}
+  const precedente = comp.precedente
+
+  const rows = [
+    {
+      label: 'Moyenne générale',
+      courante: courante.moyenneGenerale,
+      precedente: precedente.moyenneGenerale,
+      format: (v: number) => v.toFixed(1),
+      suffixe: '/20',
+    },
+    {
+      label: 'Évaluations',
+      courante: courante.nbEvaluations,
+      precedente: precedente.nbEvaluations,
+      format: (v: number) => `${v}`,
+      suffixe: '',
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <CalendarRange className="h-5 w-5 text-success-text" />
+          {data.anneePrecedente?.libelle ?? 'N-1'} → {data.annee?.libelle ?? 'N'}
+        </CardTitle>
+        <CardDescription>Comparaison avec l&apos;année précédente</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {rows.map((row) => {
+            const delta =
+              typeof row.courante === 'number' &&
+              typeof row.precedente === 'number' &&
+              row.precedente > 0
+                ? ((row.courante - row.precedente) / row.precedente) * 100
+                : null
+            const deltaClass =
+              delta === null || delta === 0
+                ? 'text-muted-foreground'
+                : delta > 0
+                  ? 'text-success-text'
+                  : 'text-destructive'
+            const DeltaIcon = delta === null || delta === 0 ? Minus : delta > 0 ? TrendingUp : TrendingDown
+            return (
+              <div key={row.label} className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium">{row.label}</p>
+                <p className="flex flex-wrap items-baseline gap-1.5">
+                  <span className="text-xl font-bold font-mono tabular-nums tracking-tight">
+                    {typeof row.courante === 'number' ? `${row.format(row.courante)}${row.suffixe}` : '—'}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono tabular-nums tracking-tight">
+                    vs {typeof row.precedente === 'number' ? `${row.format(row.precedente)}${row.suffixe}` : '—'}
+                  </span>
+                </p>
+                <p className={`flex items-center gap-1 text-xs font-semibold font-mono tabular-nums tracking-tight ${deltaClass}`}>
+                  <DeltaIcon className="h-3.5 w-3.5" />
+                  {delta === null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main Component ───
 export function EnseignantDashboard() {
   const user = useAuthStore((s) => s.user)
   const name = user?.name ?? 'Enseignant'
   const userId = user?.id
   const router = useRouter()
+  // SECT-ANNEE-HISTOIRE-2 : établissement courant → années académiques.
+  const etabId = user?.etablissementId || user?.etablissement?.id
 
-  const statsQuery = useEnseignantDashboard(userId)
+  // ─── SECT-ANNEE-HISTOIRE-2 : filtre d'année académique ───
+  // L'état ne porte que le choix explicite de l'utilisateur (null = pas
+  // encore choisi) ; la valeur effective est dérivée à chaque rendu :
+  // choix > ID de l'année courante (envoyé explicitement) > '' (défaut
+  // backend = année courante). 'all' = toutes les années. Aucun setState
+  // dans un effet (règle react-hooks/set-state-in-effect).
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
+  const anneesQuery = useQuery<{ annees: Array<{ id: string; libelle: string; actif: boolean }> }>({
+    queryKey: ['annees-academiques', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${etabId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees')
+      const json = await res.json()
+      // L'API retourne un array direct (pas wrappé dans {annees:...})
+      const arr = Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
+      return { annees: arr }
+    },
+    enabled: !!etabId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${etabId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const annees = anneesQuery.data?.annees ?? []
+  const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
+  const anneeId = anneeChoisie ?? anneeCourante?.id ?? ''
+
+  const statsQuery = useEnseignantDashboard(userId, anneeId)
   const badgesQuery = useBadges(userId)
   const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
 
@@ -396,16 +524,33 @@ export function EnseignantDashboard() {
         <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           {getGreeting()}, {name} ! Bienvenue sur votre espace.
         </motion.h1>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          disabled={statsQuery.isFetching || badgesQuery.isFetching}
-          className="self-start sm:self-auto gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${statsQuery.isFetching || badgesQuery.isFetching ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">Rafraîchir</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut =
+              année courante ; « Toutes les années » = historique). */}
+          <Select value={anneeChoisie ?? (anneeCourante?.id || 'all')} onValueChange={setAnneeChoisie}>
+            <SelectTrigger className="w-full sm:w-[220px]" aria-label="Année académique">
+              <SelectValue placeholder="Année académique" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les années</SelectItem>
+              {annees.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.libelle}{a.actif ? ' · courante' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={statsQuery.isFetching || badgesQuery.isFetching}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${statsQuery.isFetching || badgesQuery.isFetching ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Rafraîchir</span>
+          </Button>
+        </div>
       </div>
 
       {/* ─── Quick stats KPIs ─── */}
@@ -435,6 +580,13 @@ export function EnseignantDashboard() {
           accent="danger"
         />
       </motion.div>
+
+      {/* ─── SECT-ANNEE-HISTOIRE-2 : comparaison N vs N-1 (si année précédente) ─── */}
+      {data.comparaisonAnnees?.precedente && (
+        <motion.div variants={itemVariants}>
+          <ComparaisonAnneesCard data={data} />
+        </motion.div>
+      )}
 
       {/* ─── Pending corrections alert ─── */}
       {data.nbCorrectionsEnAttente > 0 && (

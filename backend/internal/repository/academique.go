@@ -780,6 +780,44 @@ func NewAnneeAcademiqueRepository(pool *pgxpool.Pool) *AnneeAcademiqueRepository
 	return &AnneeAcademiqueRepository{pool: pool}
 }
 
+// ArchiveAnneeConversations archive (soft-delete) tous les salons
+// CLASSE/PROMO de l'établissement dont l'année académique est ≠ newAnneeID
+// (SECT-ANNEE-HISTOIRE-2). Appelé à l'activation d'une nouvelle année : les
+// étudiants de la nouvelle année obtiennent des salons neufs (créés
+// lazily par EnsureAutoConversations), l'historique des messages des
+// anciens salons est préservé en base (soft-delete). Standalone (pool en
+// paramètre) pour être appelé aussi bien depuis AnneeAcademiqueRepository
+// (PATCH actif:true) que depuis EtablissementUseCase (POST annee-courante).
+//
+// Claims SYSTÈME obligatoires : le responsable ne voit pas les salons
+// étudiants via Conversation_select (000044) et l'enseignant B2C d'un étab
+// personnel n'a pas la branche Conversation_update — is_system() couvre
+// tous les cas (policy 000109/000112).
+// Idempotent : WHERE deletedAt IS NULL + IS DISTINCT FROM newAnneeID →
+// rejouable (best-effort, une erreur ne fait pas échouer l'activation).
+func ArchiveAnneeConversations(ctx context.Context, pool *pgxpool.Pool, etablissementID, newAnneeID string) error {
+	return db.WithSystemTx(ctx, pool, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			UPDATE "Conversation"
+			SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "type" IN ('CLASSE', 'PROMO')
+			  AND "deletedAt" IS NULL
+			  AND "etablissementId" = $1
+			  AND "anneeAcademiqueId" IS DISTINCT FROM $2`,
+			etablissementID, newAnneeID)
+		if err != nil {
+			return fmt.Errorf("ArchiveAnneeConversations: %w", err)
+		}
+		return nil
+	})
+}
+
+// ArchiveAnneeConversations (méthode du repo) — délègue à la fonction
+// standalone du même nom (voir doc ci-dessus).
+func (r *AnneeAcademiqueRepository) ArchiveAnneeConversations(ctx context.Context, etablissementID, newAnneeID string) error {
+	return ArchiveAnneeConversations(ctx, r.pool, etablissementID, newAnneeID)
+}
+
 // columnsAnnee — liste des colonnes sélectionnées par toutes les méthodes
 // AnneeAcademiqueRepository (List, FindByID, Create RETURNING, Update RETURNING).
 //

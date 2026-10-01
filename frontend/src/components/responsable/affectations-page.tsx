@@ -297,19 +297,9 @@ function groupAffectations(affectations: AffectationItem[]): AffectationGroup[] 
 }
 
 // ─── Current academic year (dynamic, ANNEE-COURANTE-NIVEAU-2) ───
-// Avant : heuristique date système (septembre = rentrée) — fausse si calendrier
-// custom ou année suivante pas encore créée. Désormais : fetch de l'année
-// courante définie sur l'établissement (migration 000017) via
-// /api/etablissements/{id}/annee-courante. Fallback sur l'heuristique si l'API
-// échoue ou si aucune année courante n'est définie.
-function currentAnneeUniversitaireHeuristic(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  if (now.getMonth() >= 8) { // septembre (0-indexed, 8 = sept)
-    return `${year}-${year + 1}`
-  }
-  return `${year - 1}-${year}`
-}
+// SECT-ANNEE-HISTOIRE-2 : l'heuristique date système (septembre = rentrée) a
+// été retirée — le filtre et le formulaire travaillent désormais sur les IDs
+// d'années DB (FK 000112), avec scoping par défaut côté backend.
 
 // ─── Main Component ───
 
@@ -346,7 +336,10 @@ export function AffectationsPage() {
       params.set('etablissementId', etabId!)
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (niveauFilter !== 'all') params.set('niveau', niveauFilter)
-      if (anneeFilter) params.set('anneeUniversitaire', anneeFilter)
+      // SECT-ANNEE-HISTOIRE-2 : le filtre année envoie la FK anneeAcademiqueId
+      // (000112) ; 'all' = toutes les années (historique). Sans param, le
+      // backend scope par défaut sur l'année courante.
+      if (anneeFilter && anneeFilter !== 'all') params.set('anneeAcademiqueId', anneeFilter)
 
       const res = await fetch(`/api/affectations?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch affectations')
@@ -435,24 +428,26 @@ export function AffectationsPage() {
   })
 
   const annees = anneesQuery.data?.annees ?? []
-  const anneeCouranteLibelle = anneeCouranteQuery.data?.anneeCourante?.libelle ?? null
+  const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
 
-  // Initialise anneeFilter une seule fois : année courante DB > fallback heuristique.
+  // SECT-ANNEE-HISTOIRE-2 : anneeFilter porte désormais l'ID de l'année
+  // (FK 000112) au lieu du libellé. Initialise une seule fois :
+  // année courante DB > fallback « toutes » (le backend scope par défaut
+  // sur l'année courante quand le param est absent).
   useEffect(() => {
     if (anneeFilterInitialized) return
-    // Priorité 1 : année courante définie sur l'établissement
-    if (anneeCouranteLibelle) {
-      setAnneeFilter(anneeCouranteLibelle)
+    // Priorité 1 : année courante définie sur l'établissement (ID).
+    if (anneeCourante?.id) {
+      setAnneeFilter(anneeCourante.id)
       setAnneeFilterInitialized(true)
       return
     }
-    // Priorité 2 : si la query année courante a fini de charger et est null,
-    // fallback heuristique date système (pour ne pas rester bloqué sans filtre).
-    if (!anneeCouranteQuery.isLoading && anneeCouranteLibelle === null) {
-      setAnneeFilter(currentAnneeUniversitaireHeuristic())
+    // Priorité 2 : la query a fini de charger et aucune année courante →
+    // pas de filtre explicite (scoping par défaut côté backend).
+    if (!anneeCouranteQuery.isLoading && !anneeCourante) {
       setAnneeFilterInitialized(true)
     }
-  }, [anneeCouranteLibelle, anneeCouranteQuery.isLoading, anneeFilterInitialized])
+  }, [anneeCourante, anneeCouranteQuery.isLoading, anneeFilterInitialized])
 
   const affectations = affectationsQuery.data?.affectations ?? []
 
@@ -732,7 +727,9 @@ export function AffectationsPage() {
     setAddTypeSeances(new Set(['CM']))
     setAddGroupe('')
     setAddVolumes({ CM: '', TD: '', TP: '' })
-    setAddAnnee(anneeFilter || currentAnneeUniversitaireHeuristic())
+    // SECT-ANNEE-HISTOIRE-2 : addAnnee porte l'ID de l'année (Select) — défaut
+    // = filtre courant s'il est une année précise, sinon année courante.
+    setAddAnnee(anneeFilter !== 'all' && anneeFilter ? anneeFilter : (anneeCourante?.id ?? ''))
     setAddCommentaire('')
     setAddDialogOpen(true)
   }
@@ -788,7 +785,9 @@ export function AffectationsPage() {
           enseignantId: addEnseignantId,
           uniteEnseignementId: addUEId,
           groupe: addGroupe || null,
-          anneeUniversitaire: addAnnee,
+          // SECT-ANNEE-HISTOIRE-2 : FK anneeAcademiqueId (le backend résout le
+          // libellé miroir anneeUniversitaire automatiquement).
+          anneeAcademiqueId: addAnnee || null,
           commentaire: addCommentaire || null,
           items,
         }),
@@ -1214,26 +1213,21 @@ export function AffectationsPage() {
                 <SelectItem value="PUBLIEE">Publiée</SelectItem>
               </SelectContent>
             </Select>
-            {/* ANNEE-COURANTE-NIVEAU-2 : Select bindé sur les années DB
-                (remplace l'Input texte libre). Default = année courante. */}
-            <Select value={anneeFilter} onValueChange={setAnneeFilter}>
-              <SelectTrigger className="w-full sm:w-[150px]">
+            {/* SECT-ANNEE-HISTOIRE-2 : Select bindé sur les IDs d'années (FK
+                000112). Défaut = année courante ; « Toutes les années » pour
+                l'historique (les libellés legacy restent couverts côté backend
+                par le fallback libellé). */}
+            <Select value={anneeFilter || 'all'} onValueChange={setAnneeFilter}>
+              <SelectTrigger className="w-full sm:w-[170px]">
                 <SelectValue placeholder="Année univ." />
               </SelectTrigger>
               <SelectContent>
-                {annees.length === 0 && anneeFilter && (
-                  <SelectItem value={anneeFilter}>{anneeFilter}</SelectItem>
-                )}
+                <SelectItem value="all">Toutes les années</SelectItem>
                 {annees.map((a) => (
-                  <SelectItem key={a.id} value={a.libelle}>
-                    {a.libelle}{a.libelle === anneeCouranteLibelle ? ' · courante' : ''}
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.libelle}{a.id === anneeCourante?.id ? ' · courante' : ''}
                   </SelectItem>
                 ))}
-                {/* Fallback : si anneeFilter (heuristique) n'est pas dans la DB,
-                    on l'affiche quand même pour ne pas perdre le filtre. */}
-                {anneeFilter && !annees.some((a) => a.libelle === anneeFilter) && (
-                  <SelectItem value={anneeFilter}>{anneeFilter} (hors DB)</SelectItem>
-                )}
               </SelectContent>
             </Select>
           </div>
@@ -1874,11 +1868,23 @@ export function AffectationsPage() {
 
             <div className="space-y-2">
               <Label>Année universitaire *</Label>
-              <Input
-                placeholder="Ex: 2024-2025"
-                value={addAnnee}
-                onChange={(e) => setAddAnnee(e.target.value)}
-              />
+              {/* SECT-ANNEE-HISTOIRE-2 : Select d'IDs (FK 000112) remplace
+                  l'Input texte libre — adieu les libellés fantaisistes. */}
+              <Select value={addAnnee} onValueChange={setAddAnnee}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionnez une année" />
+                </SelectTrigger>
+                <SelectContent>
+                  {annees.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.libelle}{a.id === anneeCourante?.id ? ' · courante' : ''}
+                    </SelectItem>
+                  ))}
+                  {annees.length === 0 && (
+                    <SelectItem value="" disabled>Aucune année académique — créez-en une</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

@@ -7,6 +7,10 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"log/slog"
+
+	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/usecase"
@@ -45,8 +49,48 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
 		Search:              r.URL.Query().Get("search"),
 		Niveau:              r.URL.Query().Get("niveau"),
 		SessionExamen:       r.URL.Query().Get("sessionExamen"),
-		AnneeAcademiqueID:   r.URL.Query().Get("anneeAcademiqueId"),
 		UniteEnseignementID: r.URL.Query().Get("uniteEnseignementId"),
+	}
+
+	// ── SECT-ANNEE-HISTOIRE-2 : scoping par défaut sur l'année COURANTE ──
+	// Sans filtre anneeAcademiqueId explicite, on ne retourne que les
+	// épreuves de l'année courante de l'établissement (mirroir du pattern
+	// /api/affectations post-000110). Avant : « Mes épreuves » enseignant et
+	// les vues étudiant/responsable mélangeaient TOUTES les années.
+	//   ?anneeAcademiqueId=<id>  → filtre explicite (sélecteur année UI) ;
+	//   ?anneeAcademiqueId=all   → TOUTES les années (vue historique) ;
+	//   absent                   → année courante de l'étab (claims ; fallback
+	//                              param etablissementId pour l'ADMIN).
+	// Si aucune année active → pas de filtre (établissement sans année).
+	anneeParam := r.URL.Query().Get("anneeAcademiqueId")
+	switch anneeParam {
+	case "":
+		scopeEtab := claims.EtablissementID
+		if scopeEtab == "" {
+			scopeEtab = r.URL.Query().Get("etablissementId") // ADMIN : param explicite éventuel
+		}
+		if scopeEtab != "" {
+			var anneeID *string
+			_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+				if errS := tx.QueryRow(r.Context(), `
+					SELECT "id" FROM "AnneeAcademique"
+					WHERE "etablissementId" = $1 AND "actif" = true
+					ORDER BY "dateDebut" DESC LIMIT 1`, scopeEtab).Scan(&anneeID); errS != nil && errS != pgx.ErrNoRows {
+					slog.Warn("epreuves: résolution de l'année courante échouée (pas de scoping par défaut)",
+						"etablissementId", scopeEtab, "error", errS)
+				}
+				return nil
+			})
+			if anneeID != nil && *anneeID != "" {
+				params.AnneeAcademiqueID = *anneeID
+				slog.Info("epreuves: scoping par défaut sur l'année courante",
+					"etablissementId", scopeEtab, "anneeAcademiqueId", *anneeID)
+			}
+		}
+	case "all":
+		// Vue historique explicite : aucune restriction d'année.
+	default:
+		params.AnneeAcademiqueID = anneeParam
 	}
 	// EVALUATIONS-FIX-EV7 : pagination optionnelle. ?page=X&limit=Y active
 	// la pagination. Si absents, comportement inchangé (tous les résultats).

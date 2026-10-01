@@ -425,6 +425,13 @@ type AnneeAcademiqueRepository interface {
 	// établissement (Etablissement.anneeAcademiqueCouranteId). Utilisé pour
 	// interdire la désactivation de l'année courante (garde anti-désynchronisation).
 	IsCurrent(ctx context.Context, anneeID string) (bool, error)
+	// ArchiveAnneeConversations archive (soft-delete deletedAt) les salons
+	// CLASSE/PROMO de l'établissement dont l'année ≠ newAnneeID
+	// (SECT-ANNEE-HISTOIRE-2 : versionnement des salons par année — les
+	// nouveaux salons sont créés lazily par EnsureAutoConversations).
+	// S'exécute en claims SYSTÈME (is_system) : voit toutes les
+	// conversations, y compris celles invisibles pour le responsable.
+	ArchiveAnneeConversations(ctx context.Context, etablissementID, newAnneeID string) error
 	// GetDependencies récupère les counts de dépendances cascade-DELETE ou
 	// SET NULL liés à une année académique (SECT-ANNEE-HARDDELETE-SAFE-1).
 	// CanHardDelete = true si tous les counts valent 0.

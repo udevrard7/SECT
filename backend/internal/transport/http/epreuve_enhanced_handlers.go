@@ -197,6 +197,14 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
 		nt := sourceEpreuve.NoteTotal
 		sourceNoteTotal = &nt
 	}
+	// SECT-ANNEE-HISTOIRE-2 : une session spéciale dérivée d'une épreuve
+	// hérite de son année académique (si non fournie explicitement). Avant,
+	// une session spéciale créée sans année explicite restait NULL même si
+	// l'épreuve d'origine en avait une → hors périmètre des filtres par année.
+	sourceAnneeID := input.AnneeAcademiqueID
+	if sourceAnneeID == nil && sourceEpreuve.AnneeAcademiqueID != nil {
+		sourceAnneeID = sourceEpreuve.AnneeAcademiqueID
+	}
 	createInput := domain.CreateEpreuveInput{
 		EnseignantID:        claims.UserID,
 		Titre:               input.Titre,
@@ -209,7 +217,7 @@ func (s *Server) createSessionSpeciale(w http.ResponseWriter, r *http.Request) {
 		Niveau:              sourceNiveau,
 		SessionExamen:       domain.SessionExamen(input.SessionExamen),
 		NoteTotal:           sourceNoteTotal,
-		AnneeAcademiqueID:   input.AnneeAcademiqueID,
+		AnneeAcademiqueID:   sourceAnneeID,
 		GenerationMode:      sourceEpreuve.GenerationMode,
 		Contenu:             sourceEpreuve.Contenu,
 		// UX-FIX : propager melange/blocage depuis l'input frontend.

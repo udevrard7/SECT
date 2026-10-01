@@ -53,6 +53,16 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	enseignantID := claims.UserID
+	// SECT-ANNEE-HISTOIRE-2 : stats par année académique (+ comparaison N-1).
+	//   ?anneeAcademiqueId=<id> → filtre explicite (sélecteur année UI) ;
+	//   ?anneeAcademiqueId=all  → TOUTES les années (historique complet) ;
+	//   absent                  → année COURANTE de l'établissement (défaut).
+	anneeParam := r.URL.Query().Get("anneeAcademiqueId")
+	var anneeScoping string
+	// anneeCond/anneeArgs sont injectés dans les requêtes ÉPREUVES ci-dessous
+	// ($2 après enseignantID=$1) une fois l'année résolue dans la transaction.
+	anneeCond := ""
+	anneeArgs := []any{}
 
 	// Structure de réponse (toujours initialisée avec slices vides)
 	type pendingCorrection struct {
@@ -108,7 +118,79 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 
 	// Exécuter les requêtes agrégées dans une transaction RLS
 	err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
-		// 1. Compteurs globaux (documents, questions, épreuves)
+		// ── SECT-ANNEE-HISTOIRE-2 : résolution de l'année de scoping ──
+		anneeLibelle := ""
+		switch anneeParam {
+		case "all":
+			// TOUTES les années : pas de scoping.
+		case "":
+			// Défaut : année courante de l'établissement des claims.
+			if claims.EtablissementID != "" {
+				var id, lib *string
+				if errS := tx.QueryRow(ctx, `
+					SELECT "id", "libelle" FROM "AnneeAcademique"
+					WHERE "etablissementId" = $1 AND "actif" = true
+					ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
+					anneeScoping, anneeLibelle = *id, *lib
+				}
+			}
+		default:
+			anneeScoping = anneeParam
+			var lib *string
+			_ = tx.QueryRow(ctx, `SELECT "libelle" FROM "AnneeAcademique" WHERE "id" = $1`, anneeParam).Scan(&lib)
+			if lib != nil {
+				anneeLibelle = *lib
+			}
+		}
+		if anneeScoping != "" {
+			anneeCond = ` AND e."anneeAcademiqueId" = $2`
+			anneeArgs = []any{anneeScoping}
+			stats["annee"] = map[string]any{"id": anneeScoping, "libelle": anneeLibelle}
+			// N-1 : plus grande dateDebut STRICTEMENT inférieure, même étab.
+			var pid, plib *string
+			if errS := tx.QueryRow(ctx, `
+				SELECT a."id", a."libelle" FROM "AnneeAcademique" a
+				WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
+				  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
+				ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
+				stats["anneePrecedente"] = map[string]any{"id": *pid, "libelle": *plib}
+				// Comparaison N vs N-1 : moyenne générale + nb évaluations de
+				// CET enseignant pour chaque année.
+				agregatsPourAnnee := func(anneeID string) map[string]any {
+					var nbEval int
+					var moy, taux float64
+					_ = tx.QueryRow(ctx, `
+						SELECT count(*) FROM "Epreuve" e
+						WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL AND e."anneeAcademiqueId" = $2`,
+						enseignantID, anneeID).Scan(&nbEval)
+					_ = tx.QueryRow(ctx, `
+						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
+						       CASE WHEN count(s.id) > 0
+						            THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+						            ELSE 0 END
+						FROM "SessionPassation" s
+						JOIN "Epreuve" e ON e.id = s."epreuveId"
+						WHERE e."enseignantId" = $1 AND e."anneeAcademiqueId" = $2
+						  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL`,
+						enseignantID, anneeID).Scan(&moy, &taux)
+					return map[string]any{"nbEvaluations": nbEval, "moyenneGenerale": moy, "tauxReussiteGlobal": taux}
+				}
+				stats["comparaisonAnnees"] = map[string]any{
+					"courante":   agregatsPourAnnee(anneeScoping),
+					"precedente": agregatsPourAnnee(*pid),
+				}
+			} else {
+				stats["anneePrecedente"] = nil
+				stats["comparaisonAnnees"] = map[string]any{"courante": map[string]any{"nbEvaluations": 0, "moyenneGenerale": 0, "tauxReussiteGlobal": 0}, "precedente": nil}
+			}
+		} else {
+			stats["annee"] = nil
+			stats["anneePrecedente"] = nil
+		}
+
+		// 1. Compteurs globaux (documents, questions, épreuves).
+		// NB : documents/questions restent transversaux (ressources sans
+		// année) ; les épreuves sont scopées par année (SECT-ANNEE-HISTOIRE-2).
 		var nbDocs, nbQuestions, nbEpreuves, nbEpreuvesActives int
 		if err := tx.QueryRow(ctx, `
                         SELECT count(*) FROM "Document" WHERE "ownerId" = $1 AND "deletedAt" IS NULL
@@ -120,16 +202,16 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
                 `, enseignantID).Scan(&nbQuestions); err != nil {
 			return err
 		}
-		if err := tx.QueryRow(ctx, `
-                        SELECT count(*) FROM "Epreuve" WHERE "enseignantId" = $1 AND "deletedAt" IS NULL
-                `, enseignantID).Scan(&nbEpreuves); err != nil {
+		if err := tx.QueryRow(ctx, fmt.Sprintf(`
+                        SELECT count(*) FROM "Epreuve" e WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL%s
+                `, anneeCond), append([]any{enseignantID}, anneeArgs...)...).Scan(&nbEpreuves); err != nil {
 			return err
 		}
-		if err := tx.QueryRow(ctx, `
-                        SELECT count(*) FROM "Epreuve"
-                        WHERE "enseignantId" = $1 AND "deletedAt" IS NULL
-                          AND statut IN ('PLANIFIEE', 'EN_COURS')
-                `, enseignantID).Scan(&nbEpreuvesActives); err != nil {
+		if err := tx.QueryRow(ctx, fmt.Sprintf(`
+                        SELECT count(*) FROM "Epreuve" e
+                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL%s
+                          AND e.statut IN ('PLANIFIEE', 'EN_COURS')
+                `, anneeCond), append([]any{enseignantID}, anneeArgs...)...).Scan(&nbEpreuvesActives); err != nil {
 			return err
 		}
 		stats["nbDocuments"] = nbDocs
@@ -173,17 +255,18 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		stats["pendingCorrections"] = pending
 		stats["nbCorrectionsEnAttente"] = len(pending)
 
-		// 3. Épreuves récentes (10 dernières, tous statuts confondus)
-		rows2, err := tx.Query(ctx, `
+		// 3. Épreuves récentes (10 dernières, tous statuts confondus) — scopées
+		//    par année (SECT-ANNEE-HISTOIRE-2).
+		rows2, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT e.id, e.titre, e.statut, e."dateDebut",
                                (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e.id) AS nb_participants,
                                (SELECT AVG(s2.score) / e."noteTotal" * 20 FROM "SessionPassation" s2
                                 WHERE s2."epreuveId" = e.id AND s2.statut IN ('CORRIGEE', 'RETOURNEE') AND s2.score IS NOT NULL) AS moyenne
                         FROM "Epreuve" e
-                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
+                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL%s
                         ORDER BY e."createdAt" DESC
                         LIMIT 10
-                `, enseignantID)
+                `, anneeCond), append([]any{enseignantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -209,7 +292,8 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		stats["recentEpreuves"] = recent
 
 		// 4. Performance par épreuve (épreuves terminées/corrigées avec moyenne)
-		rows3, err := tx.Query(ctx, `
+		//    — scopée par année (SECT-ANNEE-HISTOIRE-2).
+		rows3, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT e.titre,
                                CASE WHEN e."noteTotal" > 0 AND COUNT(s.id) > 0
                                     THEN COALESCE(AVG(s.score / e."noteTotal" * 20), 0) / e."noteTotal" * 20
@@ -221,12 +305,12 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
                         LEFT JOIN "SessionPassation" s ON s."epreuveId" = e.id
                           AND s.statut IN ('CORRIGEE', 'RETOURNEE')
                           AND s.score IS NOT NULL
-                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
+                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL%s
                           AND e.statut IN ('TERMINEE', 'CLOTUREE')
                         GROUP BY e.id, e.titre, e."noteTotal"
                         ORDER BY moyenne DESC
                         LIMIT 10
-                `, enseignantID)
+                `, anneeCond), append([]any{enseignantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -242,20 +326,21 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		}
 		stats["performanceParEpreuve"] = perf
 
-		// 5. Évolution des moyennes (6 derniers mois)
-		rows4, err := tx.Query(ctx, `
+		// 5. Évolution des moyennes (6 derniers mois) — scopée par année
+		//    (SECT-ANNEE-HISTOIRE-2).
+		rows4, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
                                COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
                                count(*) AS nb_evaluations
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
-                        WHERE e."enseignantId" = $1
+                        WHERE e."enseignantId" = $1%s
                           AND s.statut IN ('CORRIGEE', 'RETOURNEE')
                           AND s.score IS NOT NULL
                           AND s."updatedAt" > now() - interval '6 months'
                         GROUP BY mois
                         ORDER BY mois ASC
-                `, enseignantID)
+                `, anneeCond), append([]any{enseignantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -271,17 +356,18 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		}
 		stats["evolutionMoyennes"] = evol
 
-		// 6. Épreuves à venir (PLANIFIEE ou EN_COURS, dans le futur)
-		rows5, err := tx.Query(ctx, `
+		// 6. Épreuves à venir (PLANIFIEE ou EN_COURS, dans le futur) — scopées
+		//    par année (SECT-ANNEE-HISTOIRE-2).
+		rows5, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT e.id, e.titre, e."dateDebut", e."dateFin", e.duree, e.statut,
                                (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e.id) AS nb_participants
                         FROM "Epreuve" e
-                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
+                        WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL%s
                           AND e.statut IN ('PLANIFIEE', 'EN_COURS')
                           AND e."dateDebut" IS NOT NULL
                         ORDER BY e."dateDebut" ASC
                         LIMIT 10
-                `, enseignantID)
+                `, anneeCond), append([]any{enseignantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -344,6 +430,14 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	etudiantID := claims.UserID
+	// SECT-ANNEE-HISTOIRE-2 : stats par année académique (+ comparaison N-1).
+	//   ?anneeAcademiqueId=<id> → filtre explicite (sélecteur année UI) ;
+	//   ?anneeAcademiqueId=all  → TOUTES les années (historique complet) ;
+	//   absent                  → année COURANTE de l'établissement (défaut).
+	anneeParam := r.URL.Query().Get("anneeAcademiqueId")
+	var anneeScoping string
+	anneeCond := ""
+	anneeArgs := []any{}
 
 	// Structures de réponse
 	type epreuveAVenir struct {
@@ -400,33 +494,95 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
-		// Compteurs globaux
+		// ── SECT-ANNEE-HISTOIRE-2 : résolution de l'année de scoping ──
+		anneeLibelle := ""
+		switch anneeParam {
+		case "all":
+			// TOUTES les années : pas de scoping.
+		case "":
+			// Défaut : année courante de l'établissement des claims.
+			if claims.EtablissementID != "" {
+				var id, lib *string
+				if errS := tx.QueryRow(ctx, `
+					SELECT "id", "libelle" FROM "AnneeAcademique"
+					WHERE "etablissementId" = $1 AND "actif" = true
+					ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
+					anneeScoping, anneeLibelle = *id, *lib
+				}
+			}
+		default:
+			anneeScoping = anneeParam
+			var lib *string
+			_ = tx.QueryRow(ctx, `SELECT "libelle" FROM "AnneeAcademique" WHERE "id" = $1`, anneeParam).Scan(&lib)
+			if lib != nil {
+				anneeLibelle = *lib
+			}
+		}
+		if anneeScoping != "" {
+			anneeCond = ` AND e."anneeAcademiqueId" = $2`
+			anneeArgs = []any{anneeScoping}
+			stats["annee"] = map[string]any{"id": anneeScoping, "libelle": anneeLibelle}
+			// N-1 + comparaison des moyennes de CET étudiant N vs N-1.
+			var pid, plib *string
+			if errS := tx.QueryRow(ctx, `
+				SELECT a."id", a."libelle" FROM "AnneeAcademique" a
+				WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
+				  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
+				ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
+				stats["anneePrecedente"] = map[string]any{"id": *pid, "libelle": *plib}
+				moyennePourAnnee := func(anneeID string) (moy float64, nb int) {
+					_ = tx.QueryRow(ctx, `
+						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0), count(*)
+						FROM "SessionPassation" s
+						JOIN "Epreuve" e ON e."id" = s."epreuveId"
+						WHERE s."etudiantId" = $1 AND e."anneeAcademiqueId" = $2
+						  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL`,
+						etudiantID, anneeID).Scan(&moy, &nb)
+					return moy, nb
+				}
+				moyN, nbN := moyennePourAnnee(anneeScoping)
+				moyN1, nbN1 := moyennePourAnnee(*pid)
+				stats["comparaisonAnnees"] = map[string]any{
+					"courante":   map[string]any{"moyenne": moyN, "nbEvaluations": nbN},
+					"precedente": map[string]any{"moyenne": moyN1, "nbEvaluations": nbN1},
+				}
+			} else {
+				stats["anneePrecedente"] = nil
+				stats["comparaisonAnnees"] = map[string]any{"courante": map[string]any{"moyenne": 0, "nbEvaluations": 0}, "precedente": nil}
+			}
+		} else {
+			stats["annee"] = nil
+			stats["anneePrecedente"] = nil
+		}
+
+		// Compteurs globaux — scopés par année (SECT-ANNEE-HISTOIRE-2)
 		var nbAVenir, nbTerminees int
-		if err := tx.QueryRow(ctx, `
+		if err := tx.QueryRow(ctx, fmt.Sprintf(`
                         SELECT count(*) FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
                         WHERE s."etudiantId" = $1
-                          AND e.statut IN ('PLANIFIEE', 'EN_COURS')
-                `, etudiantID).Scan(&nbAVenir); err != nil {
+                          AND e.statut IN ('PLANIFIEE', 'EN_COURS')%s
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...).Scan(&nbAVenir); err != nil {
 			return err
 		}
-		if err := tx.QueryRow(ctx, `
-                        SELECT count(*) FROM "SessionPassation"
-                        WHERE "etudiantId" = $1 AND statut IN ('CORRIGEE', 'RETOURNEE')
-                `, etudiantID).Scan(&nbTerminees); err != nil {
+		if err := tx.QueryRow(ctx, fmt.Sprintf(`
+                        SELECT count(*) FROM "SessionPassation" s
+                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE')%s
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...).Scan(&nbTerminees); err != nil {
 			return err
 		}
 		stats["nbEpreuvesAVenir"] = nbAVenir
 		stats["nbEpreuvesTerminees"] = nbTerminees
 
-		// Moyenne et meilleure note (normalisées sur /20)
+		// Moyenne et meilleure note (normalisées sur /20) — scopées par année
 		var moyenne, meilleure pgtype.Float8
-		_ = tx.QueryRow(ctx, `
+		_ = tx.QueryRow(ctx, fmt.Sprintf(`
                         SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0), COALESCE(MAX(s.score / e."noteTotal" * 20), 0)
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e."id" = s."epreuveId"
-                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
-                `, etudiantID).Scan(&moyenne, &meilleure)
+                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL%s
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...).Scan(&moyenne, &meilleure)
 		if moyenne.Valid {
 			stats["moyenne"] = moyenne.Float64
 		}
@@ -434,8 +590,8 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 			stats["meilleureNote"] = meilleure.Float64
 		}
 
-		// Épreuves à venir
-		rows, err := tx.Query(ctx, `
+		// Épreuves à venir — scopées par année
+		rows, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT e.id, e.titre, e."dateDebut", e."dateFin", e.duree,
                                COALESCE(u.name, '') AS enseignant,
                                (SELECT count(*) FROM "EpreuveQuestion" eq WHERE eq."epreuveId" = e.id) AS nb_questions,
@@ -443,10 +599,10 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
                         LEFT JOIN "User" u ON u.id = e."enseignantId"
-                        WHERE s."etudiantId" = $1 AND e.statut IN ('PLANIFIEE', 'EN_COURS')
+                        WHERE s."etudiantId" = $1 AND e.statut IN ('PLANIFIEE', 'EN_COURS')%s
                         ORDER BY e."dateDebut" ASC
                         LIMIT 10
-                `, etudiantID)
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -470,8 +626,8 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 		}
 		stats["epreuvesAVenir"] = avenir
 
-		// Résultats récents
-		rows2, err := tx.Query(ctx, `
+		// Résultats récents — scopés par année
+		rows2, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT s.id, e.id, e.titre, COALESCE(u.name, '') AS enseignant,
                                s."updatedAt", COALESCE(s.score, 0), s.statut,
                                r."scoreFinal", r."totalPossible"
@@ -479,10 +635,10 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
                         LEFT JOIN "User" u ON u.id = e."enseignantId"
                         LEFT JOIN "Resultat" r ON r."sessionId" = s.id
-                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE')
+                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE')%s
                         ORDER BY s."updatedAt" DESC
                         LIMIT 10
-                `, etudiantID)
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -508,15 +664,15 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 		}
 		stats["resultatsRecents"] = recents
 
-		// Évolution des scores (10 derniers résultats)
-		rows3, err := tx.Query(ctx, `
+		// Évolution des scores (10 derniers résultats) — scopée par année
+		rows3, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT e.titre, COALESCE(s.score, 0), s."updatedAt"
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
-                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+                        WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL%s
                         ORDER BY s."updatedAt" ASC
                         LIMIT 10
-                `, etudiantID)
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...)
 		if err != nil {
 			return err
 		}
@@ -541,14 +697,14 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 		// Session en cours (une seule possible)
 		var sessID, epreuveID, epreuveTitre pgtype.Text
 		var dateDebut pgtype.Timestamp
-		err = tx.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, fmt.Sprintf(`
                         SELECT s.id, e.id, e.titre, s."dateDebut"
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
-                        WHERE s."etudiantId" = $1 AND s.statut = 'EN_COURS'
+                        WHERE s."etudiantId" = $1 AND s.statut = 'EN_COURS'%s
                         ORDER BY s."dateDebut" DESC
                         LIMIT 1
-                `, etudiantID).Scan(&sessID, &epreuveID, &epreuveTitre, &dateDebut)
+                `, anneeCond), append([]any{etudiantID}, anneeArgs...)...).Scan(&sessID, &epreuveID, &epreuveTitre, &dateDebut)
 		if err == nil && sessID.Valid {
 			sess := sessionEnCours{
 				ID:           sessID.String,
@@ -867,6 +1023,14 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 	filiereID := r.URL.Query().Get("filiereId")
 	dateDebut := r.URL.Query().Get("dateDebut")
 	dateFin := r.URL.Query().Get("dateFin")
+	// SECT-ANNEE-HISTOIRE-2 : stats par année académique (+ comparaison N-1).
+	//   ?anneeAcademiqueId=<id> → filtre explicite (sélecteur année UI) ;
+	//   ?anneeAcademiqueId=all  → TOUTES les années (historique complet) ;
+	//   absent                  → année COURANTE de l'établissement (défaut).
+	anneeParam := r.URL.Query().Get("anneeAcademiqueId")
+	// anneeScoping est résolu DANS la transaction RLS ci-dessous (les closures
+	// de filtrage ci-dessous la capturent par référence).
+	var anneeScoping string
 
 	// Types de réponse (toujours initialisés avec slices vides — JAMAIS nil)
 	type repartitionNote struct {
@@ -963,12 +1127,15 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		return "AND " + strings.Join(clauses, " AND ")
 	}
 	// buildSessionWhere : clause WHERE pour requêtes SessionPassation JOIN Epreuve.
-	// Filtre filiereId (sur e) + date (sur s.dateFin). Retourne clause + args.
+	// Filtre filiereId (sur e) + date (sur s.dateFin) + année (SECT-ANNEE-
+	// HISTOIRE-2, sur e."anneeAcademiqueId" — anneeScoping est résolu dans la
+	// transaction, la closure voit la valeur à jour). Retourne clause + args.
 	buildSessionWhere := func() (string, []any) {
 		var clauses []string
 		var args []any
 		idx := 1
 		idx = appendFiltre(&clauses, &args, idx, `e."filiereId"`, "=", filiereID)
+		idx = appendFiltre(&clauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping)
 		idx = appendFiltre(&clauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
 		appendFiltre(&clauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
 		return buildAnd(clauses), args
@@ -982,7 +1149,8 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		idx := 1
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
-		appendFiltre(&wClauses, &args, idx, `e."filiereId"`, "=", filiereID)
+		idx = appendFiltre(&wClauses, &args, idx, `e."filiereId"`, "=", filiereID)
+		idx = appendFiltre(&wClauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping)
 		joinOn = buildAnd(jClauses)
 		where = buildAnd(wClauses)
 		return
@@ -997,20 +1165,97 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		idx := 1
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
 		idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
-		appendFiltre(&wClauses, &args, idx, `u."filiereId"`, "=", filiereID)
+		idx = appendFiltre(&wClauses, &args, idx, `u."filiereId"`, "=", filiereID)
+		idx = appendFiltre(&wClauses, &args, idx, `e."anneeAcademiqueId"`, "=", anneeScoping)
 		joinOn = buildAnd(jClauses)
 		where = buildAnd(wClauses)
 		return
 	}
 
 	_ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
+		// ── SECT-ANNEE-HISTOIRE-2 : résolution de l'année de scoping ──
+		anneeLibelle := ""
+		switch anneeParam {
+		case "all":
+			// TOUTES les années (historique complet) : pas de scoping.
+		case "":
+			// Défaut : année courante de l'établissement des claims.
+			if claims.EtablissementID != "" {
+				var id, lib *string
+				if errS := tx.QueryRow(ctx, `
+					SELECT "id", "libelle" FROM "AnneeAcademique"
+					WHERE "etablissementId" = $1 AND "actif" = true
+					ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
+					anneeScoping, anneeLibelle = *id, *lib
+				}
+			}
+		default:
+			// Filtre explicite (sélecteur année UI) — libellé best-effort.
+			anneeScoping = anneeParam
+			var lib *string
+			_ = tx.QueryRow(ctx, `SELECT "libelle" FROM "AnneeAcademique" WHERE "id" = $1`, anneeParam).Scan(&lib)
+			if lib != nil {
+				anneeLibelle = *lib
+			}
+		}
+		if anneeScoping != "" {
+			stats["annee"] = map[string]any{"id": anneeScoping, "libelle": anneeLibelle}
+			// N-1 : plus grande dateDebut STRICTEMENT inférieure, même étab.
+			var pid, plib *string
+			if errS := tx.QueryRow(ctx, `
+				SELECT a."id", a."libelle" FROM "AnneeAcademique" a
+				WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
+				  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
+				ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
+				stats["anneePrecedente"] = map[string]any{"id": *pid, "libelle": *plib}
+				// Comparaison N vs N-1 : mêmes agrégats de tête (évaluations,
+				// moyenne, taux) pour l'année sélectionnée ET l'année N-1.
+				agregatsPourAnnee := func(anneeID string) map[string]any {
+					var nbEval int
+					var moy, taux float64
+					var eC []string
+					var eA []any
+					idxE := 1
+					idxE = appendFiltre(&eC, &eA, idxE, `e."filiereId"`, "=", filiereID)
+					idxE = appendFiltre(&eC, &eA, idxE, `e."anneeAcademiqueId"`, "=", anneeID)
+					_ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "Epreuve" e WHERE e."deletedAt" IS NULL %s`, buildAnd(eC)), eA...).Scan(&nbEval)
+					var sC []string
+					var sA []any
+					idxS := 1
+					idxS = appendFiltre(&sC, &sA, idxS, `e."filiereId"`, "=", filiereID)
+					idxS = appendFiltre(&sC, &sA, idxS, `e."anneeAcademiqueId"`, "=", anneeID)
+					_ = tx.QueryRow(ctx, fmt.Sprintf(`
+						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
+						       CASE WHEN count(s.id) > 0
+						            THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+						            ELSE 0 END
+						FROM "SessionPassation" s
+						JOIN "Epreuve" e ON e.id = s."epreuveId"
+						WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL %s`, buildAnd(sC)), sA...).Scan(&moy, &taux)
+					return map[string]any{"nbEvaluations": nbEval, "moyenneGenerale": moy, "tauxReussiteGlobal": taux}
+				}
+				stats["comparaisonAnnees"] = map[string]any{
+					"courante":   agregatsPourAnnee(anneeScoping),
+					"precedente": agregatsPourAnnee(*pid),
+				}
+			} else {
+				stats["anneePrecedente"] = nil
+				stats["comparaisonAnnees"] = map[string]any{"courante": map[string]any{"nbEvaluations": 0, "moyenneGenerale": 0, "tauxReussiteGlobal": 0}, "precedente": nil}
+			}
+		} else {
+			stats["annee"] = nil
+			stats["anneePrecedente"] = nil
+		}
+
 		// 1. Compteurs globaux (RLS filtre par établissement)
 		var nbEns, nbEtu, nbEpreuves int
 		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE role = 'ENSEIGNANT' AND actif = true`).Scan(&nbEns)
 		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE role = 'ETUDIANT' AND actif = true`).Scan(&nbEtu)
 		var eClauses1 []string
 		var eArgs1 []any
-		appendFiltre(&eClauses1, &eArgs1, 1, `e."filiereId"`, "=", filiereID)
+		idxE1 := 1
+		idxE1 = appendFiltre(&eClauses1, &eArgs1, idxE1, `e."filiereId"`, "=", filiereID)
+		idxE1 = appendFiltre(&eClauses1, &eArgs1, idxE1, `e."anneeAcademiqueId"`, "=", anneeScoping)
 		_ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "Epreuve" e WHERE e."deletedAt" IS NULL %s`, buildAnd(eClauses1)), eArgs1...).Scan(&nbEpreuves)
 		stats["nbEnseignants"] = nbEns
 		stats["nbEtudiants"] = nbEtu
@@ -1111,6 +1356,14 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		var fClauses4b []string
 		var fArgs4b []any
 		appendFiltre(&fClauses4b, &fArgs4b, 1, `f."id"`, "=", filiereID)
+		// SECT-ANNEE-HISTOIRE-2 : l'année filtre les ÉPREUVES rattachées à
+		// chaque filière (JOIN ON, pas WHERE — sinon les filières sans épreuve
+		// de l'année disparaîtraient de la répartition).
+		fJoin4b := ""
+		if anneeScoping != "" {
+			fJoin4b = fmt.Sprintf(` AND e."anneeAcademiqueId" = $%d`, len(fArgs4b)+1)
+			fArgs4b = append(fArgs4b, anneeScoping)
+		}
 		fAnd4b := ""
 		if len(fClauses4b) > 0 {
 			fAnd4b = "AND " + strings.Join(fClauses4b, " AND ")
@@ -1123,14 +1376,14 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                                     ELSE 0 END AS taux_reussite,
                                count(s.id) AS nb_participants
                         FROM "Filiere" f
-                        LEFT JOIN "Epreuve" e ON e."filiereId" = f.id AND e."deletedAt" IS NULL
+                        LEFT JOIN "Epreuve" e ON e."filiereId" = f.id AND e."deletedAt" IS NULL%s
                         LEFT JOIN "SessionPassation" s ON s."epreuveId" = e.id
                           AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
                         WHERE f."actif" = true %s
                         GROUP BY f.nom
                         ORDER BY moyenne DESC
                         LIMIT 10
-                `, fAnd4b), fArgs4b...)
+                `, fJoin4b, fAnd4b), fArgs4b...)
 		if err == nil {
 			defer rowsFil.Close()
 			fil := []resultatParFiliere{}

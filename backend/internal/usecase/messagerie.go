@@ -187,6 +187,21 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
 		return nil // ADMIN global ou user sans étab : pas de salon auto.
 	}
 
+	// SECT-ANNEE-HISTOIRE-2 : résoudre l'année COURANTE de l'établissement
+	// une seule fois — les salons CLASSE/PROMO sont versionnés par année
+	// (clé naturelle + titre suffixé). Best-effort : sans année active
+	// (anneeID == "") on retombe sur les salons d'année NULL (comportement
+	// historique, établissement sans année académique).
+	anneeID, anneeLibelle, errAnnee := uc.messagerieRepo.GetCurrentAnneeInfo(ctx, claims.EtablissementID)
+	if errAnnee != nil {
+		slog.Warn("EnsureAutoConversations: GetCurrentAnneeInfo failed (salons non versionnés)",
+			"etablissementId", claims.EtablissementID, "error", errAnnee)
+	}
+	var anneeIDPtr *string
+	if anneeID != "" {
+		anneeIDPtr = &anneeID
+	}
+
 	switch role {
 	case domain.RoleEtudiant:
 		// Charger filiereId + niveau depuis la DB (le JWT n'a pas niveau).
@@ -202,7 +217,7 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
 		if filiereID != "" {
 			fil := filiereID
 			// PROMO : filiereId uniquement.
-			conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypePromo, claims.EtablissementID, &fil, nil)
+			conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypePromo, claims.EtablissementID, &fil, nil, anneeIDPtr, anneeLibelle)
 			if err != nil {
 				return fmt.Errorf("EnsureAutoConversations PROMO: %w", err)
 			}
@@ -220,7 +235,7 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
 			niv := niveau
 			// CLASSE : filiereId + niveau ( désormais possible grâce à
 			// GetUserFiliereAndNiveau qui charge niveau depuis la DB).
-			conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeClasse, claims.EtablissementID, &fil, &niv)
+			conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeClasse, claims.EtablissementID, &fil, &niv, anneeIDPtr, anneeLibelle)
 			if err != nil {
 				return fmt.Errorf("EnsureAutoConversations CLASSE: %w", err)
 			}
@@ -235,7 +250,7 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
 
 	case domain.RoleEnseignant, domain.RoleResponsable:
 		// EQUIPE pédagogique de l'établissement (enseignants + responsables).
-		conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeEquipe, claims.EtablissementID, nil, nil)
+		conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeEquipe, claims.EtablissementID, nil, nil, nil, "")
 		if err != nil {
 			return fmt.Errorf("EnsureAutoConversations EQUIPE: %w", err)
 		}
@@ -250,7 +265,7 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
 		// La policy Conversation_select filtre STAFF à is_responsable()/is_admin(),
 		// donc on ne crée/inscrit STAFF que pour le RESPONSABLE (pas l'enseignant).
 		if role == domain.RoleResponsable {
-			conv2, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeStaff, claims.EtablissementID, nil, nil)
+			conv2, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeStaff, claims.EtablissementID, nil, nil, nil, "")
 			if err != nil {
 				return fmt.Errorf("EnsureAutoConversations STAFF: %w", err)
 			}

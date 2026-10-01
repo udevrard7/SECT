@@ -78,10 +78,15 @@ type Conversation struct {
 	EtablissementID *string          `json:"etablissementId,omitempty"`
 	FiliereID       *string          `json:"filiereId,omitempty"`
 	Niveau          *string          `json:"niveau,omitempty"`
-	CreatedBy       string           `json:"createdBy"`
-	CreatedAt       time.Time        `json:"createdAt"`
-	UpdatedAt       time.Time        `json:"updatedAt"`
-	DeletedAt       *time.Time       `json:"deletedAt,omitempty"`
+	// SECT-ANNEE-HISTOIRE-2 : versionnement des salons CLASSE/PROMO par
+	// année académique (000112). NULL pour IA/DIRECT/EQUIPE/STAFF
+	// (transversaux par design).
+	AnneeAcademiqueID *string    `json:"anneeAcademiqueId,omitempty"`
+	AnneeLibelle      *string    `json:"anneeLibelle,omitempty"`
+	CreatedBy         string     `json:"createdBy"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
+	DeletedAt         *time.Time `json:"deletedAt,omitempty"`
 }
 
 // ConversationParticipant — participation d'un user à une conversation
@@ -296,9 +301,16 @@ type MessagerieRepository interface {
 	// (1 par user). La crée si elle n'existe pas.
 	GetOrCreateIAPrivate(ctx context.Context, userID string) (*Conversation, error)
 
+	// GetCurrentAnneeInfo retourne (id, libelle) de l'année académique
+	// COURANTE de l'établissement (actif=true, post-000110 unique par étab).
+	// Chaînes vides si l'établissement n'a pas d'année active. Utilisé par
+	// EnsureAutoConversations pour versionner les salons CLASSE/PROMO
+	// (SECT-ANNEE-HISTOIRE-2).
+	GetCurrentAnneeInfo(ctx context.Context, etablissementID string) (id, libelle string, err error)
+
 	// GetOrCreateAuto retourne une conversation auto (CLASSE/PROMO/EQUIPE/STAFF)
 	// pour un scope donné. La crée si elle n'existe pas.
-	GetOrCreateAuto(ctx context.Context, convType ConversationType, etablissementID string, filiereID, niveau *string) (*Conversation, error)
+	GetOrCreateAuto(ctx context.Context, convType ConversationType, etablissementID string, filiereID, niveau *string, anneeAcademiqueID *string, anneeLibelle string) (*Conversation, error)
 
 	// GetUserFiliereAndNiveau retourne (filiereId, niveau) d'un utilisateur
 	// directement depuis la table User. Utilisé par EnsureAutoConversations pour

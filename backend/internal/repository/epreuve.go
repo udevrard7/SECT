@@ -77,6 +77,7 @@ func scanEpreuveWithJoins(s scanner) (*domain.Epreuve, error) {
 	var ensID, ensName, ensEmail *string
 	var filID, filNom, filCode *string
 	var ueID, ueNom, ueCode, ueNiveau *string
+	var anID, anLibelle *string
 	err := s.Scan(
 		&e.ID, &e.EnseignantID, &e.Titre, &e.Description, &e.Duree, &e.DateDebut, &e.DateFin,
 		&e.MelangeQuestions, &e.MelangePropositions, &e.BlocageRetour, &e.Statut,
@@ -90,6 +91,7 @@ func scanEpreuveWithJoins(s scanner) (*domain.Epreuve, error) {
 		&ensID, &ensName, &ensEmail,
 		&filID, &filNom, &filCode,
 		&ueID, &ueNom, &ueCode, &ueNiveau,
+		&anID, &anLibelle,
 	)
 	if err != nil {
 		return nil, err
@@ -105,6 +107,10 @@ func scanEpreuveWithJoins(s scanner) (*domain.Epreuve, error) {
 	}
 	if ueID != nil && ueNom != nil {
 		e.UniteEnseignement = &domain.UERef{ID: *ueID, Nom: *ueNom, Code: derefStr(ueCode), Niveau: derefStr(ueNiveau)}
+	}
+	// SECT-ANNEE-HISTOIRE-2 : hydrate l'année académique (LEFT JOIN).
+	if anID != nil && anLibelle != nil {
+		e.AnneeAcademique = &domain.AnneeAcademiqueRef{ID: *anID, Libelle: *anLibelle}
 	}
 	return e, nil
 }
@@ -155,11 +161,12 @@ func (r *EpreuveRepository) FindByID(ctx context.Context, id string) (*domain.Ep
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		// P1-E5 : mêmes JOINs que List (User + Filiere + UE)
 		row := tx.QueryRow(ctx, fmt.Sprintf(`
-                        SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau"
+                        SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau", an."id", an."libelle"
                         FROM "Epreuve"
                         LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId"
                         LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId"
                         LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId"
+                        LEFT JOIN "AnneeAcademique" an ON an."id" = "Epreuve"."anneeAcademiqueId"
                         WHERE "Epreuve"."id" = $1 AND "Epreuve"."deletedAt" IS NULL
                 `, columnsEpreuveQualified), id)
 		ep, err := scanEpreuveWithJoins(row)
@@ -407,7 +414,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			// uniteEnseignement (UERef{ID,Code,Nom,Niveau}). Mirroir du pattern
 			// Filiere. Corrige l'affichage du nom/code UE dans les cartes /epreuves
 			// et rend la duplication robuste.
-			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" %s ORDER BY "Epreuve"."dateDebut" DESC%s`, columnsEpreuveQualified, whereClause, paginationSuffix)
+			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau", an."id", an."libelle" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" LEFT JOIN "AnneeAcademique" an ON an."id" = "Epreuve"."anneeAcademiqueId" %s ORDER BY "Epreuve"."dateDebut" DESC%s`, columnsEpreuveQualified, whereClause, paginationSuffix)
 			rows, err := tx.Query(ctx, query, args...)
 			if err != nil {
 				return fmt.Errorf("query epreuves: %w", err)
@@ -418,6 +425,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				var ensID, ensName, ensEmail *string
 				var filID, filNom, filCode *string
 				var ueID, ueNom, ueCode, ueNiveau *string
+				var anID, anLibelle *string
 				err := rows.Scan(
 					&e.ID, &e.EnseignantID, &e.Titre, &e.Description, &e.Duree, &e.DateDebut, &e.DateFin,
 					&e.MelangeQuestions, &e.MelangePropositions, &e.BlocageRetour, &e.Statut,
@@ -431,6 +439,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 					&ensID, &ensName, &ensEmail,
 					&filID, &filNom, &filCode,
 					&ueID, &ueNom, &ueCode, &ueNiveau,
+					&anID, &anLibelle,
 				)
 				if err != nil {
 					return fmt.Errorf("scan epreuve: %w", err)
@@ -459,6 +468,13 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 						Nom:    *ueNom,
 						Code:   derefStr(ueCode),
 						Niveau: derefStr(ueNiveau),
+					}
+				}
+				// SECT-ANNEE-HISTOIRE-2 : hydrate l'année académique (LEFT JOIN).
+				if anID != nil && anLibelle != nil {
+					e.AnneeAcademique = &domain.AnneeAcademiqueRef{
+						ID:      *anID,
+						Libelle: *anLibelle,
 					}
 				}
 				// BUGFIX (ETU-AUDIT-1) : init Sessions à [] par défaut.

@@ -8,6 +8,7 @@ import {
   Play,
   RotateCcw,
   CalendarDays,
+  CalendarRange,
   HelpCircle,
   Eye,
   CheckCircle2,
@@ -31,6 +32,13 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -275,6 +283,14 @@ function getQuestionTypeBadgeClasses(type: string): string {
   }
 }
 
+// SECT-ANNEE-HISTOIRE-2 : option du sélecteur d'année académique
+// (GET /api/annees-academiques?etablissementId=… — réponse = array direct).
+interface AnneeAcademiqueOption {
+  id: string
+  libelle: string
+  actif: boolean
+}
+
 // ─── Component ───
 
 export function MesEpreuvesPage() {
@@ -285,6 +301,11 @@ export function MesEpreuvesPage() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('a-venir')
 
+  // SECT-ANNEE-HISTOIRE-2 : filtre année académique. null = pas encore choisi
+  // (le défaut est DÉRIVÉ de l'année courante, cf. anneeParDefaut ci-dessous) ;
+  // « Toutes les années » = value 'all' pour l'historique.
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
   // Detail dialog state
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [selectedResult, setSelectedResult] = useState<{
@@ -292,14 +313,64 @@ export function MesEpreuvesPage() {
     session: NonNullable<StudentEpreuve['sessions']>[0]
   } | null>(null)
 
+  // ─── Années académiques (SECT-ANNEE-HISTOIRE-2) ───
+  // Liste des années de l'établissement de l'étudiant pour alimenter le
+  // sélecteur d'année de l'en-tête (cache partagé clé ['annees-academiques']).
+  const anneesAcademiquesQuery = useQuery<AnneeAcademiqueOption[]>({
+    queryKey: ['annees-academiques', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees academiques')
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesAcademiquesQuery.data ?? []
+
+  // Fallback : si la liste n'a aucune année actif=true, on interroge
+  // /annee-courante (l'ID retenu doit exister dans la liste pour que le
+  // Select affiche une option valide).
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${user!.etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled:
+      !!user?.etablissementId &&
+      anneesAcademiques.length > 0 &&
+      !anneesAcademiques.some((a) => a.actif),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Défaut du filtre : année COURANTE (actif) de la liste, sinon via
+  // /annee-courante. Sans établissement ni années → '' (défaut backend).
+  // Dérivation pendant le rendu (pas d'effet) : tant que l'utilisateur n'a
+  // pas choisi, le sélecteur suit l'année courante de l'établissement.
+  const anneeParDefaut =
+    anneesAcademiques.find((a) => a.actif)?.id ??
+    anneesAcademiques.find((a) => a.id === anneeCouranteQuery.data?.anneeCourante?.id)?.id ??
+    ''
+  const filterAnneeAcademiqueId = anneeChoisie ?? anneeParDefaut
+
   // ─── Fetch epreuves (TanStack Query) ───
   // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
   // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
   // instantanée.
   const epreuvesQuery = useQuery<{ epreuves: StudentEpreuve[] }>({
-    queryKey: ['mes-epreuves', user?.id],
+    queryKey: ['mes-epreuves', user?.id, filterAnneeAcademiqueId],
     queryFn: async () => {
-      const res = await fetch(`/api/epreuves?etudiantId=${user!.id}`)
+      // SECT-ANNEE-HISTOIRE-2 : le filtre par année est serveur-side ('' =
+      // défaut backend = année courante ; 'all' = toutes les années). Le tri
+      // upcoming/completed reste strictement côté client, rien ne change ici.
+      const params = new URLSearchParams({ etudiantId: user!.id })
+      if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
+      const res = await fetch(`/api/epreuves?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch epreuves')
       const data = await res.json()
       // BUGFIX (ETU-AUDIT-1) : garantit que sessions est toujours un array
@@ -378,12 +449,40 @@ export function MesEpreuvesPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
-        <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
-          Mes Épreuves
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Consultez vos épreuves à venir et vos résultats
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
+              Mes Épreuves
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Consultez vos épreuves à venir et vos résultats
+            </p>
+          </div>
+          {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut =
+              courante, « Toutes les années » pour l'historique). */}
+          {anneesAcademiques.length > 0 && (
+            <Select
+              value={filterAnneeAcademiqueId || 'all'}
+              onValueChange={(v) => setAnneeChoisie(v)}
+            >
+              <SelectTrigger className="h-9 w-full text-xs sm:w-[190px]">
+                <span className="flex items-center gap-1.5 truncate">
+                  <CalendarRange className="h-3.5 w-3.5 text-info" />
+                  <SelectValue placeholder="Année académique" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les années</SelectItem>
+                {anneesAcademiques.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.libelle}
+                    {a.actif ? ' · courante' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
       {/* ─── Tabs ─── */}

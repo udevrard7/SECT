@@ -189,6 +189,9 @@ CREATE TABLE "Affectation" (
     "groupe" TEXT,
     "volumeHeures" DOUBLE PRECISION NOT NULL,
     "anneeUniversitaire" TEXT NOT NULL DEFAULT '2024-2025',
+    -- 000111 SECT-ANNEE-HISTOIRE-2 : FK année académique (miroir du libellé
+    -- anneeUniversitaire, conservé pour compat + clé d'unicité historique).
+    "anneeAcademiqueId" TEXT,
     "statut" "StatutAffectation" NOT NULL DEFAULT 'PROVISOIRE',
     "commentaire" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1002,6 +1005,8 @@ CREATE INDEX "Affectation_uniteEnseignementId_idx" ON "Affectation"("uniteEnseig
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Affectation_enseignantId_uniteEnseignementId_typeSeance_gro_key" ON "Affectation"("enseignantId", "uniteEnseignementId", "typeSeance", "groupe", "anneeUniversitaire");
+-- 000111 SECT-ANNEE-HISTOIRE-2 : index de lecture FK année.
+CREATE INDEX "Affectation_anneeAcademiqueId_idx" ON "Affectation"("anneeAcademiqueId");
 
 -- CreateIndex
 CREATE INDEX "Document_ownerId_idx" ON "Document"("ownerId");

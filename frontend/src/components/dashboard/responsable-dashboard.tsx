@@ -10,13 +10,16 @@ import {
   BookOpen,
   AlertTriangle,
   BarChart3,
+  CalendarRange,
   TrendingUp,
+  TrendingDown,
   Award,
   Star,
   Target,
   Check,
   RefreshCw,
   Clock,
+  Minus,
   Shield,
   Trophy,
   Eye,
@@ -30,8 +33,16 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
 import { useAuthStore } from '@/stores/auth-store'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   AreaChart,
@@ -135,6 +146,14 @@ interface StatsData {
   alertes: AlerteStat[]
   topEtudiants: TopEtudiant[]
   etudiantsEnDifficulte: TopEtudiant[]
+  // SECT-ANNEE-HISTOIRE-2 : année sélectionnée / précédente + comparaison
+  // N vs N-1 (champs optionnels côté agrégats : robustesse API).
+  annee: { id: string; libelle: string } | null
+  anneePrecedente: { id: string; libelle: string } | null
+  comparaisonAnnees: {
+    courante: { nbEvaluations?: number; moyenneGenerale?: number; tauxReussiteGlobal?: number }
+    precedente: { nbEvaluations?: number; moyenneGenerale?: number; tauxReussiteGlobal?: number } | null
+  } | null
   badges: BadgeWithProgress[]
 }
 
@@ -441,15 +460,141 @@ function EmptyDashboard({ name }: { name: string }) {
   )
 }
 
+// --- SECT-ANNEE-HISTOIRE-2 : Comparaison N vs N-1 ---
+// Affichée uniquement si une année précédente existe (comparaisonAnnees.precedente).
+// Chaque ligne : valeur N, valeur N-1 et delta % (TrendingUp = hausse = mieux,
+// TrendingDown = baisse ; delta non calculable si N-1 absent ou nul).
+function ComparaisonAnneesCard({ data }: { data: StatsData }) {
+  const comp = data.comparaisonAnnees
+  if (!comp?.precedente) return null
+
+  const courante = comp.courante ?? {}
+  const precedente = comp.precedente
+
+  const rows = [
+    {
+      label: 'Évaluations',
+      courante: courante.nbEvaluations,
+      precedente: precedente.nbEvaluations,
+      format: (v: number) => `${v}`,
+      suffixe: '',
+    },
+    {
+      label: 'Moyenne générale',
+      courante: courante.moyenneGenerale,
+      precedente: precedente.moyenneGenerale,
+      format: (v: number) => v.toFixed(1),
+      suffixe: '/20',
+    },
+    {
+      label: 'Taux de réussite',
+      courante: courante.tauxReussiteGlobal,
+      precedente: precedente.tauxReussiteGlobal,
+      format: (v: number) => v.toFixed(1),
+      suffixe: '%',
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <CalendarRange className="h-5 w-5 text-warning" />
+          {data.anneePrecedente?.libelle ?? 'N-1'} → {data.annee?.libelle ?? 'N'}
+        </CardTitle>
+        <CardDescription>Évolution des indicateurs clés par rapport à l&apos;année précédente</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {rows.map((row) => {
+            const delta =
+              typeof row.courante === 'number' &&
+              typeof row.precedente === 'number' &&
+              row.precedente > 0
+                ? ((row.courante - row.precedente) / row.precedente) * 100
+                : null
+            const deltaClass =
+              delta === null || delta === 0
+                ? 'text-muted-foreground'
+                : delta > 0
+                  ? 'text-success-text'
+                  : 'text-destructive'
+            const DeltaIcon = delta === null || delta === 0 ? Minus : delta > 0 ? TrendingUp : TrendingDown
+            return (
+              <div key={row.label} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+                <span className="text-sm font-medium">{row.label}</span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-mono tabular-nums tracking-tight">
+                    {typeof row.courante === 'number' ? `${row.format(row.courante)}${row.suffixe}` : '—'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">vs</span>
+                  <span className="text-sm font-mono tabular-nums tracking-tight text-muted-foreground">
+                    {typeof row.precedente === 'number' ? `${row.format(row.precedente)}${row.suffixe}` : '—'}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold font-mono tabular-nums tracking-tight ${deltaClass}`}>
+                    <DeltaIcon className="h-3.5 w-3.5" />
+                    {delta === null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`}
+                  </span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main Component ───
 export function ResponsableDashboard() {
   const user = useAuthStore((s) => s.user)
   const name = user?.name ?? 'Responsable'
+  // SECT-ANNEE-HISTOIRE-2 : établissement courant → années académiques.
+  const etabId = user?.etablissementId || user?.etablissement?.id
 
   const [data, setData] = useState<StatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
+
+  // ─── SECT-ANNEE-HISTOIRE-2 : filtre d'année académique ───
+  // L'état ne porte que le choix explicite de l'utilisateur (null = pas
+  // encore choisi) ; la valeur effective est dérivée à chaque rendu :
+  // choix > ID de l'année courante (envoyé explicitement) > '' (défaut
+  // backend = année courante). 'all' = toutes les années. Aucun setState
+  // dans un effet (règle react-hooks/set-state-in-effect).
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
+  const anneesQuery = useQuery<{ annees: Array<{ id: string; libelle: string; actif: boolean }> }>({
+    queryKey: ['annees-academiques', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${etabId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees')
+      const json = await res.json()
+      // L'API retourne un array direct (pas wrappé dans {annees:...})
+      const arr = Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
+      return { annees: arr }
+    },
+    enabled: !!etabId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${etabId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const annees = anneesQuery.data?.annees ?? []
+  const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
+  const anneeId = anneeChoisie ?? anneeCourante?.id ?? ''
 
   const fetchStats = useCallback(async () => {
     setLoading(true)
@@ -458,7 +603,12 @@ export function ResponsableDashboard() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 15000)
 
-      const res = await fetch(`/api/stats/responsable`, {
+      // SECT-ANNEE-HISTOIRE-2 : anneeAcademiqueId explicite ('' = défaut
+      // backend, 'all' = toutes les années, sinon ID précis).
+      const statsUrl = anneeId
+        ? `/api/stats/responsable?anneeAcademiqueId=${encodeURIComponent(anneeId)}`
+        : '/api/stats/responsable'
+      const res = await fetch(statsUrl, {
         signal: controller.signal,
       })
       clearTimeout(timeoutId)
@@ -483,6 +633,9 @@ export function ResponsableDashboard() {
         alertes: raw.alertes ?? [],
         topEtudiants: raw.topEtudiants ?? [],
         etudiantsEnDifficulte: raw.etudiantsEnDifficulte ?? [],
+        annee: raw.annee ?? null,
+        anneePrecedente: raw.anneePrecedente ?? null,
+        comparaisonAnnees: raw.comparaisonAnnees ?? null,
         badges: [],
       }
 
@@ -511,7 +664,7 @@ export function ResponsableDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [anneeId])
 
   // Trigger badge recalculation on dashboard load
   useEffect(() => {
@@ -564,11 +717,28 @@ export function ResponsableDashboard() {
       initial="hidden"
       animate="visible"
     >
-      <AnimatePresence>
-        <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl ds-kente-pattern rounded-lg px-4 py-3">
-          {getGreeting()}, {name} ! Vue stratégique de votre établissement.
-        </motion.h1>
-      </AnimatePresence>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern rounded-lg px-4 py-3">
+        <AnimatePresence>
+          <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
+            {getGreeting()}, {name} ! Vue stratégique de votre établissement.
+          </motion.h1>
+        </AnimatePresence>
+        {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut = année
+            courante de l'établissement ; « Toutes les années » = historique). */}
+        <Select value={anneeChoisie ?? (anneeCourante?.id || 'all')} onValueChange={setAnneeChoisie}>
+          <SelectTrigger className="w-full sm:w-[220px]" aria-label="Année académique">
+            <SelectValue placeholder="Année académique" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les années</SelectItem>
+            {annees.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.libelle}{a.actif ? ' · courante' : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Quick stats bar */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -628,6 +798,13 @@ export function ResponsableDashboard() {
           </div>
         </Card>
       </motion.div>
+
+      {/* SECT-ANNEE-HISTOIRE-2 : Comparaison N vs N-1 (si année précédente) */}
+      {data.comparaisonAnnees?.precedente && (
+        <motion.div variants={itemVariants}>
+          <ComparaisonAnneesCard data={data} />
+        </motion.div>
+      )}
 
       {/* Alertes banner */}
       {data.alertes.length > 0 && (

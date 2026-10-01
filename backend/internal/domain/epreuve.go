@@ -232,6 +232,11 @@ type Epreuve struct {
 	// uniteEnseignementId. Corrige l'affichage du nom/code de l'UE dans les
 	// cartes /epreuves (silencieusement cassé) et rend la duplication robuste.
 	UniteEnseignement *UERef `json:"uniteEnseignement,omitempty"`
+	// SECT-ANNEE-HISTOIRE-2 : AnneeAcademique peuplé par LEFT JOIN AnneeAcademique
+	// dans List/FindByID (mirroir du pattern Filiere/UE). Le frontend groupe déjà
+	// sur ep.anneeAcademique?.libelle (epreuve-grouped-view) — ce champ n'était
+	// jamais peuplé → tout tombait dans « non classées ».
+	AnneeAcademique *AnneeAcademiqueRef `json:"anneeAcademique,omitempty"`
 	// EVALUATIONS-FIX-EV4 : Questions peuplées depuis contenu JSON dans FindByID.
 	// Avant, getEpreuve retournait questions:[] (non hydraté) → dialog détail vide.
 	Questions []EpreuveQuestion `json:"questions,omitempty"`

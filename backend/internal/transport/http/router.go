@@ -534,6 +534,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			// Read-only (5 COUNT agrégés) — RequireAuth suffit, la RLS scoping via
 			// db.WithTx avec claims user gère le filtrage (is_responsable same-etab).
 			r.Get("/{id}/dependencies", s.getAnneeDependencies)
+			// SECT-ANNEE-HISTOIRE-2 : checklist pré-activation (épreuves non
+			// clôturées, affectations à recréer, salons archivables). Read-only
+			// mais données transverses (compteurs via SECURITY DEFINER après
+			// contrôle RLS) → même garde que les mutations.
+			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Get("/{id}/activation-checklist", s.anneeActivationChecklist)
 			// Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)

@@ -16,10 +16,14 @@ import {
   Target,
   RefreshCw,
   TrendingUp,
+  TrendingDown,
+  Minus,
+  CalendarRange,
   BarChart3,
   Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
   Card,
@@ -30,6 +34,13 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   PulseSkeleton,
   StatCardSkeletonGrid,
@@ -221,14 +232,110 @@ function EmptyDashboard({ name }: { name: string }) {
   )
 }
 
+// ─── SECT-ANNEE-HISTOIRE-2 : comparaison de moyenne N vs N-1 (étudiant) ───
+// Petite carte affichée uniquement si une année précédente existe.
+function ComparaisonAnneesCard({ data }: { data: EtudiantStatsData }) {
+  const comp = data.comparaisonAnnees
+  if (!comp?.precedente) return null
+
+  const courante = comp.courante ?? {}
+  const precedente = comp.precedente
+
+  const moyCourante = typeof courante.moyenne === 'number' ? courante.moyenne : null
+  const moyPrecedente = typeof precedente.moyenne === 'number' ? precedente.moyenne : null
+  const delta =
+    moyCourante !== null && moyPrecedente !== null && moyPrecedente > 0
+      ? ((moyCourante - moyPrecedente) / moyPrecedente) * 100
+      : null
+  const deltaClass =
+    delta === null || delta === 0
+      ? 'text-muted-foreground'
+      : delta > 0
+        ? 'text-success-text'
+        : 'text-destructive'
+  const DeltaIcon = delta === null || delta === 0 ? Minus : delta > 0 ? TrendingUp : TrendingDown
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <CalendarRange className="h-5 w-5 text-success-text" />
+          {data.anneePrecedente?.libelle ?? 'N-1'} → {data.annee?.libelle ?? 'N'}
+        </CardTitle>
+        <CardDescription>Évolution de votre moyenne</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex flex-wrap items-baseline gap-1.5">
+            <span className="text-2xl font-bold font-mono tabular-nums tracking-tight">
+              {moyCourante !== null ? `${moyCourante.toFixed(1)}/20` : '—'}
+            </span>
+            <span className="text-xs text-muted-foreground font-mono tabular-nums tracking-tight">
+              vs {moyPrecedente !== null ? `${moyPrecedente.toFixed(1)}/20` : '—'} en N-1
+            </span>
+          </p>
+          <span className={`inline-flex items-center gap-1 text-xs font-semibold font-mono tabular-nums tracking-tight ${deltaClass}`}>
+            <DeltaIcon className="h-3.5 w-3.5" />
+            {delta === null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          <span className="font-mono tabular-nums tracking-tight">{courante.nbEvaluations ?? 0}</span> évaluation{(courante.nbEvaluations ?? 0) !== 1 ? 's' : ''} cette année · <span className="font-mono tabular-nums tracking-tight">{precedente.nbEvaluations ?? 0}</span> l&apos;année précédente
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main Component ───
 export function EtudiantDashboard() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const name = user?.name ?? 'Étudiant'
   const userId = user?.id
+  // SECT-ANNEE-HISTOIRE-2 : établissement courant → années académiques.
+  const etabId = user?.etablissementId || user?.etablissement?.id
 
-  const statsQuery = useEtudiantDashboard(userId)
+  // ─── SECT-ANNEE-HISTOIRE-2 : filtre d'année académique ───
+  // L'état ne porte que le choix explicite de l'utilisateur (null = pas
+  // encore choisi) ; la valeur effective est dérivée à chaque rendu :
+  // choix > ID de l'année courante (envoyé explicitement) > '' (défaut
+  // backend = année courante). 'all' = toutes les années. Aucun setState
+  // dans un effet (règle react-hooks/set-state-in-effect).
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
+  const anneesQuery = useQuery<{ annees: Array<{ id: string; libelle: string; actif: boolean }> }>({
+    queryKey: ['annees-academiques', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${etabId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees')
+      const json = await res.json()
+      // L'API retourne un array direct (pas wrappé dans {annees:...})
+      const arr = Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
+      return { annees: arr }
+    },
+    enabled: !!etabId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${etabId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const annees = anneesQuery.data?.annees ?? []
+  const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
+  const anneeId = anneeChoisie ?? anneeCourante?.id ?? ''
+
+  const statsQuery = useEtudiantDashboard(userId, anneeId)
   const badgesQuery = useBadges(userId)
   const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
 
@@ -323,16 +430,33 @@ export function EtudiantDashboard() {
         <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           {getGreeting()}, {name} ! Bienvenue sur votre espace.
         </motion.h1>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          disabled={statsQuery.isFetching || badgesQuery.isFetching}
-          className="self-start sm:self-auto gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${statsQuery.isFetching || badgesQuery.isFetching ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">Rafraîchir</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut =
+              année courante ; « Toutes les années » = historique). */}
+          <Select value={anneeChoisie ?? (anneeCourante?.id || 'all')} onValueChange={setAnneeChoisie}>
+            <SelectTrigger className="w-full sm:w-[220px]" aria-label="Année académique">
+              <SelectValue placeholder="Année académique" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les années</SelectItem>
+              {annees.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.libelle}{a.actif ? ' · courante' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={statsQuery.isFetching || badgesQuery.isFetching}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${statsQuery.isFetching || badgesQuery.isFetching ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Rafraîchir</span>
+          </Button>
+        </div>
       </div>
 
       {/* ─── Onboarding banner (nouveaux étudiants sans activité) ─── */}
@@ -395,6 +519,13 @@ export function EtudiantDashboard() {
           accent="secondary"
         />
       </motion.div>
+
+      {/* ─── SECT-ANNEE-HISTOIRE-2 : comparaison de moyenne N vs N-1 (si année précédente) ─── */}
+      {data.comparaisonAnnees?.precedente && (
+        <motion.div variants={itemVariants}>
+          <ComparaisonAnneesCard data={data} />
+        </motion.div>
+      )}
 
       {/* ─── In-progress session alert ─── */}
       {data.sessionEnCours && (

@@ -178,7 +178,7 @@ func main() {
 	//   on évite de polluer l'interface pour un cas isolé.
 	// - logger    : journalisation structurée (slog).
 	promotionUC := usecase.NewPromotionUseCase(promotionRepo, authRepo, pool, logger)
-	epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo)
+	epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo, quotaRepo, pool) // SECT-ANNEE-HISTOIRE-2 : pool pour le défaut anneeAcademiqueId
 	questionUC := usecase.NewQuestionUseCase(questionRepo)
 	sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
 	resultatUC := usecase.NewResultatUseCase(resultatRepo)

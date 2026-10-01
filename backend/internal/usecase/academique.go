@@ -626,6 +626,14 @@ func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id 
 			"dateDebut":       activated.DateDebut.Format("2006-01-02"),
 			"dateFin":         activated.DateFin.Format("2006-01-02"),
 		})
+		// SECT-ANNEE-HISTOIRE-2 : archiver les salons CLASSE/PROMO des années
+		// précédentes (les salons de la nouvelle année seront créés lazily par
+		// EnsureAutoConversations). Best-effort : une erreur d'archivage ne fait
+		// pas échouer l'activation — idempotent, rejoué à la prochaine activation.
+		if errArch := uc.anneeRepo.ArchiveAnneeConversations(ctx, existing.EtablissementID, id); errArch != nil {
+			slog.Warn("activation année: archivage des salons CLASSE/PROMO échoué (best-effort)",
+				"etablissementId", existing.EtablissementID, "anneeId", id, "error", errArch)
+		}
 		return activated, nil
 	}
 

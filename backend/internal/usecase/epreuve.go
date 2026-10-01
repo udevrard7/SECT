@@ -5,6 +5,9 @@ import (
 	"context"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 )
@@ -158,12 +161,14 @@ func (uc *QuestionUseCase) BatchSoftDelete(ctx context.Context, claims db.Sessio
 type EpreuveUseCase struct {
 	epreuveRepo  domain.EpreuveRepository
 	quotaChecker domain.QuotaChecker // SECT-QUOTA-GUARDS : nil = pas de vérification
+	pool         *pgxpool.Pool       // SECT-ANNEE-HISTOIRE-2 : résolution de l'année courante
 }
 
 // NewEpreuveUseCase crée un nouveau EpreuveUseCase.
 // quotaChecker est optionnel (nil = pas de vérification de quota).
-func NewEpreuveUseCase(epreuveRepo domain.EpreuveRepository, quotaChecker domain.QuotaChecker) *EpreuveUseCase {
-	return &EpreuveUseCase{epreuveRepo: epreuveRepo, quotaChecker: quotaChecker}
+// pool est optionnel (nil = pas de valorisation par défaut de l'année).
+func NewEpreuveUseCase(epreuveRepo domain.EpreuveRepository, quotaChecker domain.QuotaChecker, pool *pgxpool.Pool) *EpreuveUseCase {
+	return &EpreuveUseCase{epreuveRepo: epreuveRepo, quotaChecker: quotaChecker, pool: pool}
 }
 
 // List liste les épreuves.
@@ -248,7 +253,58 @@ func (uc *EpreuveUseCase) Create(ctx context.Context, claims db.SessionClaims, i
 		}
 	}
 
+	// SECT-ANNEE-HISTOIRE-2 : valoriser anneeAcademiqueId à la création depuis
+	// l'année COURANTE de l'établissement si le client ne l'a pas fournie.
+	// Best-effort (non bloquant) : un établissement sans année active crée
+	// simplement des épreuves non rattachées (filtre « toutes années »).
+	// Couvre les 3 points d'entrée : POST /epreuves, POST /epreuves/session-speciale
+	// (l'année de l'épreuve source est copiée par le handler en amont) et
+	// POST /epreuves/generate (jamais fournie par l'IA).
+	if input.AnneeAcademiqueID == nil {
+		if anneeID := uc.resolveCurrentAnneeID(ctx, claims, input.EnseignantID); anneeID != "" {
+			input.AnneeAcademiqueID = &anneeID
+		}
+	}
+
 	return uc.epreuveRepo.Create(ctx, input)
+}
+
+// resolveCurrentAnneeID retourne l'ID de l'année académique courante
+// (actif=true, post-000110 unique par établissement) de l'établissement des
+// claims — ou, pour un ADMIN sans établissement, de l'établissement de
+// l'enseignant cible. Chaîne vide = pas de défaut (pas d'année active ou
+// résolution impossible : on ne bloque JAMAIS la création d'épreuve).
+func (uc *EpreuveUseCase) resolveCurrentAnneeID(ctx context.Context, claims db.SessionClaims, enseignantID string) string {
+	if uc.pool == nil {
+		return ""
+	}
+	etabID := claims.EtablissementID
+	if etabID == "" && enseignantID != "" {
+		// ADMIN : résoudre l'établissement de l'enseignant cible (lecture de
+		// ses propres attributs impossible en claims ADMIN sans etab → best-effort).
+		_ = db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
+			var e *string
+			if err := tx.QueryRow(ctx, `SELECT "etablissementId" FROM "User" WHERE "id" = $1`, enseignantID).Scan(&e); err == nil && e != nil {
+				etabID = *e
+			}
+			return nil
+		})
+	}
+	if etabID == "" {
+		return ""
+	}
+	var anneeID string
+	err := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT "id" FROM "AnneeAcademique"
+			WHERE "etablissementId" = $1 AND "actif" = true
+			ORDER BY "dateDebut" DESC LIMIT 1`, etabID).Scan(&anneeID)
+	})
+	if err != nil {
+		// pgx.ErrNoRows (aucune année active) ou erreur RLS/connexion → pas de défaut.
+		return ""
+	}
+	return anneeID
 }
 
 // Update met à jour une épreuve (action state machine ou general update).

@@ -24,6 +24,10 @@ export interface Conversation {
   etablissementId?: string | null
   filiereId?: string | null
   niveau?: string | null
+  /** SECT-ANNEE-HISTOIRE-2 (000112) : salons CLASSE/PROMO versionnés par
+   *  année (NULL pour IA/DIRECT/EQUIPE/STAFF, transversaux par design). */
+  anneeAcademiqueId?: string | null
+  anneeLibelle?: string | null
   createdBy: string
   createdAt: string
   updatedAt: string

@@ -24,6 +24,7 @@ import {
   ArrowDownRight,
   Minus,
   CalendarDays,
+  CalendarRange,
   UserX,
   BookOpen,
   Medal,
@@ -82,6 +83,7 @@ import {
   PulseSkeleton,
   StatCardSkeletonGrid,
 } from '@/components/ds'
+import { useAuthStore } from '@/stores/auth-store'
 
 // ─── Types (aligned with API response — conservés intacts) ───
 
@@ -122,6 +124,8 @@ interface StatsData {
     moyenne: number
     filiere: string
   }>
+  // SECT-ANNEE-HISTOIRE-2 : année académique scoping (null si « toutes »).
+  annee?: { id: string; libelle: string } | null
 }
 
 interface FiliereOption {
@@ -415,14 +419,57 @@ function ChartCard({ title, description, icon: Icon, iconColor, badge, children 
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function RapportsPage() {
+  const user = useAuthStore((s) => s.user)
+  // SECT-ANNEE-HISTOIRE-2 : établissement courant → années académiques.
+  const etabId = user?.etablissementId || user?.etablissement?.id
+
   // ─── Filter state ───
   const [selectedFiliere, setSelectedFiliere] = useState('all')
   const [dateDebut, setDateDebut] = useState<string>('')
   const [dateFin, setDateFin] = useState<string>('')
 
+  // ─── SECT-ANNEE-HISTOIRE-2 : filtre d'année académique ───
+  // L'état ne porte que le choix explicite de l'utilisateur (null = pas
+  // encore choisi) ; la valeur effective est dérivée à chaque rendu :
+  // choix > ID de l'année courante (envoyé explicitement) > '' (défaut
+  // backend = année courante). 'all' = toutes les années. Aucun setState
+  // dans un effet (règle react-hooks/set-state-in-effect).
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
+
+  const anneesQuery = useQuery<{ annees: Array<{ id: string; libelle: string; actif: boolean }> }>({
+    queryKey: ['annees-academiques', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${etabId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees')
+      const json = await res.json()
+      // L'API retourne un array direct (pas wrappé dans {annees:...})
+      const arr = Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
+      return { annees: arr }
+    },
+    enabled: !!etabId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${etabId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const annees = anneesQuery.data?.annees ?? []
+  const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
+  const anneeId = anneeChoisie ?? anneeCourante?.id ?? ''
+
   // ─── Fetch stats (TanStack Query) — queryKey inclut les filtres ───
   const statsQuery = useQuery<StatsData>({
-    queryKey: ['rapports-stats', selectedFiliere, dateDebut, dateFin],
+    queryKey: ['rapports-stats', selectedFiliere, dateDebut, dateFin, anneeId],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (selectedFiliere && selectedFiliere !== 'all') {
@@ -430,6 +477,9 @@ export function RapportsPage() {
       }
       if (dateDebut) params.set('dateDebut', dateDebut)
       if (dateFin) params.set('dateFin', dateFin)
+      // SECT-ANNEE-HISTOIRE-2 : année académique (ID explicite ; 'all' =
+      // toutes les années ; '' = défaut backend).
+      if (anneeId) params.set('anneeAcademiqueId', anneeId)
       const qs = params.toString()
       const res = await fetch(`/api/stats/responsable${qs ? `?${qs}` : ''}`)
       if (!res.ok) {
@@ -888,6 +938,13 @@ export function RapportsPage() {
                   <BarChart3 className="h-5 w-5" />
                 </span>
                 Rapports et Statistiques
+                {/* SECT-ANNEE-HISTOIRE-2 : badge de l'année scoping (absent
+                    si « Toutes les années » sélectionnée). */}
+                {stats?.annee?.libelle && (
+                  <Badge className="bg-gold/15 text-gold border border-gold/30 shrink-0">
+                    {stats.annee.libelle}
+                  </Badge>
+                )}
               </h1>
               <p className="mt-1.5 text-sm text-muted-foreground max-w-xl">
                 Analysez les performances de vos filières et le suivi pédagogique de vos enseignants.
@@ -940,6 +997,27 @@ export function RapportsPage() {
                     <SelectItem value="all">Toutes les filières</SelectItem>
                     {filieres.map((f) => (
                       <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* SECT-ANNEE-HISTOIRE-2 : Année académique */}
+              <div className="flex flex-col gap-1.5 min-w-0 lg:min-w-[220px]">
+                <Label className="text-xs font-display font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <CalendarRange className="h-3 w-3" />
+                  Année académique
+                </Label>
+                <Select value={anneeChoisie ?? (anneeCourante?.id || 'all')} onValueChange={setAnneeChoisie}>
+                  <SelectTrigger className="w-full lg:w-[220px]" aria-label="Filtrer par année académique">
+                    <SelectValue placeholder="Année académique" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les années</SelectItem>
+                    {annees.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.libelle}{a.actif ? ' · courante' : ''}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

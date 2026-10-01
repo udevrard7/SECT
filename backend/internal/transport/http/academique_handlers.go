@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -706,4 +707,71 @@ func (s *Server) getAnneeDependencies(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(deps)
+}
+
+// anneeActivationChecklist — GET /api/annees-academiques/{id}/activation-checklist
+//
+// SECT-ANNEE-HISTOIRE-2 : checklist de clôture AVANT l'activation d'une
+// nouvelle année (le responsable clique « Activer comme année courante »).
+// Retourne, pour l'année COURANTE qui va être archivée :
+//   - épreuves non clôturées (count + 20 items : titre, statut, dateFin,
+//     enseignant) — elles resteront rattachées à l'ancienne année ;
+//   - affectations (count + répartition par statut) — à recréer/copier
+//     vers la nouvelle année (elles ne sont plus affichées par défaut) ;
+//   - salons CLASSE/PROMO qui seront archivés (count).
+//
+// Si la cible EST l'année courante (re-activation) → changementAnnee=false,
+// checklist vide.
+//
+// Autorisation en 2 temps : (1) l'année cible est chargée SOUS RLS avec les
+// claims du demandeur (404 si invisible — responsable d'un autre étab,
+// admin sans accès) ; (2) les compteurs sont calculés par la fonction
+// SECURITY DEFINER get_annee_activation_checklist (000112) — fiables hors
+// RLS : le responsable ne voit pas les épreuves sans filière via
+// Epreuve_select, et la fonction scope les affectations via UE→Filière.
+func (s *Server) anneeActivationChecklist(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "RESPONSABLE" && claims.Role != "ADMIN" && claims.Role != "ENSEIGNANT" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSONError(w, http.StatusBadRequest, "id requis")
+		return
+	}
+
+	// (1) Charger l'année cible sous RLS : récupérer son établissement pour
+	// appeler la fonction checklist. Une année invisible (autre étab, admin
+	// sans accès) → 404 via le usecase.
+	annee, err := s.anneeUC.FindByID(r.Context(), claims, id)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	// RESPONSABLE : l'année doit être de SON établissement (GetByID sous RLS
+	// le garantît déjà, ceinture pour le cas BYPASSRLS éventuel).
+	if claims.Role == "RESPONSABLE" && claims.EtablissementID != "" && annee.EtablissementID != claims.EtablissementID {
+		writeJSONError(w, http.StatusForbidden, "année d'un autre établissement")
+		return
+	}
+
+	// (2) Compteurs via la fonction SECURITY DEFINER (appel direct pool —
+	// la fonction s'exécute en owner et bypass la RLS ; l'autorisation a
+	// été vérifiée ci-dessus).
+	var raw json.RawMessage
+	if errQ := s.dbPool.QueryRow(r.Context(),
+		`SELECT public.get_annee_activation_checklist($1, $2)`,
+		annee.EtablissementID, id).Scan(&raw); errQ != nil {
+		slog.Error("activation-checklist: appel fonction échoué",
+			"anneeId", id, "etablissementId", annee.EtablissementID, "error", errQ)
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(raw)
 }

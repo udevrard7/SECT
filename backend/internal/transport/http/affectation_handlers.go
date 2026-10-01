@@ -29,6 +29,79 @@ import (
 // endpoint backend → /affectations page retournait 404. Ces handlers exposent
 // le CRUD avec LEFT JOIN User + UniteEnseignement pour peupler les relations.
 
+// resolveAffectationAnnee — SECT-ANNEE-HISTOIRE-2 : résout le couple
+// (FK anneeAcademiqueId, libellé miroir anneeUniversitaire) d'une
+// affectation à créer. Priorité :
+//  1. anneeAcademiqueId explicite — validé : doit exister ET appartenir à
+//     l'établissement de l'UE (sinon erreur → 400) ;
+//  2. anneeUniversitaire legacy (label texte) — FK résolue par libellé
+//     dans le même étab (NULL si le libellé ne matche aucune année :
+//     historique non rattachable) ;
+//  3. année COURANTE de l'établissement de l'UE (défaut post-000110) ;
+//  4. heuristique calendrier (rentrée septembre) si l'étab n'a aucune
+//     année académique — dernier recours, comportement historique.
+//
+// La colonne texte anneeUniversitaire reste le MIROIR du libellé (clé
+// d'unicité historique + compat API/mobile) ; le filtrage passe par la FK.
+func (s *Server) resolveAffectationAnnee(ctx context.Context, tx pgx.Tx, claims appdb.SessionClaims, ueID string, providedID *string, providedLabel string) (*string, string, error) {
+	// Établissement de l'UE (Filière primaire) ; fallback claims.
+	etabID := ""
+	var ueEtab *string
+	if err := tx.QueryRow(ctx, `
+		SELECT f."etablissementId" FROM "UniteEnseignement" ue
+		JOIN "Filiere" f ON f."id" = ue."filiereId"
+		WHERE ue."id" = $1`, ueID).Scan(&ueEtab); err == nil && ueEtab != nil {
+		etabID = *ueEtab
+	}
+	if etabID == "" {
+		etabID = claims.EtablissementID
+	}
+
+	// 1. FK explicite : valider existence + appartenance au même étab.
+	if providedID != nil && *providedID != "" {
+		var libelle string
+		var sameEtab bool
+		err := tx.QueryRow(ctx, `
+			SELECT "libelle", ("etablissementId" = $2) FROM "AnneeAcademique"
+			WHERE "id" = $1`, *providedID, etabID).Scan(&libelle, &sameEtab)
+		if err != nil {
+			return nil, "", fmt.Errorf("année académique introuvable (id %s)", *providedID)
+		}
+		if !sameEtab {
+			return nil, "", fmt.Errorf("l'année académique n'appartient pas à l'établissement de l'UE")
+		}
+		return providedID, libelle, nil
+	}
+
+	// 2. Label legacy explicite : résoudre la FK par libellé (même étab).
+	if providedLabel != "" {
+		var id *string
+		_ = tx.QueryRow(ctx, `
+			SELECT "id" FROM "AnneeAcademique"
+			WHERE "etablissementId" = $1 AND "libelle" = $2`, etabID, providedLabel).Scan(&id)
+		return id, providedLabel, nil // id nil = libellé hors DB (historique)
+	}
+
+	// 3. Défaut : année courante de l'établissement.
+	if etabID != "" {
+		var id, lib *string
+		if err := tx.QueryRow(ctx, `
+			SELECT "id", "libelle" FROM "AnneeAcademique"
+			WHERE "etablissementId" = $1 AND "actif" = true
+			ORDER BY "dateDebut" DESC LIMIT 1`, etabID).Scan(&id, &lib); err == nil && id != nil {
+			return id, *lib, nil
+		}
+	}
+
+	// 4. Heuristique calendrier (établissement sans année académique).
+	now := time.Now()
+	year := now.Year()
+	if now.Month() >= 9 { // rentrée = septembre
+		return nil, fmt.Sprintf("%d-%d", year, year+1), nil
+	}
+	return nil, fmt.Sprintf("%d-%d", year-1, year), nil
+}
+
 // listAffectations — GET /api/affectations
 func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
@@ -44,6 +117,7 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 	niveau := r.URL.Query().Get("niveau")
 	statut := r.URL.Query().Get("statut")
 	annee := r.URL.Query().Get("anneeUniversitaire")
+	anneeIDParam := r.URL.Query().Get("anneeAcademiqueId") // SECT-ANNEE-HISTOIRE-2
 
 	type affRow struct {
 		ID                  string  `json:"id"`
@@ -53,6 +127,7 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 		Groupe              *string `json:"groupe,omitempty"`
 		VolumeHeures        float64 `json:"volumeHeures"`
 		AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+		AnneeAcademiqueID   *string `json:"anneeAcademiqueId,omitempty"` // SECT-ANNEE-HISTOIRE-2 (FK 000112)
 		Statut              string  `json:"statut"`
 		Commentaire         *string `json:"commentaire,omitempty"`
 		CreatedAt           string  `json:"createdAt"`
@@ -94,41 +169,65 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 
 	result := []affRow{}
 
+	// ── SECT-ANNEE-HISTOIRE-2 : filtrage année via la FK (000112) ──
+	// Sans filtre explicite, on ne retourne que les affectations de l'année
+	// COURANTE de l'établissement (suite de SECT-ANNEE-CHEVAUCHEMENT-1 :
+	// l'amalgame étudiant « Mes enseignants » 2025-2026 + 2026-2027).
+	//   ?anneeAcademiqueId=all  → TOUTES les années (vue historique) ;
+	//   ?anneeAcademiqueId=<id> → FK + fallback libellé (lignes legacy NULL) ;
+	//   ?anneeUniversitaire=<l> → legacy : libellé + FK résolue ;
+	//   absent                  → année courante (FK + fallback libellé).
+	// Si aucune année active → pas de filtre (comportement historique).
+	var anneeFiltreID, anneeFiltreLibelle string
+
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// ── SECT-ANNEE-CHEVAUCHEMENT-1 : scoping par défaut sur l'année COURANTE ──
-		// Sans filtre anneeUniversitaire explicite, on ne retourne que les
-		// affectations de l'année courante de l'établissement. Avant : toutes
-		// les années étaient mélangées → l'étudiant voyait sur « Mes
-		// enseignants » les enseignants de 2025-2026 ET 2026-2027 en même
-		// temps dès qu'une nouvelle année était activée (l'amalgame signalé).
-		// Post-000110 : une seule année actif=true par étab (= la courante) ;
-		// pré-000110 (fenêtre de déploiement) : la plus récente des actives.
-		// Si aucune année active/courante → pas de filtre (comportement
-		// inchangé, l'établissement n'a pas encore d'année académique).
-		// Un client qui veut TOUTES les années ou une année précise passe le
-		// param anneeUniversitaire explicitement (sélecteur responsable).
-		if annee == "" {
-			scopeEtab := claims.EtablissementID
-			if scopeEtab == "" {
-				scopeEtab = etabID // ADMIN : paramètre explicite éventuel
+		scopeEtab := claims.EtablissementID
+		if scopeEtab == "" {
+			scopeEtab = etabID // ADMIN : paramètre explicite éventuel
+		}
+		switch {
+		case anneeIDParam == "all" || annee == "all":
+			// Vue historique explicite : aucune restriction d'année.
+		case anneeIDParam != "":
+			// Filtre FK explicite (sélecteur année UI) + libellé pour le
+			// fallback des lignes legacy non rattachées.
+			anneeFiltreID = anneeIDParam
+			var lib *string
+			if errS := tx.QueryRow(r.Context(), `
+				SELECT "libelle" FROM "AnneeAcademique"
+				WHERE "id" = $1`, anneeIDParam).Scan(&lib); errS == nil && lib != nil {
+				anneeFiltreLibelle = *lib
 			}
+		case annee != "":
+			// Legacy : filtre libellé + FK résolue par (étab, libellé).
+			anneeFiltreLibelle = annee
 			if scopeEtab != "" {
-				var libelle *string
+				var id *string
+				_ = tx.QueryRow(r.Context(), `
+				SELECT "id" FROM "AnneeAcademique"
+				WHERE "etablissementId" = $1 AND "libelle" = $2`, scopeEtab, annee).Scan(&id)
+				if id != nil {
+					anneeFiltreID = *id
+				}
+			}
+		default:
+			// Défaut : année courante de l'établissement.
+			if scopeEtab != "" {
+				var id, lib *string
 				if errS := tx.QueryRow(r.Context(), `
-                                        SELECT "libelle" FROM "AnneeAcademique"
-                                        WHERE "etablissementId" = $1 AND "actif" = true
-                                        ORDER BY "dateDebut" DESC LIMIT 1`, scopeEtab).Scan(&libelle); errS == nil && libelle != nil {
-					annee = *libelle
+					SELECT "id", "libelle" FROM "AnneeAcademique"
+					WHERE "etablissementId" = $1 AND "actif" = true
+					ORDER BY "dateDebut" DESC LIMIT 1`, scopeEtab).Scan(&id, &lib); errS == nil && id != nil {
+					anneeFiltreID, anneeFiltreLibelle = *id, *lib
 					slog.Info("affectations: scoping par défaut sur l'année courante",
-						"etablissementId", scopeEtab, "anneeUniversitaire", annee)
+						"etablissementId", scopeEtab, "anneeAcademiqueId", *id)
 				} else if errS != nil && errS != pgx.ErrNoRows {
-					// Résolution impossible (RLS/connexion) → pas de scoping, on
-					// log et on continue avec le comportement historique.
 					slog.Warn("affectations: résolution de l'année courante échouée (pas de scoping par défaut)",
 						"etablissementId", scopeEtab, "error", errS)
 				}
 			}
 		}
+
 		var where []string
 		var args []any
 		argIdx := 1
@@ -177,10 +276,22 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 			args = append(args, statut)
 			argIdx++
 		}
-		if annee != "" {
-			where = append(where, fmt.Sprintf(`a."anneeUniversitaire" = $%d`, argIdx))
-			args = append(args, annee)
-			argIdx++
+		if anneeFiltreID != "" || anneeFiltreLibelle != "" {
+			// SECT-ANNEE-HISTOIRE-2 : filtre FK (+ fallback libellé pour les
+			// lignes legacy anneeAcademiqueId NULL — fenêtre de déploiement
+			// et libellés hors DB). OR-groupé pour rester un seul prédicat.
+			var parts []string
+			if anneeFiltreID != "" {
+				parts = append(parts, fmt.Sprintf(`a."anneeAcademiqueId" = $%d`, argIdx))
+				args = append(args, anneeFiltreID)
+				argIdx++
+			}
+			if anneeFiltreLibelle != "" {
+				parts = append(parts, fmt.Sprintf(`a."anneeUniversitaire" = $%d`, argIdx))
+				args = append(args, anneeFiltreLibelle)
+				argIdx++
+			}
+			where = append(where, "("+strings.Join(parts, " OR ")+")")
 		}
 		if etabID != "" {
 			where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "UniteEnseignement" ue2 JOIN "Filiere" f2 ON f2."id" = ue2."filiereId" WHERE ue2."id" = a."uniteEnseignementId" AND f2."etablissementId" = $%d)`, argIdx))
@@ -213,7 +324,7 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 
 		query := fmt.Sprintf(`
                         SELECT a."id", a."enseignantId", a."uniteEnseignementId", a."typeSeance"::text,
-                               a."groupe", a."volumeHeures", a."anneeUniversitaire", a."statut"::text, a."commentaire",
+                               a."groupe", a."volumeHeures", a."anneeUniversitaire", a."anneeAcademiqueId", a."statut"::text, a."commentaire",
                                a."createdAt", a."updatedAt",
                                u."id", u."name", u."email",
                                ue."id", ue."code", ue."nom", ue."niveau", ue."niveaux",
@@ -243,7 +354,7 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 			var createdAt, updatedAt time.Time
 			if err := rows.Scan(
 				&row.ID, &row.EnseignantID, &row.UniteEnseignementID, &row.TypeSeance,
-				&row.Groupe, &row.VolumeHeures, &row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
+				&row.Groupe, &row.VolumeHeures, &row.AnneeUniversitaire, &row.AnneeAcademiqueID, &row.Statut, &row.Commentaire,
 				&createdAt, &updatedAt,
 				&ensID, &ensName, &ensEmail,
 				&ueID2, &ueCode, &ueNom, &ueNiveau, &ueNiveaux,
@@ -429,6 +540,7 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 		Groupe              *string `json:"groupe"`
 		VolumeHeures        float64 `json:"volumeHeures"`
 		AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+		AnneeAcademiqueID   *string `json:"anneeAcademiqueId"` // SECT-ANNEE-HISTOIRE-2 (FK 000112)
 		Statut              string  `json:"statut"`
 		Commentaire         *string `json:"commentaire"`
 	}
@@ -460,17 +572,10 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "statut invalide (valeurs acceptées: PROVISOIRE, VALIDEE, PUBLIEE)")
 		return
 	}
-	// PROG-ACAD-CRITICAL-FIX-1 (BUG #12) : au lieu de hardcoder "2024-2025",
-	// utiliser l'année courante (format YYYY-YYYY+1).
-	if input.AnneeUniversitaire == "" {
-		now := time.Now()
-		year := now.Year()
-		if now.Month() >= 9 { // rentrée = septembre
-			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year, year+1)
-		} else {
-			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year-1, year)
-		}
-	}
+	// PROG-ACAD-CRITICAL-FIX-1 (BUG #12) : l'heuristique calendrier est
+	// désormais le DERNIER recours de resolveAffectationAnnee
+	// (SECT-ANNEE-HISTOIRE-2) : défaut = année COURANTE de l'établissement
+	// de l'UE (FK 000112) + libellé miroir, avant de tomber sur l'heuristique.
 
 	id := uuid.NewString()
 	var row struct {
@@ -481,6 +586,7 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 		Groupe              *string
 		VolumeHeures        float64
 		AnneeUniversitaire  string
+		AnneeAcademiqueID   *string
 		Statut              string
 		Commentaire         *string
 		// SECT-AFFECTATION-PUBLISH-ENRICH-1 : horodatage de publication.
@@ -491,35 +597,48 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 	// (statut=PUBLIEE), on set publishedAt + publishedById dès l'INSERT.
 	// Cas rare (un responsable crée+publie en une fois) mais à gérer pour
 	// la cohérence (sinon une affectation PUBLIEE sans publishedAt).
-	insertCols := `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
-                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt"`
-	insertVals := `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP`
-	insertArgs := []any{
-		id, input.EnseignantID, input.UniteEnseignementID, input.TypeSeance,
-		input.Groupe, input.VolumeHeures, input.AnneeUniversitaire,
-		input.Statut, input.Commentaire,
-	}
-	if input.Statut == "PUBLIEE" {
-		insertCols = `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
-                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt",
-                                "publishedAt", "publishedById"`
-		insertVals = `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
-                                CURRENT_TIMESTAMP, $10`
-		insertArgs = append(insertArgs, claims.UserID)
-	}
-
+	// SECT-ANNEE-HISTOIRE-2 : résolution FK année + miroir libellé DANS la tx
+	// (resolveAffectationAnnee) ; anneeAcademiqueId en dernière colonne.
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		anneeFK, anneeLabel, errA := s.resolveAffectationAnnee(r.Context(), tx, claims,
+			input.UniteEnseignementID, input.AnneeAcademiqueID, input.AnneeUniversitaire)
+		if errA != nil {
+			return errA
+		}
+		input.AnneeUniversitaire = anneeLabel
+
+		insertCols := `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
+                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt",
+                                "anneeAcademiqueId"`
+		insertVals := `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                                $10`
+		insertArgs := []any{
+			id, input.EnseignantID, input.UniteEnseignementID, input.TypeSeance,
+			input.Groupe, input.VolumeHeures, input.AnneeUniversitaire,
+			input.Statut, input.Commentaire,
+		}
+		if input.Statut == "PUBLIEE" {
+			insertCols = `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
+                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt",
+                                "publishedAt", "publishedById", "anneeAcademiqueId"`
+			insertVals = `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                                CURRENT_TIMESTAMP, $10, $11`
+			insertArgs = append(insertArgs, claims.UserID, anneeFK)
+		} else {
+			insertArgs = append(insertArgs, anneeFK)
+		}
+
 		return tx.QueryRow(r.Context(), fmt.Sprintf(`
                         INSERT INTO "Affectation" (%s)
                         VALUES (%s)
                         RETURNING "id", "enseignantId", "uniteEnseignementId", "typeSeance"::text,
-                                "groupe", "volumeHeures", "anneeUniversitaire", "statut"::text, "commentaire",
+                                "groupe", "volumeHeures", "anneeUniversitaire", "anneeAcademiqueId", "statut"::text, "commentaire",
                                 "publishedAt"
                 `, insertCols, insertVals), insertArgs...,
 		).Scan(
 			&row.ID, &row.EnseignantID, &row.UniteEnseignementID,
 			&row.TypeSeance, &row.Groupe, &row.VolumeHeures,
-			&row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
+			&row.AnneeUniversitaire, &row.AnneeAcademiqueID, &row.Statut, &row.Commentaire,
 			&row.PublishedAt,
 		)
 	})
@@ -545,6 +664,8 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide")
 		case strings.Contains(errMsg, "unique constraint"), strings.Contains(errMsg, "duplicate key"):
 			writeJSONError(w, http.StatusConflict, "Cette affectation existe déjà (doublon enseignant/UE/type/groupe/année)")
+		case strings.Contains(errMsg, "année académique"): // SECT-ANNEE-HISTOIRE-2 : FK invalide
+			writeJSONError(w, http.StatusBadRequest, errMsg)
 		case strings.Contains(errMsg, "invalid_enum_value"), strings.Contains(errMsg, "invalid input value for enum"):
 			writeJSONError(w, http.StatusBadRequest, "Valeur d'enum invalide (typeSeance ou statut)")
 		default:
@@ -564,6 +685,7 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 			"groupe":              row.Groupe,
 			"volumeHeures":        row.VolumeHeures,
 			"anneeUniversitaire":  row.AnneeUniversitaire,
+			"anneeAcademiqueId":   row.AnneeAcademiqueID,
 			"statut":              row.Statut,
 			"commentaire":         row.Commentaire,
 		},
@@ -592,6 +714,7 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 		UniteEnseignementID string  `json:"uniteEnseignementId"`
 		Groupe              *string `json:"groupe"`
 		AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+		AnneeAcademiqueID   *string `json:"anneeAcademiqueId"` // SECT-ANNEE-HISTOIRE-2 (FK 000112)
 		Commentaire         *string `json:"commentaire"`
 		Items               []struct {
 			TypeSeance   string  `json:"typeSeance"`
@@ -648,17 +771,9 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	// Même heuristique que createAffectation (PROG-ACAD-CRITICAL-FIX-1) :
-	// année courante YYYY-YYYY+1, rentrée en septembre.
-	if input.AnneeUniversitaire == "" {
-		now := time.Now()
-		year := now.Year()
-		if now.Month() >= 9 { // rentrée = septembre
-			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year, year+1)
-		} else {
-			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year-1, year)
-		}
-	}
+	// PROG-ACAD-CRITICAL-FIX-1 : l'heuristique calendrier est désormais le
+	// dernier recours de resolveAffectationAnnee (SECT-ANNEE-HISTOIRE-2),
+	// résolue UNE fois pour tout le lot dans la transaction ci-dessous.
 
 	type affectationRow struct {
 		ID                  string
@@ -668,6 +783,7 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 		Groupe              *string
 		VolumeHeures        float64
 		AnneeUniversitaire  string
+		AnneeAcademiqueID   *string
 		Statut              string
 		Commentaire         *string
 		PublishedAt         *time.Time
@@ -678,14 +794,25 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 	curType := ""
 
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// SECT-ANNEE-HISTOIRE-2 : résolution FK année + miroir libellé UNE fois
+		// pour tout le lot (même année pour CM/TD/TP, cohérence garantie).
+		anneeFK, anneeLabel, errA := s.resolveAffectationAnnee(r.Context(), tx, claims,
+			input.UniteEnseignementID, input.AnneeAcademiqueID, input.AnneeUniversitaire)
+		if errA != nil {
+			return errA
+		}
+		input.AnneeUniversitaire = anneeLabel
+
 		for i := range input.Items {
 			it := &input.Items[i]
 			curType = it.TypeSeance
 
 			id := uuid.NewString()
 			insertCols := `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
-                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt"`
-			insertVals := `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP`
+                                "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt",
+                                "anneeAcademiqueId"`
+			insertVals := `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                                $10`
 			insertArgs := []any{
 				id, input.EnseignantID, input.UniteEnseignementID, it.TypeSeance,
 				input.Groupe, it.VolumeHeures, input.AnneeUniversitaire,
@@ -696,10 +823,12 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 			if it.Statut == "PUBLIEE" {
 				insertCols = `"id", "enseignantId", "uniteEnseignementId", "typeSeance",
                                         "groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt",
-                                        "publishedAt", "publishedById"`
+                                        "publishedAt", "publishedById", "anneeAcademiqueId"`
 				insertVals = `$1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
-                                        CURRENT_TIMESTAMP, $10`
-				insertArgs = append(insertArgs, claims.UserID)
+                                        CURRENT_TIMESTAMP, $10, $11`
+				insertArgs = append(insertArgs, claims.UserID, anneeFK)
+			} else {
+				insertArgs = append(insertArgs, anneeFK)
 			}
 
 			var row affectationRow
@@ -707,13 +836,13 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
                                 INSERT INTO "Affectation" (%s)
                                 VALUES (%s)
                                 RETURNING "id", "enseignantId", "uniteEnseignementId", "typeSeance"::text,
-                                        "groupe", "volumeHeures", "anneeUniversitaire", "statut"::text, "commentaire",
+                                        "groupe", "volumeHeures", "anneeUniversitaire", "anneeAcademiqueId", "statut"::text, "commentaire",
                                         "publishedAt"
                         `, insertCols, insertVals), insertArgs...,
 			).Scan(
 				&row.ID, &row.EnseignantID, &row.UniteEnseignementID,
 				&row.TypeSeance, &row.Groupe, &row.VolumeHeures,
-				&row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
+				&row.AnneeUniversitaire, &row.AnneeAcademiqueID, &row.Statut, &row.Commentaire,
 				&row.PublishedAt,
 			); err != nil {
 				return fmt.Errorf("élément %s: %w", it.TypeSeance, err)
@@ -734,6 +863,8 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 			writeJSONError(w, http.StatusBadRequest, "Unité d'enseignement introuvable")
 		case strings.Contains(errMsg, "foreign key constraint"):
 			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide")
+		case strings.Contains(errMsg, "année académique"): // SECT-ANNEE-HISTOIRE-2 : FK invalide
+			writeJSONError(w, http.StatusBadRequest, errMsg)
 		case strings.Contains(errMsg, "unique constraint"), strings.Contains(errMsg, "duplicate key"):
 			// Tout le lot a été annulé (ROLLBACK) : RIEN n'a été créé.
 			writeJSONError(w, http.StatusConflict,
@@ -756,6 +887,7 @@ func (s *Server) createAffectationsBatch(w http.ResponseWriter, r *http.Request)
 			"groupe":              row.Groupe,
 			"volumeHeures":        row.VolumeHeures,
 			"anneeUniversitaire":  row.AnneeUniversitaire,
+			"anneeAcademiqueId":   row.AnneeAcademiqueID,
 			"statut":              row.Statut,
 			"commentaire":         row.Commentaire,
 		})

@@ -444,7 +444,9 @@ function ModelesTab() {
  const banqueQuery = useQuery<{ epreuves: ModeleEpreuve[] }>({
   queryKey: ['epreuves-modeles', user?.id, debouncedSearch],
   queryFn: async () => {
-   const params = new URLSearchParams({ enseignantId: user!.id })
+   // SECT-ANNEE-HISTOIRE-2 : les modèles sont des gabarits réutilisables
+   // d'une année sur l'autre → explicitement TOUTES les années.
+   const params = new URLSearchParams({ enseignantId: user!.id, anneeAcademiqueId: 'all' })
    if (debouncedSearch) params.set('search', debouncedSearch)
    const res = await fetch(`/api/epreuves?${params.toString()}`)
    if (!res.ok) throw new Error('Failed to fetch modeles')
@@ -1257,6 +1259,16 @@ function SessionsTab() {
  // ─── Advanced filter data ───
  const [anneesAcademiques, setAnneesAcademiques] = useState<AnneeAcademiqueOption[]>([])
  const [filterFilieres, setFilterFilieres] = useState<EnseignantFiliereContext[]>([])
+
+ // SECT-ANNEE-HISTOIRE-2 : le filtre année démarre sur l'année COURANTE
+ // (post-000110 : la seule actif=true). Le backend scope déjà par défaut
+ // sans param — on l'envoie explicitement pour que l'UI affiche la même
+ // année que les résultats. « Toutes les années » = value 'all'.
+ useEffect(() => {
+  if (filterAnneeAcademiqueId) return
+  const courante = anneesAcademiques.find((a) => a.actif)
+  if (courante) setFilterAnneeAcademiqueId(courante.id)
+ }, [anneesAcademiques, filterAnneeAcademiqueId])
 
  const NIVEAU_OPTIONS = [
  { value:'L1', label:'L1 — Licence 1' },
@@ -2232,15 +2244,37 @@ function SessionsTab() {
  </div>
  </div>
 
- {/* Search bar (visible en mode liste uniquement) */}
+ {/* Search bar + filtre année (visible en mode liste uniquement) */}
  {viewMode ==='flat' && (
- <div className="relative max-w-md">
+ <div className="flex flex-wrap items-center gap-2">
+ <div className="relative max-w-md flex-1">
  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
  <Input value={sessionsSearch} onChange={(e) => setSessionsSearch(e.target.value)} placeholder="Rechercher une session..." className="pl-9" />
  {sessionsSearch && (
  <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSessionsSearch('')}>
  <X className="h-3 w-3" />
  </Button>
+ )}
+ </div>
+ {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut = courante,
+     « Toutes les années » pour l'historique). */}
+ {anneesAcademiques.length > 0 && (
+ <Select value={filterAnneeAcademiqueId || 'all'} onValueChange={(v) => setFilterAnneeAcademiqueId(v)}>
+ <SelectTrigger className="h-9 w-[190px] text-xs">
+ <span className="flex items-center gap-1.5 truncate">
+ <CalendarRange className="h-3.5 w-3.5 text-info" />
+ <SelectValue placeholder="Année académique" />
+ </span>
+ </SelectTrigger>
+ <SelectContent>
+ <SelectItem value="all">Toutes les années</SelectItem>
+ {anneesAcademiques.map((a) => (
+ <SelectItem key={a.id} value={a.id}>
+ {a.libelle}{a.actif ? ' · courante' : ''}
+ </SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
  )}
  </div>
  )}

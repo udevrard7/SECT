@@ -49,7 +49,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, Plus, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2,
   RefreshCw, X, CalendarDays, CalendarClock, Star, Power, RotateCcw,
-  AlertTriangle, BookOpen, FileText, CircleCheck,
+  AlertTriangle, BookOpen, FileText, CircleCheck, CalendarRange, Users, Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -98,6 +98,19 @@ interface AnneeAcademique {
   // réponses API antérieures à cette évolution (compat ascendante).
   countEpreuves?: number
   countInscriptions?: number
+}
+
+// SECT-ANNEE-HISTOIRE-2 : réponse de GET /api/annees-academiques/{id}/activation-checklist
+interface ActivationChecklist {
+  anneeCible: { id: string; libelle: string }
+  anneeCourante: { id: string; libelle: string } | null
+  changementAnnee: boolean
+  epreuvesNonCloturees: {
+    count: number
+    items: Array<{ id: string; titre: string; statut: string; dateFin: string | null; enseignant: string | null }>
+  }
+  affectations: { count: number; parStatut: Record<string, number> }
+  salonsArchivables: { count: number }
 }
 
 // SECT-ANNEE-HARDDELETE-SAFE-1 : miroir de backend/internal/domain/academique.go
@@ -337,7 +350,8 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
             : 'Voulez-vous la définir comme année courante ? L\'année actuelle sera automatiquement archivée.',
         action: {
           label: 'Définir',
-          onClick: () => setCurrentAnneeMutation.mutate(data.id),
+          // SECT-ANNEE-HISTOIRE-2 : passer par la checklist de clôture.
+          onClick: () => setConfirmActivation({ id: data.id, libelle: data.libelle, via: 'set-courante' }),
         },
       })
     },
@@ -467,6 +481,43 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     refetchOnWindowFocus: false,
   })
   const hardDeleteDeps = dependenciesQuery.data ?? null
+
+  // ─── SECT-ANNEE-HISTOIRE-2 : checklist de clôture avant activation ───
+  // Avant d'activer une année (boutons « Définir courante », « Activer comme
+  // année courante », toast post-création), on montre ce qui va se passer :
+  // épreuves non clôturées de l'année courante, affectations à recréer,
+  // salons CLASSE/PROMO qui seront archivés. Endpoint :
+  // GET /api/annees-academiques/{id}/activation-checklist.
+  const [confirmActivation, setConfirmActivation] = useState<{
+    id: string
+    libelle: string
+    via: 'reactivate' | 'set-courante'
+  } | null>(null)
+
+  const activationChecklistQuery = useQuery<ActivationChecklist>({
+    queryKey: ['annee-activation-checklist', confirmActivation?.id],
+    queryFn: async () => {
+      const id = confirmActivation!.id
+      const res = await fetch(`/api/annees-academiques/${id}/activation-checklist`)
+      if (!res.ok) throw new Error('Échec du chargement de la checklist')
+      return (await res.json()) as ActivationChecklist
+    },
+    enabled: !!confirmActivation,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+  const activationChecklist = activationChecklistQuery.data ?? null
+
+  // Exécute l'activation réelle (le bon point d'entrée selon l'origine du clic).
+  const runActivation = () => {
+    if (!confirmActivation) return
+    if (confirmActivation.via === 'reactivate') {
+      reactivateMutation.mutate(confirmActivation.id)
+    } else {
+      setCurrentAnneeMutation.mutate(confirmActivation.id)
+    }
+    setConfirmActivation(null)
+  }
   // Le bouton « Supprimer définitivement » est désactivé tant que :
   //   - les dépendances chargent (dependenciesQuery.isLoading),
   //   - OU canHardDelete=false ET l'utilisateur n'a pas coché la case.
@@ -819,7 +870,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                             variant="default"
                             size="sm"
                             className="h-8 gap-1.5 text-xs flex-1 justify-center min-w-[140px]"
-                            onClick={() => setCurrentAnneeMutation.mutate(annee.id)}
+                            onClick={() => setConfirmActivation({ id: annee.id, libelle: annee.libelle, via: 'set-courante' })}
                             disabled={setCurrentAnneeMutation.isPending}
                             aria-label={`Définir ${annee.libelle} comme année courante`}
                           >
@@ -867,7 +918,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                               variant="outline"
                               size="sm"
                               className="h-8 w-8 p-0 text-xs text-success-text border-success/30 hover:text-success-text hover:bg-success/10 hover:border-success/50"
-                              onClick={() => reactivateMutation.mutate(annee.id)}
+                              onClick={() => setConfirmActivation({ id: annee.id, libelle: annee.libelle, via: 'reactivate' })}
                               disabled={isReactivating}
                               aria-label={`Activer ${annee.libelle} comme année courante`}
                               title="Activer comme année courante (l'année actuelle sera automatiquement archivée)"
@@ -953,6 +1004,167 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
           S2-SAVANE-ANNEES-REFONTE-1 : .ds-african-divider avant la liste des counts,
           counts en layout propre (icône + count + nature), warning destructif.
           ════════════════════════════════════════════════════════════════ */}
+      {/* ─── SECT-ANNEE-HISTOIRE-2 : checklist de clôture avant activation ─── */}
+      <AlertDialog
+        open={!!confirmActivation}
+        onOpenChange={(open) => {
+          if (!open) setConfirmActivation(null)
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <CalendarRange className="h-5 w-5 text-info" aria-hidden="true" />
+              Activer « {confirmActivation?.libelle} » comme année courante ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {activationChecklistQuery.isLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Vérification de la clôture de l&apos;année en cours…
+                  </div>
+                )}
+                {activationChecklistQuery.isError && (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-sm border border-destructive/20 text-destructive flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      Impossible de charger la checklist de clôture. Vous pouvez
+                      quand même activer l&apos;année, ou réessayer plus tard.
+                    </span>
+                  </div>
+                )}
+
+                {/* Cas : cible = année courante (re-activation sans effet) */}
+                {activationChecklist && !activationChecklist.changementAnnee && (
+                  <div className="rounded-lg bg-success/10 p-3 text-sm border border-success/20 flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-success-text" aria-hidden="true" />
+                    <div className="text-success-text">
+                      <p className="font-medium">Cette année est déjà l&apos;année courante</p>
+                      <p className="mt-0.5 text-success-text/80">
+                        La réactivation ne change rien aux données (épreuves,
+                        affectations, salons).
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cas : bascule vers une nouvelle année → checklist */}
+                {activationChecklist?.changementAnnee && (
+                  <>
+                    <p className="text-sm text-foreground">
+                      L&apos;année courante{' '}
+                      <strong>{activationChecklist.anneeCourante?.libelle}</strong>{' '}
+                      sera automatiquement archivée. Point de la clôture :
+                    </p>
+
+                    {/* 1. Épreuves non clôturées de l'année sortante */}
+                    <div
+                      className={cn(
+                        'rounded-lg p-3 text-sm border space-y-2',
+                        (activationChecklist.epreuvesNonCloturees.count ?? 0) > 0
+                          ? 'bg-warning/10 border-warning/30'
+                          : 'bg-success/10 border-success/20'
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
+                        {(activationChecklist.epreuvesNonCloturees.count ?? 0) > 0 ? (
+                          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-success-text" aria-hidden="true" />
+                        )}
+                        <div>
+                          <p className="font-medium">
+                            {(activationChecklist.epreuvesNonCloturees.count ?? 0) > 0
+                              ? `${activationChecklist.epreuvesNonCloturees.count} épreuve${activationChecklist.epreuvesNonCloturees.count > 1 ? 's' : ''} non clôturée${activationChecklist.epreuvesNonCloturees.count > 1 ? 's' : ''} en ${activationChecklist.anneeCourante?.libelle}`
+                              : 'Aucune épreuve non clôturée'}
+                          </p>
+                          <p className="mt-0.5 text-muted-foreground">
+                            {(activationChecklist.epreuvesNonCloturees.count ?? 0) > 0
+                              ? 'Elles resteront rattachées à l’année archivée — clôturez-les ou replanifiez-les avant la bascule.'
+                              : 'Toutes les épreuves de l’année sortante sont clôturées.'}
+                          </p>
+                        </div>
+                      </div>
+                      {(activationChecklist.epreuvesNonCloturees.items ?? []).length > 0 && (
+                        <ul className="ml-6 space-y-1 text-xs text-muted-foreground">
+                          {activationChecklist.epreuvesNonCloturees.items.map((ep) => (
+                            <li key={ep.id} className="flex flex-wrap items-center gap-x-2">
+                              <span className="font-medium text-foreground">{ep.titre}</span>
+                              <Badge variant="outline" className="text-[10px] py-0">{ep.statut}</Badge>
+                              {ep.dateFin && <span>fin {new Date(ep.dateFin).toLocaleDateString('fr-FR')}</span>}
+                              {ep.enseignant && <span>· {ep.enseignant}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* 2. Affectations de l'année sortante */}
+                    <div className="rounded-lg bg-info/10 p-3 text-sm border border-info/20 flex items-start gap-2">
+                      <BookOpen className="h-4 w-4 mt-0.5 shrink-0 text-info" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium">
+                          {activationChecklist.affectations.count ?? 0} affectation{(activationChecklist.affectations.count ?? 0) > 1 ? 's' : ''} en {activationChecklist.anneeCourante?.libelle} à recréer
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {(activationChecklist.affectations.parStatut?.PUBLIEE ?? 0) > 0 && (
+                            <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30">
+                              {activationChecklist.affectations.parStatut.PUBLIEE} publiée{(activationChecklist.affectations.parStatut.PUBLIEE ?? 0) > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {(activationChecklist.affectations.parStatut?.VALIDEE ?? 0) > 0 && (
+                            <Badge variant="outline" className="text-[10px] py-0 bg-info/10 border-info/30">
+                              {activationChecklist.affectations.parStatut.VALIDEE} validée{(activationChecklist.affectations.parStatut.VALIDEE ?? 0) > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {(activationChecklist.affectations.parStatut?.PROVISOIRE ?? 0) > 0 && (
+                            <Badge variant="outline" className="text-[10px] py-0 bg-warning/10 text-warning border-warning/30">
+                              {activationChecklist.affectations.parStatut.PROVISOIRE} provisoire{(activationChecklist.affectations.parStatut.PROVISOIRE ?? 0) > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Les affectations ne sont plus affichées par défaut après la
+                          bascule — recréez-les (ou copiez-les) pour la nouvelle année.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 3. Salons CLASSE/PROMO archivés */}
+                    <div className="rounded-lg bg-muted/50 p-3 text-sm border border-border flex items-start gap-2">
+                      <Users className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium">
+                          {activationChecklist.salonsArchivables.count ?? 0} salon{(activationChecklist.salonsArchivables.count ?? 0) > 1 ? 's' : ''} Classe/Promo archivé{(activationChecklist.salonsArchivables.count ?? 0) > 1 ? 's' : ''}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Les étudiants de la nouvelle année auront des salons neufs ;
+                          l&apos;historique des messages reste conservé en base.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={runActivation}
+              disabled={reactivateMutation.isPending || setCurrentAnneeMutation.isPending}
+            >
+              <CalendarRange className="h-4 w-4" aria-hidden="true" />
+              {reactivateMutation.isPending || setCurrentAnneeMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : null}
+              Activer comme année courante
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog
         open={!!confirmHardDelete}
         onOpenChange={(open) => {

@@ -43,7 +43,8 @@ export function useEpreuvesTerminees(enseignantId: string | undefined | null) {
     queryKey: resultatsKeys.epreuves(enseignantId ?? 'none'),
     queryFn: () =>
       fetchJSON<{ epreuves: EpreuveSummary[] }>(
-        `/api/epreuves?enseignantId=${enseignantId}&statut=TERMINEE,CLOTUREE&select=summary`
+        // SECT-ANNEE-HISTOIRE-2 : vue archive — toutes les années explicites.
+        `/api/epreuves?enseignantId=${enseignantId}&statut=TERMINEE,CLOTUREE&select=summary&anneeAcademiqueId=all`
       ).then((d) => d.epreuves),
     enabled: !!enseignantId,
     staleTime: 5 * 60 * 1000, // 5 min — la liste ne change pas souvent

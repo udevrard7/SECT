@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Clock,
   Calendar,
+  CalendarRange,
   HelpCircle,
   Users,
   Eye,
@@ -123,6 +124,14 @@ interface Epreuve {
 interface FiliereOption {
   id: string
   nom: string
+}
+
+// SECT-ANNEE-HISTOIRE-2 : option du sélecteur d'année académique
+// (GET /api/annees-academiques?etablissementId=… — réponse = array direct).
+interface AnneeAcademiqueOption {
+  id: string
+  libelle: string
+  actif: boolean
 }
 
 // ─── Utility functions ───
@@ -284,6 +293,10 @@ export function EvaluationsPage() {
   const [statutFilter, setStatutFilter] = useState('all')
   const [filiereFilter, setFiliereFilter] = useState('all')
   const [showFilters, setShowFilters] = useState(false)
+  // SECT-ANNEE-HISTOIRE-2 : filtre année académique. null = pas encore choisi
+  // (le défaut est DÉRIVÉ de l'année courante, cf. anneeParDefaut ci-dessous) ;
+  // « Toutes les années » = value 'all' pour l'historique.
+  const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
   // EVALUATIONS-FIX-EV7 : pagination
   const [page, setPage] = useState(1)
   const pageSize = 10
@@ -295,11 +308,56 @@ export function EvaluationsPage() {
   const [sessionsExpanded, setSessionsExpanded] = useState(false)
   const [dialogMode, setDialogMode] = useState<'details' | 'results'>('details')
 
+  // ─── Années académiques (SECT-ANNEE-HISTOIRE-2) ───
+  // Liste des années de l'établissement pour alimenter le sélecteur d'année
+  // (cache partagé clé ['annees-academiques']).
+  const anneesAcademiquesQuery = useQuery<AnneeAcademiqueOption[]>({
+    queryKey: ['annees-academiques', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees academiques')
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesAcademiquesQuery.data ?? []
+
+  // Fallback : si la liste n'a aucune année actif=true, on interroge
+  // /annee-courante (l'ID retenu doit exister dans la liste pour que le
+  // Select affiche une option valide).
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${user!.etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled:
+      !!user?.etablissementId &&
+      anneesAcademiques.length > 0 &&
+      !anneesAcademiques.some((a) => a.actif),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Défaut du filtre : année COURANTE (actif) de la liste, sinon via
+  // /annee-courante. Sans établissement ni années → '' (défaut backend).
+  // Dérivation pendant le rendu (pas d'effet) : tant que l'utilisateur n'a
+  // pas choisi, le sélecteur suit l'année courante de l'établissement.
+  const anneeParDefaut =
+    anneesAcademiques.find((a) => a.actif)?.id ??
+    anneesAcademiques.find((a) => a.id === anneeCouranteQuery.data?.anneeCourante?.id)?.id ??
+    ''
+  const filterAnneeAcademiqueId = anneeChoisie ?? anneeParDefaut
+
   // ─── Fetch epreuves (TanStack Query) ───
   // EVALUATIONS-FIX-EV7 : pagination via ?page=X&limit=Y. Response inclut
   // total/totalPages quand pagination active.
   const epreuvesQuery = useQuery<{ epreuves: Epreuve[]; filieres?: FiliereOption[]; total?: number; totalPages?: number }>({
-    queryKey: ['evaluations-epreuves', user?.id, statutFilter, filiereFilter, page],
+    queryKey: ['evaluations-epreuves', user?.id, statutFilter, filiereFilter, filterAnneeAcademiqueId, page],
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set('responsableId', user!.id)
@@ -307,6 +365,9 @@ export function EvaluationsPage() {
       params.set('limit', String(pageSize))
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statutFilter !== 'all') params.set('statut', statutFilter)
+      // SECT-ANNEE-HISTOIRE-2 : filtre serveur par année ('' = défaut backend
+      // = année courante ; 'all' = toutes les années).
+      if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
 
       const res = await fetch(`/api/epreuves?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch epreuves')
@@ -422,9 +483,14 @@ export function EvaluationsPage() {
   const hasActiveFilters = statutFilter !== 'all' || filiereFilter !== 'all' || search.trim() !== ''
 
   // EVALUATIONS-FIX-EV7 : reset page quand les filtres changent
-  useEffect(() => {
+  // (ajustement pendant le rendu — pattern React « adjusting state »,
+  // évite un setState dans un effet et son re-render en cascade).
+  const [lastFilterSig, setLastFilterSig] = useState('')
+  const filterSig = `${statutFilter}|${filiereFilter}|${filterAnneeAcademiqueId}|${search}`
+  if (filterSig !== lastFilterSig) {
+    setLastFilterSig(filterSig)
     setPage(1)
-  }, [statutFilter, filiereFilter, search])
+  }
 
   const resetFilters = () => {
     setSearch('')
@@ -475,7 +541,31 @@ export function EvaluationsPage() {
               </button>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut =
+                courante, « Toutes les années » pour l'historique). */}
+            {anneesAcademiques.length > 0 && (
+              <Select
+                value={filterAnneeAcademiqueId || 'all'}
+                onValueChange={(v) => setAnneeChoisie(v)}
+              >
+                <SelectTrigger className="h-9 w-full text-xs sm:w-[190px]">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <CalendarRange className="h-3.5 w-3.5 text-info" />
+                    <SelectValue placeholder="Année académique" />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les années</SelectItem>
+                  {anneesAcademiques.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.libelle}
+                      {a.actif ? ' · courante' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={statutFilter} onValueChange={setStatutFilter}>
               <SelectTrigger className="w-full sm:w-[160px]">
                 <Filter className="h-3.5 w-3.5 mr-1" />

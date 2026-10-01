@@ -20,8 +20,10 @@ import type { BadgeWithProgress } from '@/lib/badges-engine'
 
 export const dashboardKeys = {
   all: ['dashboard'] as const,
-  enseignant: (userId: string) => [...dashboardKeys.all, 'enseignant', userId] as const,
-  etudiant: (userId: string) => [...dashboardKeys.all, 'etudiant', userId] as const,
+  enseignant: (userId: string, anneeAcademiqueId?: string) =>
+    [...dashboardKeys.all, 'enseignant', userId, anneeAcademiqueId ?? 'defaut'] as const,
+  etudiant: (userId: string, anneeAcademiqueId?: string) =>
+    [...dashboardKeys.all, 'etudiant', userId, anneeAcademiqueId ?? 'defaut'] as const,
   badges: (userId: string) => [...dashboardKeys.all, 'badges', userId] as const,
 }
 
@@ -79,6 +81,26 @@ export interface EpreuveAVenirEnseignant {
   nbParticipants: number
 }
 
+// ─── SECT-ANNEE-HISTOIRE-2 : année académique + comparaison N vs N-1 ───
+// `anneeAcademiqueId` : '' (absent) → année courante (défaut backend) ;
+// 'all' → toutes les années ; un ID → cette année précise.
+
+export interface AnneeAcademiqueRef {
+  id: string
+  libelle: string
+}
+
+export interface ComparaisonAnneeEnseignant {
+  nbEvaluations?: number
+  moyenneGenerale?: number
+  tauxReussiteGlobal?: number
+}
+
+export interface ComparaisonAnneesEnseignant {
+  courante?: ComparaisonAnneeEnseignant
+  precedente?: ComparaisonAnneeEnseignant | null
+}
+
 export interface EnseignantStatsData {
   nbDocuments: number
   nbQuestionsTotal: number
@@ -90,6 +112,11 @@ export interface EnseignantStatsData {
   performanceParEpreuve: PerformanceData[]
   evolutionMoyennes: EvolutionMoyenne[]
   epreuvesAVenir: EpreuveAVenirEnseignant[]
+  // SECT-ANNEE-HISTOIRE-2 : année courante / précédente + comparaison
+  // (champs optionnels : robustesse si l'API ne les renvoie pas).
+  annee?: AnneeAcademiqueRef | null
+  anneePrecedente?: AnneeAcademiqueRef | null
+  comparaisonAnnees?: ComparaisonAnneesEnseignant
   // Le champ badges est présent dans l'API mais sera ignoré par le frontend
   // (cf. commentaire en tête de fichier). On le type en unknown pour le skip.
   badges?: unknown
@@ -136,6 +163,16 @@ export interface SessionEnCours {
   dateDebut: string
 }
 
+export interface ComparaisonAnneeEtudiant {
+  moyenne?: number
+  nbEvaluations?: number
+}
+
+export interface ComparaisonAnneesEtudiant {
+  courante?: ComparaisonAnneeEtudiant
+  precedente?: ComparaisonAnneeEtudiant | null
+}
+
 export interface EtudiantStatsData {
   nbEpreuvesAVenir: number
   nbEpreuvesTerminees: number
@@ -146,6 +183,11 @@ export interface EtudiantStatsData {
   evolutionScores: EvolutionScore[]
   performanceParType: PerformanceType[]
   sessionEnCours: SessionEnCours | null
+  // SECT-ANNEE-HISTOIRE-2 : année courante / précédente + comparaison
+  // (clés `moyenne` + `nbEvaluations` côté étudiant).
+  annee?: AnneeAcademiqueRef | null
+  anneePrecedente?: AnneeAcademiqueRef | null
+  comparaisonAnnees?: ComparaisonAnneesEtudiant
   // Le champ badges est présent dans l'API mais sera ignoré par le frontend.
   badges?: unknown
 }
@@ -162,11 +204,18 @@ export interface BadgesResponse {
 }
 
 // ─── Hook: stats enseignant ───
+// SECT-ANNEE-HISTOIRE-2 : `anneeAcademiqueId` optionnel ('' = année courante
+// côté backend, 'all' = toutes les années, sinon ID explicite). L'année fait
+// partie du queryKey → changement de sélecteur = refetch automatique.
 
-export function useEnseignantDashboard(userId: string | undefined) {
+export function useEnseignantDashboard(userId: string | undefined, anneeAcademiqueId?: string) {
   return useQuery({
-    queryKey: dashboardKeys.enseignant(userId ?? 'none'),
-    queryFn: () => fetchJSON<EnseignantStatsData>('/api/stats/enseignant'),
+    queryKey: dashboardKeys.enseignant(userId ?? 'none', anneeAcademiqueId),
+    queryFn: () => fetchJSON<EnseignantStatsData>(
+      anneeAcademiqueId
+        ? `/api/stats/enseignant?anneeAcademiqueId=${encodeURIComponent(anneeAcademiqueId)}`
+        : '/api/stats/enseignant',
+    ),
     enabled: !!userId,
     staleTime: 60 * 1000, // 1 min
     placeholderData: (prev) => prev,
@@ -174,11 +223,16 @@ export function useEnseignantDashboard(userId: string | undefined) {
 }
 
 // ─── Hook: stats étudiant ───
+// SECT-ANNEE-HISTOIRE-2 : même sémant de `anneeAcademiqueId` que enseignant.
 
-export function useEtudiantDashboard(userId: string | undefined) {
+export function useEtudiantDashboard(userId: string | undefined, anneeAcademiqueId?: string) {
   return useQuery({
-    queryKey: dashboardKeys.etudiant(userId ?? 'none'),
-    queryFn: () => fetchJSON<EtudiantStatsData>('/api/stats/etudiant'),
+    queryKey: dashboardKeys.etudiant(userId ?? 'none', anneeAcademiqueId),
+    queryFn: () => fetchJSON<EtudiantStatsData>(
+      anneeAcademiqueId
+        ? `/api/stats/etudiant?anneeAcademiqueId=${encodeURIComponent(anneeAcademiqueId)}`
+        : '/api/stats/etudiant',
+    ),
     enabled: !!userId,
     staleTime: 60 * 1000, // 1 min
     placeholderData: (prev) => prev,

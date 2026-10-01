@@ -44,6 +44,7 @@ var _ domain.MessagerieRepository = (*MessagerieRepository)(nil)
 // colonnesConversation — l'ordre doit matcher scanConversation.
 // "type" est cast en text car c'est un enum PostgreSQL.
 const colonnesConversation = `"id", "type"::text, "titre", "etablissementId", "filiereId", "niveau",
+        "anneeAcademiqueId",
         "createdBy", "createdAt", "updatedAt", "deletedAt"`
 
 func scanConversation(s scanner) (*domain.Conversation, error) {
@@ -51,6 +52,7 @@ func scanConversation(s scanner) (*domain.Conversation, error) {
 	var typeStr string
 	if err := s.Scan(
 		&c.ID, &typeStr, &c.Titre, &c.EtablissementID, &c.FiliereID, &c.Niveau,
+		&c.AnneeAcademiqueID,
 		&c.CreatedBy, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
 	); err != nil {
 		return nil, err
@@ -96,6 +98,7 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
 		query := `
                         SELECT c."id", c."type"::text, COALESCE(c."titre", other."name") AS "titre",
                                c."etablissementId", c."filiereId", c."niveau",
+                               c."anneeAcademiqueId", an."libelle" AS "anneeLibelle",
                                c."createdBy", c."createdAt", c."updatedAt", c."deletedAt",
                                lm."id", lm."conversationId", lm."userId", COALESCE(lm."isIA", false), lm."contenu",
                                lm."contenuHtml", lm."replyToId", lm."editedAt", lm."deletedAt", lm."createdAt",
@@ -108,6 +111,7 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
                                (SELECT count(*) FROM "ConversationParticipant" p2
                                 WHERE p2."conversationId" = c."id" AND p2."leftAt" IS NULL) AS participants_count
                         FROM "Conversation" c
+                        LEFT JOIN "AnneeAcademique" an ON an."id" = c."anneeAcademiqueId"
                         LEFT JOIN "ConversationParticipant" p
                                ON p."conversationId" = c."id" AND p."userId" = $1
                         -- Bug 1 : pour les conversations DIRECT, récupère le nom de l'AUTRE
@@ -153,6 +157,7 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
 
 			if err := rows.Scan(
 				&cwm.ID, &typeStr, &cwm.Titre, &cwm.EtablissementID, &cwm.FiliereID, &cwm.Niveau,
+				&cwm.AnneeAcademiqueID, &cwm.AnneeLibelle,
 				&cwm.CreatedBy, &cwm.CreatedAt, &cwm.UpdatedAt, &cwm.DeletedAt,
 				&lmID, &lmConvID, &lmUserID, &lmIsIA, &lmContenu,
 				&lmContenuHTML, &lmReplyToID, &lmEditedAt, &lmDeletedAt, &lmCreatedAt,
@@ -298,7 +303,13 @@ func (r *MessagerieRepository) GetOrCreateIAPrivate(ctx context.Context, userID 
 //   - STAFF  : etablissementId
 //
 // createdBy est positionné à claims.UserID (le user qui a déclenché la création).
-func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType domain.ConversationType, etablissementID string, filiereID, niveau *string) (*domain.Conversation, error) {
+// GetOrCreateAuto — résout ou crée une conversation auto. Depuis
+// SECT-ANNEE-HISTOIRE-2, les salons CLASSE/PROMO sont VERSIONNÉS par année
+// académique : la clé naturelle devient (type, filiereId, niveau, année).
+// anneeAcademiqueID == nil (établissement sans année active) → recherche
+// sur les salons NULL d'année (comportement historique). EQUIPE/STAFF
+// restent transversaux (année ignorée).
+func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType domain.ConversationType, etablissementID string, filiereID, niveau *string, anneeAcademiqueID *string, anneeLibelle string) (*domain.Conversation, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok || claims.UserID == "" {
 		return nil, fmt.Errorf("GetOrCreateAuto: claims manquants dans le context")
@@ -314,14 +325,16 @@ func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType dom
 			if filiereID == nil || niveau == nil {
 				return fmt.Errorf("GetOrCreateAuto CLASSE: filiereId et niveau requis")
 			}
-			where = `"type" = 'CLASSE' AND "filiereId" = $1 AND "niveau" = $2 AND "deletedAt" IS NULL`
-			args = []any{*filiereID, *niveau}
+			// SECT-ANNEE-HISTOIRE-2 : clé incluant l'année (IS NOT DISTINCT FROM
+			// matche aussi les salons NULL si anneeAcademiqueID == nil).
+			where = `"type" = 'CLASSE' AND "filiereId" = $1 AND "niveau" = $2 AND "deletedAt" IS NULL AND "anneeAcademiqueId" IS NOT DISTINCT FROM $3`
+			args = []any{*filiereID, *niveau, anneeAcademiqueID}
 		case domain.ConversationTypePromo:
 			if filiereID == nil {
 				return fmt.Errorf("GetOrCreateAuto PROMO: filiereId requis")
 			}
-			where = `"type" = 'PROMO' AND "filiereId" = $1 AND "deletedAt" IS NULL`
-			args = []any{*filiereID}
+			where = `"type" = 'PROMO' AND "filiereId" = $1 AND "deletedAt" IS NULL AND "anneeAcademiqueId" IS NOT DISTINCT FROM $2`
+			args = []any{*filiereID, anneeAcademiqueID}
 		case domain.ConversationTypeEquipe:
 			where = `"type" = 'EQUIPE' AND "etablissementId" = $1 AND "deletedAt" IS NULL`
 			args = []any{etablissementID}
@@ -344,7 +357,14 @@ func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType dom
 		}
 
 		// 3. Sinon, créer la conversation avec un titre auto-généré.
+		// SECT-ANNEE-HISTOIRE-2 : le titre des salons CLASSE/PROMO porte le
+		// suffixe de l'année (« Classe L1 · 2026-2027 ») pour distinguer les
+		// générations d'années dans la liste (l'ancien salon archivé garde
+		// son titre d'époque).
 		titre := autoConversationTitle(convType, filiereID, niveau)
+		if anneeLibelle != "" {
+			titre = titre + " · " + anneeLibelle
+		}
 		now := time.Now()
 		convID := uuid.New().String()
 
@@ -353,13 +373,13 @@ func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType dom
 		var insertArgs []any
 		switch convType {
 		case domain.ConversationTypeClasse:
-			cols = `"id", "type", "titre", "etablissementId", "filiereId", "niveau", "createdBy", "createdAt", "updatedAt"`
-			vals = `$1, 'CLASSE', $2, $3, $4, $5, $6, $7, $7`
-			insertArgs = []any{convID, titre, etablissementID, *filiereID, *niveau, claims.UserID, now}
+			cols = `"id", "type", "titre", "etablissementId", "filiereId", "niveau", "anneeAcademiqueId", "createdBy", "createdAt", "updatedAt"`
+			vals = `$1, 'CLASSE', $2, $3, $4, $5, $6, $7, $8, $8`
+			insertArgs = []any{convID, titre, etablissementID, *filiereID, *niveau, anneeAcademiqueID, claims.UserID, now}
 		case domain.ConversationTypePromo:
-			cols = `"id", "type", "titre", "etablissementId", "filiereId", "createdBy", "createdAt", "updatedAt"`
-			vals = `$1, 'PROMO', $2, $3, $4, $5, $6, $6`
-			insertArgs = []any{convID, titre, etablissementID, *filiereID, claims.UserID, now}
+			cols = `"id", "type", "titre", "etablissementId", "filiereId", "anneeAcademiqueId", "createdBy", "createdAt", "updatedAt"`
+			vals = `$1, 'PROMO', $2, $3, $4, $5, $6, $7, $7`
+			insertArgs = []any{convID, titre, etablissementID, *filiereID, anneeAcademiqueID, claims.UserID, now}
 		case domain.ConversationTypeEquipe:
 			cols = `"id", "type", "titre", "etablissementId", "createdBy", "createdAt", "updatedAt"`
 			vals = `$1, 'EQUIPE', $2, $3, $4, $5, $5`
@@ -387,6 +407,37 @@ func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType dom
 		return nil, err
 	}
 	return conv, nil
+}
+
+// GetCurrentAnneeInfo retourne (id, libelle) de l'année académique COURANTE
+// de l'établissement (actif=true, post-000110 unique par étab). Chaînes
+// vides si aucune année active. SECT-ANNEE-HISTOIRE-2 : utilisé par
+// EnsureAutoConversations pour versionner les salons CLASSE/PROMO.
+func (r *MessagerieRepository) GetCurrentAnneeInfo(ctx context.Context, etablissementID string) (id, libelle string, err error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return "", "", fmt.Errorf("GetCurrentAnneeInfo: claims manquants dans le context")
+	}
+	err = db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var i, l *string
+		if errQ := tx.QueryRow(ctx, `
+			SELECT "id", "libelle" FROM "AnneeAcademique"
+			WHERE "etablissementId" = $1 AND "actif" = true
+			ORDER BY "dateDebut" DESC LIMIT 1`, etablissementID).Scan(&i, &l); errQ != nil {
+			if errQ == pgx.ErrNoRows {
+				return nil // pas d'année active → chaînes vides
+			}
+			return errQ
+		}
+		if i != nil {
+			id = *i
+		}
+		if l != nil {
+			libelle = *l
+		}
+		return nil
+	})
+	return id, libelle, err
 }
 
 // GetUserFiliereAndNiveau retourne (filiereId, niveau) d'un utilisateur
