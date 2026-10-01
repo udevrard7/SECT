@@ -2227,3 +2227,135 @@ l'overview ENSEIGNANT :
   complément réaligné sur les conventions HISTOIRE-2.
 - ✅ Prouvé en prod (Render 609b4e7) : CI verte, déploiement live, smoke
   comportemental 4/4.
+
+---
+
+## Task ID: SECT-ANNEE-DETTES-3
+
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Solder les 3 dettes notées à la livraison de SECT-ANNEE-HISTOIRE-2 /
+ARCHIVAGE-2 : (1) Devoir.anneeUniversitaire anti-pattern texte (0 ligne en
+prod, mobile Kotlin en dépend) ; (2) copie des affectations vers la nouvelle
+année — le bouton « recréer » de la checklist d'activation ; (3) race d'auth
+401 → « e is not iterable » (transitoire, préexistant).
+
+### Cause racine du bug 3 (audit, non corrigé en HISTOIRE-2)
+PAS le body 401 parsé comme array : collision de FORME dans le cache
+TanStack sur la clé partagée `['annees-academiques', etabId]` — les 3
+dashboards + rapports y écrivaient un wrapper `{annees:[…]}` alors que les
+composants de /annee-academique (section, clôture, page) lisent un TABLEAU
+BRUT et le spreadent (`[...annees]` dans computeNextYearSuggestions /
+computeNextYearLibelle). La fenêtre 401 (access_token expiré, refresh_token
+valide — proxy.ts laisse la page se charger) empêchait le refetch rapide de
+remplacer la forme parasite → TypeError minifié « e is not iterable ».
+
+### Implémentation
+- **Migration 000113** (Devoir) : colonne `anneeAcademiqueId` TEXT + FK ON
+  DELETE SET NULL + index, backfill par libellé via UE→Filière→AnneeAcademique
+  (0 ligne en prod — trivial) ; la colonne texte anneeUniversitaire RESTE en
+  miroir du libellé (compat mobile Kotlin CreateDevoirRequest ; aucune clé
+  d'unicité ne la porte sur Devoir, contrairement à Affectation) ;
+  `get_annee_activation_checklist` recréée avec un 4e compteur
+  `devoirsNonClotures` (BROUILLON/PUBLIE, FK + fallback libellé, scopés
+  UE→Filière). Down : fonction restaurée à l'état 000112 + colonne/FK/index
+  retirés.
+- **Migration 000114** (découverte en préparation du smoke) : le runtime
+  Render tourne sous `sect_app` (NOBYPASSRLS — vérifié via env-var Render :
+  `postgresql://sect_app:…@…pooler…`) ; les claims système (system-worker,
+  rôle ADMIN) satisfont `is_admin()` mais PAS `admin_has_etablissement_access()`
+  → l'INSERT..SELECT de recréation lisait 0 ligne source (Affectation_select
+  sans branche système) et était rejeté par le WITH CHECK
+  (Affectation_modify_responsable). Fix pattern 000108/000109 : branche
+  `is_system()` ajoutée à Affectation_select, Affectation_modify_responsable
+  (USING + WITH CHECK) et UniteEnseignement_select (l'EXISTS de scoping) —
+  branches existantes conservées à l'identique (000091/000024).
+- **Backend recreate** : `POST /api/annees-academiques/{id}/
+  recreate-affectations` (même garde RequireRoleOrPersonalEtab que la
+  checklist ; 2 temps : FindByID sous RLS → 404 si invisible + ceinture
+  RESPONSABLE) ; corps `{sourceAnneeId?, statut? PROVISOIRE|GARDER}` ;
+  source par défaut = année courante ; copie `INSERT..SELECT` idempotente en
+  claims SYSTÈME (WithSystemTx) avec `NOT EXISTS` NULL-safe
+  (groupe IS NOT DISTINCT FROM + libellé cible — PAS ON CONFLICT : l'index
+  unique traite les groupe NULL comme distincts) ; miroir label + FK cible ;
+  publishedAt/publishedById seulement en GARDER sur source PUBLIEE ;
+  AuditLog ANNEE_ACADEMIQUE_AFFECTATIONS_RECREATED (created, skipped, source,
+  cible, statut) ; réponse {created, skipped, statut, source, cible, message}.
+- **Backend Devoir** : createDevoir — fin du défaut hardcodé « 2024-2025 » :
+  résolution `resolveAffectationAnnee` (réutilisée telle quelle : FK
+  explicite validée même étab > label legacy résolu > année courante de l'étab
+  de l'UE > heuristique calendrier) dans une read-tx AVANT l'INSERT (FK
+  invalide → 400 propre) ; INSERT/RETURNING/DTO + anneeAcademiqueId. getDevoir
+  idem. PATCH : anneeAcademiqueId (prioritaire) met FK + libellé miroir
+  ensemble ; label legacy seul → label + FK résolue (NULL si non rattachable).
+- **Backend scoping lectures** : `resolveAnneeFiltreParams` +
+  `appendAnneeFiltrePredicate` (annee_scope.go) — GET /api/devoirs et
+  /api/devoirs/stats scopés par défaut sur l'année courante (contrat
+  /api/affectations : all = historique, ID = override, label legacy accepté,
+  dégradation gracieuse) ; les KPI Analyses restent cohérents avec la liste.
+- **Frontend race** : les 4 writers (responsable/enseignant/etudiant dashboards
+  + rapports) écrivent désormais le TABLEAU BRUT canonique sous la clé
+  partagée ; garde défensive Array.isArray au parsing des 3 consommateurs
+  (/annee-academique) — plus aucun wrapper ne peut atteindre un spread.
+- **Frontend checklist** : bouton « Recréer en {cible} » dans le bloc
+  affectations (copie PRÉ-bascule : la FK cible existe déjà) +
+  `recreateAffectationsMutation` (invalidate ['affectations'] +
+  ['annee-activation-checklist']) ; runActivation passé en async/mutateAsync :
+  après activation réussie, toast actionné « Recréer » (source capturée AVANT
+  la bascule — la checklist n'est plus consultable après, changementAnnee
+  devient false) ; bloc devoirsNonClotures affiché seulement si count > 0
+  (0 en prod : invisible, zéro bruit).
+- **Frontend devoirs** : sélecteur d'année (défaut = courante, « Toutes les
+  années », grille filtres lg:grid-cols-5) ; stats alignées (queryKey + param) ;
+  DUPLICATION : anneeUniversitaire n'est plus copiée — sinon une copie de
+  devoir 2024-2025 naissait « archivée » (même fix que l'épreuve
+  SECT-ANNEE-ARCHIVAGE-2 : le backend tamponne l'année courante).
+- schema.sql de référence : bloc Devoir + index + FK mis à jour (000112 avait
+  ouvert la voie).
+
+### Piège outillage (récidive, documenté)
+L'éditeur convertit les TABS en espaces sur les fichiers Go (réécriture du
+fichier entier → diff énorme). Protocole respecté : `gofmt -w` sur les 6
+fichiers touchés → diff minimal restauré (541 insertions réelles), build/vet
+repassés. gofmt -l désormais vide.
+
+### Validation
+- Local : go build/vet/gofmt + golangci-lint v2.14.0 (version CI épinglée,
+  installée localement) = **0 issue** ; frontend tsc + eslint = **0 erreur** ;
+  vitest 11/11.
+- Migrations : dry-run tx+rollback sur Neon (endpoint direct) AVANT apply —
+  000113 (colonnes/FK/index/checklist vérifiés dans la tx, Devoir=0 ligne) ;
+  000114 avec sonde comportementale : lecture Affectation en claims système
+  0 → 33 lignes. Puis apply réels : schema_migrations=113 puis 114, dirty=false.
+- Ordre respecté : MIGRATIONS (000113+000114) AVANT le push du code (contrat
+  additif — l'ancien code ignore les nouvelles colonnes).
+- Push 63cdab8 (code) + 3cb3e39 (000114) — identité udevrard7 <ulrichdouh@gmail.com> ;
+  CI verte ×3 (Backend 63cdab8 + 3cb3e39, Frontend 63cdab8) ; Render LIVE
+  3cb3e39 ; Vercel READY 63cdab8 (3cb3e39 backend-only → CANCELED, normal).
+- **Smoke prod Render LIVE (jetables, 12/12 PASSÉS)** : S1 checklist →
+  devoirsNonClotures{count:0} + affectations 10/10 + changementAnnee=true ·
+  S2 recreate → created=10 PROVISOIRE · S3 re-run → created=0 skipped=10
+  (idempotence) · S4 DB copies=10 toutes PROVISOIRE + miroir SMOKE-2100-2101 ·
+  S5 GARDER → created=0 (pas de doublon inter-modes) · S6 POST /api/devoirs
+  (ENSEIGNANT, sans année) → 201 + anneeAcademiqueId=courante + label 2026-2027 ·
+  S7 liste défaut=1 (legacy 2024-2025 exclu) · S8 all=2 · S9 stats défaut=1 /
+  all=2 · S10 PATCH anneeAcademiqueId → 200 + miroir label · S10b défaut=0 /
+  cible=1 · CLEANUP résidu=0 (copies, affectation test, devoirs, année SMOKE,
+  2 users jetables, refresh tokens, audit logs). Outils jetables
+  (tmpmigrate/tmpprobe/tmpsmoke) effacés, arbre git propre.
+
+### Stage Summary
+- ✅ Devoir.anneeUniversitaire : FK 000113 + tampon année courante à la
+  création + scoping défaut liste/stats + PATCH cohérent + duplication « née
+  sur l'année courante » — même contrat qu'Affectation/Epreuve.
+- ✅ Bouton « Recréer » : endpoint idempotent + UI checklist (pré et
+  post-activation) + AuditLog — prouvé en prod (10 créées, re-run 0).
+- ✅ Race « e is not iterable » : cause racine (collision de forme du cache
+  TanStack) éteinte — forme canonique tableau brut + gardes défensives.
+- ✅ Bonus découvert et corrigé en route : 000114 branches is_system()
+  (Affectation_select/modify + UniteEnseignement_select) — SANS ce fix, la
+  recréation silencieusement ne copiait rien sous sect_app (NOBYPASSRLS).
+- Dettes restantes notées : UI étudiant mes-devoirs sans sélecteur « all »
+  (backend prêt, même statut que mes-resultats) ; statsAdmin plateforme non
+  scopée (ADMIN, à décider) ; mobile Kotlin envoie encore le label
+  anneeUniversitaire à la création (résolu côté backend par label→FK ;
+  nettoyage mobile optionnel).
