@@ -82,29 +82,32 @@ type devoirSoumissionListDTO struct {
 
 // devoirDetailDTO — matche le type TS Devoir (devoirs-types.ts) côté enseignant
 type devoirDetailDTO struct {
-	ID                  string                    `json:"id"`
-	Titre               string                    `json:"titre"`
-	Description         *string                   `json:"description"`
-	Consignes           *string                   `json:"consignes"`
-	UniteEnseignementID string                    `json:"uniteEnseignementId"`
-	EnseignantID        string                    `json:"enseignantId"`
-	TypeSeance          string                    `json:"typeSeance"`
-	DatePublication     *string                   `json:"datePublication"`
-	DateLimite          string                    `json:"dateLimite"`
-	NoteMax             float64                   `json:"noteMax"`
-	RenduFichiers       *string                   `json:"renduFichiers"`
-	SoumissionGroupe    bool                      `json:"soumissionGroupe"`
-	NbMaxFichiers       int                       `json:"nbMaxFichiers"`
-	TailleMaxFichier    int                       `json:"tailleMaxFichier"`
-	Statut              string                    `json:"statut"`
-	AnneeUniversitaire  string                    `json:"anneeUniversitaire"`
-	CreatedAt           string                    `json:"createdAt"`
-	UpdatedAt           string                    `json:"updatedAt"`
-	User                devoirUserDTO             `json:"User"`
-	UniteEnseignement   devoirUEDTO               `json:"UniteEnseignement"`
-	GrilleEvaluation    *devoirGrilleDTO          `json:"GrilleEvaluation"`
-	SoumissionCount     int                       `json:"soumissionCount"`
-	Soumission          []devoirSoumissionListDTO `json:"Soumission"`
+	ID                  string  `json:"id"`
+	Titre               string  `json:"titre"`
+	Description         *string `json:"description"`
+	Consignes           *string `json:"consignes"`
+	UniteEnseignementID string  `json:"uniteEnseignementId"`
+	EnseignantID        string  `json:"enseignantId"`
+	TypeSeance          string  `json:"typeSeance"`
+	DatePublication     *string `json:"datePublication"`
+	DateLimite          string  `json:"dateLimite"`
+	NoteMax             float64 `json:"noteMax"`
+	RenduFichiers       *string `json:"renduFichiers"`
+	SoumissionGroupe    bool    `json:"soumissionGroupe"`
+	NbMaxFichiers       int     `json:"nbMaxFichiers"`
+	TailleMaxFichier    int     `json:"tailleMaxFichier"`
+	Statut              string  `json:"statut"`
+	AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+	// SECT-ANNEE-DETTES-3 : FK année académique (000113) — miroir du
+	// libellé anneeUniversitaire (contrat 000112 appliqué aux devoirs).
+	AnneeAcademicID   *string                   `json:"anneeAcademiqueId,omitempty"`
+	CreatedAt         string                    `json:"createdAt"`
+	UpdatedAt         string                    `json:"updatedAt"`
+	User              devoirUserDTO             `json:"User"`
+	UniteEnseignement devoirUEDTO               `json:"UniteEnseignement"`
+	GrilleEvaluation  *devoirGrilleDTO          `json:"GrilleEvaluation"`
+	SoumissionCount   int                       `json:"soumissionCount"`
+	Soumission        []devoirSoumissionListDTO `json:"Soumission"`
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -137,6 +140,9 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 		NbMaxFichiers       int     `json:"nbMaxFichiers"`
 		TailleMaxFichier    int     `json:"tailleMaxFichier"`
 		AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+		// SECT-ANNEE-DETTES-3 : FK explicite (priorité sur le label
+		// legacy — validée même étab que l'UE, sinon 400).
+		AnneeAcademicID *string `json:"anneeAcademiqueId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, " corps de requête invalide")
@@ -167,9 +173,10 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 	if input.TailleMaxFichier == 0 {
 		input.TailleMaxFichier = 10485760 // 10 Mo
 	}
-	if input.AnneeUniversitaire == "" {
-		input.AnneeUniversitaire = "2024-2025"
-	}
+	// SECT-ANNEE-DETTES-3 : plus de défaut hardcodé "2024-2025" — la
+	// résolution (FK + libellé miroir) se fait ci-dessous via
+	// resolveAffectationAnnee : priorité FK explicite > label legacy >
+	// année COURANTE de l'établissement de l'UE > heuristique calendrier.
 
 	// Parse dateLimite (frontend envoie datetime-local ISO)
 	dateLimite, err := time.Parse(time.RFC3339, input.DateLimite)
@@ -197,6 +204,32 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 		datePubDB                   *time.Time
 	)
 
+	// SECT-ANNEE-DETTES-3 : résolution du couple (FK anneeAcademiqueId,
+	// libellé miroir anneeUniversitaire) AVANT l'INSERT (read-only tx —
+	// même résolution que createAffectation post-000112). Une FK
+	// explicite invalide (autre étab) → 400 propre, pas d'INSERT avorté
+	// silencieux.
+	var anneeFK *string
+	var anneeLibelle string
+	var anneeResErr error
+	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		fk, lib, errR := s.resolveAffectationAnnee(r.Context(), tx, claims,
+			input.UniteEnseignementID, input.AnneeAcademicID, input.AnneeUniversitaire)
+		if errR != nil {
+			anneeResErr = errR
+			return nil
+		}
+		anneeFK, anneeLibelle = fk, lib
+		return nil
+	})
+	if anneeResErr != nil {
+		writeJSONError(w, http.StatusBadRequest, anneeResErr.Error())
+		return
+	}
+	if anneeLibelle != "" {
+		input.AnneeUniversitaire = anneeLibelle
+	}
+
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), `
                         INSERT INTO "Devoir" (
@@ -205,28 +238,29 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
                                 "datePublication", "dateLimite", "noteMax",
                                 "renduFichiers", "soumissionGroupe", "nbMaxFichiers",
                                 "tailleMaxFichier", "statut", "anneeUniversitaire",
-                                "createdAt", "updatedAt"
+                                "anneeAcademiqueId", "createdAt", "updatedAt"
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'BROUILLON', $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'BROUILLON', $15, $16, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING
                                 "id", "titre", "description", "consignes",
                                 "uniteEnseignementId", "enseignantId", "typeSeance"::text,
                                 "datePublication", "dateLimite", "noteMax",
                                 "renduFichiers", "soumissionGroupe", "nbMaxFichiers",
                                 "tailleMaxFichier", "statut"::text, "anneeUniversitaire",
-                                "createdAt", "updatedAt"
+                                "anneeAcademiqueId", "createdAt", "updatedAt"
                 `,
 			id, input.Titre, input.Description, input.Consignes,
 			input.UniteEnseignementID, input.EnseignantID, input.TypeSeance,
 			datePub, dateLimite, input.NoteMax,
 			input.RenduFichiers, input.SoumissionGroupe, input.NbMaxFichiers,
-			input.TailleMaxFichier, input.AnneeUniversitaire,
+			input.TailleMaxFichier, input.AnneeUniversitaire, anneeFK,
 		).Scan(
 			&created.ID, &created.Titre, &descr, &consignes,
 			&created.UniteEnseignementID, &created.EnseignantID, &created.TypeSeance,
 			&datePubDB, &dateLimite, &created.NoteMax,
 			&renduFich, &created.SoumissionGroupe, &created.NbMaxFichiers,
 			&created.TailleMaxFichier, &created.Statut, &created.AnneeUniversitaire,
+			&created.AnneeAcademicID,
 			&createdAt, &updatedAt,
 		)
 	})
@@ -315,6 +349,7 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
                                 d."datePublication", d."dateLimite", d."noteMax",
                                 d."renduFichiers", d."soumissionGroupe", d."nbMaxFichiers",
                                 d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
+                                d."anneeAcademiqueId",
                                 d."createdAt", d."updatedAt",
                                 u."id", u."name", u."email",
                                 ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
@@ -331,6 +366,7 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 			&datePubDB, &dateLimite, &d.NoteMax,
 			&renduFich, &d.SoumissionGroupe, &d.NbMaxFichiers,
 			&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+			&d.AnneeAcademicID,
 			&createdAt, &updatedAt,
 			&d.User.ID, &d.User.Name, &d.User.Email,
 			&d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
@@ -456,6 +492,9 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 		NbMaxFichiers       *int     `json:"nbMaxFichiers,omitempty"`
 		TailleMaxFichier    *int     `json:"tailleMaxFichier,omitempty"`
 		AnneeUniversitaire  *string  `json:"anneeUniversitaire,omitempty"`
+		// SECT-ANNEE-DETTES-3 : FK année (prioritaire sur le label —
+		// les DEUX colonnes sont mises à jour ensemble : FK + miroir).
+		AnneeAcademicID *string `json:"anneeAcademiqueId,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
@@ -567,8 +606,51 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 	if input.TailleMaxFichier != nil {
 		addSet(`"tailleMaxFichier"`, *input.TailleMaxFichier)
 	}
-	if input.AnneeUniversitaire != nil {
-		addSet(`"anneeUniversitaire"`, *input.AnneeUniversitaire)
+
+	// SECT-ANNEE-DETTES-3 : changement d'année — FK ET libellé miroir mis
+	// à jour ENSEMBLE (contrat 000112). Résolution via l'UE du devoir :
+	//   - anneeAcademiqueId explicite → validée (même étab que l'UE, sinon
+	//     400) ; le libellé miroir devient celui de l'année ;
+	//   - anneeUniversitaire legacy seul → FK résolue par libellé (NULL si
+	//     le libellé ne matche aucune année : historique non rattachable).
+	if (input.AnneeAcademicID != nil && *input.AnneeAcademicID != "") || input.AnneeUniversitaire != nil {
+		var ueID string
+		var fk *string
+		var lib string
+		var resErr error
+		_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+			if errQ := tx.QueryRow(r.Context(), `
+                                SELECT "uniteEnseignementId" FROM "Devoir"
+                                WHERE "id" = $1 AND "deletedAt" IS NULL AND "enseignantId" = $2
+                        `, devoirID, claims.UserID).Scan(&ueID); errQ != nil {
+				return nil // introuvable → l'UPDATE ci-dessous fera 0 ligne → 404
+			}
+			label := ""
+			if input.AnneeUniversitaire != nil {
+				label = *input.AnneeUniversitaire
+			}
+			var errR error
+			fk, lib, errR = s.resolveAffectationAnnee(r.Context(), tx, claims, ueID, input.AnneeAcademicID, label)
+			if errR != nil {
+				resErr = errR
+			}
+			return nil
+		})
+		if resErr != nil {
+			writeJSONError(w, http.StatusBadRequest, resErr.Error())
+			return
+		}
+		if input.AnneeAcademicID != nil && *input.AnneeAcademicID != "" {
+			// FK explicite : libellé miroir = celui de l'année visée.
+			addSet(`"anneeAcademiqueId"`, *input.AnneeAcademicID)
+			if lib != "" {
+				addSet(`"anneeUniversitaire"`, lib)
+			}
+		} else if input.AnneeUniversitaire != nil {
+			// Label legacy seul : label + FK résolue (possiblement NULL).
+			addSet(`"anneeUniversitaire"`, *input.AnneeUniversitaire)
+			addSet(`"anneeAcademiqueId"`, fk)
+		}
 	}
 
 	if len(setClauses) <= 1 {

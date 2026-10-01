@@ -290,6 +290,12 @@ export function DevoirsPage() {
   const debouncedSearch = useDebounce(searchInput)
   const [sortField, setSortField] = useState<SortField>('dateLimite')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  // ─── SECT-ANNEE-DETTES-3 : filtre d'année académique (même contrat que
+  // Mes épreuves — défaut = année courante post-000110, 'all' = historique).
+  // L'état ne porte que le choix explicite : '' = pas encore choisi → le
+  // backend scope déjà par défaut sans param ; l'effet ci-dessous synchronise
+  // l'affichage du sélecteur avec l'année courante dès chargement.
+  const [anneeFilter, setAnneeFilter] = useState<string>('')
 
   // ─── Create/Edit dialog ───
   const [formDialogOpen, setFormDialogOpen] = useState(false)
@@ -344,9 +350,13 @@ export function DevoirsPage() {
   // ═══════════════════════════════════════
 
   const devoirsQuery = useQuery<{ devoirs: Devoir[]; total: number }>({
-    queryKey: ['devoirs', user?.id],
+    queryKey: ['devoirs', user?.id, anneeFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/devoirs?enseignantId=${user!.id}`)
+      const params = new URLSearchParams({ enseignantId: user!.id })
+      // SECT-ANNEE-DETTES-3 : scoping année — défaut backend = année courante ;
+      // on n'envoie le param QUE si un choix existe ('all' explicite compris).
+      if (anneeFilter) params.set('anneeAcademiqueId', anneeFilter)
+      const res = await fetch(`/api/devoirs?${params.toString()}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur serveur')
@@ -367,9 +377,14 @@ export function DevoirsPage() {
     : null
 
   const statsQuery = useQuery<DevoirStats>({
-    queryKey: ['devoirs-stats', user?.id],
+    queryKey: ['devoirs-stats', user?.id, anneeFilter],
     queryFn: async () => {
-      const res = await fetch('/api/devoirs/stats')
+      // SECT-ANNEE-DETTES-3 : les KPI suivent le même scoping que la liste
+      // (cohérence « Analyses » ↔ liste affichée).
+      const url = anneeFilter
+        ? `/api/devoirs/stats?anneeAcademiqueId=${encodeURIComponent(anneeFilter)}`
+        : '/api/devoirs/stats'
+      const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch stats')
       return res.json()
     },
@@ -393,12 +408,37 @@ export function DevoirsPage() {
 
   const unitesEnseignement = uesQuery.data?.unitesEnseignement ?? []
 
+  // ─── SECT-ANNEE-DETTES-3 : années académiques (sélecteur) ───
+  const anneesQuery = useQuery<Array<{ id: string; libelle: string; actif: boolean }>>({
+    queryKey: ['annees-academiques', user?.etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${user!.etablissementId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees')
+      const json = await res.json()
+      // Garde défensive : forme canonique tableau brut (clé partagée).
+      return Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
+    },
+    enabled: !!user?.etablissementId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneesAcademiques = anneesQuery.data ?? []
+
+  // Le filtre année démarre sur l'année COURANTE (post-000110 : la seule
+  // actif=true) — le backend scope déjà par défaut sans param ; on l'envoie
+  // explicitement pour que le sélecteur affiche la même année que les
+  // résultats (même pattern que epreuves-page.tsx).
+  useEffect(() => {
+    if (anneeFilter) return
+    const courante = anneesAcademiques.find((a) => a.actif)
+    if (courante) setAnneeFilter(courante.id)
+  }, [anneesAcademiques, anneeFilter])
+
   const refreshDevoirs = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['devoirs', user?.id] })
     queryClient.invalidateQueries({ queryKey: ['devoirs-stats', user?.id] })
     queryClient.invalidateQueries({ queryKey: ['devoirs-ues', user?.id] })
   }, [queryClient, user?.id])
-
   // isFetching global pour le spinner du bouton Actualiser
   const isRefreshing = devoirsQuery.isFetching || statsQuery.isFetching
 
@@ -681,7 +721,10 @@ export function DevoirsPage() {
         soumissionGroupe: duplicateTarget.soumissionGroupe,
         nbMaxFichiers: duplicateTarget.nbMaxFichiers,
         tailleMaxFichier: duplicateTarget.tailleMaxFichier,
-        anneeUniversitaire: duplicateTarget.anneeUniversitaire,
+        // SECT-ANNEE-DETTES-3 : PLUS d'anneeUniversitaire copiée — sinon une
+        // copie de devoir 2024-2025 naissait « archivée » (invisible en
+        // défaut). Sans le champ, le backend tamponne l'année COURANTE
+        // (même fix que la duplication d'épreuves SECT-ANNEE-ARCHIVAGE-2).
       }
       const res = await fetch('/api/devoirs', {
         method: 'POST',
@@ -1137,8 +1180,8 @@ export function DevoirsPage() {
             })}
           </div>
 
-          {/* Search + UE + type + tri */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Search + UE + type + tri + année (SECT-ANNEE-DETTES-3) */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -1172,6 +1215,22 @@ export function DevoirsPage() {
                 <SelectItem value="CM">Cours magistral</SelectItem>
                 <SelectItem value="TD">Travail dirigé</SelectItem>
                 <SelectItem value="TP">Travaux pratiques</SelectItem>
+              </SelectContent>
+            </Select>
+            {/* SECT-ANNEE-DETTES-3 : sélecteur d'année — défaut = année
+                courante, « Toutes les années » = vue historique (all). */}
+            <Select value={anneeFilter || undefined} onValueChange={setAnneeFilter}>
+              <SelectTrigger aria-label="Filtrer par année académique">
+                <SelectValue placeholder="Année courante" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les années</SelectItem>
+                {anneesAcademiques.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.libelle}
+                    {a.actif ? ' (courante)' : ''}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select

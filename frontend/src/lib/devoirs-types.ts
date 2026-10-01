@@ -85,6 +85,9 @@ export interface Devoir {
   tailleMaxFichier: number
   statut: StatutDevoir
   anneeUniversitaire: string
+  /** SECT-ANNEE-DETTES-3 (000113) : FK année académique — miroir du libellé
+   * anneeUniversitaire (même contrat que Affectation post-000112). */
+  anneeAcademiqueId?: string | null
   createdAt: string
   updatedAt: string
   User: { id: string; name: string; email: string }

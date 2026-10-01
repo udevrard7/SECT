@@ -49,7 +49,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, Plus, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2,
   RefreshCw, X, CalendarDays, CalendarClock, Star, Power, RotateCcw,
-  AlertTriangle, BookOpen, FileText, CircleCheck, CalendarRange, Users, Layers,
+  AlertTriangle, BookOpen, FileText, CircleCheck, CalendarRange, Users, Layers, Copy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -111,6 +111,9 @@ interface ActivationChecklist {
   }
   affectations: { count: number; parStatut: Record<string, number> }
   salonsArchivables: { count: number }
+  /** SECT-ANNEE-DETTES-3 (000113) : devoirs BROUILLON/PUBLIE de l'année
+   * courante — optionnel (réponses antérieures à 000113). */
+  devoirsNonClotures?: { count: number }
 }
 
 // SECT-ANNEE-HARDDELETE-SAFE-1 : miroir de backend/internal/domain/academique.go
@@ -239,7 +242,12 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     queryFn: async () => {
       const res = await fetch(`/api/annees-academiques?etablissementId=${etablissementId}`)
       if (!res.ok) throw new Error('Failed to fetch annees')
-      return (await res.json()) as AnneeAcademique[]
+      // SECT-ANNEE-DETTES-3 : garde défensive — la clé ['annees-academiques']
+      // est partagée avec les dashboards/rapports (forme canonique = tableau
+      // brut depuis cette correction) ; ne jamais laisser un wrapper objet
+      // arriver jusqu'au spread [...annees] (« e is not iterable »).
+      const json = await res.json()
+      return (Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])) as AnneeAcademique[]
     },
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
@@ -508,15 +516,78 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   })
   const activationChecklist = activationChecklistQuery.data ?? null
 
+  // ─── SECT-ANNEE-DETTES-3 : mutation « Recréer les affectations » ───
+  // POST /api/annees-academiques/{id}/recreate-affectations — copie
+  // idempotente des affectations de l'année source vers la cible, au
+  // statut PROVISOIRE (re-validation + re-publication délibérées : la
+  // copie n'est JAMAIS visible des étudiants d'emblée).
+  const recreateAffectationsMutation = useMutation<
+    { created: number; skipped: number; statut: string; cible: { id: string; libelle: string } },
+    Error,
+    { targetId: string; sourceAnneeId: string }
+  >({
+    mutationFn: async ({ targetId, sourceAnneeId }) => {
+      const res = await fetch(`/api/annees-academiques/${targetId}/recreate-affectations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceAnneeId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || 'Échec de la recréation des affectations')
+      }
+      return res.json()
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data.created > 0
+          ? `${data.created} affectation${data.created > 1 ? 's' : ''} recréée${data.created > 1 ? 's' : ''} en ${data.cible.libelle}`
+          : `Aucune affectation recréée (${data.skipped} déjà existante${data.skipped > 1 ? 's' : ''})`,
+        {
+          description:
+            data.created > 0
+              ? 'Copiées au statut PROVISOIRE — validez puis publiez-les depuis /affectations.'
+              : 'La copie est idempotente : re-cliquer ne crée jamais de doublon.',
+        },
+      )
+      queryClient.invalidateQueries({ queryKey: ['affectations'] })
+      queryClient.invalidateQueries({ queryKey: ['annee-activation-checklist'] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   // Exécute l'activation réelle (le bon point d'entrée selon l'origine du clic).
-  const runActivation = () => {
+  // SECT-ANNEE-DETTES-3 : après une activation réussie, si l'année sortante
+  // avait des affectations, on PROPOSE leur recréation (copie) vers la
+  // nouvelle année via un toast actionné — la checklist n'est plus
+  // consultable après la bascule (changementAnnee=false), il faut capturer
+  // l'année source AVANT l'activation.
+  const runActivation = async () => {
     if (!confirmActivation) return
-    if (confirmActivation.via === 'reactivate') {
-      reactivateMutation.mutate(confirmActivation.id)
-    } else {
-      setCurrentAnneeMutation.mutate(confirmActivation.id)
+    const sourceAnneeId = activationChecklist?.anneeCourante?.id ?? null
+    const nbAffectations = activationChecklist?.affectations.count ?? 0
+    const targetId = confirmActivation.id
+    const targetLibelle = confirmActivation.libelle
+    try {
+      if (confirmActivation.via === 'reactivate') {
+        await reactivateMutation.mutateAsync(confirmActivation.id)
+      } else {
+        await setCurrentAnneeMutation.mutateAsync(confirmActivation.id)
+      }
+      if (sourceAnneeId && nbAffectations > 0) {
+        toast('Affectations à recréer', {
+          description: `${nbAffectations} affectation${nbAffectations > 1 ? 's' : ''} de l'année archivée peuvent être copiée${nbAffectations > 1 ? 's' : ''} en ${targetLibelle} (statut PROVISOIRE).`,
+          action: {
+            label: 'Recréer',
+            onClick: () => recreateAffectationsMutation.mutate({ targetId, sourceAnneeId }),
+          },
+        })
+      }
+    } catch {
+      // onError des mutations a déjà toasté l'erreur proprement.
+    } finally {
+      setConfirmActivation(null)
     }
-    setConfirmActivation(null)
   }
   // Le bouton « Supprimer définitivement » est désactivé tant que :
   //   - les dépendances chargent (dependenciesQuery.isLoading),
@@ -1128,6 +1199,36 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                           Les affectations ne sont plus affichées par défaut après la
                           bascule — recréez-les (ou copiez-les) pour la nouvelle année.
                         </p>
+                        {/* SECT-ANNEE-DETTES-3 : bouton « Recréer » — copie
+                            idempotente vers l'année cible, AVANT la bascule
+                            (la FK cible existe déjà ; les copies naissent
+                            PROVISOIRE et deviennent la liste par défaut dès
+                            l'activation). Disponible aussi via le toast
+                            post-activation. */}
+                        {(activationChecklist.affectations.count ?? 0) > 0 &&
+                          activationChecklist.anneeCourante?.id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-1 w-full"
+                              disabled={recreateAffectationsMutation.isPending}
+                              onClick={() =>
+                                recreateAffectationsMutation.mutate({
+                                  targetId: confirmActivation!.id,
+                                  sourceAnneeId: activationChecklist.anneeCourante!.id,
+                                })
+                              }
+                            >
+                              {recreateAffectationsMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              {recreateAffectationsMutation.isPending
+                                ? 'Recréation…'
+                                : `Recréer en ${activationChecklist.anneeCible.libelle}`}
+                            </Button>
+                          )}
                       </div>
                     </div>
 
@@ -1144,6 +1245,25 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                         </p>
                       </div>
                     </div>
+
+                    {/* 4. Devoirs non clôturés (SECT-ANNEE-DETTES-3, 000113) —
+                        bloc affiché seulement si l'établissement en a (0 en
+                        prod aujourd’hui : bloc invisible, aucune perte de
+                        place dans le dialog). */}
+                    {(activationChecklist.devoirsNonClotures?.count ?? 0) > 0 && (
+                      <div className="rounded-lg bg-warning/10 p-3 text-sm border border-warning/30 flex items-start gap-2">
+                        <FileText className="h-4 w-4 mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+                        <div>
+                          <p className="font-medium">
+                            {activationChecklist.devoirsNonClotures?.count} devoir{(activationChecklist.devoirsNonClotures?.count ?? 0) > 1 ? 's' : ''} non clôturé{(activationChecklist.devoirsNonClotures?.count ?? 0) > 1 ? 's' : ''} en {activationChecklist.anneeCourante?.libelle}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Ils resteront rattachés à l&apos;année archivée — fermez-les ou
+                            dupliquez-les pour la nouvelle année.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

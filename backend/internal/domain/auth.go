@@ -298,6 +298,13 @@ const (
 	// PATCH actif=true ou POST annee-courante) — désactive l'année précédente
 	// et pointe Etablissement.anneeAcademiqueCouranteId en une transaction.
 	AuditActionAnneeActivated = "ANNEE_ACADEMIQUE_ACTIVATED"
+	// SECT-ANNEE-DETTES-3 : recréation (copie) des affectations d'une
+	// année source vers une année cible — bouton « Recréer » de la
+	// checklist d'activation. Journalisée par le handler
+	// recreateAnneeAffectations. Entite=AnneeAcademique,
+	// entiteId=annee cible, details JSON {sourceId, sourceLibelle,
+	// cibleId, cibleLibelle, created, skipped, statut}.
+	AuditActionAnneeAffectationsRecreated = "ANNEE_ACADEMIQUE_AFFECTATIONS_RECREATED"
 
 	// SECT-AFFECTATION-PUBLISH-ENRICH-1 — publication d'une affectation
 	// enseignant↔UE. Journalisée dans AuditLog par le handler

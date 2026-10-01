@@ -539,6 +539,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			// mais données transverses (compteurs via SECURITY DEFINER après
 			// contrôle RLS) → même garde que les mutations.
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Get("/{id}/activation-checklist", s.anneeActivationChecklist)
+			// SECT-ANNEE-DETTES-3 : recréation (copie) des affectations d'une
+			// année source vers l'année cible — bouton « Recréer » de la
+			// checklist d'activation. Mutation transverse (INSERT..SELECT en
+			// claims système après contrôle RLS) → même garde.
+			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/{id}/recreate-affectations", s.recreateAnneeAffectations)
 			// Mutations : ADMIN + RESPONSABLE, ou ENSEIGNANT B2C (étab PERSONNEL).
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)

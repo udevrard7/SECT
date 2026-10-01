@@ -95,7 +95,11 @@ export function AnneeAcademiquePage() {
         { credentials: 'same-origin' },
       )
       if (!res.ok) throw new Error('Failed to fetch annees')
-      return (await res.json()) as AnneeAcademique[]
+      // SECT-ANNEE-DETTES-3 : garde défensive — clé de cache partagée avec les
+      // dashboards/rapports ; forme canonique = tableau brut (jamais un
+      // wrapper objet, sinon « e is not iterable » au spread [...annees]).
+      const json = await res.json()
+      return (Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])) as AnneeAcademique[]
     },
     enabled: !!etabId,
     staleTime: 60 * 1000,

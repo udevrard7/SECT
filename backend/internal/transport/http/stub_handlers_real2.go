@@ -1280,35 +1280,45 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 	// Tous les champs accédés sans optional chaining par le frontend doivent
 	// être non-null dans la réponse JSON.
 	type devoir struct {
-		ID                  string         `json:"id"`
-		Titre               string         `json:"titre"`
-		Description         *string        `json:"description"`
-		Consignes           *string        `json:"consignes"`
-		UniteEnseignementID string         `json:"uniteEnseignementId"`
-		EnseignantID        string         `json:"enseignantId"`
-		TypeSeance          string         `json:"typeSeance"`
-		DatePublication     *string        `json:"datePublication"`
-		DateLimite          string         `json:"dateLimite"`
-		NoteMax             float64        `json:"noteMax"`
-		RenduFichiers       *string        `json:"renduFichiers"`
-		SoumissionGroupe    bool           `json:"soumissionGroupe"`
-		NbMaxFichiers       int            `json:"nbMaxFichiers"`
-		TailleMaxFichier    int            `json:"tailleMaxFichier"`
-		Statut              string         `json:"statut"`
-		AnneeUniversitaire  string         `json:"anneeUniversitaire"`
-		CreatedAt           string         `json:"createdAt"`
-		UpdatedAt           string         `json:"updatedAt"`
-		User                userDTO        `json:"User"`
-		UniteEnseignement   ueDTO          `json:"UniteEnseignement"`
-		GrilleEvaluation    *grilleDTO     `json:"GrilleEvaluation"`
-		SoumissionCount     int            `json:"soumissionCount"`
-		Soumission          *soumissionDTO `json:"soumission"`
+		ID                  string  `json:"id"`
+		Titre               string  `json:"titre"`
+		Description         *string `json:"description"`
+		Consignes           *string `json:"consignes"`
+		UniteEnseignementID string  `json:"uniteEnseignementId"`
+		EnseignantID        string  `json:"enseignantId"`
+		TypeSeance          string  `json:"typeSeance"`
+		DatePublication     *string `json:"datePublication"`
+		DateLimite          string  `json:"dateLimite"`
+		NoteMax             float64 `json:"noteMax"`
+		RenduFichiers       *string `json:"renduFichiers"`
+		SoumissionGroupe    bool    `json:"soumissionGroupe"`
+		NbMaxFichiers       int     `json:"nbMaxFichiers"`
+		TailleMaxFichier    int     `json:"tailleMaxFichier"`
+		Statut              string  `json:"statut"`
+		AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+		// SECT-ANNEE-DETTES-3 : FK année académique (000113).
+		AnneeAcademicID   *string        `json:"anneeAcademiqueId,omitempty"`
+		CreatedAt         string         `json:"createdAt"`
+		UpdatedAt         string         `json:"updatedAt"`
+		User              userDTO        `json:"User"`
+		UniteEnseignement ueDTO          `json:"UniteEnseignement"`
+		GrilleEvaluation  *grilleDTO     `json:"GrilleEvaluation"`
+		SoumissionCount   int            `json:"soumissionCount"`
+		Soumission        *soumissionDTO `json:"soumission"`
 	}
 
 	result := []devoir{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		enseignantID := r.URL.Query().Get("enseignantId")
 		etudiantID := r.URL.Query().Get("etudiantId")
+		// SECT-ANNEE-DETTES-3 : scoping par année (contrat
+		// SECT-ANNEE-HISTOIRE-2 — défaut = année courante, all =
+		// historique, ID explicite = override, label legacy accepté).
+		anneeIDParam := r.URL.Query().Get("anneeAcademiqueId")
+		anneeLabelParam := r.URL.Query().Get("anneeUniversitaire")
+		scopeEtab := claims.EtablissementID
+		anneeFiltreID, anneeFiltreLibelle := s.resolveAnneeFiltreParams(
+			r.Context(), tx, scopeEtab, anneeIDParam, anneeLabelParam)
 
 		var args []any
 		argIdx := 1
@@ -1329,7 +1339,12 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 		if etudiantID != "" {
 			soumissionJoin = fmt.Sprintf(`LEFT JOIN "Soumission" s ON s."devoirId" = d."id" AND s."etudiantId" = $%d`, argIdx)
 			args = append(args, etudiantID)
+			argIdx++ // SECT-ANNEE-DETTES-3 : un filtre année peut suivre
 		}
+
+		// SECT-ANNEE-DETTES-3 : prédicat année OR-groupé (FK + fallback
+		// libellé pour les lignes legacy FK NULL).
+		appendAnneeFiltrePredicate(&where, &args, &argIdx, "d", anneeFiltreID, anneeFiltreLibelle)
 
 		selectCols := ""
 		if etudiantID != "" {
@@ -1346,6 +1361,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
                                 d."datePublication", d."dateLimite", d."noteMax",
                                 d."renduFichiers", d."soumissionGroupe", d."nbMaxFichiers",
                                 d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
+                                d."anneeAcademiqueId",
                                 d."createdAt", d."updatedAt",
                                 u."id", u."name", u."email",
                                 ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
@@ -1391,7 +1407,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 					&d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
 					&datePub, &dateLimite, &d.NoteMax,
 					&renduFichiers, &d.SoumissionGroupe, &d.NbMaxFichiers,
-					&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+					&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire, &d.AnneeAcademicID,
 					&createdAt, &updatedAt,
 					&d.User.ID, &d.User.Name, &d.User.Email,
 					&d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
@@ -1407,7 +1423,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 					&d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
 					&datePub, &dateLimite, &d.NoteMax,
 					&renduFichiers, &d.SoumissionGroupe, &d.NbMaxFichiers,
-					&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+					&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire, &d.AnneeAcademicID,
 					&createdAt, &updatedAt,
 					&d.User.ID, &d.User.Name, &d.User.Email,
 					&d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
@@ -1527,22 +1543,56 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// SECT-ANNEE-DETTES-3 : scoping par année — même contrat que
+		// /api/devoirs (défaut = année courante, all = historique, ID
+		// explicite = override) : les KPI de l'onglet Analyses restent
+		// cohérents avec la liste scopée. Toutes les requêtes ci-dessous
+		// n'ont AUCUN autre paramètre → le prédicat utilise $1/$2.
+		anneeIDParam := r.URL.Query().Get("anneeAcademiqueId")
+		anneeLabelParam := r.URL.Query().Get("anneeUniversitaire")
+		anneeFiltreID, anneeFiltreLibelle := s.resolveAnneeFiltreParams(
+			r.Context(), tx, claims.EtablissementID, anneeIDParam, anneeLabelParam)
+		anneePred := func(alias string) string {
+			if anneeFiltreID == "" && anneeFiltreLibelle == "" {
+				return ""
+			}
+			var parts []string
+			if anneeFiltreID != "" {
+				parts = append(parts, fmt.Sprintf(`%s."anneeAcademiqueId" = $1`, alias))
+			}
+			if anneeFiltreLibelle != "" {
+				idx := 1
+				if anneeFiltreID != "" {
+					idx = 2
+				}
+				parts = append(parts, fmt.Sprintf(`%s."anneeUniversitaire" = $%d`, alias, idx))
+			}
+			return " AND (" + strings.Join(parts, " OR ") + ")"
+		}
+		var predArgs []any
+		if anneeFiltreID != "" {
+			predArgs = append(predArgs, anneeFiltreID)
+		}
+		if anneeFiltreLibelle != "" {
+			predArgs = append(predArgs, anneeFiltreLibelle)
+		}
+
 		// KPIs : compteurs par statut
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL`).Scan(&stats.Kpis.Total)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'BROUILLON'`).Scan(&stats.Kpis.Brouillons)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'PUBLIE'`).Scan(&stats.Kpis.Publies)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'FERME'`).Scan(&stats.Kpis.Fermes)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'ARCHIVE'`).Scan(&stats.Kpis.Archives)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL%s`, anneePred(`"Devoir"`)), predArgs...).Scan(&stats.Kpis.Total)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'BROUILLON'%s`, anneePred(`"Devoir"`)), predArgs...).Scan(&stats.Kpis.Brouillons)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'PUBLIE'%s`, anneePred(`"Devoir"`)), predArgs...).Scan(&stats.Kpis.Publies)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'FERME'%s`, anneePred(`"Devoir"`)), predArgs...).Scan(&stats.Kpis.Fermes)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'ARCHIVE'%s`, anneePred(`"Devoir"`)), predArgs...).Scan(&stats.Kpis.Archives)
 
 		// Soumissions
 		// BUGFIX (DEVOIRS-STATS-FIX-1) : exclure les soumissions des devoirs soft-supprimés
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL`).Scan(&stats.Kpis.TotalSoumissions)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."statut"::text = 'SOUMIS'`).Scan(&stats.Kpis.SoumissionsEnAttente)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."statut"::text IN ('CORRIGE','RETOURNE')`).Scan(&stats.Kpis.SoumissionsCorrigees)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."renduAt" IS NULL AND d."dateLimite" < CURRENT_TIMESTAMP`).Scan(&stats.Kpis.EnRetard)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL%s`, anneePred("d")), predArgs...).Scan(&stats.Kpis.TotalSoumissions)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."statut"::text = 'SOUMIS'%s`, anneePred("d")), predArgs...).Scan(&stats.Kpis.SoumissionsEnAttente)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."statut"::text IN ('CORRIGE','RETOURNE')%s`, anneePred("d")), predArgs...).Scan(&stats.Kpis.SoumissionsCorrigees)
+		_ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."renduAt" IS NULL AND d."dateLimite" < CURRENT_TIMESTAMP%s`, anneePred("d")), predArgs...).Scan(&stats.Kpis.EnRetard)
 
 		// byType : répartition par type de séance
-		rows, err := tx.Query(r.Context(), `SELECT "typeSeance"::text, count(*) FROM "Devoir" WHERE "deletedAt" IS NULL GROUP BY "typeSeance" ORDER BY count(*) DESC`)
+		rows, err := tx.Query(r.Context(), fmt.Sprintf(`SELECT "typeSeance"::text, count(*) FROM "Devoir" WHERE "deletedAt" IS NULL%s GROUP BY "typeSeance" ORDER BY count(*) DESC`, anneePred(`"Devoir"`)), predArgs...)
 		if err == nil {
 			defer rows.Close()
 			typeLabels := map[string]string{"CM": "Cours magistral", "TD": "Travail dirigé", "TP": "Travaux pratiques"}
@@ -1556,7 +1606,7 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// soumissionsByStatut
-		rows2, err := tx.Query(r.Context(), `SELECT s."statut"::text, count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL GROUP BY s."statut" ORDER BY count(*) DESC`)
+		rows2, err := tx.Query(r.Context(), fmt.Sprintf(`SELECT s."statut"::text, count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL%s GROUP BY s."statut" ORDER BY count(*) DESC`, anneePred("d")), predArgs...)
 		if err == nil {
 			defer rows2.Close()
 			statutLabels := map[string]string{"BROUILLON": "Brouillon", "SOUMIS": "Soumis", "CORRIGE": "Corrigé", "RETOURNE": "Rendu"}
@@ -1570,12 +1620,12 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// timeline : 7 derniers jours
-		rows3, err := tx.Query(r.Context(), `
+		rows3, err := tx.Query(r.Context(), fmt.Sprintf(`
                         SELECT to_char(d::date, 'YYYY-MM-DD') as date,
-                        (SELECT count(*) FROM "Soumission" s JOIN "Devoir" dv ON dv."id" = s."devoirId" WHERE dv."deletedAt" IS NULL AND date_trunc('day', s."createdAt") = d) as soumissions
+                        (SELECT count(*) FROM "Soumission" s JOIN "Devoir" dv ON dv."id" = s."devoirId" WHERE dv."deletedAt" IS NULL%s AND date_trunc('day', s."createdAt") = d) as soumissions
                         FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') AS d
                         ORDER BY d ASC
-                `)
+                `, anneePred("dv")), predArgs...)
 		if err == nil {
 			defer rows3.Close()
 			for rows3.Next() {
@@ -1590,7 +1640,7 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		// moyenneNotes
 		var moy *float64
 		var moyVal float64
-		err = tx.QueryRow(r.Context(), `SELECT AVG(s."note") FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."note" IS NOT NULL`).Scan(&moyVal)
+		err = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT AVG(s."note") FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL AND s."note" IS NOT NULL%s`, anneePred("d")), predArgs...).Scan(&moyVal)
 		if err == nil {
 			moy = &moyVal
 			stats.MoyenneNotes = moy

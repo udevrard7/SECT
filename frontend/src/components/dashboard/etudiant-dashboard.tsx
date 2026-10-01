@@ -304,15 +304,20 @@ export function EtudiantDashboard() {
   // dans un effet (règle react-hooks/set-state-in-effect).
   const [anneeChoisie, setAnneeChoisie] = useState<string | null>(null)
 
-  const anneesQuery = useQuery<{ annees: Array<{ id: string; libelle: string; actif: boolean }> }>({
+  const anneesQuery = useQuery<Array<{ id: string; libelle: string; actif: boolean }>>({
     queryKey: ['annees-academiques', etabId],
     queryFn: async () => {
       const res = await fetch(`/api/annees-academiques?etablissementId=${etabId}`)
       if (!res.ok) throw new Error('Failed to fetch annees')
       const json = await res.json()
-      // L'API retourne un array direct (pas wrappé dans {annees:...})
-      const arr = Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
-      return { annees: arr }
+      // L'API retourne un array direct (pas wrappé dans {annees:...}).
+      // SECT-ANNEE-DETTES-3 : forme CANONIQUE tableau brut sous la clé
+      // partagée ['annees-academiques'] — les pages /annee-academique
+      // consomment la même clé et spreadent le tableau ([...annees]) ;
+      // y déposer un wrapper {annees:[...]} provoquait « e is not iterable »
+      // pendant la fenêtre 401 (le refetch correctif ne remplaçait pas la
+      // forme parasite à temps).
+      return Array.isArray(json) ? json : (json.annees ?? json.anneesAcademiques ?? [])
     },
     enabled: !!etabId,
     staleTime: 5 * 60 * 1000,
@@ -331,7 +336,7 @@ export function EtudiantDashboard() {
     refetchOnWindowFocus: false,
   })
 
-  const annees = anneesQuery.data?.annees ?? []
+  const annees = anneesQuery.data ?? []
   const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
   const anneeId = anneeChoisie ?? anneeCourante?.id ?? ''
 

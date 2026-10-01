@@ -500,6 +500,9 @@ CREATE TABLE "Devoir" (
     "tailleMaxFichier" INTEGER NOT NULL DEFAULT 52428800,
     "statut" "StatutDevoir" NOT NULL DEFAULT 'BROUILLON',
     "anneeUniversitaire" TEXT NOT NULL DEFAULT '2024-2025',
+    -- 000113 SECT-ANNEE-DETTES-3 : FK année académique (miroir du libellé
+    -- anneeUniversitaire, conservé pour compat API/mobile Kotlin).
+    "anneeAcademiqueId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
@@ -1084,6 +1087,7 @@ CREATE UNIQUE INDEX "EtablissementAccess_adminId_etablissementId_key" ON "Etabli
 CREATE UNIQUE INDEX "SecuritySettings_etablissementId_key" ON "SecuritySettings"("etablissementId");
 
 -- CreateIndex
+CREATE INDEX "Devoir_anneeAcademiqueId_idx" ON "Devoir"("anneeAcademiqueId");
 CREATE INDEX "Devoir_enseignantId_idx" ON "Devoir"("enseignantId");
 
 -- CreateIndex
@@ -1393,6 +1397,7 @@ ALTER TABLE "EtablissementAccess" ADD CONSTRAINT "EtablissementAccess_etablissem
 ALTER TABLE "SecuritySettings" ADD CONSTRAINT "SecuritySettings_etablissementId_fkey" FOREIGN KEY ("etablissementId") REFERENCES "Etablissement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Devoir" ADD CONSTRAINT "Devoir_anneeAcademiqueId_fkey" FOREIGN KEY ("anneeAcademiqueId") REFERENCES "AnneeAcademique"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "Devoir" ADD CONSTRAINT "Devoir_enseignantId_fkey" FOREIGN KEY ("enseignantId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey

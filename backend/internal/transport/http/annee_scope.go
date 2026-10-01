@@ -3,7 +3,9 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
@@ -66,10 +68,10 @@ func (s *Server) resolveCurrentAnneeID(ctx context.Context, claims appdb.Session
 	var anneeID string
 	err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-			SELECT "id" FROM "AnneeAcademique"
-			WHERE "etablissementId" = $1 AND "actif" = true
-			ORDER BY "dateDebut" DESC LIMIT 1
-		`, etabID).Scan(&anneeID)
+                        SELECT "id" FROM "AnneeAcademique"
+                        WHERE "etablissementId" = $1 AND "actif" = true
+                        ORDER BY "dateDebut" DESC LIMIT 1
+                `, etabID).Scan(&anneeID)
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -80,4 +82,82 @@ func (s *Server) resolveCurrentAnneeID(ctx context.Context, claims appdb.Session
 		return ""
 	}
 	return anneeID
+}
+
+// resolveAnneeFiltreParams — SECT-ANNEE-DETTES-3 : résout le couple
+// (FK anneeAcademiqueId, libellé miroir) d'un filtre d'année de LECTURE,
+// à appeler DANS la transaction courante (SELECT sur AnneeAcademique sous
+// RLS). Même contrat que le filtre inline de listAffectations
+// (SECT-ANNEE-HISTOIRE-2), factorisé pour /api/devoirs (liste + stats) :
+//   - "all" (sur l'un des 2 params) → ("", "") : TOUTES les années ;
+//   - anneeAcademiqueId=<id> explicite → (id, libellé) — le libellé sert
+//     de fallback pour les lignes legacy FK NULL ;
+//   - anneeUniversitaire=<libellé> legacy → (FK résolue dans l'étab, libellé) ;
+//   - absent → année COURANTE de l'établissement de scope ("" si aucune
+//     année active → pas de filtre, comportement historique).
+//
+// NB : la méthode est sur Server par symétrie avec resolveAnneeScopeID mais
+// n'utilise pas le pool (tx passée par l'appelant).
+func (s *Server) resolveAnneeFiltreParams(ctx context.Context, tx pgx.Tx, scopeEtab, anneeIDParam, anneeLabelParam string) (string, string) {
+	switch {
+	case anneeIDParam == ANNEE_ALL_SENTINEL || anneeLabelParam == ANNEE_ALL_SENTINEL:
+		return "", ""
+	case anneeIDParam != "":
+		var lib *string
+		if errS := tx.QueryRow(ctx, `
+                        SELECT "libelle" FROM "AnneeAcademique" WHERE "id" = $1`,
+			anneeIDParam).Scan(&lib); errS == nil && lib != nil {
+			return anneeIDParam, *lib
+		}
+		return anneeIDParam, ""
+	case anneeLabelParam != "":
+		if scopeEtab != "" {
+			var id *string
+			_ = tx.QueryRow(ctx, `
+                                SELECT "id" FROM "AnneeAcademique"
+                                WHERE "etablissementId" = $1 AND "libelle" = $2`,
+				scopeEtab, anneeLabelParam).Scan(&id)
+			if id != nil {
+				return *id, anneeLabelParam
+			}
+		}
+		return "", anneeLabelParam
+	default:
+		if scopeEtab != "" {
+			var id, lib *string
+			if errS := tx.QueryRow(ctx, `
+                                SELECT "id", "libelle" FROM "AnneeAcademique"
+                                WHERE "etablissementId" = $1 AND "actif" = true
+                                ORDER BY "dateDebut" DESC LIMIT 1`,
+				scopeEtab).Scan(&id, &lib); errS == nil && id != nil && lib != nil {
+				return *id, *lib
+			}
+		}
+		return "", ""
+	}
+}
+
+// appendAnneeFiltrePredicate — SECT-ANNEE-DETTES-3 : construit le prédicat
+// OR-groupé (alias."anneeAcademiqueId" = $n OR alias."anneeUniversitaire" =
+// $n+1) et pousse les args — un seul prédicat pour rester composable avec
+// les autres filtres WHERE. Retourne le fragment SQL ("" si rien à scoper)
+// et incrémente argIdx côté appelant via le pointeur.
+func appendAnneeFiltrePredicate(where *[]string, args *[]any, argIdx *int, alias, anneeFiltreID, anneeFiltreLibelle string) string {
+	if anneeFiltreID == "" && anneeFiltreLibelle == "" {
+		return ""
+	}
+	var parts []string
+	if anneeFiltreID != "" {
+		parts = append(parts, fmt.Sprintf(`%s."anneeAcademiqueId" = $%d`, alias, *argIdx))
+		*args = append(*args, anneeFiltreID)
+		(*argIdx)++
+	}
+	if anneeFiltreLibelle != "" {
+		parts = append(parts, fmt.Sprintf(`%s."anneeUniversitaire" = $%d`, alias, *argIdx))
+		*args = append(*args, anneeFiltreLibelle)
+		(*argIdx)++
+	}
+	pred := "(" + strings.Join(parts, " OR ") + ")"
+	*where = append(*where, pred)
+	return pred
 }

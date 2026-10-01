@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 )
@@ -774,4 +776,238 @@ func (s *Server) anneeActivationChecklist(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(raw)
+}
+
+// recreateAnneeAffectations — POST /api/annees-academiques/{id}/recreate-affectations
+//
+// SECT-ANNEE-DETTES-3 : recrée (copie) les affectations d'une année SOURCE
+// vers l'année CIBLE {id} — le bouton « Recréer » de la checklist
+// d'activation (SECT-ANNEE-HISTOIRE-2 notait cette copie comme dette :
+// « affectations à recréer » à la main après la bascule d'année).
+//
+// Corps : { "sourceAnneeId"?: string, "statut"?: "PROVISOIRE" | "GARDER" }
+//   - sourceAnneeId absent → année COURANTE de l'établissement (le cas
+//     d'usage nominal : copier les affectations de l'année sortante vers
+//     l'année qui vient d'être activée / va l'être) ;
+//   - statut : "PROVISOIRE" (défaut — la copie doit être re-validée puis
+//     re-publiée délibérément, jamais visible des étudiants d'emblée) ou
+//     "GARDER" (copie le statut de la source ; une source PUBLIEE devient
+//     PUBLIEE avec publishedAt/publishedById du demandeur).
+//
+// Idempotence : NOT EXISTS sur la clé naturelle historique (enseignantId,
+// uniteEnseignementId, typeSeance, groupe IS NOT DISTINCT FROM, libellé
+// cible) — PAS ON CONFLICT : l'index unique traite les groupe NULL comme
+// distincts, un INSERT..SELECT NOT EXISTS est le seul mécanisme fiable.
+// Rejouer la copie ne crée donc jamais de doublon (created=0, skipped=N).
+//
+// Autorisation : identique à anneeActivationChecklist (2 temps : année
+// cible chargée sous RLS → 404 si invisible + ceinture RESPONSABLE). La
+// copie s'exécute en claims SYSTÈME (comme ArchiveAnneeConversations) :
+// la policy Affectation_modify_responsable n'a pas de branche ADMIN —
+// robuste pour la future bascule sect_app (NOBYPASSRLS).
+func (s *Server) recreateAnneeAffectations(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "RESPONSABLE" && claims.Role != "ADMIN" && claims.Role != "ENSEIGNANT" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+	targetID := chi.URLParam(r, "id")
+	if targetID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id requis")
+		return
+	}
+
+	var input struct {
+		SourceAnneeID string `json:"sourceAnneeId"`
+		Statut        string `json:"statut"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil && err.Error() != "EOF" {
+			writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
+			return
+		}
+	}
+	if input.Statut == "" {
+		input.Statut = "PROVISOIRE"
+	}
+	if input.Statut != "PROVISOIRE" && input.Statut != "GARDER" {
+		writeJSONError(w, http.StatusBadRequest, "statut invalide (attendu : PROVISOIRE ou GARDER)")
+		return
+	}
+
+	// (1) Année cible sous RLS (404 si invisible) + ceinture RESPONSABLE.
+	target, err := s.anneeUC.FindByID(r.Context(), claims, targetID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	if claims.Role == "RESPONSABLE" && claims.EtablissementID != "" && target.EtablissementID != claims.EtablissementID {
+		writeJSONError(w, http.StatusForbidden, "année d'un autre établissement")
+		return
+	}
+
+	// (2) Année source : explicite (même étab, sinon 400) ou courante.
+	type anneeRef struct {
+		ID      string
+		Libelle string
+	}
+	var source anneeRef
+	errS := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		if input.SourceAnneeID != "" {
+			return tx.QueryRow(r.Context(), `
+                                SELECT "id", "libelle" FROM "AnneeAcademique"
+                                WHERE "id" = $1 AND "etablissementId" = $2`,
+				input.SourceAnneeID, target.EtablissementID).Scan(&source.ID, &source.Libelle)
+		}
+		return tx.QueryRow(r.Context(), `
+                        SELECT "id", "libelle" FROM "AnneeAcademique"
+                        WHERE "etablissementId" = $1 AND "actif" = true
+                        ORDER BY "dateDebut" DESC LIMIT 1`,
+			target.EtablissementID).Scan(&source.ID, &source.Libelle)
+	})
+	if errS != nil || source.ID == "" {
+		writeJSONError(w, http.StatusBadRequest, "année source introuvable pour cet établissement")
+		return
+	}
+	if source.ID == target.ID {
+		writeJSONError(w, http.StatusBadRequest, "l'année source et l'année cible sont identiques")
+		return
+	}
+
+	// (3) Copie idempotente en claims SYSTÈME (voir docstring).
+	gardeStatut := input.Statut == "GARDER"
+	statutExpr := `'PROVISOIRE'::"StatutAffectation"`
+	publishedAtExpr := `NULL`
+	publishedByExpr := `NULL`
+	var args []any
+	if gardeStatut {
+		statutExpr = `src."statut"`
+		publishedAtExpr = `CASE WHEN src."statut"::text = 'PUBLIEE' THEN CURRENT_TIMESTAMP ELSE NULL END`
+		publishedByExpr = `CASE WHEN src."statut"::text = 'PUBLIEE' THEN $6 ELSE NULL END`
+	}
+
+	var sourceTotal int
+	var created int64
+	errC := appdb.WithSystemTx(r.Context(), s.dbPool, func(tx pgx.Tx) error {
+		// 3a. Total source (pour le calcul du skipped) — mêmes prédicats
+		//      que l'INSERT (FK source OU fallback libellé legacy,
+		//      scopé UE→Filière→établissement).
+		if errQ := tx.QueryRow(r.Context(), `
+                        SELECT count(*) FROM "Affectation" src
+                        WHERE (src."anneeAcademiqueId" = $1
+                               OR (src."anneeAcademiqueId" IS NULL AND src."anneeUniversitaire" = $2))
+                          AND EXISTS (SELECT 1 FROM "UniteEnseignement" ue
+                                      JOIN "Filiere" f ON f."id" = ue."filiereId"
+                                      WHERE ue."id" = src."uniteEnseignementId"
+                                        AND f."etablissementId" = $3)`,
+			source.ID, source.Libelle, target.EtablissementID).Scan(&sourceTotal); errQ != nil {
+			return fmt.Errorf("comptage source: %w", errQ)
+		}
+
+		// 3b. INSERT..SELECT idempotent : la colonne texte anneeUniversitaire
+		//      est le MIROIR du libellé cible (contrat 000112), la FK pointe
+		//      l'année cible. publishedAt/publishedById seulement si copie
+		//      PUBLIEE en mode GARDER.
+		args = []any{target.ID, target.Libelle, source.ID, source.Libelle, target.EtablissementID}
+		if gardeStatut {
+			args = append(args, claims.UserID)
+		}
+		query := fmt.Sprintf(`
+                        INSERT INTO "Affectation" (
+                                "id", "enseignantId", "uniteEnseignementId", "typeSeance", "groupe",
+                                "volumeHeures", "anneeUniversitaire", "statut", "commentaire",
+                                "createdAt", "updatedAt", "anneeAcademiqueId", "publishedAt", "publishedById"
+                        )
+                        SELECT gen_random_uuid()::text, src."enseignantId", src."uniteEnseignementId",
+                               src."typeSeance", src."groupe", src."volumeHeures",
+                               $2, %[1]s, src."commentaire",
+                               CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $1, %[2]s, %[3]s
+                        FROM "Affectation" src
+                        WHERE (src."anneeAcademiqueId" = $3
+                               OR (src."anneeAcademiqueId" IS NULL AND src."anneeUniversitaire" = $4))
+                          AND EXISTS (SELECT 1 FROM "UniteEnseignement" ue
+                                      JOIN "Filiere" f ON f."id" = ue."filiereId"
+                                      WHERE ue."id" = src."uniteEnseignementId"
+                                        AND f."etablissementId" = $5)
+                          AND NOT EXISTS (
+                                SELECT 1 FROM "Affectation" ex
+                                WHERE ex."enseignantId" = src."enseignantId"
+                                  AND ex."uniteEnseignementId" = src."uniteEnseignementId"
+                                  AND ex."typeSeance" = src."typeSeance"
+                                  AND ex."groupe" IS NOT DISTINCT FROM src."groupe"
+                                  AND ex."anneeUniversitaire" = $2
+                          )`, statutExpr, publishedAtExpr, publishedByExpr)
+		ct, errX := tx.Exec(r.Context(), query, args...)
+		if errX != nil {
+			return fmt.Errorf("copie: %w", errX)
+		}
+		created = ct.RowsAffected()
+		return nil
+	})
+	if errC != nil {
+		slog.Error("recreate-affectations: copie échouée",
+			"cibleId", target.ID, "sourceId", source.ID, "error", errC)
+		writeJSONError(w, http.StatusInternalServerError, "erreur lors de la recréation des affectations")
+		return
+	}
+
+	skipped := sourceTotal - int(created)
+	if skipped < 0 {
+		skipped = 0
+	}
+
+	// (4) AuditLog (non bloquant — pattern auditAndNotifyAffectationPublish).
+	if s.authRepo != nil {
+		details, errM := json.Marshal(map[string]any{
+			"sourceId":      source.ID,
+			"sourceLibelle": source.Libelle,
+			"cibleId":       target.ID,
+			"cibleLibelle":  target.Libelle,
+			"created":       created,
+			"skipped":       skipped,
+			"statut":        input.Statut,
+			"par": map[string]string{
+				"id":   claims.UserID,
+				"name": claims.Name,
+			},
+		})
+		if errM == nil {
+			uid := claims.UserID
+			etabID := target.EtablissementID
+			entry := &domain.AuditLogEntry{
+				UserID:          &uid,
+				Action:          domain.AuditActionAnneeAffectationsRecreated,
+				Entite:          "AnneeAcademique",
+				EntiteID:        &target.ID,
+				Details:         string(details),
+				AdresseIP:       "academique-api",
+				EtablissementID: &etabID,
+				Reason:          "Recréation des affectations vers une nouvelle année",
+			}
+			if errA := s.authRepo.CreateAuditLog(r.Context(), entry); errA != nil {
+				slog.Error("recreate-affectations: audit échec",
+					"cibleId", target.ID, "error", errA)
+			}
+		}
+	}
+
+	slog.Info("recreate-affectations: copie effectuée",
+		"cibleId", target.ID, "cibleLibelle", target.Libelle,
+		"sourceId", source.ID, "sourceLibelle", source.Libelle,
+		"created", created, "skipped", skipped, "statut", input.Statut)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"created": created,
+		"skipped": skipped,
+		"statut":  input.Statut,
+		"source":  map[string]string{"id": source.ID, "libelle": source.Libelle},
+		"cible":   map[string]string{"id": target.ID, "libelle": target.Libelle},
+		"message": fmt.Sprintf("%d affectation(s) recréée(s) en %s (%d déjà existante(s))",
+			created, target.Libelle, skipped),
+	})
 }
