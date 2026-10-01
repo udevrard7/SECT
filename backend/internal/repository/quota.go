@@ -195,10 +195,18 @@ func (r *QuotaRepository) CheckEvaluationsQuota(ctx context.Context, etablisseme
 	}
 	var count int
 	err = db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		// SECT-ANNEE-HISTOIRE-2 (bug préexistant découvert au smoke) :
+		// Epreuve n'a PAS de colonne etablissementId (rattachement via
+		// Filiere, cf. countActiveStudentsUsage ci-dessous et le helper
+		// epreuve_etab_id de 000024) → l'ancienne requête échouait en
+		// «column does not exist» → 500 «erreur interne» sur TOUTE création
+		// d'épreuve dès qu'un plan avec quota évaluations était actif.
 		return tx.QueryRow(ctx, `
-                SELECT count(*) FROM "Epreuve"
-                WHERE "etablissementId" = $1
-                  AND "createdAt" >= date_trunc('month', now())
+                SELECT count(*) FROM "Epreuve" e
+                JOIN "Filiere" f ON f."id" = e."filiereId"
+                WHERE f."etablissementId" = $1
+                  AND e."deletedAt" IS NULL
+                  AND e."createdAt" >= date_trunc('month', now())
         `, etablissementID).Scan(&count)
 	})
 	if err != nil {
