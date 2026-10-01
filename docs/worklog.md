@@ -1829,3 +1829,77 @@ Quelle solution proposes-tu pour la gestion des données des années précédent
 - Workflow de clôture enrichi : à l'activation d'une nouvelle année,
   checklist (épreuves non clôturées de l'ancienne, affectations à recréer /
   copier vers la nouvelle année).
+
+---
+
+## Task ID: SECT-ETUDIANTS-NULL-FIX-1
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Bug rapporté par l'utilisateur — « au niveau du responsable, lorsqu'on retire un étudiant d'une filière, cela ne s'applique pas »
+
+### Diagnostic
+- Symptôme : menu « Retirer de la filière » (et l'option « Aucune filière » du
+  dialogue d'édition) → toast succès « Filière retirée », mais l'étudiant
+  garde sa filière après refresh.
+- Cause racine (backend, `PATCH /api/users/{id}`) : `UpdateUserInput.FiliereID`
+  est un `*string`. En Go, le JSON `null` décode en pointeur `nil` —
+  **indistinguable d'un champ absent**. Le repository ne construisait la
+  clause `SET "filiereId" = ...` que si `input.FiliereID != nil` → avec
+  `{ "filiereId": null }` : zéro clause → zéro UPDATE → 200 OK + réponse
+  utilisateur inchangé. No-op silencieux systémique.
+- Périmètre du même bug : `matricule: null` et `niveau: null` (mêmes envois
+  frontend dans `doEditSubmit`), tous ignorés à l'effacement. Seule la page
+  étudiants envoie des null explicites (vérifié : utilisateurs/enseignants/
+  profil n'en envoient pas).
+- Vérifs connexes : policy RLS `User_update` (000078) ne contraint pas
+  `filiereId` dans son WITH CHECK → aucun blocage attendu ; le flux de
+  promotion (clôture d'année) lit `User.filiereId` en direct → la correction
+  se propage correctement.
+
+### Correctif (backend uniquement, zéro changement frontend)
+1. `transport/http/user_handlers.go` — `updateUser` décode le body brut une
+   seconde fois en `map[string]json.RawMessage` ; pour `filiereId`,
+   `matricule`, `niveau` : null EXPLICITE détecté (`isJSONNull`) →
+   matérialisé en sentinelle `""` sur le pointeur. Champ absent → nil →
+   colonne non touchée (sémantique PATCH préservée).
+2. `repository/user.go` — nouveau helper `nullableStrPtrEmptyNull` : comme
+   `nullableStrPtr` mais `""` → SQL NULL ; appliqué aux 3 colonnes nullables.
+   `""` n'étant jamais une valeur légitime (FK cuid / matricule / enum), la
+   conversion rend aussi robustes les clients qui enverraient `""`.
+
+### Validation E2E (backend local + Neon réel, compte responsable jetable)
+- Outil temporaire `cmd/tmpuser` (pattern cmd/seed, supprimé après usage) :
+  responsable jetable `e2e-nullfix@sect-test.dev` dans l'étab du registrar.
+- Cycle complet : création étudiant test AVEC filière+matricule+niveau →
+  `PATCH {"filiereId": null}` → **null en réponse** (clé omise, omitempty) ;
+  ré-assignation par valeur → OK ; `PATCH` nom seul → filière INTACTE
+  (absent ≠ null) ; `PATCH {"matricule": null, "niveau": null}` → nulls ;
+  liste `/api/users` cohérente ; **preuve SQL brute : les 3 colonnes = NULL
+  en base après le PATCH** ; hard delete de l'étudiant test.
+- Nettoyage : étudiant test supprimé, responsable jetable + refresh tokens +
+  audit logs supprimés (SQL direct), `cmd/tmpuser`/`cmd/deluser` effacés,
+  backend local arrêté. Base prod inchangée à l'état initial.
+- `gofmt` propre, `go vet` OK, `go build` OK.
+
+### Décisions / dettes notées
+- `Inscription` (historique annuel, source de la clôture d'année) : le
+  retrait d'un étudiant de sa filière ne clôture PAS son inscription EN_COURS
+  de l'année courante. La promotion lit `User.filiereId` (pas
+  `Inscription.filiereId`) donc pas d'impact fonctionnel immédiat, mais un
+  statut `REORIENTE`/`QUITTE` sur l'inscription courante serait plus cohérent
+  — à décider en phase 2 (workflow produit).
+- Le champ `etablissementId: null` souffre du même pattern Go, mais aucun
+  appelant frontend ne l'envoie (transferts ADMIN = valeurs réelles) — non
+  corrigé volontairement (périmètre minimal).
+- Pas de validation d'appartenance établissement du `filiereId` assigné
+  (préexistant en Create comme en Update, RLS ne couvre pas ce cas) — noté,
+  hors périmètre.
+
+### Stage Summary
+- ✅ Bug racine corrigé : le retrait d'un étudiant de sa filière S'APPLIQUE
+  désormais (SQL NULL en base, prouvé E2E), idem effacement matricule/niveau.
+- ✅ Sémantique PATCH intacte : champ absent = ne pas toucher, null explicite
+  = vider, valeur = assigner.
+- ✅ 2 fichiers backend, +60/−4 lignes, zéro migration, zéro changement
+  frontend (le frontend envoyait déjà `null` correctement).
+- ⏳ Reste : commit + push → CI GitHub → déploiements auto Render (backend)
+  + Vercel (frontend non impacté).

@@ -357,16 +357,16 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
 			addSet("etablissementId", nullableStrPtr(input.EtablissementID))
 		}
 		if input.FiliereID != nil {
-			addSet("filiereId", nullableStrPtr(input.FiliereID))
+			addSet("filiereId", nullableStrPtrEmptyNull(input.FiliereID))
 		}
 		if input.Actif != nil {
 			addSet("actif", *input.Actif)
 		}
 		if input.Matricule != nil {
-			addSet("matricule", nullableStrPtr(input.Matricule))
+			addSet("matricule", nullableStrPtrEmptyNull(input.Matricule))
 		}
 		if input.Niveau != nil {
-			addSet("niveau", nullableStrPtr(input.Niveau))
+			addSet("niveau", nullableStrPtrEmptyNull(input.Niveau))
 		}
 		if passwordHash != nil {
 			addSet("password", *passwordHash)
@@ -711,6 +711,20 @@ func scanUser(s scanner) (*domain.User, error) {
 
 func nullableStrPtr(s *string) any {
 	if s == nil {
+		return nil
+	}
+	return *s
+}
+
+// nullableStrPtrEmptyNull : comme nullableStrPtr, mais convertit aussi la
+// chaîne vide en SQL NULL. Le handler updateUser (user_handlers.go,
+// ETUDIANTS-NULL-FIX) matérialise les null EXPLICITES du JSON —
+// indistinguables d'un champ absent avec *string — en sentinelle "" pour
+// les colonnes nullables filiereId / matricule / niveau. "" n'étant jamais
+// une valeur légitime pour ces colonnes (FK cuid / matricule / enum), le
+// convertir en NULL rend aussi robustes les clients qui enverraient "".
+func nullableStrPtrEmptyNull(s *string) any {
+	if s == nil || *s == "" {
 		return nil
 	}
 	return *s

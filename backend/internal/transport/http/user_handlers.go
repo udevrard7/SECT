@@ -1,9 +1,11 @@
 package http
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -35,6 +37,14 @@ func parseIntQueryParam(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
+}
+
+// isJSONNull retourne true si la RawMessage est le littéral JSON null
+// (espaces périphériques tolérés). Utilisé par updateUser pour distinguer un
+// null EXPLICITE ({ "filiereId": null } = vider la colonne) d'un champ absent
+// (= ne pas toucher la colonne) — indistinguables avec un simple *string.
+func isJSONNull(v json.RawMessage) bool {
+	return string(bytes.TrimSpace(v)) == "null"
 }
 
 // listUsers — GET /api/users
@@ -196,10 +206,42 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input domain.UpdateUserInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	// ETUDIANTS-NULL-FIX : avec *string, le JSON null est indistinguable d'un
+	// champ absent (les deux décodent en pointeur nil). Un PATCH
+	// { "filiereId": null } (retrait d'un étudiant de sa filière) ou
+	// { "matricule": null } / { "niveau": null } (effacement) était donc un
+	// no-op silencieux : 200 OK + toast succès côté frontend, mais aucune
+	// colonne modifiée en base. Solution : décoder le body brut une seconde
+	// fois en map[string]json.RawMessage pour détecter les null EXPLICITES
+	// et les matérialiser en sentinelle "" (le repository convertit "" en
+	// SQL NULL — voir nullableStrPtrEmptyNull dans repository/user.go).
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "lecture du body impossible")
+		return
+	}
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rawFields); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
 		return
+	}
+	var input domain.UpdateUserInput
+	if err := json.Unmarshal(body, &input); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+	for _, field := range [...]string{"filiereId", "matricule", "niveau"} {
+		if v, present := rawFields[field]; present && isJSONNull(v) {
+			empty := ""
+			switch field {
+			case "filiereId":
+				input.FiliereID = &empty
+			case "matricule":
+				input.Matricule = &empty
+			case "niveau":
+				input.Niveau = &empty
+			}
+		}
 	}
 
 	user, err := s.userUC.Update(r.Context(), claims, id, input)
