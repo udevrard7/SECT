@@ -343,7 +343,6 @@ func (s *Server) surveillanceListSessions(w http.ResponseWriter, r *http.Request
 		if anneeID != "" {
 			ePreds = append(ePreds, fmt.Sprintf(`e."anneeAcademiqueId" = $%d`, eIdx))
 			eArgs = append(eArgs, anneeID)
-			eIdx++
 		}
 		eWhere := ""
 		if len(ePreds) > 0 {
