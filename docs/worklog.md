@@ -1981,3 +1981,149 @@ Quelle solution proposes-tu pour la gestion des données des années précédent
 - ✅ Couvre RESPONSABLE et ADMIN (SECURITY DEFINER), zéro changement de
   comportement pour les autres PATCH (seul filiereId déclenche la sync)
 - ⏳ Reste : commit + push → CI → Render (backend) + Vercel (badge frontend)
+
+---
+
+## SECT-ANNEE-HISTOIRE-2 — Gestion de l'historique par année : épreuves scopées, FK affectations, salons versionnés, stats N-1, checklist d'activation (migration 000112)
+
+**Date** : 2026-10-01 · **Commits** : bcf412b → f6147c3 → 7346535 → af2a2c3 · **Migration** : 000112 (appliquée, schema_migrations=112)
+
+### Demande
+« Pour aller plus loin dans la gestion de l'historique : valoriser Epreuve.anneeAcademiqueId à la création + filtrer les listes d'épreuves par défaut ; stats dashboards par année (avec comparaison N-1 en bonus) ; migrer Affectation.anneeUniversitaire (texte) vers une vraie FK ; versionner les salons CLASSE/PROMO par année ; et une checklist à l'activation d'une nouvelle année (épreuves non clôturées, affectations à recréer). »
+
+### Migration 000112 (collision 000111 gérée)
+- ⚠️ Une session parallèle a posé 000111_inscription_filiere_sync le même jour
+  → renumérotation en 000112 au rebase (les deux migrations sont indépendantes,
+  toutes deux appliquées ; `migrate force 112` après renumber pour refléter la
+  réalité). Piège pooler documenté : `migrate version` via PgBouncer peut
+  laisser un advisory_lock fuité sur un backend du pool → `pg_terminate_backend`
+  du porteur si `force` timeout ; TOUJOURS préférer l'URL DIRECTE (bloquée dans
+  ce sandbox, pooler utilisé à la place avec nettoyage du verrou).
+- A. **Epreuve** : backfill anneeAcademiqueId NULL par période
+  [dateDebut, dateFin+1j) de l'année de l'étab (via Filière puis enseignant) —
+  prod : 0 NULL restant. Non rattachables → NULL (visibles via « toutes
+  années » uniquement).
+- B. **Affectation** : + FK anneeAcademiqueId (SET NULL) backfillée par
+  libellé↔étab de l'UE — prod : 33/33. La colonne texte anneeUniversitaire
+  RESTE en miroir du libellé (clé d'unicité historique + compat API/mobile) ;
+  le backend l'écrit en miroir et filtre par la FK.
+- C. **Conversation** : + FK anneeAcademiqueId ; salons CLASSE/PROMO existants
+  rattachés à l'année courante (grandfathering 4/4) ; indexes versionnés ;
+  conversation_scope_unchanged surchargée à 6 params (SURCHARGE, pas replace :
+  l'original 5-params reste — CREATE OR REPLACE avec signature différente crée
+  un overload) + policies Conversation_update/insert recreées dans la MÊME
+  migration ; Conversation_insert contraint l'année des salons étudiants à
+  l'année courante via helper SECURITY DEFINER etab_current_annee_id.
+- D. **get_annee_activation_checklist** (SECURITY DEFINER, compteurs complets
+  hors RLS — le responsable ne voit pas les épreuves sans filière) :
+  épreuves non clôturées de l'année sortante (count + 20 items),
+  affectations à recréer (count + répartition par statut, scopées UE→Filière),
+  salons archivables.
+
+### Backend
+- **Epreuves** : anneeAcademiqueId valorisé à la création (usecase, best-effort
+  via résolution année courante ; couvre POST / POST session-speciale [copie
+  de l'année source] / POST generate IA) ; LEFT JOIN AnneeAcademique dans
+  List/FindByID → ep.anneeAcademique peuplé (le groupement frontend « Par
+  année » fonctionne désormais — avant : tout en « non classées ») ;
+  GET /api/epreuves : défaut = année courante (claims ; fallback param étab
+  pour ADMIN), ?anneeAcademiqueId=all = vue historique.
+- **Affectations** : resolveAffectationAnnee (FK explicite validée même étab >
+  label legacy résolu > année courante > heuristique calendrier) ; listage
+  filtre (FK OU libellé legacy — OR-groupé) + params anneeAcademiqueId/all +
+  fallback anneeUniversitaire ; POST + batch acceptent anneeAcademiqueId,
+  écrivent FK + miroir libellé, erreurs « année académique » → 400.
+- **Messagerie** : GetOrCreateAuto versionné par année (clé naturelle + titre
+  « Classe L1 · 2026-2027 ») ; EnsureAutoConversations résout l'année courante
+  (GetCurrentAnneeInfo) ; ArchiveAnneeConversations (claims SYSTÈME —
+  is_system() couvre responsable/enseignant-B2C/admin, voir policy 000109)
+  appelé aux DEUX points d'activation (PATCH actif:true + POST
+  annee-courante), best-effort + idempotent : les salons des années passées
+  sont soft-archivés, l'historique des messages reste en base.
+- **Stats** : ?anneeAcademiqueId= sur /api/stats/responsable|enseignant|etudiant
+  (défaut = année courante, all = historique) + annee/anneePrecedente/
+  comparaisonAnnees (N vs N-1 : nbEvaluations, moyenne, taux — moyenne/nb
+  pour l'étudiant). Responsable : année injectée dans les 3 closures de
+  filtrage + nbEpreuves + resultatsParFiliere (JOIN ON, pas WHERE — sinon les
+  filières sans épreuve de l'année disparaissent).
+- **GET /api/annees-academiques/{id}/activation-checklist** : autorisation en
+  2 temps (année chargée sous RLS → 404 si invisible ; compteurs via la
+  fonction SECURITY DEFINER).
+
+### Frontend
+- Sélecteurs d'année (défaut = ID année courante, option « Toutes les
+  années ») : Mes épreuves enseignant Sessions + Modèles (all explicite —
+  gabarits transversaux), Mes épreuves étudiant, Évaluations responsable,
+  Affectations (filtre + formulaire : Select d'IDs remplace l'Input texte
+  libre), dashboards ×3 + rapports (badge d'année).
+- Cartes comparaison N vs N-1 (delta %, TrendingUp/Down) sur les dashboards ;
+  pattern « état dérivé » (anneeChoisie ?? courante?.id) pour éviter
+  set-state-in-effect.
+- **Checklist de clôture** (AlertDialog) intercepte les 3 points d'activation
+  (« Définir courante », « Activer comme année courante », toast post-création)
+  : épreuves non clôturées + affectations (chips par statut) + salons →
+  Annuler/Activer. Vérifiée en prod SANS activer (état DB contrôlé inchangé).
+- « Mes résultats » enseignant : anneeAcademiqueId=all explicite (vue archive).
+- types/messagerie : anneeAcademiqueId/anneeLibelle.
+
+### Bugs découverts en route (fixés)
+1. **CheckEvaluationsQuota (préexistant, bloquant)** : requêtait
+   « Epreuve ».« etablissementId » — colonne INEXISTANTE → 500 « erreur
+   interne » sur TOUTE création d'épreuve dès qu'un plan avec quota était
+   actif (jamais déclenché avant : les épreuves dataient d'avant les guards
+   quota). Fix : JOIN Filiere (pattern des autres compteurs) + deletedAt IS
+   NULL (7346535). Prouvé : sonde usecase complète + INSERT en claims
+   sect_app + re-smoke API 201.
+2. **« Toutes les années » affectations** : le sélecteur n'envoyait PAS le
+   param (pattern « !== 'all' → skip ») → le backend scope par défaut →
+   l'option affichait… l'année courante. Fix + audit des 9 points d'envoi
+   (af2a2c3). Repéré au browser-verify (network tab : requête sans param ;
+   Total resté à 3 groupes → 11 après fix, vérifié en prod).
+3. Transient « e is not iterable » observé une fois sur /annee-academique
+   pendant la fenêtre d'expiration du token (401 sur les queries → une
+   réponse {error} parsée comme array quelque part). Non reproduit avec
+   session valide ; probablement préexistant (race d'auth) — NOTÉ, non
+   corrigé (hors périmètre).
+
+### Vérification (prod sect.ftci.fr, comptes jetables supprimés, 0 résiduel)
+- API 14/14 : T1 défaut=2026-2027 seul · T2 all=6 épreuves ({2024-2025:5,
+  2025-2026:1} — backfill période prouvé) · T3 filtre explicite 5/5 · T4
+  affectations 9 + FK 9/9 · T5 label legacy 12 · T6 stats resp
+  annee+N-1+comparaison · T7 stats ens all→null · T8 stats étu scoped · T9
+  checklist (changementAnnee, affectations 9 {3 PUBLIEE/6 VALIDEE}, salons 4)
+  · T10 self-réactivation vide · T11 salons CLASSE/PROMO annee=2026-2027 ·
+  T12 mes-épreuves étu scoped · T13 création enseignant → 201
+  anneeAcademiqueId=courante automatique + visible dans la liste scopée.
+- UI (agent-browser, login responsable) : dashboard (sélecteur + carte N-1),
+  page année (badges, archivées, checklist dialog complet → ANNULÉ, DB
+  inchangée), affectations (sélecteur + all corrigé 3→11 groupes),
+  évaluations (sélecteur), rapports (badge + filtre), messagerie (salons
+  EQUIPE/STAFF pour responsable — CLASSE/PROMO réservés aux étudiants,
+  policy 000044).
+- CI verte ×2 (af2a2c3) ; Render live af2a2c3 ; Vercel READY af2a2c3 ;
+  go build/vet/gofmt + tsc + eslint (bun, 0 erreur) + vitest 11/11 +
+  next build OK ; migration dry-run tx+rollback avant apply.
+- Ordre de déploiement : MIGRATION d'abord (additive pour l'ancien code) →
+  push → CI → Render/Vercel.
+
+### Dettes notées (hors périmètre)
+- Devoir.anneeUniversitaire : même anti-pattern texte (0 ligne en prod, mobile
+  Kotlin en dépend — non touché).
+- PATCH affectation : pas de changement d'année possible (créer une nouvelle
+  affectation à la place — UX acceptable, non documenté côté UI).
+- Copie/migration des affectations vers la nouvelle année (bouton « recréer »
+  de la checklist) : à faire en phase 3 si demandé.
+- Race d'auth 401 → « e is not iterable » (voir bug 3 ci-dessus).
+- RESPONSABLE ne peut pas créer d'épreuve via l'API (aucune policy INSERT
+  Epreuve pour ce rôle — préexistant, l'UI ne propose la création qu'aux
+  enseignants).
+
+### Stage Summary
+- ✅ 5 dettes de SECT-ANNEE-CHEVAUCHEMENT-1 soldées : épreuves scopées par
+  défaut + année auto à la création, FK affectations (33/33), salons
+  CLASSE/PROMO versionnés + archivage à l'activation, stats par année + N-1,
+  checklist d'activation (dialog responsable).
+- ✅ 2 bugs bloquants/préjudiciables découverts et corrigés au passage
+  (quota évaluations 500, sentinel « all » affectations).
+- ✅ Base prod : schema_migrations=112, état initial préservé (6 épreuves,
+  33 affectations, 4 salons vivants, 1 année active), 0 résiduel de test.
