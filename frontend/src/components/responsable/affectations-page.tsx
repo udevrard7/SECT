@@ -337,9 +337,10 @@ export function AffectationsPage() {
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (niveauFilter !== 'all') params.set('niveau', niveauFilter)
       // SECT-ANNEE-HISTOIRE-2 : le filtre année envoie la FK anneeAcademiqueId
-      // (000112) ; 'all' = toutes les années (historique). Sans param, le
-      // backend scope par défaut sur l'année courante.
-      if (anneeFilter && anneeFilter !== 'all') params.set('anneeAcademiqueId', anneeFilter)
+      // (000112). ATTENTION : 'all' doit être envoyé EXPLICITEMENT — sans
+      // param, le backend scope par défaut sur l'année courante (et non
+      // toutes les années).
+      if (anneeFilter) params.set('anneeAcademiqueId', anneeFilter)
 
       const res = await fetch(`/api/affectations?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch affectations')
