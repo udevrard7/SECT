@@ -3041,3 +3041,149 @@ Audit mené sur backend Go + frontend + schéma SQL + données prod (Neon) :
   effectif assistance, compteur réel), page Diffusions du responsable
   (/diffusions), page admin SaaS clarifiée + « Tous les rôles » corrigé,
   catégories harmonisées, alertes batch.
+
+## Résolution (4 commits : d3781e18 → e287c890 → 6b091748 → 2bd92fa6)
+
+### Backend (Go)
+- **dispatcher.go** : champ `Event.SkipInApp` — le fanout des diffusions ne
+  ré-INSÈRE plus une copie personnelle par destinataire (doublons cloche).
+- **notification_helpers.go (NOUVEAU)** : `notifAdminVisibleConds` —
+  conditions de visibilité OR partagées (liste unifiée + compteur SSE +
+  GET /me + mark-all-read personnel), avec **garde établissement** sur les
+  diffusions par rôle (isolation multi-tenant : une diffusion RESPONSABLE
+  ne fuit plus vers les mêmes rôles d'autres établissements).
+- **notification_mutation_handlers.go** : validation destinataireRole contre
+  l'enum (rejette 'all') ; catégories canoniques minuscules ; fanout pour
+  TOUTE diffusion (rôle global / rôle+étab / segment / global) avec
+  priorité UPPERCASE conservée (mapping severity) + expireLe propagé ;
+  PATCH/DELETE/mark-all/delete-all ADMIN **scopés aux diffusions**
+  (destinataireId IS NULL — avant : « Tout lire » ADMIN corrompait toutes
+  les notifs de tous les utilisateurs, « Supprimer les lues » détruisait
+  l'historique personnel lu de toute la plateforme) ; liste ADMIN limitée
+  aux diffusions (privacy multi-tenant) ; scanner pgx.Row/Rows unifié.
+- **notification_phase3_handlers.go** : unified list réécrite via helper +
+  expireLe filtré + `totalUnread` (count(*) OVER() — badge cloche exact) ;
+  compteur SSE aligné sur les segments ; **SSE hub branché**
+  (Register/Unregister sur /stream — le canal temps réel était entièrement
+  mort : broadcast dans une map vide) ; préférences PATCH **partiel**
+  (COALESCE — avant, toggler push réactivait email et réciproquement).
+- **stub_handlers_real3.go** : GET /me **AND→OR corrigé** (liste toujours
+  vide avant) + expiration ; PATCH /me/{id} **filtre de propriété** +
+  accusé de lecture per-user sur les diffusions ; NOUVEAU
+  POST /me/mark-all-read (batch personnel : UPDATE des siennes + INSERT
+  SELECT d'accusés per-user sur les diffusions visibles).
+- **notification_diffusion_handlers.go (NOUVEAU)** : **SYSTÈME DE DIFFUSION
+  DU RESPONSABLE** — POST/GET/DELETE /api/notifications/diffusion
+  (établissement TOUJOURS tiré des claims JWT, jamais du body ; audiences
+  TOUS/ENSEIGNANTS/ETUDIANTS ; historique + suppression scopés à SON étab ;
+  ADMIN assistance = responsable de l'étab visité) + alerteCreate
+  (POST /api/alertes — route manquante, 405 systématique avant).
+- **push_handlers.go** : désabonnement push ciblé par endpoint (avant :
+  tuait le push de TOUS les appareils).
+- **router.go** : routes /diffusion ×3, /me/mark-all-read, POST /api/alertes.
+
+### Migrations SQL (112 → 120, toutes appliquées et enregistrées en prod)
+- **000118** : table `NotificationRead` (état de lecture **PER-USER** des
+  diffusions — avant, UN destinataire lisant marquait la diffusion lue
+  pour TOUT l'établissement) + VIEW NotificationUnified régénérée
+  (lue per-user via current_setting claims + expireLe exposé) + policies
+  INSERT admin/responsable.
+- **000119** : **ROOT CAUSE des diffusions par rôle en échec en prod** —
+  le runtime Render connecte via sect_app (NOBYPASSRLS) → RLS ENFORCÉE ;
+  INSERT…RETURNING exige la visibilité SELECT de la nouvelle ligne →
+  policy `NotificationAdmin_select_diffusion_scope` (un RESPONSABLE lit
+  les diffusions de SON étab) + garde établissement sur les conditions par
+  rôle de NotificationAdmin_select / _select_destinataire. C'est pourquoi
+  AUCUNE diffusion par rôle n'avait jamais été persistée en prod.
+- **000120** : FK destinataireId SET NULL → **CASCADE** (avant : supprimer
+  un utilisateur transformait ses notifs personnelles en DIFFUSIONS
+  GLOBALES — cas réel : « Promotion accordée 🎓 » visible par toute la
+  plateforme) + purge de l'orphelin existant.
+
+### Frontend (Next.js)
+- **NOUVELLE PAGE /diffusions** (resp/diffusions-page.tsx) : formulaire
+  (audience TOUS/ENSEIGNANTS/ETUDIANTS, priorité, catégorie, expiration,
+  action) + historique avec suppression + stats ; sidebar RESPONSABLE
+  (« Vue d'ensemble »), routes/labels/permissions, icône Megaphone.
+- **Cloche** : mark-all-read **personnel pour tous les rôles** (fini
+  l'appel ADMIN global corrupteur + les 20 PATCH parallèles), rôle
+  effectif assistance-mode (admin assisté ≠ admin SaaS), badge =
+  total réel serveur (plafonné à 20 avant).
+- **Page ADMIN SaaS** : « Tous les rôles » n'envoie plus 'all'
+  (diffusion invisible avant), catégories minuscules alignées préférences,
+  header clarifié (« Diffusions de la plateforme »).
+- **Alertes** : batch mark-all (1 requête), « Nouvelle alerte » réservé
+  RESPONSABLE/ADMIN, **filière requise** (sans elle l'alerte était créée
+  mais invisible — corrigé aussi côté backend 400).
+- **Préférences** : catégories de diffusion exposées (systeme, abonnement,
+  securite, compte) — les diffusions enfin filtrables push/email.
+
+## Qualité
+Go build/vet/gofmt + golangci-lint v2.14.0 (parité CI) **0 issue** sur tous
+les packages modifiés ; frontend eslint **0 erreur** (1 warning préexistant
+sans rapport) + tsc --noEmit **0 erreur** + next build **vert**.
+
+## Livraison
+- d3781e18 (feat principal) → e287c890 (diag temporaire) → 6b091748 (fix
+  RLS 000119 + retrait diag) → 2bd92fa6 (filière requise alertes).
+- **Backend CI verte ×4** ; **Frontend CI verte** (d3781e18, 2bd92fa6).
+- **Render LIVE** : dep-davn3q0473hc73fadmfg → dep-davnbnjm8hqs73c88370 →
+  dep-davnfjtckfvc73bv37c0 → **dep-davnk7oae00c73doion0 (2bd92fa6)**.
+- **Vercel production READY** : dpl_Bz7JVoNUfAMQQcgEn6DmiXJ5Ga9p (d3781e18,
+  toutes les modifs frontend ; les commits backend-only sont skipped par
+  l'Ignored Build Step — normal).
+
+## Preuves (prod, les deux extrémités)
+### Smoke HTTP (Render live, 3 users jetables RESPONSABLE/ENSEIGNANT/ETUDIANT)
+- **24/24 scénarios validés après fixes** (21/24 au premier passage + les 3
+  échecs résolus : RLS RETURNING corrigé par 000119, filière alerte requise,
+  2 artefacts de fixtures re-testés à froid) :
+  - Diffusion RESPONSABLE ETUDIANTS → **201** + visible uniquement par les
+    ETUDIANTS de l'étab ; TOUS → 201 segment ETABLISSEMENT ; ENSEIGNANT →
+    **403** (séparation des pouvoirs) ; RESPONSABLE sur /admin → **403**
+    (la diffusion SaaS reste réservée à l'ADMIN).
+  - **Per-user read prouvé** : l'étudiant lit la diffusion TOUS →
+    l'enseignant la voit ENCORE non lue (avant : lu partagé global).
+  - GET /me **non vide** (avant : TOUJOURS vide — AND/OR) ; mark-all
+    personnel batch → 0 non lue ; DELETE diffusion → disparition unifiée.
+  - POST /api/alertes : **201 + visible** avec filière (avant 405) ;
+    sans filière → **400** ; ENSEIGNANT → **403**.
+  - Préférences partielles : push=false laisse email=true (catégorie
+    vierge), puis email=true seul laisse push=false — vérifié GET.
+  - L'erreur INSERT/RETURNING RLS (42501) a été diagnostiquée via build
+    instrumenté temporaire (détail dans la réponse 500) — retiré ensuite.
+### UI (agent-browser, sect.ftci.fr, production Vercel)
+- Login RESPONSABLE jetable → **sidebar « Diffusions »** présent →
+  /diffusions rendu (formulaire complet + historique) → diffusion
+  « UI : Réunion pédagogique vendredi » **envoyée depuis l'UI** →
+  apparaît en tête de l'historique (badge audience + priorité + date) →
+  **cloche : 6 non lues incluant la diffusion** → « Tout lire » →
+  cloche vide + toast succès → **0 erreur console, 0 page error**
+  (screenshots diffusions-page.png / bell-empty.png).
+### DB
+- schema_migrations : 112…**120** (117 no-op idempotent enregistré au
+  passage) ; migrations validées en transaction ROLLBACK avant application.
+- Orphelin « Promotion accordée 🎓 » purgé ; FK cascade en place.
+
+## Cleanup (résidu final 0)
+Users jetables ×3, NotificationAdmin de test ×3 (+1 orphan plateforme),
+NotificationPreference ×2, Alerte ×3, RefreshToken ×14, AuditLog ×14 —
+supprimés et vérifiés **0 résidu cross-table** ; 16 notifs personnelles
+réelles intactes ; 27 users actifs intacts ; outils jetables (cmd/tmpprobe,
+/tmp/sect-audit) hors repo.
+
+### Stage Summary
+- ✅ 13 bugs du système de notification corrigés (dont 3 critiques de
+  corruption/perte de données plateforme-entière + le « lu partagé » des
+  diffusions + le SSE entièrement mort + /me toujours vide).
+- ✅ Système de DIFFUSION DU RESPONSABLE livré et prouvé en prod, séparé du
+  centre de diffusion SaaS ADMIN (routes, rôles, pages et scoping distincts).
+- ✅ Root cause historique des diffusions en échec identifiée et refermée :
+  RLS sect_app + INSERT…RETURNING (000119) — plus aucune diffusion par rôle
+  ne pouvait être persistée.
+- ✅ Bonus : FK destinataireId CASCADE (suppression d'utilisateur ≠
+  broadcast global) + push unsubscribe ciblé.
+- Dettes restantes inchangées (Devoir FK, affectations « recréer »,
+  sélecteur étudiant frontend, statsAdmin, mobile « envoyé », 401 race,
+  Render→sect_app GRANT audit — le runtime EST déjà sect_app, l'audit GRANT
+  reste à faire).
