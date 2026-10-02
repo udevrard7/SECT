@@ -491,15 +491,32 @@ export function EnseignantDashboard() {
 
   const data: EnseignantStatsData | undefined = statsQuery.data
 
-  // ─── Empty / no data ───
+  // ─── No data ───
   if (!data) {
     return <EmptyDashboard name={name} />
   }
 
-  const hasNoActivity = data.nbEpreuves === 0 && data.pendingCorrections.length === 0
-  if (hasNoActivity) {
-    return <EmptyDashboard name={name} />
-  }
+  // ─── SECT-DASH-VIDE-ANNEE ───
+  // FIX dashboard vide au changement d'année : depuis le scoping par année
+  // (SECT-ANNEE-HISTOIRE-2), nbEpreuves === 0 arrive à CHAQUE bascule
+  // d'année pour un enseignant actif les années précédentes. L'ancienne
+  // garde (nbEpreuves === 0 && pas de corrections) remplaçait alors TOUT le
+  // dashboard — cartes et KPIs incluses — par l'écran d'onboarding
+  // « Créez votre première épreuve », même pour un enseignant avec 10
+  // documents et 28 questions. Même traitement que le dashboard étudiant
+  // (FIX DASHBOARD-NEW-STUDENT) : le dashboard complet rend avec ses KPIs
+  // (honnêtes : 0 épreuve cette année) + une bannière contextuelle, au lieu
+  // d'une page quasi vide perçue comme « ne charge pas ».
+  const anneeVide =
+    data.nbEpreuves === 0 && data.pendingCorrections.length === 0
+  // Enseignant réellement nouveau : RIEN créé, aucune année confondue
+  // (fallback si le backend n'a pas encore déployé nbEpreuvesToutesAnnees :
+  // documents/questions, transversaux, servent de signal d'activité).
+  const enseignantNouveau =
+    anneeVide &&
+    (data.nbEpreuvesToutesAnnees ?? 0) === 0 &&
+    data.nbDocuments === 0 &&
+    data.nbQuestionsTotal === 0
 
   // Badges viennent de useBadges (format BadgeWithProgress), pas du champ
   // basique `badges` renvoyé par /api/stats/enseignant.
@@ -557,6 +574,37 @@ export function EnseignantDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* ─── SECT-DASH-VIDE-ANNEE : bannière contextuelle (nouveau enseignant
+          OU année sélectionnée vide) — le dashboard complet reste affiché ─── */}
+      {anneeVide && (
+        <motion.div variants={itemVariants}>
+          <Card className="border-dashed border-success/40 ds-kente-pattern">
+            <CardContent className="flex flex-col sm:flex-row items-center gap-4 py-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success/10">
+                <ClipboardPen className="h-6 w-6 text-success-text" />
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="text-base font-semibold font-display tracking-tight">
+                  {enseignantNouveau ? 'Bienvenue sur SECT !' : `Aucune épreuve en ${data.annee?.libelle ?? 'cette année'}`}
+                </h3>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {enseignantNouveau
+                    ? 'Vous n\u2019avez pas encore créé d\u2019épreuves. Créez votre première évaluation pour voir vos statistiques.'
+                    : 'Vos épreuves des années précédentes restent visibles via « Toutes les années » dans le sélecteur ci-dessus.'}
+                </p>
+              </div>
+              <Button
+                className="bg-success hover:bg-success/90 shrink-0"
+                onClick={() => router.push('/epreuves')}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Créer une épreuve
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* ─── Quick stats KPIs ─── */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:border-l-4 [&>div]:border-l-primary">

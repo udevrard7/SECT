@@ -31,6 +31,7 @@ import (
 //
 //	{
 //	  nbDocuments, nbQuestionsTotal, nbEpreuves, nbEpreuvesActives,
+//	  nbEpreuvesToutesAnnees,  // SECT-DASH-VIDE-ANNEE : non scopé année
 //	  nbCorrectionsEnAttente,
 //	  pendingCorrections: [{ sessionId, etudiantNom, etudiantEmail,
 //	    epreuveTitre, questionType, questionPreview, submittedAt }],
@@ -214,10 +215,22 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
                 `, anneeCond), append([]any{enseignantID}, anneeArgs...)...).Scan(&nbEpreuvesActives); err != nil {
 			return err
 		}
+		// SECT-DASH-VIDE-ANNEE : épreuves TOUTES ANNÉES (non scopées par
+		// année). Permet au frontend de distinguer un enseignant réellement
+		// nouveau (aucune épreuve jamais créée) d'une année sélectionnée
+		// vide (enseignant actif les années précédentes) — le dashboard
+		// doit garder ses cartes/KPIs dans le second cas.
+		var nbEpreuvesToutesAnnees int
+		if err := tx.QueryRow(ctx, `
+                SELECT count(*) FROM "Epreuve" e WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
+        `, enseignantID).Scan(&nbEpreuvesToutesAnnees); err != nil {
+			return err
+		}
 		stats["nbDocuments"] = nbDocs
 		stats["nbQuestionsTotal"] = nbQuestions
 		stats["nbEpreuves"] = nbEpreuves
 		stats["nbEpreuvesActives"] = nbEpreuvesActives
+		stats["nbEpreuvesToutesAnnees"] = nbEpreuvesToutesAnnees
 
 		// 2. Corrections en attente = sessions SOUMISES (pas encore CORRIGEE/RETOURNEE)
 		//    sur des épreuves de l'enseignant courant.

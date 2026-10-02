@@ -106,6 +106,11 @@ export interface EnseignantStatsData {
   nbQuestionsTotal: number
   nbEpreuves: number
   nbEpreuvesActives: number
+  // SECT-DASH-VIDE-ANNEE : épreuves TOUTES ANNÉES (non scopées). Sert à
+  // distinguer un enseignant réellement nouveau (aucune épreuve jamais
+  // créée) d'une année sélectionnée simplement vide (enseignant actif les
+  // années précédentes). Optionnel : robuste le temps du déploiement backend.
+  nbEpreuvesToutesAnnees?: number
   nbCorrectionsEnAttente: number
   pendingCorrections: PendingCorrection[]
   recentEpreuves: RecentEpreuve[]
