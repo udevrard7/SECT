@@ -2889,3 +2889,106 @@ sélecteur d'année.
   HTTP + UI navigateur), avec zéro résidu de données de test.
 - ✅ Le drift repo↔prod (000117 + is_system() dans 000006) est refermé : le
   repo redevient reproductible depuis les migrations.
+
+---
+Task ID: SECT-DASH-VIDE-ANNEE
+Agent: Z.ai Code (session continuation)
+Task: « Le tableau de bord de l'enseignant n'affiche pas les cartes et KPIs » — investigation profonde + résolution
+
+## Symptôme
+Dashboard enseignant sans cartes ni KPIs en 2026-2027 (année fraîchement
+activée).
+
+## Diagnostic (preuve, pas hypothèse)
+- Sonde RLS read-only sous sect_app avec les claims du VRAI enseignant
+  (ulrichdouh@outlook.com) rejouant les requêtes EXACTES de
+  statsEnseignant : année courante 2026-2027 résolue, **nbEpreuves=0**
+  (5 épreuves toutes en 2024-2025), **nbDocuments=10**,
+  **nbQuestionsTotal=28** (transversaux, non scopés), pendingCorrections=0.
+  L'API répondait donc PARFAITEMENT — le bug était 100% frontend.
+- Cause racine : `enseignant-dashboard.tsx` ligne `hasNoActivity =
+  nbEpreuves === 0 && pendingCorrections.length === 0` → `EmptyDashboard`
+  plein écran (« Créez votre première épreuve »). Garde écrite AVANT le
+  scoping année (SECT-ANNEE-HISTOIRE-2) : à CHAQUE bascule d'année, tout
+  enseignant actif les années précédentes tombait dans l'onboarding —
+  cartes/KPIs cachées alors que Documents/Questions seraient affichés.
+  Le dashboard ÉTUDIANT avait déjà reçu le bon traitement (FIX
+  DASHBOARD-NEW-STUDENT : dashboard complet + bannière) — l'enseignant
+  jamais.
+- Bug n°2 découvert en vérifiant l'UI : le sélecteur « Année académique »
+  affichait « Toutes les années » alors que les stats étaient scopées
+  sur l'année courante. `/api/etablissements/{id}/annee-courante`
+  répondait **403 pour l'ENSEIGNANT** — GetCurrentAnnee autorisait
+  ADMIN/RESPONSABLE/ETUDIANT (SECT-ANNEE-DETTES-4 avait ajouté l'étudiant
+  en oubliant l'enseignant, qui appelle le même endpoint depuis ses
+  dashboards).
+
+## Résolution
+- **fd7566c** :
+  - backend `statsEnseignant` expose `nbEpreuvesToutesAnnees` (compteur
+    non scopé) → distinguer « enseignant réellement nouveau » (rien
+    jamais créé) de « année sélectionnée vide » (actif avant).
+  - frontend `enseignant-dashboard.tsx` : suppression de la garde
+    plein-écran ; dashboard complet (4 StatCards + comparaison N-1 +
+    charts + calendrier + timeline) rend TOUUJOURS dès que data existe,
+    avec bannière contextuelle : nouveau → « Bienvenue sur SECT ! » ;
+    année vide → « Aucune épreuve en {année} — historique via Toutes
+    les années ». Fallback documents/questions si le champ backend
+    n'est pas encore déployé. `use-dashboard.ts` : type étendu.
+- **ac8b2db** :
+  - backend `GetCurrentAnnee` : ENSEIGNANT autorisé (même raisonnement
+    RLS que l'étudiant — Etablissement_select/AnneeAcademique_select
+    filtrent déjà, contrainte même-établissement appliquée).
+  - frontend : pattern list-first (celui d'evaluations/surveillance/
+    mes-epreuves) — l'année courante vient du flag `actif` de la liste,
+    l'endpoint n'est plus qu'un fallback si aucune année active ; cas
+    courant : requête plus envoyée du tout (fini le 403 parasite).
+  - Responsable dashboard laissé tel quel (endpoint autorisé pour ce
+    rôle, nbEtudiants non scopé → garde légitime) ; dashboards
+    étudiant/responsable pourraient adopter list-first en harmonisation
+    future (dette mineure).
+
+## Qualité
+Go build/vet/gofmt + golangci-lint (parité CI) 0 issue ; frontend lint
+0 erreur (1 warning préexistant sans rapport) + build vert. Édition Go
+byte-exact (bytes literals Python — piège du double-encodage UTF-8 sur
+`\xC3\xA9` dans str contourné).
+
+## Livraison
+- fd7566c + ac8b2db poussés → Backend/Frontend CI **vertes ×2**.
+- Render LIVE dep-davfjhgae00c73dh64f0 (fd7566c) puis
+  **dep-davfo03m8hqs73c15gag (ac8b2db)** ; Vercel production READY
+  dpl_3gAL5H4MKjNVFMiHHvyhSaAGKxD4 (fd7566c) puis
+  **dpl_GNXSvrMjzXsVRwZAWfXufpc8bPc9 (ac8b2db)**.
+
+## Preuves (prod, les deux extrémités)
+- HTTP (Render live, enseignant jetable + 1 épreuve 2024-2025 insérée
+  pour simuler le cas « vétéran ») : défaut → annee=2026-2027,
+  nbEpreuves=0, **nbEpreuvesToutesAnnees=1**, slices non-null ;
+  ?all → nbEpreuves=1 (l'épreuve héritée listée) ; explicite 2024-2025
+  → nbEpreuves=1. annee-courante ENSEIGNANT → **200** (2026-2027) ;
+  autre établissement → **403** (contrainte tient).
+- UI (agent-browser, sect.ftci.fr) : login enseignant → dashboard →
+  sélecteur « **2026-2027 · courante** » (fini « Toutes les années »),
+  **4 cartes KPI rendues** (Documents/Questions/Épreuves actives/
+  Corrections en attente), bannière « Aucune épreuve en 2026-2027 » +
+  CTA, comparaison N-1, badges 0/6, charts/calendrier états vides
+  propres ; bascule « Toutes les années » → « Epreuve héritée
+  2024-2025 (test) » apparaît dans Épreuves Récentes + timeline ;
+  retour année courante → KPIs/bannière corrects ; **0 erreur console,
+  0 page error** ; vérification visuelle des 2 screenshots par VLM.
+  Plus AUCUN appel annee-courante en cas courant (list-first).
+- Cleanup : épreuve jetable, user jetable, 3 RefreshToken, 3 AuditLog
+  LOGIN supprimés ; scan exhaustif FK userId-like = 0 ; enseignant réel
+  intact (5 épreuves) ; outils/sondes jetables effacés (URL sect_app
+  jamais commitée).
+
+### Stage Summary
+- ✅ Bug n°1 (cartes/KPIs cachées) : la garde onboarding ne s'applique
+  plus qu'aux enseignants réellement sans activité — vétéran en année
+  vide = dashboard complet + bannière honnête (pattern étudiant).
+- ✅ Bug n°2 (sélecteur mensonger « Toutes les années ») : list-first +
+  rôle ENSEIGNANT autorisé sur annee-courante (parité étudiant).
+- Dettes restantes inchangées (Devoir FK, affectations « recréer »,
+  sélecteur étudiant mes-devoirs/mes-resultats frontend, statsAdmin,
+  mobile « envoyé », Alerte updatedAt, 401 race, Render→sect_app).
