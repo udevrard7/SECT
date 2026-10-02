@@ -3187,3 +3187,23 @@ réelles intactes ; 27 users actifs intacts ; outils jetables (cmd/tmpprobe,
   sélecteur étudiant frontend, statsAdmin, mobile « envoyé », 401 race,
   Render→sect_app GRANT audit — le runtime EST déjà sect_app, l'audit GRANT
   reste à faire).
+
+---
+Task ID: SECT-ORACLE-SCALABILITY-1
+Agent: Main Orchestrator
+Task: Avis d'expert + ADR — migration backend Render → Oracle Cloud (OCI) et roadmap scalabilité « milliers d'étudiants en composition simultanée »
+
+Work Log:
+- Audit de l'existant sans toucher au code : render.yaml (plan **free** → spin-down 15 min + cold start ~50 s + 512 Mo), db.go (pool pgx déjà tuné 5000+ sessions, Neon pooler, DescribeExec pour RLS), loadtest-submit (202 async + jitter déjà implémentés), hubs SSE (heartbeat 45-60 s), 12 workers in-process, Dockerfile durci portable ARM64.
+- Identification du vrai goulot pour l'objectif « milliers simultanés » : ce n'est PAS le backend Go (4 OCPU ARM = ×60 la charge autosave estimée) mais **Neon (CU + PgBouncer)** ; SSE in-memory + workers in-process imposent une seule instance (Phase 3 = split + Redis si besoin).
+- Comparaison des options : Render payant / OCI Always Free / Fly.io-Railway / k3s — décision **OCI eu-frankfurt-1, VM.Standard.A1.Flex 4 OCPU/24 Go ARM64** (0 €/mois, même métro que Neon Francfort ~1-3 ms, zéro cold start, image Docker actuelle portable avec GOARCH=arm64).
+- Architecture cible documentée : GitHub (code+CI/CD Actions+GHCR) + Cloudflare (edge/WAF, déjà client R2) + Vercel (inchangé) + Oracle (backend, Caddy+compose+snapshots) + Neon (inchangé, autoscale).
+- Plan 4 phases sans downtime : 0 provisioning/hardening → 1 shadow + loadtest n=1000/3000 (critère GO : p95<300 ms, 0 5xx) → 2 bascule NEXT_PUBLIC_API_URL + ~10 fallbacks hardcodés sect-zead.onrender.com, Render rollback 2 semaines → 3 scale-out conditionnel (split api/workers, Redis, multi-VM).
+- Écrit docs/desktop/ADR/0006-oracle-backend-migration.md (décision, capacité chiffrée, risques/mitigations, critères de réévaluation) — aucun changement de code applicatif requis par la migration.
+
+Stage Summary:
+- Verdict : stack proposée GitHub+Vercel+Oracle+Neon = **cohérente et recommandée**, raffinée avec Cloudflare devant (api.sect.ftci.fr) ; garder Neon (pas d'Autonomous DB, pas de self-hosted PG, pas de k8s).
+- Le plan free de Render est un bug de prod déguisé (cold start avant épreuve) — la VM always-on OCI l'élimine à 0 €.
+- Contrainte clé documentée : une seule instance du backend tant que SSE hubs/workers/limiter sont in-memory (ne jamais lancer 2 répliques de l'image telle quelle).
+- Dette « Render→sect_app GRANT audit » inchangée et indépendante de l'hébergeur (même DSN).
+- Aucun nouveau projet créé ; ADR poussé sur GitHub avec l'identité udevrard7 <ulrichdouh@gmail.com>.
