@@ -2992,3 +2992,52 @@ byte-exact (bytes literals Python — piège du double-encodage UTF-8 sur
 - Dettes restantes inchangées (Devoir FK, affectations « recréer »,
   sélecteur étudiant mes-devoirs/mes-resultats frontend, statsAdmin,
   mobile « envoyé », Alerte updatedAt, 401 race, Render→sect_app).
+
+---
+Task ID: SECT-NOTIF-DIFFUSION-1
+Agent: Z.ai Code (session continuation)
+Task: « Attaque le système de notification et le système de diffusion qui présentent de nombreux bugs. La diffusion Super admin SaaS doit être différente du système de diffusion du responsable. »
+
+## Diagnostic (audit complet, 20 incohérences recensées, 12 corrigées dans ce lot)
+
+Audit mené sur backend Go + frontend + schéma SQL + données prod (Neon) :
+- Prod : 17 NotificationAdmin (toutes personnelles, 0 diffusion persistée) —
+  le pipeline de diffusion n'a jamais produit une seule ligne visible.
+- Bugs critiques confirmés dans le code :
+  1. GET /me : conditions OR jointes par AND → toujours vide (stub_handlers_real3.go).
+  2. Fanout segment : Dispatch ré-INSÈRE une notif personnelle par destinataire
+     en plus de la ligne segment → doublons pour chaque destinataire.
+  3. POST /admin/mark-all-read (ADMIN, appelé par la cloche) : UPDATE sans scope
+     destinataire → marque TOUTES les notifs de TOUS les utilisateurs.
+  4. DELETE /admin (lues) : supprime les notifs lues de TOUS les utilisateurs.
+  5. Diffusion « Tous les rôles » : le frontend envoie destinataireRole='all',
+     le backend ne valide pas → ligne invisible pour tout le monde.
+  6. POST /api/alertes inexistant (405) : le bouton « Nouvelle alerte » du
+     responsable échoue toujours → fallback local fugace.
+  7. PATCH /me/{id} sans filtre de propriété (RLS bypassée par neondb_owner).
+  8. PATCH /preferences écrase le canal voisin (toggler push réactive email).
+  9. expireLe jamais filtré à la lecture.
+  10. Statut lu partagé sur les lignes de diffusion : un utilisateur qui lit
+      marque la diffusion lue pour tout l'établissement.
+  11. Catégories de diffusion UPPERCASE vs préférences lowercase (jamais
+      filtrables par les users) + SSE hub jamais branché (Register/Unregister
+      sans appelant).
+  12. Responsable : AUCUN système de diffusion propre (seul l'ADMIN SaaS a
+      /admin) — la demande explicite du user.
+
+## Plan de résolution
+- Migration 000118 : table NotificationRead (lu par user sur les diffusions),
+  view NotificationUnified régénérée (lue per-user + expireLe exposé),
+  policies RLS INSERT admin/responsable sur NotificationAdmin.
+- Backend : helper RBAC partagé (liste unifiée + SSE + mark-all), endpoints
+  /me corrigés, mark-all-read personnel batch, admin mutations scopées aux
+  diffusions (destinataireId IS NULL), validation destinataireRole, fanout
+  sans ré-INSERT (SkipInApp), expiration filtrée, préférences partielles,
+  SSE hub branché, POST /api/alertes créé.
+- NOUVEAU : système de diffusion RESPONSABLE séparé — POST/GET/DELETE
+  /api/notifications/diffusion scopé claims.EtablissementID (audience
+  TOUS/ENSEIGNANTS/ETUDIANTS), distinct du centre ADMIN SaaS (/admin).
+- Frontend : cloche corrigée (mark-all personnel pour tous les rôles, rôle
+  effectif assistance, compteur réel), page Diffusions du responsable
+  (/diffusions), page admin SaaS clarifiée + « Tous les rôles » corrigé,
+  catégories harmonisées, alertes batch.
