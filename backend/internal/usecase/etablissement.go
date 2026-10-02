@@ -490,7 +490,11 @@ func (uc *EtablissementUseCase) GetCurrentAnnee(ctx context.Context, claims db.S
 	// SECT-ANNEE-DETTES-4 : ETUDIANT autorisé (fallback /annee-courante du
 	// sélecteur d'année étudiant). RLS Etablissement_select (000028) +
 	// AnneeAcademique_select (000085) filtrent déjà à son établissement.
-	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEtudiant {
+	// SECT-DASH-VIDE-ANNEE : ENSEIGNANT également autorisé (même raisonnement
+	// RLS — les dashboards enseignant appellent ce endpoint comme fallback
+	// du sélecteur d'année ; le rôle avait été oublié lors de
+	// SECT-ANNEE-DETTES-4 → 403 systématique pour l'enseignant).
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEtudiant && role != domain.RoleEnseignant {
 		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
 	}
 	if role == domain.RoleAdmin {
@@ -498,7 +502,7 @@ func (uc *EtablissementUseCase) GetCurrentAnnee(ctx context.Context, claims db.S
 			return nil, err
 		}
 	}
-	if (role == domain.RoleResponsable || role == domain.RoleEtudiant) && claims.EtablissementID != etablissementID {
+	if (role == domain.RoleResponsable || role == domain.RoleEtudiant || role == domain.RoleEnseignant) && claims.EtablissementID != etablissementID {
 		return nil, &domain.UnauthorizedError{Message: "vous ne pouvez consulter que votre établissement"}
 	}
 	return uc.etabRepo.GetCurrentAnnee(ctx, etablissementID)

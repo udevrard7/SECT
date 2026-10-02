@@ -383,6 +383,15 @@ export function EnseignantDashboard() {
     refetchOnWindowFocus: false,
   })
 
+  const annees = anneesQuery.data ?? []
+
+  // SECT-DASH-VIDE-ANNEE : l'année courante vient en PRINCIPAL de la liste
+  // (flag actif=true) — pattern evaluations-page / surveillance-page /
+  // mes-epreuves. /api/etablissements/{id}/annee-courante n'est qu'un
+  // FALLBACK (liste sans année active) : l'endpoint répondait 403 pour
+  // l'ENSEIGNANT (rôle oublié lors de SECT-ANNEE-DETTES-4), le sélecteur
+  // affichait alors « Toutes les années » alors que les stats étaient
+  // scopées sur l'année courante (défaut backend) — incohérence visible.
   const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
     queryKey: ['annee-courante', etabId],
     queryFn: async () => {
@@ -390,14 +399,19 @@ export function EnseignantDashboard() {
       if (!res.ok) throw new Error('Failed to fetch annee courante')
       return res.json()
     },
-    enabled: !!etabId,
+    // Fallback SEULEMENT si la liste existe mais n'a aucune année active —
+    // dans le cas courant (année active posée) la requête n'est même pas
+    // envoyée : plus de 403 parasite dans le réseau/console enseignant.
+    enabled: !!etabId && annees.length > 0 && !annees.some((a) => a.actif),
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   })
 
-  const annees = anneesQuery.data ?? []
+  const anneeActiveId = annees.find((a) => a.actif)?.id ?? null
   const anneeCourante = anneeCouranteQuery.data?.anneeCourante ?? null
-  const anneeId = anneeChoisie ?? anneeCourante?.id ?? ''
+  // Choix utilisateur > année active de la liste > fallback endpoint >
+  // '' (défaut backend = année courante).
+  const anneeId = anneeChoisie ?? anneeActiveId ?? anneeCourante?.id ?? ''
 
   const statsQuery = useEnseignantDashboard(userId, anneeId)
   const badgesQuery = useBadges(userId)
@@ -549,7 +563,7 @@ export function EnseignantDashboard() {
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {/* SECT-ANNEE-HISTOIRE-2 : sélecteur d'année académique (défaut =
               année courante ; « Toutes les années » = historique). */}
-          <Select value={anneeChoisie ?? (anneeCourante?.id || 'all')} onValueChange={setAnneeChoisie}>
+          <Select value={anneeChoisie ?? (anneeActiveId || anneeCourante?.id || 'all')} onValueChange={setAnneeChoisie}>
             <SelectTrigger className="w-full sm:w-[220px]" aria-label="Année académique">
               <SelectValue placeholder="Année académique" />
             </SelectTrigger>
