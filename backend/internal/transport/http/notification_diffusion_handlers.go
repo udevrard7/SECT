@@ -30,6 +30,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -152,6 +153,7 @@ func (s *Server) createDiffusionEtablissement(w http.ResponseWriter, r *http.Req
 
 	created := &notifAdminResponse{}
 	success := false
+	var diagErr string
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		newID := "notif_" + uuid.NewString()
 		row := tx.QueryRow(r.Context(), fmt.Sprintf(`
@@ -172,12 +174,23 @@ func (s *Server) createDiffusionEtablissement(w http.ResponseWriter, r *http.Req
 		if err == nil {
 			created = n
 			success = true
+		} else {
+			diagErr = "scan: " + err.Error()
 		}
 		return nil
 	})
 
 	if !success {
-		writeJSONError(w, http.StatusInternalServerError, "erreur lors de la création de la diffusion")
+		// SECT-NOTIF-DIFFUSION-1 DIAG : l'erreur était avalée (500 opaque).
+		// Log systématique + détail temporaire dans la réponse pour diagnostiquer
+		// l'échec INSERT/scan en production (retiré après résolution).
+		slog.Error("createDiffusionEtablissement: INSERT/scan failed",
+			"userId", claims.UserID, "audience", input.Audience, "detail", diagErr)
+		msg := "erreur lors de la création de la diffusion"
+		if diagErr != "" {
+			msg += " [" + diagErr + "]"
+		}
+		writeJSONError(w, http.StatusInternalServerError, msg)
 		return
 	}
 
