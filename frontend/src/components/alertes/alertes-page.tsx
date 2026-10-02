@@ -539,6 +539,16 @@ export function AlertesPage() {
       toast.error('Champs manquants', { description: 'Le titre et la description sont obligatoires.' })
       return
     }
+    // SECT-NOTIF-DIFFUSION-1 : la filière est REQUISE — une alerte est
+    // rattachée à une filière de l'établissement (c'est ce qui la rend
+    // visible dans la liste, scopée filière/établissement). Avant :
+    // sans filière, l'alerte était créée mais INVISIBLE pour son créateur.
+    if (!formFiliereId) {
+      toast.error('Filière requise', {
+        description: "Sélectionnez la filière concernée par l'alerte — c'est ce qui la rend visible dans votre liste.",
+      })
+      return
+    }
 
     setIsSubmitting(true)
     try {
@@ -969,7 +979,7 @@ export function AlertesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="alerte-filiere">Filière associée</Label>
+              <Label htmlFor="alerte-filiere">Filière associée *</Label>
               <Select value={formFiliereId} onValueChange={setFormFiliereId}>
                 <SelectTrigger id="alerte-filiere">
                   <SelectValue placeholder="Aucune filière" />

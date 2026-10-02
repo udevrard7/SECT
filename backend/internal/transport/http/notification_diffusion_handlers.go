@@ -350,6 +350,15 @@ func (s *Server) alerteCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECT-NOTIF-DIFFUSION-1 : une alerte créée par un RESPONSABLE (ou ADMIN
+	// assistance) DOIT cibler une filière de SON établissement — le scope de
+	// lecture (alertesListReal) est personnel / filière / épreuve : une alerte
+	// sans filière serait créée mais INVISIBLE pour son créateur.
+	if claims.EtablissementID != "" && (input.FiliereID == nil || *input.FiliereID == "") {
+		writeJSONError(w, http.StatusBadRequest, "filiereId requis : sélectionnez la filière concernée — c'est ce qui rend l'alerte visible dans votre liste")
+		return
+	}
+
 	// Scope filière : doit appartenir à l'établissement des claims (quand un
 	// établissement est rattaché à la session).
 	if input.FiliereID != nil && *input.FiliereID != "" && claims.EtablissementID != "" {
