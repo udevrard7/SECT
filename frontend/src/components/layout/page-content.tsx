@@ -54,6 +54,9 @@ import { ResponsableParametresPage } from '@/components/responsable/responsable-
 // (Années + Clôture) qui monte `ClotureAnneePage` en interne via
 // `cloture-annee-page.tsx`. Plus besoin d'importer `ClotureAnneePage` ici.
 import { AnneeAcademiquePage } from '@/components/responsable/annee-academique-page'
+// SECT-NOTIF-DIFFUSION-1 : système de diffusion du RESPONSABLE (séparé du
+// centre de diffusion SaaS ADMIN /notifications).
+import { DiffusionsPage } from '@/components/responsable/diffusions-page'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import type { PageId } from '@/lib/routes'
@@ -110,6 +113,8 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
   // SECT-ANNEE-MERGE-1 : la page /annee-academique remplace /cloture-annee.
   // Wrapper à 2 onglets (Années + Clôture). Voir annee-academique-page.tsx.
   'annee-academique': AnneeAcademiquePage,
+  // SECT-NOTIF-DIFFUSION-1 : diffusion d'établissement du RESPONSABLE.
+  diffusions: DiffusionsPage,
 }
 
 // ─── Legacy redirect mappings ───

@@ -763,9 +763,16 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Construire la clause WHERE dynamique.
+	// SECT-NOTIF-DIFFUSION-1 : le centre ADMIN ne liste que les DIFFUSIONS
+	// (destinataireId IS NULL). Avant : la page listait AUSSI les
+	// notifications personnelles de tous les utilisateurs de la plateforme
+	// (privacy multi-tenant) — et « Tout lire »/« Supprimer les lues »
+	// agissaient dessus par la même occasion.
 	var whereClauses []string
 	var args []any
 	argIdx := 1
+
+	whereClauses = append(whereClauses, `"destinataireId" IS NULL`)
 
 	switch luParam {
 	case "false":
@@ -802,9 +809,10 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
 	var totalCount, unreadCount int
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// NOTIFICATIONS-FIX-N5 : count total + count unread (sans filtres lu/type/etc).
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "NotificationAdmin"`).Scan(&totalCount)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "NotificationAdmin" WHERE "lu" = false`).Scan(&unreadCount)
+		// NOTIFICATIONS-FIX-N5 + SECT-NOTIF-DIFFUSION-1 : counts scopés aux
+		// DIFFUSIONS (cohérents avec la liste ci-dessous).
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "NotificationAdmin" WHERE "destinataireId" IS NULL`).Scan(&totalCount)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "NotificationAdmin" WHERE "destinataireId" IS NULL AND "lu" = false`).Scan(&unreadCount)
 
 		args = append(args, limit)
 		query := fmt.Sprintf(`

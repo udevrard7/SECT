@@ -453,6 +453,10 @@ export function AlertesPage() {
   // alertes actuellement filtrées (cohérent avec les KPIs filtrés et l'état
   // disabled du bouton basé sur `nonLuesCount` qui reflète le subset filtré).
   // Avant P6, elle opérait sur l'intégralité du tableau `alertes`.
+  //
+  // SECT-NOTIF-DIFFUSION-1 : 1 batch POST /api/alertes/mark-all-read au lieu
+  // de N PATCH individuels en parallèle (le endpoint batch existe déjà — la
+  // cloche l'utilise ; le scope serveur couvre tout le périmètre utilisateur).
   const handleMarkAllAsRead = async () => {
     setBulkLoading(true)
     try {
@@ -467,17 +471,17 @@ export function AlertesPage() {
         toast.success('Toutes les alertes marquées comme lues')
         return
       }
-      await Promise.all(
-        unreadAlertes.map((a) =>
-          fetch(`/api/alertes/${a.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lue: true }),
-          })
-        )
-      )
+
+      const res = await fetch('/api/alertes/mark-all-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!res.ok) throw new Error('Erreur')
+
       updateAlertesCache(markUnread)
-      toast.success('Toutes les alertes marquées comme lues')
+      const data = await res.json().catch(() => ({}))
+      const updated = typeof data.updated === 'number' ? data.updated : unreadAlertes.length
+      toast.success(`${updated} alerte${updated > 1 ? 's' : ''} marquée${updated > 1 ? 's' : ''} comme lue${updated > 1 ? 's' : ''}`)
     } catch {
       toast.error('Erreur', { description: 'Impossible de marquer toutes les alertes comme lues.' })
     } finally {
@@ -625,16 +629,23 @@ export function AlertesPage() {
             <CheckCircle2 className="h-4 w-4 mr-1" />
             Tout résoudre
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              resetForm()
-              setCreateDialogOpen(true)
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Nouvelle alerte
-          </Button>
+          {/* SECT-NOTIF-DIFFUSION-1 : « Nouvelle alerte » réservé aux rôles qui
+              gèrent un établissement (RESPONSABLE, ADMIN) — le POST /api/alertes
+              est désormais réservé à ces rôles côté backend, et un ENSEIGNANT
+              ou ETUDIANT créant une alerte filière ne la reverrait jamais
+              (scope de lecture). */}
+          {(user?.role === 'RESPONSABLE' || user?.role === 'ADMIN') && (
+            <Button
+              size="sm"
+              onClick={() => {
+                resetForm()
+                setCreateDialogOpen(true)
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Nouvelle alerte
+            </Button>
+          )}
         </div>
       </div>
 

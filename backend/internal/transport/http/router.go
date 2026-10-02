@@ -935,6 +935,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Patch("/{id}", s.alerteUpdate)
 			// N5 FIX : batch mark-all-read (1 requête au lieu de N).
 			r.Post("/mark-all-read", s.alertesMarkAllRead)
+			// SECT-NOTIF-DIFFUSION-1 (bug #6) : route POST / manquante — le bouton
+			// « Nouvelle alerte » de /alertes faisait 405 systématique (fallback
+			// local fugace). Réservé RESPONSABLE + ADMIN (gestion d'établissement).
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Post("/", s.alerteCreate)
 		})
 
 		// SURVEILLANCE-FIX-2 S13 : RequireRole ENSEIGNANT/ADMIN/RESPONSABLE
@@ -996,6 +1000,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/stream", s.notificationsStream)
 			r.Get("/preferences", s.notificationsPreferencesGet)
 			r.Patch("/preferences", s.notificationsPreferencesUpdate)
+			// SECT-NOTIF-DIFFUSION-1 : batch mark-all-read PERSONNEL — 1 requête
+			// au lieu de N PATCH /me/{id}. Remplace surtout l'appel ADMIN au
+			// mark-all-read global qui corrompait les notifications de TOUS les
+			// utilisateurs de la plateforme.
+			r.Post("/me/mark-all-read", s.notificationsMeMarkAllRead)
 			// /admin : réservé ADMIN, mutations (POST/PATCH/DELETE).
 			r.With(middleware.RequireRole("ADMIN")).Get("/admin", s.notificationsAdminReal)
 			r.With(middleware.RequireRole("ADMIN")).Post("/admin", s.createNotificationAdmin)
@@ -1004,6 +1013,15 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ADMIN")).Delete("/admin/{id}", s.deleteNotificationAdmin)
 			// NOTIFICATIONS-FIX-N8 : suppression en masse des notifications lues.
 			r.With(middleware.RequireRole("ADMIN")).Delete("/admin", s.deleteAllReadAdmin)
+			// SECT-NOTIF-DIFFUSION-1 : SYSTÈME DE DIFFUSION DU RESPONSABLE —
+			// séparé du centre de diffusion SaaS de l'ADMIN (/admin ci-dessus).
+			// L'établissement est TOUJOURS tiré des claims JWT (jamais du body) :
+			// un responsable ne peut diffuser qu'à SON établissement (audiences
+			// TOUS / ENSEIGNANTS / ETUDIANTS). L'ADMIN en mode assistance agit
+			// comme responsable de l'établissement visité.
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Post("/diffusion", s.createDiffusionEtablissement)
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Get("/diffusion", s.listDiffusionsEtablissement)
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Delete("/diffusion/{id}", s.deleteDiffusionEtablissement)
 		})
 
 		// ABONNEMENTS-FIX-A4 : RequireRole("ADMIN") sur toutes les routes

@@ -107,8 +107,22 @@ func (s *Server) pushUnsubscribeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// SECT-NOTIF-DIFFUSION-1 : désabonnement ciblé. Avant : le DELETE
+	// supprimait TOUTES les subscriptions de l'utilisateur (tous navigateurs
+	// et appareils confondus) — un désabonnement sur un seul appareil tuait
+	// le push partout. Si le body fournit un endpoint, on ne supprime que
+	// celui-ci ; sinon (ancien comportement d'appel), on supprime tout.
+	var body struct {
+		Endpoint string `json:"endpoint"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		_, _ = tx.Exec(r.Context(), `DELETE FROM "PushSubscription" WHERE "userId" = $1`, claims.UserID)
+		if body.Endpoint != "" {
+			_, _ = tx.Exec(r.Context(), `DELETE FROM "PushSubscription" WHERE "userId" = $1 AND "endpoint" = $2`, claims.UserID, body.Endpoint)
+		} else {
+			_, _ = tx.Exec(r.Context(), `DELETE FROM "PushSubscription" WHERE "userId" = $1`, claims.UserID)
+		}
 		return nil
 	})
 

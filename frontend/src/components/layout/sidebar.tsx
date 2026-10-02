@@ -35,6 +35,7 @@ import {
   ScrollText,
   HelpCircle,
   CalendarClock,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -95,6 +96,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ScrollText,
   HelpCircle,
   CalendarClock,
+  Megaphone,
 }
 
 export function AppSidebar() {

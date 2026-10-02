@@ -60,7 +60,13 @@ type notifAdminResponse struct {
 	CreatedAt                   string  `json:"createdAt"`
 }
 
-func scanNotifAdmin(row pgx.Row) (*notifAdminResponse, error) {
+// notifAdminScanner est satisfait par pgx.Row ET pgx.Rows (même méthode
+// Scan) — permet de scanner indifféremment QueryRow et itérations de
+// listes (SECT-NOTIF-DIFFUSION-1 : réutilisé par la liste des diffusions
+// de l'établissement).
+type notifAdminScanner interface{ Scan(dest ...any) error }
+
+func scanNotifAdmin(row notifAdminScanner) (*notifAdminResponse, error) {
 	n := &notifAdminResponse{}
 	var createdAt time.Time
 	var expireLe *time.Time
@@ -129,8 +135,26 @@ func (s *Server) createNotificationAdmin(w http.ResponseWriter, r *http.Request)
 	if input.Priorite == "" {
 		input.Priorite = "NORMALE"
 	}
+	// SECT-NOTIF-DIFFUSION-1 : catégories CANONIQUES en minuscules (alignées
+	// sur le dispatcher + les préférences NotificationPreference — avant :
+	// "SYSTEME" UPPERCASE ne matchait JAMAIS une catégorie de préférence, les
+	// utilisateurs ne pouvaient pas filtrer les diffusions).
 	if input.Categorie == "" {
-		input.Categorie = "SYSTEME"
+		input.Categorie = "systeme"
+	}
+	input.Categorie = strings.ToLower(input.Categorie)
+
+	// SECT-NOTIF-DIFFUSION-1 : validation de destinataireRole contre l'enum
+	// Role. Avant : le frontend envoyait "all" (« Tous les rôles ») → ligne
+	// stockée mais invisible pour tout rôle (aucun match) → diffusion fantôme.
+	validRoles := map[string]bool{
+		"ADMIN": true, "RESPONSABLE": true, "ENSEIGNANT": true, "ETUDIANT": true,
+	}
+	if input.DestinataireRole != nil && *input.DestinataireRole != "" {
+		if !validRoles[*input.DestinataireRole] {
+			writeJSONError(w, http.StatusBadRequest, "destinataireRole invalide (ADMIN, RESPONSABLE, ENSEIGNANT, ETUDIANT) — omettez le champ pour diffuser à tous les rôles")
+			return
+		}
 	}
 
 	// SECT-NOTIF-SEGMENT-1 : valider le segment si fourni.
@@ -203,10 +227,14 @@ func (s *Server) createNotificationAdmin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// SECT-NOTIF-SEGMENT-1 : fanout dispatcher vers les destinataires du segment.
-	// Non-bloquant : si le dispatcher échoue, la notif est quand même persistée
-	// et visible dans la cloche au prochain polling.
-	if s.notifDispatcher != nil && input.DestinataireSegment != nil && *input.DestinataireSegment != "" && *input.DestinataireSegment != "ALL" {
+	// SECT-NOTIF-SEGMENT-1 + SECT-NOTIF-DIFFUSION-1 : fanout des CANAUX
+	// (SSE + push + email + FCM) vers les destinataires de la diffusion.
+	// Non-bloquant : si le fanout échoue, la notif reste persistée et visible
+	// dans la cloche au prochain polling. Déclenché pour TOUTE diffusion
+	// (destinataireId NULL) : segment, rôle (global ou scopé établissement)
+	// et broadcast global — avant, seul un segment ≠ ALL déclenchait le
+	// fanout : une diffusion par rôle n'avait ni push ni temps réel.
+	if s.notifDispatcher != nil && (input.DestinataireID == nil || *input.DestinataireID == "") {
 		go s.fanoutSegmentNotification(created)
 	}
 
@@ -236,18 +264,38 @@ func (s *Server) fanoutSegmentNotification(n *notifAdminResponse) {
 	if n.DestinataireSegment != nil {
 		segment = *n.DestinataireSegment
 	}
+	role := ""
+	if n.DestinataireRole != nil {
+		role = *n.DestinataireRole
+	}
 
-	switch segment {
-	case "B2B_RESPONSABLES":
-		// Tous les RESPONSABLE rattachés à un établissement B2B (type ≠ PERSONNEL).
+	// SECT-NOTIF-DIFFUSION-1 : la diffusion RESPONSABLE stocke
+	// destinataireRole + destinataireEtablissementId (audience
+	// ENSEIGNANTS/ETUDIANTS de SON établissement). Un rôle sans établissement
+	// reste une diffusion globale SaaS (admin). Les deux doivent être fanoutés
+	// vers les destinataires — avant, seul un segment déclenchait le fanout.
+	if role != "" && n.DestinataireEtablissementID != nil && *n.DestinataireEtablissementID != "" {
 		query = `SELECT u."id", u."email", u."name"
+		         FROM "User" u
+		         WHERE u."etablissementId" = $1 AND u."actif" = true AND u."role" = $2`
+		args = append(args, *n.DestinataireEtablissementID, role)
+	} else if role != "" {
+		query = `SELECT u."id", u."email", u."name"
+		         FROM "User" u
+		         WHERE u."role" = $1 AND u."actif" = true`
+		args = append(args, role)
+	} else {
+		switch segment {
+		case "B2B_RESPONSABLES":
+			// Tous les RESPONSABLE rattachés à un établissement B2B (type ≠ PERSONNEL).
+			query = `SELECT u."id", u."email", u."name"
                          FROM "User" u
                          JOIN "Etablissement" e ON u."etablissementId" = e."id"
                          WHERE u."role" = 'RESPONSABLE' AND u."actif" = true
                            AND e."type" IS DISTINCT FROM 'PERSONNEL'`
-	case "B2C_SOLO":
-		// Enseignants B2C (étab PERSONNEL) avec plan GRATUIT.
-		query = `SELECT u."id", u."email", u."name"
+		case "B2C_SOLO":
+			// Enseignants B2C (étab PERSONNEL) avec plan GRATUIT.
+			query = `SELECT u."id", u."email", u."name"
                          FROM "User" u
                          JOIN "Etablissement" e ON u."etablissementId" = e."id"
                          JOIN "Abonnement" a ON a."etablissementId" = e."id"
@@ -256,9 +304,9 @@ func (s *Server) fanoutSegmentNotification(n *notifAdminResponse) {
                            AND e."type" = 'PERSONNEL'
                            AND p."type" = 'GRATUIT'
                            AND a."statut" IN ('ACTIF', 'ESSAI')`
-	case "B2C_PREMIUM":
-		// Enseignants B2C (étab PERSONNEL) avec plan PROFESSIONNEL.
-		query = `SELECT u."id", u."email", u."name"
+		case "B2C_PREMIUM":
+			// Enseignants B2C (étab PERSONNEL) avec plan PROFESSIONNEL.
+			query = `SELECT u."id", u."email", u."name"
                          FROM "User" u
                          JOIN "Etablissement" e ON u."etablissementId" = e."id"
                          JOIN "Abonnement" a ON a."etablissementId" = e."id"
@@ -267,24 +315,31 @@ func (s *Server) fanoutSegmentNotification(n *notifAdminResponse) {
                            AND e."type" = 'PERSONNEL'
                            AND p."type" = 'PROFESSIONNEL'
                            AND a."statut" IN ('ACTIF', 'ESSAI')`
-	case "B2C_ALL":
-		// Tous les enseignants B2C (étab PERSONNEL), tous plans confondus.
-		query = `SELECT u."id", u."email", u."name"
+		case "B2C_ALL":
+			// Tous les enseignants B2C (étab PERSONNEL), tous plans confondus.
+			query = `SELECT u."id", u."email", u."name"
                          FROM "User" u
                          JOIN "Etablissement" e ON u."etablissementId" = e."id"
                          WHERE u."role" = 'ENSEIGNANT' AND u."actif" = true
                            AND e."type" = 'PERSONNEL'`
-	case "ETABLISSEMENT":
-		// Tous les users actifs d'un établissement précis.
-		if n.DestinataireEtablissementID == nil || *n.DestinataireEtablissementID == "" {
-			return
-		}
-		query = `SELECT u."id", u."email", u."name"
+		case "ETABLISSEMENT":
+			// Tous les users actifs d'un établissement précis.
+			if n.DestinataireEtablissementID == nil || *n.DestinataireEtablissementID == "" {
+				return
+			}
+			query = `SELECT u."id", u."email", u."name"
                          FROM "User" u
                          WHERE u."etablissementId" = $1 AND u."actif" = true`
-		args = append(args, *n.DestinataireEtablissementID)
-	default:
-		return
+			args = append(args, *n.DestinataireEtablissementID)
+		case "ALL", "":
+			// SECT-NOTIF-DIFFUSION-1 : diffusion globale (aucun segment, aucun rôle)
+			// → tous les utilisateurs actifs reçoivent les canaux temps réel/push.
+			query = `SELECT u."id", u."email", u."name"
+		         FROM "User" u
+		         WHERE u."actif" = true`
+		default:
+			return
+		}
 	}
 
 	// RLS-ACTUAL-SWITCH-1 : lecture via claims système (User_select is_system,
@@ -331,16 +386,23 @@ func (s *Server) fanoutSegmentNotification(n *notifAdminResponse) {
 		count++
 
 		event := notification.Event{
-			UserID:      userID,
-			Type:        n.Type,
-			Titre:       n.Titre,
-			Message:     n.Message,
-			Categorie:   n.Categorie,
-			Priorite:    strings.ToLower(n.Priorite),
+			UserID:    userID,
+			Type:      n.Type,
+			Titre:     n.Titre,
+			Message:   n.Message,
+			Categorie: n.Categorie,
+			// SECT-NOTIF-DIFFUSION-1 : casse canonique UPPERCASE conservée —
+			// le mapping severity URGENTE→CRITICAL / HAUTE→WARNING de la VIEW
+			// unifiée exige "URGENTE"/"HAUTE" (pas "urgente"/"haute").
+			Priorite:    n.Priorite,
 			ActionURL:   actionURL,
 			ActionLabel: actionLabel,
 			Icone:       icone,
 			ExpiresAt:   expireAt,
+			// SECT-NOTIF-DIFFUSION-1 : la ligne de diffusion existe déjà en DB
+			// (partagée, visible via la VIEW) — ne PAS re-INSÉRER une copie
+			// personnelle par destinataire (doublons dans la cloche).
+			SkipInApp: true,
 		}
 
 		// Email optionnel pour les annonces URGENTES/HAUTES.
@@ -397,8 +459,11 @@ func (s *Server) updateNotificationAdmin(w http.ResponseWriter, r *http.Request)
 	updated := &notifAdminResponse{}
 	success := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// SECT-NOTIF-DIFFUSION-1 : l'ADMIN ne gère que les DIFFUSIONS
+		// (destinataireId NULL) — jamais les notifications personnelles.
 		row := tx.QueryRow(r.Context(), fmt.Sprintf(`
-                        UPDATE "NotificationAdmin" SET "lu" = $2 WHERE "id" = $1
+                        UPDATE "NotificationAdmin" SET "lu" = $2
+                        WHERE "id" = $1 AND "destinataireId" IS NULL
                         RETURNING %s
                 `, notifAdminColumns), id, newLuValue)
 		n, err := scanNotifAdmin(row)
@@ -435,7 +500,9 @@ func (s *Server) deleteNotificationAdmin(w http.ResponseWriter, r *http.Request)
 
 	deleted := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(r.Context(), `DELETE FROM "NotificationAdmin" WHERE "id" = $1`, id)
+		// SECT-NOTIF-DIFFUSION-1 : suppression limitée aux diffusions —
+		// jamais les notifications personnelles des utilisateurs.
+		tag, err := tx.Exec(r.Context(), `DELETE FROM "NotificationAdmin" WHERE "id" = $1 AND "destinataireId" IS NULL`, id)
 		if err == nil && tag.RowsAffected() > 0 {
 			deleted = true
 		}
@@ -470,7 +537,11 @@ func (s *Server) markAllReadAdmin(w http.ResponseWriter, r *http.Request) {
 	var args []any
 	argIdx := 1
 
-	whereClauses = append(whereClauses, fmt.Sprintf(`"lu" = $%d`, argIdx))
+	// SECT-NOTIF-DIFFUSION-1 (CRITIQUE) : scope aux DIFFUSIONS uniquement
+	// (destinataireId IS NULL). Avant : UPDATE sans scope destinataire — le
+	// « Tout lire » ADMIN marquait TOUTES les notifications non lues de TOUS
+	// les utilisateurs de la plateforme (corruption globale).
+	whereClauses = append(whereClauses, fmt.Sprintf(`"lu" = $%d AND "destinataireId" IS NULL`, argIdx))
 	args = append(args, false)
 	argIdx++
 
@@ -531,7 +602,11 @@ func (s *Server) deleteAllReadAdmin(w http.ResponseWriter, r *http.Request) {
 
 	deletedCount := 0
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(r.Context(), `DELETE FROM "NotificationAdmin" WHERE "lu" = true`)
+		// SECT-NOTIF-DIFFUSION-1 (CRITIQUE) : suppression limitée aux
+		// DIFFUSIONS lues. Avant : DELETE WHERE lu=true sans scope — la corbeille
+		// SaaS détruisait l'historique personnel lu de TOUS les utilisateurs
+		// (perte de données massive).
+		tag, err := tx.Exec(r.Context(), `DELETE FROM "NotificationAdmin" WHERE "lu" = true AND "destinataireId" IS NULL`)
 		if err == nil {
 			deletedCount = int(tag.RowsAffected())
 		}

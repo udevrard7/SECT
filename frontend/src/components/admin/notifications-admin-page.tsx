@@ -124,7 +124,12 @@ interface NotificationTemplate {
 
 const NOTIFICATION_TYPES = ['INFO', 'WARNING', 'ERROR', 'SUCCESS', 'BROADCAST'] as const
 const PRIORITIES = ['BASSE', 'NORMALE', 'HAUTE', 'URGENTE'] as const
-const CATEGORIES = ['SYSTEME', 'ABONNEMENT', 'SECURITE', 'EVALUATION', 'COMPTE'] as const
+// SECT-NOTIF-DIFFUSION-1 : catégories CANONIQUES en minuscules — alignées
+// sur le dispatcher et les préférences NotificationPreference. Avant :
+// UPPERCASE (« SYSTEME ») ne matchait AUCUNE catégorie de préférence → les
+// utilisateurs ne pouvaient pas filtrer les diffusions via leurs préférences.
+// Le backend normalise aussi en minuscules à l'insertion.
+const CATEGORIES = ['systeme', 'abonnement', 'securite', 'evaluation', 'compte'] as const
 const ROLES = ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'] as const
 
 const TEMPLATES: NotificationTemplate[] = [
@@ -135,7 +140,7 @@ const TEMPLATES: NotificationTemplate[] = [
     message: 'Bonjour {{nom}}, votre abonnement {{planNom}} arrive à expiration le {{dateExpiration}}. Pensez à renouveler pour continuer à bénéficier de toutes les fonctionnalités de SECT.',
     type: 'WARNING',
     priorite: 'HAUTE',
-    categorie: 'ABONNEMENT',
+    categorie: 'abonnement',
     variables: ['dateExpiration', 'nom', 'planNom'],
   },
   {
@@ -145,7 +150,7 @@ const TEMPLATES: NotificationTemplate[] = [
     message: 'Bonjour {{nom}}, les résultats de l\'épreuve "{{epreuveTitre}}" sont désormais disponibles. Consultez votre note et les commentaires de votre enseignant.',
     type: 'SUCCESS',
     priorite: 'NORMALE',
-    categorie: 'EVALUATION',
+    categorie: 'evaluation',
     variables: ['nom', 'epreuveTitre'],
   },
   {
@@ -155,7 +160,7 @@ const TEMPLATES: NotificationTemplate[] = [
     message: 'Une activité suspecte a été détectée sur votre compte. Si vous n\'êtes pas à l\'origine de cette activité, veuillez modifier votre mot de passe immédiatement et contacter le support.',
     type: 'ERROR',
     priorite: 'URGENTE',
-    categorie: 'SECURITE',
+    categorie: 'securite',
     variables: [],
   },
   {
@@ -165,7 +170,7 @@ const TEMPLATES: NotificationTemplate[] = [
     message: 'Bienvenue {{nom}} ! Votre compte a été créé avec succès. Découvrez toutes les fonctionnalités de la plateforme SECT pour gérer vos évaluations et suivre vos progrès.',
     type: 'INFO',
     priorite: 'NORMALE',
-    categorie: 'COMPTE',
+    categorie: 'compte',
     variables: ['nom'],
   },
   {
@@ -175,7 +180,7 @@ const TEMPLATES: NotificationTemplate[] = [
     message: 'Nous avons bien reçu votre paiement de {{montant}} pour l\'abonnement {{planNom}}. Votre accès est maintenant actif jusqu\'au {{dateFin}}.',
     type: 'SUCCESS',
     priorite: 'NORMALE',
-    categorie: 'ABONNEMENT',
+    categorie: 'abonnement',
     variables: ['montant', 'planNom', 'dateFin'],
   },
 ]
@@ -267,14 +272,19 @@ function getPriorityBadge(priorite: string) {
 function getCategoryLabel(categorie: string) {
   switch (categorie) {
     case 'SYSTEME':
+    case 'systeme':
       return 'Système'
     case 'ABONNEMENT':
+    case 'abonnement':
       return 'Abonnement'
     case 'SECURITE':
+    case 'securite':
       return 'Sécurité'
     case 'EVALUATION':
+    case 'evaluation':
       return 'Évaluation'
     case 'COMPTE':
+    case 'compte':
       return 'Compte'
     default:
       return categorie
@@ -284,14 +294,19 @@ function getCategoryLabel(categorie: string) {
 function getCategoryIcon(categorie: string) {
   switch (categorie) {
     case 'SYSTEME':
+    case 'systeme':
       return <Settings className="h-3.5 w-3.5" />
     case 'ABONNEMENT':
+    case 'abonnement':
       return <CreditCard className="h-3.5 w-3.5" />
     case 'SECURITE':
+    case 'securite':
       return <Shield className="h-3.5 w-3.5" />
     case 'EVALUATION':
+    case 'evaluation':
       return <BookOpen className="h-3.5 w-3.5" />
     case 'COMPTE':
+    case 'compte':
       return <User className="h-3.5 w-3.5" />
     default:
       return <Tag className="h-3.5 w-3.5" />
@@ -414,7 +429,8 @@ export function NotificationsAdminPage() {
   const [formMessage, setFormMessage] = useState('')
   const [formType, setFormType] = useState('BROADCAST')
   const [formPriorite, setFormPriorite] = useState('NORMALE')
-  const [formCategorie, setFormCategorie] = useState('SYSTEME')
+  // SECT-NOTIF-DIFFUSION-1 : catégorie canonique minuscule.
+  const [formCategorie, setFormCategorie] = useState('systeme')
   const [formDestinataireRole, setFormDestinataireRole] = useState('')
   // SECT-NOTIF-SEGMENT-1 : ciblage par segment d'abonnement (B2B/B2C/étab)
   const [formDestinataireSegment, setFormDestinataireSegment] = useState('')
@@ -456,7 +472,7 @@ export function NotificationsAdminPage() {
   const [templateFormMessage, setTemplateFormMessage] = useState('')
   const [templateFormType, setTemplateFormType] = useState('INFO')
   const [templateFormPriorite, setTemplateFormPriorite] = useState('NORMALE')
-  const [templateFormCategorie, setTemplateFormCategorie] = useState('SYSTEME')
+  const [templateFormCategorie, setTemplateFormCategorie] = useState('systeme')
   const [templates, setTemplates] = useState<NotificationTemplate[]>([...TEMPLATES])
 
   // ─── Delete confirmation state ───
@@ -602,7 +618,12 @@ export function NotificationsAdminPage() {
         categorie: formCategorie,
       }
 
-      if (formDestinataireRole) {
+      // SECT-NOTIF-DIFFUSION-1 (bug #5) : « Tous les rôles » = NE PAS envoyer
+      // destinataireRole. Avant : le select envoyait 'all' tel quel → ligne
+      // stockée avec destinataireRole='all' qui ne matche AUCUN rôle →
+      // diffusion invisible pour tout le monde (le backend la rejette
+      // désormais aussi en 400).
+      if (formDestinataireRole && formDestinataireRole !== 'all') {
         body.destinataireRole = formDestinataireRole
       }
       // SECT-NOTIF-SEGMENT-1 : envoi du segment si défini (mutuellement exclusif avec destinataireRole)
@@ -644,7 +665,7 @@ export function NotificationsAdminPage() {
       setFormMessage('')
       setFormType('BROADCAST')
       setFormPriorite('NORMALE')
-      setFormCategorie('SYSTEME')
+      setFormCategorie('systeme')
       setFormDestinataireRole('')
       setFormDestinataireSegment('')
       setFormDestinataireEtablissementId('')
@@ -749,10 +770,12 @@ export function NotificationsAdminPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <Bell className="h-7 w-7 text-success-text" />
-            Centre de Notifications
+            Diffusions de la plateforme
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Gérez les notifications et diffusions de la plateforme
+            Centre de diffusion SaaS : annonces globales, par rôle, par segment
+            d&apos;abonnement ou vers un établissement. Les responsables
+            d&apos;établissement disposent de leur propre page « Diffusions ».
           </p>
         </div>
       </div>

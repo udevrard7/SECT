@@ -62,10 +62,39 @@ const CATEGORIES: { key: string; label: string; description: string; icon: strin
     description: 'Alertes système, accès établissement, sécurité',
     icon: 'Shield',
   },
+  // SECT-NOTIF-DIFFUSION-1 : catégories des DIFFUSIONS (SaaS + établissement).
+  // Avant, les diffusions partaient avec des catégories UPPERCASE (« SYSTEME »)
+  // qui ne matchaient AUCUNE catégorie de préférence → impossible de les
+  // filtrer. Les catégories sont désormais canoniques minuscules côté
+  // dispatcher/insertion — exposées ici pour être désactivables.
+  {
+    key: 'systeme',
+    label: 'Système & plateforme',
+    description: 'Annonces de la plateforme (maintenance, nouveautés)',
+    icon: 'Settings',
+  },
+  {
+    key: 'abonnement',
+    label: 'Abonnement',
+    description: 'Facturation, renouvellements, expiration de plan',
+    icon: 'CreditCard',
+  },
+  {
+    key: 'securite',
+    label: 'Sécurité',
+    description: 'Alertes de sécurité sur votre compte',
+    icon: 'Lock',
+  },
+  {
+    key: 'compte',
+    label: 'Compte',
+    description: 'Bienvenue, vérifications, changements de compte',
+    icon: 'UserCheck',
+  },
   {
     key: 'general',
     label: 'Général',
-    description: 'Notifications diverses non classées',
+    description: 'Notifications diverses non classées (dont diffusions d\'établissement sans catégorie)',
     icon: 'Bell',
   },
 ]

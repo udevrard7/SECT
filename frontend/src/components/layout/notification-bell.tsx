@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/popover'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
-import { PAGE_ROUTES } from '@/lib/routes'
+import { PAGE_ROUTES, getEffectiveRole } from '@/lib/routes'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -154,6 +154,10 @@ export function NotificationBell({ className }: { className?: string }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
+  // SECT-NOTIF-DIFFUSION-1 : compteur réel hors LIMIT — le backend expose
+  // désormais `totalUnread` via count(*) OVER() ; avant, le badge était
+  // plafonné à la fenêtre de 20 fetchée (sous-comptage au-delà).
+  const [unreadTotal, setUnreadTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
 
   const unreadCount = notifications.filter((n) => !n.lue).length
@@ -162,12 +166,17 @@ export function NotificationBell({ className }: { className?: string }) {
   // (Le SSE /api/notifications/stream a été retiré : il ne délivre AUCUN octet
   // à travers les proxies Render/Vercel en prod, et WriteTimeout=30s côté Go
   // tuerait de toute façon toute connexion longue. Polling léger ci-dessous.)
-  const displayUnreadCount = unreadCount
+  // SECT-NOTIF-DIFFUSION-1 : max(fenêtre, total réel côté serveur).
+  const displayUnreadCount = Math.max(unreadCount, unreadTotal)
 
-  // Rôle pour le routage admin (handleViewAll + handleMarkAllAsRead).
-  // L'endpoint unifié gère tous les rôles côté fetch — isAdmin n'est plus
-  // utilisé pour sélectionner des endpoints de lecture.
-  const isAdmin = user?.role === 'ADMIN'
+  // Rôle pour le routage (handleViewAll) — ASSISTANCE-MODE-FRONTEND : un
+  // ADMIN en mode assistance (etablissementId non vide) est traité comme
+  // RESPONSABLE : pas de route admin (boucle de redirection) et surtout pas
+  // d'appel aux endpoints d'administration globale. Avant : isAdmin brut →
+  // « Tout lire » d'un admin assisté corrompait les notifications de TOUS
+  // les utilisateurs (mark-all-read ADMIN global sans scope destinataire).
+  const effectiveRole = user ? getEffectiveRole(user.role, user.etablissementId) : null
+  const isAdmin = effectiveRole === 'ADMIN'
 
   // ─── Fetch notifications ───
   // Phase 3 : un seul fetch sur l'endpoint unifié. La VIEW SQL fait déjà l'UNION
@@ -183,8 +192,11 @@ export function NotificationBell({ className }: { className?: string }) {
         const data = await res.json()
         const items: UnifiedNotification[] = data.notifications ?? []
         setNotifications(items)
+        const serverTotal = typeof data.totalUnread === 'number' ? data.totalUnread : 0
+        setUnreadTotal(Math.max(0, serverTotal))
       } else {
         setNotifications([])
+        setUnreadTotal(0)
       }
     } catch {
       setNotifications([])
@@ -270,29 +282,26 @@ export function NotificationBell({ className }: { className?: string }) {
   }
 
   // ─── Mark all as read ───
-  // Phase 3 : 2 endpoints batch en parallèle + fallback /me/{id} pour les
-  // notifs 'n-' destinées au user (non-ADMIN).
+  // SECT-NOTIF-DIFFUSION-1 : 2 batchs MAX pour TOUS les rôles (y compris
+  // ADMIN) — chacun scopé côté serveur au périmètre personnel :
   //  - Alertes (préfixe 'a-') → 1 batch POST /api/alertes/mark-all-read
-  //  - NotificationAdmin (préfixe 'n-') :
-  //      • ADMIN → 1 batch POST /api/notifications/admin/mark-all-read
-  //      • non-ADMIN → N PATCH /api/notifications/me/{id.slice(2)} (body {})
-  // NOTIF-BELL-FIX-6 : feedback honnête — succès affiché seulement si au
-  // moins une requête a RÉELLEMENT réussi. Avant : une seule réponse 200
-  // parmi N → toast succès + badge à 0 alors que rien n'était marqué côté
-  // serveur (le refetch faisait tout revenir non lu).
+  //  - NotificationAdmin (préfixe 'n-') → 1 batch POST
+  //    /api/notifications/me/mark-all-read (personnel + accusés de lecture
+  //    per-user sur les diffusions visibles).
+  // Avant : pour l'ADMIN, la cloche appelait le mark-all-read ADMIN GLOBAL
+  // (POST /api/notifications/admin/mark-all-read) qui marquait TOUTES les
+  // notifications non lues de TOUS les utilisateurs de la plateforme ;
+  // pour les non-ADMIN elle émettait jusqu'à 20 PATCH /me/{id} en parallèle.
   const handleMarkAllAsRead = async () => {
     const unreadNotifs = notifications.filter((n) => !n.lue)
-    if (unreadNotifs.length === 0) return
-
-    const alerteNotifs = unreadNotifs.filter((n) => n.id.startsWith('a-'))
-    const adminNotifs = unreadNotifs.filter((n) => n.id.startsWith('n-'))
+    if (unreadNotifs.length === 0 && unreadTotal === 0) return
 
     const tasks: Promise<Response>[] = []
 
     // 1. Alertes → 1 batch POST /api/alertes/mark-all-read
     //    (couvre tout le scope utilisateur côté serveur, pas seulement la
     //    fenêtre des 20 affichées ; la réponse indique le nombre marqué.)
-    if (alerteNotifs.length > 0) {
+    if (unreadNotifs.some((n) => n.id.startsWith('a-'))) {
       tasks.push(
         fetch('/api/alertes/mark-all-read', {
           method: 'POST',
@@ -301,29 +310,17 @@ export function NotificationBell({ className }: { className?: string }) {
       )
     }
 
-    // 2. NotificationAdmin :
-    //    - ADMIN → 1 batch POST /api/notifications/admin/mark-all-read
-    //    - non-ADMIN → N PATCH /api/notifications/me/{id.slice(2)}
-    if (adminNotifs.length > 0) {
-      if (isAdmin) {
-        tasks.push(
-          fetch('/api/notifications/admin/mark-all-read', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      } else {
-        for (const n of adminNotifs) {
-          tasks.push(
-            fetch(`/api/notifications/me/${n.id.slice(2)}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({}),
-            }),
-          )
-        }
-      }
+    // 2. NotificationAdmin (personnelles + diffusions) → 1 batch personnel.
+    if (unreadNotifs.some((n) => n.id.startsWith('n-')) || unreadTotal > 0) {
+      tasks.push(
+        fetch('/api/notifications/me/mark-all-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
     }
+
+    if (tasks.length === 0) return
 
     try {
       const results = await Promise.allSettled(tasks)
@@ -341,6 +338,7 @@ export function NotificationBell({ className }: { className?: string }) {
       // Optimiste : tout marquer localement (les batchs couvrent leur groupe
       // entier ; le polling 30s resynchronisera avec le serveur si besoin).
       setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
+      setUnreadTotal(0)
       if (okCount < tasks.length) {
         toast.warning('Marquage partiel', {
           description: `${okCount}/${tasks.length} requête(s) réussie(s) — le polling resynchronisera le badge.`,

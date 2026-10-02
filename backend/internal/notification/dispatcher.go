@@ -76,6 +76,13 @@ type Event struct {
 	// Expiration (optionnel) — la notif disparaît du bell après cette date.
 	ExpiresAt *time.Time
 
+	// SkipInApp (optionnel) — SECT-NOTIF-DIFFUSION-1 : quand true, le canal
+	// in-app (INSERT NotificationAdmin) est SAUTÉ. Utilisé par le fanout des
+	// diffusions : la ligne de diffusion existe déjà en DB (ligne segment/rôle
+	// partagée, visible via la VIEW unifiée) — le fanout ne doit PAS re-INSÉRER
+	// une copie personnelle par destinataire (doublons dans la cloche).
+	SkipInApp bool
+
 	// Email (optionnel) — si fourni + emailEnabled, un email est envoyé.
 	// Si non fourni, seul le canal in-app + push sont utilisés.
 	Email *EmailContent
@@ -207,22 +214,28 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 	// HTTP — une fois la réponse envoyée, le contexte HTTP est annulé et le
 	// COMMIT peut échouer silencieusement. Le dispatcher doit vivre sa propre
 	// vie (fire-and-forget).
-	insertCtx := context.Background()
-	insertErr := db.WithTx(insertCtx, d.pool, db.SystemClaims(), func(tx pgx.Tx) error {
-		_, err := tx.Exec(insertCtx, `
-                        INSERT INTO "NotificationAdmin"
-                                ("id", "type", "titre", "message", "destinataireId", "destinataireRole",
-                                 "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
-                                 "expireLe", "createdAt")
-                        VALUES ($1, $2, $3, $4, $5, NULL, false, $6, $7, $8, $9, $10, $11, NOW())`,
-			notifID, event.Type, event.Titre, event.Message, event.UserID,
-			actionURL, actionLabel, event.Priorite, event.Categorie, icone, expiresAt)
-		return err
-	})
-	if insertErr != nil {
-		d.logger.Error("notification.Dispatcher: INSERT NotificationAdmin failed (continuing with SSE)",
-			"userId", event.UserID, "type", event.Type, "error", insertErr)
-		// On continue quand même — le SSE est indépendant
+	// SECT-NOTIF-DIFFUSION-1 : SkipInApp=true → pas d'INSERT (le fanout des
+	// diffusions persiste déjà UNE ligne partagée ; seuls les canaux SSE/push/
+	// email/FCM sont rejoués — fini les doublons par destinataire).
+	insertErr := error(nil)
+	if !event.SkipInApp {
+		insertCtx := context.Background()
+		insertErr = db.WithTx(insertCtx, d.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+			_, err := tx.Exec(insertCtx, `
+	                        INSERT INTO "NotificationAdmin"
+	                                ("id", "type", "titre", "message", "destinataireId", "destinataireRole",
+	                                 "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
+	                                 "expireLe", "createdAt")
+	                        VALUES ($1, $2, $3, $4, $5, NULL, false, $6, $7, $8, $9, $10, $11, NOW())`,
+				notifID, event.Type, event.Titre, event.Message, event.UserID,
+				actionURL, actionLabel, event.Priorite, event.Categorie, icone, expiresAt)
+			return err
+		})
+		if insertErr != nil {
+			d.logger.Error("notification.Dispatcher: INSERT NotificationAdmin failed (continuing with SSE)",
+				"userId", event.UserID, "type", event.Type, "error", insertErr)
+			// On continue quand même — le SSE est indépendant
+		}
 	}
 
 	// 2. Broadcast SSE (temps réel)

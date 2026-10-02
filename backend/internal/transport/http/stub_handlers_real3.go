@@ -778,24 +778,18 @@ func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// DEFENSE-IN-DEPTH RBAC : neondb_owner a BYPASSRLS=true (défaut Neon),
-		// donc les policies RLS ne filtrent rien. On filtre explicitement par
-		// destinataireId (user courant) OR destinataireRole (rôle du user)
-		// OR broadcast (destinataireId IS NULL AND destinataireRole IS NULL).
-		var whereParts []string
-		var args []any
-		argIdx := 1
+		// SECT-NOTIF-DIFFUSION-1 (bug #1 CRITIQUE) : les conditions de
+		// visibilité étaient jointes par " AND " — destinataireId = $1 AND
+		// destinataireId IS NULL... contradiction permanente → GET /me
+		// retournait TOUJOURS une liste vide. Jointes par OR via le helper
+		// partagé notifAdminVisibleConds (+ garde établissement sur les
+		// diffusions par rôle + segments). Expiration filtrée (bug #9).
+		rbacConds, args := notifAdminVisibleConds(claims)
 
-		whereParts = append(whereParts, fmt.Sprintf(`"destinataireId" = $%d`, argIdx))
-		args = append(args, claims.UserID)
-		argIdx++
-
-		whereParts = append(whereParts, `("destinataireId" IS NULL AND "destinataireRole" IS NULL)`)
-
-		whereParts = append(whereParts, fmt.Sprintf(`"destinataireRole" = $%d`, argIdx))
-		args = append(args, claims.Role)
-		argIdx++
-
+		whereParts := []string{
+			"(" + strings.Join(rbacConds, " OR ") + ")",
+			notifNotExpiredCond,
+		}
 		switch luParam {
 		case "false":
 			whereParts = append(whereParts, `"lu" = false`)
@@ -813,7 +807,7 @@ func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
                         %s
                         ORDER BY "createdAt" DESC
                         LIMIT $%d
-                `, whereClause, argIdx)
+                `, whereClause, len(args)+1)
 		args = append(args, limit)
 		rows, err := tx.Query(r.Context(), query, args...)
 		if err != nil {
@@ -949,14 +943,44 @@ func (s *Server) notificationsMeMarkRead(w http.ResponseWriter, r *http.Request)
 
 	var updated bool
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(r.Context(), `
-                        UPDATE "NotificationAdmin" SET "lu" = true
-                        WHERE "id" = $1
-                `, notifID)
-		if err != nil {
-			return fmt.Errorf("mark notif read: %w", err)
+		// SECT-NOTIF-DIFFUSION-1 : distinguer notification personnelle et
+		// diffusion (partagée).
+		var destinataireID *string
+		if err := tx.QueryRow(r.Context(), `
+			SELECT "destinataireId" FROM "NotificationAdmin" WHERE "id" = $1
+		`, notifID).Scan(&destinataireID); err != nil {
+			return nil // introuvable → 404 (updated reste false)
 		}
-		updated = tag.RowsAffected() > 0
+
+		if destinataireID != nil {
+			// SECT-NOTIF-DIFFUSION-1 (bug #7) : notification personnelle —
+			// filtre de propriété explicite. Avant : UPDATE ... WHERE id=$1
+			// sans destinataireId (la RLS est bypassée par neondb_owner) —
+			// n'importe quel utilisateur authentifié pouvait marquer comme
+			// lue la notification d'un AUTRE.
+			tag, err := tx.Exec(r.Context(), `
+				UPDATE "NotificationAdmin" SET "lu" = true
+				WHERE "id" = $1 AND "destinataireId" = $2
+			`, notifID, claims.UserID)
+			if err != nil {
+				return fmt.Errorf("mark notif read: %w", err)
+			}
+			updated = tag.RowsAffected() > 0
+			return nil
+		}
+
+		// Diffusion (destinataireId NULL, partagée) : accusé de lecture
+		// PER-USER dans "NotificationRead" (migration 000118). Avant : le
+		// UPDATE global de la colonne lu marquait la diffusion lue pour TOUS
+		// les destinataires dès qu'UN la lisait (bug #10).
+		if _, err := tx.Exec(r.Context(), `
+			INSERT INTO "NotificationRead" ("userId", "notificationAdminId")
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`, claims.UserID, notifID); err != nil {
+			return fmt.Errorf("mark diffusion read: %w", err)
+		}
+		updated = true
 		return nil
 	})
 
@@ -967,5 +991,71 @@ func (s *Server) notificationsMeMarkRead(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "notification marquée comme lue",
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SECT-NOTIF-DIFFUSION-1 : POST /api/notifications/me/mark-all-read — batch
+// personnel (1 requête au lieu de N PATCH /me/{id} — la cloche en faisait
+// jusqu'à 20 en parallèle, et pour l'ADMIN elle appelait le mark-all-read
+// ADMIN global qui corrompait les notifs de tous les utilisateurs).
+//
+// Scope :
+//   - notifications personnelles non lues → UPDATE lu=true (les siennes) ;
+//   - diffusions visibles non lues → accusés de lecture per-user
+//     (NotificationRead) — JAMAIS de mutation des lignes partagées.
+// ──────────────────────────────────────────────────────────────────────────
+
+func (s *Server) notificationsMeMarkAllRead(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	rbacConds, args := notifAdminVisibleConds(claims)
+	visibleClause := "(" + strings.Join(rbacConds, " OR ") + ")"
+
+	var updatedCount int64
+	if err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// 1. Notifications personnelles non lues (non expirées).
+		tag, err := tx.Exec(r.Context(), fmt.Sprintf(`
+			UPDATE "NotificationAdmin" SET "lu" = true
+			WHERE "destinataireId" = $1 AND "lu" = false AND %s
+		`, notifNotExpiredCond), claims.UserID)
+		if err != nil {
+			return fmt.Errorf("mark all read me (personnelles): %w", err)
+		}
+		updatedCount += tag.RowsAffected()
+
+		// 2. Diffusions visibles non lues → accusés de lecture per-user.
+		//    On insère pour TOUTES les diffusions visibles sans accusé (la
+		//    colonne lu des lignes partagées est un flag de gestion ADMIN —
+		//    l'état de lecture d'une diffusion est per-user depuis 000118).
+		tag2, err := tx.Exec(r.Context(), fmt.Sprintf(`
+			INSERT INTO "NotificationRead" ("userId", "notificationAdminId")
+			SELECT $1, "id" FROM "NotificationAdmin"
+			WHERE "destinataireId" IS NULL AND %s AND %s
+			  AND NOT EXISTS (
+				SELECT 1 FROM "NotificationRead" nr
+				WHERE nr."userId" = $1 AND nr."notificationAdminId" = "NotificationAdmin"."id"
+			  )
+			ON CONFLICT DO NOTHING
+		`, visibleClause, notifNotExpiredCond), args...)
+		if err != nil {
+			return fmt.Errorf("mark all read me (diffusions): %w", err)
+		}
+		updatedCount += tag2.RowsAffected()
+		return nil
+	}); err != nil {
+		slog.Error("notificationsMeMarkAllRead failed", "error", err, "userId", claims.UserID)
+		writeJSONError(w, http.StatusInternalServerError, "erreur base de données")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"message":      "notifications marquées comme lues",
+		"updatedCount": updatedCount,
 	})
 }

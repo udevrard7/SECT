@@ -43,6 +43,7 @@ export type PageId =
   | 'aide-etudiants'
   | 'mes-etudiants'
   | 'annee-academique'
+  | 'diffusions'
   | 'profil'
   | 'parametres'
 
@@ -88,6 +89,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   'mes-enseignants': '/mes-enseignants',
   'aide-etudiants': '/aide-etudiants',
   'mes-etudiants': '/mes-etudiants',
+  diffusions: '/diffusions',
   'annee-academique': '/annee-academique',
   profil: '/profil',
   parametres: '/parametres',
@@ -270,6 +272,9 @@ export const PAGE_LABELS: Record<PageId, string> = {
   'aide-etudiants': 'Aide des étudiants',
   'mes-etudiants': 'Mes classes',
   'annee-academique': 'Année académique',
+  // SECT-NOTIF-DIFFUSION-1 : système de diffusion du RESPONSABLE (séparé
+  // du centre de diffusion SaaS ADMIN /notifications).
+  diffusions: 'Diffusions',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -317,6 +322,8 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'aide-etudiants': "Répondez aux questions de vos étudiants sur les documents de cours",
   'mes-etudiants': "Consultez les étudiants de vos classes et téléchargez leurs relevés de notes détaillés",
   'annee-academique': "Gérer les années académiques et la clôture de fin d'année",
+  // SECT-NOTIF-DIFFUSION-1 : diffusion d'établissement du RESPONSABLE.
+  diffusions: "Diffusez des annonces aux membres de votre établissement (tout l'établissement, enseignants ou étudiants)",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -409,6 +416,9 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     defaultOpen: true,
     items: [
       { id: 'dashboard', label: 'Tableau de bord', icon: 'LayoutDashboard' },
+      // SECT-NOTIF-DIFFUSION-1 : diffusion d'établissement — système propre
+      // au RESPONSABLE, distinct du centre de diffusion SaaS de l'ADMIN.
+      { id: 'diffusions', label: 'Diffusions', icon: 'Megaphone' },
     ],
   },
   {
@@ -628,6 +638,10 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   configuration: ['ADMIN'],
   // NOTIFICATIONS-FIX-N7 : centre de notifications admin réservé ADMIN.
   notifications: ['ADMIN'],
+  // SECT-NOTIF-DIFFUSION-1 : diffusions d'établissement — RESPONSABLE +
+  // ADMIN en mode assistance (la page elle-même oriente un ADMIN SaaS sans
+  // établissement vers le centre de diffusion plateforme /notifications).
+  diffusions: ['RESPONSABLE', 'ADMIN'],
   // QUESTIONS-IA-FIX : Génération IA réservée ENSEIGNANT + ADMIN (+ RESPONSABLE).
   // Avant ce fix, la page n'était pas listée → accessible à tous les rôles
   // authentifiés (dont ETUDIANT) via URL directe. L'étudiant voyait le wizard
