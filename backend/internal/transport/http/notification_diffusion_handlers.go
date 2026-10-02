@@ -153,7 +153,7 @@ func (s *Server) createDiffusionEtablissement(w http.ResponseWriter, r *http.Req
 
 	created := &notifAdminResponse{}
 	success := false
-	var diagErr string
+	var createErr error
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		newID := "notif_" + uuid.NewString()
 		row := tx.QueryRow(r.Context(), fmt.Sprintf(`
@@ -175,22 +175,18 @@ func (s *Server) createDiffusionEtablissement(w http.ResponseWriter, r *http.Req
 			created = n
 			success = true
 		} else {
-			diagErr = "scan: " + err.Error()
+			createErr = err
 		}
 		return nil
 	})
 
 	if !success {
-		// SECT-NOTIF-DIFFUSION-1 DIAG : l'erreur était avalée (500 opaque).
-		// Log systématique + détail temporaire dans la réponse pour diagnostiquer
-		// l'échec INSERT/scan en production (retiré après résolution).
-		slog.Error("createDiffusionEtablissement: INSERT/scan failed",
-			"userId", claims.UserID, "audience", input.Audience, "detail", diagErr)
-		msg := "erreur lors de la création de la diffusion"
-		if diagErr != "" {
-			msg += " [" + diagErr + "]"
-		}
-		writeJSONError(w, http.StatusInternalServerError, msg)
+		// SECT-NOTIF-DIFFUSION-1 : l'erreur est loggée (avant : avalée → 500
+		// opaque impossible à diagnostiquer — c'est comme ça que la violation
+		// RLS sur INSERT…RETURNING est restée invisible plusieurs semaines).
+		slog.Error("createDiffusionEtablissement: INSERT/RETURNING failed",
+			"userId", claims.UserID, "audience", input.Audience, "error", createErr)
+		writeJSONError(w, http.StatusInternalServerError, "erreur lors de la création de la diffusion")
 		return
 	}
 
