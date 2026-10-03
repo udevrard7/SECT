@@ -253,6 +253,13 @@ func (w *AutoCloseWorker) finalizeStaleSessions(ctx context.Context) (int, error
 
 	// 1. Sessions candidates — plafonnées à 500 par tick (60s) : rattrapage
 	// progressif après un long arrêt du serveur ou un changement d'année.
+	//
+	// NOTE : $1::timestamp (cast explicite OBLIGATOIRE) — sans lui,
+	// PostgreSQL infère $1 comme interval (règle « unknown + typé → typé »)
+	// et la requête échoue dès la préparation :
+	//   operator does not exist: timestamp without time zone < interval
+	//   (SQLSTATE 42883) — la finalisation des sessions orphelines ne
+	//   s'exécutait alors jamais (bug SECT-AUTOCLOSE-FIX-1).
 	rows, err := tx.Query(ctx, `
 		SELECT s."id", s."logEvents"
 		FROM "SessionPassation" s
@@ -260,9 +267,9 @@ func (w *AutoCloseWorker) finalizeStaleSessions(ctx context.Context) (int, error
 		WHERE s."statut" = 'EN_COURS'
 		  AND (
 			(e."statut" = 'CLOTUREE' AND e."deletedAt" IS NULL
-			  AND (e."dateFin" + make_interval(mins => COALESCE(e."delaiGrace", 0))) < $1 - interval '24 hours')
+			  AND (e."dateFin" + make_interval(mins => COALESCE(e."delaiGrace", 0))) < $1::timestamp - interval '24 hours')
 			OR
-			(e."deletedAt" IS NOT NULL AND e."deletedAt" < $1 - interval '24 hours')
+			(e."deletedAt" IS NOT NULL AND e."deletedAt" < $1::timestamp - interval '24 hours')
 		  )
 		LIMIT 500
 	`, now)
