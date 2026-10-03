@@ -3207,3 +3207,78 @@ Stage Summary:
 - Contrainte clé documentée : une seule instance du backend tant que SSE hubs/workers/limiter sont in-memory (ne jamais lancer 2 répliques de l'image telle quelle).
 - Dette « Render→sect_app GRANT audit » inchangée et indépendante de l'hébergeur (même DSN).
 - Aucun nouveau projet créé ; ADR poussé sur GitHub avec l'identité udevrard7 <ulrichdouh@gmail.com>.
+
+---
+Task ID: SECT-AUTOCLOSE-FIX-1
+Agent: Main Orchestrator
+Task: Corriger le worker AutoClose.finalizeStaleSessions (échec SQLSTATE 42883 à chaque tick depuis cfd8eb84 — finalisation des sessions orphelines morte)
+
+Work Log:
+- Découvert lors du smoke test de démarrage local : erreur chaque 60 s
+  `AutoClose: finalizeStaleSessions failed — query stale sessions: ERROR:
+  operator does not exist: timestamp without time zone < interval
+  (SQLSTATE 42883)` — le worker de prod Render produit la même.
+- Root cause prouvée par PREPARE sur Neon : dans `$1 - interval '24 hours'`,
+  PostgreSQL résout le paramètre non typé $1 par la règle exact-match
+  « unknown + typé → typé » → $1 := interval → le membre droit devient
+  interval → la comparaison `Epreuve.deletedAt (timestamp) < interval`
+  n'existe pas → échec DÈS LA PRÉPARATION. La requête ne s'est donc
+  JAMAIS exécutée depuis son introduction (cfd8eb84, 2026-10-01) : les
+  sessions orphelines (épreuve CLOTUREE/supprimée + 24 h de grâce)
+  restaient EN_COURS à vie.
+- Audit du pattern sur tout le backend : les 2 seules occurrences
+  inférées interval sont dans cette fonction ; le reste du codebase
+  caste correctement ($1::text[], $1::"StatutIASoumission") ou soustrait
+  l'intervalle d'une valeur typée (cleanup_worker : NOW() - make_interval).
+- Fix : cast explicite `$1::timestamp` (×2) — comparaison pure
+  timestamp < timestamp, zéro dépendance au fuseau de session, cohérent
+  avec la convention de closeExpiredEpreuves (même fichier : $1 inféré
+  timestamp par comparaison directe). Commentaire anti-régression ajouté.
+- Incident d'édition évité : une 1re tentative (outil) avait converti les
+  tabs du fichier en espaces (diff ×302) — fichier restauré puis édité
+  chirurgicalement (diff final 9+/2−) ; le formatter gofmt de .golangci.yml
+  verrouille ce type de régression.
+
+## Qualité
+go build / go vet / gofmt OK ; golangci-lint v2.14.0 (parité CI, installé
+localement) : 0 issue sur internal/worker. Aucune migration (schéma
+inchangé — Neon reste 120/120, aucune sync DB nécessaire).
+
+## Livraison
+- 8219868e fix(worker) poussé sur main (udevrard7 <ulrichdouh@gmail.com>).
+- Backend CI verte (completed/success) ; Render dep-db0otm0jo6nc739t61rg
+  LIVE sur 8219868e ; /health OK v0.2.0. Frontend non impacté (commit
+  backend-only → Ignored Build Step Vercel, normal).
+
+## Preuves (prod, bout en bout)
+- Reproduction : la requête originale sans cast échoue 42883 via le DSN
+  pooler Neon (même connexion que le runtime Render) ; session timezone
+  GMT/UTC vérifiée.
+- La requête corrigée s'exécute (PREPARE + EXECUTE OK) — 0 session
+  EN_COURS en base à ce moment (aucun rattrapage rétroactif nécessaire).
+- Fixture jetable end-to-end : INSERT SessionPassation synthétique
+  'smoke-autoclose-fix1-0001' (EN_COURS, épreuve CLOTUREE depuis > 48 h
+  « Composition - Python et de Java ») → tick Render 2026-10-03T23:29:19Z
+  → statut NON_SOUMIS + dateFin fixée + logEvents FORCE_SUBMIT (« Session
+  clôturée automatiquement (épreuve close ou supprimée) »). Le chemin
+  UPDATE batch — code mort depuis le 2026-10-01 — est ainsi validé en
+  production pour la première fois.
+
+## Cleanup (résidu 0)
+Session synthétique supprimée (rows=1) ; 0 résidu smoke (0 session
+' smoke-autoclose-fix1%', 0 Alerte créée sur la fenêtre du tick,
+0 session EN_COURS en base — état initial restauré). Outils jetables
+(probes Go de diagnostic) hors repo.
+
+### Stage Summary
+- ✅ Bug critique du worker AutoClose corrigé, déployé et prouvé en
+  prod : la finalisation des sessions orphelines livrée par
+  SECT-ANNEE-SURVEILLANCE fonctionne désormais réellement — avant ce
+  fix, elle n'avait JAMAIS tourné (échec SQL dès la préparation).
+- ✅ Preuve end-to-end : fixture orpheline finalisée NON_SOUMIS par le
+  worker Render LIVE au tick suivant, puis cleanup résidu 0.
+- Leçon PostgreSQL consignée dans le code : toujours caster explicitement
+  un paramètre utilisé dans une arithmétique d'intervalle ($1::timestamp).
+- Dettes restantes inchangées (Devoir FK, affectations « recréer »,
+  sélecteur étudiant frontend, statsAdmin, mobile « envoyé », 401 race,
+  Render→sect_app GRANT audit).
