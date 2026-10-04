@@ -444,6 +444,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			// URLParam("id") dans le handler + RLS via AuditLog_select).
 			// L'ADMIN bypass (peut consulter n'importe quel étab).
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Get("/{id}/audit-logs", s.listEtablissementAuditLogs)
+			// SECT-BIBLIO-P2 (ADR-0007 §P2) : activité de lecture de la
+			// bibliothèque — agrégats SECURITY DEFINER cloisonnés par
+			// établissement (ENS/RESP : le leur ; ADMIN : tous — le usecase
+			// + la fonction SQL double-vérifient, defense in depth).
+			r.With(middleware.RequireRole("ENSEIGNANT", "RESPONSABLE", "ADMIN")).Get("/{id}/bibliotheque-activite", s.getBibliothequeActivite)
 		})
 
 		// /api/etablissement-access
@@ -812,11 +817,18 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		// lecteurs (tous rôles, scoping RLS Ouvrage_* 000123) + mutations
 		// ADMIN (G1). includeDeleted (corbeille/restore) : ADMIN seul —
 		// révoqué côté usecase si un lecteur tente de le forcer.
+		// SECT-BIBLIO-P2 (ADR-0007 §P2) : lecture mesurée —
+		// GET/PUT de la progression personnelle (propriétaire ;
+		// policies OuvrageLecture_* 000124 : userId + ouvrage
+		// visible). Tous rôles : l’étudiant est le premier
+		// lecteur de la bibliothèque.
 		r.Route("/api/ouvrages", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listOuvrages)
 			r.Get("/{id}", s.getOuvrage)
 			r.Get("/{id}/fichier", s.getOuvrageFichier)
+			r.Get("/{id}/lecture", s.getOuvrageLecture)
+			r.Put("/{id}/lecture", s.putOuvrageLecture)
 			r.With(middleware.RequireRole("ADMIN")).Post("/", s.uploadOuvrage)
 			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.updateOuvrage)
 			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.deleteOuvrage)

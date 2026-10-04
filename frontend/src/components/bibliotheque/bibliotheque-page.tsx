@@ -12,7 +12,7 @@
 // les boutons de dépôt/édition/corbeille uniquement pour ce rôle ; la
 // défense réelle est le RLS (policies Ouvrage_*, migration 000123).
 //
-// Backend matché (transport/http/ouvrage_handlers.go) :
+// Backend matché (transport/http/ouvrage_handlers.go + ouvrage_lecture_handlers.go) :
 //   GET    /api/ouvrages?q&categorie&filiereId&niveau&page&limit
 //          &includeDeleted          → OuvrageListResult { ouvrages, total, page, limit }
 //   GET    /api/ouvrages/{id}       → { ouvrage }
@@ -24,9 +24,22 @@
 //                                     valeur=nouvelle valeur
 //   DELETE /api/ouvrages/{id} (ADMIN, soft) → { message }
 //   POST   /api/ouvrages/{id}/restore (ADMIN) → { ouvrage }
+//
+// SECT-BIBLIO-P2 (ADR-0007 §P2 — lecture mesurée) :
+//   GET    /api/ouvrages/{id}/lecture  → { lecture: OuvrageLecture | null }
+//                                     (null = première lecture ; 404 si
+//                                     l'ouvrage est invisible — jamais de
+//                                     fuite d'existence)
+//   PUT    /api/ouvrages/{id}/lecture  → { lecture } — télémétrie :
+//                                     tempsDeltaSec (incrément), pagesVues
+//                                     (delta fusionné serveur), dernierePage
+//                                     (marque-page DÉCLARATIF)
+//   GET    /api/etablissements/{id}/bibliotheque-activite (ENS/RESP/ADMIN)
+//                                     → { etablissementId, activite[] } —
+//                                     agrégats SECURITY DEFINER cloisonnés
 // ════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Library,
@@ -47,6 +60,11 @@ import {
   Filter,
   CalendarClock,
   Gavel,
+  Activity,
+  Bookmark,
+  Users,
+  Timer,
+  Eye,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -91,21 +109,36 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatDateUTC } from '@/lib/date-utils'
 import { StatCard, EntityCard, PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import {
   type Ouvrage,
   type CategorieOuvrage,
   type OuvrageListResult,
+  type OuvrageLecture,
+  type RecordLecturePayload,
+  type OuvrageActivite,
+  type BibliothequeActiviteResult,
   CATEGORIES_OUVRAGE,
   NIVEAUX_ETUDE,
   categorieLabel,
   parseAuteurs,
   tailleAffichable,
+  tempsAffichable,
 } from '@/lib/ouvrages-types'
 
 // ─── Types locaux (UI) ───
@@ -123,9 +156,17 @@ interface EtablissementOption {
 
 interface LecteurState {
   ouvrage: Ouvrage
+  /** URL présignée SANS fragment (base, jamais altérée). */
+  baseUrl: string | null
+  /** URL effective de l'iframe (base + #page=N — le fragment n'est JAMAIS
+   *  signé : l'ajouter ne casse pas la signature R2). */
   url: string | null
   loading: boolean
   error: string | null
+  /** Progression chargée en parallèle du fichier (null = 1re lecture). */
+  lecture: OuvrageLecture | null
+  /** Page de reprise appliquée au fragment (null = ouverture page 1). */
+  reprisePage: number | null
 }
 
 // Variant de badge par catégorie (poids normatif — cf. ADR §Taxonomie).
@@ -155,6 +196,18 @@ export function BibliothequePage() {
   // global choisit l'établissement dans le formulaire de dépôt (G2 : le
   // catalogue est PAR ÉTABLISSEMENT).
   const adminAssistance = isAdmin && !!user?.etablissementId
+
+  // ─── SECT-BIBLIO-P2 : vue Catalogue / Activité ───
+  // L'activité de lecture est une vue enseignante (ADR-0007 §P2) :
+  // ENS/RESP voient LEUR établissement, l'ADMIN tous (sélecteur ci-dessous).
+  const peutVoirActivite =
+    user?.role === 'ENSEIGNANT' ||
+    user?.role === 'RESPONSABLE' ||
+    user?.role === 'ADMIN'
+  const [vue, setVue] = useState<'catalogue' | 'activite'>('catalogue')
+  const [activiteEtab, setActiviteEtab] = useState<string>(
+    user?.etablissementId ?? '',
+  )
 
   // ─── Filtres catalogue ───
   const [searchInput, setSearchInput] = useState('')
@@ -244,6 +297,59 @@ export function BibliothequePage() {
     staleTime: 5 * 60_000,
   })
 
+  // ─── SECT-BIBLIO-P2 : activité de lecture (vue enseignante) ───
+  // ADMIN global : sélection d'établissement ; ENS/RESP : le leur (fixé).
+  const activiteQuery = useQuery<BibliothequeActiviteResult>({
+    queryKey: ['bibliotheque-activite', activiteEtab],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/etablissements/${activiteEtab}/bibliotheque-activite`,
+        { credentials: 'include' },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${res.status}`)
+      }
+      return res.json()
+    },
+    enabled: vue === 'activite' && peutVoirActivite && !!activiteEtab,
+    staleTime: 60_000,
+  })
+
+  // Sélection par défaut de l'établissement pour l'ADMIN global (le
+  // sélecteur reste libre — ceci ne pré-choisit que le 1er chargement).
+  useEffect(() => {
+    if (
+      isAdmin &&
+      !adminAssistance &&
+      !activiteEtab &&
+      etablissementsQuery.data &&
+      etablissementsQuery.data.length > 0
+    ) {
+      setActiviteEtab(etablissementsQuery.data[0].id)
+    }
+  }, [isAdmin, adminAssistance, activiteEtab, etablissementsQuery.data])
+
+  // Agrégats du panneau (calculés depuis les lignes par ouvrage).
+  const activiteStats = useMemo(() => {
+    const rows: OuvrageActivite[] = activiteQuery.data?.activite ?? []
+    const lus = rows.filter((r) => r.nbLecteurs > 0)
+    return {
+      ouvrages: rows.length,
+      ouvragesLus: lus.length,
+      lectures: rows.reduce((s, r) => s + r.nbLecteurs, 0),
+      tempsTotalSec: rows.reduce((s, r) => s + r.tempsTotalSec, 0),
+      pagesVues: rows.reduce((s, r) => s + r.pagesVuesTotal, 0),
+      derniere: lus.reduce<string | null>(
+        (m, r) =>
+          r.derniereActivite && (!m || r.derniereActivite > m)
+            ? r.derniereActivite
+            : m,
+        null,
+      ),
+    }
+  }, [activiteQuery.data])
+
   // ─── Stats (page courante pour les catégories — P1 sans endpoint dédié) ───
   const stats = useMemo(() => {
     const referentiels = ouvrages.filter(
@@ -262,27 +368,199 @@ export function BibliothequePage() {
 
   // ─── Lecteur in-browser (URL présignée courte durée) ───
   const [lecteur, setLecteur] = useState<LecteurState | null>(null)
+  // Numéro saisi dans le marque-page déclaratif (prérempli à l'ouverture).
+  const [marquePageInput, setMarquePageInput] = useState('1')
 
+  // Ouverture : fichier ET progression en PARALLÈLE (P2) — la reprise à la
+  // page exacte est appliquée via le fragment #page=N (le fragment n'est
+  // jamais signé : l'ajouter ne casse pas la présignature R2).
   const ouvrirLecteur = async (o: Ouvrage) => {
-    setLecteur({ ouvrage: o, url: null, loading: true, error: null })
+    setLecteur({
+      ouvrage: o,
+      baseUrl: null,
+      url: null,
+      loading: true,
+      error: null,
+      lecture: null,
+      reprisePage: null,
+    })
     try {
-      const res = await fetch(`/api/ouvrages/${o.id}/fichier`, {
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error || `Erreur ${res.status}`)
+      const [fichierRes, lectureRes] = await Promise.all([
+        fetch(`/api/ouvrages/${o.id}/fichier`, { credentials: 'include' }),
+        fetch(`/api/ouvrages/${o.id}/lecture`, { credentials: 'include' }),
+      ])
+      if (!fichierRes.ok) {
+        const body = await fichierRes.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${fichierRes.status}`)
       }
-      const data = await res.json()
-      setLecteur({ ouvrage: o, url: data.url, loading: false, error: null })
+      const fichierData = await fichierRes.json()
+      // Progression : non bloquante (404/erreur → première lecture). Seule
+      // l'URL du fichier peut faire échouer l'ouverture du lecteur.
+      let lecture: OuvrageLecture | null = null
+      if (lectureRes.ok) {
+        const ld = await lectureRes.json().catch(() => null)
+        lecture = ld?.lecture ?? null
+      }
+      const reprise = lecture && lecture.dernierePage > 1 ? lecture.dernierePage : null
+      const url = reprise ? `${fichierData.url}#page=${reprise}` : (fichierData.url as string)
+      setMarquePageInput(String(lecture?.dernierePage ?? 1))
+      setLecteur({
+        ouvrage: o,
+        baseUrl: fichierData.url,
+        url,
+        loading: false,
+        error: null,
+        lecture,
+        reprisePage: reprise,
+      })
     } catch (err) {
       setLecteur({
         ouvrage: o,
+        baseUrl: null,
         url: null,
         loading: false,
         error: err instanceof Error ? err.message : 'Erreur inconnue',
+        lecture: null,
+        reprisePage: null,
       })
     }
+  }
+
+  const fermerLecteur = () => {
+    // Le dernier battement de cœur part en keepalive (survit à la fermeture
+    // du dialog) ; le cleanup de l'effet de télémétrie fait un 2e flush
+    // no-op de sécurité.
+    flushTelemetrie(true)
+    setLecteur(null)
+  }
+
+  // Saute à une page donnée (recharge l'iframe — le fragment change).
+  const allerPage = (page: number) => {
+    setLecteur((prev) =>
+      prev && prev.baseUrl
+        ? {
+            ...prev,
+            url: `${prev.baseUrl}#page=${page}`,
+            reprisePage: page,
+          }
+        : prev,
+    )
+  }
+
+  // ─── Télémétrie de lecture (P2) — useRef + visibilitychange + 30 s ───
+  // Le temps ne compte QUE si le document est visible (onglet actif) ET le
+  // lecteur ouvert ; les heartbeats partent toutes les 30 s, le flush final
+  // en fetch keepalive survit à la fermeture. Best-effort : une erreur
+  // réseau n'interrompt JAMAIS la lecture.
+  interface TelemetrieAccum {
+    visibleMs: number
+    pagesVues: Record<string, number>
+    dernierePage: number | null
+    lastTick: number
+    visible: boolean
+  }
+  const TELEMETRIE_INTERVAL_MS = 30_000
+  const telemetrieRef = useRef<TelemetrieAccum | null>(null)
+  const lecteurOuvrageIdRef = useRef<string | null>(null)
+
+  const tickVisible = (acc: TelemetrieAccum) => {
+    const now = Date.now()
+    if (acc.visible) acc.visibleMs += now - acc.lastTick
+    acc.lastTick = now
+  }
+
+  const flushTelemetrie = useCallback((keepalive: boolean) => {
+    const acc = telemetrieRef.current
+    const ouvrageId = lecteurOuvrageIdRef.current
+    if (!acc || !ouvrageId) return
+    tickVisible(acc)
+    const tempsDeltaSec = Math.floor(acc.visibleMs / 1000)
+    acc.visibleMs -= tempsDeltaSec * 1000 // conserve la fraction < 1 s
+    const hasPages = Object.keys(acc.pagesVues).length > 0
+    const page = acc.dernierePage
+    if (tempsDeltaSec === 0 && !hasPages && page === null) return
+    const body: RecordLecturePayload = { tempsDeltaSec }
+    if (hasPages) body.pagesVues = acc.pagesVues
+    if (page !== null) body.dernierePage = page
+    acc.pagesVues = {}
+    acc.dernierePage = null
+    fetch(`/api/ouvrages/${ouvrageId}/lecture`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+      keepalive,
+    }).catch(() => {
+      // best-effort : la télémétrie ne doit jamais casser la lecture
+    })
+  }, [])
+
+  // Cycle de vie de la télémétrie : démarrage à l'ouverture de l'URL,
+  // arrêt + flush final à la fermeture/changement.
+  useEffect(() => {
+    if (!lecteur?.url) return
+    lecteurOuvrageIdRef.current = lecteur.ouvrage.id
+    const acc: TelemetrieAccum = {
+      visibleMs: 0,
+      pagesVues: {},
+      dernierePage: null,
+      lastTick: Date.now(),
+      visible: document.visibilityState === 'visible',
+    }
+    telemetrieRef.current = acc
+
+    const onVisibility = () => {
+      tickVisible(acc)
+      acc.visible = document.visibilityState === 'visible'
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    const interval = window.setInterval(
+      () => flushTelemetrie(false),
+      TELEMETRIE_INTERVAL_MS,
+    )
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.clearInterval(interval)
+      flushTelemetrie(true)
+      lecteurOuvrageIdRef.current = null
+      telemetrieRef.current = null
+    }
+  }, [lecteur?.url, lecteur?.ouvrage.id, flushTelemetrie])
+
+  // Marque-page DÉCLARATIF : l'iframe cross-origin ne permet pas de lire la
+  // page courante du lecteur PDF natif — c'est le lecteur qui déclare où il
+  // en est (bouton « Marquer »). Envoie immédiat (pas d'attente du heartbeat).
+  const marquerPage = () => {
+    const acc = telemetrieRef.current
+    if (!acc) return
+    const page = parseInt(marquePageInput, 10)
+    if (Number.isNaN(page) || page < 1) {
+      toast.error('Numéro de page invalide', {
+        description: 'Entrez le numéro de la page que vous êtes en train de lire.',
+      })
+      return
+    }
+    const key = String(page)
+    acc.pagesVues[key] = (acc.pagesVues[key] ?? 0) + 1
+    acc.dernierePage = page
+    flushTelemetrie(false)
+    // Mise à jour locale immédiate (chip) — le serveur fait foi à la
+    // prochaine ouverture.
+    setLecteur((prev) =>
+      prev
+        ? {
+            ...prev,
+            reprisePage: page,
+            lecture: prev.lecture
+              ? { ...prev.lecture, dernierePage: page }
+              : prev.lecture,
+          }
+        : prev,
+    )
+    toast.success(`Marque-page enregistré — page ${page}`, {
+      description: 'Vous reprendrez à cette page à la prochaine ouverture.',
+    })
   }
 
   const telecharger = async (o: Ouvrage) => {
@@ -713,19 +991,220 @@ export function BibliothequePage() {
                 de votre établissement.
               </p>
             </div>
-            {isAdmin && (
-              <Button
-                onClick={() => setDepotOuvert(true)}
-                className="ds-shimmer gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Ajouter un ouvrage
-              </Button>
-            )}
+            <div className="flex flex-col items-stretch gap-3 sm:items-end">
+              {/* SECT-BIBLIO-P2 : vue Catalogue / Activité (vue enseignante) */}
+              {peutVoirActivite && (
+                <ToggleGroup
+                  type="single"
+                  value={vue}
+                  onValueChange={(value) => {
+                    if (value) setVue(value as 'catalogue' | 'activite')
+                  }}
+                  variant="outline"
+                  size="sm"
+                >
+                  <ToggleGroupItem value="catalogue" className="gap-1.5">
+                    <Library className="h-3.5 w-3.5" />
+                    Catalogue
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="activite" className="gap-1.5">
+                    <Activity className="h-3.5 w-3.5" />
+                    Activité
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              )}
+              {isAdmin && (
+                <Button
+                  onClick={() => setDepotOuvert(true)}
+                  className="ds-shimmer gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Ajouter un ouvrage
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
+      {/* SECT-BIBLIO-P2 : vue courante — Catalogue OU Activité (ENS/RESP/ADMIN) */}
+      {vue === 'activite' && peutVoirActivite ? (
+        <div className="space-y-6">
+          {/* Sélecteur d'établissement — ADMIN global uniquement (les
+              agrégats sont cloisonnés par établissement, G2). */}
+          {isAdmin && !adminAssistance && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Établissement
+                    </Label>
+                    <Select
+                      value={activiteEtab}
+                      onValueChange={setActiviteEtab}
+                    >
+                      <SelectTrigger className="w-[260px]">
+                        <SelectValue placeholder="Choisir un établissement" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(etablissementsQuery.data ?? []).map((e) => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.nom}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-md pb-1">
+                    Agrégats cloisonnés par établissement — corbeille et
+                    droits expirés exclus, données individuelles jamais
+                    exposées (agrégats uniquement).
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Stats d'activité */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard
+              label="Ouvrages (catalogue)"
+              value={activiteStats.ouvrages}
+              icon={Library}
+              accent="primary"
+              loading={activiteQuery.isLoading}
+              hint="Ouvrages visibles de l'établissement"
+            />
+            <StatCard
+              label="Ouvrages lus"
+              value={activiteStats.ouvragesLus}
+              icon={BookOpen}
+              accent="secondary"
+              loading={activiteQuery.isLoading}
+              hint="Au moins une lecture enregistrée"
+            />
+            <StatCard
+              label="Lectures"
+              value={activiteStats.lectures}
+              icon={Users}
+              accent="info"
+              loading={activiteQuery.isLoading}
+              hint="Total des progressions de lecture"
+            />
+            <StatCard
+              label="Temps de lecture"
+              value={tempsAffichable(activiteStats.tempsTotalSec)}
+              icon={Timer}
+              accent="gold"
+              loading={activiteQuery.isLoading}
+              hint={
+                activiteStats.derniere
+                  ? `Dernière activité : ${formatDateUTC(activiteStats.derniere)}`
+                  : 'Aucune lecture pour le moment'
+              }
+            />
+          </div>
+
+          {/* Table d'activité par ouvrage */}
+          {activiteQuery.isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <PulseSkeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : activiteQuery.isError ? (
+            <Card className="border-destructive/50">
+              <CardContent className="pt-6 text-center space-y-2">
+                <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
+                <p className="text-sm text-muted-foreground">
+                  {activiteQuery.error instanceof Error
+                    ? activiteQuery.error.message
+                    : 'Erreur de chargement de l\u2019activité.'}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => activiteQuery.refetch()}
+                >
+                  Réessayer
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (activiteQuery.data?.activite ?? []).length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="pt-6 pb-8 text-center space-y-3">
+                <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Activity className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <p className="font-display font-semibold">
+                    Aucune activité pour le moment
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Aucun ouvrage visible dans cet établissement — les
+                    lectures apparaîtront ici dès le premier dépôt lu.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Ouvrage</TableHead>
+                        <TableHead>Catégorie</TableHead>
+                        <TableHead className="text-right">Lecteurs</TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            <Eye className="h-3 w-3" /> Pages vues
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">Temps total</TableHead>
+                        <TableHead className="text-right">
+                          Dernière activité
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(activiteQuery.data?.activite ?? []).map((r) => (
+                        <TableRow key={r.ouvrageId}>
+                          <TableCell className="font-medium max-w-[280px] truncate">
+                            {r.titre}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {categorieLabel(r.categorie as CategorieOuvrage)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {r.nbLecteurs}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {r.pagesVuesTotal}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {tempsAffichable(r.tempsTotalSec)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {r.derniereActivite
+                              ? formatDateUTC(r.derniereActivite)
+                              : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      ) : (
+        <>
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -955,6 +1434,8 @@ export function BibliothequePage() {
               </Button>
             </div>
           </div>
+        </>
+      )}
         </>
       )}
 
@@ -1459,8 +1940,8 @@ export function BibliothequePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ─── Lecteur in-browser (présigné 15 min, iframe) ─── */}
-      <Dialog open={!!lecteur} onOpenChange={(v) => !v && setLecteur(null)}>
+      {/* ─── Lecteur in-browser (présigné 15 min, iframe + lecture mesurée P2) ─── */}
+      <Dialog open={!!lecteur} onOpenChange={(v) => !v && fermerLecteur()}>
         <DialogContent className="max-w-7xl h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
           <DialogHeader className="px-6 pt-5 pb-3 border-b border-border shrink-0">
             <div className="flex items-start justify-between gap-4">
@@ -1497,7 +1978,7 @@ export function BibliothequePage() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => setLecteur(null)}
+                  onClick={() => fermerLecteur()}
                   aria-label="Fermer le lecteur"
                 >
                   <X className="h-4 w-4" />
@@ -1506,10 +1987,58 @@ export function BibliothequePage() {
             </div>
           </DialogHeader>
 
-          <div className="flex items-center justify-center gap-2 px-6 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground shrink-0">
-            <Filter className="h-3 w-3" />
-            Lecture réservée — consultation éducative, lien sécurisé de 15
-            minutes, journalisée.
+          {/* SECT-BIBLIO-P2 : barre de lecture mesurée — chip de reprise,
+              marque-page DÉCLARATIF (l'iframe cross-origin ne permet pas de
+              lire la page courante du lecteur natif) et reprise au début. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground shrink-0">
+            <div className="flex items-center gap-2">
+              <Filter className="h-3 w-3" />
+              Lecture réservée — consultation éducative, lien sécurisé de 15
+              minutes, journalisée.
+            </div>
+            {lecteur?.url && (
+              <div className="flex flex-wrap items-center gap-2">
+                {lecteur.reprisePage !== null && lecteur.reprisePage > 1 && (
+                  <>
+                    <Badge variant="secondary" className="gap-1">
+                      <Bookmark className="h-3 w-3" />
+                      Reprise page {lecteur.reprisePage}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => allerPage(1)}
+                    >
+                      Reprendre au début
+                    </Button>
+                  </>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="biblio-marque-page" className="sr-only">
+                    Page actuelle
+                  </Label>
+                  <Input
+                    id="biblio-marque-page"
+                    type="number"
+                    min={1}
+                    value={marquePageInput}
+                    onChange={(e) => setMarquePageInput(e.target.value)}
+                    className="h-7 w-[74px] text-xs"
+                    aria-label="Numéro de la page que vous lisez"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={marquerPage}
+                  >
+                    <Bookmark className="h-3 w-3" />
+                    Marquer
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 min-h-0 bg-muted/30">

@@ -25,13 +25,15 @@ const defautQuotaBibliothequeMo int64 = 2048
 // OuvrageUseCase implémente les cas d'usage de la bibliothèque.
 type OuvrageUseCase struct {
 	ouvrageRepo domain.OuvrageRepository
+	lectureRepo domain.OuvrageLectureRepository
 	storage     domain.StorageClient
 	quotaMo     int64
 }
 
 // NewOuvrageUseCase crée un nouveau OuvrageUseCase. Le quota bibliothèque
 // est lu à la construction (BIBLIOTHEQUE_QUOTA_MO, défaut 2048 Mo).
-func NewOuvrageUseCase(ouvrageRepo domain.OuvrageRepository, storageClient domain.StorageClient) *OuvrageUseCase {
+// SECT-BIBLIO-P2 : lectureRepo pour la lecture mesurée (OuvrageLecture).
+func NewOuvrageUseCase(ouvrageRepo domain.OuvrageRepository, lectureRepo domain.OuvrageLectureRepository, storageClient domain.StorageClient) *OuvrageUseCase {
 	quota := defautQuotaBibliothequeMo
 	if v := os.Getenv("BIBLIOTHEQUE_QUOTA_MO"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
@@ -40,7 +42,7 @@ func NewOuvrageUseCase(ouvrageRepo domain.OuvrageRepository, storageClient domai
 			slog.Warn("BIBLIOTHEQUE_QUOTA_MO invalide, défaut conservé", "value", v, "défaut", defautQuotaBibliothequeMo)
 		}
 	}
-	return &OuvrageUseCase{ouvrageRepo: ouvrageRepo, storage: storageClient, quotaMo: quota}
+	return &OuvrageUseCase{ouvrageRepo: ouvrageRepo, lectureRepo: lectureRepo, storage: storageClient, quotaMo: quota}
 }
 
 // List — catalogue (tous rôles authentifiés ; la RLS scope l'établissement
@@ -243,4 +245,111 @@ func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionCl
 		slog.Warn("bibliothèque: audit de lecture échoué (accès servi quand-même)", "ouvrageId", o.ID, "error", auditErr)
 	}
 	return url, nil
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// SECT-BIBLIO-P2 (ADR-0007 §P2) : la lecture mesurée.
+// ──────────────────────────────────────────────────────────────────────
+
+// GetLecture — la progression de lecture de l'utilisateur sur un
+// ouvrage (nil = première lecture). Le pré-check FindByID garantit le
+// 404 d'auto-masquage : un ouvrage invisible répond « introuvable »
+// même sans progression enregistrée (pas de fuite d'existence via
+// {"lecture": null}), cohérent avec GET /api/ouvrages/{id}.
+func (uc *OuvrageUseCase) GetLecture(ctx context.Context, claims db.SessionClaims, ouvrageID string) (*domain.OuvrageLecture, error) {
+	if _, err := uc.ouvrageRepo.FindByID(ctx, ouvrageID); err != nil {
+		return nil, err // NotFoundError (RLS) tel quel
+	}
+	return uc.lectureRepo.GetLecture(ctx, ouvrageID, claims.UserID)
+}
+
+// sanitizePagesVues — télémétrie TOLÉRANTE : les clés non numériques ou
+// hors [1, MaxPageOuvrage] et les valeurs ≤ 0 sont DROPPÉEs ; les
+// valeurs > MaxVuesParPage sont CLAMPÉEs ; la map est bornée à
+// MaxEntreesPagesVues entrées (premiers arrivés — la fusion repo
+// re-trie si la map fusionnée dépasse la borne).
+func sanitizePagesVues(in map[string]int) map[string]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(in))
+	for k, v := range in {
+		n, err := strconv.Atoi(k)
+		if err != nil || n < 1 || n > domain.MaxPageOuvrage {
+			continue // clé invalide : droppée silencieusement
+		}
+		if v < 1 {
+			continue // vue nulle/négative : droppée
+		}
+		if v > domain.MaxVuesParPage {
+			v = domain.MaxVuesParPage // clamp
+		}
+		if len(out) >= domain.MaxEntreesPagesVues {
+			break // borne anti-gonflement
+		}
+		out[strconv.Itoa(n)] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// RecordLecture — upsert de la télémétrie (PUT /api/ouvrages/{id}/lecture).
+// Tous les rôles authentifiés (le lecteur étudiant est le principal
+// utilisateur) — le scoping propriétaire + ouvrage visible est fait par
+// les policies RLS OuvrageLecture_* (000124), défense en profondeur ici :
+// les valeurs sont clampées/sanitarisées AVANT d'atteindre le repo.
+func (uc *OuvrageUseCase) RecordLecture(ctx context.Context, claims db.SessionClaims, ouvrageID string, input domain.RecordLectureInput) (*domain.OuvrageLecture, error) {
+	if claims.UserID == "" {
+		return nil, &domain.UnauthorizedError{Message: "identité requise pour la télémétrie de lecture"}
+	}
+	// Clamps tolérants (jamais de 400 pour un heartbeat : une sonde ne
+	// doit pas casser la lecture).
+	if input.DernierePage != nil {
+		p := clampInt(*input.DernierePage, 1, domain.MaxPageOuvrage)
+		input.DernierePage = &p
+	}
+	if input.TempsDeltaSec < 0 {
+		input.TempsDeltaSec = 0
+	}
+	if input.TempsDeltaSec > domain.MaxTempsDeltaSec {
+		input.TempsDeltaSec = domain.MaxTempsDeltaSec
+	}
+	input.PagesVues = sanitizePagesVues(input.PagesVues)
+	return uc.lectureRepo.UpsertLecture(ctx, ouvrageID, claims.UserID, input)
+}
+
+// ActiviteEtablissement — agrégats d'activité de la bibliothèque
+// (ADR-0007 §P2 : « activité lisible par l'enseignant »).
+//
+// Gating (défense en profondeur — le router double-vérifie via
+// RequireRole, la fonction SQL ré-impose le contrôle en interne) :
+//   - ETUDIANT → 403 (l'activité de lecture est une vue enseignante) ;
+//   - non-ADMIN hors de son établissement → 403 (cloisonnement G2 :
+//     un RESPONSABLE/ENSEIGNANT ne sonde pas l'activité d'un autre
+//     établissement) ;
+//   - l'ADMIN (global ou assistance) voit tout établissement.
+func (uc *OuvrageUseCase) ActiviteEtablissement(ctx context.Context, claims db.SessionClaims, etablissementID string) ([]domain.OuvrageActivite, error) {
+	if claims.Role != string(domain.RoleEnseignant) &&
+		claims.Role != string(domain.RoleResponsable) &&
+		claims.Role != string(domain.RoleAdmin) {
+		return nil, &domain.UnauthorizedError{Message: "activité de bibliothèque réservée aux enseignants, responsables et admin (ADR-0007 §P2)"}
+	}
+	if claims.Role != string(domain.RoleAdmin) && claims.EtablissementID != etablissementID {
+		return nil, &domain.UnauthorizedError{Message: "activité lisible uniquement pour votre propre établissement (G2)"}
+	}
+	return uc.lectureRepo.ActiviteEtablissement(ctx, etablissementID)
+}
+
+// clampInt — borne inclusive [min, max] (miroir local du helper repo —
+// le usecase ne dépend pas du package repository).
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }

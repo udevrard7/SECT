@@ -116,3 +116,68 @@ export function parseAuteurs(json?: string | null): string[] {
     return []
   }
 }
+
+// ════════════════════════════════════════════════════════════════════
+// SECT-BIBLIO-P2 (ADR-0007 §P2) — lecture mesurée (miroir Go :
+// backend/internal/domain/ouvrage_lecture.go + transport/http/
+// ouvrage_lecture_handlers.go).
+// ════════════════════════════════════════════════════════════════════
+
+/** Progression de lecture d'un utilisateur sur un ouvrage (une ligne par couple). */
+export interface OuvrageLecture {
+  id: string
+  ouvrageId: string
+  userId: string
+  /** Marque-page — reprise #page=N à l'ouverture du lecteur. */
+  dernierePage: number
+  /** JSON string {"12": 3} (page → vues) ou null. */
+  pagesVues?: string | null
+  /** Cumul de temps de lecture en secondes (visibilité-gated côté client). */
+  tempsTotalSec: number
+  derniereLectureAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Payload PUT /api/ouvrages/{id}/lecture — tous champs optionnels :
+ * `tempsDeltaSec` = incrément depuis le dernier flush (heartbeat 30 s) ;
+ * `pagesVues` = delta de vues par page (fusionné côté serveur) ;
+ * `dernierePage` = marque-page DÉCLARATIF (absent = ne pas toucher —
+ * un heartbeat de temps seul ne déplace pas la reprise).
+ */
+export interface RecordLecturePayload {
+  tempsDeltaSec?: number
+  pagesVues?: Record<string, number>
+  dernierePage?: number
+}
+
+/** Ligne d'agrégat d'activité par ouvrage (fonction SECURITY DEFINER 000124). */
+export interface OuvrageActivite {
+  ouvrageId: string
+  titre: string
+  /** CategorieOuvrage castée ::text côté SQL (leçon ENUM-SWEEP). */
+  categorie: string
+  nbLecteurs: number
+  pagesVuesTotal: number
+  tempsTotalSec: number
+  /** ISO date ou null (ouvrage sans lecture). */
+  derniereActivite?: string | null
+}
+
+/** Réponse GET /api/etablissements/{id}/bibliotheque-activite. */
+export interface BibliothequeActiviteResult {
+  etablissementId: string
+  activite: OuvrageActivite[]
+}
+
+/** Temps de lecture affichable (min/h) — util partagé panneau activité. */
+export function tempsAffichable(secondes: number): string {
+  if (secondes >= 3600) {
+    const h = Math.floor(secondes / 3600)
+    const m = Math.round((secondes % 3600) / 60)
+    return m > 0 ? `${h} h ${m} min` : `${h} h`
+  }
+  if (secondes >= 60) return `${Math.round(secondes / 60)} min`
+  return `${secondes} s`
+}

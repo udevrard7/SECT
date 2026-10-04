@@ -95,6 +95,10 @@ func main() {
 	documentRepo := repository.NewDocumentRepository(pool)
 	// SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
 	ouvrageRepo := repository.NewOuvrageRepository(pool)
+	// SECT-BIBLIO-P2 (ADR-0007 §P2) : lecture mesurée (OuvrageLecture,
+	// migration 000124 — reprise de page, temps visibilité-gated,
+	// agrégats d’activité enseignante).
+	ouvrageLectureRepo := repository.NewOuvrageLectureRepository(pool)
 	certificatRepo := repository.NewCertificatRepository(pool)
 	correctionRepo := repository.NewCorrectionRepository(pool)
 	examPrepRepo := repository.NewExamPrepRepository(pool)
@@ -187,7 +191,8 @@ func main() {
 	documentUC := usecase.NewDocumentUseCase(documentRepo, storageClient)
 	// SECT-BIBLIO-P1 (ADR-0007) : quota stockage bibliothèque lu depuis
 	// BIBLIOTHEQUE_QUOTA_MO (défaut 2048 Mo) dans le usecase.
-	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, storageClient)
+	// SECT-BIBLIO-P2 : le usecase porte aussi la lecture mesurée.
+	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient)
 	certificatUC := usecase.NewCertificatUseCase(certificatRepo)
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
