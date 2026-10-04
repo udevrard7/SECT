@@ -3618,3 +3618,50 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
 - Leçons : typer les params plpgsql avec l'enum (jamais text) ; à défaut
   caster le côté enum vers text ; un scanner à 0 finding doit être prouvé
   non-vacuitif sur corpus de contrôle avant d'être cru.
+
+---
+## Task ID: SECT-PUSH-VERIFY-1
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Pousser a8a3faa5 vers GitHub (credentials fournis) et vérifier la chaîne complète sur les projets EXISTANTS (aucune création) ; restaurer backend/.env ; probe Neon lecture seule
+
+### Push & CI
+- a8a3faa5 poussé (identité udevrard7, fast-forward 970d2f12..a8a3faa5) ;
+  0 run CI pour ce SHA = CORRECT (paths filters `backend/**` / `frontend/**`,
+  commit docs-only). Santé CI générale : 353 runs, derniers verts sur 0286684b
+  (event=push, branch=main).
+- ⚠️ Fausse alerte au passage : « workflows corrompus (`branches: ain`) » —
+  RÉFUTÉE par preuve numérique (le blob contient bien `branches: [main,
+  develop]` ; cf. leçon [m] en fin d'entrée). Aucune correction faite.
+
+### Render (service existant SECT — srv-d9ed5bdaeets73auosj0)
+- API : l'ancien chemin `/v/services` répond désormais 404 — l'API sert sous
+  **`/v1/`** (forme `[{"cursor","service"}]`). Token `rnd_…` OK.
+- Dernier deploy `live` sur 0286684b (le code) ; le commit docs-only n'a pas
+  déclenché de deploy (rootDir=backend, `docs/` hors périmètre).
+- /health public : 200 `{"service":"sect-api","status":"ok","version":"0.2.0"}`
+  (cold-start ~16 s, plan free).
+
+### Vercel (projet existant sect-app — prj_2d7GMM5mCUppVLy2jVPjqO01TOmR)
+- rootDir=frontend, ignored-build-step `git diff HEAD^ HEAD --quiet -- .` :
+  commits docs-only → déploiement CANCELED (skip), commit code 0286684b →
+  READY production. sect.ftci.fr : 200.
+
+### Neon (lecture seule — probe psycopg, /home/z/sect-audit/neon_probe.py)
+- version=122 dirty=false ; PostgreSQL 18.6 ; 76 tables public (75 + 
+  schema_migrations) ; 200 policies (197 + 3 de 000121) ; 76/76 tables RLS ;
+  100 fonctions SECURITY DEFINER (99 + helper 000122) ; Conversation_select
+  branchée au helper 000122 (1) ; enum NiveauEtude 6 valeurs. Alignement
+  repo↔prod PARFAIT, aucun drift.
+- backend/.env restauré (gitignored) : DSN pooler fourni + NEON_DIRECT_URL
+  dérivé (host sans suffixe -pooler) + JWT_SECRET dev 64 hex + CORS
+  localhost+prod ; R2/emails/push vides (modes dégradés prévus).
+
+### Stage Summary
+- a8a3faa5 live sur GitHub ; CI/Render/Vercel dans l'état attendu (docs-only
+  correctement ignoré par les trois) ; Neon intact à 122/122.
+- Leçon OUTIL (pas projet) : la couche d'affichage du sandbox mange le
+  littéral `[m` dans les sorties d'outils (restes ANSI) — une « corruption »
+  de fichier affichée doit TOUJOURS être réfutée/confirmée par preuve
+  numérique (comptage d'octets, hash) avant toute « correction » ; ici
+  `branches: [main, develop]` était intact (353 runs push/main le prouvaient
+  déjà a contrario).
