@@ -30,9 +30,12 @@ func NewOuvrageAnnotationRepository(pool *pgxpool.Pool) *OuvrageAnnotationReposi
 	return &OuvrageAnnotationRepository{pool: pool}
 }
 
-// scanOuvrageAnnotation scanne une ligne (avec le nom de l'auteur,
-// hydraté par JOIN "User" — autorisé dans une query du repo, seules les
-// policies ne doivent pas JOIN, leçon P3).
+// scanOuvrageAnnotation scanne une ligne. Le nom de l'auteur est
+// hydraté par le helper SECURITY DEFINER user_display_name (000129) :
+// un JOIN "User" hériterait de la RLS User_select (un enseignant sans
+// EnseignerFiliere ne voit pas les étudiants → lignes DROPPÉES ; un
+// ADMIN global ne voit que ses etabs → nom NULL) — leçon P3 valable
+// pour les queries des repos autant que pour les policies.
 func scanOuvrageAnnotation(s scanner, a *domain.OuvrageAnnotation) error {
 	return s.Scan(
 		&a.ID, &a.OuvrageID, &a.UserID, &a.UserNom, &a.FiliereID,
@@ -41,10 +44,9 @@ func scanOuvrageAnnotation(s scanner, a *domain.OuvrageAnnotation) error {
 }
 
 const ouvrageAnnotationSelect = `
-	SELECT a."id", a."ouvrageId", a."userId", u."name", a."filiereId",
+	SELECT a."id", a."ouvrageId", a."userId", user_display_name(a."userId"), a."filiereId",
 	       a."page", a."contenu", a."visibilite"::text, a."createdAt", a."updatedAt"
-	FROM "OuvrageAnnotation" a
-	JOIN "User" u ON u."id" = a."userId"`
+	FROM "OuvrageAnnotation" a`
 
 // ListByOuvrage — annotations visibles de l'appelant, triées par page
 // puis date (le panneau UI groupe par page). page > 0 filtre sur la page.
@@ -53,7 +55,7 @@ func (r *OuvrageAnnotationRepository) ListByOuvrage(ctx context.Context, ouvrage
 	if !ok || claims.UserID == "" {
 		return nil, fmt.Errorf("ListByOuvrage: claims manquants dans le context")
 	}
-	var out []domain.OuvrageAnnotation
+	out := []domain.OuvrageAnnotation{}
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		query := ouvrageAnnotationSelect + `
 			WHERE a."ouvrageId" = $1`
@@ -96,8 +98,7 @@ func (r *OuvrageAnnotationRepository) Create(ctx context.Context, input domain.C
 			INSERT INTO "OuvrageAnnotation"
 				("id", "ouvrageId", "userId", "filiereId", "page", "contenu", "visibilite", "createdAt", "updatedAt")
 			VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
-			RETURNING "id", "ouvrageId", "userId",
-				(SELECT "name" FROM "User" WHERE "id" = $3),
+			RETURNING "id", "ouvrageId", "userId", user_display_name($3),
 				"filiereId", "page", "contenu", "visibilite"::text, "createdAt", "updatedAt"`,
 			uuid.NewString(), input.OuvrageID, input.UserID, input.FiliereID,
 			input.Page, input.Contenu, input.Visibilite)
@@ -135,8 +136,7 @@ func (r *OuvrageAnnotationRepository) Update(ctx context.Context, annotationID s
 		row := tx.QueryRow(ctx, `
 			UPDATE "OuvrageAnnotation" SET `+set+`
 			WHERE "id" = $1
-			RETURNING "id", "ouvrageId", "userId",
-				(SELECT "name" FROM "User" WHERE "id" = "OuvrageAnnotation"."userId"),
+			RETURNING "id", "ouvrageId", "userId", user_display_name("userId"),
 				"filiereId", "page", "contenu", "visibilite"::text, "createdAt", "updatedAt"`,
 			args...)
 		var a domain.OuvrageAnnotation

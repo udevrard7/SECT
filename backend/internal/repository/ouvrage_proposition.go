@@ -29,9 +29,12 @@ func NewOuvragePropositionRepository(pool *pgxpool.Pool) *OuvragePropositionRepo
 	return &OuvragePropositionRepository{pool: pool}
 }
 
-// scanOuvrageProposition scanne une ligne (proposant + ouvrage lié
-// hydratés par JOIN — LEFT JOIN Ouvrage : la proposition survit à la
-// purge de l'ouvrage, ouvrageId SET NULL).
+// scanOuvrageProposition scanne une ligne. Proposant hydraté par le
+// helper SECURITY DEFINER user_display_name (000129 — un JOIN "User"
+// hériterait de la RLS User_select : l'ADMIN global ne verrait AUCUNE
+// proposition, lignes droppées) ; ouvrage lié par LEFT JOIN (la
+// proposition survit à la purge de l'ouvrage, ouvrageId SET NULL —
+// visible via Ouvrage_select pour les lecteurs de l'etab).
 func scanOuvrageProposition(s scanner, p *domain.OuvrageProposition) error {
 	return s.Scan(
 		&p.ID, &p.EtablissementID, &p.ProposantID, &p.ProposantNom,
@@ -43,13 +46,12 @@ func scanOuvrageProposition(s scanner, p *domain.OuvrageProposition) error {
 }
 
 const ouvragePropositionSelect = `
-        SELECT p."id", p."etablissementId", p."proposantId", u."name",
+        SELECT p."id", p."etablissementId", p."proposantId", user_display_name(p."proposantId"),
                p."titre", p."auteurs", p."categorie", p."editeur", p."anneePublication",
                p."isbn", p."langue", p."filiereId", p."niveau"::text, p."themes", p."description",
                p."licenceOrigine", p."statut"::text, p."motifRefus", p."trancheParId",
                p."trancheAt", p."ouvrageId", o."titre", p."createdAt", p."updatedAt"
         FROM "OuvrageProposition" p
-        JOIN "User" u ON u."id" = p."proposantId"
         LEFT JOIN "Ouvrage" o ON o."id" = p."ouvrageId"`
 
 // normalizePropositionPagination — page ≥ 1, limit 1..100 défaut 20
@@ -154,8 +156,7 @@ func (r *OuvragePropositionRepository) Create(ctx context.Context, input domain.
                                  "themes", "description", "licenceOrigine", "statut", "createdAt", "updatedAt")
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
                                 'EN_ATTENTE', now(), now())
-                        RETURNING "id", "etablissementId", "proposantId",
-                                (SELECT "name" FROM "User" WHERE "id" = $3),
+                        RETURNING "id", "etablissementId", "proposantId", user_display_name($3),
                                 "titre", "auteurs", "categorie", "editeur", "anneePublication",
                                 "isbn", "langue", "filiereId", "niveau"::text, "themes", "description",
                                 "licenceOrigine", "statut"::text, "motifRefus", "trancheParId",
@@ -191,8 +192,7 @@ func (r *OuvragePropositionRepository) Trancher(ctx context.Context, id string, 
                         SET "statut" = $2, "motifRefus" = $3, "trancheParId" = $4,
                             "trancheAt" = now(), "updatedAt" = now()
                         WHERE "id" = $1 AND "statut" = 'EN_ATTENTE'
-                        RETURNING "id", "etablissementId", "proposantId",
-                                (SELECT "name" FROM "User" WHERE "id" = "OuvrageProposition"."proposantId"),
+                        RETURNING "id", "etablissementId", "proposantId", user_display_name("proposantId"),
                                 "titre", "auteurs", "categorie", "editeur", "anneePublication",
                                 "isbn", "langue", "filiereId", "niveau"::text, "themes", "description",
                                 "licenceOrigine", "statut"::text, "motifRefus", "trancheParId",

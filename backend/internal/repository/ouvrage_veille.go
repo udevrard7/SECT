@@ -32,6 +32,11 @@ func NewOuvrageVeilleRepository(pool *pgxpool.Pool) *OuvrageVeilleRepository {
 
 const columnsOuvrageVeille = `v."id", v."userId", v."etablissementId", v."terme", v."categorie", v."createdAt", v."updatedAt"`
 
+// columnsOuvrageVeilleBare — SANS préfixe d'alias pour le RETURNING des
+// INSERT (leçon P1 : v. dans un RETURNING sans FROM = 42P01 → 500 ;
+// attrapé par l'E2E, invisible au dry-run policies).
+const columnsOuvrageVeilleBare = `"id", "userId", "etablissementId", "terme", "categorie", "createdAt", "updatedAt"`
+
 func scanOuvrageVeille(s scanner, v *domain.OuvrageVeille) error {
 	return s.Scan(&v.ID, &v.UserID, &v.EtablissementID, &v.Terme, &v.Categorie, &v.CreatedAt, &v.UpdatedAt)
 }
@@ -42,7 +47,7 @@ func (r *OuvrageVeilleRepository) ListByUser(ctx context.Context, userID string)
 	if !ok || claims.UserID == "" {
 		return nil, fmt.Errorf("ListByUser veilles: claims manquants dans le context")
 	}
-	var out []domain.OuvrageVeille
+	out := []domain.OuvrageVeille{}
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT `+columnsOuvrageVeille+`
@@ -80,7 +85,7 @@ func (r *OuvrageVeilleRepository) Create(ctx context.Context, input domain.Creat
 		row := tx.QueryRow(ctx, `
 			INSERT INTO "OuvrageVeille" ("id", "userId", "etablissementId", "terme", "categorie", "createdAt", "updatedAt")
 			VALUES ($1, $2, $3, $4, $5, now(), now())
-			RETURNING `+columnsOuvrageVeille,
+			RETURNING `+columnsOuvrageVeilleBare,
 			uuid.NewString(), input.UserID, input.EtablissementID, input.Terme, input.Categorie)
 		var v domain.OuvrageVeille
 		if err := scanOuvrageVeille(row, &v); err != nil {

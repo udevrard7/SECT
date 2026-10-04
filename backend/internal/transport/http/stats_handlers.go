@@ -1713,7 +1713,7 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		// pour éviter le scan direct de NiveauBadge[] (incompatible pgx).
 		rows, err := tx.Query(ctx, `
                         SELECT bd."id", bd."cle", bd."titre", bd."description", bd."icone",
-                               bd."categorie"::text, trim(bd."roleCible"::text) AS "roleCible",
+                               bd."categorie"::text, COALESCE(trim(bd."roleCible"::text), '') AS "roleCible",
                                array_to_string(bd."niveaux", ',') AS niveaux_str,
                                bp."niveauActuel"::text, bp."valeurActuelle", bp."valeurPalier",
                                bp."valeurProchain", bp."debloque", bp."dateObtention"
