@@ -348,13 +348,17 @@ func (r *QuotaRepository) countUsersByRole(ctx context.Context, etablissementID,
 
 func (r *QuotaRepository) countIAUsageThisMonth(ctx context.Context, etablissementID, usageType string) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx, `
+	// SECT-DETTES-AUDIT-2 (RLS IAUsage, 000121) : via claims système —
+	// le pool-direct sans claims est deny-by-default sous sect_app.
+	err := db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
                 SELECT COALESCE(SUM("count"), 0)
                 FROM "IAUsage"
                 WHERE "etablissementId" = $1
                   AND "type" = $2
                   AND "month" = date_trunc('month', now())
         `, etablissementID, usageType).Scan(&count)
+	})
 	if err != nil {
 		return 0, fmt.Errorf("count IA usage: %w", err)
 	}
@@ -362,16 +366,17 @@ func (r *QuotaRepository) countIAUsageThisMonth(ctx context.Context, etablisseme
 }
 
 func (r *QuotaRepository) incrementIAUsage(ctx context.Context, etablissementID, usageType string) error {
-	_, err := r.pool.Exec(ctx, `
+	// SECT-DETTES-AUDIT-2 (RLS IAUsage, 000121) : via claims système —
+	// l'upsert exige INSERT + UPDATE policies (branche is_system()).
+	return db.WithSystemTx(ctx, r.pool, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
                 INSERT INTO "IAUsage" ("id", "etablissementId", "type", "month", "count", "createdAt", "updatedAt")
                 VALUES (gen_random_uuid()::text, $1, $2, date_trunc('month', now()), 1, now(), now())
                 ON CONFLICT ("etablissementId", "type", "month")
                 DO UPDATE SET "count" = "IAUsage"."count" + 1, "updatedAt" = now()
         `, etablissementID, usageType)
-	if err != nil {
-		return fmt.Errorf("increment IA usage: %w", err)
-	}
-	return nil
+		return err
+	})
 }
 
 // GetPlanLimitsForUser récupère les limites du plan pour un utilisateur donné
