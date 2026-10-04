@@ -3712,3 +3712,94 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
 - Leçons répercutées dans l'ADR : RLS same-migration (000121), params
   plpgsql typés enum (ENUM-SWEEP), golang-migrate only (DTTES-AUDIT-2),
   NULLS NOT DISTINCT (PG 18.6 vérifié).
+
+---
+## Task ID: SECT-BIBLIO-P1
+**Agent**: Main orchestrator (Z.ai Code) + subagent Explore (Task 9-a, cartographie frontend)
+**Task**: Exécuter la phase P1 de l'ADR-0007 — bibliothèque numérique : migration 000123 + backend complet + UI (admin/catal­ogue/lecteur) + déploiement + preuves en prod
+
+### Contexte
+- Exécution de l'ADR-0007 après validation G1/G2/G3 (SECT-BIBLIO-ADR-1).
+- Sandbox recréé : outillage Go 1.27.1 + golang-migrate 4.20.1 + golangci-lint
+  v2.14.0 (parité CI exacte) réinstallé ; cartographie frontend confiée à un
+  subagent Explore (Task 9-a, worklog session) — pattern par pattern, 4 points
+  d'entrée de la nav identifiés, constat clé : AUCUN lecteur PDF n'existait.
+
+### Livraison
+- **Migration 000123** (up/down) : enum CategorieOuvrage (4 valeurs), table
+  Ouvrage (niveau TYPÉ enum NiveauEtude — leçon ENUM-SWEEP), RLS
+  same-migration (leçon 000121), 3 policies TO PUBLIC (pattern 000117 :
+  select = system/admin OR etab+non-supprimé+droits non expirés ;
+  insert/update = system/admin ; DELETE volontairement absent = deny),
+  6 ASSERTs (pattern 000122). Index partiels WHERE deletedAt IS NULL.
+- **Backend** : domain/ouvrage.go (entités + input tri-state :
+  pointeurs=inchangé/valeur + UnsetX=NULL) ; repository/ouvrage.go
+  (List paginé + filtres « recommandation » matche NULL=tous, Create/Update/
+  SoftDelete/Restore, FK 23503→ValidationError 400 — leçon PRODUIT-1,
+  AuditLecture, SumTailles quota) ; usecase/ouvrage.go (G1 ADMIN seul,
+  quota BIBLIOTHEQUE_QUOTA_MO défaut 2048, clé R2 ouvrages/{id}/{ts}_{nom}
+  générée côté usecase pour l'INSERT, presigné 15 min, audit best-effort) ;
+  handlers chi (PATCH tri-state via RawMessage, multipart 100 Mo) ;
+  routes /api/ouvrages ; main.go + NewServer param 32.
+- **Frontend** : ouvrages-types.ts (miroir Go) ; routes.ts (PageId
+  bibliotheque + nav ×4 rôles — Library déjà mappée dans les 2 ICON_MAP,
+  zéro edit sidebar/command-palette) ; page unique ~1100 lignes (catalogue
+  cartes + filtres + stats, dépôt admin drag&drop, édition tri-state,
+  corbeille/restore, lecteur in-browser plein écran iframe + bannière
+  « Lecture réservée ») ; page-content.tsx branché.
+- **Gates** : gofmt/build/vet + golangci-lint 0 issue ; tsc 0 erreur ;
+  eslint 0 erreur (1 warning préexistant use-surveillance-ws).
+
+### Déploiement (ordre zéro-rupture)
+- Dry-run Neon 17/17 (rôle temporaire NOLOGIN NOBYPASSRLS créé DANS la tx
+  après l'UP — sinon les GRANT ne couvrent pas la table fraîche ; DROP OWNED
+  exige membership sur Neon sans superuser) : deny par défaut, cloisonnement
+  G2, auto-masquage expiré/corbeille, unset expiration→re-visible, UPDATE/
+  DELETE non autorisés = 0 ligne silencieuse (≠ exception — harnais corrigé
+  2 fois : rowcount écrasé par le SELECT suivant), hard-delete deny, FK
+  23503, round-trip up→down. ROLLBACK : résidu 0.
+- Migration appliquée AVANT le push (table inconnue de l'ancien code =
+  inerte) : 123 dirty=false, 77 tables, 203 policies.
+- CI verte ×3 (331617c3, 1df60d0b, b5f9a732) ; Render live b5f9a732 ;
+  Vercel READY (build réel : frontend/** touché) ; sect.ftci.fr 200.
+
+### Deux bugs attrapés par l'E2E (le dry-run policies ne pouvait pas les voir)
+1. **RETURNING avec préfixe d'alias** dans Create/Restore (repo Go) :
+   « missing FROM-clause entry for table "o" » 42601 → 500 en prod sur tout
+   dépôt. Fix : columnsOuvrageBare (ReplaceAll du préfixe). Le dry-run
+   testait le SQL des policies, pas le repo Go ; l'E2E API l'a attrapé au
+   1er POST (500) — commit 1df60d0b.
+2. **/fichier en mode DB-only** : 500 « erreur interne » générique →
+   ValidationError 400 lisible « stockage non configuré (mode DB-only)… »,
+   affichée dans l'état d'erreur du lecteur — commit b5f9a732.
+
+### Preuves en prod
+- **E2E API 30/30** (fixtures jetables e2e-biblio-{admin,ens,etu}@
+  sect-test.dev, pattern tmpe2e) : validations 400 (titre/catégorie/licence
+  garde-fou/FK mappée/non-PDF), 403 enseignant (G1), 404 auto-masquage
+  expiré, PATCH tri-state null→unset (expiration renouvelée → re-visible ;
+  niveau null + renommage miroir), corbeille/restore, includeDeleted révoqué
+  lecteurs, recherche+filtres, /fichier erreur propre DB-only.
+- **E2E UI navigateur** (agent-browser, sect.ftci.fr, Vercel) : login →
+  /bibliotheque rendu (nav, stats, filtres, switch corbeille) → dépôt
+  drag&drop complet (4 catégories, licence obligatoire) → toast succès →
+  carte → lecteur plein écran (bannière + erreur honnête DB-only) →
+  corbeille (AlertDialog+toast+badge) → restauration. Screenshot
+  /home/z/sect-audit/ui_biblio_finale.png.
+- **Résidu 0** : Ouvrage=0, users fixtures=0, rôle=0, AuditLog
+  OUVRAGE_LECTURE=0 (DB-only : aucun accès abouti, cohérent).
+
+### Stage Summary
+- P1 LIVRÉ, DÉPLOYÉ ET PROUVÉ en prod (API + UI) : catalogue + dépôt ADMIN
+  + corbeille/restore + lecteur in-browser ; Neon 123/123.
+- ⚠️ Point ops pour le CTO : la lecture réelle de fichiers exige R2
+  (R2_ACCOUNT_ID/KEY/SECRET sur Render) — 5 min de config, zéro code à
+  changer ; en attendant, état d'erreur honnête partout (pattern Document).
+- Dettes P1 assumées et documentées : stats par catégorie sur la page
+  courante (pas d'endpoint dédié), vue table absente (cartes seulement),
+  AuditLog ouvrage.lecture non testé en prod (DB-only).
+- Leçons : RETURNING doit être bare sans alias dans INSERT/UPDATE sans
+   alias ; un UPDATE/DELETE RLS refusé = 0 ligne silencieuse (rowcount à
+   capturer immédiatement) ; harnais dry-run = policies, harnais E2E =
+   repo Go — les deux sont nécessaires ; omitempty Go omet les clés nil
+   (harnais : .get()).
