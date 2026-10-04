@@ -2276,19 +2276,21 @@ export function BibliothequePage() {
                     Marquer
                   </Button>
                 </div>
-                {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1). */}
-                <Button
-                  variant={panneauAnnotations ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => setPanneauAnnotations((v) => !v)}
-                  aria-pressed={panneauAnnotations}
-                >
-                  <MessageSquareText className="h-3 w-3" />
-                  Annotations
-                </Button>
               </div>
             )}
+            {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1) —
+                indépendant du fichier (les annotations vivent sur
+                l'ouvrage, utiles même en erreur honnête DB-only). */}
+            <Button
+              variant={panneauAnnotations ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setPanneauAnnotations((v) => !v)}
+              aria-pressed={panneauAnnotations}
+            >
+              <MessageSquareText className="h-3 w-3" />
+              Annotations
+            </Button>
           </div>
 
           <div className="flex-1 min-h-0 bg-muted/30 flex">
@@ -2340,7 +2342,7 @@ export function BibliothequePage() {
             </div>
             {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1) —
                 visibilité PRIVEE/FILIERE/ETABLISSEMENT scopée RLS. */}
-            {panneauAnnotations && lecteur?.url && (
+            {panneauAnnotations && lecteur && (
               <aside className="w-[320px] shrink-0 border-l border-border bg-card overflow-hidden">
                 <AnnotationsPanel
                   ouvrageId={lecteur.ouvrage.id}
