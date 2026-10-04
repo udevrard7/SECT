@@ -3803,3 +3803,133 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
    capturer immédiatement) ; harnais dry-run = policies, harnais E2E =
    repo Go — les deux sont nécessaires ; omitempty Go omet les clés nil
    (harnais : .get()).
+
+## Task ID: SECT-BIBLIO-P2
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Exécuter la phase P2 de l'ADR-0007 — la lecture mesurée : migration 000124 (OuvrageLecture + agrégats d'activité) + backend + frontend + déploiement + preuves en prod
+
+### Contexte
+- P2 avait été livrée code-complète en session précédente (commit local fbfd58b,
+  jamais poussé : les credentials GitHub avaient été révoqués AVANT le push).
+  Le sandbox ayant été détruit, le commit est PERDU — la phase a été réimplémentée
+  intégralement depuis l'ADR-0007 §P2 + les spécifications du worklog, puis
+  livrée, déployée et prouvée en prod dans CETTE session (commit 4ebd950c).
+  Leçon consignée : un commit non poussé n'existe pas — pousser dès que les
+  gates passent, même si le déploiement attend les credentials.
+- Acceptation P2 (ADR-0007) : reprise de lecture à la page exacte ; activité
+  lisible par l'enseignant.
+
+### Livraison
+- **Migration 000124** (up/down) : table OuvrageLecture (DDL strict ADR §P2 —
+  UNIQUE("ouvrageId","userId"), pagesVues TEXT-JSON {"12": 3}), RLS
+  same-migration (leçon 000121), 3 policies TO PUBLIC propriétaire
+  (`userId = current_user_id()` + EXISTS délégué AUX CONDITIONS DE
+  Ouvrage_select — le scoping etab/corbeille/droits expirés vit à UN SEUL
+  endroit), DELETE volontairement absent (deny, pattern 000121), 6 ASSERTs
+  (pattern 000122/000123). Fonction ADDITIVE
+  `bibliotheque_activite_etablissement(p_etablissement_id)` SECURITY DEFINER
+  (pattern 000116 — invisible pour l'ancien code, déploiement sans rupture) :
+  cloisonnement rôle+etab DANS la fonction (current_setting des claims posés
+  par SetClaimsTx : rôle ∈ ENS/RESP/ADMIN sinon 0 ligne ; non-ADMIN = son
+  etab uniquement), categorie::text (leçon ENUM-SWEEP), pages vues agrégées
+  via jsonb_each_text, expirés + corbeille exclus, 7 colonnes.
+- **Backend** : domain/ouvrage_lecture.go (OuvrageLecture + RecordLectureInput
+  sémantique : tempsDeltaSec=INCRÉMENT, pagesVues=DELTA fusionné serveur,
+  dernierePage=MARQUE-PAGE DÉCLARATIF nil=ne pas toucher + bornes anti-abus
+  100000/10000/5000/3600/100000000) ; repository/ouvrage_lecture.go
+  (GetLecture nil,nil=première lecture ; UpsertLecture read-modify-write
+  SELECT FOR UPDATE + fusion pagesVues côté Go (jamais de JSON assemblé en
+  SQL) + borne 5000 entrées tri NUMÉRIQUE ("10" < "9" lexicographique !) +
+  42501/23503/23505 → 404 ceinture-bretelles ; ActiviteEtablissement sous
+  claims) ; usecase (télémétrie TOLÉRANTE : clamps jamais 400 — une sonde ne
+  casse pas la lecture, sanitisation drop-invalide/clamp-valeurs, gating 403
+  ETUDIANT + hors-etab sur l'activité uniquement — l'étudiant est le PREMIER
+  lecteur, GET/PUT lecture = tous rôles propriétaire) ;
+  ouvrage_lecture_handlers.go ; routes chi ×3 (GET/PUT
+  /api/ouvrages/{id}/lecture, GET /api/etablissements/{id}/bibliotheque-
+  activite RequireRole ENS/RESP/ADMIN) ; main.go (NewOuvrageUseCase +
+  lectureRepo).
+- **Frontend** : ouvrages-types.ts étendu (miroir Go : OuvrageLecture,
+  RecordLecturePayload, OuvrageActivite, BibliothequeActiviteResult,
+  tempsAffichable) ; bibliotheque-page.tsx — lecteur : ouverture fichier +
+  progression EN PARALLÈLE (Promise.all — la progression est non bloquante),
+  reprise #page=N (fragment JAMAIS signé — l'ajouter ne casse pas la
+  présignature R2), chip « Reprise page N » + « Reprendre au début »,
+  télémétrie useRef + visibilitychange (le temps ne compte QUE si l'onglet
+  est visible) + heartbeat 30 s + flush keepalive (survit à la fermeture) +
+  best-effort (une erreur réseau n'interrompt jamais la lecture), marque-page
+  DÉCLARATIF (l'iframe cross-origin ne permet pas de lire la page courante du
+  lecteur PDF natif — c'est le lecteur qui déclare où il en est, envoi
+  immédiat) ; panneau activité : ToggleGroup Catalogue/Activité (ENS/RESP/
+  ADMIN — invisible ETUDIANT), sélecteur d'établissement ADMIN global
+  (auto-sélection du 1er), 4 StatCards (dont Temps de lecture formaté),
+  Table shadcn (titre/catégorie/lecteurs/pages vues/temps/dernière activité,
+  tabular-nums), états loading skeleton / erreur + retry / vide.
+- **Gates** : gofmt/build/vet + golangci-lint v2.14.0 0 issue ; tsc 0 erreur ;
+  eslint 0 erreur (1 warning préexistant use-surveillance-ws, non touché).
+
+### Déploiement (ordre zéro-rupture)
+- Dry-run Neon 22/22 (pattern P1 : tx ROLLBACK + rôle NOLOGIN sect_p2_audit
+  créé DANS la tx APRÈS l'UP, fixtures ouvrages jetables X/Y-corbeille/
+  Z-autre-etab) : 42501 sur corbeille/autre-etab/userId d'autrui, 23505 race
+  2 onglets, deny silencieux UPDATE/DELETE d'autrui (0 ligne), SELECT FOR
+  UPDATE (chemin repo), fonction ENS agrégats exacts (1 lecteur/60 s/3 pages)
+  + cloisonnement etab voisin 0 ligne + ADMIN total + ETUDIANT 0 + sans
+  claims 0, round-trip up→down, ROLLBACK résidu 0 (version 123 intacte).
+  2 corrections de harnais (pas de bugs code) : SET LOCAL n'accepte pas les
+  bind params (littéraux échappés, miroir pgEscape — déjà appris Task 10,
+  ré-appris) ; une erreur ATTENDUE abort la transaction → SAVEPOINT +
+  ROLLBACK TO SAVEPOINT autour de chaque échec attendu.
+- Migration appliquée AVANT le push (golang-migrate, URL DIRECTE hors pooler —
+  leçon Task 1 ; table inconnue de l'ancien code = inerte) : 124 dirty=false,
+  78 tables, 206 policies, grants sect_app couverts par les ALTER DEFAULT
+  PRIVILEGES de 000020 (vérifiés : 4 grants sur OuvrageLecture).
+- Push 4ebd950c (udevrard7) → CI verte ×2 (Backend + Frontend) → Render
+  dep-db195guq1p3s73f2h0mg LIVE → Vercel dpl_2WSo READY (build réel) ;
+  sect.ftci.fr 200.
+
+### Preuves en prod
+- **E2E API 18/18** (fixtures 100 % jetables e2e-p2-* : 2 etabs + 4 users +
+  2 ouvrages, bcrypt réel + login JWT) : 1re lecture {lecture:null}, PUT
+  marque-page 12 + 30 s (valeurs exactes + pagesVues {"12":1}), persistance
+  GET, heartbeat +45 s → temps 75 s et marque-page INCHANGÉ (seul un
+  marquage explicite déplace la reprise), sonde tolérante (temps clampé
+  +3600, page clampée 100000, pagesVues sanitarisée {abc,-3,13:0} droppées
+  / {14:2} gardée / fusion avec l'existant), JSON invalide 400, isolation
+  propriétaire (etu2 voit SA ligne 5/20, pas celle d'etu1 3675 s), 3e
+  lecteur ens OK, activité ETUDIANT 403, activité ENS agrégats exacts
+  (3 lecteurs, 3705 s, 3 pages), ENS etab voisin 403, ADMIN global 200,
+  auto-masquage 404 (GET/PUT lecture ouvrage autre etab + inexistant —
+  aucune fuite d'existence : ouvrage invisible sans progression répond 404,
+  pas un null), sans auth 401, admin sans progression 200+null.
+- **E2E UI navigateur** (agent-browser, sect.ftci.fr/Vercel, screenshots
+  ui_p2_*.png) : login ENS fixture → /bibliotheque rendu avec ToggleGroup
+  Catalogue|Activité → vue Activité : StatCards exactes sur données seedées
+  (Ouvrages lus=1, Lectures=1, Temps=5 min pour 312 s, Dernière activité
+  04/10/2026) + Table ligne exacte (1 lecteur, 3 pages vues, 5 min) →
+  lecteur : bannière « Lecture réservée… journalisée » + erreur honnête
+  DB-only (P1 ops point : R2 à configurer sur Render) + trace réseau
+  PROUVANT l'ouverture parallèle (/lecture 200 + /fichier 400) → login
+  ETUDIANT : catalogue SANS le toggle (vue enseignante masquée), 0 erreur
+  console.
+- **Résidu 0** : ouvrages/users/etabs/lectures e2e-p2* = 0 (les AuditLog de
+  login restent, append-only légitimes) ; Neon 124/124 dirty=false.
+
+### Stage Summary
+- P2 LIVRÉE, DÉPLOYÉE ET PROUVÉE en prod (API 18/18 + UI navigateur) :
+  reprise à la page exacte (#page=N), temps visibilité-gated (heartbeat 30 s
+  + keepalive), marque-page déclaratif, agrégats enseignant/resp/admin
+  cloisonnés par etab — critères d'acceptation ADR-0007 §P2 couverts.
+- Le marque-page est DÉCLARATIF par nécessité technique (iframe cross-origin
+  → page courante illisible) : assumé produit, documenté dans l'UI (bouton
+  « Marquer »), la télémétrie temps reste passive.
+- Point ops inchangé pour le CTO : la lecture RÉELLE de fichiers exige R2
+  (3 env vars Render) — en attendant l'erreur honnête P1 ; les endpoints
+  progression/activité sont déjà pleinement opérationnels.
+- Prochaines phases ADR-0007 : P2.5 (Question.chapterId, migration 000125),
+  P3 (paquet enseignant : déclaration assistée + bibliographie + conformité),
+  P4 (social).
+- Leçons : le fragment d'URL (#page=N) n'est JAMAIS signé — l'ajouter à une
+  présignature est sûr ; comparaison de clés numériques en Go = tri NUMÉRIQUE
+  pas lexicographique ; un commit non poussé n'existe pas (perte fbfd58b) ;
+  harnais multi-échecs-attendus en une tx = SAVEPOINT obligatoire.
