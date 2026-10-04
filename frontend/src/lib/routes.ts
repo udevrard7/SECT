@@ -44,6 +44,7 @@ export type PageId =
   | 'mes-etudiants'
   | 'annee-academique'
   | 'diffusions'
+  | 'bibliotheque'
   | 'profil'
   | 'parametres'
 
@@ -91,6 +92,9 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   'mes-etudiants': '/mes-etudiants',
   diffusions: '/diffusions',
   'annee-academique': '/annee-academique',
+  // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — une seule page
+  // pour tous les rôles ; l'ADMIN y dépose (G1), les autres lisent.
+  bibliotheque: '/bibliotheque',
   profil: '/profil',
   parametres: '/parametres',
 }
@@ -275,6 +279,8 @@ export const PAGE_LABELS: Record<PageId, string> = {
   // SECT-NOTIF-DIFFUSION-1 : système de diffusion du RESPONSABLE (séparé
   // du centre de diffusion SaaS ADMIN /notifications).
   diffusions: 'Diffusions',
+  // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
+  bibliotheque: 'Bibliothèque',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -324,6 +330,8 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'annee-academique': "Gérer les années académiques et la clôture de fin d'année",
   // SECT-NOTIF-DIFFUSION-1 : diffusion d'établissement du RESPONSABLE.
   diffusions: "Diffusez des annonces aux membres de votre établissement (tout l'établissement, enseignants ou étudiants)",
+  // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
+  bibliotheque: "Explorer les ouvrages de référence de votre établissement (référentiels officiels, ouvrages, recherche, pratique professionnelle)",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -370,6 +378,10 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'etablissements', label: 'Établissements (consultation)', icon: 'Building2' },
       { id: 'utilisateurs', label: 'Responsables', icon: 'UserCheck' },
+      // SECT-BIBLIO-P1 (ADR-0007) : dépôt ADMIN (G1) — la page oriente
+      // l'ADMIN sans établissement (mode assistance absent) via le select
+      // d'établissement du formulaire de dépôt.
+      { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
     ],
   },
   {
@@ -429,6 +441,9 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'filieres', label: 'Filières', icon: 'GraduationCap' },
       { id: 'programme-academique', label: 'Programme académique', icon: 'BookMarked' },
+      // SECT-BIBLIO-P1 (ADR-0007) : catalogue lecture pour le RESPONSABLE
+      // (le dépôt reste ADMIN, G1).
+      { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
       // SECT-ANNEE-MERGE-1 : fusion des modules « Années académiques » et
       // « Clôture de l'année » en une seule page /annee-academique avec 2
       // onglets (Années + Clôture). Le libellé « Année académique » couvre
@@ -497,6 +512,10 @@ const ENSEIGNANT_CATEGORIES: NavCategory[] = [
     defaultOpen: true,
     items: [
       { id: 'documents', label: 'Documents', icon: 'FileUp' },
+      // SECT-BIBLIO-P1 (ADR-0007) : catalogue lecture — la table de travail
+      // de l'enseignant pendant la préparation de ses supports (la
+      // déclaration assistée viendra en P3, paquet enseignant).
+      { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
       { id: 'questions-ia', label: 'Génération IA', icon: 'Sparkles' },
     ],
   },
@@ -585,6 +604,9 @@ const ETUDIANT_CATEGORIES: NavCategory[] = [
     defaultOpen: true,
     items: [
       { id: 'mes-enseignants', label: 'Mes enseignants', icon: 'Users' },
+      // SECT-BIBLIO-P1 (ADR-0007) : catalogue lecture — les ouvrages de
+      // référence pour approfondir après les supports de cours.
+      { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
     ],
   },
   {

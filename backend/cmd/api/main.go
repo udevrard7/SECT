@@ -93,6 +93,8 @@ func main() {
 	sessionRepo := repository.NewSessionRepository(pool)
 	resultatRepo := repository.NewResultatRepository(pool)
 	documentRepo := repository.NewDocumentRepository(pool)
+	// SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
+	ouvrageRepo := repository.NewOuvrageRepository(pool)
 	certificatRepo := repository.NewCertificatRepository(pool)
 	correctionRepo := repository.NewCorrectionRepository(pool)
 	examPrepRepo := repository.NewExamPrepRepository(pool)
@@ -183,6 +185,9 @@ func main() {
 	sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
 	resultatUC := usecase.NewResultatUseCase(resultatRepo)
 	documentUC := usecase.NewDocumentUseCase(documentRepo, storageClient)
+	// SECT-BIBLIO-P1 (ADR-0007) : quota stockage bibliothèque lu depuis
+	// BIBLIOTHEQUE_QUOTA_MO (défaut 2048 Mo) dans le usecase.
+	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, storageClient)
 	certificatUC := usecase.NewCertificatUseCase(certificatRepo)
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
@@ -293,7 +298,7 @@ func main() {
 	// channel in-memory ne fonctionnait pas de façon fiable sur Render free
 	// (cold start tue le worker goroutine avant traitement du job).
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC)
 
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications.
 	// Instancié APRÈS le serveur (le hub SSE global est dans transport/http,

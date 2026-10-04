@@ -176,6 +176,17 @@ func GenerateObjectKey(userID, filename string) string {
 	return fmt.Sprintf("documents/%s/%d_%s", userID, timestamp, safeName)
 }
 
+// GenerateOuvrageObjectKey construit la clé R2 d'un ouvrage (bibliothèque
+// numérique, ADR-0007). Convention des préfixes existants :
+// documents/{userId}/…, captures/{sessionId}/…, identity-photos/{userId}/… —
+// les ouvrages vivent sous ouvrages/{ouvrageId}/… (séparation par préfixe,
+// même bucket).
+func GenerateOuvrageObjectKey(ouvrageID, filename string) string {
+	safeName := strings.ReplaceAll(filename, " ", "_")
+	timestamp := time.Now().UnixMilli()
+	return fmt.Sprintf("ouvrages/%s/%d_%s", ouvrageID, timestamp, safeName)
+}
+
 // bytesReader convertit []byte en io.Reader.
 func bytesReader(b []byte) *bytes.Reader {
 	return bytes.NewReader(b)

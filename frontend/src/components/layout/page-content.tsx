@@ -57,6 +57,9 @@ import { AnneeAcademiquePage } from '@/components/responsable/annee-academique-p
 // SECT-NOTIF-DIFFUSION-1 : système de diffusion du RESPONSABLE (séparé du
 // centre de diffusion SaaS ADMIN /notifications).
 import { DiffusionsPage } from '@/components/responsable/diffusions-page'
+// SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — une seule page pour
+// tous les rôles (l'ADMIN y dépose, G1 ; le RLS Ouvrage_* 000123 scope).
+import { BibliothequePage } from '@/components/bibliotheque/bibliotheque-page'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import type { PageId } from '@/lib/routes'
@@ -115,6 +118,8 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
   'annee-academique': AnneeAcademiquePage,
   // SECT-NOTIF-DIFFUSION-1 : diffusion d'établissement du RESPONSABLE.
   diffusions: DiffusionsPage,
+  // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
+  bibliotheque: BibliothequePage,
 }
 
 // ─── Legacy redirect mappings ───

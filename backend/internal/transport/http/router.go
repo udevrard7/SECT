@@ -98,6 +98,10 @@ type Server struct {
 	// d'un étudiant (GET /api/etudiants/{etudiantId}/inscriptions). RLS via claims
 	// (ETUDIANT self / RESPONSABLE same-etab / ADMIN with etab access).
 	inscriptionRepo *repository.InscriptionRepository
+	// SECT-BIBLIO-P1 (ADR-0007) : usecase de la bibliothèque numérique.
+	// Dépôt ADMIN (G1) + catalogue lecteurs (RLS Ouvrage_* 000123) ;
+	// ajouté en fin de signature pour minimiser le diff (pattern projet).
+	ouvrageUC *usecase.OuvrageUseCase
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications. Injecté via
 	// WithNotificationDispatcher (setter pattern — évite d'étendre la signature
 	// NewServer déjà très longue). nil = pas de notification (dev/tests).
@@ -172,6 +176,9 @@ func NewServer(
 	// inscriptions d'un étudiant (ajouté en fin de signature pour minimiser
 	// le diff avec les callers existants).
 	inscriptionRepo *repository.InscriptionRepository,
+	// SECT-BIBLIO-P1 (ADR-0007) : usecase bibliothèque numérique (ajouté en
+	// fin de signature pour minimiser le diff, pattern projet).
+	ouvrageUC *usecase.OuvrageUseCase,
 ) *Server {
 	s := &Server{
 		dbPool:              dbPool,
@@ -209,6 +216,7 @@ func NewServer(
 		authRepo:            authRepo,
 		promotionUC:         promotionUC,
 		inscriptionRepo:     inscriptionRepo,
+		ouvrageUC:           ouvrageUC,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -798,6 +806,21 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteDocument)
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{id}/analyze", s.analyzeDocument) // P1-D3
+		})
+
+		// SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — catalogue
+		// lecteurs (tous rôles, scoping RLS Ouvrage_* 000123) + mutations
+		// ADMIN (G1). includeDeleted (corbeille/restore) : ADMIN seul —
+		// révoqué côté usecase si un lecteur tente de le forcer.
+		r.Route("/api/ouvrages", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listOuvrages)
+			r.Get("/{id}", s.getOuvrage)
+			r.Get("/{id}/fichier", s.getOuvrageFichier)
+			r.With(middleware.RequireRole("ADMIN")).Post("/", s.uploadOuvrage)
+			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.updateOuvrage)
+			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.deleteOuvrage)
+			r.With(middleware.RequireRole("ADMIN")).Post("/{id}/restore", s.restoreOuvrage)
 		})
 
 		// /api/certificats (verify est publique, définie plus haut)
