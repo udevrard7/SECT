@@ -4135,3 +4135,71 @@ en 30 s)
   mieux qu'une supposition sur la config d'un service tiers.
 - La clé R2 posée en DB en mode dégradé ne prouve PAS que les octets
   existent — HEAD l'objet pour un audit réel.
+
+## SECT-BIBLIO-P4 — dimension sociale (ADR-0007 §P4, exécution ADR-0008)
+
+**Date** : 2026-10-04 · **Commits** : `02befabd` (feat complet) +
+`4f0a7069` (décerneur POST seul) + `11d1bdec` (correctifs post-E2E) +
+`2809283a` (bouton Annotations indépendant du fichier) · **Migrations** :
+000127 + 000128 + 000129 appliquées AVANT chaque push (Neon 129
+dirty=false, 83 tables, 227 policies)
+
+### Livré (ADR-0008)
+- **000127** : `OuvrageAnnotation` (visibilité PRIVEE/FILIERE/
+  ETABLISSEMENT, filiereId DÉNORMALISÉE — jamais de JOIN User dans la
+  policy, leçon P3) + `OuvrageProposition` (file G1, ouvrageId ON DELETE
+  SET NULL : la trace survit à la purge) + `OuvrageVeille` (UNIQUE
+  userId+terme) + RLS same-migration TO PUBLIC + 12 ASSERTs.
+- **000128** : seed `lecteur_assidu` (ENGAGEMENT, paliers 30 min/2 h/6 h/
+  20 h) + normalisation des 4 policies badges TO PUBLIC (drift repo↔prod,
+  piège 000117) + `is_system` sur BadgeProgression_modify (aucun writer
+  Go ne pouvait écrire) + policy `Ouvrage_delete` is_system SEUL (la
+  porte du worker de purge).
+- **Backend** : `OuvrageSocialUseCase` (annotations validées, tranche
+  REFUSEE exige un motif, liaison proposition APRÈS dépôt — un échec ne
+  détruit jamais l'ouvrage, veilles notifiées sous claims SYSTEM,
+  `EvaluateLecteurAssidu` idempotent) + 10 routes chi + **POST
+  /api/badges devient RÉEL** (le no-op historique remplit enfin
+  `newlyUnlocked`) + `BibliothequePurgeWorker` (ticker 1 h, audit AVANT
+  delete, R2 post-commit) + recherche q étendue à themes.
+- **Frontend** : 4e vue Propositions (dialog métadonnées RESP, tranche
+  ADMIN avec motif, badge count EN_ATTENTE, dépôt pré-lié pré-rempli) +
+  AnnotationsPanel dans le lecteur (page pré-remplie du marque-page) +
+  watermark UI overlay (email+date, pointer-events-none) + bouton Alerte
+  + chips veilles + CATEGORIE_CONFIG ENGAGEMENT/GESTION.
+- **000129** (correctif post-E2E) : helper `user_display_name(text)`
+  SECURITY DEFINER — un JOIN/subquery "User" dans une query de repo
+  hérite de la RLS User_select (l'ADMIN global ne voit que ses etabs →
+  propositions invisibles + noms NULL → 500). La leçon 000126 vaut pour
+  les queries autant que pour les policies.
+
+### Preuves
+- Dry-run Neon 50/50 (matrice annotations 3 visibilités × 3 lecteurs,
+  cloisonnement, propositions G1, veilles, badges self/other/system,
+  purge + CASCADE, round-trip down/up).
+- E2E API prod 43/43 (2 itérations : 4 bugs réels attrapés — RETURNING
+  v.* 42P01 leçon P1 re-rencontrée ; COALESCE(roleCible) premier badge
+  NULL ; JOIN User → helper ; décerneur POST seul pour le RewardToast).
+- E2E UI navigateur 6 screenshots, 0 erreur console : veille (bouton
+  Alerte + toast + chip), lecteur (iframe R2 réelle + watermark email/
+  date + annotation créée), propositions RESP (dialog → file
+  EN_ATTENTE + toast), badge dashboard (« Badge débloqué ! » + Lecteur
+  assidu Bronze dans le carousel).
+- Résidu 0 partout (DB + R2 bucket revenu à son état).
+
+### Leçons
+- Un JOIN "User" dans une QUERY de repo hérite de la RLS User_select
+  autant que dans une policy (000126) → helpers SECURITY DEFINER pour
+  toute lecture croisée de noms (000129 user_display_name).
+- Le RETURNING d'un INSERT/UPDATE ne supporte NI préfixe d'alias (leçon
+  P1) NI scan NULL dans un champ string non-pointeur (COALESCE
+  obligatoire dès qu'une colonne peut être NULL — roleCible du premier
+  badge tous-rôles).
+- Un décerneur de badge synchrone au heartbeat consomme la « montée » :
+  le newlyUnlocked du POST dashboard (contrat RewardToast de la stack
+  Prisma) reste vide. Le décerneur vit UNIQUEMENT dans POST /api/badges.
+- L'E2E prod voit ce que le dry-run policies ne peut pas voir (scans
+  Go, RLS au travers des JOIN, NULL de colonnes) — les deux harnais
+  sont complémentaires, aucun ne suffit seul.
+- TO PUBLIC dans pg_policy = polroles '{0}' (OID 0), PAS '{}' — un
+  ASSERT sur '{}' échoue toujours (constaté sur prod + replay).
