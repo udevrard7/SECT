@@ -3435,3 +3435,120 @@ Task: Auditer les dettes restantes réelles (mobile « envoyé », 401 race, sec
   up 121) — le CLI golang-migrate est resynchronisé avec l'état réel.
 - ⚠️ À retenir : les migrations manuelles doivent passer par
   `migrate force` (jamais d'INSERT manuel dans schema_migrations).
+
+---
+
+## Task ID: SECT-PRODUIT-1
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Les 3 dernières décisions produit mineures (joints avalés des devoirs, changement d'année au PATCH affectation, salons CLASSE par niveau)
+
+### Contexte
+Fin de SECT-DETTES-AUDIT-2, il ne restait que 3 décisions produit (pas des
+bugs bloquants) : « durcir les joints avalés des devoirs » (dette DTTES-5 :
+GET /api/devoirs/{id} et createDevoir avalaient silencieusement leurs
+joints/erreurs pour un enseignant sans affectation), « permettre le
+changement d'année au PATCH affectation » (dette ANNEE-HISTOIRE-2 : « pas de
+changement d'année possible — UX acceptable, non documenté »), et « le
+comportement des salons CLASSE par niveau » (policy 000044 documentant
+« filière + ce niveau » mais ne comparant que la filière).
+
+### Décision 1 — Joints avalés des devoirs (durcissement)
+- createDevoir : pré-validation de l'accès UE AVANT écriture —
+  UniteEnseignement_select (000114) ne laisse un enseignant voir une UE que
+  s'il y a une affectation ; l'UE invisible → **403 explicite** (avant :
+  l'INSERT passait car Devoir_modify_enseignant ne vérifie pas l'UE, et le
+  joint UE/User avalé renvoyait 201 avec un DTO aux champs vides). L'erreur
+  d'INSERT est capturée (FK→400, doublon→409, sinon 500 — avant : 201 avec
+  DTO vide même en cas d'échec) ; le joint UE/User passe DANS la même tx
+  (échec → rollback, plus de devoir fantôme).
+- getDevoir : seule l'absence de ligne (pgx.ErrNoRows) vaut 404, les autres
+  erreurs remontent en 500 (pattern CORBEILLE-FIX C10) ; joints User/UE
+  NULL-safe COALESCE (pattern DTTES-3) — un devoir EXISTANT ne 404 plus
+  parce qu'un joint est RLS-invisible (il s'affiche avec UE vide) ;
+  soumissions : erreurs query/scan en 500 (avant : liste silencieusement
+  vide / lignes droppées — un étudiant invisible faisait disparaître sa
+  soumission de la liste).
+- updateDevoir : cas action + update final — ErrNoRows seul vaut 404.
+
+### Décision 2 — Changement d'année au PATCH /api/affectations/{id}
+- Contrat dual identique à updateDevoir : anneeAcademiqueId (FK prioritaire,
+  validée même établissement que l'UE de l'affectation) et/ou
+  anneeUniversitaire (label legacy, FK résolue par libellé — NULL si
+  historique non rattachable) ; FK + libellé miroir mis à jour ENSEMBLE
+  (contrat 000112) via resolveAffectationAnnee.
+- Garde-fous conservés : lock PUBLIEE (409, s'applique AUSSI au changement
+  d'année), doublon → 409 existant (index 000003), anneeAcademiqueId
+  exposé au RETURNING/réponse, PATCH année-seul valide (résolution avant
+  le check « no fields to update »), affectation introuvable → 404.
+- UI (affectations-page.tsx) : sélecteur « Année universitaire » dans le
+  dialog d'édition (même composant que la création, marqueur « · courante »,
+  hint dynamique) ; la clé n'est envoyée que si l'année change ; toast
+  « Déplacé(s) vers <année> » ; anneeAcademiqueId ajouté à
+  AffectationItem/AffectationGroup.
+
+### Décision 3 — Salons CLASSE par niveau (migration 000122)
+- Preuve du défaut en prod (sondage lecture seule) : 3 salons CLASSE vivants
+  L1/L2/L3 de la même filière (2026-2027) ; un étudiant L3 en voyait 3
+  (dont le salon L2 où il est inscrit « fantôme » — incohérence d'époque),
+  les L1 voyaient L2+L3.
+- Migration 000122 : Conversation_select recréée (base 000044 à l'identique)
+  avec la comparaison de niveau VIA un helper SECURITY DEFINER
+  conversation_classe_matches_my_filiere_niveau (pattern 000115) —
+  **piège évité de justesse** : Conversation.niveau est TEXT (000037) mais
+  User.niveau est l'enum NiveauEtude → `me."niveau" = p_niveau` aurait fait
+  42883 à l'évaluation (même classe que AUTOCLOSE-FIX-1) ; on caste le côté
+  enum vers text (`me."niveau"::text`), jamais l'inverse (22P02 sur libellé
+  hors enum casserait la policy pour tous). Enseignants inchangés (tous
+  salons CLASSE de l'étab — modération) ; PROMO inchangé (filière entière
+  par design) ; étudiant sans niveau → 0 salon (cohérent
+  EnsureAutoConversations) ; CASCADE : Message_select hérite → messages,
+  badges et listes durcis d'un coup. Down : restaure 000044 + drop helper.
+
+### Qualité & déploiement
+- Gates : gofmt/build/vet OK, golangci-lint v2.14.0 0 issue ; eslint 0
+  erreur (1 warning préexistant), tsc --noEmit 0 erreur. Commit 0286684b →
+  CI verte ×2 (Backend + Frontend) → Render LIVE (preuve comportementale :
+  le PATCH année répond 200+FK là où l'ancien code aurait 400 « no fields
+  to update »).
+- Dry-run 000122 (tx ROLLBACK + rôle temporaire NOLOGIN, miroir grants
+  sect_app) : AVANT l'étudiant L3 voyait 3 salons ; APRÈS 1 (son niveau) ;
+  fantôme L3-inscrit-L2 → ne voit plus le salon L2 ; enseignant → 3/3
+  inchangé ; sans claims → 0 ; helper SECURITY DEFINER + policy branchée.
+  Round-trip UP+DOWN validé. Appliquée ensuite via golang-migrate (état
+  propre 121→122, dirty=false, une seule ligne — leçon DTTES-AUDIT-2
+  respectée).
+- E2E prod Render (fixtures jetables e2e-produit1@sect-test.dev ×2 +
+  3 affectations + devoirs, pattern e2e-batch3) : 14/14 — PATCH année
+  A→B 200 + FK + miroir, doublon 409, année inexistante 400, affectation
+  inexistante 404, label legacy → FK résolue, lock PUBLIEE 409 ;
+  createDevoir avec affectation 201 + UE/User peuplés, GET 200 peuplé,
+  DELETE soft 200, SANS affectation **403 « UE introuvable ou
+  inaccessible »** + 0 devoir écrit, GET d'un devoir existant après perte
+  d'affectation **200 avec UE vide** (le cœur du durcissement — plus de
+  404 trompeur).
+- E2E UI navigateur (sect.ftci.fr, login fixture responsable) : sélecteur
+  d'année présent dans le dialog d'édition (déploiement Vercel prouvé),
+  options 2026-2027 · courante / 2025-2026 / 2024-2025, hint « Enregistrer
+  déplacera… », soumission → toast « 1 élément(s) mis à jour. Déplacé(s)
+  vers 2024-2025. », groupe disparu de la vue année courante, déplacement
+  confirmé en base (FK + libellé miroir).
+- Vérification LIVE post-migration : version=122 dirty=false, policy
+  branchée au helper, l'étudiant L3 réel voit 1 salon « Classe L3 »
+  (avant : 3).
+- Cleanup résidu 0 : users/affectations/devoirs/grilles/notifs fixtures 0,
+  rôles temporaires 0 ; 10 lignes AuditLog append-only (logins + publish,
+  journal légitime).
+
+### Stage Summary
+- ✅ Décision 1 : plus aucun silence — 403 avant écriture sans affectation,
+  erreurs honnêtes (404/409/500), joints NULL-safe, devoirs existants
+  toujours lisibles (UE vide si invisible).
+- ✅ Décision 2 : le PATCH affectation supporte le changement d'année
+  (contrat dual FK+miroir, lock et doublon couverts), UI livrée et prouvée
+  en prod.
+- ✅ Décision 3 : les salons CLASSE respectent enfin le niveau documenté
+  depuis 000044 — un étudiant ne voit que le salon de SON niveau
+  (filière+niveau+année), enseignants/PROMO inchangés.
+- ⚠️ Leçon récurrente : comparaison inter-types PostgreSQL (text vs enum) =
+  42883 — toujours caster le côté enum (jamais text→enum, 22P02 possible).
+- Dettes restantes : AUCUNE connue — le backlog produit est à jour.
