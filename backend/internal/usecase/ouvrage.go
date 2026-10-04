@@ -215,7 +215,12 @@ func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionCl
 		return "", &domain.ValidationError{Field: "fichier", Message: "fichier non stocké pour cet ouvrage (mode DB-only)"}
 	}
 	if uc.storage == nil {
-		return "", fmt.Errorf("storage client not configured")
+		// Mode DB-only (R2 non configuré — pattern document) : erreur HONNÊTE
+		// et lisible (affichée dans le lecteur), pas un 500 générique.
+		return "", &domain.ValidationError{
+			Field:   "fichier",
+			Message: "stockage non configuré (mode DB-only) — la lecture de fichier nécessite la configuration R2 (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)",
+		}
 	}
 
 	url, err := uc.storage.PresignURL(ctx, *o.CheminStockage, expiresIn)
