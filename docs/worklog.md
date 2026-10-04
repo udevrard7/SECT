@@ -3933,3 +3933,146 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
   présignature est sûr ; comparaison de clés numériques en Go = tri NUMÉRIQUE
   pas lexicographique ; un commit non poussé n'existe pas (perte fbfd58b) ;
   harnais multi-échecs-attendus en une tx = SAVEPOINT obligatoire.
+
+---
+
+## SECT-BIBLIO-P2.5-P3 — traçabilité chapitre + paquet enseignant (ADR-0007 §P2.5/§P3)
+
+**Date** : 2026-10-04 · **Commits** : `4601d0df` (feat complet) + `556e74eb`
+(bouton Traçabilité aussi sur /epreuves enseignant) · **Migrations** : 000125 +
+000126 appliquées sur Neon AVANT push (126 dirty=false, 80 tables, 214 policies)
+
+### P2.5 — Question.chapterId (000125)
+- Colonne TEXT nullable FK→Chapter(id) + index, SANS backfill (NULL = héritage,
+  documentId reste la source primaire) — DDL strict ADR-0007 §P2.5.
+- PATCH /api/questions/{id} tri-state : absent = inchangé, null = retirer
+  (UnsetChapterID), valeur = rattacher (détection null explicite via body brut,
+  pattern patchOuvrageFromRaw) ; validation usecase de cohérence : le chapitre
+  doit venir du support source de la question, ou (questions IA d'épreuve,
+  documentId NULL par design depuis P1-QUESTIONS-IA) d'un support du MÊME
+  enseignant ; FK 23503→400 lisible (leçon SECT-PRODUIT-1) ; RLS : ENS étranger
+  = 404 (Question_select auteur-scopé).
+- Hydratation chapitre : QuestionRef + QuestionChapterRef (LEFT JOIN Chapter
+  dans ListQuestionsByEpreuve) + EpreuveQuestionDetail.chapter (requête 3 de
+  ListByEtudiant) + QuestionRef.documentId — le feedback étudiant cite
+  « Support · Chap. N : titre » (chip mon-resultat-dialog), PROUVÉ en
+  navigation (screenshot ui_p3_feedback_chip.png).
+- Exam-prep : le paramètre chapterID des 3 méthodes v1 (ListQuestionBank,
+  CountQuestionsByDocument, ListExistingQuestions — marqué « ignoré en v1 »
+  depuis QUESTION-BANK-1) est BRANCHÉ : la banque par chapitre est effective.
+- Nouveau GET /api/documents/{id}/chapters (ENS/RESP/ADMIN, RLS
+  Chapter_select 000034 : document_owned_by_me OU étudiant-filière).
+
+### P3 — le paquet enseignant (000126)
+- **OuvrageSection** (TOC curaté ADMIN, G1) : métadonnée légère, DELETE réel
+  autorisé (policies 4 : select délégué Ouvrage_select / insert+update+delete
+  admin+system). CRUD complet + PATCH tri-state pages.
+- **AlignementOuvrage** (la déclaration des 5 minutes) : UNIQUE NULLS NOT
+  DISTINCT (documentId, ouvrageId, ouvrageSectionId) — (doc,ouvrage,NULL) et
+  (doc,ouvrage,section) coexistent (citer l'ouvrage entier ET un chapitre =
+  deux citations distinctes) ; FK ouvrageSectionId **ON DELETE CASCADE** :
+  le SET NULL esquissé à l'ADR dupliquerait (doc,ouvrage,NULL) si une
+  déclaration « ouvrage entier » existe → 23505 (bug attrapé au dry-run, choix
+  documenté : une citation ciblée qui perd son ancre est retirée).
+- **Policies RLS** (same-migration, TO PUBLIC) : select = EXISTS sur les DEUX
+  parents — Document via **user_etab_id(d.ownerId)** (helper SECURITY DEFINER)
+  et NON un JOIN "User" (le JOIN héritait de la RLS User : un étudiant ne voit
+  pas la ligne User de l'enseignant → alignements invisibles — bug attrapé au
+  dry-run) + Ouvrage aux conditions de Ouvrage_select ; insert/update = owner
+  du support OU admin/system ET ouvrage visible (WITH CHECK) ; delete = owner
+  OU admin/system. Plafond etab + plancher Document RLS : l'enseignant voit
+  SES déclarations, le RESP celles de son etab, l'étudiant celles des supports
+  de sa filière.
+- **conformite_referentiels_etablissement(text)** : fonction plpgsql SECURITY
+  DEFINER cloisonnée (pattern 000124 : rôle+etab re-vérifiés SUR les claims
+  dans la fonction, non-ADMIN limité à SON etab). Par support ANALYSE :
+  taux_couverture = % des thèmes détectés recoupant (contains/contained-in,
+  casse ignorée) un thème d'un ouvrage REFERENTIEL_OFFICIEL aligné visible ;
+  par épreuve : % questions conformes (rattachées à un chapitre dont un sujet
+  recoupe un thème du référentiel) — attribution des questions par
+  **COALESCE(question.documentId, chapter.documentId)** : les questions IA
+  d'épreuve (documentId NULL) comptent via leur chapitre P2.5. Sortie epreuves
+  en jsonb agrégé.
+- **API** : GET/POST/DELETE /api/documents/{id}/alignements (+ /suggestions
+  AVANT /{alignementId}, leçon router littéraux-avant-paramétrés),
+  GET /api/documents/{id}/bibliographie (tous rôles etab),
+  GET/POST/PATCH/DELETE /api/ouvrages/{id}/sections[/{sectionId}],
+  GET /api/etablissements/{id}/conformite-referentiels (RESP/ADMIN).
+- **Retrieval (flux §1 : l'IA PROPOSE, l'enseignant DÉCIDE)** : déterministe
+  par recoupement textuel — score = 2×thèmes du support recoupés + 1×sujets
+  de chapitres, top 10, score 0 = non proposé, déjà-alignés marqués. Aucun
+  embedding (scoping volontaire P3 v1) ; le repo collecte (materiau), le
+  usecase score (métier).
+- **Frontend** : AlignementsView (toggle ENS « Mes alignements » dans la
+  Bibliothèque : sélecteur des supports ANALYSÉS, chips thèmes détectés,
+  propositions EntityCard Valider/Ajuster/Rejeter + GlassModal section TOC +
+  note, déclarations existantes + suppression, export bibliographie CSV) ;
+  bibliographie automatique dans la Sheet détail des Documents (références
+  APA-like + CSV BOM) ; page « Conformité référentiels » (RESP/ADMIN,
+  PageId conformite + nav ×2 + icône Scale ×2 ICON_MAP : sélecteur etab ADMIN
+  dérivé au rendu — pas de setState dans un effet, règle
+  react-hooks/set-state-in-effect — StatCards, table supports, détail
+  épreuves Collapsible, export CSV) ; ChapitresDialog (evaluations-page
+  RESP/ADMIN + epreuves-page ModelesTab : l'enseignant rattache SES questions
+  — la page evaluations est responsable-centrique (responsableId), le bouton
+  a donc été ajouté aux DEUX, même composant) ; types P3 miroir +
+  formatReferenceBibliographique.
+
+### Qualité et déploiement
+- Gates : go 4/4 (gofmt/build/vet + golangci-lint 0), tsc 0, eslint 0 (1
+  warning préexistant), vitest routes 11/11.
+- **Dry-run Neon 49/49** (tx ROLLBACK + rôle NOLOGIN non-BYPASSRLS créé dans
+  la tx + GRANT SELECT sur toutes les tables publiques — les subqueries de
+  policies s'exécutent avec les privilèges de l'appelant, sect_app a tout en
+  prod via 000066 — savepoints échecs attendus, round-trip down/up ×2,
+  résidu 0) : 2 bugs de design attrapés (CASCADE vs SET NULL × UNIQUE ;
+  JOIN User vs user_etab_id) + amélioration COALESCE.
+- Déploiement zéro-rupture : migrations AVANT push → 126 dirty=false ;
+  CI verte ×2 sur 4601d0df ; sur 556e74eb le Frontend CI a échoué sur un
+  tarball npm corrompu (« Fail extracting tarball for next » — infra
+  transitoire, pas le code) → re-run SUCCÈS ; Render LIVE 4601d0df (routes
+  nouvelles montées : 401 sans auth, pas 404) ; Vercel READY ×2.
+- **E2E API 34/34** (fixtures e2e-p3 jetables, logins bcrypt+JWT réels) :
+  tri-state set/unset/inchangé, 400 cohérence (chapitre d'autrui), 400 FK,
+  404 RLS, hydratations (epreuves/questions, resultats étudiant,
+  question-bank par chapitre), suggestions (référentiel en tête, 3 thèmes
+  communs), 409 doublon, coexistence NULL+section, 404 auto-masquage
+  (ouvrage autre etab, doc d'autrui), bibliographie étudiant 2 références,
+  sections CRUD G1 (403 ENS), conformité (taux 100, épreuve 2/2 dont la
+  question IA via son chapitre, 403 étudiant, 403 RESP autre etab), DELETE
+  204→404, CASCADE section. Résidu 0.
+- **E2E UI navigateur** (sect.ftci.fr, 6 screenshots, 0 erreur console) :
+  toggle 3-vues Bibliothèque → « Mes alignements » → sélection support →
+  proposition (score, thèmes communs) → **Valider** (toast + déclaration) ;
+  Sheet Documents → bibliographie (2 références + CSV) ; Aperçu du modèle →
+  **Traçabilité chapitres** → rattachement Chap. 1 depuis le navigateur
+  (toast « Question rattachée au chapitre ») ; page Conformité (RESP) :
+  KPIs + table + 66 % calculé correct (2/3 thèmes) ; étudiant :
+  **« Support · Chap. 1 : Introduction aux variables »** dans le détail de
+  résultat. Fixtures nettoyées, résidu 0.
+
+### Stage Summary
+- P2.5 + P3 LIVRÉES, DÉPLOYÉES ET PROUVÉES en prod : la traçabilité chapitre
+  (feedback « Support · Chap. N », valeur autonome pour les contestations)
+  et le paquet enseignant complet (déclaration assistée ≤ 5 min,
+  bibliographie auto exportable, carte d'alignement, audit de direction
+  « le cours de M. X couvre N % du référentiel officiel »). L'ADR-0007 est
+  désormais livré jusqu'à P3 inclus — reste P4 (social : annotations,
+  propositions RESPONSABLE→ADMIN, badges lecteur, watermarking octets).
+- Le différenciateur concurrentiel est OPÉRATIONNEL : l'écart
+  support↔référentiel comme objet de première classe (génération traçable
+  + bibliothèque normative simultanées — aucun LMS ne peut le produire).
+- 2 bugs de design attrapés par le dry-run AVANT la prod (SET NULL × UNIQUE
+  NULLS NOT DISTINCT ; JOIN User × RLS User) — le harnais policies paie
+  encore une fois son coût.
+- Point ops CTO inchangé : lecture réelle des fichiers = R2 à configurer
+  (3 env vars Render) ; tout le reste (déclarations, bibliographie,
+  conformité, traçabilité) est pleinement opérationnel sans R2.
+- Leçons : SET NULL sur une FK nullable d'une UNIQUE NULLS NOT DISTINCT =
+  bombe à retardement (vérifier chaque action FK contre TOUTES les
+  contraintes de la table) ; un JOIN dans une policy RLS hérite de la RLS
+  de la table jointe (préférer les helpers SECURITY DEFINER) ;
+  react-hooks/set-state-in-effect : dériver au rendu plutôt que pré-choisir
+  dans un effet ; un UPDATE évalue AUSSI les policies SELECT de la table
+  (visibilité) — les grants du harnais doivent couvrir les tables
+  référencées par TOUTES les policies.
