@@ -3346,3 +3346,92 @@ Work Log (preuves code + base prod Neon, lecture seule) :
 - Leçon process : avant de recopier une liste de dettes dans une nouvelle
   livraison, la re-vérifier contre le worklog récent (les sections
   DTTES-3/4/5 documentaient pourtant la solution de chacune).
+
+---
+Task ID: SECT-DETTES-AUDIT-2
+Agent: Z.ai Code (session de tutorat)
+Task: Auditer les dettes restantes réelles (mobile « envoyé », 401 race, sect_app GRANT audit, 4 mineures) + solder l'unique dette actionnable (IAUsage sans RLS)
+
+## Audit des dettes (verdicts, preuves code + worklog)
+- « Mobile "envoyé" » → SOLDEE depuis SECT-ANNEE-DETTES-4 (8844aa4a) :
+  CreateDevoirRequest.anneeUniversitaire: String? = null (pass-through,
+  plus de défaut "2024-2025" — DevoirMapper.kt:81). La dette listée
+  « inchangée » par DASH-VIDE-ANNEE/NOTIF-DIFFUSION/… était PÉRIMÉE.
+- « 401 race "e is not iterable" » → SOLDEE depuis SECT-ANNEE-DETTES-3
+  (63cdab8) : forme canonique tableau brut du cache TanStack
+  ['annees-academiques'] + gardes Array.isArray sur les 3 consommateurs
+  (rapports-page.tsx:452, devoirs-page.tsx:419 …). PÉRIMÉE aussi.
+- « Alerte updatedAt » (listée au passage) → SOLDEE depuis SECT-DEBTS-FIX-1
+  (INSERT explicite updatedAt + erreur loggée, auto_close_worker.go:402).
+- 4 mineures : joints avalés GET /api/devoirs/{id}+createDevoir (mild,
+  « à durcir si besoin » — décision produit), PATCH affectation sans
+  changement d'année (UX acceptée, documentée), salons CLASSE sans
+  comparaison de niveau (comportement possiblement intentionnel 000044 —
+  décision produit), IAUsage sans RLS → CORRIGÉE ci-dessous.
+
+## GRANT audit sect_app (Neon prod, lecture seule) — VERDICT : PROPRE
+- sect_app : LOGIN, NOBYPASSRLS, non-super ✓. Toutes les tables
+  appartiennent à neondb_owner ✓.
+- Privilèges sect_app : SELECT/INSERT/UPDATE/DELETE uniquement (aucun
+  TRUNCATE/REFERENCES/TRIGGER) ✓. CREATE sur database : false ✓.
+- DEFAULT PRIVILEGES en place : futures tables → sect_app=arwd, futures
+  séquences → sect_app=rU (les futurs objets seront automatiquement
+  accessibles — la note 000084 est bien appliquée) ✓. 0 séquence en
+  base (IDs text/uuid — rien à accorder) ✓.
+- FONCTIONS : 99/99 SECURITY DEFINER avec search_path épinglé ✓
+  (risque de hijacking couvert).
+- Grants PUBLIC résiduels = INTENTIONNELS et compensés : TeacherSignupLink/
+  TeacherRegistrationEvent + fonctions pré-auth (000107 : le token EST
+  l'authentification) — RLS active sur les tables, policies restrictives.
+- CONCLUSION : aucun privilège excédentaire à révoquer ; la dette
+  « GRANT audit » est CLOSE sans action. Reste la seule vraie finding :
+
+## Fix : RLS sur IAUsage — la DERNIÈRE table public sans RLS
+- Constat : 75/76 tables RLS ; IAUsage (compteurs IA mensuels par étab,
+  000059) filtrée uniquement côté requêtes Go (quota.go) — un handler
+  oubliant le WHERE exposait les compteurs cross-tenant.
+- Migration 000121 (idempotent, down fourni) : ENABLE RLS + policies
+  IAUsage_select/insert/update (is_system() OR etablissementId =
+  current_etablissement_id(), pattern 000117 TO PUBLIC) ; DELETE sans
+  policy VOLONTAIREMENT (deny par défaut ; FK CASCADE bypass RLS — RI
+  checks, documenté).
+- quota.go : count/increment IAUsage passent de pool-direct (sans claims
+  → deny-by-default sous sect_app) à db.WithSystemTx (usage « quotas »
+  documenté db.go:217, même pattern que CheckActiveStudentsUsageQuota).
+- ORDRE respecté (sans rupture) : code d'abord (5d3f051b, CI verte,
+  Render LIVE), PUIS migration appliquée.
+- Preuves (rôle temporaire NOLOGIN sect_rls_audit, cleanup résidu 0) :
+  SELECT sans claims = 0 ligne ; INSERT sans claims REFUSÉ 42501 ;
+  SELECT/upsert claims système OK (pattern exact incrementIAUsage) ;
+  SELECT claims etab scopé. Re-testé sur l'état RÉEL post-application.
+
+## DÉCOUVERTE CRITIQUE : drift schema_migrations (résorbé)
+- À l'application de 000121 : golang-migrate voyait la base à **112**
+  alors que les effets 113→120 étaient présents (sondages max(version)=120
+  trompeurs — 2 lignes dans la table : 112 + 120).
+- ROOT CAUSE : les sessions précédentes appliquaient les migrations via
+  psql (tx dry-run) puis INSÉRAIENT manuellement les lignes de version
+  (« 117 no-op idempotent enregistré au passage », NOTIF-DIFFUSION) sans
+  DELETE de la ligne précédente → golang-migrate (qui lit la 1re ligne
+  physique) restait bloqué à 112 depuis le 2026-10-01.
+- Mon `up 1` initial a ré-appliqué 000113 (IDEMPOTENT par design → no-op
+  sémantique vérifié : 76 tables, effets 114→120 re-vérifiés présents
+  un par un : 114 policy is_system ✓, 115 Devoir_select ✓, 116 fonction ✓,
+  117 policies system ✓, 118 NotificationRead ✓, 119 diffusion_scope ✓,
+  120 FK cascade ✓) et a CONSOLIDÉ la table en une ligne (113).
+- Resynchronisation : `migrate force 120` (effets vérifiés présents) puis
+  `up 1` → 000121 appliquée proprement. État final : version=121,
+  dirty=false, UNE seule ligne.
+- LEÇON : ne JAMAIS insérer manuellement dans schema_migrations —
+  utiliser `migrate force <n>` après application manuelle vérifiée.
+
+### Stage Summary
+- ✅ 3 des 4 dettes listées étaient déjà soldées (mobile envoyé, 401
+  race, Alerte updatedAt) — listes recopiées périmées (2e fois consécutive).
+- ✅ GRANT audit sect_app : CLOSE, setup propre (99/99 search_path épinglé,
+  default privileges OK, aucun excès) — dette sécurité soldée par verdict.
+- ✅ IAUsage sous RLS (000121) : 76/76 tables public désormais couvertes.
+- ✅ Drift schema_migrations 112↔120 découvert et résorbé (force 120 +
+  up 121) — le CLI golang-migrate est resynchronisé avec l'état réel.
+- ⚠️ À retenir : les migrations manuelles doivent passer par
+  `migrate force` (jamais d'INSERT manuel dans schema_migrations).
