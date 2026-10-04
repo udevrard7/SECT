@@ -98,8 +98,12 @@ var ValidSessionsExamen = map[SessionExamen]bool{
 
 // Question représente une question de banque.
 type Question struct {
-	ID              string          `json:"id"`
-	DocumentID      *string         `json:"documentId,omitempty"`
+	ID         string  `json:"id"`
+	DocumentID *string `json:"documentId,omitempty"`
+	// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : chapitre du support source —
+	// valeur autonome (feedback « support, chap. X »), NULL = héritage
+	// (documentId reste la source primaire). Pas de backfill (000125).
+	ChapterID       *string         `json:"chapterId,omitempty"`
 	AuteurID        *string         `json:"auteurId,omitempty"`
 	Type            TypeQuestion    `json:"type"`
 	Enonce          string          `json:"enonce"`
@@ -127,10 +131,16 @@ type CreateQuestionInput struct {
 	Difficulte      Difficulte      `json:"difficulte"`
 	Themes          json.RawMessage `json:"themes,omitempty"`
 	DocumentID      *string         `json:"documentId,omitempty"`
+	ChapterID       *string         `json:"chapterId,omitempty"` // P2.5
 	AuteurID        *string         `json:"auteurId,omitempty"`
 }
 
 // UpdateQuestionInput — partial update.
+//
+// SECT-BIBLIO-P2.5 : chapterId est TRI-STATE — absent = inchangé,
+// null = retirer le chapitre (UnsetChapterID), valeur = rattacher.
+// Le handler détecte le null explicite via le body brut (pattern
+// patchOuvrageFromRaw, ouvrage_handlers.go).
 type UpdateQuestionInput struct {
 	Enonce          *string         `json:"enonce,omitempty"`
 	Propositions    json.RawMessage `json:"propositions,omitempty"`
@@ -140,6 +150,8 @@ type UpdateQuestionInput struct {
 	Themes          json.RawMessage `json:"themes,omitempty"`
 	Tags            json.RawMessage `json:"tags,omitempty"`
 	Validee         *bool           `json:"validee,omitempty"`
+	ChapterID       *string         `json:"chapterId,omitempty"` // P2.5 : valeur = rattacher
+	UnsetChapterID  bool            `json:"-"`                   // P2.5 : true = mettre NULL
 }
 
 // QuestionListParams pour filtrer/paginer.
@@ -170,6 +182,10 @@ type QuestionRepository interface {
 	Create(ctx context.Context, input CreateQuestionInput, auteurID string) (*Question, error)
 	Update(ctx context.Context, id string, input UpdateQuestionInput) (*Question, error)
 	SoftDelete(ctx context.Context, id string) error
+	// SECT-BIBLIO-P2.5 : chapitre (avec document + propriétaire) pour la
+	// validation de cohérence côté usecase (RLS : l'enseignant ne voit que
+	// les chapitres de SES supports — Chapter_select document_owned_by_me).
+	GetChapter(ctx context.Context, chapterID string) (*QuestionChapterRef, error)
 	BatchHardDelete(ctx context.Context, ids []string) (int, error)
 }
 
@@ -296,6 +312,24 @@ type QuestionRef struct {
 	Difficulte   Difficulte      `json:"difficulte,omitempty"`
 	Themes       json.RawMessage `json:"themes,omitempty"`
 	Explication  *string         `json:"explication,omitempty"`
+	// SECT-BIBLIO-P2.5 : support source (NULL pour les questions IA
+	// d'épreuve) + traçabilité chapitre (hydratée par LEFT JOIN Chapter
+	// dans ListQuestionsByEpreuve — feedback « support, chap. X »).
+	DocumentID *string             `json:"documentId,omitempty"`
+	ChapterID  *string             `json:"chapterId,omitempty"`
+	Chapter    *QuestionChapterRef `json:"chapter,omitempty"`
+}
+
+// QuestionChapterRef — résumé du chapitre pour la citation étudiante
+// (SECT-BIBLIO-P2.5). Ordre est 1-based côté DB (insertChapters du worker).
+// DocumentID/OwnerID : usage interne (validation de cohérence usecase),
+// jamais exposés dans le JSON (json:"-").
+type QuestionChapterRef struct {
+	ID         string `json:"id"`
+	DocumentID string `json:"-"`
+	OwnerID    string `json:"-"`
+	Titre      string `json:"titre"`
+	Ordre      int    `json:"ordre"`
 }
 
 // CreateEpreuveInput pour créer une épreuve.

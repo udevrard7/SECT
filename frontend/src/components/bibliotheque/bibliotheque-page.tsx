@@ -124,6 +124,9 @@ import {
 } from '@/components/ui/tooltip'
 import { formatDateUTC } from '@/lib/date-utils'
 import { StatCard, EntityCard, PulseSkeleton } from '@/components/ds'
+// SECT-BIBLIO-P3 (ADR-0007 §P3) : la déclaration des 5 minutes —
+// l'IA propose (retrieval thèmes), l'enseignant décide.
+import { AlignementsView } from './alignements-view'
 import { toast } from 'sonner'
 import {
   type Ouvrage,
@@ -204,7 +207,10 @@ export function BibliothequePage() {
     user?.role === 'ENSEIGNANT' ||
     user?.role === 'RESPONSABLE' ||
     user?.role === 'ADMIN'
-  const [vue, setVue] = useState<'catalogue' | 'activite'>('catalogue')
+  // SECT-BIBLIO-P3 : la déclaration d'alignement est l'acte de
+  // L'ENSEIGNANT sur SON support (ADR-0007 §P3) — vue réservée ENS.
+  const peutDeclarer = user?.role === 'ENSEIGNANT'
+  const [vue, setVue] = useState<'catalogue' | 'activite' | 'alignements'>('catalogue')
   const [activiteEtab, setActiviteEtab] = useState<string>(
     user?.etablissementId ?? '',
   )
@@ -998,7 +1004,7 @@ export function BibliothequePage() {
                   type="single"
                   value={vue}
                   onValueChange={(value) => {
-                    if (value) setVue(value as 'catalogue' | 'activite')
+                    if (value) setVue(value as 'catalogue' | 'activite' | 'alignements')
                   }}
                   variant="outline"
                   size="sm"
@@ -1011,6 +1017,13 @@ export function BibliothequePage() {
                     <Activity className="h-3.5 w-3.5" />
                     Activité
                   </ToggleGroupItem>
+                  {/* SECT-BIBLIO-P3 : déclaration d'alignement (ENS). */}
+                  {peutDeclarer && (
+                    <ToggleGroupItem value="alignements" className="gap-1.5">
+                      <Scale className="h-3.5 w-3.5" />
+                      Mes alignements
+                    </ToggleGroupItem>
+                  )}
                 </ToggleGroup>
               )}
               {isAdmin && (
@@ -1027,8 +1040,11 @@ export function BibliothequePage() {
         </div>
       </div>
 
-      {/* SECT-BIBLIO-P2 : vue courante — Catalogue OU Activité (ENS/RESP/ADMIN) */}
-      {vue === 'activite' && peutVoirActivite ? (
+      {/* SECT-BIBLIO-P3 : vue Alignements — la déclaration des 5 minutes
+          (ENSEIGNANT : l'IA propose, l'enseignant décide). */}
+      {vue === 'alignements' && peutDeclarer ? (
+        <AlignementsView />
+      ) : vue === 'activite' && peutVoirActivite ? (
         <div className="space-y-6">
           {/* Sélecteur d'établissement — ADMIN global uniquement (les
               agrégats sont cloisonnés par établissement, G2). */}

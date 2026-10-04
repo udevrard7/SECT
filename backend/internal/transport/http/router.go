@@ -102,6 +102,11 @@ type Server struct {
 	// Dépôt ADMIN (G1) + catalogue lecteurs (RLS Ouvrage_* 000123) ;
 	// ajouté en fin de signature pour minimiser le diff (pattern projet).
 	ouvrageUC *usecase.OuvrageUseCase
+	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant — TOC curaté,
+	// déclaration d'alignement (l'IA propose, l'enseignant décide),
+	// bibliographie auto + audit de conformité. Même pattern fin de
+	// signature (pattern projet).
+	alignementUC *usecase.AlignementUseCase
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications. Injecté via
 	// WithNotificationDispatcher (setter pattern — évite d'étendre la signature
 	// NewServer déjà très longue). nil = pas de notification (dev/tests).
@@ -179,6 +184,8 @@ func NewServer(
 	// SECT-BIBLIO-P1 (ADR-0007) : usecase bibliothèque numérique (ajouté en
 	// fin de signature pour minimiser le diff, pattern projet).
 	ouvrageUC *usecase.OuvrageUseCase,
+	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant (même pattern).
+	alignementUC *usecase.AlignementUseCase,
 ) *Server {
 	s := &Server{
 		dbPool:              dbPool,
@@ -217,6 +224,7 @@ func NewServer(
 		promotionUC:         promotionUC,
 		inscriptionRepo:     inscriptionRepo,
 		ouvrageUC:           ouvrageUC,
+		alignementUC:        alignementUC,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -449,6 +457,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			// établissement (ENS/RESP : le leur ; ADMIN : tous — le usecase
 			// + la fonction SQL double-vérifient, defense in depth).
 			r.With(middleware.RequireRole("ENSEIGNANT", "RESPONSABLE", "ADMIN")).Get("/{id}/bibliotheque-activite", s.getBibliothequeActivite)
+			// SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de direction — conformité des
+			// supports aux référentiels officiels (fonction SECURITY DEFINER
+			// cloisonnée, pattern 000124 ; RESP limité à SON établissement).
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Get("/{id}/conformite-referentiels", s.getConformiteReferentiels)
 		})
 
 		// /api/etablissement-access
@@ -807,10 +819,25 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/{id}", s.getDocument)
 			r.Get("/{id}/download", s.downloadDocument)
 			// Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+			// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : chapitres du support — sélecteur
+			// « support, chap. X » (rattachement des questions, feedback étudiant).
+			// Scoping RLS Chapter_select (000034 : document_owned_by_me OU
+			// étudiant-filière — ici réservé ENS/RESP/ADMIN).
+			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Get("/{id}/chapters", s.getDocumentChapters)
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.uploadDocument)
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteDocument)
 			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{id}/analyze", s.analyzeDocument) // P1-D3
+			// SECT-BIBLIO-P3 (ADR-0007 §P3) : la déclaration des 5 minutes —
+			// suggestions (retrieval, l'IA propose), validation POST (l'enseignant
+			// décide), suppression, et la bibliographie générée (tous rôles etab,
+			// RLS via les policies 000126 + visibilité Document).
+			// NB : littéral "suggestions" AVANT /{alignementId} (leçon router).
+			r.With(middleware.RequireRole("ENSEIGNANT", "RESPONSABLE", "ADMIN")).Get("/{id}/alignements", s.listAlignements)
+			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN")).Get("/{id}/alignements/suggestions", s.suggestAlignements)
+			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN")).Post("/{id}/alignements", s.createAlignement)
+			r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN")).Delete("/{id}/alignements/{alignementId}", s.deleteAlignement)
+			r.Get("/{id}/bibliographie", s.getBibliographie)
 		})
 
 		// SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — catalogue
@@ -833,6 +860,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.updateOuvrage)
 			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.deleteOuvrage)
 			r.With(middleware.RequireRole("ADMIN")).Post("/{id}/restore", s.restoreOuvrage)
+			// SECT-BIBLIO-P3 (ADR-0007 §P3) : TOC curaté — lecture tous rôles
+			// (RLS déléguée à Ouvrage_select), écritures ADMIN (G1).
+			r.Get("/{id}/sections", s.listOuvrageSections)
+			r.With(middleware.RequireRole("ADMIN")).Post("/{id}/sections", s.createOuvrageSection)
+			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}/sections/{sectionId}", s.updateOuvrageSection)
+			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}/sections/{sectionId}", s.deleteOuvrageSection)
 		})
 
 		// /api/certificats (verify est publique, définie plus haut)

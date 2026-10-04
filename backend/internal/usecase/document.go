@@ -148,6 +148,20 @@ func (uc *DocumentUseCase) List(ctx context.Context, claims db.SessionClaims) ([
 	return uc.docRepo.ListByOwner(ctx, claims.UserID)
 }
 
+// ListChapters — SECT-BIBLIO-P2.5 : chapitres d'un support (découpage IA).
+// Rôles ENS/RESP/ADMIN ; le scoping réel est fait par RLS (Chapter_select :
+// l'enseignant voit les chapitres de SES supports ; l'étudiant passe par
+// exam-prep). Un document d'autrui retourne simplement 0 chapitre (RLS,
+// filtrage silencieux) — le PATCH question valide la cohérence côté
+// usecase épreuve.
+func (uc *DocumentUseCase) ListChapters(ctx context.Context, claims db.SessionClaims, documentID string) ([]*domain.Chapter, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	return uc.docRepo.ListChapters(ctx, documentID)
+}
+
 // GetByID récupère un document par ID.
 func (uc *DocumentUseCase) GetByID(ctx context.Context, claims db.SessionClaims, id string) (*domain.Document, error) {
 	role := domain.Role(claims.Role)

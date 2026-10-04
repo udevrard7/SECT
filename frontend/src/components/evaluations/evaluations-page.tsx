@@ -24,6 +24,7 @@ import {
   ChevronUp,
   User,
   X,
+  BookOpen,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -49,6 +50,9 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : rattachement chapitres des questions
+// (première utilisation du PATCH /api/questions/{id} côté frontend).
+import { ChapitresDialog } from './chapitres-dialog'
 import { PulseSkeleton, StatCard } from '@/components/ds'
 
 // ─── Types ───
@@ -304,6 +308,9 @@ export function EvaluationsPage() {
   // Detail dialog
   const [detailEpreuve, setDetailEpreuve] = useState<Epreuve | null>(null)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  // SECT-BIBLIO-P2.5 : dialog de traçabilité chapitres (ouvert depuis le
+  // détail d'une épreuve).
+  const [chapitresDialogOpen, setChapitresDialogOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [sessionsExpanded, setSessionsExpanded] = useState(false)
   const [dialogMode, setDialogMode] = useState<'details' | 'results'>('details')
@@ -1225,12 +1232,32 @@ export function EvaluationsPage() {
             </div>
           ) : null}
           <DialogFooter className="shrink-0 border-t pt-4">
+            {/* SECT-BIBLIO-P2.5 : traçabilité chapitres (feedback étudiant
+                « Support · Chap. N » + audit de conformité P3). */}
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => setChapitresDialogOpen(true)}
+            >
+              <BookOpen className="h-4 w-4" />
+              Traçabilité chapitres
+            </Button>
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
               Fermer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* SECT-BIBLIO-P2.5 : traçabilité chapitres de l'épreuve détaillée. */}
+      {detailEpreuve && (
+        <ChapitresDialog
+          open={chapitresDialogOpen}
+          onOpenChange={setChapitresDialogOpen}
+          epreuveId={detailEpreuve.id}
+          epreuveTitre={detailEpreuve.titre}
+        />
+      )}
     </div>
   )
 }

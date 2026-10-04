@@ -4,11 +4,13 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
@@ -24,14 +26,14 @@ func NewQuestionRepository(pool *pgxpool.Pool) *QuestionRepository {
 	return &QuestionRepository{pool: pool}
 }
 
-const columnsQuestion = `"id", "documentId", "auteurId", "type", "enonce", "propositions",
+const columnsQuestion = `"id", "documentId", "chapterId", "auteurId", "type", "enonce", "propositions",
         "reponseCorrecte", "explication", "difficulte", "themes", "tags",
         "scoreQualite", "validee", "langue", "createdAt", "updatedAt", "deletedAt"`
 
 func scanQuestion(s scanner) (*domain.Question, error) {
 	q := &domain.Question{}
 	err := s.Scan(
-		&q.ID, &q.DocumentID, &q.AuteurID, &q.Type, &q.Enonce,
+		&q.ID, &q.DocumentID, &q.ChapterID, &q.AuteurID, &q.Type, &q.Enonce,
 		&q.Propositions, &q.ReponseCorrecte, &q.Explication, &q.Difficulte,
 		&q.Themes, &q.Tags, &q.ScoreQualite, &q.Validee, &q.Langue,
 		&q.CreatedAt, &q.UpdatedAt, &q.DeletedAt,
@@ -221,16 +223,22 @@ func (r *QuestionRepository) Create(ctx context.Context, input domain.CreateQues
 		}
 
 		row := tx.QueryRow(ctx, `
-                        INSERT INTO "Question" ("id", "documentId", "auteurId", "type", "enonce", "propositions",
+                        INSERT INTO "Question" ("id", "documentId", "chapterId", "auteurId", "type", "enonce", "propositions",
                                 "reponseCorrecte", "explication", "difficulte", "themes", "tags",
                                 "scoreQualite", "validee", "langue", "createdAt", "updatedAt", "deletedAt")
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, NULL, true, 'fr', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, NULL, true, 'fr', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
                         RETURNING `+columnsQuestion,
-			id, nullableStrPtr(input.DocumentID), auteurID, input.Type, input.Enonce,
+			id, nullableStrPtr(input.DocumentID), nullableStrPtr(input.ChapterID), auteurID, input.Type, input.Enonce,
 			props, reponse, nullableStrPtr(input.Explication), difficulte, themes)
 
 		u, err := scanQuestion(row)
 		if err != nil {
+			// SECT-BIBLIO-P2.5 : FK chapterId invalide -> 400 lisible, pas 500
+			// (leçon SECT-PRODUIT-1 ; pattern ouvrage.go Create).
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				return &domain.ValidationError{Field: "chapterId", Message: "chapitre introuvable"}
+			}
 			return fmt.Errorf("create question: %w", err)
 		}
 		q = u
@@ -289,6 +297,13 @@ func (r *QuestionRepository) Update(ctx context.Context, id string, input domain
 		if input.Validee != nil {
 			addSet("validee", *input.Validee)
 		}
+		// SECT-BIBLIO-P2.5 : tri-state — null explicite = retirer (NULL),
+		// valeur = rattacher, absent = inchangé (pattern UpdateOuvrageInput).
+		if input.UnsetChapterID {
+			addSet("chapterId", nil)
+		} else if input.ChapterID != nil {
+			addSet("chapterId", nullableStrPtr(input.ChapterID))
+		}
 
 		if len(setClauses) == 0 {
 			row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Question" WHERE "id" = $1 AND "deletedAt" IS NULL`, columnsQuestion), id)
@@ -313,6 +328,11 @@ func (r *QuestionRepository) Update(ctx context.Context, id string, input domain
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return &domain.NotFoundError{Entity: "Question", ID: id}
+			}
+			// SECT-BIBLIO-P2.5 : FK chapterId invalide -> 400 lisible.
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				return &domain.ValidationError{Field: "chapterId", Message: "chapitre introuvable"}
 			}
 			return fmt.Errorf("update question: %w", err)
 		}
@@ -381,6 +401,41 @@ func (r *QuestionRepository) BatchHardDelete(ctx context.Context, ids []string) 
 		return 0, err
 	}
 	return affected, nil
+}
+
+// GetChapter — SECT-BIBLIO-P2.5 : chapitre + document + propriétaire pour
+// la validation de cohérence (usecase). RLS : Chapter_select =
+// document_owned_by_me OU étudiant-filière — l'enseignant ne voit donc que
+// les chapitres de SES supports (la validation croisée documentId/question
+// reste nécessaire : un enseignant multi-supports ne doit pas mélanger).
+func (r *QuestionRepository) GetChapter(ctx context.Context, chapterID string) (*domain.QuestionChapterRef, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("GetChapter: claims manquants dans le context")
+	}
+
+	var ref *domain.QuestionChapterRef
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `
+			SELECT c."id", c."documentId", c."titre", c."ordre", d."ownerId"
+			FROM "Chapter" c
+			JOIN "Document" d ON d."id" = c."documentId"
+			WHERE c."id" = $1 AND d."deletedAt" IS NULL
+		`, chapterID)
+		var out domain.QuestionChapterRef
+		if err := row.Scan(&out.ID, &out.DocumentID, &out.Titre, &out.Ordre, &out.OwnerID); err != nil {
+			if err == pgx.ErrNoRows {
+				return &domain.NotFoundError{Entity: "Chapitre", ID: chapterID}
+			}
+			return fmt.Errorf("query chapter: %w", err)
+		}
+		ref = &out
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ref, nil
 }
 
 // jsonRawOrNull retourne la valeur JSON ou NULL si "null" ou vide.

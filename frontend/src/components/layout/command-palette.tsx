@@ -6,7 +6,7 @@ import {
   ClipboardCheck, BarChart3, Bell, FileUp, Sparkles, Library, ClipboardList,
   PenTool, TrendingUp, FileCheck, Award, CreditCard, Shield, KeyRound,
   Layers, UserCheck, BookMarked, BookOpen, Activity, Receipt, Trash2,
-  Wrench, ScrollText, CalendarClock, Megaphone, User, LogOut, type LucideIcon,
+  Wrench, ScrollText, CalendarClock, Megaphone, User, LogOut, Scale, type LucideIcon,
 } from 'lucide-react'
 
 import {
@@ -27,7 +27,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ClipboardCheck, BarChart3, Bell, FileUp, Sparkles, Library, ClipboardList,
   PenTool, TrendingUp, FileCheck, Award, CreditCard, Shield, KeyRound,
   Layers, UserCheck, BookMarked, BookOpen, Activity, Receipt, Trash2,
-  Wrench, ScrollText, CalendarClock, Megaphone,
+  Wrench, ScrollText, CalendarClock, Megaphone, Scale,
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {

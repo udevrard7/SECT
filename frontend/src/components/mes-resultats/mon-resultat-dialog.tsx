@@ -16,6 +16,7 @@ import {
   Clock,
   PenLine,
   MessageSquare,
+  BookOpen,
 } from 'lucide-react'
 import {
   Dialog,
@@ -63,6 +64,7 @@ export function MonResultatDialog({ open, onOpenChange, session }: MonResultatDi
           index: idx + 1,
           type: eq.question.type,
           enonce: eq.question.enonce,
+          chapter: eq.question.chapter ?? null, // SECT-BIBLIO-P2.5
           pointsMax: eq.bareme,
           pointsObtenus,
           correct: isGraded ? (pointsObtenus as number) >= eq.bareme * 0.5 : null,
@@ -217,6 +219,16 @@ export function MonResultatDialog({ open, onOpenChange, session }: MonResultatDi
                                   )}
                                 </span>
                               </div>
+
+                              {/* SECT-BIBLIO-P2.5 : citation du chapitre du
+                                  support source (ADR-0007 §P2.5) — valeur
+                                  autonome pour la contestation de notes. */}
+                              {q.chapter && (
+                                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md border border-primary/20 bg-primary/10 text-primary-text">
+                                  <BookOpen className="h-2.5 w-2.5" />
+                                  Support · Chap. {q.chapter.ordre + 1} : {q.chapter.titre}
+                                </span>
+                              )}
 
                               <p className="text-sm leading-relaxed">
                                 {q.enonce || `Question ${q.index}`}

@@ -34,6 +34,8 @@ import {
   Brain,
   MessageSquareText,
   FileWarning,
+  BookMarked,
+  Download,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -101,6 +103,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
+// SECT-BIBLIO-P3 (ADR-0007 §P3) : bibliographie automatique du support
+// (générée depuis les alignements déclarés par l'enseignant).
+import {
+  type BibliographieResult,
+  categorieLabel,
+  formatReferenceBibliographique,
+} from '@/lib/ouvrages-types'
 import { EntityCard } from '@/components/ds'
 
 // ─── Types ───
@@ -418,6 +427,47 @@ export function DocumentsPage() {
   const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['documents', user?.id] })
 
   const [selectedDocument, setSelectedDocument] = useState<DocumentDetail | null>(null)
+
+  // ─── SECT-BIBLIO-P3 : bibliographie du support sélectionné (Sheet détail) ───
+  const bibliographieQuery = useQuery<BibliographieResult>({
+    queryKey: ['bibliographie', selectedDocument?.id],
+    enabled: !!selectedDocument?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/documents/${selectedDocument!.id}/bibliographie`, {
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error(`Erreur ${res.status}`)
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+
+  const biblioRefs = bibliographieQuery.data?.references ?? []
+  const exporterBibliographieCSV = () => {
+    if (biblioRefs.length === 0) return
+    const escapeCSV = (v: string) => `"${v.replace(/"/g, '""')}"`
+    const rows = [
+      ['Référence', 'Catégorie', 'Section', 'Note', 'Déclarée le'].map(escapeCSV).join(';'),
+      ...biblioRefs.map((r) =>
+        [
+          formatReferenceBibliographique(r.ouvrage, r.section),
+          categorieLabel(r.ouvrage.categorie),
+          r.section?.titre ?? '',
+          r.note ?? '',
+          new Date(r.creeLe).toLocaleDateString('fr-FR'),
+        ]
+          .map((c) => escapeCSV(String(c)))
+          .join(';'),
+      ),
+    ]
+    const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `bibliographie_${selectedDocument?.nomFichier?.replace(/\.[^.]+$/, '') ?? 'support'}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   const [sheetOpen, setSheetOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DocumentDetail | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -1783,6 +1833,57 @@ export function DocumentsPage() {
                   </div>
                 </section>
               )}
+
+              {/* SECT-BIBLIO-P3 : bibliographie automatique (alignements) */}
+              <section>
+                <h3 className="mb-2 flex items-center justify-between font-display tracking-tight text-sm font-semibold">
+                  <span className="flex items-center gap-2">
+                    <BookMarked className="h-4 w-4 text-primary-text" />
+                    Bibliographie du support
+                  </span>
+                  {biblioRefs.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 px-2 text-xs"
+                      onClick={exporterBibliographieCSV}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      CSV
+                    </Button>
+                  )}
+                </h3>
+                {bibliographieQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">Chargement…</p>
+                ) : biblioRefs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aucune référence déclarée — alignez ce support sur les ouvrages
+                    de la bibliothèque (Bibliothèque → Mes alignements) pour générer
+                    sa bibliographie.
+                  </p>
+                ) : (
+                  <ol className="space-y-2">
+                    {biblioRefs.map((ref) => (
+                      <li key={ref.alignementId} className="rounded-lg border p-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm leading-relaxed">
+                            {formatReferenceBibliographique(ref.ouvrage, ref.section)}
+                          </p>
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 border-primary/25 text-[10px] text-primary-text"
+                          >
+                            {categorieLabel(ref.ouvrage.categorie)}
+                          </Badge>
+                        </div>
+                        {ref.note && (
+                          <p className="mt-1 text-xs italic text-muted-foreground">« {ref.note} »</p>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
 
               {/* Actions */}
               <Separator />

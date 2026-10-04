@@ -775,9 +775,11 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, ann
 			}
 			q := fmt.Sprintf(`
                                 SELECT eq."id", eq."epreuveId", eq."questionId", eq."bareme", eq."ordre",
-                                       q."id", q."type"::text, q."enonce", q."difficulte"::text
+                                       q."id", q."type"::text, q."enonce", q."difficulte"::text,
+                                       q."chapterId", c."titre", c."ordre"
                                 FROM "EpreuveQuestion" eq
                                 LEFT JOIN "Question" q ON q."id" = eq."questionId"
+                                LEFT JOIN "Chapter" c ON c."id" = q."chapterId"
                                 WHERE eq."epreuveId" IN (%s)
                                 ORDER BY eq."epreuveId", eq."ordre"
                         `, ph)
@@ -789,8 +791,12 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, ann
 				var eqi domain.EpreuveQuestionInfo
 				var epreuveID string
 				var qID, qType, qEnonce, qDiff *string
+				// SECT-BIBLIO-P2.5 : chapitre du support source (feedback
+				// « support, chap. X » — LEFT JOIN, nil si non rattaché).
+				var qChapterID, qChapterTitre *string
+				var qChapterOrdre *int
 				if err := rows3.Scan(&eqi.ID, &epreuveID, &eqi.QuestionID, &eqi.Bareme, &eqi.Ordre,
-					&qID, &qType, &qEnonce, &qDiff); err != nil {
+					&qID, &qType, &qEnonce, &qDiff, &qChapterID, &qChapterTitre, &qChapterOrdre); err != nil {
 					rows3.Close()
 					return fmt.Errorf("scan epreuve question: %w", err)
 				}
@@ -805,6 +811,20 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID, ann
 				}
 				if qDiff != nil {
 					eqi.Question.Difficulte = *qDiff
+				}
+				if qChapterID != nil {
+					eqi.Question.ChapterID = qChapterID
+					if qChapterTitre != nil {
+						ordre := 0
+						if qChapterOrdre != nil {
+							ordre = *qChapterOrdre
+						}
+						eqi.Question.Chapter = &domain.QuestionChapterRef{
+							ID:    *qChapterID,
+							Titre: *qChapterTitre,
+							Ordre: ordre,
+						}
+					}
 				}
 				if e, ok := epreuveMap[epreuveID]; ok {
 					e.Questions = append(e.Questions, eqi)

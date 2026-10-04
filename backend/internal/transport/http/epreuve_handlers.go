@@ -406,6 +406,31 @@ func (s *Server) updateQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECT-BIBLIO-P2.5 : détection tri-state de chapterId — absent =
+	// inchangé ; null = retirer (UnsetChapterID) ; valeur = rattacher.
+	// Le décodage UpdateQuestionInput ne distingue pas absent de null
+	// (pointeur nil dans les deux cas) → inspection du body brut
+	// (pattern patchOuvrageFromRaw, ouvrage_handlers.go).
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(bodyBytes, &rawFields); err == nil {
+		if raw, ok := rawFields["chapterId"]; ok {
+			var v *string
+			if err := json.Unmarshal(raw, &v); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "chapterId doit etre une chaine ou null")
+				return
+			}
+			if v == nil {
+				input.UnsetChapterID = true
+				input.ChapterID = nil
+			} else if *v == "" {
+				writeJSONError(w, http.StatusBadRequest, "chapterId ne peut pas etre une chaine vide (null = retirer)")
+				return
+			} else {
+				input.ChapterID = v
+			}
+		}
+	}
+
 	// Si pas de Validee, vérifier si le body contient "action":"valider"
 	if input.Validee == nil {
 		var actionBody struct {
@@ -430,6 +455,11 @@ func (s *Server) updateQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	message := "Question mise à jour"
+	if input.UnsetChapterID {
+		message = "Chapitre détaché de la question"
+	} else if input.ChapterID != nil {
+		message = "Question rattachée au chapitre"
+	}
 	if input.Validee != nil {
 		if *input.Validee {
 			message = "Question validée"

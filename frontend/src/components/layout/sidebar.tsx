@@ -36,6 +36,7 @@ import {
   HelpCircle,
   CalendarClock,
   Megaphone,
+  Scale,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -97,6 +98,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   HelpCircle,
   CalendarClock,
   Megaphone,
+  Scale,
 }
 
 export function AppSidebar() {

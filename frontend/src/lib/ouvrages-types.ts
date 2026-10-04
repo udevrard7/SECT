@@ -181,3 +181,129 @@ export function tempsAffichable(secondes: number): string {
   if (secondes >= 60) return `${Math.round(secondes / 60)} min`
   return `${secondes} s`
 }
+
+// ════════════════════════════════════════════════════════════════════
+// SECT-BIBLIO-P3 (ADR-0007 §P3) — le paquet enseignant
+// Miroir des DTO backend (domain/ouvrage_section.go + alignement.go).
+// ════════════════════════════════════════════════════════════════════
+
+/** OuvrageSection — entrée du TOC curaté par l'ADMIN (000126). */
+export interface OuvrageSection {
+  id: string
+  ouvrageId: string
+  titre: string
+  pageDebut?: number | null
+  pageFin?: number | null
+  ordre: number
+  createdAt: string
+}
+
+/** AlignementOuvrage — une déclaration support ↔ ouvrage (± section). */
+export interface AlignementOuvrage {
+  id: string
+  documentId: string
+  ouvrageId: string
+  ouvrageSectionId?: string | null
+  declareParId: string
+  note?: string | null
+  createdAt: string
+  updatedAt: string
+  ouvrage?: Ouvrage | null
+  section?: OuvrageSection | null
+}
+
+/** OuvrageSuggestion — une proposition (l'IA propose, l'enseignant décide). */
+export interface OuvrageSuggestion {
+  ouvrage: Ouvrage
+  score: number
+  themesCommuns: string[]
+  dejaAligne: boolean
+}
+
+/** Réponse GET /api/ouvrages/{id}/sections. */
+export interface OuvrageSectionsResult {
+  sections: OuvrageSection[]
+}
+
+/** Réponse GET /api/documents/{id}/alignements. */
+export interface AlignementsResult {
+  alignements: AlignementOuvrage[]
+}
+
+/** Réponse GET /api/documents/{id}/alignements/suggestions. */
+export interface SuggestionsResult {
+  suggestions: OuvrageSuggestion[]
+  message?: string
+}
+
+/** ConformiteEpreuve — % questions conformes d'une épreuve (audit P3). */
+export interface ConformiteEpreuve {
+  epreuveId: string
+  titre: string
+  nbQuestions: number
+  nbQuestionsConformes: number
+  tauxConformite: number
+}
+
+/** ConformiteSupport — ligne d'audit de direction par support. */
+export interface ConformiteSupport {
+  documentId: string
+  nomFichier: string
+  enseignant: string
+  ueCode?: string | null
+  nbChapitres: number
+  nbQuestions: number
+  nbQuestionsAlignees: number
+  nbAlignements: number
+  nbAlignementsReferentiel: number
+  tauxCouverture: number
+  dernierAlignementAt?: string | null
+  epreuves: ConformiteEpreuve[]
+}
+
+/** Réponse GET /api/etablissements/{id}/conformite-referentiels. */
+export interface ConformiteResult {
+  etablissementId: string
+  supports: ConformiteSupport[]
+}
+
+/** BibliographieReference — une référence générée depuis un alignement. */
+export interface BibliographieReference {
+  alignementId: string
+  note?: string | null
+  ouvrage: Ouvrage
+  section?: OuvrageSection | null
+  creeLe: string
+}
+
+/** Réponse GET /api/documents/{id}/bibliographie. */
+export interface BibliographieResult {
+  documentId: string
+  nomFichier: string
+  references: BibliographieReference[]
+}
+
+/** Format APA-like d'une référence bibliographique (export + fiche). */
+export function formatReferenceBibliographique(
+  o: Ouvrage,
+  section?: OuvrageSection | null,
+): string {
+  const auteurs = parseAuteurs(o.auteurs)
+  const parts: string[] = []
+  if (auteurs.length > 0) parts.push(auteurs.join(', '))
+  if (o.anneePublication) parts.push(`(${o.anneePublication})`)
+  parts.push(`${o.titre}.`)
+  if (section) {
+    const pages =
+      section.pageDebut != null && section.pageFin != null
+        ? `, pp. ${section.pageDebut}-${section.pageFin}`
+        : section.pageDebut != null
+          ? `, p. ${section.pageDebut}`
+          : ''
+    parts.push(`${section.titre}${pages}.`)
+  }
+  const editeurParts = [o.editeur, o.edition].filter(Boolean)
+  if (editeurParts.length > 0) parts.push(`${editeurParts.join(', ')}.`)
+  if (o.isbn) parts.push(`ISBN ${o.isbn}.`)
+  return parts.join(' ')
+}

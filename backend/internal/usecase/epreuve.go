@@ -95,6 +95,35 @@ func (uc *QuestionUseCase) Update(ctx context.Context, claims db.SessionClaims, 
 	if input.Difficulte != nil && !domain.ValidDifficultes[*input.Difficulte] {
 		return nil, &domain.ValidationError{Field: "difficulte", Message: "difficulté invalide"}
 	}
+
+	// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : validation de cohérence du
+	// chapitre — la FK (000125) garantit l'existence, la RLS (Chapter_select
+	// = document_owned_by_me) garantit la propriété ; on garantit ici la
+	// COHÉRENCE PÉDAGOGIQUE : le chapitre doit venir du support source de la
+	// question (ou, pour une question d'épreuve IA sans documentId — cf.
+	// EpreuveRepository.Create — d'un support du MÊME enseignant).
+	if input.UnsetChapterID && input.ChapterID != nil {
+		return nil, &domain.ValidationError{Field: "chapterId", Message: "chapterId contradictoire (null et valeur simultanés)"}
+	}
+	if input.ChapterID != nil && *input.ChapterID != "" {
+		q, err := uc.questionRepo.FindByID(ctx, id) // RLS : 404 si non visible
+		if err != nil {
+			return nil, err
+		}
+		ch, err := uc.questionRepo.GetChapter(ctx, *input.ChapterID) // RLS : chapitres de SES supports
+		if err != nil {
+			return nil, &domain.ValidationError{Field: "chapterId", Message: "chapitre introuvable ou hors de portée"}
+		}
+		if q.DocumentID != nil {
+			if *q.DocumentID != ch.DocumentID {
+				return nil, &domain.ValidationError{Field: "chapterId", Message: "le chapitre doit appartenir au support source de la question"}
+			}
+		} else if ch.OwnerID != claims.UserID && role != domain.RoleAdmin {
+			// Question d'épreuve IA (documentId NULL) : le chapitre doit venir
+			// d'un support de l'enseignant qui rattache (ou d'un ADMIN).
+			return nil, &domain.ValidationError{Field: "chapterId", Message: "le chapitre doit venir d'un de vos supports"}
+		}
+	}
 	return uc.questionRepo.Update(ctx, id, input)
 }
 

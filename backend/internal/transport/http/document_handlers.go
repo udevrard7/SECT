@@ -52,6 +52,24 @@ func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"document": doc})
 }
 
+// getDocumentChapters — GET /api/documents/{id}/chapters
+// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : chapitres du support (découpage IA)
+// pour le sélecteur « support, chap. X » du rattachement de questions.
+func (s *Server) getDocumentChapters(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	chapters, err := s.documentUC.ListChapters(r.Context(), claims, chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"chapters": chapters})
+}
+
 // uploadDocument — POST /api/documents (multipart/form-data)
 func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())

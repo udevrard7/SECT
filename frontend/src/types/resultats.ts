@@ -205,6 +205,10 @@ export interface EpreuveQuestionInfo {
     type: string
     enonce: string
     difficulte?: string
+    // SECT-BIBLIO-P2.5 : chapitre du support source (feedback
+    // « Support · Chap. X : titre », ADR-0007 §P2.5). Absent si non rattaché.
+    chapterId?: string | null
+    chapter?: { id: string; titre: string; ordre: number } | null
   }
 }
 

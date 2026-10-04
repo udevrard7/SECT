@@ -1518,7 +1518,9 @@ func (r *ExamPrepRepository) ListQuestionBank(ctx context.Context, userID, docum
 
 	var result []*domain.QuestionBankItem
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `
+		// SECT-BIBLIO-P2.5 : filtre chapitre optionnel ($5) — la banque par
+		// chapitre devient effective (le paramètre était ignoré en v1).
+		query := `
                         SELECT q."id", q."documentId", q."auteurId", q."type", q."enonce",
                                q."propositions", q."reponseCorrecte", q."explication",
                                q."difficulte", q."themes", q."validee", q."createdAt",
@@ -1529,13 +1531,20 @@ func (r *ExamPrepRepository) ListQuestionBank(ctx context.Context, userID, docum
                         FROM "Question" q
                         LEFT JOIN "QuestionVote" v ON v."questionId" = q."id"
                         LEFT JOIN "QuestionVote" v2 ON v2."questionId" = q."id" AND v2."userId" = $2
-                        WHERE q."documentId" = $1 AND q."deletedAt" IS NULL AND q."validee" = true
+                        WHERE q."documentId" = $1 AND q."deletedAt" IS NULL AND q."validee" = true`
+		args := []any{documentID, userID, limit, offset}
+		if chapterID != nil && *chapterID != "" {
+			query += ` AND q."chapterId" = $5`
+			args = append(args, *chapterID)
+		}
+		query += `
                         GROUP BY q."id", q."documentId", q."auteurId", q."type", q."enonce",
                                  q."propositions", q."reponseCorrecte", q."explication",
                                  q."difficulte", q."themes", q."validee", q."createdAt", v2."value"
                         ORDER BY netvotes DESC, q."createdAt" DESC
                         LIMIT $3 OFFSET $4
-                `, documentID, userID, limit, offset)
+                `
+		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query question bank: %w", err)
 		}
@@ -1581,8 +1590,14 @@ func (r *ExamPrepRepository) CountQuestionsByDocument(ctx context.Context, docum
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		query := `SELECT count(*)::int FROM "Question" WHERE "documentId" = $1 AND "deletedAt" IS NULL AND "validee" = true`
 		args := []any{documentID}
+		next := 2
+		if chapterID != nil && *chapterID != "" { // SECT-BIBLIO-P2.5 (000125)
+			query += fmt.Sprintf(` AND "chapterId" = $%d`, next)
+			args = append(args, *chapterID)
+			next++
+		}
 		if difficulte != nil && *difficulte != "" {
-			query += ` AND "difficulte" = $2`
+			query += fmt.Sprintf(` AND "difficulte" = $%d`, next)
 			args = append(args, *difficulte)
 		}
 		return tx.QueryRow(ctx, query, args...).Scan(&count)
@@ -1621,6 +1636,11 @@ func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, document
                 `
 		args := []any{documentID}
 		argIdx := 2
+		if chapterID != nil && *chapterID != "" { // SECT-BIBLIO-P2.5 (000125)
+			query += fmt.Sprintf(` AND "chapterId" = $%d`, argIdx)
+			args = append(args, *chapterID)
+			argIdx++
+		}
 		if difficulte != nil && *difficulte != "" {
 			query += fmt.Sprintf(` AND "difficulte" = $%d`, argIdx)
 			args = append(args, *difficulte)

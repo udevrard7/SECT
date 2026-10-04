@@ -70,6 +70,11 @@ type DocumentRepository interface {
 	SoftDelete(ctx context.Context, id string) error
 	// P1-D1 : Update statut analyse + champs IA après traitement worker
 	UpdateAnalysis(ctx context.Context, id string, params UpdateAnalysisInput) error
+	// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : chapitres d'un support (découpage
+	// IA du worker) — alimente le sélecteur « support, chap. X » côté
+	// enseignant. RLS Chapter_select = document_owned_by_me OU
+	// étudiant-filière (000034) : l'enseignant voit SES chapitres.
+	ListChapters(ctx context.Context, documentID string) ([]*Chapter, error)
 }
 
 // UpdateAnalysisInput pour mettre à jour les champs d'analyse d'un document.

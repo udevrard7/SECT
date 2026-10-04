@@ -111,6 +111,11 @@ type EpreuveQuestionDetail struct {
 	Type       string `json:"type"`
 	Enonce     string `json:"enonce"`
 	Difficulte string `json:"difficulte,omitempty"`
+	// SECT-BIBLIO-P2.5 : chapitre du support source — alimente la citation
+	// « Support · Chap. X : titre » dans mon-resultat-dialog (feedback
+	// étudiant, ADR-0007 §P2.5). Absent si la question n'est pas rattachée.
+	ChapterID *string             `json:"chapterId,omitempty"`
+	Chapter   *QuestionChapterRef `json:"chapter,omitempty"`
 }
 
 // Reponse représente la réponse d'un étudiant à une question.

@@ -391,16 +391,18 @@ type ExamPrepRepository interface {
 	RemoveVote(ctx context.Context, userID, questionID string) error
 	// ListQuestionBank liste les questions validées d'un document avec les
 	// stats de vote agrégées (upvotes/downvotes/netVotes) + le vote du user
-	// courant. RLS on : lecture student-scoped. Le paramètre chapterID est
-	// accepté mais ignoré en v1 (la table Question n'a pas de chapterId —
-	// filtrage par documentId uniquement).
+	// courant. RLS on : lecture student-scoped. SECT-BIBLIO-P2.5 : chapterID
+	// non-nil filtre sur Question.chapterId (migration 000125) — la banque
+	// par chapitre est désormais effective.
 	ListQuestionBank(ctx context.Context, userID, documentID string, chapterID *string, limit, offset int) ([]*QuestionBankItem, error)
 	// CountQuestionsByDocument compte les questions validées d'un document.
-	// Utilisé par le cache check dans practice/generate. Le paramètre chapterID
-	// est ignoré en v1 ; difficulte est appliqué si non-nil.
+	// Utilisé par le cache check dans practice/generate. SECT-BIBLIO-P2.5 :
+	// chapterID non-nil filtre sur Question.chapterId (000125) ; difficulte
+	// est appliqué si non-nil.
 	CountQuestionsByDocument(ctx context.Context, documentID string, chapterID *string, difficulte *string) (int, error)
 	// ListExistingQuestions retourne des questions validées existantes pour
 	// servir le cache (sans les joins de vote). Ordonné par createdAt DESC.
+	// SECT-BIBLIO-P2.5 : chapterID non-nil filtre sur Question.chapterId (000125).
 	ListExistingQuestions(ctx context.Context, documentID string, chapterID *string, difficulte *string, limit int) ([]*QuestionBankItem, error)
 	// AUDIO-LEARNING-1 — Mode Audio-Learning (podcasts de révision).
 	// CreateDocumentAudio insère une ligne DocumentAudio (status=EN_COURS, script="").

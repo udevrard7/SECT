@@ -45,6 +45,7 @@ export type PageId =
   | 'annee-academique'
   | 'diffusions'
   | 'bibliotheque'
+  | 'conformite'
   | 'profil'
   | 'parametres'
 
@@ -95,6 +96,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — une seule page
   // pour tous les rôles ; l'ADMIN y dépose (G1), les autres lisent.
   bibliotheque: '/bibliotheque',
+  conformite: '/conformite',
   profil: '/profil',
   parametres: '/parametres',
 }
@@ -281,6 +283,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   diffusions: 'Diffusions',
   // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
   bibliotheque: 'Bibliothèque',
+  conformite: 'Conformité référentiels',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -331,6 +334,8 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   // SECT-NOTIF-DIFFUSION-1 : diffusion d'établissement du RESPONSABLE.
   diffusions: "Diffusez des annonces aux membres de votre établissement (tout l'établissement, enseignants ou étudiants)",
   // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
+  // SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de direction.
+  conformite: "Audit de direction : alignement des supports et épreuves sur les référentiels officiels de la bibliothèque",
   bibliotheque: "Explorer les ouvrages de référence de votre établissement (référentiels officiels, ouvrages, recherche, pratique professionnelle)",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
@@ -382,6 +387,9 @@ const ADMIN_CATEGORIES: NavCategory[] = [
       // l'ADMIN sans établissement (mode assistance absent) via le select
       // d'établissement du formulaire de dépôt.
       { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
+      // SECT-BIBLIO-P3 : audit de direction (ADR-0007 §P3) — l'ADMIN
+      // global sonde tous les établissements (sélecteur).
+      { id: 'conformite', label: 'Conformité référentiels', icon: 'Scale' },
     ],
   },
   {
@@ -481,6 +489,8 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'evaluations', label: 'Évaluations', icon: 'ClipboardCheck' },
       { id: 'rapports', label: 'Rapports & Statistiques', icon: 'BarChart3' },
+      // SECT-BIBLIO-P3 : audit de direction (ADR-0007 §P3).
+      { id: 'conformite', label: 'Conformité référentiels', icon: 'Scale' },
     ],
   },
   {
@@ -676,6 +686,10 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // fusionne l'ancienne page /cloture-annee avec la section Années académiques
   // auparavant embarquée dans /programme-academique.
   'annee-academique': ['RESPONSABLE', 'ADMIN'],
+  // SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de conformité — direction
+  // (RESPONSABLE de l'établissement + ADMIN ; l'ADMIN en mode assistance
+  // voit la nav RESPONSABLE via getEffectiveRole).
+  'conformite': ['RESPONSABLE', 'ADMIN'],
   // SECT-ETUDIANT-MES-ENSEIGNANTS-1 : page "Mes enseignants" réservée ETUDIANT.
   // La RLS Affectation_select (migration 000091, fonction
   // affectation_visible_by_student) auto-filtre sur la filière de l'étudiant +

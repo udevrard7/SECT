@@ -1084,9 +1084,12 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 		// Sans cela, le frontend passation-page ne reçoit que la bare liaison.
 		rows, err := tx.Query(ctx, `
                         SELECT eq."id", eq."epreuveId", eq."questionId", eq."bareme", eq."ordre",
-                               q."id", q."type"::text, q."enonce", q."propositions", q."difficulte"::text, q."themes", q."explication"
+                               q."id", q."type"::text, q."enonce", q."propositions", q."difficulte"::text, q."themes", q."explication",
+                               q."documentId",
+                               q."chapterId", c."titre", c."ordre"
                         FROM "EpreuveQuestion" eq
                         LEFT JOIN "Question" q ON q."id" = eq."questionId" AND q."deletedAt" IS NULL
+                        LEFT JOIN "Chapter" c ON c."id" = q."chapterId"
                         WHERE eq."epreuveId" = $1 ORDER BY eq."ordre" ASC
                 `, epreuveID)
 		if err != nil {
@@ -1100,7 +1103,12 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 			var qProp, qThemes []byte
 			var qDiff *string
 			var qExp *string
-			if err := rows.Scan(&eq.ID, &eq.EpreuveID, &eq.QuestionID, &eq.Bareme, &eq.Ordre, &qID, &qType, &qEnonce, &qProp, &qDiff, &qThemes, &qExp); err != nil {
+			// SECT-BIBLIO-P2.5 : chapitre du support source (citation
+			// « support, chap. X »). LEFT JOIN → nil si non visible (RLS).
+			var qChapterID, qChapterTitre *string
+			var qChapterOrdre *int
+			var qDocID *string
+			if err := rows.Scan(&eq.ID, &eq.EpreuveID, &eq.QuestionID, &eq.Bareme, &eq.Ordre, &qID, &qType, &qEnonce, &qProp, &qDiff, &qThemes, &qExp, &qDocID, &qChapterID, &qChapterTitre, &qChapterOrdre); err != nil {
 				return fmt.Errorf("scan epreuve question: %w", err)
 			}
 			// B7 : hydrater Question si le JOIN a matché
@@ -1113,6 +1121,19 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 					Difficulte:   domain.Difficulte(derefStr(qDiff)),
 					Themes:       sanitizeEpreuveRawMessage(qThemes),
 					Explication:  qExp,
+					DocumentID:   qDocID,
+					ChapterID:    qChapterID,
+				}
+				if qChapterID != nil && qChapterTitre != nil {
+					ordre := 0
+					if qChapterOrdre != nil {
+						ordre = *qChapterOrdre
+					}
+					eq.Question.Chapter = &domain.QuestionChapterRef{
+						ID:    *qChapterID,
+						Titre: *qChapterTitre,
+						Ordre: ordre,
+					}
 				}
 			}
 			result = append(result, eq)

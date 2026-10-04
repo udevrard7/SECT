@@ -257,3 +257,43 @@ func (r *DocumentRepository) UpdateAnalysis(ctx context.Context, id string, para
 		return nil
 	})
 }
+
+// ListChapters — SECT-BIBLIO-P2.5 : chapitres d'un support, ordonnés
+// (RLS actif : Chapter_select = document_owned_by_me OU étudiant-filière).
+// sujets reste le TEXT-JSON brut (pattern TEXT-JSON du codebase) — le
+// frontend le parse comme themesDetectes.
+func (r *DocumentRepository) ListChapters(ctx context.Context, documentID string) ([]*domain.Chapter, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("ListChapters: claims manquants dans le context")
+	}
+
+	var result []*domain.Chapter
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT c."id", c."documentId", c."titre", c."ordre", c."sujets", c."createdAt"
+			FROM "Chapter" c
+			WHERE c."documentId" = $1
+			ORDER BY c."ordre" ASC
+		`, documentID)
+		if err != nil {
+			return fmt.Errorf("query chapters: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			ch := &domain.Chapter{}
+			if err := rows.Scan(&ch.ID, &ch.DocumentID, &ch.Titre, &ch.Ordre, &ch.Sujets, &ch.CreatedAt); err != nil {
+				return fmt.Errorf("scan chapter: %w", err)
+			}
+			result = append(result, ch)
+		}
+		if result == nil {
+			result = []*domain.Chapter{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}

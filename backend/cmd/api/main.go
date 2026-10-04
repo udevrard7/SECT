@@ -99,6 +99,11 @@ func main() {
 	// migration 000124 — reprise de page, temps visibilité-gated,
 	// agrégats d’activité enseignante).
 	ouvrageLectureRepo := repository.NewOuvrageLectureRepository(pool)
+	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant — TOC curaté
+	// (OuvrageSection) + déclarations d’alignement (AlignementOuvrage,
+	// migration 000126) + bibliographie + audit de conformité.
+	ouvrageSectionRepo := repository.NewOuvrageSectionRepository(pool)
+	alignementRepo := repository.NewAlignementRepository(pool)
 	certificatRepo := repository.NewCertificatRepository(pool)
 	correctionRepo := repository.NewCorrectionRepository(pool)
 	examPrepRepo := repository.NewExamPrepRepository(pool)
@@ -193,6 +198,8 @@ func main() {
 	// BIBLIOTHEQUE_QUOTA_MO (défaut 2048 Mo) dans le usecase.
 	// SECT-BIBLIO-P2 : le usecase porte aussi la lecture mesurée.
 	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient)
+	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant.
+	alignementUC := usecase.NewAlignementUseCase(alignementRepo, ouvrageSectionRepo)
 	certificatUC := usecase.NewCertificatUseCase(certificatRepo)
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
@@ -303,7 +310,7 @@ func main() {
 	// channel in-memory ne fonctionnait pas de façon fiable sur Render free
 	// (cold start tue le worker goroutine avant traitement du job).
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC, alignementUC)
 
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications.
 	// Instancié APRÈS le serveur (le hub SSE global est dans transport/http,
