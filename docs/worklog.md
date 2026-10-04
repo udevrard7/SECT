@@ -3665,3 +3665,50 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
   numérique (comptage d'octets, hash) avant toute « correction » ; ici
   `branches: [main, develop]` était intact (353 runs push/main le prouvaient
   déjà a contrario).
+
+---
+## Task ID: SECT-BIBLIO-ADR-1
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: Rédiger l'ADR de la bibliothèque numérique (couche normative) après analyse pédagogique et validation des 3 arbitrages de gouvernance
+
+### Contexte
+- Analyse d'expert EdTech conduite en dialogue avec le CTO sur 3 tours :
+  bibliothèque classique (non différenciante) → couplage livre↔évaluation
+  (corrigé après objection « les épreuves sont générées sur les supports,
+  pas sur les livres ») → modèle complet à 3 étages (transposition
+  didactique, Chevallard) intégrant la préparation des supports par
+  l'enseignant depuis les sources normatives et professionnelles.
+- Arbitrages validés par le CTO : G1 dépôt ADMIN seul en P1 (file
+  RESPONSABLE en P4) ; G2 catalogue par établissement ; G3 ordre
+  P1 → P2/P2.5 → P3 → P4.
+- Deux invariants structurels bornant l'évolution future : I1 le livre ne
+  génère JAMAIS de questions (validité : hors programme effectif) ; I2 le
+  support enseigne, le livre référence.
+
+### Livraison
+- **ADR-0007** (docs/desktop/ADR/0007-bibliotheque-numerique.md, pattern
+  ADR-0006) : modèle 3 étages, 5 options considérées (dont 3 rejetées avec
+  motif : livres en lignes Document, lecture sociale d'abord Perusall,
+  génération IA depuis les livres), DDL par phase, policies RLS, API chi,
+  intégration R2 + quotas (pattern repository/quota.go), plan de migrations
+  000123→000127, critères d'acceptation, risques/garde-fous.
+- Ancrages vérifiés dans le code avant rédaction : helpers RLS 000020,
+  conventions de clés R2 (documents/, captures/, identity-photos/ →
+  ouvrages/), colonnes AuditLog prêtes pour l'audit de lecture,
+  Question.documentId/Chapter/themesDetectes (flux P3 : l'IA PROPOSE à
+  partir des thèmes détectés, l'enseignant décide), quota.go IAUsage.
+- Différenciateur concurrentiel acté : l'écart support↔référentiel comme
+  objet de première classe (carte d'alignement, conformité par épreuve,
+  audit de direction) — exige les deux chaînes simultanément ; seul SECT a
+  la chaîne générative traçable.
+
+### Stage Summary
+- ADR-0007 rédigé et accepté ; aucune table/ligne de code livrée à ce stade
+  (décision d'architecture pure, conformément à la méthode projet : ADR
+  d'abord, migrations ensuite).
+- Prochaine étape proposée : exécution P1 (migration 000123 + handlers
+  ouvrages + UI admin/catalogue + lecteur in-browser + quota), puis P2,
+  P2.5, P3, P4.
+- Leçons répercutées dans l'ADR : RLS same-migration (000121), params
+  plpgsql typés enum (ENUM-SWEEP), golang-migrate only (DTTES-AUDIT-2),
+  NULLS NOT DISTINCT (PG 18.6 vérifié).
