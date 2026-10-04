@@ -4076,3 +4076,62 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
   dans un effet ; un UPDATE évalue AUSSI les policies SELECT de la table
   (visibilité) — les grants du harnais doivent couvrir les tables
   référencées par TOUTES les policies.
+
+## SECT-R2-AUDIT-1 + SECT-R2-CONFIG-1 — audit R2 pré-P4, fermeture faille JWT, activation R2 en prod
+
+**Date** : 2026-10-04 · **Type** : ops (zéro commit code — env vars Render
+uniquement) · **Deploy** : `dep-db1c0gbncjis73c3l42g` (dc0efbfa, env only, live
+en 30 s)
+
+### SECT-R2-AUDIT-1 — l'affirmation « R2 déjà implémenté, variables sur Render » vérifiée par preuves
+- CODE : R2 complet (internal/storage/r2.go + 3 usecases + modes dégradés
+  honnêtes DB-only). RENDER : le service n'avait qu'UNE env var
+  (NEON_DATABASE_URL) — zéro var R2, zéro env group, render.yaml jamais
+  synchronisé au service (création manuelle 2026-07-19).
+- Preuves live pré-config : `POST /api/soumissions/presign-upload` → 503
+  « stockage R2 non configuré » ; `GET /api/ouvrages/{id}/fichier` → 400
+  « mode DB-only » ; upload ouvrage 201 avec clé posée en DB mais octets
+  jamais stockés (pattern Document).
+- ⚠️ DÉCOUVERTE CRITIQUE au passage : le JWT prod était signé avec le
+  FALLBACK DEV `dev-secret-change-me` (JWT_SECRET absent + ENVIRONMENT
+  absent → défaut development) — repo public ⇒ n'importe qui pouvait forger
+  un JWT ADMIN. Preuve cryptographique : vérification HMAC locale du token
+  d'une fixture fraîche.
+- Neon : 126/126 dirty=false, 80 tables, 214 policies ; Ouvrage=0 ;
+  10 Documents réels avec cheminStockage posé.
+
+### SECT-R2-CONFIG-1 — étape 1 + étape 2 appliquées via API Render
+- Due diligence : un seul gate ENVIRONMENT (JWT_SECRET requis) ; Turnstile
+  skip sur secret vide indépendant d'ENVIRONMENT ; refresh tokens OPAQUES
+  stateful (jwt.go) ⇒ rotation JWT_SECRET sans invalidation de sessions.
+- Cloudflare : bucket `sect-documents` existant (2026-06-25) ; endpoint EU =
+  NoSuchBucket (juridiction par défaut) → ENDPOINT GLOBAL retenu ; le
+  bucket contenait DÉJÀ les 10 documents réels aux clés exactes (upload en
+  masse 2026-09-27), tailles vérifiées octet-par-octet 10/10 → aucun
+  re-upload nécessaire.
+- Render : 8 env vars posées (JWT_SECRET 256 bits openssl, ENVIRONMENT=
+  production, 5×R2 avec endpoint global ; NEON_DATABASE_URL préservée à
+  l'identique), deploy déclenché → live.
+- Vérification prod 10/10 (fixtures jetables r2cfg-) : JWT signé avec le
+  NOUVEAU secret ET PLUS avec le fallback dev ; presign-upload 200 + PUT
+  octets 200 (fini le 503) ; ouvrage 201 → /fichier 200 URL présignée
+  (fini le 400) → GET octets IDENTIQUES au PDF envoyé (round-trip complet) ;
+  objet bucket présent à la clé attendue.
+- Cleanup résidu 0 TOTAL : objets R2 test supprimés (bucket revenu à 19
+  objets initiaux), fixtures DB purgées.
+- Impact produit : les 10 documents réels redeviennent téléchargeables
+  immédiatement ; la bibliothèque ADR-0007 P1-P3 devient pleinement
+  utilisable (lecteur in-browser avec octets réels) — le différenciateur
+  SECT est enfin complet en prod.
+
+### Leçons
+- Un service Render créé manuellement ne synchronise JAMAIS render.yaml
+  (blueprint) : les vars `sync: false` doivent être posées explicitement —
+  auditer `GET /v1/services/{id}/env-vars` plutôt que lire le yaml.
+- L'endpoint EU R2 (`{account}.eu.r2.cloudflarestorage.com`) ne sert QUE
+  les comptes juridiction EU — sinon NoSuchBucket silencieux : toujours
+  tester l'endpoint avant de le configurer.
+- Une preuve cryptographique locale (HMAC du token d'une fixture) vaut
+  mieux qu'une supposition sur la config d'un service tiers.
+- La clé R2 posée en DB en mode dégradé ne prouve PAS que les octets
+  existent — HEAD l'objet pour un audit réel.
