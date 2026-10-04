@@ -107,6 +107,9 @@ type Server struct {
 	// bibliographie auto + audit de conformité. Même pattern fin de
 	// signature (pattern projet).
 	alignementUC *usecase.AlignementUseCase
+	// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale (annotations,
+	// propositions G1, veilles, badge lecteur assidu).
+	ouvrageSocialUC *usecase.OuvrageSocialUseCase
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications. Injecté via
 	// WithNotificationDispatcher (setter pattern — évite d'étendre la signature
 	// NewServer déjà très longue). nil = pas de notification (dev/tests).
@@ -186,6 +189,10 @@ func NewServer(
 	ouvrageUC *usecase.OuvrageUseCase,
 	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant (même pattern).
 	alignementUC *usecase.AlignementUseCase,
+	// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — annotations,
+	// propositions G1, veilles, évaluation badge lecteur assidu
+	// (ajouté en fin de signature pour minimiser le diff, pattern projet).
+	ouvrageSocialUC *usecase.OuvrageSocialUseCase,
 ) *Server {
 	s := &Server{
 		dbPool:              dbPool,
@@ -225,6 +232,7 @@ func NewServer(
 		inscriptionRepo:     inscriptionRepo,
 		ouvrageUC:           ouvrageUC,
 		alignementUC:        alignementUC,
+		ouvrageSocialUC:     ouvrageSocialUC,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -866,6 +874,20 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ADMIN")).Post("/{id}/sections", s.createOuvrageSection)
 			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}/sections/{sectionId}", s.updateOuvrageSection)
 			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}/sections/{sectionId}", s.deleteOuvrageSection)
+			// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale. Littéraux
+			// /propositions et /veilles déclarés ici — chi distingue
+			// statique vs /{id} (leçon router P3 : littéral AVANT).
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Get("/propositions", s.listOuvragePropositions)
+			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Post("/propositions", s.createOuvrageProposition)
+			r.With(middleware.RequireRole("ADMIN")).Post("/propositions/{id}/trancher", s.trancheOuvrageProposition)
+			r.Delete("/propositions/{id}", s.deleteOuvrageProposition)
+			r.Get("/veilles", s.listOuvrageVeilles)
+			r.Post("/veilles", s.createOuvrageVeille)
+			r.Delete("/veilles/{id}", s.deleteOuvrageVeille)
+			r.Get("/{id}/annotations", s.listOuvrageAnnotations)
+			r.Post("/{id}/annotations", s.createOuvrageAnnotation)
+			r.Patch("/{id}/annotations/{annotationId}", s.updateOuvrageAnnotation)
+			r.Delete("/{id}/annotations/{annotationId}", s.deleteOuvrageAnnotation)
 		})
 
 		// /api/certificats (verify est publique, définie plus haut)

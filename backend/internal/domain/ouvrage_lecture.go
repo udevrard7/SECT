@@ -91,4 +91,9 @@ type OuvrageLectureRepository interface {
 	// bibliotheque_activite_etablissement (cloisonnée rôle+etab dans la
 	// fonction, exécutée sous les claims de l'appelant).
 	ActiviteEtablissement(ctx context.Context, etablissementID string) ([]OuvrageActivite, error)
+	// SumTempsLectureByUser — secondes de lecture cumulées de l'utilisateur
+	// sur TOUS les ouvrages (matière première du badge « lecteur assidu »,
+	// ADR-0008 §3). Sous les claims du lecteur : RLS self-only de toute
+	// façon (un appelant ne peut sonder que son propre cumul).
+	SumTempsLectureByUser(ctx context.Context, userID string) (int64, error)
 }

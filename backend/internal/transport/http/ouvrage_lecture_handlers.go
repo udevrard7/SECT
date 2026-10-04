@@ -61,6 +61,11 @@ func (s *Server) putOuvrageLecture(w http.ResponseWriter, r *http.Request) {
 		middleware.MapDomainError(w, err)
 		return
 	}
+	// SECT-BIBLIO-P4 (ADR-0008 §3) : évaluation best-effort du badge
+	// « lecteur assidu » à chaque heartbeat — les erreurs sont
+	// journalisées dans le usecase, JAMAIS remontées (un échec
+	// badges ne doit pas casser la télémétrie de lecture).
+	_ = s.ouvrageSocialUC.EvaluateLecteurAssidu(r.Context(), claims)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"lecture": lecture})
 }

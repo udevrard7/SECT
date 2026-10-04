@@ -200,6 +200,14 @@ func main() {
 	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient)
 	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant.
 	alignementUC := usecase.NewAlignementUseCase(alignementRepo, ouvrageSectionRepo)
+	// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — annotations,
+	// propositions G1, veilles + badge « lecteur assidu » (premier
+	// writer Go de BadgeProgression — policies normalisées 000128).
+	ouvrageAnnotationRepo := repository.NewOuvrageAnnotationRepository(pool)
+	ouvragePropositionRepo := repository.NewOuvragePropositionRepository(pool)
+	ouvrageVeilleRepo := repository.NewOuvrageVeilleRepository(pool)
+	badgeProgressionRepo := repository.NewBadgeProgressionRepository(pool)
+	ouvrageSocialUC := usecase.NewOuvrageSocialUseCase(ouvrageAnnotationRepo, ouvragePropositionRepo, ouvrageVeilleRepo, badgeProgressionRepo, ouvrageRepo, ouvrageLectureRepo)
 	certificatUC := usecase.NewCertificatUseCase(certificatRepo)
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
@@ -297,6 +305,15 @@ func main() {
 	promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo)
 	promotionWorker.Start(context.Background())
 
+	// SECT-BIBLIO-P4 (ADR-0008 §5) : purge de la corbeille bibliothèque.
+	// Ouvrages soft-déletés > 30 jours : AuditLog AVANT le DELETE, hard
+	// delete sous claims system (policy Ouvrage_delete is_system — 000128,
+	// l'app ne peut JAMAIS hard-deleter), CASCADE emporte lectures/
+	// sections/alignements/annotations, objet R2 supprimé POST-COMMIT.
+	// Pattern cleanup_worker : ticker 1h + premier check au boot.
+	bibliothequePurgeWorker := worker.NewBibliothequePurgeWorker(pool, logger, storageClient)
+	bibliothequePurgeWorker.Start(context.Background())
+
 	// FIX-5 : worker de détection de similarité entre copies (post-exam).
 	// Vérifie toutes les 5 min les épreuves CLOTUREE dont l'établissement
 	// a rapportFraude=true, compare les paires d'étudiants et insère
@@ -310,7 +327,7 @@ func main() {
 	// channel in-memory ne fonctionnait pas de façon fiable sur Render free
 	// (cold start tue le worker goroutine avant traitement du job).
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC, alignementUC)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC, alignementUC, ouvrageSocialUC)
 
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications.
 	// Instancié APRÈS le serveur (le hub SSE global est dans transport/http,
@@ -338,6 +355,11 @@ func main() {
 	// SECT-NOTIF-CLOTURE-1 : injecte le dispatcher dans PromotionUseCase
 	// pour que la clôture notifie chaque étudiant (promu/redoublant/diplômé).
 	promotionUC.SetNotificationDispatcher(notifDispatcher)
+
+	// SECT-BIBLIO-P4 (ADR-0008) : notifications sociales — décision sur
+	// une proposition (au proposant), badge débloqué (au lecteur),
+	// veille matchante (à l'abonné). Fire-and-forget, nil-safe.
+	ouvrageSocialUC.SetNotificationDispatcher(notifDispatcher)
 
 	// SECT-GENIUSPAY-WAVE : injecte le client GeniusPay si configuré.
 	// Si GENIUSPAY_API_KEY est vide, le client est nil et les handlers retournent 503.

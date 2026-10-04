@@ -55,4 +55,8 @@ export const CATEGORIE_CONFIG: Record<string, { color: string; icon: string; lab
   PEDAGOGIE: { color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300', icon: 'GraduationCap', label: 'Pédagogie' },
   PARTICIPATION: { color: 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300', icon: 'Users', label: 'Participation' },
   EXCELLENCE: { color: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300', icon: 'Trophy', label: 'Excellence' },
+  // SECT-BIBLIO-P4 (ADR-0008 §3) : catégorie du badge « lecteur assidu »
+  // (+ GESTION, valeurs de l'enum CategorieBadge 000001 absentes du miroir).
+  ENGAGEMENT: { color: 'bg-lime-100 text-lime-700 dark:bg-lime-950 dark:text-lime-300', icon: 'BookOpen', label: 'Engagement' },
+  GESTION: { color: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300', icon: 'Rocket', label: 'Gestion' },
 }

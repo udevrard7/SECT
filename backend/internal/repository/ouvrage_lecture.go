@@ -322,3 +322,23 @@ func (r *OuvrageLectureRepository) ActiviteEtablissement(ctx context.Context, et
 	}
 	return out, nil
 }
+
+// SumTempsLectureByUser — secondes de lecture cumulées sur tous les
+// ouvrages (badge « lecteur assidu », ADR-0008 §3). RLS self-only : le
+// WHERE explicite est redondant avec la policy par défense en profondeur.
+func (r *OuvrageLectureRepository) SumTempsLectureByUser(ctx context.Context, userID string) (int64, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return 0, fmt.Errorf("SumTempsLectureByUser: claims manquants dans le context")
+	}
+	var total int64
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT COALESCE(SUM("tempsTotalSec"), 0) FROM "OuvrageLecture" WHERE "userId" = $1`,
+			userID).Scan(&total)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}

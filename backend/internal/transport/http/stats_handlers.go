@@ -1697,8 +1697,16 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		"newlyUnlocked": []badgeWithProgress{},
 	}
 
-	// POST = recalculer (no-op pour l'instant).
-	_ = ctx
+	// SECT-BIBLIO-P4 (ADR-0008 §3) : POST = recalculer — le no-op
+	// historique devient RÉEL. L'évaluation upsert la progression du
+	// badge « lecteur assidu » (source : OuvrageLecture.tempsTotalSec)
+	// sous les claims de l'appelant ; les cles retournées alimentent
+	// newlyUnlocked (shape BadgeWithProgress[] que le frontend
+	// consomme déjà : RewardToast + ring du BadgesCarousel).
+	var newlyCles []string
+	if r.Method == http.MethodPost {
+		newlyCles = s.ouvrageSocialUC.EvaluateLecteurAssidu(ctx, claims)
+	}
 
 	errBadges := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
 		// BUGFIX (BADGES-FIX-1) : LEFT JOIN BadgeProgression + array_to_string
@@ -1787,6 +1795,20 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stats["badges"] = badges
+		// P4 : newlyUnlocked = les badges dont le niveau vient de monter
+		// (mapping par cle vers les objets complets lus ci-dessus — la
+		// progression upsertée est déjà visible dans cette même lecture).
+		if len(newlyCles) > 0 {
+			newly := []badgeWithProgress{}
+			for _, b := range badges {
+				for _, cle := range newlyCles {
+					if b.Cle == cle {
+						newly = append(newly, b)
+					}
+				}
+			}
+			stats["newlyUnlocked"] = newly
+		}
 		total := len(badges)
 		locked := total - unlocked
 		progress := 0

@@ -307,3 +307,102 @@ export function formatReferenceBibliographique(
   if (o.isbn) parts.push(`ISBN ${o.isbn}.`)
   return parts.join(' ')
 }
+
+// ════════════════════════════════════════════════════════════════════
+// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — annotations,
+// propositions (file G1), veilles. Miroirs des DTO Go
+// (backend/internal/domain/ouvrage_social.go).
+// ════════════════════════════════════════════════════════════════════
+
+export type VisibiliteAnnotation = 'PRIVEE' | 'FILIERE' | 'ETABLISSEMENT'
+
+export function visibiliteAnnotationLabel(v: VisibiliteAnnotation): string {
+  switch (v) {
+    case 'FILIERE':
+      return 'Ma filière'
+    case 'ETABLISSEMENT':
+      return 'Tout l’établissement'
+    default:
+      return 'Privée (moi)'
+  }
+}
+
+/** OuvrageAnnotation — une annotation de page (GET/POST
+ * /api/ouvrages/{id}/annotations). */
+export interface OuvrageAnnotation {
+  id: string
+  ouvrageId: string
+  userId: string
+  userNom: string
+  filiereId?: string | null
+  page: number
+  contenu: string
+  visibilite: VisibiliteAnnotation
+  createdAt: string
+  updatedAt: string
+}
+
+export type StatutProposition = 'EN_ATTENTE' | 'ACCEPTEE' | 'REFUSEE'
+
+/** OuvrageProposition — une demande d'ajout (file G1 RESPONSABLE→ADMIN). */
+export interface OuvrageProposition {
+  id: string
+  etablissementId: string
+  proposantId: string
+  proposantNom: string
+  titre: string
+  auteurs?: string | null
+  categorie: CategorieOuvrage
+  editeur?: string | null
+  anneePublication?: number | null
+  isbn?: string | null
+  langue?: string | null
+  filiereId?: string | null
+  niveau?: string | null
+  themes?: string | null
+  description?: string | null
+  licenceOrigine: string
+  statut: StatutProposition
+  motifRefus?: string | null
+  trancheParId?: string | null
+  trancheAt?: string | null
+  ouvrageId?: string | null
+  ouvrageTitre?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Réponse GET /api/ouvrages/propositions (pagination normalisée). */
+export interface PropositionListResult {
+  propositions: OuvrageProposition[]
+  total: number
+  page: number
+  limit: number
+}
+
+/** Payload POST /api/ouvrages/propositions (RESPONSABLE). */
+export interface CreatePropositionPayload {
+  titre: string
+  categorie: CategorieOuvrage
+  licenceOrigine: string
+  auteurs?: string
+  editeur?: string
+  anneePublication?: number
+  isbn?: string
+  langue?: string
+  filiereId?: string
+  niveau?: string
+  themes?: string
+  description?: string
+}
+
+/** OuvrageVeille — une recherche sauvegardée (alerte nouveautés). */
+export interface OuvrageVeille {
+  id: string
+  userId: string
+  etablissementId: string
+  terme: string
+  categorie?: CategorieOuvrage | null
+  createdAt: string
+  updatedAt: string
+}

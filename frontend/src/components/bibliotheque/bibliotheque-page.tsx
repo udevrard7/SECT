@@ -65,6 +65,11 @@ import {
   Users,
   Timer,
   Eye,
+  // SECT-BIBLIO-P4 (ADR-0008) : dimension sociale.
+  BellPlus,
+  BellRing,
+  Inbox,
+  MessageSquareText,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -127,6 +132,10 @@ import { StatCard, EntityCard, PulseSkeleton } from '@/components/ds'
 // SECT-BIBLIO-P3 (ADR-0007 §P3) : la déclaration des 5 minutes —
 // l'IA propose (retrieval thèmes), l'enseignant décide.
 import { AlignementsView } from './alignements-view'
+// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — file de
+// propositions G1 (RESPONSABLE→ADMIN) + annotations du lecteur.
+import { PropositionsView } from './propositions-view'
+import { AnnotationsPanel } from './annotations-panel'
 import { toast } from 'sonner'
 import {
   type Ouvrage,
@@ -136,6 +145,7 @@ import {
   type RecordLecturePayload,
   type OuvrageActivite,
   type BibliothequeActiviteResult,
+  type OuvrageVeille,
   CATEGORIES_OUVRAGE,
   NIVEAUX_ETUDE,
   categorieLabel,
@@ -210,7 +220,12 @@ export function BibliothequePage() {
   // SECT-BIBLIO-P3 : la déclaration d'alignement est l'acte de
   // L'ENSEIGNANT sur SON support (ADR-0007 §P3) — vue réservée ENS.
   const peutDeclarer = user?.role === 'ENSEIGNANT'
-  const [vue, setVue] = useState<'catalogue' | 'activite' | 'alignements'>('catalogue')
+  // SECT-BIBLIO-P4 : file de propositions G1 — le RESPONSABLE
+  // propose, l'ADMIN tranche (les deux voient la file).
+  const peutProposer = user?.role === 'RESPONSABLE' || isAdmin
+  const [vue, setVue] = useState<
+    'catalogue' | 'activite' | 'alignements' | 'propositions'
+  >('catalogue')
   const [activiteEtab, setActiviteEtab] = useState<string>(
     user?.etablissementId ?? '',
   )
@@ -223,6 +238,8 @@ export function BibliothequePage() {
   const [niveauFiltre, setNiveauFiltre] = useState<string>('tous')
   const [page, setPage] = useState(1)
   const [corbeille, setCorbeille] = useState(false) // ADMIN : voir la corbeille
+  // SECT-BIBLIO-P4 : veilles thématiques (alertes nouveautés).
+  const [veilleEnCours, setVeilleEnCours] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -244,6 +261,91 @@ export function BibliothequePage() {
     categorie !== 'toutes' ||
     filiereFiltre !== 'toutes' ||
     niveauFiltre !== 'tous'
+
+  // ─── SECT-BIBLIO-P4 : veilles de l'utilisateur (chips sous les filtres) ───
+  const veillesQuery = useQuery({
+    queryKey: ['ouvrages-veilles'],
+    queryFn: async () => {
+      const res = await fetch('/api/ouvrages/veilles', {
+        credentials: 'include',
+      })
+      if (!res.ok) return []
+      const body = await res.json().catch(() => ({}))
+      return (body?.veilles ?? []) as OuvrageVeille[]
+    },
+    staleTime: 60_000,
+  })
+
+  const creerVeille = async () => {
+    const terme = search.trim()
+    if (terme.length < 2) {
+      toast.error('Terme trop court', {
+        description: 'Saisissez d’abord une recherche (2 caractères minimum).',
+      })
+      return
+    }
+    setVeilleEnCours(true)
+    try {
+      const res = await fetch('/api/ouvrages/veilles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          terme,
+          categorie: categorie !== 'toutes' ? categorie : undefined,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${res.status}`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['ouvrages-veilles'] })
+      toast.success('Alerte créée', {
+        description: `Vous serez notifié quand un ouvrage matchant « ${terme} » sera déposé.`,
+      })
+    } catch (err) {
+      toast.error('Alerte impossible', {
+        description: err instanceof Error ? err.message : 'Erreur inconnue',
+      })
+    } finally {
+      setVeilleEnCours(false)
+    }
+  }
+
+  const supprimerVeille = async (id: string) => {
+    try {
+      const res = await fetch(`/api/ouvrages/veilles/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok && res.status !== 204) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${res.status}`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['ouvrages-veilles'] })
+    } catch (err) {
+      toast.error('Suppression impossible', {
+        description: err instanceof Error ? err.message : 'Erreur inconnue',
+      })
+    }
+  }
+
+  // SECT-BIBLIO-P4 : count EN_ATTENTE pour le badge du toggle
+  // Propositions (queryKey partagée avec la vue — TanStack déduplique).
+  const propositionsCountQuery = useQuery({
+    queryKey: ['ouvrages-propositions'],
+    queryFn: async () => {
+      const res = await fetch(
+        '/api/ouvrages/propositions?statut=EN_ATTENTE&limit=1',
+        { credentials: 'include' },
+      )
+      if (!res.ok) return { propositions: [], total: 0 }
+      return res.json()
+    },
+    enabled: peutProposer,
+    staleTime: 60_000,
+  })
+  const nbEnAttente = propositionsCountQuery.data?.total ?? 0
 
   // ─── Query catalogue ───
   const params = new URLSearchParams()
@@ -534,6 +636,9 @@ export function BibliothequePage() {
     }
   }, [lecteur?.url, lecteur?.ouvrage.id, flushTelemetrie])
 
+  // SECT-BIBLIO-P4 : panneau d'annotations du lecteur (aside droite).
+  const [panneauAnnotations, setPanneauAnnotations] = useState(false)
+
   // Marque-page DÉCLARATIF : l'iframe cross-origin ne permet pas de lire la
   // page courante du lecteur PDF natif — c'est le lecteur qui déclare où il
   // en est (bouton « Marquer »). Envoie immédiat (pas d'attente du heartbeat).
@@ -590,6 +695,12 @@ export function BibliothequePage() {
   const [fichier, setFichier] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [depotEnCours, setDepotEnCours] = useState(false)
+  // SECT-BIBLIO-P4 : dépôt pré-lié à une proposition ACCEPTEE (file G1) —
+  // pré-remplit le formulaire, ajoute propositionId au FormData.
+  const [depotProposition, setDepotProposition] = useState<{
+    id: string
+    titre: string
+  } | null>(null)
 
   const [fTitre, setFTitre] = useState('')
   const [fCategorie, setFCategorie] = useState<string>('')
@@ -626,6 +737,7 @@ export function BibliothequePage() {
     setFThemes('')
     setFDescription('')
     setFExpiration('')
+    setDepotProposition(null)
   }
 
   const onChoisirFichier = (f: File | null) => {
@@ -706,6 +818,8 @@ export function BibliothequePage() {
       // P1 : lecture in-browser par défaut — le téléchargement est un
       // opt-in par ouvrage (PATCH telechargementAutorise).
       fd.append('telechargementAutorise', 'false')
+      // SECT-BIBLIO-P4 : liaison à la proposition ACCEPTEE (file G1).
+      if (depotProposition) fd.append('propositionId', depotProposition.id)
 
       const res = await fetch('/api/ouvrages', {
         method: 'POST',
@@ -716,11 +830,24 @@ export function BibliothequePage() {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.error || `Erreur ${res.status}`)
       }
+      const dataDepot = await res.json().catch(() => ({}))
       await queryClient.invalidateQueries({ queryKey: ['ouvrages'] })
+      if (depotProposition) {
+        await queryClient.invalidateQueries({
+          queryKey: ['ouvrages-propositions'],
+        })
+      }
       toast.success(`« ${fTitre.trim()} » déposé`, {
         description:
           "L'ouvrage est disponible dans le catalogue de l'établissement.",
       })
+      // P4 : la liaison proposition peut échouer APRÈS un dépôt réussi
+      // (ex : proposition retranchée entre-temps) — avertissement honnête.
+      if (dataDepot?.avertissement) {
+        toast.warning('Liaison à la proposition', {
+          description: dataDepot.avertissement,
+        })
+      }
       setDepotOuvert(false)
       resetDepot()
     } catch (err) {
@@ -1004,7 +1131,7 @@ export function BibliothequePage() {
                   type="single"
                   value={vue}
                   onValueChange={(value) => {
-                    if (value) setVue(value as 'catalogue' | 'activite' | 'alignements')
+                    if (value) setVue(value as typeof vue)
                   }}
                   variant="outline"
                   size="sm"
@@ -1024,6 +1151,21 @@ export function BibliothequePage() {
                       Mes alignements
                     </ToggleGroupItem>
                   )}
+                  {/* SECT-BIBLIO-P4 : file de propositions G1. */}
+                  {peutProposer && (
+                    <ToggleGroupItem value="propositions" className="gap-1.5">
+                      <Inbox className="h-3.5 w-3.5" />
+                      Propositions
+                      {nbEnAttente > 0 && (
+                        <Badge
+                          variant="default"
+                          className="ml-0.5 h-4 min-w-4 px-1 text-[10px]"
+                        >
+                          {nbEnAttente}
+                        </Badge>
+                      )}
+                    </ToggleGroupItem>
+                  )}
                 </ToggleGroup>
               )}
               {isAdmin && (
@@ -1040,9 +1182,41 @@ export function BibliothequePage() {
         </div>
       </div>
 
-      {/* SECT-BIBLIO-P3 : vue Alignements — la déclaration des 5 minutes
-          (ENSEIGNANT : l'IA propose, l'enseignant décide). */}
-      {vue === 'alignements' && peutDeclarer ? (
+      {/* SECT-BIBLIO-P4 : file de propositions G1 — le RESPONSABLE
+          propose (métadonnées), l'ADMIN tranche puis dépose le fichier
+          (dépôt pré-lié via propositionId). */}
+      {vue === 'propositions' && peutProposer ? (
+        <PropositionsView
+          filieresOptions={filieresOptions}
+          onDeposer={
+            isAdmin
+              ? (p) => {
+                  setDepotProposition({ id: p.id, titre: p.titre })
+                  setFTitre(p.titre)
+                  setFCategorie(p.categorie)
+                  setFLicence(p.licenceOrigine)
+                  if (p.auteurs) setFAuteurs(parseAuteurs(p.auteurs).join(' ; '))
+                  if (p.editeur) setFEditeur(p.editeur)
+                  if (p.anneePublication) setFAnnee(String(p.anneePublication))
+                  if (p.isbn) setFIsbn(p.isbn)
+                  if (p.langue) setFLangue(p.langue)
+                  if (p.filiereId) setFFiliere(p.filiereId)
+                  if (p.niveau) setFNiveau(p.niveau)
+                  if (p.description) setFDescription(p.description)
+                  if (p.themes) {
+                    try {
+                      const arr = JSON.parse(p.themes)
+                      if (Array.isArray(arr)) setFThemes(arr.join(' ; '))
+                    } catch {
+                      setFThemes(p.themes)
+                    }
+                  }
+                  setDepotOuvert(true)
+                }
+              : undefined
+          }
+        />
+      ) : vue === 'alignements' && peutDeclarer ? (
         <AlignementsView />
       ) : vue === 'activite' && peutVoirActivite ? (
         <div className="space-y-6">
@@ -1268,11 +1442,33 @@ export function BibliothequePage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 id="biblio-search"
-                placeholder="Titre, auteur, éditeur, description…"
+                placeholder="Titre, auteur, éditeur, description, thèmes…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-8"
+                className="pl-8 pr-20"
               />
+              {/* SECT-BIBLIO-P4 : veille thématique — créer une alerte
+                  sur la recherche courante (notification au dépôt). */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="absolute right-1.5 top-1.5 h-7 gap-1 px-2 text-xs"
+                    onClick={creerVeille}
+                    disabled={veilleEnCours}
+                    aria-label="Créer une alerte sur cette recherche"
+                  >
+                    <BellPlus className="h-3.5 w-3.5" />
+                    Alerte
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Être notifié des nouveaux ouvrages correspondant à cette
+                  recherche
+                </TooltipContent>
+              </Tooltip>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:w-auto">
               <div>
@@ -1372,6 +1568,33 @@ export function BibliothequePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* SECT-BIBLIO-P4 : veilles actives (alertes nouveautés). */}
+      {(veillesQuery.data ?? []).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <BellRing className="h-3.5 w-3.5" />
+            Alertes :
+          </span>
+          {(veillesQuery.data ?? []).map((v) => (
+            <Badge
+              key={v.id}
+              variant="secondary"
+              className="gap-1 py-1 pl-2.5 pr-1"
+            >
+              {v.terme}
+              <button
+                type="button"
+                onClick={() => supprimerVeille(v.id)}
+                className="rounded-full p-0.5 hover:bg-destructive/20"
+                aria-label={`Supprimer l'alerte ${v.terme}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {/* Liste */}
       {ouvragesQuery.isLoading ? (
@@ -2053,33 +2276,79 @@ export function BibliothequePage() {
                     Marquer
                   </Button>
                 </div>
+                {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1). */}
+                <Button
+                  variant={panneauAnnotations ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => setPanneauAnnotations((v) => !v)}
+                  aria-pressed={panneauAnnotations}
+                >
+                  <MessageSquareText className="h-3 w-3" />
+                  Annotations
+                </Button>
               </div>
             )}
           </div>
 
-          <div className="flex-1 min-h-0 bg-muted/30">
-            {lecteur?.loading ? (
-              <div className="h-full flex flex-col items-center justify-center gap-3">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">
-                  Génération du lien sécurisé…
-                </p>
-              </div>
-            ) : lecteur?.error ? (
-              <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
-                <ShieldAlert className="h-10 w-10 text-destructive" />
-                <p className="font-medium">Lecture impossible</p>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  {lecteur.error}
-                </p>
-              </div>
-            ) : lecteur?.url ? (
-              <iframe
-                src={lecteur.url}
-                title={`Lecteur — ${lecteur.ouvrage.titre}`}
-                className="w-full h-full border-0"
-              />
-            ) : null}
+          <div className="flex-1 min-h-0 bg-muted/30 flex">
+            <div className="flex-1 min-w-0 relative">
+              {lecteur?.loading ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">
+                    Génération du lien sécurisé…
+                  </p>
+                </div>
+              ) : lecteur?.error ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
+                  <ShieldAlert className="h-10 w-10 text-destructive" />
+                  <p className="font-medium">Lecture impossible</p>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    {lecteur.error}
+                  </p>
+                </div>
+              ) : lecteur?.url ? (
+                <>
+                  <iframe
+                    src={lecteur.url}
+                    title={`Lecteur — ${lecteur.ouvrage.titre}`}
+                    className="w-full h-full border-0"
+                  />
+                  {/* SECT-BIBLIO-P4 (ADR-0008 §6) : watermark UI — email
+                      + date, répété, pointer-events-none (la navigation
+                      du lecteur natif reste utilisable) + select-none. */}
+                  <div
+                    className="absolute inset-0 pointer-events-none select-none overflow-hidden"
+                    aria-hidden="true"
+                  >
+                    <div className="h-full w-full flex flex-col justify-around items-center">
+                      {Array.from({ length: 8 }).map((_, i) => (
+                        <p
+                          key={i}
+                          className="text-[10px] font-medium text-foreground/10 -rotate-[18deg] whitespace-nowrap"
+                        >
+                          {user?.email ?? 'lecteur'} ·{' '}
+                          {new Date().toLocaleDateString('fr-FR')} · lecture
+                          réservée
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1) —
+                visibilité PRIVEE/FILIERE/ETABLISSEMENT scopée RLS. */}
+            {panneauAnnotations && lecteur?.url && (
+              <aside className="w-[320px] shrink-0 border-l border-border bg-card overflow-hidden">
+                <AnnotationsPanel
+                  ouvrageId={lecteur.ouvrage.id}
+                  pageCourante={lecteur.reprisePage}
+                  userId={user?.id}
+                />
+              </aside>
+            )}
           </div>
         </DialogContent>
       </Dialog>

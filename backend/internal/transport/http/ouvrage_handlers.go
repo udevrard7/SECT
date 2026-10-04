@@ -173,9 +173,22 @@ func (s *Server) uploadOuvrage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECT-BIBLIO-P4 (ADR-0008 §2/§4) : liaison à une proposition
+	// ACCEPTEE (champ form propositionId) — l'ouvrage EXISTE déjà, un
+	// échec de liaison est un AVERTISSEMENT dans la réponse (jamais
+	// une erreur qui ferait croire à un dépôt raté) ; puis notification
+	// des veilles matchantes (best-effort total, log-only).
+	response := map[string]any{"ouvrage": created}
+	if propositionID := strings.TrimSpace(r.FormValue("propositionId")); propositionID != "" {
+		if err := s.ouvrageSocialUC.LinkPropositionOuvrage(r.Context(), claims, propositionID, created.ID); err != nil {
+			response["avertissement"] = "ouvrage déposé, mais liaison à la proposition impossible : " + err.Error()
+		}
+	}
+	s.ouvrageSocialUC.NotifierVeilles(r.Context(), claims, created)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]any{"ouvrage": created})
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // patchOuvrageFromRaw — décodage tri-state du PATCH (ADR-0007) :

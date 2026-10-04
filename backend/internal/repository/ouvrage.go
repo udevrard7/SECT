@@ -142,8 +142,10 @@ func (r *OuvrageRepository) List(ctx context.Context, params domain.OuvrageListP
 		}
 		if params.Search != "" {
 			p := addArg("%" + strings.ToLower(params.Search) + "%")
-			where = append(where, fmt.Sprintf(`(LOWER(o."titre") LIKE %s OR LOWER(COALESCE(o."auteurs", '')) LIKE %s OR LOWER(COALESCE(o."description", '')) LIKE %s OR LOWER(COALESCE(o."editeur", '')) LIKE %s)`,
-				p, p, p, p))
+			// P4 (ADR-0008 §4) : q étendu à themes — la veille thématique et la
+			// recherche catalogue partagent la même surface de matching.
+			where = append(where, fmt.Sprintf(`(LOWER(o."titre") LIKE %s OR LOWER(COALESCE(o."auteurs", '')) LIKE %s OR LOWER(COALESCE(o."description", '')) LIKE %s OR LOWER(COALESCE(o."editeur", '')) LIKE %s OR LOWER(COALESCE(o."themes", '')) LIKE %s)`,
+				p, p, p, p, p))
 		}
 		if params.Categorie != "" {
 			where = append(where, fmt.Sprintf(`o."categorie" = %s`, addArg(string(params.Categorie))))
