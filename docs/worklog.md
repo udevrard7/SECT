@@ -3552,3 +3552,69 @@ comportement des salons CLASSE par niveau » (policy 000044 documentant
 - ⚠️ Leçon récurrente : comparaison inter-types PostgreSQL (text vs enum) =
   42883 — toujours caster le côté enum (jamais text→enum, 22P02 possible).
 - Dettes restantes : AUCUNE connue — le backlog produit est à jour.
+
+---
+## Task ID: SECT-ENUM-SWEEP-1
+**Agent**: Main orchestrator (Z.ai Code)
+**Task**: « Règle ce bug aussi » — la découverte text↔enum (Conversation.niveau TEXT vs User.niveau NiveauEtude, 42883) : vérifier l'état de l'instance citée puis balayer toute la classe dans le codebase
+
+### Contexte
+- Sandbox recréé entre sessions : /home/z/SECT, Go, sect-diag, backend/.env
+  perdus ; token GitHub révoqué → re-clone anonyme (repo public, HEAD
+  970d2f12 conforme à SECT-PRODUIT-1), identité git udevrard7 restaurée,
+  outillage d'audit recréé sous /home/z/sect-audit (hors repo, pattern
+  sect-diag).
+- La demande citait la leçon consignée pendant SECT-PRODUIT-1 : le dry-run
+  de 000122 avait attrapé TEXT vs enum AVANT déploiement (cast
+  `me."niveau"::text` appliqué).
+
+### Vérification de l'instance citée
+- 000122 relue dans le clone : `me."niveau"::text = p_niveau` + commentaire
+  anti-régression — l'instance est FIXÉE, livrée (0286684b), appliquée (Neon
+  122/122, dirty=false) et prouvée LIVE (étudiant L3 réel : 1 salon ; une
+  policy qui 42883-erait renverrait 0 salon, pas 1).
+
+### Sweep de la classe — 3 passes, scanner validé sur contrôle
+- Passe 1, carte des types : rejeu statique des 122 migrations → 75 tables,
+  30 enums, 24 noms ambigus ; les 6 à risque text↔enum : `niveau`
+  (Conversation TEXT vs 6 tables NiveauEtude), `niveaux` (UE TEXT vs
+  BadgeDefinition NiveauBadge[]), `categorie`, `role`, `statut`, `type`.
+  22 comparaisons candidates sur ces noms → toutes SÛRES après lecture des
+  signatures : même enum (ue↔u/me NiveauEtude), casts explicites
+  (`::text` en 000048/000112), text↔text (Conversation.niveau,
+  MonitoringEvent.statut='ACTIF' littéral).
+- Passe 2, scanner exhaustif (corpus : 101 fichiers Go avec SQL + 122
+  migrations up/down — 133 fonctions matchées dont helper 000122) :
+  catégories enum-vs-param/plpgsql-text, SET enum = var text, enum LIKE,
+  comparaisons qualifiées inter-types. **Validé sur corpus de contrôle
+  synthétique** (les 4 variantes du bug attrapées) après correction de 3
+  angles morts (résolution d'alias `me`→User, listes FROM après virgule,
+  terminaison SET). Résultat sur vrai corpus : **0 finding**.
+- Passe 3, fermeture ciblée : enum nus vs p_/v_, `enum||enum`,
+  `SET enum=var` → 6 hits, tous déjà vérifiés via signatures : p_type
+  "ConversationType" (000109/000112), p_niveau "NiveauEtude" et
+  v_nouveau_niveau "NiveauEtude", v_decision "StatutInscription" (000087) —
+  params/vars plpgsql TYPÉS enum → comparaisons/affectations même-type
+  légales.
+- Au passage : les 15 `= ANY($n)` Go sont tous sur colonnes TEXT (ids) ;
+  `text || enum` légal (opérateur `text || anynonarray`) ; UE."niveaux"
+  TEXT jamais altéré depuis 000002 → `LIKE '%"' || u."niveau" || '"%'`
+  légal, prouvé en exécution (E2E PRODUIT-1 : listes devoirs étudiant 200) ;
+  versions Go castent `ue."niveaux"::jsonb ? u."niveau"::text`.
+
+### Verdict
+- L'unique instance de la classe text↔enum dans tout le codebase était
+  celle de 000122 — **déjà corrigée, déployée et prouvée en prod**. Aucune
+  autre instance : le codebase est PROPRE de la classe 42883 enum/text.
+- Policies/vues/CHECK : propres par construction (parse au CREATE, les 122
+  migrations appliquées sans erreur) ; la zone latente (corps plpgsql,
+  planifiés à la première exécution) est celle balayée par les passes 2-3.
+
+### Stage Summary
+- Instance citée : confirmée fixée+live (aucun changement de code requis) ;
+  sweep de classe complet : 0 autre instance.
+- Push impossible depuis ce sandbox (token révoqué, aucun credential) :
+  commit docs local prêt, à pousser dès credential disponible.
+- Leçons : typer les params plpgsql avec l'enum (jamais text) ; à défaut
+  caster le côté enum vers text ; un scanner à 0 finding doit être prouvé
+  non-vacuitif sur corpus de contrôle avant d'être cru.
