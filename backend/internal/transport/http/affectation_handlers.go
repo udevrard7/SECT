@@ -930,6 +930,14 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 		VolumeHeures *float64 `json:"volumeHeures"`
 		Statut       *string  `json:"statut"`
 		Commentaire  *string  `json:"commentaire"`
+		// SECT-PRODUIT-1 : changement d'année autorisé au PATCH (dette
+		// notée SECT-ANNEE-HISTOIRE-2 : « pas de changement d'année
+		// possible — créer une nouvelle affectation à la place »).
+		// Contrat dual identique à updateDevoir : anneeAcademiqueId (FK,
+		// prioritaire) et/ou anneeUniversitaire (label legacy) mis à jour
+		// ENSEMBLE via resolveAffectationAnnee (contrat 000112).
+		AnneeUniversitaire *string `json:"anneeUniversitaire"`
+		AnneeAcademicID    *string `json:"anneeAcademiqueId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -1004,6 +1012,66 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 		args = append(args, *input.Commentaire)
 		argIdx++
 	}
+	// SECT-PRODUIT-1 : changement d'année — résolution AVANT le check
+	// len(setClauses) (un PATCH année-seul est valide). Contrat dual
+	// updateDevoir : FK explicite prioritaire (libellé miroir = libellé
+	// de l'année visée) ; label legacy seul → FK résolue par libellé
+	// (NULL si historique non rattachable). Le lock PUBLIEE ci-dessous
+	// s'applique AUSSI au changement d'année (409).
+	if (input.AnneeAcademicID != nil && *input.AnneeAcademicID != "") || input.AnneeUniversitaire != nil {
+		// Lire l'UE de l'affectation puis résoudre (read tx, pattern
+		// updateDevoir) ; FK validée même établissement que l'UE.
+		var patchUEID string
+		var anneeFK *string
+		var anneeLib string
+		var anneeResErr error
+		_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+			if errQ := tx.QueryRow(r.Context(), `
+                                SELECT "uniteEnseignementId" FROM "Affectation" WHERE "id" = $1
+                        `, id).Scan(&patchUEID); errQ != nil {
+				return nil // introuvable → 404 ci-dessous (pas de clause fantôme)
+			}
+			label := ""
+			if input.AnneeUniversitaire != nil {
+				label = *input.AnneeUniversitaire
+			}
+			var errR error
+			anneeFK, anneeLib, errR = s.resolveAffectationAnnee(r.Context(), tx, claims, patchUEID, input.AnneeAcademicID, label)
+			if errR != nil {
+				anneeResErr = errR
+			}
+			return nil
+		})
+		if patchUEID == "" {
+			// Affectation introuvable (ou invisible RLS) → 404, pas un
+			// « no fields to update » trompeur.
+			writeJSONError(w, http.StatusNotFound, "Affectation introuvable")
+			return
+		}
+		if anneeResErr != nil {
+			writeJSONError(w, http.StatusBadRequest, anneeResErr.Error())
+			return
+		}
+		if input.AnneeAcademicID != nil && *input.AnneeAcademicID != "" {
+			// FK explicite : libellé miroir = celui de l'année visée.
+			setClauses = append(setClauses, fmt.Sprintf(`"anneeAcademiqueId" = $%d`, argIdx))
+			args = append(args, *input.AnneeAcademicID)
+			argIdx++
+			if anneeLib != "" {
+				setClauses = append(setClauses, fmt.Sprintf(`"anneeUniversitaire" = $%d`, argIdx))
+				args = append(args, anneeLib)
+				argIdx++
+			}
+		} else {
+			// Label legacy seul : label + FK résolue (possiblement NULL).
+			setClauses = append(setClauses, fmt.Sprintf(`"anneeUniversitaire" = $%d`, argIdx))
+			args = append(args, *input.AnneeUniversitaire)
+			argIdx++
+			setClauses = append(setClauses, fmt.Sprintf(`"anneeAcademiqueId" = $%d`, argIdx))
+			args = append(args, anneeFK)
+			argIdx++
+		}
+	}
 	if len(setClauses) == 0 {
 		writeJSONError(w, http.StatusBadRequest, "no fields to update")
 		return
@@ -1030,6 +1098,7 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 		Groupe              *string
 		VolumeHeures        float64
 		AnneeUniversitaire  string
+		AnneeAcademicID     *string // SECT-PRODUIT-1 (PATCH année)
 		Statut              string
 		Commentaire         *string
 		PublishedAt         *time.Time
@@ -1099,13 +1168,14 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
                         UPDATE "Affectation" SET %s WHERE "id" = $%d
                         RETURNING "id", "enseignantId", "uniteEnseignementId",
                                   "typeSeance"::text, "groupe", "volumeHeures",
-                                  "anneeUniversitaire", "statut"::text, "commentaire",
+                                  "anneeUniversitaire", "anneeAcademiqueId", "statut"::text, "commentaire",
                                   "publishedAt"
                 `, strings.Join(setClauses, ", "), argIdx), args...,
 		).Scan(
 			&row.ID, &row.EnseignantID, &row.UniteEnseignementID,
 			&row.TypeSeance, &row.Groupe, &row.VolumeHeures,
-			&row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
+			&row.AnneeUniversitaire, &row.AnneeAcademicID,
+			&row.Statut, &row.Commentaire,
 			&row.PublishedAt,
 		); errU != nil {
 			return errU
@@ -1172,6 +1242,7 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 			"groupe":              row.Groupe,
 			"volumeHeures":        row.VolumeHeures,
 			"anneeUniversitaire":  row.AnneeUniversitaire,
+			"anneeAcademiqueId":   row.AnneeAcademicID,
 			"statut":              row.Statut,
 			"commentaire":         row.Commentaire,
 		},

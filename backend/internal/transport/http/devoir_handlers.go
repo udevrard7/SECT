@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -212,7 +213,23 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 	var anneeFK *string
 	var anneeLibelle string
 	var anneeResErr error
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	var ueInaccessible bool
+	// SECT-PRODUIT-1 (joints avalés) : pré-validation de l'accès à l'UE —
+	// UniteEnseignement_select ne laisse un enseignant voir une UE que s'il
+	// y a une affectation. Avant, l'INSERT passait (Devoir_modify_enseignant
+	// ne vérifie pas l'UE) et le joint UE/User avalé renvoyait 201 avec un
+	// DTO aux champs vides. Désormais : UE invisible → 403 AVANT écriture.
+	resTxE := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		var ueOk string
+		if errU := tx.QueryRow(r.Context(),
+			`SELECT "id" FROM "UniteEnseignement" WHERE "id" = $1`,
+			input.UniteEnseignementID).Scan(&ueOk); errU != nil {
+			if errU == pgx.ErrNoRows {
+				ueInaccessible = true
+				return nil
+			}
+			return errU
+		}
 		fk, lib, errR := s.resolveAffectationAnnee(r.Context(), tx, claims,
 			input.UniteEnseignementID, input.AnneeAcademicID, input.AnneeUniversitaire)
 		if errR != nil {
@@ -222,6 +239,15 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 		anneeFK, anneeLibelle = fk, lib
 		return nil
 	})
+	if resTxE != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+resTxE.Error())
+		return
+	}
+	if ueInaccessible {
+		writeJSONError(w, http.StatusForbidden,
+			"UE introuvable ou inaccessible : vous devez avoir une affectation sur cette UE pour y créer un devoir")
+		return
+	}
 	if anneeResErr != nil {
 		writeJSONError(w, http.StatusBadRequest, anneeResErr.Error())
 		return
@@ -230,8 +256,13 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 		input.AnneeUniversitaire = anneeLibelle
 	}
 
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		return tx.QueryRow(r.Context(), `
+	// SECT-PRODUIT-1 : l'erreur d'INSERT n'est plus avalée (avant : un
+	// échec FK/connexion répondait quand même 201 avec un DTO vide). Le
+	// joint UE/User passe DANS la même tx : un échec rollback l'INSERT
+	// (plus de devoir fantôme), et l'UE pré-validée visible ci-dessus
+	// garantit que l'INNER JOIN matche.
+	insertErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		if errI := tx.QueryRow(r.Context(), `
                         INSERT INTO "Devoir" (
                                 "id", "titre", "description", "consignes",
                                 "uniteEnseignementId", "enseignantId", "typeSeance",
@@ -262,11 +293,10 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 			&created.TailleMaxFichier, &created.Statut, &created.AnneeUniversitaire,
 			&created.AnneeAcademicID,
 			&createdAt, &updatedAt,
-		)
-	})
-
-	// Joins UE + User (via une 2e tx — léger surcoût mais isole les erreurs)
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		); errI != nil {
+			return errI
+		}
+		// SECT-PRODUIT-1 : joint UE/User dans la MÊME tx que l'INSERT.
 		return tx.QueryRow(r.Context(), `
                         SELECT ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
                                u."id", u."name", u."email"
@@ -280,6 +310,21 @@ func (s *Server) createDevoir(w http.ResponseWriter, r *http.Request) {
 			&created.User.ID, &created.User.Name, &created.User.Email,
 		)
 	})
+	if insertErr != nil {
+		msg := insertErr.Error()
+		switch {
+		case strings.Contains(msg, "Devoir_uniteEnseignementId_fkey"),
+			strings.Contains(msg, "foreign key") && strings.Contains(msg, "uniteEnseignementId"):
+			writeJSONError(w, http.StatusBadRequest, "Unité d'enseignement introuvable")
+		case strings.Contains(msg, "foreign key"):
+			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide")
+		case strings.Contains(msg, "unique constraint"), strings.Contains(msg, "duplicate key"):
+			writeJSONError(w, http.StatusConflict, "Devoir en doublon")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "erreur lors de la création: "+msg)
+		}
+		return
+	}
 
 	created.Description = descr
 	created.Consignes = consignes
@@ -341,7 +386,12 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 	)
 
 	found := false
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	// SECT-PRODUIT-1 : plus d'erreur avalée — seule l'absence de ligne
+	// (pgx.ErrNoRows) vaut 404 ; toute autre erreur (connexion, RLS, scan)
+	// remonte en 500 explicite (pattern CORBEILLE-FIX C10 deleteDevoir).
+	// Joints User/UE NULL-safe via COALESCE ci-dessous (pattern DTTES-3) :
+	// un devoir existant ne doit plus 404 parce qu'un joint est invisible.
+	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
                         SELECT
                                 d."id", d."titre", d."description", d."consignes",
@@ -351,8 +401,8 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
                                 d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
                                 d."anneeAcademiqueId",
                                 d."createdAt", d."updatedAt",
-                                u."id", u."name", u."email",
-                                ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
+                                COALESCE(u."id", ''), COALESCE(u."name", ''), COALESCE(u."email", ''),
+                                COALESCE(ue."id", ''), COALESCE(ue."code", ''), COALESCE(ue."nom", ''), COALESCE(ue."niveau"::text, ''),
                                 g."id", g."criteres",
                                 COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)
                         FROM "Devoir" d
@@ -380,6 +430,10 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	if txErr != nil && txErr != pgx.ErrNoRows {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+txErr.Error())
+		return
+	}
 	if !found {
 		writeJSONError(w, http.StatusNotFound, "devoir introuvable ou accès refusé")
 		return
@@ -402,9 +456,13 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 	}
 	d.GrilleEvaluation = devoirGrilleDTOPtr(grilleID, grilleCriteres)
 
-	// Charger les Soumission[] (avec User étudiant)
+	// Charger les Soumission[] (avec User étudiant).
+	// SECT-PRODUIT-1 : les erreurs query/scan remontent en 500 (avant :
+	// `return nil` avalé → liste silencieusement vide ; scan NULL User →
+	// soumission droppée de la liste). Joint User NULL-safe COALESCE
+	// (pattern DTTES-3).
 	soumissions := []devoirSoumissionListDTO{}
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	soumissionsErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
                         SELECT
                                 s."id", s."devoirId", s."etudiantId",
@@ -413,14 +471,14 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
                                 s."noteIA", s."justificationIA",
                                 COALESCE(s."statutIA"::text, 'EN_ATTENTE'), s."erreurIA",
                                 s."createdAt", s."updatedAt",
-                                u."id", u."name", u."email", u."matricule"
+                                COALESCE(u."id", ''), COALESCE(u."name", ''), COALESCE(u."email", ''), u."matricule"
                         FROM "Soumission" s
                         LEFT JOIN "User" u ON u."id" = s."etudiantId"
                         WHERE s."devoirId" = $1
                         ORDER BY s."renduAt" DESC, s."createdAt" DESC
                 `, devoirID)
 		if err != nil {
-			return nil
+			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
@@ -434,19 +492,26 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 				&sDTO.StatutIA, &sDTO.ErreurIA,
 				&sCreated, &sUpdated,
 				&sDTO.User.ID, &sDTO.User.Name, &sDTO.User.Email, &sDTO.User.Matricule,
-			); err == nil {
-				// renduAt peut être NULL
-				if !sRenduAt.IsZero() {
-					ts := sRenduAt.UTC().Format(time.RFC3339)
-					sDTO.RenduAt = &ts
-				}
-				sDTO.CreatedAt = sCreated.UTC().Format(time.RFC3339)
-				sDTO.UpdatedAt = sUpdated.UTC().Format(time.RFC3339)
-				soumissions = append(soumissions, sDTO)
+			); err != nil {
+				// SECT-PRODUIT-1 : un échec de scan n'est plus silencieusement
+				// ignoré (avant : ligne droppée → liste partielle mensongère).
+				return fmt.Errorf("scan soumission: %w", err)
 			}
+			// renduAt peut être NULL
+			if !sRenduAt.IsZero() {
+				ts := sRenduAt.UTC().Format(time.RFC3339)
+				sDTO.RenduAt = &ts
+			}
+			sDTO.CreatedAt = sCreated.UTC().Format(time.RFC3339)
+			sDTO.UpdatedAt = sUpdated.UTC().Format(time.RFC3339)
+			soumissions = append(soumissions, sDTO)
 		}
 		return nil
 	})
+	if soumissionsErr != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne (soumissions): "+soumissionsErr.Error())
+		return
+	}
 	d.Soumission = soumissions
 
 	w.Header().Set("Content-Type", "application/json")
@@ -519,7 +584,9 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var updatedStatut string
-		_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// SECT-PRODUIT-1 : erreur SQL capturée — ErrNoRows → 404 (via
+		// updatedStatut vide), autres erreurs → 500 (avant : tout avalé).
+		statutTxE := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 			err := tx.QueryRow(r.Context(), `
                                 UPDATE "Devoir"
                                 SET "statut" = $2::"StatutDevoir", "updatedAt" = CURRENT_TIMESTAMP
@@ -528,6 +595,10 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
                         `, devoirID, newStatut, claims.UserID).Scan(&updatedStatut)
 			return err
 		})
+		if statutTxE != nil && statutTxE != pgx.ErrNoRows {
+			writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+statutTxE.Error())
+			return
+		}
 
 		if updatedStatut == "" {
 			writeJSONError(w, http.StatusNotFound, "devoir introuvable ou accès refusé")
@@ -675,7 +746,13 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 		return tx.QueryRow(r.Context(), query, args...).Scan(&respID, &respTitre, &respStatut, &respUpdatedAt)
 	})
 	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "devoir introuvable ou accès refusé")
+		// SECT-PRODUIT-1 : seul ErrNoRows vaut 404 — les autres erreurs
+		// (enum, FK, connexion) remontent en 500 (avant : tout était 404).
+		if err == pgx.ErrNoRows {
+			writeJSONError(w, http.StatusNotFound, "devoir introuvable ou accès refusé")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne: "+err.Error())
 		return
 	}
 

@@ -79,6 +79,9 @@ interface AffectationItem {
   groupe: string | null
   volumeHeures: number
   anneeUniversitaire: string
+  // SECT-PRODUIT-1 : FK année académique (renvoyée par l'API ; absente
+  // pour les affectations historiques non rattachables à une année).
+  anneeAcademiqueId?: string | null
   statut: 'PROVISOIRE' | 'VALIDEE' | 'PUBLIEE'
   commentaire: string | null
   createdAt: string
@@ -238,6 +241,9 @@ interface AffectationGroup {
   uniteEnseignement: AffectationItem['uniteEnseignement']
   groupe: string | null
   anneeUniversitaire: string
+  // SECT-PRODUIT-1 : FK année du groupe (celle de ses items — la clé de
+  // groupement inclut l'année).
+  anneeAcademiqueId?: string | null
   items: AffectationItem[]
   byType: Partial<Record<'CM' | 'TD' | 'TP', AffectationItem>>
   totalVolume: number
@@ -269,6 +275,7 @@ function groupAffectations(affectations: AffectationItem[]): AffectationGroup[] 
         uniteEnseignement: a.uniteEnseignement,
         groupe: a.groupe,
         anneeUniversitaire: a.anneeUniversitaire,
+        anneeAcademiqueId: a.anneeAcademiqueId,
         items: [],
         byType: {},
         totalVolume: 0,
@@ -566,6 +573,8 @@ export function AffectationsPage() {
   // ─── Edit form state (niveau groupe — SECT-AFFECTATIONS-GROUPED-1) ───
   const [editVolumes, setEditVolumes] = useState<Record<string, string>>({})
   const [editGroupe, setEditGroupe] = useState('')
+  // SECT-PRODUIT-1 : année cible du PATCH (ID d'année académique, '' = inchangée)
+  const [editAnnee, setEditAnnee] = useState('')
   const [editCommentaire, setEditCommentaire] = useState('')
 
   // ─── Batch validate state ───
@@ -815,6 +824,7 @@ export function AffectationsPage() {
   const handleOpenEdit = (group: AffectationGroup) => {
     setEditingGroup(group)
     setEditGroupe(group.groupe ?? '')
+    setEditAnnee(group.anneeAcademiqueId ?? '')
     setEditCommentaire(group.items.find((it) => it.commentaire)?.commentaire ?? '')
     const vols: Record<string, string> = {}
     for (const it of group.items) vols[it.typeSeance] = String(it.volumeHeures)
@@ -839,6 +849,10 @@ export function AffectationsPage() {
       }
     }
 
+    // SECT-PRODUIT-1 : changement d'année au PATCH (dette SECT-ANNEE-HISTOIRE-2
+    // soldée) — on n'envoie la clé que si l'année a réellement changé (le
+    // backend met à jour FK + libellé miroir ensemble ; doublon → 409).
+    const anneeChanged = editAnnee !== '' && editAnnee !== editingGroup.anneeAcademiqueId
     setIsSubmitting(true)
     try {
       const results = await Promise.allSettled(
@@ -850,6 +864,7 @@ export function AffectationsPage() {
               groupe: editGroupe || null,
               volumeHeures: parseFloat(editVolumes[it.typeSeance]),
               commentaire: editCommentaire || null,
+              ...(anneeChanged ? { anneeAcademiqueId: editAnnee } : {}),
             }),
           })
           if (!res.ok) {
@@ -868,8 +883,12 @@ export function AffectationsPage() {
       const failed = results.length - succeeded
 
       if (succeeded > 0) {
+        const anneeLabel = annees.find((a) => a.id === editAnnee)?.libelle
         toast.success('Affectation modifiée', {
-          description: `${succeeded} élément(s) mis à jour.${failed > 0 ? ` ${failed} en échec.` : ''}`,
+          description:
+            `${succeeded} élément(s) mis à jour.` +
+            (anneeChanged && anneeLabel ? ` Déplacé(s) vers ${anneeLabel}.` : '') +
+            (failed > 0 ? ` ${failed} en échec.` : ''),
         })
         setEditDialogOpen(false)
         setEditingGroup(null)
@@ -1996,6 +2015,31 @@ export function AffectationsPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* SECT-PRODUIT-1 : changement d'année au PATCH (dette
+                SECT-ANNEE-HISTOIRE-2 soldée) — même sélecteur que la
+                création ; la clé n'est envoyée que si l'année change. */}
+            <div className="space-y-2">
+              <Label>Année universitaire</Label>
+              <Select value={editAnnee} onValueChange={setEditAnnee}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionnez une année" />
+                </SelectTrigger>
+                <SelectContent>
+                  {annees.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.libelle}{a.id === anneeCourante?.id ? ' · courante' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editAnnee !== '' && editAnnee !== editingGroup?.anneeAcademiqueId && (
+                <p className="text-xs text-muted-foreground">
+                  Enregistrer déplacera les éléments éditables vers l'année sélectionnée
+                  (un doublon dans l'année cible sera refusé).
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
