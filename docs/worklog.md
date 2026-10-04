@@ -3282,3 +3282,67 @@ Session synthétique supprimée (rows=1) ; 0 résidu smoke (0 session
 - Dettes restantes inchangées (Devoir FK, affectations « recréer »,
   sélecteur étudiant frontend, statsAdmin, mobile « envoyé », 401 race,
   Render→sect_app GRANT audit).
+
+---
+Task ID: SECT-DETTES-AUDIT-1
+Agent: Z.ai Code (session de tutorat)
+Task: Audit de vérification — les dettes « Devoir FK, affectations "recréer", sélecteur étudiant frontend, statsAdmin » sont-elles réellement soldées ?
+
+Contexte : les listes « Dettes restantes inchangées (Devoir FK, affectations
+« recréer », sélecteur étudiant, statsAdmin, …) » recopiées dans les
+livraisons SECT-DASH-VIDE-ANNEE, SECT-NOTIF-DIFFUSION-1,
+SECT-ORACLE-SCALABILITY-1 et SECT-AUTOCLOSE-FIX-1 laissaient croire ces
+4 dettes encore ouvertes. L'audit confirme qu'elles ont été soldées par
+SECT-ANNEE-DETTES-3/4/5 (2026-10-14/15, migrations 000113/000115/000116)
+et que ces listes étaient PÉRIMÉES (copie de l'ancien état).
+
+Work Log (preuves code + base prod Neon, lecture seule) :
+- Dette « Devoir FK » → SOLDEE (SECT-ANNEE-DETTES-3, migration 000113).
+  Code : INSERT "Devoir" tamponne "anneeAcademiqueId" (devoir_handlers.go:241,
+  résolution couple FK/libellé :207), GET le lit (:352), PATCH peut le
+  changer (:645/:652) ; listes/stats scopées via anneePred sur
+  d."anneeAcademiqueId" (stub_handlers_real2.go:1561-1572). Prod :
+  colonne anneeAcademiqueId PRESENTE + FK Devoir_anneeAcademiqueId_fkey
+  PRESENTE (ON DELETE SET NULL) ; 0/0 devoirs en base (cohérent avec la
+  note d'origine « 0 ligne en prod »). La colonne texte anneeUniversitaire
+  reste VOLONTAIREMENT en miroir (compat mobile Kotlin, aucune clé
+  d'unicité ne la porte sur Devoir) — décision documentée, pas une dette.
+- Dette « affectations "recréer" » → SOLDEE (SECT-ANNEE-DETTES-3).
+  Backend : route POST /api/annees-academiques/{id}/recreate-affectations
+  (router.go:546, handler recreateAnneeAffectations academique_handlers.go:781,
+  audit log + slog). Frontend : bouton « Recréer » + mutation + toast
+  (annees-academiques-section.tsx:519-582, checklist :1179, bouton :1202-1229).
+  Prod : FK Affectation_anneeAcademiqueId_fkey présente ; affectations
+  réparties 2024-2025:12 / 2025-2026:12 / 2026-2027:9 (les 9 de la
+  validation HISTOIRE-2). Checklist 000113 expose affectations.count +
+  parStatut + devoirsNonClotures (jsonb :182-184).
+- Dette « sélecteur étudiant frontend » → SOLDEE (SECT-ANNEE-DETTES-4/5).
+  mes-devoirs-page.tsx (:223/:301/:612-625), mes-resultats-page.tsx
+  (:69/:178/:191), mes-certificats-page.tsx (:105/:315/:370/:668/:997) :
+  sélecteur « Toutes les années » = all, défaut = année courante, override
+  par ID — contrat prouvé en prod aux DEUX extrémités (API + UI) par
+  DTTES-4. Onglet « Relevé par année » multi-années livré par DTTES-5
+  (releve-par-annee-tab.tsx).
+- Dette « statsAdmin » → SOLDEE (SECT-ANNEE-DETTES-5, migration 000116).
+  Prod : fonction admin_get_etablissements_activite_annee PRÉSENTE et
+  exécutable (SECURITY DEFINER, agrégats année courante). Backend :
+  merge tolérant stats_handlers.go (:774/:811-812/:1029). Frontend :
+  admin-dashboard.tsx affiche « 📅 {année} · {n} épreuves · {m} sessions »
+  + badge « Inactif cette année » (:783-805). Décision DTTES-4 maintenue :
+  billing/ops non scopés PAR DESIGN, dimension académique scopée.
+- Sanity : schema_migrations = 120 ; aucun changement de code/DB effectué
+  (audit documentaire uniquement).
+
+### Stage Summary
+- ✅ Les 4 dettes auditées sont CONFIRMÉES SOLDEES en code ET en prod.
+- ⚠️ Les listes « Dettes restantes inchangées » des livraisons postérieures
+  à DTTES-3/4/5 (DASH-VIDE-ANNEE, NOTIF-DIFFUSION, ORACLE-SCALABILITY,
+  AUTOCLOSE-FIX) étaient PÉRIMÉES — ne plus les recopier.
+- 📋 Liste des dettes réellement ouvertes (à jour) : mobile « envoyé »,
+  401 race (« e is not iterable »), Render→sect_app GRANT audit, et dettes
+  mineures notées (IAUsage sans RLS, joints avalés GET /api/devoirs/{id} +
+  createDevoir enseignant sans affectation, PATCH affectation sans
+  changement d'année, salons CLASSE sans comparaison de niveau).
+- Leçon process : avant de recopier une liste de dettes dans une nouvelle
+  livraison, la re-vérifier contre le worklog récent (les sections
+  DTTES-3/4/5 documentaient pourtant la solution de chacune).
