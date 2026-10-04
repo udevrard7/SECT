@@ -61,11 +61,13 @@ func (s *Server) putOuvrageLecture(w http.ResponseWriter, r *http.Request) {
 		middleware.MapDomainError(w, err)
 		return
 	}
-	// SECT-BIBLIO-P4 (ADR-0008 §3) : évaluation best-effort du badge
-	// « lecteur assidu » à chaque heartbeat — les erreurs sont
-	// journalisées dans le usecase, JAMAIS remontées (un échec
-	// badges ne doit pas casser la télémétrie de lecture).
-	_ = s.ouvrageSocialUC.EvaluateLecteurAssidu(r.Context(), claims)
+	// SECT-BIBLIO-P4 (ADR-0008 §3) : PAS d'évaluation badge ici — le
+	// décerneur vit UNIQUEMENT dans POST /api/badges (dashboard on
+	// mount). Évaluer au heartbeat consommerait la montée de niveau et
+	// laisserait newlyUnlocked vide au POST : le RewardToast frontend
+	// (contrat « recalculer + newlyUnlocked », stack Prisma historique)
+	// ne se déclencherait jamais. La cloche reste informée par la
+	// notification BADGE_DEBLOQUE émise au POST.
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"lecture": lecture})
 }

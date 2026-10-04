@@ -125,12 +125,15 @@ CREATE TABLE "OuvrageProposition" (
   Go ne peut fonctionner sous `sect_app`.
 - **Décerneur** : `OuvrageSocialUseCase.EvaluateLecteurAssidu(ctx, claims)` —
   1 `SUM(tempsTotalSec)` + 1 upsert `ON CONFLICT ("userId",
-  "badgeDefinitionId")` (UNIQUE 000003). Appelé depuis :
-  1. `PUT /api/ouvrages/{id}/lecture` (après l'upsert, best-effort —
-     jamais un échec badges ne casse la télémétrie) ;
-  2. `POST /api/badges` (le no-op devient réel — réponse
-     `newlyUnlocked` enfin remplie, shape `BadgeWithProgress[]` que le
-     frontend consomme déjà : RewardToast + ring).
+  "badgeDefinitionId")` (UNIQUE 000003). Appelé UNIQUEMENT depuis
+  `POST /api/badges` (le no-op devient réel — réponse `newlyUnlocked`
+  enfin remplie, shape `BadgeWithProgress[]` que le frontend consomme
+  déjà : RewardToast + ring). Décision de design : NE PAS évaluer dans
+  le heartbeat `PUT /{id}/lecture` — la montée de niveau y serait
+  consommée et `newlyUnlocked` serait vide au POST on-mount du
+  dashboard (le RewardToast ne se déclencherait jamais). Le badge est
+  donc décerné quand le lecteur REVIENT sur son dashboard — les 4
+  dashboards font POST au montage, c'est le flux naturel.
 - `newlyUnlocked` = badges dont le niveau vient d'augmenter (première
   obtention BRONZE ou montée de palier). Notification `BADGE_DEBLOQUE`
   (Dispatcher, fire-and-forget) sur chaque nouvelle obtention.
