@@ -102,6 +102,9 @@ import {
  DropdownMenuTrigger,
 } from'@/components/ui/dropdown-menu'
 import { toast } from'sonner'
+// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : traçabilité chapitres des questions
+// (PATCH /api/questions/{id} — feedback « Support · Chap. N »).
+import { ChapitresDialog } from'@/components/evaluations/chapitres-dialog'
 
 // ─── Types ───
 
@@ -471,6 +474,8 @@ function ModelesTab() {
  // Dialogs
  const [previewEpreuve, setPreviewEpreuve] = useState<ModeleEpreuve | null>(null)
  const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
+ // SECT-BIBLIO-P2.5 : dialog de traçabilité chapitres.
+ const [chapitresDialogOpen, setChapitresDialogOpen] = useState(false)
  const [deleteTarget, setDeleteTarget] = useState<ModeleEpreuve | null>(null)
  const [duplicateTarget, setDuplicateTarget] = useState<ModeleEpreuve | null>(null)
  const [duplicateTitre, setDuplicateTitre] = useState('')
@@ -1077,6 +1082,18 @@ function ModelesTab() {
  )}
 
  <DialogFooter className="flex-wrap gap-2">
+  {/* SECT-BIBLIO-P2.5 : traçabilité chapitres (rattachement des
+      questions persistées — feedback étudiant + audit P3). */}
+  {previewEpreuve && (
+   <Button
+    variant="outline"
+    className="border-primary/40 text-primary-text hover:bg-primary/10"
+    onClick={() => setChapitresDialogOpen(true)}
+   >
+    <BookOpen className="h-4 w-4" />
+    Traçabilité chapitres
+   </Button>
+  )}
  {previewEpreuve && (
  <DropdownMenu>
  <DropdownMenuTrigger asChild>
@@ -1173,6 +1190,16 @@ function ModelesTab() {
  </DialogFooter>
  </DialogContent>
  </Dialog>
+
+ {/* SECT-BIBLIO-P2.5 : traçabilité chapitres de l'épreuve prévisualisée. */}
+ {previewEpreuve && (
+  <ChapitresDialog
+   open={chapitresDialogOpen}
+   onOpenChange={setChapitresDialogOpen}
+   epreuveId={previewEpreuve.id}
+   epreuveTitre={previewEpreuve.titre}
+  />
+ )}
  </div>
  )
 }
