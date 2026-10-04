@@ -39,6 +39,11 @@ const columnsOuvrage = `o."id", o."etablissementId", o."titre", o."auteurs", o."
 	o."typeMime", o."telechargementAutorise", o."createdById",
 	o."createdAt", o."updatedAt", o."deletedAt"`
 
+// columnsOuvrageBare — les mêmes colonnes SANS préfixe d'alias, pour les
+// RETURNING des INSERT/UPDATE sans alias (le préfixe o. y serait une erreur
+// « missing FROM-clause entry » — 42601).
+var columnsOuvrageBare = strings.ReplaceAll(columnsOuvrage, `o.`, ``)
+
 // scanOuvrage scanne une ligne Ouvrage.
 func scanOuvrage(s scanner) (*domain.Ouvrage, error) {
 	o := &domain.Ouvrage{}
@@ -252,7 +257,7 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
 				$20, $21, $22,
 				CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 			RETURNING %s`,
-			columnsOuvrage),
+			columnsOuvrageBare),
 			id, input.EtablissementID, input.Titre, nullableStrPtr(input.Auteurs), string(input.Categorie),
 			nullableStrPtr(input.Editeur), nullableStrPtr(input.Edition), nullableIntPtr(input.AnneePublication),
 			nullableStrPtr(input.ISBN), nullableStrPtr(input.Langue),
@@ -430,7 +435,7 @@ func (r *OuvrageRepository) Restore(ctx context.Context, id string) (*domain.Ouv
 			UPDATE "Ouvrage" SET "deletedAt" = NULL, "updatedAt" = CURRENT_TIMESTAMP
 			WHERE "id" = $1 AND "deletedAt" IS NOT NULL
 			RETURNING %s`,
-			columnsOuvrage), id)
+			columnsOuvrageBare), id)
 		o, err := scanOuvrage(row)
 		if err != nil {
 			if err == pgx.ErrNoRows {
