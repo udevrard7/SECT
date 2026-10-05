@@ -4904,3 +4904,28 @@ pagination + bulk + dialogs GlassModal identiques, forceMount préservé. kpi-ro
   auto-placement décale tout).
 
 **Prod : Vercel LIVE `0928590d`, Render inchangé, Neon 133/133, CI passing, résidu 0.**
+
+---
+Task ID: SECT-MONITORING-UI-3
+Agent: Z.ai Code (session SECT — rôle frontend-styling-expert UI/UX)
+Task: Retour utilisateur après SECT-MONITORING-UI-2 : « les cartes d'alerte couvrent les cartes de règle » dans l'onglet Alertes de /monitoring — diagnostic racine, correctif, vérification prod.
+
+Work Log:
+- Signalement : dans l'onglet Alertes, les cartes de la file « Alertes actives » peignent PAR-DESSUS la section « Règles d'alerte » en dessous.
+- Diagnostic racine (piège Radix ScrollArea) : alerts-tab.tsx:321 pose max-h-[600px] sur le Root, mais le Viewport Radix a height:100% (size-full) or un pourcentage de hauteur ne se résout JAMAIS contre un max-height parent → viewport = hauteur du contenu (10 alertes ≈ 2381 px) ; la version shadcn installée du scroll-area.tsx n'a pas overflow-hidden sur le Root (juste relative) → ~1780 px de cartes débordent et peignent sur la section règles. Le fichier n'a jamais pu scroller en interne (viewportCanScroll=false mesuré) — le max-h était décoratif.
+- Audit d'impact : grep app-wide → ~20 usages ScrollArea max-h-* latemment touchés (admin-dashboard file d'alertes, cloche notifications, dialogs résultats/bibliothèque/mes-épreuves, surveillance, epreuves, facturation, enseignants, code-editor…). Les usages à hauteur définie (h-72, flex-1 min-h-0) sont sains.
+- Preuve empirique AVANT correctif : repro statique (styles calculés exacts Radix 1.2.10) → elementFromPoint sur la section règles renvoie les cartes alertes (ALERTE 3, 4…) ; repro composant React réel (même stack shadcn/Radix/Tailwind v4) → 4/4 cartes règles COVERED-BY-ALERT, vpMaxHeight none, vpClientH 2139 (non clampé), vpCanScroll false.
+- Correctif (1 ligne, composant partagé src/components/ui/scroll-area.tsx) : max-h-[inherit] sur le Viewport → le max-height du Root se propage au Viewport → clamp + scroll interne (Radix pose déjà overflow-y:scroll). Neutre pour les usages sans max-h sur le Root (inherit → none). Guérit les ~20 usages app-wide.
+- Preuve APRÈS correctif (composant réel) : vpMaxHeight 600px, vpClientH 600, vpScrollH 2139, vpCanScroll true, 4/4 cartes règles hit-testées OK.
+- Note outillage : le dev frontend SECT local est OOM-tué par le noyau (compile ~2,4 Go, machine 4 Go avec Chrome + sandbox) — bascule sur vérification comportementale prod (leçon UI-2 réappliquée : la preuve comportementale prime).
+- Gates : tsc --noEmit 0, eslint 0/0, vitest 11/11.
+- Déploiement : commit 8519f41a → Vercel.
+- Vérification E2E prod sect.ftci.fr (fixture admin e2e-monui2, 10 alertes actives RÉELLES) : vpMaxHeight 600px déployé, viewport clampé 600/2381, scroll interne prouvé par interaction réelle (PageDown focus dans la liste → vpScrollTop 525 ; programmatic 1000), scrollbar custom Radix apparaît au survol (data-state=visible — avant le fix il n'apparaissait jamais, le viewport ne pouvant pas scroller), 11/11 cartes règles visibles AUCUNE couverte (hit-test), VLM confirme 0 superposition, mobile 390 px sans débordement, 4 onglets rendus (Événements 50 lignes console, Services 6, Système 14 workers, Alertes 10+11), 0 erreur console.
+- Piège outillage découvert : agent-browser `mouse wheel <dy> [dx]` — l'ordre des args est dy d'abord (dy=0 passé → rien ne scrolle) ; et même avec le bon ordre le wheel CLI cible la page (repro sur HTML nue) → prouver le scroll interne par focus clavier + PageDown.
+- Cleanup RÉSIDU 0 : 0 événement test créé (les 10 alertes étaient des données réelles), 1 user fixture + dépendances purgés, 11 seeds système intactes, seuil errors-actifs = 5, 0 custom, Render /health ok.
+
+Stage Summary:
+- Bug « cartes d'alertes couvrent cartes de règles » CORRIGÉ en prod (8519f41a) : cause racine = max-h sur le Root Radix ScrollArea ne contraint jamais le Viewport ; correctif max-h-[inherit] sur le Viewport du composant partagé, guérit ~20 usages max-h-* latents app-wide (dashboard admin, cloche, dialogs…) sans toucher aux usages à hauteur définie.
+- Le fichier « Alertes actives » scrolle enfin en interne (600 px) avec sa scrollbar custom — avant le fix, le max-h était purement décoratif et le contenu débordait sur la section règles.
+- Pipeline tenu : diagnostic prouvé avant/après (statique + composant réel + prod), gates verts, E2E prod comportemental, VLM, mobile, résidu 0.
+- Prod : Vercel LIVE 8519f41a, Render inchangé (0.2.0 ok), Neon 133/133, résidu 0 ; captures monui3-01→10 dans sect-audit.
