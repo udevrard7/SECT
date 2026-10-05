@@ -4203,3 +4203,92 @@ dirty=false, 83 tables, 227 policies)
   sont complémentaires, aucun ne suffit seul.
 - TO PUBLIC dans pg_policy = polroles '{0}' (OID 0), PAS '{}' — un
   ASSERT sur '{}' échoue toujours (constaté sur prod + replay).
+
+---
+
+Task ID: SECT-RBAC-AUDITS-1
+Task: Resserrer le RBAC des audits pédagogiques par établissement (ADR-0009) — l'ADMIN global perd le god-mode lecture silencieux, passe par le mode assistance
+
+Contexte : signalement produit — l'ADMIN est propriétaire de la
+PLATEFORME (SaaS/PaaS, sans établissement) ; la gestion d'un
+établissement repose sur son RESPONSABLE, et les outils de pilotage
+pédagogique (activité de lecture P2, conformité aux référentiels P3)
+sont destinés au RESPONSABLE. Or 000124/000126 donnaient à l'ADMIN
+global un « god-mode lecture » silencieux (role='ADMIN' OR etab=claims)
+— sans motif, sans approbation, sans trace — en contradiction frontale
+avec EtablissementAccess (B-2 CRITICAL : un ADMIN ne peut pas
+s'auto-approuver un accès de 2 h avec motif… mais lisait les mêmes
+données indéfiniment ailleurs).
+
+Work Log:
+- ADR-0009 (docs/desktop/ADR/0009-rbac-audits-etablissement.md) :
+  décision + ce qui ne change PAS (catalogue/curation G1/abonnements
+  restent rôle plateforme ; policies RLS is_admin() de curation
+  intactes — seuls les AUDITS par établissement sont resserrés).
+- Migration 000130 (CREATE OR REPLACE, zéro-rupture) : les DEUX
+  fonctions SECURITY DEFINER exigent désormais l'égalité
+  app.claims.etablissement_id ↔ p_etablissement_id pour TOUS —
+  conformite : IS DISTINCT FROM (piège plpgsql : NULL <> 'x' → NULL →
+  IF faux → l'ANCIENNE fonction FUYAIT réellement avec claims NULL,
+  prouvé au dry-run D7 : 10 supports visibles sans aucun claims) ;
+  activité : la branche « role = 'ADMIN' OR » supprimée du WHERE.
+  Down : définitions 000124/000126 d'origine restaurables verbatim.
+  5 ASSERTs post-migration (bypass absent, égalité présente,
+  SECURITY DEFINER préservé ×2).
+- Go (defense in depth, 2e couche) : usecases ConformiteEtablissement
+  (alignement.go) + ActiviteEtablissement (ouvrage.go) — plus de
+  bypass ADMIN, message d'erreur explicite orientant vers le mode
+  assistance ; commentaires router/handlers mis à jour.
+- Frontend : AssistancePrompt (composant partagé) — conformite-page
+  (retrait etabsQuery + sélecteur + export CSV caché pour l'ADMIN
+  global) ; bibliotheque-page vue Activité (retrait sélecteur ;
+  activiteEtab devient DÉRIVÉ du store — toujours frais après entrée
+  en mode assistance, plus de state stale) ; routes.ts commenté.
+- Gates : Go build/vet/gofmt 0 (go 1.27.1 réinstallé — le SDK du
+  sandbox avait disparu) ; tsc 0, eslint 0 erreur (1 warning
+  préexistant), vitest 11/11. Incident d'édition : les Edit ont
+  corrigé tabs↔espaces sur 4 fichiers Go (diff ×2400 lignes) — gofmt
+  -w a restauré, diff final 69+/142-.
+- Dry-run Neon 10/10 (tx rollbackée, catalogue réel vide → fixture
+  ouvrage DANS la tx) : matrice ADMIN global/assistance/RESP propre/
+  cross-etab/ENS + NULL (connexion FRAÎCHE sur l'endpoint DIRECT — le
+  pooler Neon normalise les GUC custom en '' et masque le vrai cas
+  NULL) + down restaure le bypass. Leçon pooler consignée.
+- Déploiement : migration appliquée AVANT push (migrate v4.18.3
+  rebuildé avec -tags postgres, endpoint direct, 129→130, ASSERTs
+  passés) → commit 09a9528e → CI verte ×2 (Frontend+Backend) → Render
+  LIVE dep-db1ei6dg1s2s739jf7j0 → Vercel READY 09a9528e.
+- E2E prod 15/15 + résidu 0 (e2e_rbac.py, fixtures e2e-rbac-*) :
+  god-mode mort (T2/T3 : 403 là où c'était 200) ; légitimes OK (RESP
+  conformité 200 + support fixture, ENS activité 200 + ouvrage) ;
+  cross-etab 403 (régression) ; mode assistance COMPLET — entrée 200
+  (T8), A accessible (T9/T10), B REFUSÉ même en assistance (T11 — le
+  JWT d'assistance est scoping A), exit 200 (T12), re-blocage 403
+  (T13), assistance sans accès approuvé 403 (T14), message oriente
+  vers l'assistance (T15).
+- E2E UI navigateur (sect.ftci.fr, 4 screenshots, 0 erreur console) :
+  ADMIN global → /conformite = carte « mode assistance » (+ bouton
+  navigue vers /acces-etablissements) + onglet Activité = même carte ;
+  RESPONSABLE → /conformite = audit réel (KPIs + Export CSV + support
+  fixture dans la table) + Activité = stats réelles (ouvrage fixture
+  visible). Fixtures UI purgées, résidu 0.
+
+Stage Summary:
+- Le paradoxe de gouvernance est fermé : les audits pédagogiques par
+  établissement exigent l'établissement des claims pour TOUS les
+  rôles — l'ADMIN global passe par la voie consentie et tracée
+  (assistance : motif + approbation RESPONSABLE + 24 h max + audit
+  trail), cohérent avec B-2.
+- Découverte sécurité bonus (dry-run D7) : l'ANCIENNE fonction
+  conformite fuyait avec des claims NULL (NULL <> 'x' → IF faux →
+  fuite de TOUS les supports ANALYSE de l'étab paramétré) — le
+  IS DISTINCT FROM de 000130 ferme aussi cette voie ; le pooler Neon
+  normalise les GUC custom en '' (masque le cas NULL en pratique,
+  belt-and-suspenders quand même).
+- Dette RBAC repérée hors périmètre (non traitée, à arbitrer) :
+  /api/etablissements/{id}/audit-logs documente encore « L'ADMIN
+  bypass (peut consulter n'importe quel étab) » — même philosophie
+  que la conformité, candidat naturel à un ADR-0009 bis.
+- Prod : Neon 130/130, Render LIVE 09a9528e, Vercel READY, résidu 0
+  partout ; scripts dryrun_rbac.py / e2e_rbac.py réutilisables dans
+  sect-audit (session-local, hors repo).
