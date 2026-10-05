@@ -4568,3 +4568,109 @@ Stage Summary:
   par endpoint (table ApiLatency), alerting externe — candidats P5.
 - Prod : Neon 132/132, Render LIVE 43dd8d98, Vercel READY, CI verte ×2,
   résidu 0 ; scripts e2e_monalign.py réutilisable dans sect-audit.
+
+---
+
+## SECT-MONITORING-P5-1 — Règles d'alerte persistées, p50/p95 par endpoint, alerting externe (ADR-0012)
+
+**Date** : 5 octobre 2026 — **Commits** : `9ff4fc12` — **ADR** : 0012 (docs/desktop/ADR/0012-monitoring-p5-regles-percentiles-alerting.md)
+
+Demande produit : implémenter les 3 items notés P5 à la fin de
+SECT-MONITORING-ALIGN-1 — règles configurables persistées, p50/p95 par
+endpoint, alerting externe (Slack/email dédié).
+
+### Livré
+
+- **Migration 000133** (appliquée AVANT push, 132→133) : table
+  `AlertingRule` (seuil/comparateur/sévérité/cooldown/3 canaux/
+  breachedSince/lastNotifiedAt/isSystem) + table `RequestLog`
+  (télémétrie /api, rétention 7 j) + 4+3 policies TO PUBLIC + 11 seeds
+  idempotents + **FORCE RLS** (pattern 000006, posé après les seeds) +
+  ASSERTs. DELETE durci : règle système indestructible même en SQL
+  direct (policy + handler, defense in depth).
+- **Backend** : `monitoring/rules.go` (catalogue 11 métriques,
+  CollectMetrics — mêmes sources que /overview, score réutilise
+  ComputeScore : une règle score_sante ne peut pas diverger de la
+  carte) ; `monitoring/sampler.go` (échantillonneur async
+  drop-dégradé, batch unnest, purge horaire) ; middleware sampling
+  100 % des requêtes /api avec route normalisée chi (`{id}`) ;
+  `worker/alerting_worker.go` (évaluation 2 min, événement in-app sur
+  TRANSITION seule — pas d'auto-amplification du compteur
+  errors_actifs, Slack via SLACK_WEBHOOK_URL + email dédié via
+  ALERTING_EMAIL_TO avec cooldown par règle, message de récupération,
+  dégradation honnête journalisée) ; 4 endpoints CRUD
+  `/api/monitoring/rules` + `GET /api/monitoring/endpoints?window=`
+  (percentile_cont p50/p95/taux d'erreur par route, top 100) ; 14e
+  worker « alerting » au registre.
+- **Frontend** : onglet Alertes = règles persistées (statut live
+  backend, Switch activation, édition GlassModal, création depuis le
+  catalogue, suppression custom, bandeau canaux avec état RÉEL
+  Slack/email — le disclaimer « non persistées » disparaît) ; onglet
+  Système = table « Endpoints API — latence p50/p95 » avec fenêtre
+  1 h/24 h/7 j, p95 > 3 s mis en évidence.
+- **Render** : +`ALERTING_EMAIL_TO=ulrichdouh@gmail.com` (full-replace
+  9 vars, les 8 originales préservées) — l'email partira réellement dès
+  qu'un mailer (RESEND_API_KEY ou SMTP) sera configuré ; Slack prêt via
+  SLACK_WEBHOOK_URL quand l'utilisateur aura un webhook.
+
+### Preuves
+
+- **Dry-run phase 1 (owner, tx rollbackée) 3/3** : DDL + ASSERTs +
+  percentile_cont (p50=10/p95=19 sur fixtures 1..20, fenêtre vide → 0)
+  + down. NB découverte : **neondb_owner est BYPASSRLS** — les policies
+  ne sont PAS opposables au propriétaire, d'où la phase 2.
+- **Phase 2 (connexions sect_app — le rôle réel du runtime, NOBYPASSRLS)
+  9/9** : ADMIN 11 seeds / system-worker 11 + INSERT RequestLog /
+  RESPONSABLE 0 / claims vides 0 / custom insert+delete OK / DELETE
+  système 0 ligne / INSERT RequestLog ADMIN REFUSÉ / UPDATE tracking
+  system OK + RESPONSABLE 0 / cleanup propre.
+- **E2E API prod 32/32** : rules 200 + 11 seeds + channels
+  {slackConfigured:false, emailTo:ulrichdouh@gmail.com, emailReady:false}
+  ; RBAC 403 ×2 ; PUT seuil 70→65 persisté puis restauré ; toggle
+  enabled ; POST custom 201 (code custom-*) + DELETE ; DELETE système
+  403 ; 5 validations 400 + metric immuable 400 ; endpoints 1 h → 9
+  routes échantillonnées dont /api/auth/login (p50=451 ms, p95=462 ms —
+  cold start Render visible) + window invalide 400 + 7 j 200 ; **worker
+  preuvé** (errors-actifs breachedSince + lastNotifiedAt posés à
+  02:18:05Z, événement in-app « Règle « Erreurs actives » franchie :
+  16 > 5 » source alerting:errors-actifs) ; cohérence
+  rules↔overview (17=17) ; 14e worker runs=3.
+- **E2E UI navigateur (9 screenshots, 0 erreur console)** : Alertes =
+  bandeau canaux (Slack non configuré / Email → ulrichdouh@gmail.com
+  expédition inactive) + 11 cartes règles (errors-actifs « Franchie
+  depuis 5 min · notifiée il y a 5 min · cooldown 60 min », switches,
+  badges système) ; édition seuil 5→8 → toast « Règle mise à jour » →
+  restauré 5 ; création « Test UI E2E » (catalogue métriques + canaux)
+  → carte avec bouton supprimer → suppression confirmée → toast ;
+  Système = table endpoints fenêtre 24 h → 1 h (login p50=439 ms
+  p95=461 ms, routes PUT /api/monitoring/rules/{id} normalisées) +
+  worker « alerting — Règles d'alerte + canaux externes » dans le
+  registre.
+- **Cleanup RÉSIDU 0** : 1 événement alerting RESOLU (l'historique
+  d'alerte reste auditable — le worker ne le recréera pas : in-app sur
+  transition seule), fixtures (2 users/1 etab/3 refresh/3 audit)
+  supprimées, 11 seeds intacts aux seuils d'origine, 0 règle custom.
+
+### Leçons
+
+- **neondb_owner est BYPASSRLS** : une matrice RLS ne peut PAS être
+  vérifiée en connexion owner (même FORCE ne l'oppose pas) — 2 phases :
+  dry-run owner (DDL/SQL) puis matrice en connexion sect_app
+  (le rôle réel du runtime). C'est exactement pourquoi les sessions
+  000130/000131 utilisaient des SECURITY DEFINER à re-check interne.
+- Piège Edit récurrent confirmé (3e session) : les Edit multi-lignes
+  sur Go convertissent tabs→espaces — gofmt -w immédiat, diff vérifié
+  --stat (94 insertions propres au final).
+- golangci-lint doit être ≥ 2.14.0 pour lire l'export data Go 1.27
+  (2.1.6 casse sur typecheck) — installé @latest built go1.27.1, 0 issue.
+- Le vrai signal prod (16 erreurs 5xx actives) génère désormais un
+  événement d'alerte + notifications externes au premier franchissement
+  — c'est le comportement voulu : l'outil ne se tait plus.
+
+### État prod
+
+Neon 133/133, Render LIVE `9ff4fc12` (dep-db1gh86q1p3s73fa), Vercel
+READY `9ff4fc12`, CI verte ×2, résidu 0. Activation externe restante
+(côté utilisateur, aucun code) : créer un webhook Slack et poser
+SLACK_WEBHOOK_URL ; configurer RESEND_API_KEY (ou SMTP) pour l'envoi
+email réel — l'UI indique l'état dans l'onglet Alertes.
