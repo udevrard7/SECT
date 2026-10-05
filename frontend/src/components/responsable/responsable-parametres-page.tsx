@@ -106,6 +106,10 @@ import { useAuthStore } from '@/stores/auth-store'
 // SECT-ETABLISSEMENT-AUDIT-1 : nouvel onglet Audit — délégué au composant
 // AuditTab (lazy-loaded via TanStack Query interne, gate `enabled=!!etabId`).
 import { AuditTab } from '@/components/responsable/audit-tab'
+// SECT-RBAC-AUDITLOGS (ADR-0010) : carte d'orientation pour l'ADMIN global
+// (sans établissement) — le journal d'audit suit les claims, pas le
+// sélecteur management (pattern AssistancePrompt d'ADR-0009).
+import { AssistancePrompt } from '@/components/bibliotheque/assistance-prompt'
 // SECT-REGLES-PASSAGE-MUTATION-1 : nouvel onglet "Règles de passage" — délégué
 // au composant ReglesPassageTab (lazy-loaded via TanStack Query interne).
 import { ReglesPassageTab } from '@/components/responsable/regles-passage-tab'
@@ -594,6 +598,14 @@ export function ResponsableParametresPage() {
 
   // Tab tracking
   const [activeTab, setActiveTab] = useState('etablissement')
+
+  // SECT-RBAC-AUDITLOGS (ADR-0010, pattern ADR-0009) : le journal d'audit
+  // sonde uniquement l'étab des CLAIMS — DÉRIVÉ du store (pas de state :
+  // toujours frais après entrée en mode assistance), PAS le sélecteur
+  // global ADMIN (management, philosophie EtablissementAccess). RESPONSABLE
+  // → son étab ; ADMIN assistance → l'étab du JWT ; ADMIN global → null
+  // → carte AssistancePrompt.
+  const auditEtabId = user?.etablissementId ?? null
 
   // ACCESS-WORKFLOW-UI : état pour les dialogues d'approbation/refus/révocation
   // des demandes d'accès ADMIN. approveTarget + approveDuree pour le sélecteur
@@ -2261,9 +2273,14 @@ export function ResponsableParametresPage() {
           {/* ═══════════ Tab: Audit (SECT-ETABLISSEMENT-AUDIT-1) ═══════════ */}
           {/* Onglet passif lecture-seule — délégué au composant AuditTab qui */}
           {/* gère son propre TanStack Query + lazy-loading via `enabled`. */}
+          {/* SECT-RBAC-AUDITLOGS (ADR-0010) : l'étab audité est DÉRIVÉ des */}
+          {/* claims (auditEtabId), pas du sélecteur management — l'ADMIN */}
+          {/* global voit la carte d'orientation vers le mode assistance. */}
           <TabsContent value="audit">
-            {activeEtabId ? (
-              <AuditTab etablissementId={activeEtabId} />
+            {auditEtabId ? (
+              <AuditTab etablissementId={auditEtabId} />
+            ) : isAdmin ? (
+              <AssistancePrompt outil="Le journal d'audit" />
             ) : (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center">

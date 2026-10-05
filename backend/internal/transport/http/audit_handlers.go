@@ -6,16 +6,20 @@
 //	GET /api/etablissements/{id}/audit-logs?action=...&entite=...&dateFrom=...
 //	    &dateTo=...&search=...&page=1&limit=20
 //
-// Defense in depth :
-//  1. RLS via policy AuditLog_select (migration 000083) filtre les rows
-//     visibles par le RESPONSABLE (uniquement SON étab).
-//  2. Le handler vérifie claims.EtablissementID == URLParam("id") pour qu'un
-//     RESPONSABLE ne puisse pas forger l'URL d'un autre étab (même si la RLS
-//     le bloquerait côté DB).
-//  3. L'ADMIN bypass (peut consulter n'importe quel étab).
+// Defense in depth (ADR-0010, pattern ADR-0009) :
+//  1. Le handler exige claims.EtablissementID == URLParam("id") pour TOUS
+//     les rôles — l'établissement lu doit être celui des claims. L'ADMIN
+//     global (sans établissement) passe par le mode assistance (accès
+//     APPROUVE par le RESPONSABLE, max 24 h, audit trail) ; son JWT
+//     d'assistance porte l'etablissementId et franchit le check.
+//  2. La fonction SQL SECURITY DEFINER etablissement_audit_logs
+//     (migration 000131) RÉ-IMPOSE les claims (rôle + égalité etab) —
+//     même si le handler était bypassé, le SELECT ne retournerait rien.
+//     (La policy AuditLog_select 000083 garde son is_admin() pour la
+//     console plateforme /api/logs — vue légitime du propriétaire SaaS.)
 //
-// Le handler délègue à AuthRepository.ListByEtablissement qui construit la
-// requête SQL paginée avec filtres dynamiques (même pattern que logsListReal).
+// Le handler délègue à AuthRepository.ListByEtablissement qui appelle la
+// fonction cloisonnée avec filtres + pagination (pattern 000124/000130).
 package http
 
 import (
@@ -49,8 +53,11 @@ type auditLogItem struct {
 // listEtablissementAuditLogs — GET /api/etablissements/{id}/audit-logs
 //
 // Auth : ADMIN, RESPONSABLE (via middleware.RequireRole dans router.go).
-// Defense in depth : un RESPONSABLE ne peut voir QUE les logs de SON étab
-// (claims.EtablissementID == URLParam("id")). L'ADMIN peut voir tous les étab.
+// ADR-0010 : l'établissement lu doit être CELUI des claims pour TOUS les
+// rôles — le RESPONSABLE ne voit que SON étab ; l'ADMIN global reçoit 403
+// et passe par le mode assistance (JWT avec etablissementId, accès APPROUVE
+// par le RESPONSABLE, B-2 : pas d'auto-approbation). La fonction SQL
+// etablissement_audit_logs (000131) re-vérifie sur les claims (2e couche).
 //
 // Query params :
 //   - action   : filtre exact sur AuditLog.action (ex: "SIGNUP_LINK_REVOKED")
@@ -75,14 +82,15 @@ func (s *Server) listEtablissementAuditLogs(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Defense in depth : RESPONSABLE ne peut voir que SON étab. L'ADMIN
-	// bypass (peut consulter n'importe quel étab pour le support).
-	// La RLS policy AuditLog_select (migration 000083) renforce ce check
-	// côté DB — même si le handler était bypassé, le SELECT ne retournerait
-	// que les rows de l'étab du RESPONSABLE.
-	if claims.Role != "ADMIN" && claims.EtablissementID != etabID {
+	// Defense in depth (ADR-0010, pattern ADR-0009) : l'établissement lu
+	// doit être CELUI des claims pour TOUS les rôles. L'ADMIN global (sans
+	// établissement) est orienté vers le mode assistance — la voie consentie
+	// et tracée (accès APPROUVE par le RESPONSABLE, max 24 h, audit trail).
+	// La fonction SQL etablissement_audit_logs (migration 000131) re-vérifie
+	// sur les claims : même handler bypassé, 0 ligne rendue.
+	if claims.EtablissementID != etabID {
 		writeJSONError(w, http.StatusForbidden,
-			"vous ne pouvez consulter que les logs de votre établissement")
+			"journal d'audit limité à votre établissement — l'ADMIN global doit activer le mode assistance (accès à faire approuver par le responsable de l'établissement)")
 		return
 	}
 

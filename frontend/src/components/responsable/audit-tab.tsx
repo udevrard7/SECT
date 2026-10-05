@@ -4,9 +4,16 @@
 // SECT-ETABLISSEMENT-AUDIT-1 : AuditTab — onglet "Audit" de la page Paramètres
 // établissement (ResponsableParametresPage).
 //
-// Permet à un RESPONSABLE de consulter l'intégralité du journal d'audit de SON
-// établissement (le backend filtre via RLS + defense-in-depth sur
-// claims.EtablissementID). Le composant :
+// SECT-RBAC-AUDITLOGS (ADR-0010, pattern ADR-0009) : l'établissement audité
+// est fourni par le parent DÉRIVÉ des claims du store (user.etablissementId)
+// — RESPONSABLE → son étab ; ADMIN en mode assistance → l'étab du JWT ;
+// ADMIN global → le parent rend la carte AssistancePrompt (mode assistance :
+// accès APPROUVE par le RESPONSABLE, motif, 24 h max, audit trail) au lieu
+// de ce composant. Le backend double-vérifie (handler + fonction SQL
+// SECURITY DEFINER etablissement_audit_logs, migration 000131) : l'étab
+// lu doit être celui des claims pour TOUS les rôles.
+//
+// Le composant :
 //   - charge lazy (TanStack Query, enabled=!!etablissementId)
 //   - expose 5 filtres : action, entité, recherche texte, plage de dates,
 //     auto-refresh 30s

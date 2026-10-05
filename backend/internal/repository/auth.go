@@ -4,7 +4,6 @@ package repository
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -290,27 +289,29 @@ const maxAuditLogLimit = 100
 // defaultAuditLogLimit est appliqué quand filters.Limit ≤ 0.
 const defaultAuditLogLimit = 20
 
-// ListByEtablissement — SECT-ETABLISSEMENT-AUDIT-1
+// ListByEtablissement — SECT-ETABLISSEMENT-AUDIT-1 + ADR-0010
 //
 // Retourne les entrées d'audit d'un établissement, triées par createdAt DESC.
-// Le scoping RLS est géré par la policy AuditLog_select (migration 000083) :
-// un RESPONSABLE ne voit QUE les entries où (userId = current_user_id()) OU
-// (userId IS NOT NULL AND user_in_my_etab(userId)) OU
-// (userId IS NULL AND etablissementId = current_etablissement_id()).
-// L'ADMIN bypass via is_admin().
+// Le cloisonnement vit dans la fonction SQL SECURITY DEFINER
+// etablissement_audit_logs (migration 000131, pattern 000124/000130) qui
+// RÉ-IMPOSE les claims de la transaction appelante : rôle ∈
+// (RESPONSABLE, ADMIN) ET égalité app.claims.etablissement_id ↔
+// p_etablissement_id pour TOUS — l'ADMIN global (sans établissement)
+// reçoit 0 ligne, l'ADMIN en mode assistance (JWT avec etablissementId)
+// passe naturellement. (La policy AuditLog_select 000083 et son is_admin()
+// restent pour la console plateforme /api/logs — vue transverse du
+// propriétaire SaaS, périmètre différent.)
 //
-// Le filtre SQL `"etablissementId" = $1` est defense-in-depth : même si la
-// policy RLS était mal configurée, un RESPONSABLE ne verrait que SON étab.
-//
-// Filtres optionnels (AuditLogFilters) : action, entite, dateFrom, dateTo,
-// search (ILIKE). La pagination via Limit/Offset.
+// Les filtres optionnels (action, entite, dateFrom, dateTo, search ILIKE)
+// sont des paramètres de la fonction (NULL/” = pas de filtre) ; la
+// pagination (LIMIT/OFFSET) reste côté Go sur le résultat.
 //
 // Retourne (entries, totalCount, error). totalCount est le count AVANT
 // pagination (pour que le frontend puisse afficher "Page X sur Y").
 //
 // NB : utilise db.WithTx avec les claims du context (posés par middleware
-// RequireAuth) pour activer RLS. Sans claims, sect_app ne voit aucune ligne
-// (RLS deny by default).
+// RequireAuth) — les GUC app.claims.* alimentent le re-check de la
+// fonction. Sans claims, 0 ligne rendue (defense in depth).
 func (r *AuthRepository) ListByEtablissement(ctx context.Context, etabID string, filters AuditLogFilters) ([]*domain.AuditLogEntry, int, error) {
 	if etabID == "" {
 		return nil, 0, fmt.Errorf("etablissement id requis")
@@ -329,89 +330,61 @@ func (r *AuthRepository) ListByEtablissement(ctx context.Context, etabID string,
 		offset = 0
 	}
 
-	// Construction dynamique de la clause WHERE (partagée par SELECT + COUNT).
-	// On commence par le filtre etablissementId (defense-in-depth en plus
-	// de RLS). Les filtres optionnels sont ajoutés ensuite avec des
-	// placeholders $N incrémentés.
-	var whereClauses []string
-	var args []any
-	argIdx := 1
-
-	// Filtre principal : etablissementId = $1.
-	whereClauses = append(whereClauses, fmt.Sprintf(`"etablissementId" = $%d`, argIdx))
-	args = append(args, etabID)
-	argIdx++
-
-	// Filtre action (égalité exacte).
+	// Filtres → args SQL (nil = pas de filtre ; '' normalisé en NULL — la
+	// fonction traite les deux comme « pas de filtre », belt-and-suspenders).
+	var actionArg, entiteArg, searchArg any
 	if filters.Action != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf(`"action" = $%d`, argIdx))
-		args = append(args, filters.Action)
-		argIdx++
+		actionArg = filters.Action
 	}
-	// Filtre entite (égalité exacte).
 	if filters.Entite != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf(`"entite" = $%d`, argIdx))
-		args = append(args, filters.Entite)
-		argIdx++
+		entiteArg = filters.Entite
 	}
-	// Filtre dateFrom (inclusif).
-	if filters.DateFrom != nil {
-		whereClauses = append(whereClauses, fmt.Sprintf(`"createdAt" >= $%d`, argIdx))
-		args = append(args, *filters.DateFrom)
-		argIdx++
-	}
-	// Filtre dateTo (inclusif — borne la fin de journée).
-	if filters.DateTo != nil {
-		whereClauses = append(whereClauses, fmt.Sprintf(`"createdAt" <= $%d`, argIdx))
-		args = append(args, *filters.DateTo)
-		argIdx++
-	}
-	// Search ILIKE sur 4 colonnes (action/entite/userEmail/adresseIp) + details.
-	// pgx simple protocol ne supporte pas les placeholders réutilisés → 5
-	// placeholders distincts (un par colonne ILIKE).
 	if filters.Search != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf(
-			`("action" ILIKE $%d OR "entite" ILIKE $%d OR "userEmail" ILIKE $%d OR "adresseIp" ILIKE $%d OR "details" ILIKE $%d)`,
-			argIdx, argIdx+1, argIdx+2, argIdx+3, argIdx+4,
-		))
-		pattern := "%" + filters.Search + "%"
-		args = append(args, pattern, pattern, pattern, pattern, pattern)
-		argIdx += 5
+		searchArg = filters.Search
 	}
-
-	whereClause := "WHERE " + strings.Join(whereClauses, " AND ")
-
-	var totalCount int
-	var entries []*domain.AuditLogEntry
+	var dateFromArg, dateToArg any
+	if filters.DateFrom != nil {
+		dateFromArg = *filters.DateFrom
+	}
+	if filters.DateTo != nil {
+		dateToArg = *filters.DateTo
+	}
 
 	// Récupère les claims du context (posés par middleware.RequireAuth).
-	// Sans claims, sect_app ne voit aucune ligne (RLS deny by default) —
-	// on retourne une erreur explicite plutôt que (nil, 0, nil) trompeur.
+	// Sans claims, la fonction SQL rend 0 ligne (re-check interne sur les
+	// GUC) — on retourne une erreur explicite plutôt que (nil, 0, nil)
+	// trompeur.
 	claims, ok := appdb.ClaimsFromContext(ctx)
 	if !ok || claims.UserID == "" {
 		return nil, 0, fmt.Errorf("unauthenticated — claims requis pour ListByEtablissement (RLS)")
 	}
 
+	var totalCount int
+	var entries []*domain.AuditLogEntry
+
 	err := appdb.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		// 1. COUNT (avant pagination — pour le total "Page X sur Y").
-		countQuery := fmt.Sprintf(`SELECT count(*) FROM "AuditLog" %s`, whereClause)
-		if err := tx.QueryRow(ctx, countQuery, args...).Scan(&totalCount); err != nil {
+		// 1. COUNT (avant pagination — pour le total "Page X sur Y"). La
+		// fonction applique les filtres + le cloisonnement claims ; la
+		// pagination reste hors de la fonction (LIMIT/OFFSET ci-dessous).
+		countQuery := `SELECT count(*) FROM etablissement_audit_logs($1, $2, $3, $4, $5, $6)`
+		if err := tx.QueryRow(ctx, countQuery,
+			etabID, actionArg, entiteArg, dateFromArg, dateToArg, searchArg,
+		).Scan(&totalCount); err != nil {
 			return fmt.Errorf("count audit logs: %w", err)
 		}
 
-		// 2. SELECT paginé (LIMIT + OFFSET). On append limit + offset aux
-		// args partagées (placeholders $N+1 et $N+2).
-		pagedArgs := append(append([]any{}, args...), limit, offset)
-		selectQuery := fmt.Sprintf(`
+		// 2. SELECT paginé (LIMIT + OFFSET côté Go, sur le résultat déjà
+		// filtré + cloisonné par la fonction).
+		selectQuery := `
                         SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
                                "details", "adresseIp", "etablissementId", "reason", "createdAt"
-                        FROM "AuditLog"
-                        %s
+                        FROM etablissement_audit_logs($1, $2, $3, $4, $5, $6)
                         ORDER BY "createdAt" DESC
-                        LIMIT $%d OFFSET $%d
-                `, whereClause, argIdx, argIdx+1)
-
-		rows, err := tx.Query(ctx, selectQuery, pagedArgs...)
+                        LIMIT $7 OFFSET $8
+                `
+		rows, err := tx.Query(ctx, selectQuery,
+			etabID, actionArg, entiteArg, dateFromArg, dateToArg, searchArg, limit, offset,
+		)
 		if err != nil {
 			return fmt.Errorf("query audit logs: %w", err)
 		}

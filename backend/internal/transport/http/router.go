@@ -455,10 +455,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRoleOrPersonalEtab(s.dbPool, "ADMIN", "RESPONSABLE")).Post("/{id}/annee-courante", s.setCurrentAnnee)
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}/watermark", s.updateWatermark)
 			// SECT-ETABLISSEMENT-AUDIT-1 : journal d'audit scoped par
-			// établissement. Le RESPONSABLE ne voit QUE les logs de SON
-			// étab (defense in depth : check claims.EtablissementID ==
-			// URLParam("id") dans le handler + RLS via AuditLog_select).
-			// L'ADMIN bypass (peut consulter n'importe quel étab).
+			// établissement. ADR-0010 (pattern ADR-0009) : l'étab lu doit
+			// être celui des claims pour TOUS les rôles — le RESPONSABLE
+			// ne voit que SON étab, l'ADMIN global passe par le mode
+			// assistance (JWT avec etablissementId, accès APPROUVE par le
+			// RESPONSABLE). Defense in depth : check claims dans le
+			// handler + re-check dans la fonction SQL SECURITY DEFINER
+			// etablissement_audit_logs (000131). La console plateforme
+			// /api/logs (vue transverse ADMIN) est un périmètre différent.
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Get("/{id}/audit-logs", s.listEtablissementAuditLogs)
 			// SECT-BIBLIO-P2 (ADR-0007 §P2) : activité de lecture de la
 			// bibliothèque — agrégats SECURITY DEFINER cloisonnés par
