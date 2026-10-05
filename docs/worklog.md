@@ -4403,3 +4403,78 @@ Stage Summary:
 - Prod : Neon 131/131, Render LIVE d470de64, Vercel READY, résidu 0
   partout ; scripts dryrun_auditlogs.py / e2e_auditlogs.py réutilisables
   dans sect-audit (session-local, hors repo).
+
+## SECT-ADMIN-NAV-CONFORMITE — l'entrée « Conformité référentiels » retirée de la sidebar ADMIN global
+
+Demande produit (utilisateur) : la page conformité doit être supprimée de
+la sidebar admin ; en mode assistance, la sidebar s'adapte automatiquement
+à celle du RESPONSABLE. Constat : l'adaptation assistance existe déjà
+(getEffectiveRole → NAV_CATEGORIES[RESPONSABLE], ACCESS-ASSISTANCE-FIX) ;
+il ne restait qu'à retirer l'entrée de la sidebar ADMIN global.
+
+Changements (frontend/src/lib/routes.ts uniquement, commit 5e37965b) :
+- ADMIN_CATEGORIES : entrée « Conformité référentiels » retirée du groupe
+  « Gestion Clients » (elle y côtoyait Bibliothèque, qui reste légitime :
+  dépôt G1 = curation du catalogue global, devoir du propriétaire PaaS).
+  La conformité est l'outil du RESPONSABLE (ADR-0009 : l'audit ne sonde
+  QUE l'étab des claims).
+- PAGE_ALLOWED_ROLES['conformite'] inchangé (['RESPONSABLE','ADMIN']) :
+  l'ADMIN global qui tape /conformite directement (bookmark) voit la
+  carte AssistancePrompt (orientation /acces-etablissements) ; l'ADMIN
+  assisté passe via effectiveRole=RESPONSABLE. Commentaire mis à jour.
+- getPageContext : nouveau fallback 2bis « page connue mais absente de la
+  nav du rôle » (résolution via ROUTE_TO_PAGE, sans catégorie parente) —
+  sans lui, le header de /conformite ADMIN global affichait « Tableau de
+  bord » (fallback 3). Corrige au passage toutes les pages joignables
+  par URL hors sidebar du rôle (ex. /diffusions ADMIN global, /corbeille
+  RESPONSABLE) : titre correct au lieu de « Tableau de bord ». Effet
+  sidebar bénéfique : plus de faux highlight « Tableau de bord » actif
+  sur ces pages.
+- Palette de commandes : dérivée de NAV_CATEGORIES[effectiveRole] →
+  conformité disparaît automatiquement pour l'ADMIN global, zéro code.
+- NAV_ITEMS (legacy flat) : dérivé de ADMIN_CATEGORIES → cohérent.
+
+Gates : tsc 0, eslint 0 erreur (1 warning pré-existant use-surveillance-ws
+vérifié par stash), vitest 11/11. Aucun test ne référençait l'entrée.
+
+E2E UI navigateur (sect.ftci.fr, déploiement 5e37965b, 6 screenshots) :
+- T1 ADMIN global : sidebar = Tableau de bord | Gestion Clients
+  (Établissements, Responsables, Bibliothèque) | Abonnements |
+  Autorisations | Système — « Conformité référentiels » ABSENT de tout
+  le body.
+- T2 /conformite en direct (ADMIN global) : carte AssistancePrompt
+  (« outil de pilotage propre à chaque établissement ») + header
+  « Conformité référentiels » (fallback 2bis prouvé).
+- T3 Entrée en mode assistance (bouton « Mode assistance » de
+  /acces-etablissements) : sidebar bascule sur la nav RESPONSABLE
+  COMPLÈTE — Vue d'ensemble/Diffusions, Organisation Académique,
+  Personnes, Évaluations & Suivi (Évaluations, Rapports, CONFORMITÉ),
+  Paramètres.
+- T4 /conformite assisté : audit réel (« Supports alignés 0/1 » = le
+  document fixture de l'étab), fil d'Ariane « Évaluations & Suivi ›
+  Conformité référentiels », bouton « Quitter » présent.
+- T5 Quitter l'assistance : sidebar ADMIN globale restaurée, conformité
+  absente du body entier.
+- T6 RESPONSABLE (non-régression) : sidebar intacte avec conformité.
+- Palette ⌘K ADMIN global : pas de conformité.
+- Console : une erreur transitoire « C.some is not a function » (attrapée
+  par QueryErrorBoundary, récupération auto) observée UNE fois pendant le
+  flow initial — NON REPRODUCTIBLE en 7 replays propres (login à froid SW
+  désenregistré + cookies/storage vidés, chaque étape du flow isolée,
+  capture immédiate aux transitions) ; le diff ne contient aucun .some()
+  ni logique de données ; shapes API vérifiés (stats/admin,
+  stats/responsable, etablissement-access : tous les champs array sont
+  des arrays). Consignée comme race transitoire pré-existante à surveiller.
+- Cleanup fixtures : RÉSIDU 0 (users/etabs/access/ouvrages/documents/
+  refresh/audit). NB leçon : colonnes AuditLog = userId/userEmail (pas
+  actorId).
+
+Stage Summary:
+- La philosophie RBAC est maintenant visible dans la navigation : l'ADMIN
+  global ne voit plus l'outil d'audit du RESPONSABLE dans sa sidebar ;
+  la voie d'accès reste le mode assistance, où la sidebar devient
+  exactement celle du RESPONSABLE (prouvé par screenshots T3/T4).
+- Le fallback getPageContext 2bis améliore au passage le header pour
+  toutes les pages hors-sidebar-du-rôle.
+- Prod : Vercel READY 5e37965b (frontend-only, Render inchangé d470de64),
+  CI verte, résidu 0.
