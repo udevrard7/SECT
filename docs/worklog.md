@@ -4929,3 +4929,27 @@ Stage Summary:
 - Le fichier « Alertes actives » scrolle enfin en interne (600 px) avec sa scrollbar custom — avant le fix, le max-h était purement décoratif et le contenu débordait sur la section règles.
 - Pipeline tenu : diagnostic prouvé avant/après (statique + composant réel + prod), gates verts, E2E prod comportemental, VLM, mobile, résidu 0.
 - Prod : Vercel LIVE 8519f41a, Render inchangé (0.2.0 ok), Neon 133/133, résidu 0 ; captures monui3-01→10 dans sect-audit.
+
+---
+Task ID: SECT-MONITORING-EMAIL-1
+Agent: Z.ai Code (session SECT — rôle frontend-styling-expert UI/UX)
+Task: Retour utilisateur : le bandeau Alertes /monitoring affiche « Email → ulrichdouh@gmail.com (expédition inactive) » alors que « Resend est bien configuré et actif dans le système SECT » — diagnostic de l'écart réel/affiché.
+
+Work Log:
+- Diagnostic prod : GET /api/monitoring/rules → channels {emailReady:false, emailTo:ulrichdouh@gmail.com, slackConfigured:false}. Le code backend calcule EmailReady depuis cfg.ResendAPIKey/SMTP au boot — le binaire Render a démarré SANS RESEND_API_KEY.
+- Croisement historique décisif : SECT-EMAIL-TEMPLATES-1 (29-09) avait VÉRIFIÉ RESEND_API_KEY + RESEND_FROM_EMAIL=noreply@sect.ftci.fr posées sur Render et PROUVÉ l'envoi réel (2× delivered) ; SECT-MONITORING-P5-1 (05-10 02:17) a fait un « full-replace 9 vars (les 8 originales préservées) » — ce remplacement a ÉCRASÉ les 2 variables Resend. Preuve : l'E2E P5 observait déjà channels emailReady:false à son déploiement, interprété à tort comme « activation restante » au lieu d'une régression.
+- Conséquence mesurée : depuis le 05-10 02:17, TOUS les emails transactionnels (reset password, invitations, liens d'inscription, factures, alertes monitoring) partent en LogMailer — journalisés stdout, rien n'est délivré. VAPID (push) et TURNSTILE également absents de l'env prod (probablement jamais activés, aucune preuve historique contraire).
+- La clé Resend n'existe nulle part sur cette machine (recherche exhaustive) — c'est un secret utilisateur posé via dashboard, impossible à restaurer par l'agent.
+- Livraison code (rendre l'état impossible à rater + diagnostic précis) : mailer.Kind() ajouté à l'interface Mailer (resend|smtp|log, 3 implémentations) ; 7e check santé « Emails transactionnels » (OPERATIONNEL si envoi réel, DEGRADE « LogMailer actif — AUCUN email n'est réellement envoyé » sinon, et DEGRADE si non câblé — jamais d'OK fabriqué) câblé via HealthChecker.WithMailer(mailSvc.Kind()) ; channels.mailer exposé (GET /rules) depuis s.mailer.Kind() ; frontend : types.ts (channels.mailer + SERVICE_TYPE_BY_NAME « Emails transactionnels ») et bandeau Alertes affichant le mailer réel (« Resend actif »/« SMTP actif » en vert, ou diagnostic précis « RESEND_API_KEY absente du backend : la restaurer dans les variables Render puis redéployer » en jaune) — rétro-compatible backends sans mailer (fallback emailReady).
+- Piège Edit tabs→espaces reproduit (4e session) : 4 fichiers Go retouchés — gofmt -w immédiat, diff final chirurgical 83 insertions/2 suppressions.
+- Gates : go build 0, go vet 0, golangci-lint 0 issue, tsc 0, eslint 0/0, vitest 11/11.
+- Déploiement : commit 3504eb7e → Render + Vercel auto.
+- Vérification prod (fixture admin e2e-monui2) : channels.mailer="log" EXPOSÉ ; /api/monitoring/health → 7 services, overall DEGRADE 6/7, « Emails transactionnels — DEGRADE — LogMailer actif — AUCUN email n'est réellement envoyé » ; UI nav SERVICES 6/7 ; ligne Services « Emails transactionnels · Système · Dégradé » (VLM confirme barre orange) ; bandeau Alertes « Email → ulrichdouh@gmail.com (expédition inactive — RESEND_API_KEY absente du backend : la restaurer dans les variables Render puis redéployer) » (VLM confirme la lecture) ; 0 erreur console.
+- Signal prod annexe : 122 événements résolus/24 h — le compteur ALERTES 10→1 est l'exploitation réelle (erreurs 5xx résolues), pas un effet du changement.
+- Cleanup RÉSIDU 0 : fixture admin purgée, 11 seeds intactes, seuil errors-actifs = 5, 0 custom.
+- RESTANT CÔTÉ UTILISATEUR (aucun code) : restaurer dans le dashboard Render (service sect-api → Environment) : RESEND_API_KEY=<clé re_… du dashboard Resend> et RESEND_FROM_EMAIL=noreply@sect.ftci.fr, puis Manual Deploy (les vars ne sont prises en compte qu'au redéploiement). Vérification attendue : bandeau « Email → … (Resend actif) » vert, Services 7/7, channels {emailReady:true, mailer:"resend"}, et un reset password délivré.
+
+Stage Summary:
+- Le bandeau ne mentait pas : Resend a bien ÉTÉ configuré (preuves delivered du 29-09) mais le full-replace Render de SECT-MONITORING-P5-1 a silencieusement écrasé RESEND_API_KEY/RESEND_FROM_EMAIL le 05-10 — tous les emails transactionnels sont stoppés depuis. Leçon : un « full-replace » de vars d'env est destructif ; toujours vérifier l'état AVANT/APRÈS contre l'inventaire attendu (render.yaml sync:false), pas seulement les vars qu'on ajoute.
+- Livré (3504eb7e, prod vérifiée) : le type de mailer réel est exposé aux 3 niveaux — channels.mailer (API), 7e check santé « Emails transactionnels » (carte santé, DEGRADE honnête), bandeau Alertes avec action exacte. Une var d'env écrasée ne pourra plus passer inaperçue.
+- Prod : Render LIVE 3504eb7e (7 services, 6/7 DEGRADE en attendant la clé), Vercel LIVE 3504eb7e, Neon 133/133, résidu 0 ; captures monemail-01/02 dans sect-audit.
