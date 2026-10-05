@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 	"log/slog"
 	"time"
 
@@ -30,11 +31,20 @@ import (
 type AutoCloseWorker struct {
 	dbPool *pgxpool.Pool
 	logger *slog.Logger
+	reg    *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewAutoCloseWorker crée un nouveau worker de clôture automatique.
 func NewAutoCloseWorker(dbPool *pgxpool.Pool, logger *slog.Logger) *AutoCloseWorker {
 	return &AutoCloseWorker{dbPool: dbPool, logger: logger}
+}
+
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring : runs, erreurs, dernier run, durée).
+// Nil-safe : sans registre, le worker se comporte exactement comme avant.
+func (w *AutoCloseWorker) WithRegistry(reg *monitoring.WorkerRegistry) *AutoCloseWorker {
+	w.reg = reg
+	return w
 }
 
 // Start lance le worker en goroutine (non-bloquant).
@@ -48,7 +58,7 @@ func (w *AutoCloseWorker) Start(ctx context.Context) {
 
 		// Premier check immédiat au démarrage (récupération des épreuves
 		// expirées pendant que le serveur était down).
-		w.checkAndClose(ctx)
+		w.reg.TrackContext(ctx, "auto-close", w.checkAndClose)
 
 		for {
 			select {
@@ -56,7 +66,7 @@ func (w *AutoCloseWorker) Start(ctx context.Context) {
 				w.logger.Info("AutoClose Worker stopping...")
 				return
 			case <-ticker.C:
-				w.checkAndClose(ctx)
+				w.reg.TrackContext(ctx, "auto-close", w.checkAndClose)
 			}
 		}
 	}()

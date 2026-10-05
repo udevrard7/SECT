@@ -20,6 +20,7 @@ import (
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/emailtpl"
 	"github.com/udevrard7/sect/backend/internal/mailer"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
 // ExpireWorker vérifie périodiquement les abonnements à expirer.
@@ -28,6 +29,7 @@ type ExpireWorker struct {
 	logger     *slog.Logger
 	mailer     mailer.Mailer
 	appBaseURL string
+	reg        *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewExpireWorker crée un nouveau worker d'expiration.
@@ -40,6 +42,14 @@ func NewExpireWorker(dbPool *pgxpool.Pool, logger *slog.Logger, m mailer.Mailer,
 	}
 }
 
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring : runs, erreurs, dernier run, durée).
+// Nil-safe : sans registre, le worker se comporte exactement comme avant.
+func (w *ExpireWorker) WithRegistry(reg *monitoring.WorkerRegistry) *ExpireWorker {
+	w.reg = reg
+	return w
+}
+
 // Start lance le worker en goroutine (non-bloquant).
 // Vérifie toutes les 1h (plus fréquent que relance car l'expiration doit être rapide).
 func (w *ExpireWorker) Start(ctx context.Context) {
@@ -47,7 +57,7 @@ func (w *ExpireWorker) Start(ctx context.Context) {
 
 	go func() {
 		// Premier check immédiat au démarrage.
-		w.checkAndExpire(ctx)
+		w.reg.TrackContext(ctx, "expire", w.checkAndExpire)
 
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
@@ -58,7 +68,7 @@ func (w *ExpireWorker) Start(ctx context.Context) {
 				w.logger.Info("Expire Worker stopping...")
 				return
 			case <-ticker.C:
-				w.checkAndExpire(ctx)
+				w.reg.TrackContext(ctx, "expire", w.checkAndExpire)
 			}
 		}
 	}()

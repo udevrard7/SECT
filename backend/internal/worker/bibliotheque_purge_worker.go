@@ -32,6 +32,7 @@ import (
 
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
 // bibliothequePurgeSeuilJours — jours de grâce en corbeille avant purge
@@ -47,6 +48,7 @@ type BibliothequePurgeWorker struct {
 	dbPool  *pgxpool.Pool
 	logger  *slog.Logger
 	storage domain.StorageClient
+	reg     *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewBibliothequePurgeWorker crée un nouveau worker de purge. storage
@@ -57,6 +59,14 @@ func NewBibliothequePurgeWorker(dbPool *pgxpool.Pool, logger *slog.Logger, stora
 	return &BibliothequePurgeWorker{dbPool: dbPool, logger: logger, storage: storage}
 }
 
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring : runs, erreurs, dernier run, durée).
+// Nil-safe : sans registre, le worker se comporte exactement comme avant.
+func (w *BibliothequePurgeWorker) WithRegistry(reg *monitoring.WorkerRegistry) *BibliothequePurgeWorker {
+	w.reg = reg
+	return w
+}
+
 // Start lance le worker en goroutine (non-bloquant). Premier check
 // immédiat au démarrage (rattrapage), puis toutes les heures.
 func (w *BibliothequePurgeWorker) Start(ctx context.Context) {
@@ -64,7 +74,7 @@ func (w *BibliothequePurgeWorker) Start(ctx context.Context) {
 		"seuilJours", bibliothequePurgeSeuilJours)
 
 	go func() {
-		w.checkAndPurge(ctx)
+		w.reg.TrackContext(ctx, "bibliotheque-purge", w.checkAndPurge)
 
 		ticker := time.NewTicker(bibliothequePurgeInterval)
 		defer ticker.Stop()
@@ -75,7 +85,7 @@ func (w *BibliothequePurgeWorker) Start(ctx context.Context) {
 				w.logger.Info("BibliothequePurgeWorker stopping...")
 				return
 			case <-ticker.C:
-				w.checkAndPurge(ctx)
+				w.reg.TrackContext(ctx, "bibliotheque-purge", w.checkAndPurge)
 			}
 		}
 	}()

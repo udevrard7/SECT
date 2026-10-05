@@ -19,13 +19,14 @@ import (
 
 // ServiceStatus représente l'état d'un service monitoré.
 type ServiceStatus struct {
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`    // OPERATIONNEL | DEGRADE | INDISPONIBLE
-	Uptime    string    `json:"uptime"`    // pourcentage calculé (ex: "99.95%")
-	Latency   int64     `json:"latency"`   // ms
-	LastCheck string    `json:"lastCheck"` // ISO timestamp
-	LastError string    `json:"lastError"` // message d'erreur (vide si OK)
-	CheckedAt time.Time `json:"-"`
+	Name        string    `json:"name"`
+	Status      string    `json:"status"`      // OPERATIONNEL | DEGRADE | INDISPONIBLE
+	Uptime      string    `json:"uptime"`      // ADR-0011 : vide — pas de SLA mesuré (uptime fake supprimé)
+	Latency     int64     `json:"latency"`     // ms
+	LastCheck   string    `json:"lastCheck"`   // ISO timestamp
+	LastError   string    `json:"lastError"`   // message d'erreur (vide si OK)
+	ActiveConns int       `json:"activeConns"` // ADR-0011 : connexions DB actives (checkDatabase)
+	CheckedAt   time.Time `json:"-"`
 }
 
 // HealthReport est le rapport complet de santé des services.
@@ -106,7 +107,7 @@ func (h *HealthChecker) checkDatabase(ctx context.Context) ServiceStatus {
 		return ServiceStatus{
 			Name:      name,
 			Status:    "INDISPONIBLE",
-			Uptime:    "0%",
+			Uptime:    "",
 			Latency:   latency,
 			LastCheck: time.Now().Format(time.RFC3339),
 			LastError: err.Error(),
@@ -114,7 +115,8 @@ func (h *HealthChecker) checkDatabase(ctx context.Context) ServiceStatus {
 		}
 	}
 
-	// Vérifier le nombre de connexions actives
+	// ADR-0011 : le nombre de connexions actives est désormais EXPOSÉ
+	// (avant : scanné puis jeté). Métrique réelle du pool Neon.
 	var activeConns int
 	_ = h.pool.QueryRow(pingCtx, "SELECT count(*) FROM pg_stat_activity WHERE state = 'active'").Scan(&activeConns)
 
@@ -124,13 +126,14 @@ func (h *HealthChecker) checkDatabase(ctx context.Context) ServiceStatus {
 	}
 
 	return ServiceStatus{
-		Name:      name,
-		Status:    status,
-		Uptime:    "99.95%", // valeur de référence basée sur SLA Neon
-		Latency:   latency,
-		LastCheck: time.Now().Format(time.RFC3339),
-		LastError: "",
-		CheckedAt: time.Now(),
+		Name:        name,
+		Status:      status,
+		Uptime:      "", // ADR-0011 : plus de SLA hardcodé — latence + status mesurés
+		Latency:     latency,
+		LastCheck:   time.Now().Format(time.RFC3339),
+		LastError:   "",
+		ActiveConns: activeConns,
+		CheckedAt:   time.Now(),
 	}
 }
 
@@ -144,7 +147,7 @@ func (h *HealthChecker) checkAPI(ctx context.Context) ServiceStatus {
 	return ServiceStatus{
 		Name:      name,
 		Status:    "OPERATIONNEL",
-		Uptime:    "99.98%",
+		Uptime:    "",
 		Latency:   latency,
 		LastCheck: time.Now().Format(time.RFC3339),
 		LastError: "",
@@ -175,7 +178,7 @@ func (h *HealthChecker) checkAuth(ctx context.Context) ServiceStatus {
 		return ServiceStatus{
 			Name:      name,
 			Status:    "DEGRADE",
-			Uptime:    "99.50%",
+			Uptime:    "",
 			Latency:   latency,
 			LastCheck: time.Now().Format(time.RFC3339),
 			LastError: err.Error(),
@@ -186,7 +189,7 @@ func (h *HealthChecker) checkAuth(ctx context.Context) ServiceStatus {
 	return ServiceStatus{
 		Name:      name,
 		Status:    "OPERATIONNEL",
-		Uptime:    "99.99%",
+		Uptime:    "",
 		Latency:   latency,
 		LastCheck: time.Now().Format(time.RFC3339),
 		LastError: "",
@@ -219,7 +222,7 @@ func (h *HealthChecker) checkEvaluation(ctx context.Context) ServiceStatus {
 	return ServiceStatus{
 		Name:      name,
 		Status:    "OPERATIONNEL",
-		Uptime:    "99.90%",
+		Uptime:    "",
 		Latency:   latency,
 		LastCheck: time.Now().Format(time.RFC3339),
 		LastError: "",
@@ -252,7 +255,7 @@ func (h *HealthChecker) checkPayment(ctx context.Context) ServiceStatus {
 	return ServiceStatus{
 		Name:      name,
 		Status:    "OPERATIONNEL",
-		Uptime:    "99.97%",
+		Uptime:    "",
 		Latency:   latency,
 		LastCheck: time.Now().Format(time.RFC3339),
 		LastError: "",
@@ -286,7 +289,7 @@ func (h *HealthChecker) checkAI(ctx context.Context) ServiceStatus {
 		return ServiceStatus{
 			Name:      name,
 			Status:    "DEGRADE",
-			Uptime:    "99.85%",
+			Uptime:    "",
 			Latency:   latency,
 			LastCheck: time.Now().Format(time.RFC3339),
 			LastError: "aucun provider IA actif",
@@ -297,7 +300,7 @@ func (h *HealthChecker) checkAI(ctx context.Context) ServiceStatus {
 	return ServiceStatus{
 		Name:      name,
 		Status:    "OPERATIONNEL",
-		Uptime:    "99.85%",
+		Uptime:    "",
 		Latency:   latency,
 		LastCheck: time.Now().Format(time.RFC3339),
 		LastError: "",
@@ -310,7 +313,7 @@ func (h *HealthChecker) fail(name, errMsg string) ServiceStatus {
 	return ServiceStatus{
 		Name:      name,
 		Status:    "INDISPONIBLE",
-		Uptime:    "0%",
+		Uptime:    "",
 		Latency:   0,
 		LastCheck: time.Now().Format(time.RFC3339),
 		LastError: errMsg,

@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 	"log/slog"
 	"time"
 
@@ -38,6 +39,7 @@ const orphanUserThresholdDays = 90
 type CleanupWorker struct {
 	dbPool *pgxpool.Pool
 	logger *slog.Logger
+	reg    *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewCleanupWorker crée un nouveau worker de cleanup.
@@ -48,6 +50,14 @@ func NewCleanupWorker(dbPool *pgxpool.Pool, logger *slog.Logger) *CleanupWorker 
 	}
 }
 
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring : runs, erreurs, dernier run, durée).
+// Nil-safe : sans registre, le worker se comporte exactement comme avant.
+func (w *CleanupWorker) WithRegistry(reg *monitoring.WorkerRegistry) *CleanupWorker {
+	w.reg = reg
+	return w
+}
+
 // Start lance le worker en goroutine (non-bloquant).
 // Vérifie toutes les 24h les users soft-deleted > 90 jours et les purge.
 // Premier check immédiat au démarrage (comme ExpireWorker).
@@ -56,7 +66,7 @@ func (w *CleanupWorker) Start(ctx context.Context) {
 
 	go func() {
 		// Premier check immédiat au démarrage.
-		w.checkAndCleanup(ctx)
+		w.reg.TrackContext(ctx, "cleanup", w.checkAndCleanup)
 
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -67,7 +77,7 @@ func (w *CleanupWorker) Start(ctx context.Context) {
 				w.logger.Info("Cleanup Worker stopping...")
 				return
 			case <-ticker.C:
-				w.checkAndCleanup(ctx)
+				w.reg.TrackContext(ctx, "cleanup", w.checkAndCleanup)
 			}
 		}
 	}()

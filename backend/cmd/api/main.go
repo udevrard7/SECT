@@ -61,6 +61,26 @@ func main() {
 	monHealthChecker := monitoring.NewHealthChecker(pool)
 	logger.Info("monitoring recorder + health checker initialized")
 
+	// ADR-0011 §4 — registre de workers : visibilité des 13 workers dans
+	// l'onglet « Système » de /monitoring (runs/erreurs/dernier run/durée).
+	// Les 7 workers périodiques sont instrumentés (TrackContext — panic-safe),
+	// les 6 workers de file sont déclarés (leur état métier vit dans leurs
+	// tables de jobs : statut ERREUR, AIFailoverEvent).
+	workerRegistry := monitoring.NewWorkerRegistry(monRecorder)
+	workerRegistry.Register("ia-generation", "Génération de questions IA (file)", "file", "événementiel")
+	workerRegistry.Register("ia-correction", "Correction IA des copies (file)", "file", "événementiel")
+	workerRegistry.Register("ia-doc-analyzer", "Analyse des documents de cours (file)", "file", "événementiel")
+	workerRegistry.Register("ia-practice", "Exercices pratiques IA (file)", "file", "événementiel")
+	workerRegistry.Register("ia-homework", "Correction des devoirs (file)", "file", "événementiel")
+	workerRegistry.Register("ia-audio", "Génération audio (file)", "file", "événementiel")
+	workerRegistry.Register("auto-close", "Clôture automatique des épreuves", "periodique", "60 s")
+	workerRegistry.Register("relance", "Relances J-7 (abonnements B2C)", "periodique", "6 h")
+	workerRegistry.Register("expire", "Expiration des abonnements B2C", "periodique", "1 h")
+	workerRegistry.Register("cleanup", "Purge des utilisateurs soft-deleted (>90 j)", "periodique", "24 h")
+	workerRegistry.Register("promotion", "Clôture d'année académique", "periodique", "10 s")
+	workerRegistry.Register("bibliotheque-purge", "Purge de la corbeille bibliothèque (>30 j)", "periodique", "1 h")
+	workerRegistry.Register("similarity", "Détection de similarité entre copies", "periodique", "5 min")
+
 	// 3. Initialiser repositories + usecases
 	userRepo := repository.NewUserRepository(pool)
 	authRepo := repository.NewAuthRepository(pool)
@@ -269,18 +289,18 @@ func main() {
 	// les épreuves EN_COURS dont dateFin + grâce est dépassée, ET les épreuves
 	// où tous les étudiants ont soumis (TOUS_SOUMIS). Garantit la clôture même
 	// sans étudiant actif pollant /api/epreuves/auto-close.
-	autoCloseWorker := worker.NewAutoCloseWorker(pool, logger)
+	autoCloseWorker := worker.NewAutoCloseWorker(pool, logger).WithRegistry(workerRegistry)
 	autoCloseWorker.Start(context.Background())
 
 	// SECT-FACTURE-EMAIL : worker de relance J-7 avant expiration abonnement B2C.
 	// Vérifie toutes les 6h les abonnements ACTIF dont dateFin ≤ 7j, envoie email.
-	relanceWorker := worker.NewRelanceWorker(pool, logger, mailSvc, cfg.AppBaseURL)
+	relanceWorker := worker.NewRelanceWorker(pool, logger, mailSvc, cfg.AppBaseURL).WithRegistry(workerRegistry)
 	relanceWorker.Start(context.Background())
 
 	// SECT-B2C-EXPIRE : worker d'expiration des abonnements B2C.
 	// Vérifie toutes les 1h les abonnements ACTIF dont dateFin < NOW(), les passe
 	// à EXPIRE (bloque l'accès), envoie email avec option renouvellement/downgrade.
-	expireWorker := worker.NewExpireWorker(pool, logger, mailSvc, cfg.AppBaseURL)
+	expireWorker := worker.NewExpireWorker(pool, logger, mailSvc, cfg.AppBaseURL).WithRegistry(workerRegistry)
 	expireWorker.Start(context.Background())
 
 	// SECT-USER-CLEANUP-INFRA-1 : worker de cleanup des users soft-deleted > 90 jours.
@@ -289,7 +309,7 @@ func main() {
 	// (pour traçabilité même si le DELETE échoue), puis hard-delete via cascade manuel
 	// sur les tables enfants (FK RESTRICT) + final DELETE FROM "User".
 	// Pattern identique à expire_worker.go (struct + ticker 24h + first run on startup).
-	cleanupWorker := worker.NewCleanupWorker(pool, logger)
+	cleanupWorker := worker.NewCleanupWorker(pool, logger).WithRegistry(workerRegistry)
 	cleanupWorker.Start(context.Background())
 
 	// SECT-PROMOTION-BACKEND-1 : worker de clôture d'année académique.
@@ -302,7 +322,7 @@ func main() {
 	// policies PromotionBatch_modify + User_select permet le bypass worker).
 	// Concurrency safety : SELECT ... FOR UPDATE SKIP LOCKED + UPDATE statut=
 	// RUNNING dans la même tx → claim atomique multi-instance safe.
-	promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo)
+	promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo).WithRegistry(workerRegistry)
 	promotionWorker.Start(context.Background())
 
 	// SECT-BIBLIO-P4 (ADR-0008 §5) : purge de la corbeille bibliothèque.
@@ -311,14 +331,14 @@ func main() {
 	// l'app ne peut JAMAIS hard-deleter), CASCADE emporte lectures/
 	// sections/alignements/annotations, objet R2 supprimé POST-COMMIT.
 	// Pattern cleanup_worker : ticker 1h + premier check au boot.
-	bibliothequePurgeWorker := worker.NewBibliothequePurgeWorker(pool, logger, storageClient)
+	bibliothequePurgeWorker := worker.NewBibliothequePurgeWorker(pool, logger, storageClient).WithRegistry(workerRegistry)
 	bibliothequePurgeWorker.Start(context.Background())
 
 	// FIX-5 : worker de détection de similarité entre copies (post-exam).
 	// Vérifie toutes les 5 min les épreuves CLOTUREE dont l'établissement
 	// a rapportFraude=true, compare les paires d'étudiants et insère
 	// dans SimilarityReport. Utilise SystemClaims() pour bypass RLS.
-	similarityWorker := worker.NewSimilarityWorker(pool, logger)
+	similarityWorker := worker.NewSimilarityWorker(pool, logger).WithRegistry(workerRegistry)
 	similarityWorker.Start(context.Background())
 
 	// MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
@@ -349,6 +369,52 @@ func main() {
 		})
 	}, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, fcmSender)
 	server.WithNotificationDispatcher(notifDispatcher)
+	// ADR-0011 §6 — plus de « CRITICAL muet » : chaque événement CRITICAL
+	// inséré (panic, escalade) notifie les ADMIN actifs via le dispatcher
+	// (in-app + SSE + push + email selon préférences). Throttle 15 min pour
+	// éviter le spam en cas de cascade (les CRITICAL partagent souvent la
+	// même cause racine).
+	var lastCriticalNotify time.Time
+	monRecorder.SetOnCritical(func(evt monitoring.Event) {
+		if time.Since(lastCriticalNotify) < 15*time.Minute {
+			return
+		}
+		lastCriticalNotify = time.Now()
+		// Destinataires : ADMIN actifs (claims system — lecture directe,
+		// le runtime tourne en neondb_owner BYPASSRLS).
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		rows, err := pool.Query(ctx, `SELECT "id" FROM "User" WHERE "role" = 'ADMIN' AND "actif" = true`)
+		if err != nil {
+			logger.Error("OnCritical: query admins failed", "error", err)
+			return
+		}
+		defer rows.Close()
+		var adminIDs []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err == nil {
+				adminIDs = append(adminIDs, id)
+			}
+		}
+		for _, adminID := range adminIDs {
+			notifDispatcher.Dispatch(ctx, notification.Event{
+				UserID:      adminID,
+				Type:        "ALERTE_SYSTEME_CRITIQUE",
+				Titre:       "Alerte système critique",
+				Message:     evt.Message,
+				Categorie:   "admin",
+				Priorite:    "error",
+				ActionURL:   "/monitoring",
+				ActionLabel: "Ouvrir le monitoring",
+				Icone:       "Activity",
+			})
+		}
+		logger.Info("OnCritical: admins notifiés", "count", len(adminIDs), "message", evt.Message)
+	})
+
+	// ADR-0011 — registre de workers exposé à /api/monitoring/overview.
+	server.WithWorkerRegistry(workerRegistry)
 	server.WithVapidPublicKey(cfg.VAPIDPublicKey)
 	logger.Info("Notification dispatcher configured", "pushEnabled", cfg.VAPIDPublicKey != "", "fcmEnabled", fcmSender != nil)
 

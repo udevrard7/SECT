@@ -37,12 +37,13 @@ type Event struct {
 
 // Recorder enregistre les événements de monitoring de manière asynchrone.
 type Recorder struct {
-	pool   *pgxpool.Pool
-	logger *slog.Logger
-	queue  chan Event
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	pool       *pgxpool.Pool
+	logger     *slog.Logger
+	queue      chan Event
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	onCritical func(Event) // ADR-0011 §6 : hook appelé après INSERT CRITICAL (nil-safe)
 }
 
 // NewRecorder crée un nouveau Recorder et démarre le worker goroutine.
@@ -118,6 +119,20 @@ func (r *Recorder) RecordInfo(eventType, message, source string) {
 	})
 }
 
+// Severity — sévérité de l'événement (normalisée, "" si vide).
+func (e Event) Severity() string { return e.Severite }
+
+// SetOnCritical installe le hook CRITICAL (appelé de façon asynchrone
+// après chaque INSERT réussi d'un événement CRITICAL — ADR-0011 : fini le
+// « CRITICAL muet », main.go câble la notification des ADMIN actifs via
+// le dispatcher). Nil-safe : sans hook, comportement inchangé.
+func (r *Recorder) SetOnCritical(fn func(Event)) {
+	if r == nil {
+		return
+	}
+	r.onCritical = fn
+}
+
 // worker consomme la queue et écrit les événements en DB.
 func (r *Recorder) worker() {
 	defer r.wg.Done()
@@ -133,6 +148,15 @@ func (r *Recorder) worker() {
 					r.logger.Error("failed to write monitoring event",
 						"error", err, "type", evt.Type, "severite", evt.Severite)
 				}
+			} else if evt.Severity() == "CRITICAL" && r.onCritical != nil {
+				// ADR-0011 §6 : hook CRITICAL — appelé en
+				// goroutine best-effort (jamais bloquant,
+				// recover silencieux) après INSERT réussi.
+				hook := r.onCritical
+				go func(e Event) {
+					defer func() { _ = recover() }()
+					hook(e)
+				}(evt)
 			}
 		}
 	}
@@ -176,9 +200,9 @@ func (r *Recorder) writeEvent(evt Event) error {
 
 	id := "mon-" + uuid.NewString()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO "MonitoringEvent" ("id", "type", "severite", "message", "details", "source", "duree", "statut", "createdAt", "updatedAt")
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::text, NULLIF($6, '')::text, $7, 'ACTIF', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`,
+                INSERT INTO "MonitoringEvent" ("id", "type", "severite", "message", "details", "source", "duree", "statut", "createdAt", "updatedAt")
+                VALUES ($1, $2, $3, $4, NULLIF($5, '')::text, NULLIF($6, '')::text, $7, 'ACTIF', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `,
 		id, evt.Type, evt.Severite, evt.Message,
 		evt.Details, evt.Source, evt.Duree,
 	)

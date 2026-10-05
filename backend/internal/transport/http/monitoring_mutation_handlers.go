@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -81,12 +82,12 @@ func (s *Server) createMonitoringEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Type     string  `json:"type"`
-		Severite string  `json:"severite"`
-		Message  string  `json:"message"`
-		Details  *string `json:"details"`
-		Source   *string `json:"source"`
-		Duree    *int    `json:"duree"`
+		Type     string          `json:"type"`
+		Severite string          `json:"severite"`
+		Message  string          `json:"message"`
+		Details  json.RawMessage `json:"details"` // ADR-0011 : objet OU string (avant : *string → 400 systématique sur l'escalade frontend qui envoie un objet)
+		Source   *string         `json:"source"`
+		Duree    *int            `json:"duree"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
@@ -105,6 +106,21 @@ func (s *Server) createMonitoringEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ADR-0011 §5 — normalisation details : le frontend d'escalade envoie
+	// { escalatedFrom, originalSeverite } (objet JSON) alors que la colonne
+	// est TEXT. On accepte les DEUX formes : objet/tableau → stringifié,
+	// string → tel quel, null/absent → NULL.
+	var details *string
+	if len(input.Details) > 0 && string(input.Details) != "null" {
+		var asStr string
+		if err := json.Unmarshal(input.Details, &asStr); err == nil {
+			details = &asStr // déjà une string JSON
+		} else {
+			s := string(input.Details) // objet/tableau brut stringifié
+			details = &s
+		}
+	}
+
 	created := &monitoringEventResponse{}
 	success := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
@@ -115,7 +131,7 @@ func (s *Server) createMonitoringEvent(w http.ResponseWriter, r *http.Request) {
                         VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIF', NULL, NULL, now(), now())
                         RETURNING %s
                 `, monitoringEventColumns),
-			newID, input.Type, input.Severite, input.Message, input.Details, input.Source, input.Duree,
+			newID, input.Type, input.Severite, input.Message, details, input.Source, input.Duree,
 		)
 		e, err := scanMonitoringEvent(row)
 		if err == nil {
@@ -152,6 +168,7 @@ func (s *Server) resolveMonitoringEvent(w http.ResponseWriter, r *http.Request) 
 	var input struct {
 		Action    string  `json:"action"`
 		ResoluPar *string `json:"resoluPar"`
+		Notes     *string `json:"notes"` // ADR-0011 §5 : notes de résolution persistées dans details
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
@@ -171,15 +188,54 @@ func (s *Server) resolveMonitoringEvent(w http.ResponseWriter, r *http.Request) 
 		resoluPar = claims.UserID // fallback si Email vide
 	}
 
+	// ADR-0011 §5 — notes de résolution persistées : fusionnées dans la
+	// colonne details (JSON) sous la clé resolutionNotes. Le details
+	// existant (s'il est un objet JSON valide) est préservé.
+	var detailsOut *string
+	if input.Notes != nil && strings.TrimSpace(*input.Notes) != "" {
+		merged := map[string]any{"resolutionNotes": strings.TrimSpace(*input.Notes)}
+		// best-effort : préserver l'objet details existant.
+		var existing map[string]any
+		_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+			var d *string
+			if err := tx.QueryRow(r.Context(), `SELECT "details" FROM "MonitoringEvent" WHERE "id" = $1`, id).Scan(&d); err == nil && d != nil {
+				if json.Unmarshal([]byte(*d), &existing) == nil {
+					for k, v := range existing {
+						if _, taken := merged[k]; !taken {
+							merged[k] = v
+						}
+					}
+				}
+			}
+			return nil
+		})
+		if b, err := json.Marshal(merged); err == nil {
+			s := string(b)
+			detailsOut = &s
+		}
+	}
+
 	updated := &monitoringEventResponse{}
 	success := false
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), fmt.Sprintf(`
                         UPDATE "MonitoringEvent" SET "statut" = 'RESOLU', "resoluLe" = now(),
                                 "resoluPar" = $2, "updatedAt" = now()
+                                %s
                         WHERE "id" = $1
                         RETURNING %s
-                `, monitoringEventColumns), id, resoluPar)
+                `, func() string {
+			if detailsOut != nil {
+				return `, "details" = $3`
+			}
+			return ""
+		}(), monitoringEventColumns), func() []any {
+			args := []any{id, resoluPar}
+			if detailsOut != nil {
+				args = append(args, *detailsOut)
+			}
+			return args
+		}()...)
 		e, err := scanMonitoringEvent(row)
 		if err == nil {
 			updated = e

@@ -21,6 +21,7 @@ import (
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/emailtpl"
 	"github.com/udevrard7/sect/backend/internal/mailer"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
 // RelanceWorker envoie des emails de relance pour les abonnements expirant bientôt.
@@ -29,6 +30,7 @@ type RelanceWorker struct {
 	logger     *slog.Logger
 	mailer     mailer.Mailer
 	appBaseURL string
+	reg        *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewRelanceWorker crée un nouveau worker de relance.
@@ -41,6 +43,14 @@ func NewRelanceWorker(dbPool *pgxpool.Pool, logger *slog.Logger, m mailer.Mailer
 	}
 }
 
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring : runs, erreurs, dernier run, durée).
+// Nil-safe : sans registre, le worker se comporte exactement comme avant.
+func (w *RelanceWorker) WithRegistry(reg *monitoring.WorkerRegistry) *RelanceWorker {
+	w.reg = reg
+	return w
+}
+
 // Start lance le worker en goroutine (non-bloquant).
 // Vérifie toutes les 6h (évite le spam + charge DB minimale).
 func (w *RelanceWorker) Start(ctx context.Context) {
@@ -49,7 +59,7 @@ func (w *RelanceWorker) Start(ctx context.Context) {
 	go func() {
 		// Premier check immédiat au démarrage (récupère les abonnements qui ont
 		// expiré pendant que le serveur était down).
-		w.checkAndSend(ctx)
+		w.reg.TrackContext(ctx, "relance", w.checkAndSend)
 
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
@@ -60,7 +70,7 @@ func (w *RelanceWorker) Start(ctx context.Context) {
 				w.logger.Info("Relance Worker stopping...")
 				return
 			case <-ticker.C:
-				w.checkAndSend(ctx)
+				w.reg.TrackContext(ctx, "relance", w.checkAndSend)
 			}
 		}
 	}()

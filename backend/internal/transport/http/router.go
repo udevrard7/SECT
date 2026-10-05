@@ -60,6 +60,10 @@ type Server struct {
 	// Monitoring : Event Recorder + Health Checker (audit monitoring 2025)
 	monRecorder      *monitoring.Recorder
 	monHealthChecker *monitoring.HealthChecker
+	// ADR-0011 : registre de workers (onglet Système de /monitoring).
+	// Injecté via WithWorkerRegistry (setter pattern — évite d'étendre
+	// la signature NewServer déjà très longue).
+	workerRegistry *monitoring.WorkerRegistry
 	// SECT-DEMO-REQUEST : mailer pour l'envoi d'emails depuis les handlers
 	// (demande de démo B2B, etc.) + URL publique du frontend.
 	mailer     mailer.Mailer
@@ -128,6 +132,13 @@ func (s *Server) WithNotificationDispatcher(d *notification.Dispatcher) *Server 
 // WithVapidPublicKey injecte la clé publique VAPID (SECT-NOTIF-VAPID-1).
 func (s *Server) WithVapidPublicKey(key string) *Server {
 	s.vapidPublicKey = key
+	return s
+}
+
+// WithWorkerRegistry injecte le registre de workers (ADR-0011 — visibilité
+// des 13 workers dans l'onglet Système de /monitoring). Pattern setter.
+func (s *Server) WithWorkerRegistry(reg *monitoring.WorkerRegistry) *Server {
+	s.workerRegistry = reg
 	return s
 }
 
@@ -1206,6 +1217,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/monitoring", func(r chi.Router) {
 			r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
 			r.Get("/", s.monitoringEventsReal)
+			// ADR-0011 : vue système complète (score santé partagé avec le
+			// dashboard, runtime Go, workers, DB, R2, tendance 7 j).
+			r.Get("/overview", s.monitoringOverview)
 			// Bug B2 (audit monitoring) : healthcheck réel des services
 			r.Get("/health", s.monitoringHealthCheck)
 			// MONITORING-FIX-M2 : mutations (POST/PATCH/DELETE).

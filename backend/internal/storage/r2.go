@@ -191,3 +191,21 @@ func GenerateOuvrageObjectKey(ouvrageID, filename string) string {
 func bytesReader(b []byte) *bytes.Reader {
 	return bytes.NewReader(b)
 }
+
+// Health — ADR-0011 : vérification de disponibilité R2 (HeadBucket).
+// Utilisé par GET /api/monitoring/overview (onglet Système). Un simple
+// HEAD sur le bucket valide endpoint + credentials + reachabilité.
+func (c *R2Client) Health(ctx context.Context) error {
+	_, err := c.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(c.bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("head bucket %s: %w", c.bucket, err)
+	}
+	return nil
+}
+
+// BucketName — nom du bucket configuré (affichage /monitoring).
+func (c *R2Client) BucketName() string {
+	return c.bucket
+}

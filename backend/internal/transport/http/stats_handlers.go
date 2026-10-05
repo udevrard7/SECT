@@ -13,6 +13,7 @@ import (
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
 // stats_handlers.go — Endpoints statistiques pour les dashboards.
@@ -129,9 +130,9 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 			if claims.EtablissementID != "" {
 				var id, lib *string
 				if errS := tx.QueryRow(ctx, `
-					SELECT "id", "libelle" FROM "AnneeAcademique"
-					WHERE "etablissementId" = $1 AND "actif" = true
-					ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
+                                        SELECT "id", "libelle" FROM "AnneeAcademique"
+                                        WHERE "etablissementId" = $1 AND "actif" = true
+                                        ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
 					anneeScoping, anneeLibelle = *id, *lib
 				}
 			}
@@ -150,10 +151,10 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 			// N-1 : plus grande dateDebut STRICTEMENT inférieure, même étab.
 			var pid, plib *string
 			if errS := tx.QueryRow(ctx, `
-				SELECT a."id", a."libelle" FROM "AnneeAcademique" a
-				WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
-				  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
-				ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
+                                SELECT a."id", a."libelle" FROM "AnneeAcademique" a
+                                WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
+                                  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
+                                ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
 				stats["anneePrecedente"] = map[string]any{"id": *pid, "libelle": *plib}
 				// Comparaison N vs N-1 : moyenne générale + nb évaluations de
 				// CET enseignant pour chaque année.
@@ -161,18 +162,18 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 					var nbEval int
 					var moy, taux float64
 					_ = tx.QueryRow(ctx, `
-						SELECT count(*) FROM "Epreuve" e
-						WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL AND e."anneeAcademiqueId" = $2`,
+                                                SELECT count(*) FROM "Epreuve" e
+                                                WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL AND e."anneeAcademiqueId" = $2`,
 						enseignantID, anneeID).Scan(&nbEval)
 					_ = tx.QueryRow(ctx, `
-						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
-						       CASE WHEN count(s.id) > 0
-						            THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
-						            ELSE 0 END
-						FROM "SessionPassation" s
-						JOIN "Epreuve" e ON e.id = s."epreuveId"
-						WHERE e."enseignantId" = $1 AND e."anneeAcademiqueId" = $2
-						  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL`,
+                                                SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
+                                                       CASE WHEN count(s.id) > 0
+                                                            THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+                                                            ELSE 0 END
+                                                FROM "SessionPassation" s
+                                                JOIN "Epreuve" e ON e.id = s."epreuveId"
+                                                WHERE e."enseignantId" = $1 AND e."anneeAcademiqueId" = $2
+                                                  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL`,
 						enseignantID, anneeID).Scan(&moy, &taux)
 					return map[string]any{"nbEvaluations": nbEval, "moyenneGenerale": moy, "tauxReussiteGlobal": taux}
 				}
@@ -517,9 +518,9 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 			if claims.EtablissementID != "" {
 				var id, lib *string
 				if errS := tx.QueryRow(ctx, `
-					SELECT "id", "libelle" FROM "AnneeAcademique"
-					WHERE "etablissementId" = $1 AND "actif" = true
-					ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
+                                        SELECT "id", "libelle" FROM "AnneeAcademique"
+                                        WHERE "etablissementId" = $1 AND "actif" = true
+                                        ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
 					anneeScoping, anneeLibelle = *id, *lib
 				}
 			}
@@ -538,18 +539,18 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 			// N-1 + comparaison des moyennes de CET étudiant N vs N-1.
 			var pid, plib *string
 			if errS := tx.QueryRow(ctx, `
-				SELECT a."id", a."libelle" FROM "AnneeAcademique" a
-				WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
-				  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
-				ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
+                                SELECT a."id", a."libelle" FROM "AnneeAcademique" a
+                                WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
+                                  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
+                                ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
 				stats["anneePrecedente"] = map[string]any{"id": *pid, "libelle": *plib}
 				moyennePourAnnee := func(anneeID string) (moy float64, nb int) {
 					_ = tx.QueryRow(ctx, `
-						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0), count(*)
-						FROM "SessionPassation" s
-						JOIN "Epreuve" e ON e."id" = s."epreuveId"
-						WHERE s."etudiantId" = $1 AND e."anneeAcademiqueId" = $2
-						  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL`,
+                                                SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0), count(*)
+                                                FROM "SessionPassation" s
+                                                JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                                                WHERE s."etudiantId" = $1 AND e."anneeAcademiqueId" = $2
+                                                  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL`,
 						etudiantID, anneeID).Scan(&moy, &nb)
 					return moy, nb
 				}
@@ -931,29 +932,36 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		stats["nbAutorisationsActives"] = nbAutActif
 		stats["nbAutorisationsEnAttente"] = nbAutAttente
 
-		// 7. nbEtablissementsProteges & nbVerificationIdentite
-		// Les colonnes proctoringActif/verificationIdentite n'existent PAS
-		// directement sur Etablissement (elles vivent sur SecuritySettings,
-		// non jointes ici pour rester performant). On retourne 0 par défaut.
-		stats["nbEtablissementsProteges"] = 0
-		stats["nbVerificationIdentite"] = 0
+		// 7. nbEtablissementsProteges & nbVerificationIdentite — RÉELS (ADR-0011).
+		// Avant : hardcodés 0 (« colonnes sur SecuritySettings, non jointes »)
+		// → le score santé du dashboard était pénalisé de −20 à vie. Le helper
+		// SECURITY DEFINER admin_securite_etablissements_counts (000132,
+		// re-check claims is_admin) fait le JOIN SecuritySettings×Etablissement.
+		var nbProteges, nbVerification int
+		if err := tx.QueryRow(ctx, `SELECT proteges, verification FROM admin_securite_etablissements_counts()`).Scan(&nbProteges, &nbVerification); err != nil {
+			slog.Error("stats: échec admin_securite_etablissements_counts", "error", err)
+		}
+		stats["nbEtablissementsProteges"] = nbProteges
+		stats["nbVerificationIdentite"] = nbVerification
 
 		// 8. SECT-DASHBOARD-ENRICH — Données monitoring.
 		// Compte les événements actifs et leur répartition par sévérité,
 		// ainsi que les événements résolus aujourd'hui. Tolérant aux
 		// erreurs (si la table n'existe pas en base, on reste à 0).
-		var monActive, monCritical, monError, monResolvedToday int
+		var monActive, monCritical, monError, monWarning, monResolvedToday int
 		_ = tx.QueryRow(ctx, `
                         SELECT
                                 count(*) FILTER (WHERE statut = 'ACTIF'),
                                 count(*) FILTER (WHERE statut = 'ACTIF' AND severite = 'CRITICAL'),
                                 count(*) FILTER (WHERE statut = 'ACTIF' AND severite = 'ERROR'),
+                                count(*) FILTER (WHERE statut = 'ACTIF' AND severite = 'WARNING'),
                                 count(*) FILTER (WHERE statut = 'RESOLU' AND "resoluLe" >= CURRENT_DATE)
                         FROM "MonitoringEvent"
-                `).Scan(&monActive, &monCritical, &monError, &monResolvedToday)
+                `).Scan(&monActive, &monCritical, &monError, &monWarning, &monResolvedToday)
 		stats["monitoringActiveEvents"] = monActive
 		stats["monitoringCriticalEvents"] = monCritical
 		stats["monitoringErrorEvents"] = monError
+		stats["monitoringWarningEvents"] = monWarning
 		stats["monitoringResolvedToday"] = monResolvedToday
 
 		// 9. SECT-DASHBOARD-ENRICH — Données paiement (Facture).
@@ -1026,8 +1034,8 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		// sur le dashboard pour une dimension additive) — mais on logge pour ne
 		// pas masquer une régression.
 		rowsAct, q3err := s.dbPool.Query(ctx, `
-			SELECT * FROM admin_get_etablissements_activite_annee()
-		`)
+                        SELECT * FROM admin_get_etablissements_activite_annee()
+                `)
 		if q3err != nil {
 			slog.Error("stats: query etablissements activite annee failed", "error", q3err)
 		} else {
@@ -1065,6 +1073,37 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"failed to load admin stats"}`, http.StatusInternalServerError)
 		return
 	}
+
+	// SECT-MONITORING-ALIGN-1 (ADR-0011 §1) : score santé calculé CÔTÉ BACKEND
+	// avec la MÊME formule que /api/monitoring/overview (internal/monitoring/
+	// score.go) — la carte « Santé plateforme » du dashboard affiche cette
+	// valeur, plus de formule client désynchronisée (l'ancienne pénalisait
+	// à vie de −20 via 2 KPIs hardcodés 0).
+	var providersActifsStats int
+	_ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
+		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "AIProviderConfig" WHERE "isActive" = true`).Scan(&providersActifsStats)
+		return nil
+	})
+	// Latence DB mesurée (ping simple).
+	pingStart := time.Now()
+	dbDownStats := s.dbPool.Ping(ctx) != nil
+	dbLatencyStats := time.Since(pingStart).Milliseconds()
+	toInt := func(v any) int {
+		if n, ok := v.(int); ok {
+			return n
+		}
+		return 0
+	}
+	stats["health"] = monitoring.ComputeScore(monitoring.ScoreInputs{
+		CriticalActifs:         toInt(stats["monitoringCriticalEvents"]),
+		ErrorActifs:            toInt(stats["monitoringErrorEvents"]),
+		WarningActifs:          toInt(stats["monitoringWarningEvents"]),
+		AutorisationsEnAttente: toInt(stats["nbAutorisationsEnAttente"]),
+		DBIndisponible:         dbDownStats,
+		DBLatencyMs:            dbLatencyStats,
+		ProvidersIAActifs:      providersActifsStats,
+		EtablissementsProteges: toInt(stats["nbEtablissementsProteges"]),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(stats)
@@ -1251,9 +1290,9 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 			if claims.EtablissementID != "" {
 				var id, lib *string
 				if errS := tx.QueryRow(ctx, `
-					SELECT "id", "libelle" FROM "AnneeAcademique"
-					WHERE "etablissementId" = $1 AND "actif" = true
-					ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
+                                        SELECT "id", "libelle" FROM "AnneeAcademique"
+                                        WHERE "etablissementId" = $1 AND "actif" = true
+                                        ORDER BY "dateDebut" DESC LIMIT 1`, claims.EtablissementID).Scan(&id, &lib); errS == nil && id != nil {
 					anneeScoping, anneeLibelle = *id, *lib
 				}
 			}
@@ -1271,10 +1310,10 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 			// N-1 : plus grande dateDebut STRICTEMENT inférieure, même étab.
 			var pid, plib *string
 			if errS := tx.QueryRow(ctx, `
-				SELECT a."id", a."libelle" FROM "AnneeAcademique" a
-				WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
-				  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
-				ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
+                                SELECT a."id", a."libelle" FROM "AnneeAcademique" a
+                                WHERE a."dateDebut" < (SELECT b."dateDebut" FROM "AnneeAcademique" b WHERE b."id" = $1)
+                                  AND a."etablissementId" = (SELECT b."etablissementId" FROM "AnneeAcademique" b WHERE b."id" = $1)
+                                ORDER BY a."dateDebut" DESC LIMIT 1`, anneeScoping).Scan(&pid, &plib); errS == nil && pid != nil {
 				stats["anneePrecedente"] = map[string]any{"id": *pid, "libelle": *plib}
 				// Comparaison N vs N-1 : mêmes agrégats de tête (évaluations,
 				// moyenne, taux) pour l'année sélectionnée ET l'année N-1.
@@ -1293,13 +1332,13 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 					idxS = appendFiltre(&sC, &sA, idxS, `e."filiereId"`, "=", filiereID)
 					appendFiltre(&sC, &sA, idxS, `e."anneeAcademiqueId"`, "=", anneeID) // dernière : idxS non relu
 					_ = tx.QueryRow(ctx, fmt.Sprintf(`
-						SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
-						       CASE WHEN count(s.id) > 0
-						            THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
-						            ELSE 0 END
-						FROM "SessionPassation" s
-						JOIN "Epreuve" e ON e.id = s."epreuveId"
-						WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL %s`, buildAnd(sC)), sA...).Scan(&moy, &taux)
+                                                SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
+                                                       CASE WHEN count(s.id) > 0
+                                                            THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+                                                            ELSE 0 END
+                                                FROM "SessionPassation" s
+                                                JOIN "Epreuve" e ON e.id = s."epreuveId"
+                                                WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL %s`, buildAnd(sC)), sA...).Scan(&moy, &taux)
 					return map[string]any{"nbEvaluations": nbEval, "moyenneGenerale": moy, "tauxReussiteGlobal": taux}
 				}
 				stats["comparaisonAnnees"] = map[string]any{

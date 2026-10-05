@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -441,9 +442,25 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	// ADR-0011 §7 — pagination réelle + fenêtre temporelle :
+	//   page (1-based, défaut 1) + pageSize (= limit) + total (COUNT même WHERE)
+	//   since (heures) : filtre createdAt >= NOW() - since hours (ex: 24, 168).
+	page := 1
+	if p := r.URL.Query().Get("page"); p != "" {
+		if n, err := parseIntSafe(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	sinceHours := 0
+	if sh := r.URL.Query().Get("since"); sh != "" {
+		if n, err := parseIntSafe(sh); err == nil && n > 0 && n <= 24*365 {
+			sinceHours = n
+		}
+	}
 
 	result := []event{}
-	var activeCount, criticalCount, errorCount int
+	var activeCount, criticalCount, errorCount, warningCount, resolvedToday, resolved24h int
+	var total int // ADR-0011 §7 : COUNT réel (même WHERE) pour la pagination
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		// MONITORING-LAZY-CLEANUP : suppression des événements RESOLU de plus de 24h.
@@ -482,21 +499,30 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
 			args = append(args, statutFilter)
 			argIdx++
 		}
+		if sinceHours > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf(`"createdAt" >= NOW() - ($%d || ' hours')::interval`, argIdx))
+			args = append(args, strconv.Itoa(sinceHours))
+			argIdx++
+		}
 		whereClause := ""
 		if len(whereClauses) > 0 {
 			whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
 		}
 
-		// SELECT avec les vraies colonnes.
-		args = append(args, limit)
+		// ADR-0011 §7 — total (COUNT avec le MÊME WHERE) pour la pagination.
+		countQuery := fmt.Sprintf(`SELECT count(*) FROM "MonitoringEvent" %s`, whereClause)
+		_ = tx.QueryRow(r.Context(), countQuery, args...).Scan(&total)
+
+		// SELECT avec les vraies colonnes (ADR-0011 : + OFFSET pagination).
+		args = append(args, limit, (page-1)*limit)
 		query := fmt.Sprintf(`
                         SELECT "id", "type", "severite", "message", "details", "source", "duree",
                                "statut", "resoluLe", "resoluPar", "createdAt", "updatedAt"
                         FROM "MonitoringEvent"
                         %s
                         ORDER BY "createdAt" DESC
-                        LIMIT $%d
-                `, whereClause, argIdx)
+                        LIMIT $%d OFFSET $%d
+                `, whereClause, argIdx, argIdx+1)
 
 		rows, err := tx.Query(r.Context(), query, args...)
 		if err != nil {
@@ -524,21 +550,36 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
 		// Avant : le backend ne retournait pas "stats" → le frontend affichait
 		// toujours {activeCount: 0, criticalCount: 0, errorCount: 0}.
 		// On compte sur TOUS les events (pas seulement les filtrés) pour des stats globales.
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF'`).Scan(&activeCount)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF' AND "severite" = 'CRITICAL'`).Scan(&criticalCount)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF' AND "severite" = 'ERROR'`).Scan(&errorCount)
+		// ADR-0011 §7 : + warningCount, resolvedToday, resolved24h (alignement
+		// avec /api/stats/admin qui expose déjà resolvedToday).
+		_ = tx.QueryRow(r.Context(), `
+                        SELECT
+                                count(*) FILTER (WHERE "statut" = 'ACTIF'),
+                                count(*) FILTER (WHERE "statut" = 'ACTIF' AND "severite" = 'CRITICAL'),
+                                count(*) FILTER (WHERE "statut" = 'ACTIF' AND "severite" = 'ERROR'),
+                                count(*) FILTER (WHERE "statut" = 'ACTIF' AND "severite" = 'WARNING'),
+                                count(*) FILTER (WHERE "statut" = 'RESOLU' AND "resoluLe" >= CURRENT_DATE),
+                                count(*) FILTER (WHERE "statut" = 'RESOLU' AND "resoluLe" >= NOW() - INTERVAL '24 hours')
+                        FROM "MonitoringEvent"
+                `).Scan(&activeCount, &criticalCount, &errorCount, &warningCount, &resolvedToday, &resolved24h)
 
 		return nil
 	})
 
 	w.Header().Set("Content-Type", "application/json")
+	// ADR-0011 §7 : total = COUNT réel (même WHERE) ; page/pageSize echo.
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"events": result,
-		"total":  len(result),
+		"events":   result,
+		"total":    total,
+		"page":     page,
+		"pageSize": limit,
 		"stats": map[string]int{
 			"activeCount":   activeCount,
 			"criticalCount": criticalCount,
 			"errorCount":    errorCount,
+			"warningCount":  warningCount,
+			"resolvedToday": resolvedToday,
+			"resolved24h":   resolved24h,
 		},
 	})
 }

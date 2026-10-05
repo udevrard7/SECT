@@ -134,7 +134,17 @@ interface AdminStats {
   monitoringActiveEvents: number
   monitoringCriticalEvents: number
   monitoringErrorEvents: number
+  monitoringWarningEvents: number
   monitoringResolvedToday: number
+
+  // SECT-MONITORING-ALIGN-1 (ADR-0011) : score santé calculé CÔTÉ BACKEND —
+  // même formule que /api/monitoring/overview (une seule source de vérité).
+  // L'ancienne formule client pénalisait à vie de −20 via 2 KPIs hardcodés 0.
+  health?: {
+    score: number
+    verdict: 'BONNE_SANTE' | 'ATTENTION' | 'URGENT'
+    breakdown: Array<{ label: string; detail: string; penalty: number }>
+  }
 
   // SECT-DASHBOARD-ENRICH : données paiement
   nbFactures: number
@@ -313,23 +323,11 @@ export function AdminDashboard() {
   const badges = badgesQuery.data?.badges ?? []
   const loading = statsQuery.isLoading
 
-  // Composite platform health score [0-100] — fusion unique des dimensions
-  // sécurité + activité (anciennement Score de sécurité = Score de santé plateforme).
-  const platformHealthScore = useMemo(() => {
-    if (!stats) return 0
-    let score = 100
-    // -5 par événement critique actif
-    score -= (stats.monitoringCriticalEvents ?? 0) * 5
-    // -2 par événement erreur actif
-    score -= (stats.monitoringErrorEvents ?? 0) * 2
-    // -10 si aucun établissement avec proctoring activé
-    if ((stats.nbEtablissementsProteges ?? 0) === 0) score -= 10
-    // -10 si aucune vérification d'identité
-    if ((stats.nbVerificationIdentite ?? 0) === 0) score -= 10
-    // -1 par autorisation en attente (backlog admin)
-    score -= (stats.nbAutorisationsEnAttente ?? 0) * 1
-    return Math.max(0, Math.min(100, score))
-  }, [stats])
+  // SECT-MONITORING-ALIGN-1 (ADR-0011) : score santé servi par le BACKEND
+  // (stats.health — même formule que /monitoring). Plus de formule client :
+  // une seule source de vérité, les 2 KPIs SecuritySettings sont réels.
+  const platformHealthScore = stats?.health?.score ?? 0
+  const healthBreakdown = stats?.health?.breakdown ?? []
 
   // Toast on stats fetch error (one-shot per error transition)
   useEffect(() => {
@@ -515,14 +513,26 @@ export function AdminDashboard() {
           />
         </div>
 
-        {/* Colonne droite : Santé plateforme (score unique fusionné) */}
+        {/* Colonne droite : Santé plateforme (score backend — ADR-0011) */}
         <Card className="lg:col-span-1 ds-kente-top flex flex-col">
           <CardHeader>
             <CardTitle className="font-display tracking-tight flex items-center gap-2">
               <HeartPulse className="h-5 w-5 text-success-text" />
               Santé plateforme
             </CardTitle>
-            <CardDescription>Score de sécurité global</CardDescription>
+            <CardDescription className="flex items-center justify-between">
+              Score système global
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => router.push('/monitoring')}
+                aria-label="Ouvrir le monitoring plateforme"
+              >
+                <Activity className="h-3.5 w-3.5" />
+                Monitoring
+              </Button>
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col items-center justify-center py-6">
             {loading ? (
@@ -531,7 +541,7 @@ export function AdminDashboard() {
               <>
                 <ProgressRing
                   value={platformHealthScore}
-                  size={180}
+                  size={150}
                   strokeWidth={14}
                   accent={
                     platformHealthScore >= 80
@@ -543,7 +553,7 @@ export function AdminDashboard() {
                   showPercent
                   sublabel={`${stats?.monitoringActiveEvents ?? 0} événements actifs`}
                 />
-                <div className="mt-4 text-center">
+                <div className="mt-3 text-center">
                   <p className="text-xs text-muted-foreground">
                     {platformHealthScore >= 80
                       ? '✓ Plateforme en bonne santé'
@@ -552,6 +562,28 @@ export function AdminDashboard() {
                         : '⚠ Action urgente requise'}
                   </p>
                 </div>
+                {/* ADR-0011 : breakdown du score backend (même formule que
+                    /monitoring) — 2 pires pénalités affichées. */}
+                {healthBreakdown.some((c) => c.penalty < 0) && (
+                  <div className="mt-3 w-full space-y-1" aria-label="Composantes du score santé">
+                    {healthBreakdown
+                      .filter((c) => c.penalty < 0)
+                      .sort((a, b) => a.penalty - b.penalty)
+                      .slice(0, 2)
+                      .map((c) => (
+                        <div key={c.label} className="flex items-center justify-between text-[11px] px-2">
+                          <span className="text-muted-foreground truncate">{c.label}</span>
+                          <span className="font-semibold text-destructive shrink-0 ml-2">{c.penalty}</span>
+                        </div>
+                      ))}
+                    <button
+                      className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors pt-1"
+                      onClick={() => router.push('/monitoring')}
+                    >
+                      Voir le détail complet →
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </CardContent>

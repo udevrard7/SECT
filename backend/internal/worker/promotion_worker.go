@@ -34,6 +34,7 @@ import (
 
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
 // promotionTickInterval : intervalle entre 2 checks de batches PENDING.
@@ -48,6 +49,7 @@ type PromotionWorker struct {
 	logger    *slog.Logger
 	promoRepo domain.PromotionRepository
 	stopCh    chan struct{}
+	reg       *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewPromotionWorker crée un nouveau worker de promotion.
@@ -58,6 +60,13 @@ func NewPromotionWorker(dbPool *pgxpool.Pool, logger *slog.Logger, promoRepo dom
 		promoRepo: promoRepo,
 		stopCh:    make(chan struct{}),
 	}
+}
+
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring). Nil-safe.
+func (w *PromotionWorker) WithRegistry(reg *monitoring.WorkerRegistry) *PromotionWorker {
+	w.reg = reg
+	return w
 }
 
 // Start lance le worker en goroutine (non-bloquant). Vérifie toutes les 10s
@@ -92,7 +101,7 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 
 		// Premier check immédiat au démarrage (rattrapage des batches PENDING
 		// créés pendant que le serveur était down — cf. cleanup_worker).
-		w.safeProcessPendingBatches(ctx)
+		w.reg.TrackContext(ctx, "promotion", w.safeProcessPendingBatches)
 
 		ticker := time.NewTicker(promotionTickInterval)
 		defer ticker.Stop()
@@ -103,7 +112,7 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 				w.logger.Info("Promotion Worker stopping...")
 				return
 			case <-ticker.C:
-				w.safeProcessPendingBatches(ctx)
+				w.reg.TrackContext(ctx, "promotion", w.safeProcessPendingBatches)
 			}
 		}
 	}()

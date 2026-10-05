@@ -88,13 +88,20 @@ func Middleware(recorder *Recorder, logger *slog.Logger) func(http.Handler) http
 			}
 
 			// Requêtes lentes (> 5s) → warning
+			// ADR-0011 §5 : la latence mesurée est ENFIN envoyée dans
+			// duree (avant : le middleware calculait les ms mais les
+			// jetait → colonne duree toujours NULL pour les events auto,
+			// latence moyenne frontend à 0).
 			if duration > 5*time.Second {
 				if recorder != nil {
 					ms := int(duration.Milliseconds())
-					recorder.RecordWarning("API",
-						fmt.Sprintf("requête lente (%dms) sur %s %s", ms, r.Method, r.URL.Path),
-						fmt.Sprintf("%s %s", r.Method, r.URL.Path),
-					)
+					recorder.Record(Event{
+						Type:     "API",
+						Severite: "WARNING",
+						Message:  fmt.Sprintf("requête lente (%dms) sur %s %s", ms, r.Method, r.URL.Path),
+						Source:   fmt.Sprintf("%s %s", r.Method, r.URL.Path),
+						Duree:    &ms,
+					})
 				}
 			}
 		})

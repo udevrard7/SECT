@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/udevrard7/sect/backend/internal/monitoring"
 	"log/slog"
 	"strings"
 	"time"
@@ -30,11 +31,20 @@ import (
 type SimilarityWorker struct {
 	dbPool *pgxpool.Pool
 	logger *slog.Logger
+	reg    *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
 }
 
 // NewSimilarityWorker crée un nouveau worker de similarité.
 func NewSimilarityWorker(dbPool *pgxpool.Pool, logger *slog.Logger) *SimilarityWorker {
 	return &SimilarityWorker{dbPool: dbPool, logger: logger}
+}
+
+// WithRegistry injecte le registre de workers (ADR-0011 — visibilité dans
+// l'onglet Système de /monitoring : runs, erreurs, dernier run, durée).
+// Nil-safe : sans registre, le worker se comporte exactement comme avant.
+func (w *SimilarityWorker) WithRegistry(reg *monitoring.WorkerRegistry) *SimilarityWorker {
+	w.reg = reg
+	return w
 }
 
 // Start lance le worker en goroutine (non-bloquant).
@@ -46,7 +56,7 @@ func (w *SimilarityWorker) Start(ctx context.Context) {
 		defer ticker.Stop()
 
 		// Premier check immédiat au démarrage
-		w.checkAndProcess(ctx)
+		w.reg.TrackContext(ctx, "similarity", w.checkAndProcess)
 
 		for {
 			select {
@@ -54,7 +64,7 @@ func (w *SimilarityWorker) Start(ctx context.Context) {
 				w.logger.Info("Similarity Worker stopping...")
 				return
 			case <-ticker.C:
-				w.checkAndProcess(ctx)
+				w.reg.TrackContext(ctx, "similarity", w.checkAndProcess)
 			}
 		}
 	}()
