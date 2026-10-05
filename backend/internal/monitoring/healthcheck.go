@@ -40,8 +40,9 @@ type HealthReport struct {
 
 // HealthChecker vérifie l'état réel des services.
 type HealthChecker struct {
-	pool   *pgxpool.Pool
-	client *http.Client
+	pool       *pgxpool.Pool
+	client     *http.Client
+	mailerKind string // SECT-MONITORING-EMAIL-1 : "resend" | "smtp" | "log" ("" = non câblé)
 }
 
 // NewHealthChecker crée un nouveau HealthChecker.
@@ -50,6 +51,16 @@ func NewHealthChecker(pool *pgxpool.Pool) *HealthChecker {
 		pool:   pool,
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// WithMailer injecte le type de mailer actif (SECT-MONITORING-EMAIL-1) pour
+// le check « Emails transactionnels ». Le mailer réel est choisi au boot par
+// mailer.New (Resend > SMTP > Log) — ce setter expose ce choix au monitoring.
+// Dégradation honnête : si personne n'appelle ce setter (mailerKind ""), le
+// check s'affiche DEGRADE avec un message explicite plutôt qu'un OK fabriqué.
+func (h *HealthChecker) WithMailer(kind string) *HealthChecker {
+	h.mailerKind = kind
+	return h
 }
 
 // CheckAll vérifie tous les services en parallèle et retourne un rapport.
@@ -61,6 +72,7 @@ func (h *HealthChecker) CheckAll(ctx context.Context) *HealthReport {
 		h.checkEvaluation(ctx),
 		h.checkPayment(ctx),
 		h.checkAI(ctx),
+		h.checkMailer(),
 	}
 
 	healthy := 0
@@ -84,6 +96,49 @@ func (h *HealthChecker) CheckAll(ctx context.Context) *HealthReport {
 		HealthyCount: healthy,
 		TotalCount:   len(services),
 		CheckedAt:    time.Now(),
+	}
+}
+
+// checkMailer vérifie le canal d'envoi des emails transactionnels
+// (SECT-MONITORING-EMAIL-1). Contrairement aux autres checks, il ne teste pas
+// une dépendance externe mais le mailer choisi au boot : Resend/SMTP = envoi
+// réel ; Log = rien n'est envoyé (reset password, invitations, factures et
+// alertes monitoring sont journalisés stdout seulement). C'est le symptôme
+// visible d'une var d'env manquante/écrasée (ex. RESEND_API_KEY sur Render).
+func (h *HealthChecker) checkMailer() ServiceStatus {
+	name := "Emails transactionnels"
+	start := time.Now()
+
+	kind := h.mailerKind
+	if kind == "resend" || kind == "smtp" {
+		return ServiceStatus{
+			Name:      name,
+			Status:    "OPERATIONNEL",
+			Uptime:    "",
+			Latency:   time.Since(start).Milliseconds(),
+			LastCheck: time.Now().Format(time.RFC3339),
+			LastError: "",
+			CheckedAt: time.Now(),
+		}
+	}
+
+	var errMsg string
+	switch kind {
+	case "log":
+		errMsg = "LogMailer actif — AUCUN email n'est réellement envoyé (configurer RESEND_API_KEY ou SMTP)"
+	case "":
+		errMsg = "type de mailer non câblé au health checker (WithMailer absent)"
+	default:
+		errMsg = "mailer inconnu : " + kind
+	}
+	return ServiceStatus{
+		Name:      name,
+		Status:    "DEGRADE",
+		Uptime:    "",
+		Latency:   time.Since(start).Milliseconds(),
+		LastCheck: time.Now().Format(time.RFC3339),
+		LastError: errMsg,
+		CheckedAt: time.Now(),
 	}
 }
 

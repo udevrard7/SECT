@@ -34,6 +34,11 @@ type Email struct {
 // Mailer est l'interface d'envoi d'emails.
 type Mailer interface {
 	Send(e Email) error
+	// Kind identifie l'implémentation active : "resend" | "smtp" | "log".
+	// SECT-MONITORING-EMAIL-1 : exposé au monitoring (channels.mailer + check
+	// santé « Emails transactionnels ») — le type réel, pas un état dérivé,
+	// pour diagnostiquer un mailer absent (ex. var Render écrasée).
+	Kind() string
 }
 
 // SMTPConfig contient les paramètres SMTP nécessaires.
@@ -113,6 +118,9 @@ type resendErrorResponse struct {
 	Name    string `json:"name"`
 	Message string `json:"message"`
 }
+
+// Kind implémente Mailer — envoi réel via Resend.
+func (m *ResendMailer) Kind() string { return "resend" }
 
 // Send envoie l'email via l'API REST de Resend.
 func (m *ResendMailer) Send(e Email) error {
@@ -194,6 +202,9 @@ type SMTPMailer struct {
 	cfg SMTPConfig
 }
 
+// Kind implémente Mailer — envoi réel via SMTP.
+func (m *SMTPMailer) Kind() string { return "smtp" }
+
 // Send envoie l'email via net/smtp. Si e.HTML est non vide, envoie un
 // multipart/alternative (text + HTML) pour la compatibilité clients email.
 func (m *SMTPMailer) Send(e Email) error {
@@ -250,6 +261,9 @@ func (m *SMTPMailer) Send(e Email) error {
 type LogMailer struct {
 	logger *slog.Logger
 }
+
+// Kind implémente Mailer — fallback : rien n'est réellement envoyé.
+func (m *LogMailer) Kind() string { return "log" }
 
 // Send journalise l'email en INFO.
 func (m *LogMailer) Send(e Email) error {

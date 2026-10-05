@@ -171,6 +171,11 @@ func main() {
 		ResendAPIKey: cfg.ResendAPIKey,
 		ResendFrom:   cfg.ResendFrom,
 	}, logger)
+	// SECT-MONITORING-EMAIL-1 : le type de mailer booté (resend|smtp|log)
+	// alimente le check santé « Emails transactionnels » — un LogMailer en
+	// prod (var RESEND_API_KEY/SMTP absente ou écrasée) sera visible DEGRADE
+	// dans la carte santé au lieu d'un silence feint (emails journalisés).
+	monHealthChecker.WithMailer(mailSvc.Kind())
 	authUC := usecase.NewAuthUseCase(authRepo, signer, mailSvc, cfg.AppBaseURL, cfg.SessionIdleTimeout)
 	// E1/E6/U1/U7 : accessUC doit être créé AVANT etabUC et userUC car les
 	// deux dépendent de accessUC pour valider l'autorisation ADMIN sur les writes.

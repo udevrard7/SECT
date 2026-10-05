@@ -233,13 +233,20 @@ export function AlertsTab({
               </span>
               <span className="inline-flex items-center gap-1">
                 {channels?.emailTo ? (
-                  channels.emailReady ? (
+                  channels.emailReady && channels.mailer !== 'log' ? (
                     <>
-                      <CheckCircle2 className="h-3 w-3 text-success-text" aria-hidden="true" /> Email → {channels.emailTo}
+                      <CheckCircle2 className="h-3 w-3 text-success-text" aria-hidden="true" /> Email → {channels.emailTo} (
+                      {channels.mailer === 'resend'
+                        ? 'Resend actif'
+                        : channels.mailer === 'smtp'
+                          ? 'SMTP actif'
+                          : 'expédition active'}
+                      )
                     </>
                   ) : (
                     <>
-                      <AlertTriangle className="h-3 w-3 text-warning" aria-hidden="true" /> Email → {channels.emailTo} (expédition inactive — configurer RESEND_API_KEY ou SMTP)
+                      <AlertTriangle className="h-3 w-3 text-warning" aria-hidden="true" /> Email → {channels.emailTo} (expédition inactive — RESEND_API_KEY
+                      absente du backend : la restaurer dans les variables Render puis redéployer)
                     </>
                   )
                 ) : (

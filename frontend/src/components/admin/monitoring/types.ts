@@ -224,7 +224,15 @@ export interface ComparatorDef {
 
 export interface RulesData {
   rules: AlertingRule[]
-  channels: { slackConfigured: boolean; emailTo: string; emailReady: boolean }
+  channels: {
+    slackConfigured: boolean
+    emailTo: string
+    emailReady: boolean
+    /** SECT-MONITORING-EMAIL-1 : type RÉEL du mailer booté backend
+     * (mailer.New : Resend > SMTP > Log). Absent sur les backends antérieurs
+     * → fallback sur emailReady. "log" = aucun email ne part réellement. */
+    mailer?: 'resend' | 'smtp' | 'log'
+  }
   metrics: MetricDef[]
   comparators: ComparatorDef[]
 }
@@ -422,6 +430,8 @@ export const SERVICE_TYPE_BY_NAME: Record<string, EventType> = {
   Évaluation: 'EVALUATION',
   Paiement: 'PAYMENT',
   'Proctoring IA': 'SYSTEM',
+  // SECT-MONITORING-EMAIL-1 : 7e check santé (mailer réel booté).
+  'Emails transactionnels': 'SYSTEM',
 }
 
 export interface VerdictStyle {

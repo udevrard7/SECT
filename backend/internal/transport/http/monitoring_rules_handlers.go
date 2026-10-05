@@ -106,10 +106,17 @@ func (s *Server) monitoringRulesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Dégradation honnête (ADR-0012) : l'UI sait quoi configurer.
+	// SECT-MONITORING-EMAIL-1 : +mailer = type RÉEL du mailer booté
+	// (mailer.New : Resend > SMTP > Log) — "log" signifie qu'aucun email
+	// ne part (channels.emailReady=false), "resend"/"smtp" que l'envoi
+	// est réel. Permet de diagnostiquer une var d'env écrasée/absente.
 	channels := map[string]any{
 		"slackConfigured": s.alertingCfg.SlackWebhookURL != "",
 		"emailTo":         s.alertingCfg.AlertingEmailTo,
 		"emailReady":      s.alertingCfg.EmailReady,
+	}
+	if s.mailer != nil {
+		channels["mailer"] = s.mailer.Kind()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
