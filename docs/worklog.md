@@ -4953,3 +4953,30 @@ Stage Summary:
 - Le bandeau ne mentait pas : Resend a bien ÉTÉ configuré (preuves delivered du 29-09) mais le full-replace Render de SECT-MONITORING-P5-1 a silencieusement écrasé RESEND_API_KEY/RESEND_FROM_EMAIL le 05-10 — tous les emails transactionnels sont stoppés depuis. Leçon : un « full-replace » de vars d'env est destructif ; toujours vérifier l'état AVANT/APRÈS contre l'inventaire attendu (render.yaml sync:false), pas seulement les vars qu'on ajoute.
 - Livré (3504eb7e, prod vérifiée) : le type de mailer réel est exposé aux 3 niveaux — channels.mailer (API), 7e check santé « Emails transactionnels » (carte santé, DEGRADE honnête), bandeau Alertes avec action exacte. Une var d'env écrasée ne pourra plus passer inaperçue.
 - Prod : Render LIVE 3504eb7e (7 services, 6/7 DEGRADE en attendant la clé), Vercel LIVE 3504eb7e, Neon 133/133, résidu 0 ; captures monemail-01/02 dans sect-audit.
+
+---
+Task ID: SECT-RENDER-ENV-AUDIT-1
+Agent: Z.ai Code (session SECT)
+Task: Suite SECT-MONITORING-EMAIL-1 — l'utilisateur fournit la clé Resend (re_…, non commitée) et demande (1) de l'utiliser pour réactiver l'envoi, (2) de « vérifier que les autres variables sont toujours sur Render afin d'éviter des erreurs de service ».
+
+Work Log:
+- Clé Resend VALIDÉE contre l'API Resend : GET /domains → 200, domaine sect.ftci.fr VERIFIED + capabilities.sending=enabled (créé 29-09 — cohérent SECT-EMAIL-TEMPLATES-1) ; envoi test réel POST /emails depuis « SECT <noreply@sect.ftci.fr> » vers ulrichdouh@gmail.com → id 01a10b0d-f258-… → last_event DELIVERED. La clé est donc pleinement opérationnelle (validité + scope envoi + domaine + expéditeur) et prête à être posée telle quelle sur Render.
+- Accès Render : le token rnd_… des sessions R2-CONFIG/P5 était session-local — absent de cette machine (recherche exhaustive home/caches/tool-results/credentials : seule la mention tronquée « rnd_… » du worklog). Restauration des vars ⇒ dashboard utilisateur (ou token fourni).
+- Audit comportemental de l'état RÉEL des vars Render SANS API Render : /home/z/sect-audit/env_audit_render.py — 12 probes, fixtures jetables, auto-cleanup, relançable après toute opération vars :
+  - P1 GET /health 200 → boot OK (NEON_DATABASE_URL+JWT_SECRET+PORT).
+  - P2 GET /api/turnstile/site-key → siteKey="" ⇒ TURNSTILE_SITE_KEY absente.
+  - P3 GET /api/push/vapid-public-key → 503 « non configuré » ⇒ VAPID_PUBLIC_KEY absente.
+  - P4 préflight CORS : Origin sect.ftci.fr → AUCUN Access-Control-Allow-Origin ; contrôle positif Origin sect-app.vercel.app → ACAO renvoyé ⇒ CORS_ORIGINS absente (défaut actif = sect-app.vercel.app seul). SANS impact prod : le frontend appelle sect.ftci.fr/api/* en SAME-ORIGIN via rewrite vercel.json → Render, et le mobile utilise des clients natifs (CORS N/A). Gap latent uniquement.
+  - P5-P7 fixture ADMIN : login 200 ; JWT vérifié HMAC-SHA256 contre .jwt_secret_new (secret 256 bits posé par R2-CONFIG) ⇒ JWT_SECRET intacte ; contrôle négatif : dev-secret-change-me ne vérifie PAS la signature.
+  - P8 GET /api/monitoring/rules → channels {mailer:"log" ⇒ RESEND_API_KEY+SMTP absentes (la seule panne réelle), emailTo:ulrichdouh@gmail.com ⇒ ALERTING_EMAIL_TO présente, slackConfigured:false ⇒ SLACK_WEBHOOK_URL jamais posé}.
+  - P11-P12 fixture ENS : POST /api/soumissions/presign-upload → 200 + PUT réel des octets vers l'URL présignée → 200 ⇒ les 5 vars R2 sont INTACTES et opérationnelles — le full-replace P5 a bien préservé les 8 originales ; le risque majeur « uploads documents cassés » est ÉCARTÉ.
+  - Non observables à distance, déduits de l'historique : APP_BASE_URL absente (posée le 29-09, disparue avant le 04-10 — cf. R2-AUDIT « le service n'avait qu'UNE env var » ; les liens email utilisent le défaut sect-app.vercel.app qui redirige — à restaurer pour des liens propres) ; NEON_DIRECT_URL absente présumée (zéro impact runtime : migrations appliquées hors-ligne, Dockerfile sans migrate au boot) ; ENVIRONMENT=production préservée par P5 (usage unique = gate JWT_SECRET) ; SMTP/GENIUSPAY/FIREBASE/VAPID_SUBJECT jamais configurées (fonctionnalités optionnelles non activées — pas des erreurs de service).
+- Verdict « erreurs de service » : AUCUNE — les 9 vars critiques au fonctionnement (boot+DB+JWT+R2+alerting) sont présentes et prouvées ; la seule panne réelle = emails transactionnels (mailer=log, déjà diagnostiquée EMAIL-1).
+- Restauration préparée (dashboard Render → sect-api → Environment → ADD, ne JAMAIS refaire un full-replace API — c'est lui qui a causé la perte du 05-10) : CRITIQUES RESEND_API_KEY=re_… (validée) + RESEND_FROM_EMAIL=noreply@sect.ftci.fr ; RECOMMANDÉES APP_BASE_URL=https://sect.ftci.fr + CORS_ORIGINS=https://sect-app.vercel.app,https://sect-app-git-*.vercel.app,https://sect.ftci.fr ; puis Manual Deploy.
+- Cleanup résidu 0 : objet R2 de test supprimé (S3 direct), fixtures User×2+Etablissement purgées, résidu DB 0.
+
+Stage Summary:
+- Clé Resend VALIDÉE+OPÉRATIONNELLE (domaine verified, envoi test DELIVERED à ulrichdouh@gmail.com depuis noreply@sect.ftci.fr) — prête à poser sur Render telle quelle.
+- Audit 12/12 : l'état Render réel = exactement les 9 vars du full-replace P5. R2 INTACT (presign+PUT prouvés — aucune erreur de service), JWT 256 bits intact, ALERTING_EMAIL_TO présente. Manquent : RESEND×2 (panne email connue), CORS_ORIGINS+APP_BASE_URL (latent, sans impact via rewrite same-origin), vars jamais configurées (optionnelles).
+- Token Render indisponible cette session → restauration = 2 pastes dashboard (+2 recommandés) + Manual Deploy, OU fournir rnd_… pour application+vérification par l'agent. Vérification post-restauration : channels {mailer:"resend", emailReady:true}, santé 7/7 OPERATIONNEL, bandeau Alertes vert « Resend actif », reset password délivré — env_audit_render.py relançable en contrôle.
+- Prod : Render/Vercel LIVE 3504eb7e/4ed7af5c inchangés, Neon 133/133, résidu 0.
