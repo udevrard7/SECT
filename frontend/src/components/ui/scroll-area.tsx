@@ -18,7 +18,14 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+        // SECT-MONITORING-UI-3 : max-h-[inherit] — sans lui, un max-h-* posé sur
+        // le Root ne contraint JAMAIS le Viewport (height:100% ne se résout pas
+        // contre un max-height parent → viewport = hauteur du contenu → les
+        // cartes débordent et peignent par-dessus les sections suivantes :
+        // bug « cartes d'alertes couvrent les cartes de règles » /monitoring).
+        // inherit propage le max-height du Root au Viewport → clamp + scroll
+        // interne. Neutre pour les usages à hauteur définie (h-72, flex-1…).
+        className="focus-visible:ring-ring/50 size-full max-h-[inherit] rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
