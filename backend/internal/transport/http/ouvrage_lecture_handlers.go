@@ -74,8 +74,8 @@ func (s *Server) putOuvrageLecture(w http.ResponseWriter, r *http.Request) {
 
 // getBibliothequeActivite — GET /api/etablissements/{id}/bibliotheque-activite
 // Agrégats d'activité par ouvrage (fonction SECURITY DEFINER 000124,
-// cloisonnée rôle+etab). ENS/RESP : leur établissement uniquement ;
-// ADMIN : tout établissement (sélecteur UI côté frontend).
+// cloisonnée rôle+etab). ENS/RESP/ADMIN-assistance : LEUR établissement
+// uniquement (ADR-0009) — l'ADMIN global passe par le mode assistance.
 func (s *Server) getBibliothequeActivite(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {

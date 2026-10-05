@@ -331,16 +331,19 @@ func (uc *AlignementUseCase) Bibliographie(ctx context.Context, claims db.Sessio
 // CONFORMITÉ (flux P3 §4 : audit de direction)
 // ============================================================
 
-// ConformiteEtablissement — RESP/ADMIN ; un non-ADMIN ne sonde que SON
-// établissement (pattern ActiviteEtablissement P2 ; la fonction SQL
-// re-vérifie sur les claims — defense in depth).
+// ConformiteEtablissement — RESP/ADMIN ; l'établissement sondé doit
+// être CELUI des claims pour TOUS les rôles (ADR-0009) : l'ADMIN global
+// (sans établissement) passe par le mode assistance — JWT avec
+// etablissementId, accès APPROUVE par le RESPONSABLE (B-2 : pas
+// d'auto-approbation), max 24 h, audit trail. La fonction SQL
+// re-vérifie sur les claims (defense in depth, pattern 000124).
 func (uc *AlignementUseCase) ConformiteEtablissement(ctx context.Context, claims db.SessionClaims, etablissementID string) ([]*domain.ConformiteSupport, error) {
 	role := domain.Role(claims.Role)
 	if role != domain.RoleResponsable && role != domain.RoleAdmin {
 		return nil, &domain.UnauthorizedError{Message: "audit de conformité réservé aux RESPONSABLE et ADMIN"}
 	}
-	if role != domain.RoleAdmin && claims.EtablissementID != etablissementID {
-		return nil, &domain.UnauthorizedError{Message: "audit limité à votre établissement"}
+	if claims.EtablissementID != etablissementID {
+		return nil, &domain.UnauthorizedError{Message: "audit de conformité limité à votre établissement — l'ADMIN global doit activer le mode assistance (accès à faire approuver par le responsable de l'établissement)"}
 	}
 	if etablissementID == "" {
 		return nil, &domain.ValidationError{Field: "etablissementId", Message: "établissement requis"}

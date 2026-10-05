@@ -462,12 +462,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Get("/{id}/audit-logs", s.listEtablissementAuditLogs)
 			// SECT-BIBLIO-P2 (ADR-0007 §P2) : activité de lecture de la
 			// bibliothèque — agrégats SECURITY DEFINER cloisonnés par
-			// établissement (ENS/RESP : le leur ; ADMIN : tous — le usecase
-			// + la fonction SQL double-vérifient, defense in depth).
+			// établissement (ADR-0009 : l'étab sondé doit être celui des
+			// claims pour TOUS — l'ADMIN global passe par le mode
+			// assistance ; le usecase + la fonction SQL double-vérifient).
 			r.With(middleware.RequireRole("ENSEIGNANT", "RESPONSABLE", "ADMIN")).Get("/{id}/bibliotheque-activite", s.getBibliothequeActivite)
 			// SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de direction — conformité des
 			// supports aux référentiels officiels (fonction SECURITY DEFINER
-			// cloisonnée, pattern 000124 ; RESP limité à SON établissement).
+			// cloisonnée, pattern 000124 ; ADR-0009 : l'étab sondé doit être
+			// celui des claims pour TOUS — ADMIN global via mode assistance).
 			r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Get("/{id}/conformite-referentiels", s.getConformiteReferentiels)
 		})
 

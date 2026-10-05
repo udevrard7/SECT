@@ -136,6 +136,9 @@ import { AlignementsView } from './alignements-view'
 // propositions G1 (RESPONSABLE→ADMIN) + annotations du lecteur.
 import { PropositionsView } from './propositions-view'
 import { AnnotationsPanel } from './annotations-panel'
+// SECT-RBAC-AUDITS (ADR-0009) : carte d'orientation mode assistance
+// pour l'ADMIN global sur les audits par établissement.
+import { AssistancePrompt } from './assistance-prompt'
 import { toast } from 'sonner'
 import {
   type Ouvrage,
@@ -212,7 +215,8 @@ export function BibliothequePage() {
 
   // ─── SECT-BIBLIO-P2 : vue Catalogue / Activité ───
   // L'activité de lecture est une vue enseignante (ADR-0007 §P2) :
-  // ENS/RESP voient LEUR établissement, l'ADMIN tous (sélecteur ci-dessous).
+  // ENS/RESP/ADMIN-assistance voient LEUR établissement (ADR-0009 —
+  // l'ADMIN global est orienté vers le mode assistance, carte dédiée).
   const peutVoirActivite =
     user?.role === 'ENSEIGNANT' ||
     user?.role === 'RESPONSABLE' ||
@@ -226,9 +230,10 @@ export function BibliothequePage() {
   const [vue, setVue] = useState<
     'catalogue' | 'activite' | 'alignements' | 'propositions'
   >('catalogue')
-  const [activiteEtab, setActiviteEtab] = useState<string>(
-    user?.etablissementId ?? '',
-  )
+  // SECT-RBAC-AUDITS (ADR-0009) : l'activité sonde uniquement l'étab des
+  // claims — DÉRIVÉ du store (pas de state : toujours frais après entrée
+  // en mode assistance) ; plus de sélecteur global ADMIN.
+  const activiteEtab = user?.etablissementId ?? ''
 
   // ─── Filtres catalogue ───
   const [searchInput, setSearchInput] = useState('')
@@ -406,7 +411,8 @@ export function BibliothequePage() {
   })
 
   // ─── SECT-BIBLIO-P2 : activité de lecture (vue enseignante) ───
-  // ADMIN global : sélection d'établissement ; ENS/RESP : le leur (fixé).
+  // ADR-0009 : l'étab sondé est toujours celui des claims (dérivé du
+  // store ci-dessus) ; l'ADMIN global voit la carte mode assistance.
   const activiteQuery = useQuery<BibliothequeActiviteResult>({
     queryKey: ['bibliotheque-activite', activiteEtab],
     queryFn: async () => {
@@ -423,20 +429,6 @@ export function BibliothequePage() {
     enabled: vue === 'activite' && peutVoirActivite && !!activiteEtab,
     staleTime: 60_000,
   })
-
-  // Sélection par défaut de l'établissement pour l'ADMIN global (le
-  // sélecteur reste libre — ceci ne pré-choisit que le 1er chargement).
-  useEffect(() => {
-    if (
-      isAdmin &&
-      !adminAssistance &&
-      !activiteEtab &&
-      etablissementsQuery.data &&
-      etablissementsQuery.data.length > 0
-    ) {
-      setActiviteEtab(etablissementsQuery.data[0].id)
-    }
-  }, [isAdmin, adminAssistance, activiteEtab, etablissementsQuery.data])
 
   // Agrégats du panneau (calculés depuis les lignes par ouvrage).
   const activiteStats = useMemo(() => {
@@ -1218,44 +1210,16 @@ export function BibliothequePage() {
         />
       ) : vue === 'alignements' && peutDeclarer ? (
         <AlignementsView />
+      ) : vue === 'activite' && peutVoirActivite && isAdmin && !adminAssistance ? (
+        <div className="space-y-6">
+          {/* SECT-RBAC-AUDITS (ADR-0009) : l'activité sonde uniquement
+              l'établissement des claims — l'ADMIN global est orienté vers
+              le mode assistance (accès AVEC motif, APPROUVÉ par le
+              RESPONSABLE, 24 h max, tracé dans le journal d'audit). */}
+          <AssistancePrompt outil="L'activité de lecture" />
+        </div>
       ) : vue === 'activite' && peutVoirActivite ? (
         <div className="space-y-6">
-          {/* Sélecteur d'établissement — ADMIN global uniquement (les
-              agrégats sont cloisonnés par établissement, G2). */}
-          {isAdmin && !adminAssistance && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex flex-wrap items-end gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">
-                      Établissement
-                    </Label>
-                    <Select
-                      value={activiteEtab}
-                      onValueChange={setActiviteEtab}
-                    >
-                      <SelectTrigger className="w-[260px]">
-                        <SelectValue placeholder="Choisir un établissement" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(etablissementsQuery.data ?? []).map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
-                            {e.nom}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-xs text-muted-foreground max-w-md pb-1">
-                    Agrégats cloisonnés par établissement — corbeille et
-                    droits expirés exclus, données individuelles jamais
-                    exposées (agrégats uniquement).
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Stats d'activité */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard

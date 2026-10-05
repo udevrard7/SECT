@@ -387,8 +387,9 @@ const ADMIN_CATEGORIES: NavCategory[] = [
       // l'ADMIN sans établissement (mode assistance absent) via le select
       // d'établissement du formulaire de dépôt.
       { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
-      // SECT-BIBLIO-P3 : audit de direction (ADR-0007 §P3) — l'ADMIN
-      // global sonde tous les établissements (sélecteur).
+      // SECT-BIBLIO-P3 : audit de direction (ADR-0007 §P3) — ADR-0009 :
+      // l'ADMIN global y est orienté vers le mode assistance (l'audit
+      // sonde uniquement l'étab des claims).
       { id: 'conformite', label: 'Conformité référentiels', icon: 'Scale' },
     ],
   },

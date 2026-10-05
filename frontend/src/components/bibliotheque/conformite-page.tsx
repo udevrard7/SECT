@@ -4,6 +4,9 @@
 // d'alignement support↔référentiel + la conformité par épreuve,
 // sous-produit des déclarations enseignantes (alignements) et de la
 // traçabilité chapitre (P2.5). Exportable CSV.
+// SECT-RBAC-AUDITS (ADR-0009) : l'établissement sondé doit être celui
+// des claims pour TOUS — l'ADMIN global (sans etab) voit la carte
+// d'orientation mode assistance (plus de sélecteur global).
 // ═════════════════════════════════════════════════════════════════════
 
 'use client'
@@ -24,14 +27,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { AssistancePrompt } from '@/components/bibliotheque/assistance-prompt'
 import {
   Table,
   TableBody,
@@ -53,11 +49,6 @@ import {
   type ConformiteSupport,
 } from '@/lib/ouvrages-types'
 
-/** Option établissement (sélecteur ADMIN global — pattern vue Activité P2). */
-interface EtablissementOption {
-  id: string
-  nom: string
-}
 import { formatDateUTC } from '@/lib/date-utils'
 
 /** Accents conformité (Savane EdTech — jamais d'indigo/bleu). */
@@ -80,33 +71,15 @@ export function ConformitePage() {
   const isAdmin = user?.role === 'ADMIN'
   const adminAssistance = isAdmin && !!user?.etablissementId
 
-  const [etabId, setEtabId] = useState<string>(user?.etablissementId ?? '')
   const [search, setSearch] = useState('')
   const [ouvertSupport, setOuvertSupport] = useState<string | null>(null)
 
-  // ─── Établissements (sélecteur ADMIN global — pattern vue Activité P2) ───
-  const etabsQuery = useQuery<EtablissementOption[]>({
-    queryKey: ['etablissements-conformite'],
-    enabled: isAdmin && !adminAssistance,
-    queryFn: async () => {
-      const res = await fetch('/api/etablissements', { credentials: 'include' })
-      if (!res.ok) return []
-      const data = await res.json()
-      return Array.isArray(data?.etablissements)
-        ? data.etablissements.map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom }))
-        : []
-    },
-    staleTime: 5 * 60_000,
-  })
-
-  // Établissement effectif — DÉRIVÉ au rendu (pas de setState dans un
-  // effet, règle react-hooks/set-state-in-effect) : ADMIN global sans
-  // choix → 1er établissement chargé ; sinon l'étab de l'utilisateur.
-  const etabEffectif =
-    etabId ||
-    (isAdmin && !adminAssistance
-      ? etabsQuery.data?.[0]?.id ?? ''
-      : user?.etablissementId ?? '')
+  // SECT-RBAC-AUDITS (ADR-0009) : l'établissement sondé est TOUJOURS
+  // celui des claims (RESP, ou ADMIN en mode assistance — son JWT porte
+  // l'etab). L'ADMIN global (sans etab) ne sonde plus rien : la requête
+  // reste désactivée et la carte d'orientation s'affiche (retour APRÈS
+  // les hooks — règle react-hooks).
+  const etabEffectif = user?.etablissementId ?? ''
 
   // ─── Audit (fonction SECURITY DEFINER cloisonnée rôle+etab) ───
   const conformiteQuery = useQuery<ConformiteResult>({
@@ -227,42 +200,24 @@ export function ConformitePage() {
                 objet de gouvernance.
               </p>
             </div>
-            <Button variant="outline" className="gap-2" onClick={exporterCSV} disabled={filtresSupports.length === 0}>
-              <Download className="h-4 w-4" />
-              Export CSV
-            </Button>
+            {(!isAdmin || adminAssistance) && (
+              <Button variant="outline" className="gap-2" onClick={exporterCSV} disabled={filtresSupports.length === 0}>
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Sélecteur d'établissement — ADMIN global uniquement */}
-      {isAdmin && !adminAssistance && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <Label className="text-xs text-muted-foreground">Établissement</Label>
-                <Select value={etabEffectif || undefined} onValueChange={setEtabId}>
-                  <SelectTrigger className="w-[260px]">
-                    <SelectValue placeholder="Choisir un établissement…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(etabsQuery.data ?? []).map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.nom}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Agrégats cloisonnés par établissement (G2).
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
+      {/* SECT-RBAC-AUDITS (ADR-0009) : l'ADMIN global est orienté vers le
+          mode assistance — l'audit est l'outil du RESPONSABLE de
+          l'établissement ; l'accès ADMIN (consenti, approuvé par le
+          RESPONSABLE, 24 h max, tracé) passe par le JWT d'assistance. */}
+      {isAdmin && !adminAssistance ? (
+        <AssistancePrompt outil="L'audit de conformité aux référentiels" />
+      ) : (
+        <>
       {/* KPIs */}
       {conformiteQuery.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -508,6 +463,8 @@ export function ConformitePage() {
             </CardContent>
           </Card>
         ))}
+        </>
+      )}
     </div>
   )
 }

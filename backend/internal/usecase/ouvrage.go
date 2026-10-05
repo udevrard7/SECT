@@ -326,18 +326,18 @@ func (uc *OuvrageUseCase) RecordLecture(ctx context.Context, claims db.SessionCl
 // Gating (défense en profondeur — le router double-vérifie via
 // RequireRole, la fonction SQL ré-impose le contrôle en interne) :
 //   - ETUDIANT → 403 (l'activité de lecture est une vue enseignante) ;
-//   - non-ADMIN hors de son établissement → 403 (cloisonnement G2 :
-//     un RESPONSABLE/ENSEIGNANT ne sonde pas l'activité d'un autre
-//     établissement) ;
-//   - l'ADMIN (global ou assistance) voit tout établissement.
+//   - hors de SON établissement → 403 (cloisonnement G2), pour TOUS
+//     les rôles (ADR-0009) : l'ADMIN global (sans établissement)
+//     passe par le mode assistance — JWT avec etablissementId, accès
+//     APPROUVE par le RESPONSABLE (B-2), max 24 h, audit trail.
 func (uc *OuvrageUseCase) ActiviteEtablissement(ctx context.Context, claims db.SessionClaims, etablissementID string) ([]domain.OuvrageActivite, error) {
 	if claims.Role != string(domain.RoleEnseignant) &&
 		claims.Role != string(domain.RoleResponsable) &&
 		claims.Role != string(domain.RoleAdmin) {
 		return nil, &domain.UnauthorizedError{Message: "activité de bibliothèque réservée aux enseignants, responsables et admin (ADR-0007 §P2)"}
 	}
-	if claims.Role != string(domain.RoleAdmin) && claims.EtablissementID != etablissementID {
-		return nil, &domain.UnauthorizedError{Message: "activité lisible uniquement pour votre propre établissement (G2)"}
+	if claims.EtablissementID != etablissementID {
+		return nil, &domain.UnauthorizedError{Message: "activité lisible uniquement pour votre propre établissement (G2) — l'ADMIN global doit activer le mode assistance (accès à faire approuver par le responsable de l'établissement)"}
 	}
 	return uc.lectureRepo.ActiviteEtablissement(ctx, etablissementID)
 }
