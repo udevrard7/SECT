@@ -4478,3 +4478,93 @@ Stage Summary:
   toutes les pages hors-sidebar-du-rôle.
 - Prod : Vercel READY 5e37965b (frontend-only, Render inchangé d470de64),
   CI verte, résidu 0.
+
+## SECT-MONITORING-ALIGN-1 — ADR-0011 : alignement dashboard ↔ /monitoring + couteau suisse admin système
+
+Demande produit (utilisateur) : la carte « Santé plateforme » du dashboard
+admin et le module /monitoring doivent être alignés ; auditer le module
+pour le transformer en véritable outil de suivi admin système (« le
+couteau suisse »).
+
+AUDIT (15 constats, ADR-0011) : score calculé côté CLIENT avec 2 KPIs
+hardcodés 0 côté backend (pénalité −20 à vie, le score ne pouvait jamais
+atteindre 100) ; escalade cassée (details objet vs *string → 400
+SYSTÉMATIQUE) ; notes de résolution jamais persistées ; duree jamais
+peuplé (middleware calculait les ms puis les jetait) ; uptime SLA
+hardcodés (« 99.95% ») ; 6 règles d'alerte MOCK (valeurs inventées,
+toggles sans backend) ; 13 workers invisibles (un panic tuait le
+process) ; zéro métrique runtime ; zéro tendance ; CRITICAL muet (aucune
+notification) ; types DATABASE/AUTH/EVALUATION/PAYMENT orphelins ; mine
+RLS (3 policies MonitoringEvent TO neondb_owner) ; pas d'index ACTIF.
+
+LIVRÉ (commit 43dd8d98, 25 fichiers, +2071/−242) :
+- Formule unique backend (internal/monitoring/score.go) servie aux DEUX
+  extrémités : /api/monitoring/overview (nouveau) + champ health de
+  /api/stats/admin. Carte dashboard = score + breakdown (2 pires
+  pénalités) + bouton → /monitoring.
+- Migration 000132 : index partiel (createdAt DESC) WHERE statut='ACTIF' ;
+  3 policies normalisées TO PUBLIC (mine sect_app désamorcée) ; helper
+  SECURITY DEFINER admin_securite_etablissements_counts (re-check claims
+  is_admin) → nbEtablissementsProteges/nbVerificationIdentite RÉELS.
+- Onglet Système : runtime Go (uptime, goroutines, mémoire, GC, version),
+  workers (registre 13 : runs/erreurs/dernier run/durée/état), DB
+  (latence ping + connexions actives), stockage R2 (HeadBucket réel),
+  providers IA, mode maintenance, tendance 7 j par sévérité (stacked
+  BarChart), décomposition complète du score.
+- 7 workers périodiques instrumentés Track() (nil-safe, panic-safe :
+  recover → boucle continue + event SYSTEM/ERROR) ; 6 workers de file
+  déclarés (« Écoute » — leur état métier vit dans les tables de jobs).
+- CRITICAL muet → hook Recorder.OnCritical (throttle 15 min) notifie les
+  ADMIN actifs via le dispatcher (Type ALERTE_SYSTEME_CRITIQUE,
+  ActionURL /monitoring).
+- Corrections de vérité : escalade 201 (details string OU objet
+  stringifié) ; notes persistées (details.resolutionNotes fusionné —
+  preserving l'existant) ; duree peuplé par le middleware ; uptime fake
+  supprimé (latence + connexions à la place) ; 6 seuils système RÉELS
+  (critiques/erreurs/backlog/latence DB/providers IA/workers en erreur)
+  remplacent les règles mock ; pagination backend (page/pageSize/total/
+  OFFSET) + fenêtre temporelle since (heures) ; stats étendues
+  warningCount/resolvedToday/resolved24h alignées avec statsAdmin.
+
+Gates : go build/vet/gofmt 0 (SDK Go 1.27.1 réinstallé — 3e disparition) ;
+tsc 0 ; eslint 0 erreur ; vitest 11/11. Dry-run Neon 000132 : policies
+TO PUBLIC ×3 + index + helper (matrice claims : ADMIN→(1,0) réel,
+ENSEIGNANT/system-worker/NULL→(0,0)) ; NB un agrégat rend toujours une
+ligne — le deny = compteurs à 0 (commentaire migration corrigé en
+conséquence).
+
+E2E API prod 34/34 (e2e_monalign.py) : overview complet (13 workers,
+7/7 périodiques runs>0, R2 reachable, trend 7 points, KPIs réels) ;
+RBAC 403 RESPONSABLE ; ALIGNEMENT PROUVÉ statsAdmin=78 = overview=78 ;
+escalade 201 string ET objet ; notes fusionnées ({escalatedFrom,
+originalSeverite, resolutionNotes}) ; pagination (page 2 ≠ page 1) +
+since (1h→2, 24h→13, 7j→122=tout) ; healthcheck honnête (uptime='',
+activeConns exposé).
+
+E2E UI navigateur sect.ftci.fr (7 screenshots, 0 erreur console) :
+dashboard carte 77% + breakdown « Erreurs actives −20 / Avertissements
+−3 » + bouton Monitoring ; navigation → /monitoring 4 onglets ;
+Système = process (uptime 4 min, go1.27.1, 28 goroutines) + infra (R2
+joignable, maintenance) + workers 13 (auto-close 5 runs/33 ms, promotion
+25 runs/6 ms…) + tendance + décomposition ; Alertes = 6 seuils réels
+(erreurs 16/5 franchi, providers IA 8≥1 OK) ; Services = latence
+mesurée + connexions, zéro % fabriqué ; Événements = pagination live
+(page 2/3, 122 total) + filtre 7 j cohérent. NOTE : le score 77 avec
+« Erreurs actives −20 » est le VRAI état de prod (16 erreurs 5xx actives
+capturées par le middleware — plafonnées) : l'outil dit la vérité, c'est
+le but.
+
+Cleanup : fixtures purgées + 2 events E2E supprimés, RÉSIDU 0.
+
+Stage Summary:
+- L'alignement demandé est prouvé chiffre à chiffre : UNE formule backend,
+  DEUX consommateurs (carte dashboard + /monitoring), même score (78=78).
+- Le couteau suisse est complet : système (runtime/workers/DB/R2/IA/
+  maintenance), événements (pagination+période), services (mesures
+  réelles), alertes (seuils live) — plus aucune valeur fabriquée.
+- Résilience bonus : les 7 workers périodiques sont panic-safe (avant,
+  un panic tuait le process entier).
+- Non-couvert (noté ADR-0011) : règles configurables persistées, p50/p95
+  par endpoint (table ApiLatency), alerting externe — candidats P5.
+- Prod : Neon 132/132, Render LIVE 43dd8d98, Vercel READY, CI verte ×2,
+  résidu 0 ; scripts e2e_monalign.py réutilisable dans sect-audit.
