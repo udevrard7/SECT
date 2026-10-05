@@ -20,11 +20,13 @@ import {
   BellRing,
   CheckCircle2,
   MessageSquare,
+  MinusCircle,
   Pencil,
   Plus,
   RefreshCw,
   Settings2,
   Trash2,
+  Webhook,
   Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -60,8 +62,11 @@ const EMPTY_FORM: RuleFormValues = {
   severite: 'WARNING',
   cooldownMinutes: 30,
   notifyInApp: true,
-  notifySlack: true,
-  notifyEmail: true,
+  // SECT-MONITORING-DISCORD-1 : Discord = canal principal, email OFF
+  // (quota Resend réservé aux transactionnels — migration 000134).
+  notifyDiscord: true,
+  notifySlack: false,
+  notifyEmail: false,
 }
 
 export function AlertsTab({
@@ -147,6 +152,7 @@ export function AlertsTab({
       severite: rule.severite,
       cooldownMinutes: rule.cooldownMinutes,
       notifyInApp: rule.notifyInApp,
+      notifyDiscord: rule.notifyDiscord,
       notifySlack: rule.notifySlack,
       notifyEmail: rule.notifyEmail,
     })
@@ -221,13 +227,26 @@ export function AlertsTab({
             </p>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 normal-case">
               <span className="inline-flex items-center gap-1">
+                {channels?.discordConfigured ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 text-success-text" aria-hidden="true" /> Discord → webhook actif
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="h-3 w-3 text-warning" aria-hidden="true" /> Discord non configuré (DISCORD_WEBHOOK_URL)
+                  </>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1">
                 {channels?.slackConfigured ? (
                   <>
                     <CheckCircle2 className="h-3 w-3 text-success-text" aria-hidden="true" /> Slack configuré
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="h-3 w-3 text-warning" aria-hidden="true" /> Slack non configuré (SLACK_WEBHOOK_URL)
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <MinusCircle className="h-3 w-3" aria-hidden="true" /> Slack non configuré
+                    </span>
                   </>
                 )}
               </span>
@@ -251,7 +270,12 @@ export function AlertsTab({
                   )
                 ) : (
                   <>
-                    <AlertTriangle className="h-3 w-3 text-warning" aria-hidden="true" /> Email dédié non configuré (ALERTING_EMAIL_TO)
+                    {/* Décision produit SECT-MONITORING-DISCORD-1 : alertes par
+                        Discord, email désactivé pour préserver le quota
+                        transactionnel Resend — pas une anomalie. */}
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <MinusCircle className="h-3 w-3" aria-hidden="true" /> Email d&apos;alerte désactivé (quota transactionnel préservé)
+                    </span>
                   </>
                 )}
               </span>
@@ -600,6 +624,9 @@ function RuleCard({
             <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
               <span className={`inline-flex items-center gap-0.5 ${rule.notifyInApp ? 'text-foreground' : 'line-through opacity-50'}`}>
                 <Bell className="h-3 w-3" aria-hidden="true" /> in-app
+              </span>
+              <span className={`inline-flex items-center gap-0.5 ${rule.notifyDiscord ? 'text-foreground' : 'line-through opacity-50'}`}>
+                <Webhook className="h-3 w-3" aria-hidden="true" /> Discord
               </span>
               <span className={`inline-flex items-center gap-0.5 ${rule.notifySlack ? 'text-foreground' : 'line-through opacity-50'}`}>
                 <Zap className="h-3 w-3" aria-hidden="true" /> Slack

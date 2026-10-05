@@ -91,17 +91,21 @@ curl -s -X POST https://api.render.com/v1/services/srv-d9ed5bdaeets73auosj0/depl
 RENDER_API_KEY=rnd_… python3 ops/render_env_check.py
 ```
 
-## 6. Inventaire actuel (2026-10-05, post-restauration — 14 vars live)
+## 6. Inventaire actuel (2026-10-05, post SECT-MONITORING-DISCORD-1 — 14 vars live)
 
 **REQUIRED (14)** : `NEON_DATABASE_URL` (sect_app), `JWT_SECRET` (256 bits),
 `ENVIRONMENT=production`, `CORS_ORIGINS`, `APP_BASE_URL`, `R2_*` ×5,
-`RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ALERTING_EMAIL_TO`, `NEON_DIRECT_URL`.
+`RESEND_API_KEY`, `RESEND_FROM_EMAIL` (transactionnels uniquement),
+`DISCORD_WEBHOOK_URL` (canal principal de l'alerting), `NEON_DIRECT_URL`.
 
-**Optionnelles désactivées (17)** — absence = fonctionnalité off, pas une
+**Optionnelles désactivées (18)** — absence = fonctionnalité off, pas une
 panne : `SMTP_*` ×5, `TURNSTILE_*` ×2, `VAPID_*` ×3, `GENIUSPAY_*` ×4,
-`FIREBASE_*` ×2, `SLACK_WEBHOOK_URL`. Pour en activer une : créer le secret
-chez le fournisseur, l'ajouter à render.yaml (`sync: false`), PUT, deploy,
-puis vérifier (ex. Turnstile : `GET /api/turnstile/site-key`).
+`FIREBASE_*` ×2, `SLACK_WEBHOOK_URL`, `ALERTING_EMAIL_TO` (email d'alerte
+désactivé par décision produit quota — SECT-MONITORING-DISCORD-1 : le
+reposer + réactiver notifyEmail par règle réactive le canal). Pour en
+activer une : créer le secret chez le fournisseur, l'ajouter à render.yaml
+(`sync: false`), PUT, deploy, puis vérifier (ex. Turnstile :
+`GET /api/turnstile/site-key`).
 
 **Réservées Render** : `PORT` (auto-injecté pour les services Docker).
 
@@ -123,3 +127,4 @@ plus passer inaperçue :
 | 2026-10-04 | SECT-R2-CONFIG-1 : full-replace 8 vars (JWT 256 bits, ENV, 5×R2, NEON préservée) | 8 |
 | 2026-10-05 | SECT-MONITORING-P5-1 : full-replace 9 vars — **ÉCRASE RESEND×2 (incident)** | 9 |
 | 2026-10-05 | SECT-RENDER-ENV-RESTORE-1 : PUT 14 vars (9 préservées byte-à-byte + RESEND×2, APP_BASE_URL, CORS_ORIGINS, NEON_DIRECT_URL) + deploy + vérif 8/8 (email réel DELIVERED) | 14 |
+| 2026-10-05 | SECT-MONITORING-DISCORD-1 : PUT 14 vars (13 préservées byte-à-byte + `DISCORD_WEBHOOK_URL` ; `ALERTING_EMAIL_TO` retirée — alertes par Discord, quota Resend réservé aux transactionnels) + migration 000134 (notifyEmail=false, notifyDiscord=true) | 14 |

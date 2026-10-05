@@ -95,6 +95,11 @@ type Config struct {
 	// (jamais de silence feint — cf. channels de GET /api/monitoring/rules).
 	SlackWebhookURL string // SLACK_WEBHOOK_URL (incoming webhook Slack)
 	AlertingEmailTo string // ALERTING_EMAIL_TO (destinataire dédié des alertes email)
+	// SECT-MONITORING-DISCORD-1 : webhook Discord — canal PRINCIPAL de
+	// l'alerting externe. Les emails d'alerte sont désactivés par défaut
+	// (migration 000134 : notifyEmail=false) pour préserver le quota
+	// Resend pour les transactionnels (reset password, invitations, factures).
+	DiscordWebhookURL string // DISCORD_WEBHOOK_URL
 }
 
 // Load reads configuration from environment variables.
@@ -149,6 +154,8 @@ func Load() (*Config, error) {
 		// ADR-0012 (monitoring P5) — alerting externe.
 		SlackWebhookURL: getEnv("SLACK_WEBHOOK_URL", ""),
 		AlertingEmailTo: getEnv("ALERTING_EMAIL_TO", ""),
+		// SECT-MONITORING-DISCORD-1 : canal principal de l'alerting.
+		DiscordWebhookURL: getEnv("DISCORD_WEBHOOK_URL", ""),
 	}
 
 	// Parse CORS origins (comma-separated)

@@ -128,6 +128,7 @@ export interface RuleFormValues {
   severite: AlertingRule['severite']
   cooldownMinutes: number
   notifyInApp: boolean
+  notifyDiscord: boolean
   notifySlack: boolean
   notifyEmail: boolean
 }
@@ -146,6 +147,7 @@ export async function saveRule(form: RuleFormValues, existingId?: string): Promi
         severite: form.severite,
         cooldownMinutes: Number(form.cooldownMinutes),
         notifyInApp: form.notifyInApp,
+        notifyDiscord: form.notifyDiscord,
         notifySlack: form.notifySlack,
         notifyEmail: form.notifyEmail,
         ...(isEdit ? {} : { metric: form.metric }),

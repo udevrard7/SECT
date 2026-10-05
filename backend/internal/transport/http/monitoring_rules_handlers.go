@@ -47,6 +47,7 @@ type alertingRuleResponse struct {
 	Enabled         bool    `json:"enabled"`
 	CooldownMinutes int     `json:"cooldownMinutes"`
 	NotifyInApp     bool    `json:"notifyInApp"`
+	NotifyDiscord   bool    `json:"notifyDiscord"` // SECT-MONITORING-DISCORD-1
 	NotifySlack     bool    `json:"notifySlack"`
 	NotifyEmail     bool    `json:"notifyEmail"`
 	IsSystem        bool    `json:"isSystem"`
@@ -94,7 +95,7 @@ func (s *Server) monitoringRulesList(w http.ResponseWriter, r *http.Request) {
 			Metric: rule.Metric, MetricLabel: def.Label, Unit: def.Unit,
 			Comparator: rule.Comparator, Threshold: rule.Threshold, Severite: rule.Severite,
 			Enabled: rule.Enabled, CooldownMinutes: rule.CooldownMinutes,
-			NotifyInApp: rule.NotifyInApp, NotifySlack: rule.NotifySlack, NotifyEmail: rule.NotifyEmail,
+			NotifyInApp: rule.NotifyInApp, NotifyDiscord: rule.NotifyDiscord, NotifySlack: rule.NotifySlack, NotifyEmail: rule.NotifyEmail,
 			IsSystem:       rule.IsSystem,
 			BreachedSince:  fmtTimePtr(rule.BreachedSince),
 			LastNotifiedAt: fmtTimePtr(rule.LastNotifiedAt),
@@ -111,9 +112,10 @@ func (s *Server) monitoringRulesList(w http.ResponseWriter, r *http.Request) {
 	// ne part (channels.emailReady=false), "resend"/"smtp" que l'envoi
 	// est réel. Permet de diagnostiquer une var d'env écrasée/absente.
 	channels := map[string]any{
-		"slackConfigured": s.alertingCfg.SlackWebhookURL != "",
-		"emailTo":         s.alertingCfg.AlertingEmailTo,
-		"emailReady":      s.alertingCfg.EmailReady,
+		"discordConfigured": s.alertingCfg.DiscordWebhookURL != "", // SECT-MONITORING-DISCORD-1
+		"slackConfigured":   s.alertingCfg.SlackWebhookURL != "",
+		"emailTo":           s.alertingCfg.AlertingEmailTo,
+		"emailReady":        s.alertingCfg.EmailReady,
 	}
 	if s.mailer != nil {
 		channels["mailer"] = s.mailer.Kind()
@@ -139,6 +141,7 @@ type alertingRuleInput struct {
 	Enabled         *bool    `json:"enabled"`
 	CooldownMinutes *int     `json:"cooldownMinutes"`
 	NotifyInApp     *bool    `json:"notifyInApp"`
+	NotifyDiscord   *bool    `json:"notifyDiscord"`
 	NotifySlack     *bool    `json:"notifySlack"`
 	NotifyEmail     *bool    `json:"notifyEmail"`
 }
@@ -208,7 +211,9 @@ func (s *Server) monitoringRuleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Défauts : WARNING / actif / cooldown 30 / 3 canaux activés.
+	// Défauts (SECT-MONITORING-DISCORD-1) : WARNING / actif / cooldown 30 /
+	// in-app + Discord activés ; Slack et email OFF par défaut (email =
+	// quota transactionnel préservé — cf. migration 000134).
 	severite := "WARNING"
 	if input.Severite != nil {
 		severite = *input.Severite
@@ -217,9 +222,12 @@ func (s *Server) monitoringRuleCreate(w http.ResponseWriter, r *http.Request) {
 	if input.CooldownMinutes != nil {
 		cooldown = *input.CooldownMinutes
 	}
-	notifyInApp, notifySlack, notifyEmail := true, true, true
+	notifyInApp, notifyDiscord, notifySlack, notifyEmail := true, true, false, false
 	if input.NotifyInApp != nil {
 		notifyInApp = *input.NotifyInApp
+	}
+	if input.NotifyDiscord != nil {
+		notifyDiscord = *input.NotifyDiscord
 	}
 	if input.NotifySlack != nil {
 		notifySlack = *input.NotifySlack
@@ -236,13 +244,13 @@ func (s *Server) monitoringRuleCreate(w http.ResponseWriter, r *http.Request) {
 		createdByID := claims.UserID
 		row := tx.QueryRow(r.Context(), fmt.Sprintf(`
                         INSERT INTO "AlertingRule" ("id", "code", "label", "description", "metric", "comparator",
-                                "threshold", "severite", "enabled", "cooldownMinutes", "notifyInApp", "notifySlack",
-                                "notifyEmail", "isSystem", "breachedSince", "lastNotifiedAt", "createdById", "createdAt", "updatedAt")
-                        VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, true, $9, $10, $11, $12, false, NULL, NULL, $13, now(), now())
+                                "threshold", "severite", "enabled", "cooldownMinutes", "notifyInApp", "notifyDiscord",
+                                "notifySlack", "notifyEmail", "isSystem", "breachedSince", "lastNotifiedAt", "createdById", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, false, NULL, NULL, $15, now(), now())
                         RETURNING %s
                 `, monitoring.AlertingRuleColumns),
 			newID, code, *input.Label, derefString(input.Description), *input.Metric, *input.Comparator,
-			*input.Threshold, severite, cooldown, notifyInApp, notifySlack, notifyEmail, createdByID)
+			*input.Threshold, severite, cooldown, notifyInApp, notifyDiscord, notifySlack, notifyEmail, false, createdByID)
 		e, err := monitoring.ScanAlertingRule(row)
 		if err == nil {
 			rule = e
@@ -267,7 +275,7 @@ func (s *Server) monitoringRuleCreate(w http.ResponseWriter, r *http.Request) {
 		Metric: rule.Metric, MetricLabel: def.Label, Unit: def.Unit,
 		Comparator: rule.Comparator, Threshold: rule.Threshold, Severite: rule.Severite,
 		Enabled: rule.Enabled, CooldownMinutes: rule.CooldownMinutes,
-		NotifyInApp: rule.NotifyInApp, NotifySlack: rule.NotifySlack, NotifyEmail: rule.NotifyEmail,
+		NotifyInApp: rule.NotifyInApp, NotifyDiscord: rule.NotifyDiscord, NotifySlack: rule.NotifySlack, NotifyEmail: rule.NotifyEmail,
 		IsSystem: rule.IsSystem, BreachedSince: fmtTimePtr(rule.BreachedSince),
 		LastNotifiedAt: fmtTimePtr(rule.LastNotifiedAt),
 		CurrentValue:   st.CurrentValue, Violated: st.Violated,
@@ -339,6 +347,9 @@ func (s *Server) monitoringRuleUpdate(w http.ResponseWriter, r *http.Request) {
 	if input.NotifyInApp != nil {
 		add("notifyInApp", *input.NotifyInApp)
 	}
+	if input.NotifyDiscord != nil {
+		add("notifyDiscord", *input.NotifyDiscord)
+	}
 	if input.NotifySlack != nil {
 		add("notifySlack", *input.NotifySlack)
 	}
@@ -386,7 +397,7 @@ func (s *Server) monitoringRuleUpdate(w http.ResponseWriter, r *http.Request) {
 		Metric: rule.Metric, MetricLabel: def.Label, Unit: def.Unit,
 		Comparator: rule.Comparator, Threshold: rule.Threshold, Severite: rule.Severite,
 		Enabled: rule.Enabled, CooldownMinutes: rule.CooldownMinutes,
-		NotifyInApp: rule.NotifyInApp, NotifySlack: rule.NotifySlack, NotifyEmail: rule.NotifyEmail,
+		NotifyInApp: rule.NotifyInApp, NotifyDiscord: rule.NotifyDiscord, NotifySlack: rule.NotifySlack, NotifyEmail: rule.NotifyEmail,
 		IsSystem: rule.IsSystem, BreachedSince: fmtTimePtr(rule.BreachedSince),
 		LastNotifiedAt: fmtTimePtr(rule.LastNotifiedAt),
 		CurrentValue:   st.CurrentValue, Violated: st.Violated,

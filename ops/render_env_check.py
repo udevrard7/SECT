@@ -49,6 +49,9 @@ OPTIONAL_KEYS = {
     "GENIUSPAY_WEBHOOK_SECRET", "GENIUSPAY_BASE_URL",
     "FIREBASE_PROJECT_ID", "FIREBASE_SERVICE_ACCOUNT_KEY",
     "SLACK_WEBHOOK_URL",
+    # Email d'alerte désactivé par décision produit (SECT-MONITORING-
+    # DISCORD-1 : quota Resend réservé aux transactionnels) :
+    "ALERTING_EMAIL_TO",
     # Migrations hors-ligne uniquement (aucun impact runtime) :
     "NEON_DIRECT_URL",
 }

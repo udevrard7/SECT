@@ -5,7 +5,7 @@
 // cooldown 1-1440, métrique du catalogue, metric immuable en PUT) sont
 // rappelées en disabled côté client mais TOUJOURS vérifiées serveur.
 
-import { CheckCircle2, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Loader2, Plus, Trash2, Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -117,6 +117,16 @@ function RuleFormFields({
               id="rule-inapp"
               checked={form.notifyInApp}
               onCheckedChange={(v) => onChange({ notifyInApp: v === true })}
+            />
+          </label>
+          <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="rule-discord">
+            <span className="flex items-center gap-2">
+              <Webhook className="h-3.5 w-3.5 text-muted-foreground" /> Discord (webhook — canal principal)
+            </span>
+            <Checkbox
+              id="rule-discord"
+              checked={form.notifyDiscord}
+              onCheckedChange={(v) => onChange({ notifyDiscord: v === true })}
             />
           </label>
           <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="rule-slack">

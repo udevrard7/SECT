@@ -90,14 +90,20 @@ services:
       - key: VAPID_SUBJECT
         value: "mailto:ulrichdouh@gmail.com"
       # ── Monitoring / alerting externe (ADR-0012, P5) ──
-      # Destinataire du canal email DÉDIÉ aux alertes monitoring (distinct des
-      # emails transactionnels Resend). Posée le 05-10 — absente du blueprint
-      # jusqu'à SECT-RENDER-ENV-RESTORE-1 (dérive IaC corrigée).
-      - key: ALERTING_EMAIL_TO
-        value: "ulrichdouh@gmail.com"
+      # Canal PRINCIPAL des alertes monitoring (SECT-MONITORING-DISCORD-1,
+      # 2026-10-05) : webhook Discord. Les emails d'alerte sont désactivés
+      # (migration 000134 : notifyEmail=false) pour préserver le quota
+      # Resend pour les transactionnels (reset, invitations, factures).
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
       # Incoming webhook Slack (optionnel — absent = canal Slack désactivé,
-      # bandeau UI honnête "Slack non configuré").
+      # bandeau UI honnête « Slack non configuré »).
       - key: SLACK_WEBHOOK_URL
+        sync: false
+      # Destinataire email des alertes — OPTIONNEL et volontairement
+      # absent depuis SECT-MONITORING-DISCORD-1 (décision quota : le
+      # reposer + réactiver notifyEmail par règle réactive le canal).
+      - key: ALERTING_EMAIL_TO
         sync: false
       # ── Firebase Cloud Messaging (push mobile — audit 2026-09) ──
       # AVANT : absentes du blueprint → le push mobile ne fonctionnait en prod

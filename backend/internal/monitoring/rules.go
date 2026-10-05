@@ -22,15 +22,18 @@ import (
 )
 
 // AlertingConfig — configuration des canaux externes (ADR-0012 §4).
-// Portée par main.go (env SLACK_WEBHOOK_URL / ALERTING_EMAIL_TO +
-// mailer réel configuré) et exposée par GET /api/monitoring/rules
-// (channels) pour que l'UI indique quoi configurer — jamais de
-// silence feint.
+// Portée par main.go (env SLACK_WEBHOOK_URL / ALERTING_EMAIL_TO /
+// DISCORD_WEBHOOK_URL + mailer réel configuré) et exposée par GET
+// /api/monitoring/rules (channels) pour que l'UI indique quoi
+// configurer — jamais de silence feint.
+// SECT-MONITORING-DISCORD-1 : Discord est le canal principal de
+// l'alerting ; l'email dédié est optionnel (quota transactionnel).
 type AlertingConfig struct {
-	SlackWebhookURL string
-	AlertingEmailTo string
-	EmailReady      bool   // un mailer réel (Resend/SMTP) est configuré
-	AppBaseURL      string // pour le lien /monitoring dans les messages
+	SlackWebhookURL   string
+	AlertingEmailTo   string
+	EmailReady        bool   // un mailer réel (Resend/SMTP) est configuré
+	AppBaseURL        string // pour le lien /monitoring dans les messages
+	DiscordWebhookURL string // SECT-MONITORING-DISCORD-1
 }
 
 // ─── Catalogue des métriques évaluables (ADR-0012 §2) ───
@@ -254,6 +257,7 @@ type AlertingRule struct {
 	Enabled         bool       `json:"enabled"`
 	CooldownMinutes int        `json:"cooldownMinutes"`
 	NotifyInApp     bool       `json:"notifyInApp"`
+	NotifyDiscord   bool       `json:"notifyDiscord"` // SECT-MONITORING-DISCORD-1 — canal principal
 	NotifySlack     bool       `json:"notifySlack"`
 	NotifyEmail     bool       `json:"notifyEmail"`
 	IsSystem        bool       `json:"isSystem"`
@@ -266,8 +270,8 @@ type AlertingRule struct {
 
 // AlertingRuleColumns — SELECT/RETURNING partagé (handler + worker).
 const AlertingRuleColumns = `"id", "code", "label", "description", "metric", "comparator",
-        "threshold", "severite", "enabled", "cooldownMinutes", "notifyInApp", "notifySlack",
-        "notifyEmail", "isSystem", "breachedSince", "lastNotifiedAt", "createdById",
+        "threshold", "severite", "enabled", "cooldownMinutes", "notifyInApp", "notifyDiscord",
+        "notifySlack", "notifyEmail", "isSystem", "breachedSince", "lastNotifiedAt", "createdById",
         "createdAt", "updatedAt"`
 
 // ScanAlertingRule scanne une ligne selon AlertingRuleColumns.
@@ -276,8 +280,8 @@ func ScanAlertingRule(row interface {
 }) (*AlertingRule, error) {
 	r := &AlertingRule{}
 	if err := row.Scan(&r.ID, &r.Code, &r.Label, &r.Description, &r.Metric, &r.Comparator,
-		&r.Threshold, &r.Severite, &r.Enabled, &r.CooldownMinutes, &r.NotifyInApp, &r.NotifySlack,
-		&r.NotifyEmail, &r.IsSystem, &r.BreachedSince, &r.LastNotifiedAt, &r.CreatedByID,
+		&r.Threshold, &r.Severite, &r.Enabled, &r.CooldownMinutes, &r.NotifyInApp, &r.NotifyDiscord,
+		&r.NotifySlack, &r.NotifyEmail, &r.IsSystem, &r.BreachedSince, &r.LastNotifiedAt, &r.CreatedByID,
 		&r.CreatedAt, &r.UpdatedAt); err != nil {
 		return nil, err
 	}

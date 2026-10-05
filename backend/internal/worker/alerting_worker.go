@@ -14,8 +14,13 @@ package worker
 //       ADMIN actifs). L'événement n'est créé QUE sur la transition →
 //       pas d'auto-amplification du compteur errors_actifs ;
 //     - cooldown écoulé (lastNotifiedAt) → canaux activés sur la règle :
-//       Slack (SLACK_WEBHOOK_URL) + email dédié (ALERTING_EMAIL_TO via
-//       le mailer Resend > SMTP > Log) → lastNotifiedAt = now().
+//       Discord (DISCORD_WEBHOOK_URL — canal principal SECT-MONITORING-
+//       DISCORD-1), Slack (SLACK_WEBHOOK_URL) et email dédié
+//       (ALERTING_EMAIL_TO via le mailer Resend > SMTP > Log) →
+//       lastNotifiedAt = now(). Les emails d'alerte sont désactivés par
+//       défaut (migration 000134, notifyEmail=false) pour préserver le
+//       quota Resend pour les transactionnels (reset password,
+//       invitations, factures) — réactivables par règle si besoin.
 //  4. récupération (breachedSince NON NULL + valeur saine) → message
 //     « ✅ récupérée » sur les canaux externes qui avaient été notifiés,
 //     breachedSince = NULL (pas d'événement in-app — pas de bruit).
@@ -79,6 +84,7 @@ func (w *AlertingWorker) WithRegistry(reg *monitoring.WorkerRegistry) *AlertingW
 func (w *AlertingWorker) Start(ctx context.Context) {
 	w.reg.Register("alerting", "Règles d'alerte + canaux externes", "periodique", "2 min")
 	w.logger.Info("AlertingWorker started", "interval", alertingCheckInterval,
+		"discordConfigured", w.cfg.DiscordWebhookURL != "",
 		"slackConfigured", w.cfg.SlackWebhookURL != "",
 		"emailTo", w.cfg.AlertingEmailTo, "emailReady", w.cfg.EmailReady)
 
@@ -167,6 +173,9 @@ func (w *AlertingWorker) handleBreach(ctx context.Context, rule monitoring.Alert
 	body := fmt.Sprintf("%s\nValeur mesurée : %s — score santé plateforme : %d/100.\n→ %s/monitoring",
 		alertLine, formatRuleValue(def, st.CurrentValue), metrics.ScoreSante, strings.TrimSuffix(w.cfg.AppBaseURL, "/"))
 
+	if rule.NotifyDiscord {
+		w.sendDiscord("🚨 [SECT Monitoring] Alerte : "+rule.Label, body, severityColor(rule.Severite))
+	}
 	if rule.NotifySlack {
 		w.sendSlack("🚨 [SECT Monitoring] " + body)
 	}
@@ -179,7 +188,8 @@ func (w *AlertingWorker) handleBreach(ctx context.Context, rule monitoring.Alert
 	}
 	w.logger.Warn("AlertingWorker: règle franchie",
 		"rule", rule.Code, "value", st.CurrentValue, "threshold", rule.Threshold,
-		"newBreach", isNewBreach, "notifiedSlack", rule.NotifySlack, "notifiedEmail", rule.NotifyEmail)
+		"newBreach", isNewBreach, "notifiedDiscord", rule.NotifyDiscord,
+		"notifiedSlack", rule.NotifySlack, "notifiedEmail", rule.NotifyEmail)
 }
 
 // handleRecovery — retour à la normale : message externe (si notifiée
@@ -191,6 +201,9 @@ func (w *AlertingWorker) handleRecovery(ctx context.Context, rule monitoring.Ale
 		body := fmt.Sprintf("Règle « %s » revenue à la normale : %s (seuil %s %s).",
 			rule.Label, formatRuleValue(def, st.CurrentValue),
 			comparatorSymbol(rule.Comparator), formatThreshold(rule.Threshold))
+		if rule.NotifyDiscord {
+			w.sendDiscord("✅ [SECT Monitoring] Résolu : "+rule.Label, body, colorDiscordGreen)
+		}
 		if rule.NotifySlack {
 			w.sendSlack("✅ [SECT Monitoring] " + body)
 		}
@@ -238,6 +251,57 @@ func (w *AlertingWorker) sendSlack(text string) {
 	if resp.StatusCode >= 300 {
 		w.logger.Error("AlertingWorker: Slack a répondu", "status", resp.StatusCode)
 	}
+}
+
+// sendDiscord — webhook Discord (SECT-MONITORING-DISCORD-1). Canal
+// PRINCIPAL de l'alerting externe : embed coloré selon la sévérité,
+// timestamp ISO, footer SECT. Best-effort + dégradation honnête (un
+// canal non configuré est journalisé, jamais silencieux).
+func (w *AlertingWorker) sendDiscord(title, description string, color int) {
+	if w.cfg.DiscordWebhookURL == "" {
+		w.logger.Warn("AlertingWorker: Discord non configuré (DISCORD_WEBHOOK_URL) — message journalisé seulement", "title", title)
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"embeds": []map[string]any{{
+			"title":       title,
+			"description": description,
+			"color":       color,
+			"footer":      map[string]string{"text": "SECT Monitoring"},
+			"timestamp":   time.Now().UTC().Format(time.RFC3339),
+		}},
+	})
+	resp, err := w.client.Post(w.cfg.DiscordWebhookURL, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		w.logger.Error("AlertingWorker: envoi Discord échoué", "error", err.Error())
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		w.logger.Error("AlertingWorker: Discord a répondu", "status", resp.StatusCode)
+	}
+}
+
+// Couleurs d'embed Discord (décimal) selon la sévérité.
+const (
+	colorDiscordRed    = 0xED4245 // CRITICAL
+	colorDiscordOrange = 0xE67E22 // ERROR
+	colorDiscordYellow = 0xF1C40F // WARNING
+	colorDiscordGrey   = 0x95A5A6 // INFO
+	colorDiscordGreen  = 0x57F287 // récupération
+)
+
+// severityColor — couleur d'embed selon la sévérité de la règle.
+func severityColor(severite string) int {
+	switch severite {
+	case "CRITICAL":
+		return colorDiscordRed
+	case "ERROR":
+		return colorDiscordOrange
+	case "WARNING":
+		return colorDiscordYellow
+	}
+	return colorDiscordGrey
 }
 
 func (w *AlertingWorker) sendEmail(subject, body string) {

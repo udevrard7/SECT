@@ -198,6 +198,7 @@ export interface AlertingRule {
   enabled: boolean
   cooldownMinutes: number
   notifyInApp: boolean
+  notifyDiscord: boolean
   notifySlack: boolean
   notifyEmail: boolean
   isSystem: boolean
@@ -225,6 +226,9 @@ export interface ComparatorDef {
 export interface RulesData {
   rules: AlertingRule[]
   channels: {
+    /** SECT-MONITORING-DISCORD-1 : canal principal de l'alerting.
+     * Absent sur les backends antérieurs → affiché « non configuré ». */
+    discordConfigured?: boolean
     slackConfigured: boolean
     emailTo: string
     emailReady: boolean

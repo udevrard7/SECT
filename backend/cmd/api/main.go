@@ -360,10 +360,11 @@ func main() {
 	alertingEmailReady := cfg.ResendAPIKey != "" ||
 		(cfg.SMTPHost != "" && cfg.SMTPUser != "" && cfg.SMTPPassword != "" && cfg.SMTPFrom != "")
 	alertingCfg := monitoring.AlertingConfig{
-		SlackWebhookURL: cfg.SlackWebhookURL,
-		AlertingEmailTo: cfg.AlertingEmailTo,
-		EmailReady:      alertingEmailReady,
-		AppBaseURL:      cfg.AppBaseURL,
+		SlackWebhookURL:   cfg.SlackWebhookURL,
+		AlertingEmailTo:   cfg.AlertingEmailTo,
+		EmailReady:        alertingEmailReady,
+		AppBaseURL:        cfg.AppBaseURL,
+		DiscordWebhookURL: cfg.DiscordWebhookURL, // SECT-MONITORING-DISCORD-1 — canal principal
 	}
 	alertingWorker := worker.NewAlertingWorker(pool, logger, monRecorder, mailSvc, alertingCfg).WithRegistry(workerRegistry)
 	alertingWorker.Start(context.Background())
