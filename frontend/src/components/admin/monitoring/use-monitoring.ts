@@ -123,7 +123,9 @@ export function useEndpointsStats(window: EndpointsWindow, autoRefresh: boolean)
   })
 }
 
-/** Invalide toutes les queries monitoring (après mutation ou refresh manuel). */
+/** Invalide toutes les queries monitoring (après mutation ou refresh manuel).
+ *  invalidateQueries refetch les queries ACTIVES — avec forceMount sur les
+ *  onglets, cela couvre events/overview/alerts/rules/health/endpoints. */
 export function useInvalidateMonitoring() {
   const queryClient = useQueryClient()
   return useCallback(async () => {
@@ -131,6 +133,8 @@ export function useInvalidateMonitoring() {
     await queryClient.invalidateQueries({ queryKey: ['monitoring-overview'] })
     await queryClient.invalidateQueries({ queryKey: ['monitoring-alerts-actives'] })
     await queryClient.invalidateQueries({ queryKey: ['monitoring-rules'] })
+    await queryClient.invalidateQueries({ queryKey: ['monitoring-health'] })
+    await queryClient.invalidateQueries({ queryKey: ['monitoring-endpoints'] })
   }, [queryClient])
 }
 

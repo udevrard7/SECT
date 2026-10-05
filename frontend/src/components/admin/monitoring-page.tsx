@@ -34,7 +34,7 @@ import { EventsTab } from './monitoring/events-tab'
 import { ServicesTab } from './monitoring/services-tab'
 import { SystemTab } from './monitoring/system-tab'
 import { AlertsTab } from './monitoring/alerts-tab'
-import { useActiveAlerts, useMonitoringHealth, useMonitoringOverview } from './monitoring/use-monitoring'
+import { useActiveAlerts, useInvalidateMonitoring, useMonitoringHealth, useMonitoringOverview } from './monitoring/use-monitoring'
 
 type TabValue = 'evenements' | 'services' | 'systeme' | 'alertes'
 
@@ -50,6 +50,7 @@ export function MonitoringPage() {
   const overviewQuery = useMonitoringOverview(autoRefresh)
   const healthQuery = useMonitoringHealth(autoRefresh)
   const alertsQuery = useActiveAlerts(autoRefresh)
+  const invalidateAll = useInvalidateMonitoring()
 
   const overview = overviewQuery.data ?? null
   const criticalCount = overview?.kpis.criticalEvents ?? 0
@@ -57,16 +58,14 @@ export function MonitoringPage() {
     (e) => e.severite === 'CRITICAL' || e.severite === 'ERROR' || e.severite === 'WARNING'
   ).length
 
-  // Refresh manuel global : invalide les queries du module (les hooks
-  // refetchent) + spinner local pendant l'opération.
+  // Refresh manuel global : invalide TOUTES les queries du module (events
+  // inclus — elles vivent dans les onglets forceMountés, donc actives et
+  // refetchées par invalidateQueries ; correction E2E : le bouton ne
+  // rafraîchissait que overview/health/alerts, pas la liste d'événements).
   const handleManualRefresh = async () => {
     setIsManualRefreshing(true)
     try {
-      await Promise.all([
-        overviewQuery.refetch(),
-        healthQuery.refetch(),
-        alertsQuery.refetch(),
-      ])
+      await invalidateAll()
     } catch {
       toast.error('Actualisation partielle', {
         description: 'Une des sources de données a échoué — réessayez.',
