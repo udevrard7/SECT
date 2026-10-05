@@ -38,6 +38,10 @@ import {
   HardDrive,
   Bot,
   TrendingUp,
+  Plus,
+  Pencil,
+  Trash2,
+  Gauge,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
@@ -201,17 +205,60 @@ interface HealthReport {
   checkedAt: string
 }
 
-// ADR-0011 §5 : les 6 « règles d'alerte » MOCK (valeurs inventées, toggles
-// sans backend) sont remplacées par des SEUILS SYSTÈME RÉELS dérivés de
-// /api/monitoring/overview — lecture seule, aucune valeur fabriquée.
-interface SystemThreshold {
-  name: string
-  threshold: number
-  current: number
-  severite: MonitoringEvent['severite']
+// ADR-0012 (monitoring P5) : les seuils système dérivés côté client (lecture
+// seule, perdus au rechargement) sont remplacés par des RÈGLES D'ALERTE
+// PERSISTÉES côté backend (table AlertingRule) — éditables, activables,
+// avec canaux de notification externes (in-app/Slack/email dédié).
+interface AlertingRule {
+  id: string
+  code: string
+  label: string
+  description: string | null
+  metric: string
+  metricLabel: string
   unit: string
-  inverted?: boolean // true = « au-dessus du seuil » est le bon état (ex: providers IA)
-  detail: string
+  comparator: 'SUP' | 'SUP_EGAL' | 'INF' | 'INF_EGAL'
+  threshold: number
+  severite: MonitoringEvent['severite']
+  enabled: boolean
+  cooldownMinutes: number
+  notifyInApp: boolean
+  notifySlack: boolean
+  notifyEmail: boolean
+  isSystem: boolean
+  breachedSince: string | null
+  lastNotifiedAt: string | null
+  currentValue: number
+  violated: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface RulesData {
+  rules: AlertingRule[]
+  channels: { slackConfigured: boolean; emailTo: string; emailReady: boolean }
+  metrics: Array<{ key: string; label: string; unit: string; description: string }>
+  comparators: Array<{ key: string; label: string }>
+}
+
+// ADR-0012 §3 : p50/p95 par endpoint (RequestLog — fenêtre 1 h/24 h/7 j).
+interface EndpointStat {
+  method: string
+  route: string
+  total: number
+  errors: number
+  errorRate: number
+  p50Ms: number
+  p95Ms: number
+  avgMs: number
+  maxMs: number
+}
+
+interface EndpointsData {
+  window: string
+  windowHours: number
+  endpoints: EndpointStat[]
+  generatedAt: string
 }
 
 // ─── Constants ───
@@ -388,6 +435,20 @@ function getTimeAgo(dateStr: string): string {
 // ─── HealthGauge supprimé : remplacé par ProgressRing (Design System Savane) ───
 
 // ─── Severity Badge ───
+
+// comparatorLabel — symbole lisible d'un comparateur de règle (ADR-0012).
+function comparatorLabel(comparator: AlertingRule['comparator']): string {
+  switch (comparator) {
+    case 'SUP':
+      return '>'
+    case 'SUP_EGAL':
+      return '≥'
+    case 'INF':
+      return '<'
+    case 'INF_EGAL':
+      return '≤'
+  }
+}
 
 function SeverityBadge({ severite }: { severite: MonitoringEvent['severite'] }) {
   const config = SEVERITY_CONFIG[severite]
@@ -766,65 +827,173 @@ export function MonitoringPage() {
   })
   const overview: OverviewData | null = overviewQuery.data ?? null
 
-  // ADR-0011 §5 — seuils système RÉELS (remplacent les 6 règles mock) :
-  // dérivés des mesures d'overview, lecture seule, zéro valeur fabriquée.
-  const systemThresholds: SystemThreshold[] = useMemo(() => {
-    const o = overview
-    const k = o?.kpis
-    const workersInError = (o?.workers ?? []).filter((w) => w.lastError).length
-    return [
-      {
-        name: 'Événements critiques actifs',
-        threshold: 1,
-        current: k?.criticalEvents ?? 0,
-        severite: 'CRITICAL',
-        unit: '',
-        detail: 'Tolérance zéro — un critique actif exige une action',
-      },
-      {
-        name: 'Erreurs actives',
-        threshold: 5,
-        current: k?.errorEvents ?? 0,
-        severite: 'ERROR',
-        unit: '',
-        detail: 'Au-delà de 5 erreurs actives, investiguer la cause racine',
-      },
-      {
-        name: 'Backlog autorisations',
-        threshold: 5,
-        current: k?.autorisationsEnAttente ?? 0,
-        severite: 'WARNING',
-        unit: '',
-        detail: 'Demandes d\'assistance en attente de validation',
-      },
-      {
-        name: 'Latence base de données',
-        threshold: 1000,
-        current: o?.db.latencyMs ?? 0,
-        severite: 'WARNING',
-        unit: ' ms',
-        detail: 'Ping Neon mesuré à chaque rafraîchissement',
-      },
-      {
-        name: 'Fournisseurs IA actifs',
-        threshold: 1,
-        current: o?.ai.providersActifs ?? 0,
-        severite: 'ERROR',
-        unit: '',
-        inverted: true,
-        detail: 'Au moins 1 provider actif requis (génération + correction)',
-      },
-      {
-        name: 'Workers en erreur',
-        threshold: 1,
-        current: workersInError,
-        severite: 'ERROR',
-        unit: '',
-        inverted: true,
-        detail: 'Workers périodiques dont la dernière exécution a échoué',
-      },
-    ]
-  }, [overview])
+  // ADR-0012 (monitoring P5) — règles d'alerte PERSISTÉES (backend) :
+  // statut live (currentValue/violated évalués côté serveur), canaux
+  // externes, catalogue métriques/comparateurs pour les dialogs.
+  const rulesQuery = useQuery<RulesData>({
+    queryKey: ['monitoring-rules'],
+    queryFn: async () => {
+      const res = await fetch('/api/monitoring/rules')
+      if (!res.ok) throw new Error('Failed to fetch rules')
+      return res.json()
+    },
+    staleTime: 30_000,
+    refetchInterval: autoRefresh ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  })
+  const rulesData: RulesData | null = rulesQuery.data ?? null
+  const alertingRules = rulesData?.rules ?? []
+
+  // ADR-0012 §3 — p50/p95 par endpoint (fenêtre sélectionnable).
+  const [endpointsWindow, setEndpointsWindow] = useState<'1h' | '24h' | '7d'>('24h')
+  const endpointsQuery = useQuery<EndpointsData>({
+    queryKey: ['monitoring-endpoints', endpointsWindow],
+    queryFn: async () => {
+      const res = await fetch(`/api/monitoring/endpoints?window=${endpointsWindow}`)
+      if (!res.ok) throw new Error('Failed to fetch endpoints stats')
+      return res.json()
+    },
+    staleTime: 30_000,
+    refetchInterval: autoRefresh ? 60_000 : false,
+    refetchIntervalInBackground: false,
+  })
+  const endpointsData: EndpointsData | null = endpointsQuery.data ?? null
+
+  // ─── ADR-0012 : dialogs règles (édition / création / suppression) ───
+  const [editRule, setEditRule] = useState<AlertingRule | null>(null)
+  const [createRuleOpen, setCreateRuleOpen] = useState(false)
+  const [deleteRuleTarget, setDeleteRuleTarget] = useState<AlertingRule | null>(null)
+  const [ruleSubmitting, setRuleSubmitting] = useState(false)
+  const [togglingRuleId, setTogglingRuleId] = useState<string | null>(null)
+
+  const refreshRules = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['monitoring-rules'] })
+  }
+
+  // Activation/désactivation d'une règle (PUT partiel).
+  const handleToggleRule = async (rule: AlertingRule, enabled: boolean) => {
+    setTogglingRuleId(rule.id)
+    try {
+      const res = await fetch(`/api/monitoring/rules/${rule.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la modification')
+      }
+      toast.success(enabled ? 'Règle activée' : 'Règle désactivée', {
+        description: `« ${rule.label} » ${enabled ? 'surveille à nouveau' : 'ne déclenchera plus d\u2019alerte'}.`,
+      })
+      await refreshRules()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de modifier la règle.',
+      })
+    } finally {
+      setTogglingRuleId(null)
+    }
+  }
+
+  // Suppression (règles custom uniquement — les système sont refusées backend).
+  const handleDeleteRule = async () => {
+    if (!deleteRuleTarget) return
+    setRuleSubmitting(true)
+    try {
+      const res = await fetch(`/api/monitoring/rules/${deleteRuleTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la suppression')
+      }
+      toast.success('Règle supprimée', { description: `« ${deleteRuleTarget.label} » a été supprimée.` })
+      setDeleteRuleTarget(null)
+      await refreshRules()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de supprimer la règle.',
+      })
+    } finally {
+      setRuleSubmitting(false)
+    }
+  }
+
+  // ─── ADR-0012 : formulaire d'édition/création (local state) ───
+  const emptyRuleForm = {
+    label: '',
+    metric: '',
+    comparator: 'SUP' as AlertingRule['comparator'],
+    threshold: 0,
+    severite: 'WARNING' as MonitoringEvent['severite'],
+    cooldownMinutes: 30,
+    notifyInApp: true,
+    notifySlack: true,
+    notifyEmail: true,
+  }
+  const [ruleForm, setRuleForm] = useState(emptyRuleForm)
+
+  // À l'ouverture du dialog d'édition : hydrate le formulaire depuis la règle.
+  useEffect(() => {
+    if (editRule) {
+      setRuleForm({
+        label: editRule.label,
+        metric: editRule.metric,
+        comparator: editRule.comparator,
+        threshold: editRule.threshold,
+        severite: editRule.severite,
+        cooldownMinutes: editRule.cooldownMinutes,
+        notifyInApp: editRule.notifyInApp,
+        notifySlack: editRule.notifySlack,
+        notifyEmail: editRule.notifyEmail,
+      })
+    }
+  }, [editRule])
+
+  // À l'ouverture du dialog de création : formulaire vierge (1re métrique du catalogue).
+  useEffect(() => {
+    if (createRuleOpen) {
+      setRuleForm({ ...emptyRuleForm, metric: rulesData?.metrics[0]?.key ?? 'errors_actifs' })
+    }
+  }, [createRuleOpen])
+
+  // Enregistrement (PUT édition / POST création).
+  const handleSaveRule = async () => {
+    setRuleSubmitting(true)
+    try {
+      const isEdit = !!editRule
+      const res = await fetch(isEdit ? `/api/monitoring/rules/${editRule.id}` : '/api/monitoring/rules', {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: ruleForm.label,
+          comparator: ruleForm.comparator,
+          threshold: Number(ruleForm.threshold),
+          severite: ruleForm.severite,
+          cooldownMinutes: Number(ruleForm.cooldownMinutes),
+          notifyInApp: ruleForm.notifyInApp,
+          notifySlack: ruleForm.notifySlack,
+          notifyEmail: ruleForm.notifyEmail,
+          ...(isEdit ? {} : { metric: ruleForm.metric }),
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de l\u2019enregistrement')
+      }
+      toast.success(isEdit ? 'Règle mise à jour' : 'Règle créée', {
+        description: `« ${ruleForm.label} » est ${isEdit ? 'enregistrée' : 'désormais surveillée'} (évaluée par le worker toutes les 2 min).`,
+      })
+      setEditRule(null)
+      setCreateRuleOpen(false)
+      await refreshRules()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible d\u2019enregistrer la règle.',
+      })
+    } finally {
+      setRuleSubmitting(false)
+    }
+  }
 
   // ─── Computed: service health from real backend healthcheck ───
   const computeServiceHealth = useCallback((): ServiceHealth[] => {
@@ -1835,7 +2004,97 @@ export function MonitoringPage() {
                 </CardContent>
               </Card>
 
-              {/* ─── Ligne 3 : breakdown du score ─── */}
+              {/* ─── Ligne 3 : endpoints API p50/p95 (ADR-0012 §3) ─── */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base font-display">
+                        <Gauge className="h-4 w-4 text-primary-text" />
+                        Endpoints API — latence p50/p95
+                      </CardTitle>
+                      <CardDescription>
+                        Échantillonnage réel des requêtes /api (routes normalisées) — fenêtre sélectionnable, rétention 7 jours
+                      </CardDescription>
+                    </div>
+                    <Select
+                      value={endpointsWindow}
+                      onValueChange={(v) => setEndpointsWindow(v as '1h' | '24h' | '7d')}
+                    >
+                      <SelectTrigger className="w-24 h-8 text-xs" aria-label="Fenêtre temporelle">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1h">1 heure</SelectItem>
+                        <SelectItem value="24h">24 heures</SelectItem>
+                        <SelectItem value="7d">7 jours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {endpointsQuery.isLoading ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <PulseSkeleton key={i} className="h-9 w-full" />
+                      ))}
+                    </div>
+                  ) : (endpointsData?.endpoints.length ?? 0) === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <Gauge className="h-6 w-6 text-muted-foreground" />
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Aucune requête échantillonnée sur cette fenêtre — l'échantillonneur tourne depuis le déploiement de l'ADR-0012.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-96 overflow-y-auto scrollbar-thin rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Endpoint</TableHead>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display text-right">Requêtes</TableHead>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display text-right">Erreurs 5xx</TableHead>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display text-right">p50</TableHead>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display text-right">p95</TableHead>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display text-right">Moy</TableHead>
+                            <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display text-right">Max</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(endpointsData?.endpoints ?? []).map((ep) => {
+                            const slow = ep.p95Ms > 3000
+                            return (
+                              <TableRow key={`${ep.method} ${ep.route}`} className={ep.errors > 0 ? 'bg-destructive/5' : undefined}>
+                                <TableCell>
+                                  <p className="text-xs font-medium truncate max-w-72" title={`${ep.method} ${ep.route}`}>
+                                    <span className="font-mono text-muted-foreground mr-1.5">{ep.method}</span>
+                                    {ep.route}
+                                  </p>
+                                </TableCell>
+                                <TableCell className="text-right font-mono tabular-nums text-sm">{ep.total}</TableCell>
+                                <TableCell className={`text-right font-mono tabular-nums text-sm ${ep.errors > 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+                                  {ep.errors > 0 ? `${ep.errors} (${(ep.errorRate * 100).toFixed(1)} %)` : '0'}
+                                </TableCell>
+                                <TableCell className="text-right font-mono tabular-nums text-sm">{ep.p50Ms} ms</TableCell>
+                                <TableCell className={`text-right font-mono tabular-nums text-sm font-semibold ${slow ? 'text-warning' : ''}`}>
+                                  {ep.p95Ms} ms{slow ? ' ⚠' : ''}
+                                </TableCell>
+                                <TableCell className="text-right font-mono tabular-nums text-xs text-muted-foreground">{ep.avgMs} ms</TableCell>
+                                <TableCell className="text-right font-mono tabular-nums text-xs text-muted-foreground">{ep.maxMs} ms</TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    p95 &gt; 3 s mis en évidence — les patterns {"{id}"} regroupent les requêtes d'une même route (UUID normalisés).
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* ─── Ligne 4 : breakdown du score ─── */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base font-display">
@@ -1873,13 +2132,38 @@ export function MonitoringPage() {
         {/* Tab 5: Alertes                                             */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="alertes" className="space-y-6">
-          {/* MONITORING-FIX-M6 : disclaimer règles non persistées */}
-          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-            <p className="text-xs text-warning">
-              Les règles d'alerte ci-dessous sont prédéfinies et non persistées. La désactivation d'une règle est temporaire (perdue au rechargement).
-              La persistance des règles d'alerte (table AlertRule + endpoints CRUD) est prévue dans une prochaine version.
-            </p>
+          {/* ADR-0012 (monitoring P5) : règles PERSISTÉES — le disclaimer
+              « non persistées / prochaine version » est retiré. Bandeau
+              canaux externes : l'état réel (Slack/email) est exposé par le
+              backend — jamais de silence feint. */}
+          <div className="rounded-lg border border-border bg-muted/30 p-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="flex items-start gap-2 min-w-0 flex-1">
+              <Settings2 className="h-4 w-4 text-primary-text mt-0.5 shrink-0" />
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Règles d'alerte <strong className="text-foreground">persistées</strong> : seuils, sévérité, cooldown et canaux modifiables — évaluées côté backend toutes les 2 min
+                  (worker d'alerting). Un franchissement crée un événement in-app et notifie les canaux activés.
+                </p>
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="inline-flex items-center gap-1">
+                    {rulesData?.channels.slackConfigured
+                      ? <><CheckCircle2 className="h-3 w-3 text-success-text" /> Slack configuré</>
+                      : <><AlertTriangle className="h-3 w-3 text-warning" /> Slack non configuré (SLACK_WEBHOOK_URL)</>}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    {rulesData?.channels.emailTo
+                      ? (rulesData?.channels.emailReady
+                          ? <><CheckCircle2 className="h-3 w-3 text-success-text" /> Email → {rulesData.channels.emailTo}</>
+                          : <><AlertTriangle className="h-3 w-3 text-warning" /> Email → {rulesData.channels.emailTo} (expédition inactive — configurer RESEND_API_KEY ou SMTP)</>)
+                      : <><AlertTriangle className="h-3 w-3 text-warning" /> Email dédié non configuré (ALERTING_EMAIL_TO)</>}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <Button size="sm" className="shrink-0 ds-shimmer" onClick={() => setCreateRuleOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Nouvelle règle
+            </Button>
           </div>
           {/* Active Alerts Section */}
           <div>
@@ -1944,72 +2228,134 @@ export function MonitoringPage() {
 
           <Separator />
 
-          {/* Seuils système réels (ADR-0011) */}
+          {/* Règles d'alerte persistées (ADR-0012) — statut live évalué backend */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
                   <Settings2 className="h-5 w-5 text-success-text" />
-                  Seuils système
+                  Règles d'alerte
+                  {rulesData && (
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      {alertingRules.filter((r) => r.violated && r.enabled).length}/{alertingRules.length} franchie(s)
+                    </Badge>
+                  )}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  État des seuils de déclenchement — mesuré en direct, aucune valeur simulée
+                  Persistées en base, évaluées côté backend — seuils et canaux modifiables, aucune valeur simulée
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {systemThresholds.map((rule) => {
-                // inverted : la bonne santé est current >= threshold (ex: providers IA)
-                const isBreached = rule.inverted
-                  ? rule.current < rule.threshold
-                  : rule.current >= rule.threshold
-                const severityConfig = SEVERITY_CONFIG[rule.severite]
-                const fillPct = rule.inverted
-                  ? Math.min(100, (rule.current / Math.max(1, rule.threshold)) * 100)
-                  : Math.min(100, (rule.current / Math.max(1, rule.threshold)) * 100)
-
-                return (
-                  <Card
-                    key={rule.name}
-                    className={`transition-all ${isBreached ? `${severityConfig.border} ${severityConfig.darkBorder}` : 'border-border'}`}
-                  >
+            {rulesQuery.isLoading ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i} className="animate-pulse">
                     <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="text-sm font-medium">{rule.name}</h4>
-                            <SeverityBadge severite={rule.severite} />
-                          </div>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
-                            <div className="flex items-center gap-1">
-                              <span>Seuil :</span>
-                              <span className="font-mono tabular-nums font-semibold text-foreground">
-                                {rule.inverted ? '≥ ' : '< '}{rule.threshold}{rule.unit}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span>Actuel :</span>
-                              <span className={`font-mono font-semibold ${isBreached ? 'text-destructive' : 'text-success-text'}`}>
-                                {rule.current}{rule.unit}
-                              </span>
-                            </div>
-                          </div>
-                          {/* Progress bar */}
-                          <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${isBreached ? 'bg-destructive' : 'bg-success'}`}
-                              style={{ width: `${fillPct}%` }}
-                            />
-                          </div>
-                          <p className="mt-1.5 text-[11px] text-muted-foreground">{rule.detail}</p>
-                        </div>
-                      </div>
+                      <PulseSkeleton className="h-5 w-2/3 mb-2" />
+                      <PulseSkeleton className="h-4 w-1/2 mb-3" />
+                      <PulseSkeleton className="h-1.5 w-full" />
                     </CardContent>
                   </Card>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            ) : rulesQuery.isError ? (
+              <Card className="border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+                  <AlertTriangle className="h-7 w-7 text-warning" />
+                  <p className="mt-2 text-sm text-muted-foreground">Impossible de charger les règles (/api/monitoring/rules).</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => { void rulesQuery.refetch() }}>
+                    <RefreshCw className="h-4 w-4 mr-1.5" /> Réessayer
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {alertingRules.map((rule) => {
+                  const severityConfig = SEVERITY_CONFIG[rule.severite]
+                  const isBreached = rule.violated && rule.enabled
+                  const fillPct = rule.threshold > 0 ? Math.min(100, (rule.currentValue / rule.threshold) * 100) : 100
+                  return (
+                    <Card
+                      key={rule.id}
+                      className={`transition-all ${!rule.enabled ? 'opacity-60' : isBreached ? `${severityConfig.border} ${severityConfig.darkBorder}` : 'border-border'}`}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <h4 className="text-sm font-medium">{rule.label}</h4>
+                              <SeverityBadge severite={rule.severite} />
+                              {rule.isSystem && (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground">système</Badge>
+                              )}
+                              {isBreached && (
+                                <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-[10px]">
+                                  Franchie{rule.breachedSince ? ` depuis ${getTimeAgo(rule.breachedSince)}` : ''}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {rule.metricLabel}
+                              {rule.lastNotifiedAt ? ` · notifiée ${getTimeAgo(rule.lastNotifiedAt)}` : ''}
+                              {` · cooldown ${rule.cooldownMinutes} min`}
+                            </p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                              <div className="flex items-center gap-1">
+                                <span>Seuil :</span>
+                                <span className="font-mono tabular-nums font-semibold text-foreground">
+                                  {comparatorLabel(rule.comparator)} {rule.threshold}{rule.unit}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span>Actuel :</span>
+                                <span className={`font-mono font-semibold ${isBreached ? 'text-destructive' : 'text-success-text'}`}>
+                                  {rule.currentValue}{rule.unit}
+                                </span>
+                              </div>
+                            </div>
+                            {/* Progress bar */}
+                            <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${isBreached ? 'bg-destructive' : 'bg-success'}`}
+                                style={{ width: `${fillPct}%` }}
+                              />
+                            </div>
+                            {/* Canaux activés */}
+                            <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+                              <span className={`inline-flex items-center gap-0.5 ${rule.notifyInApp ? 'text-foreground' : 'line-through opacity-50'}`}><Bell className="h-3 w-3" /> in-app</span>
+                              <span className={`inline-flex items-center gap-0.5 ${rule.notifySlack ? 'text-foreground' : 'line-through opacity-50'}`}><Zap className="h-3 w-3" /> Slack</span>
+                              <span className={`inline-flex items-center gap-0.5 ${rule.notifyEmail ? 'text-foreground' : 'line-through opacity-50'}`}><MessageSquare className="h-3 w-3" /> email</span>
+                            </div>
+                            {rule.description && (
+                              <p className="mt-1.5 text-[11px] text-muted-foreground">{rule.description}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <Switch
+                              checked={rule.enabled}
+                              disabled={togglingRuleId === rule.id}
+                              onCheckedChange={(checked) => { void handleToggleRule(rule, checked) }}
+                              aria-label={`Activer la règle ${rule.label}`}
+                            />
+                            <div className="flex items-center gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditRule(rule)} aria-label={`Modifier la règle ${rule.label}`}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              {!rule.isSystem && (
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => setDeleteRuleTarget(rule)} aria-label={`Supprimer la règle ${rule.label}`}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
@@ -2221,6 +2567,315 @@ export function MonitoringPage() {
                 `Oui, résoudre ${selectedIds.size} événement(s)`
               ) : (
                 `Oui, ignorer ${selectedIds.size} événement(s)`
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── ADR-0012 : Dialog édition règle d'alerte ─── */}
+      <GlassModal
+        open={!!editRule}
+        onClose={() => setEditRule(null)}
+        title="Modifier la règle"
+        description={editRule ? `${editRule.metricLabel} — la métrique est immuable (supprimer et recréer pour changer).` : ''}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditRule(null)} disabled={ruleSubmitting}>
+              Annuler
+            </Button>
+            <Button className="ds-shimmer" onClick={handleSaveRule} disabled={ruleSubmitting}>
+              {ruleSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Enregistrer
+                </>
+              )}
+            </Button>
+          </>
+        }
+      >
+        {editRule && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rule-label">Libellé</Label>
+              <Input
+                id="rule-label"
+                value={ruleForm.label}
+                onChange={(e) => setRuleForm((f) => ({ ...f, label: e.target.value }))}
+                maxLength={120}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Comparateur</Label>
+                <Select
+                  value={ruleForm.comparator}
+                  onValueChange={(v) => setRuleForm((f) => ({ ...f, comparator: v as AlertingRule['comparator'] }))}
+                >
+                  <SelectTrigger aria-label="Comparateur"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(rulesData?.comparators ?? []).map((c) => (
+                      <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rule-threshold">Seuil</Label>
+                <Input
+                  id="rule-threshold"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={ruleForm.threshold}
+                  onChange={(e) => setRuleForm((f) => ({ ...f, threshold: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Sévérité de l'alerte</Label>
+                <Select
+                  value={ruleForm.severite}
+                  onValueChange={(v) => setRuleForm((f) => ({ ...f, severite: v as MonitoringEvent['severite'] }))}
+                >
+                  <SelectTrigger aria-label="Sévérité"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INFO">Info</SelectItem>
+                    <SelectItem value="WARNING">Avertissement</SelectItem>
+                    <SelectItem value="ERROR">Erreur</SelectItem>
+                    <SelectItem value="CRITICAL">Critique</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rule-cooldown">Cooldown (min)</Label>
+                <Input
+                  id="rule-cooldown"
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={ruleForm.cooldownMinutes}
+                  onChange={(e) => setRuleForm((f) => ({ ...f, cooldownMinutes: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Canaux de notification</Label>
+              <div className="flex flex-col gap-2 rounded-lg border p-3">
+                <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="rule-inapp">
+                  <span className="flex items-center gap-2"><Bell className="h-3.5 w-3.5 text-muted-foreground" /> Événement in-app (file Alertes)</span>
+                  <Checkbox
+                    id="rule-inapp"
+                    checked={ruleForm.notifyInApp}
+                    onCheckedChange={(v) => setRuleForm((f) => ({ ...f, notifyInApp: v === true }))}
+                  />
+                </label>
+                <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="rule-slack">
+                  <span className="flex items-center gap-2"><Zap className="h-3.5 w-3.5 text-muted-foreground" /> Slack (webhook)</span>
+                  <Checkbox
+                    id="rule-slack"
+                    checked={ruleForm.notifySlack}
+                    onCheckedChange={(v) => setRuleForm((f) => ({ ...f, notifySlack: v === true }))}
+                  />
+                </label>
+                <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="rule-email">
+                  <span className="flex items-center gap-2"><MessageSquare className="h-3.5 w-3.5 text-muted-foreground" /> Email dédié</span>
+                  <Checkbox
+                    id="rule-email"
+                    checked={ruleForm.notifyEmail}
+                    onCheckedChange={(v) => setRuleForm((f) => ({ ...f, notifyEmail: v === true }))}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+      </GlassModal>
+
+      {/* ─── ADR-0012 : Dialog création de règle ─── */}
+      <GlassModal
+        open={createRuleOpen}
+        onClose={() => setCreateRuleOpen(false)}
+        title="Nouvelle règle d'alerte"
+        description="Choisissez une métrique réelle du catalogue backend — aucune valeur ne sera inventée."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCreateRuleOpen(false)} disabled={ruleSubmitting}>
+              Annuler
+            </Button>
+            <Button className="ds-shimmer" onClick={handleSaveRule} disabled={ruleSubmitting || !ruleForm.label || ruleForm.label.length < 3}>
+              {ruleSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Création...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Créer la règle
+                </>
+              )}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="new-rule-label">Libellé</Label>
+            <Input
+              id="new-rule-label"
+              placeholder="ex : Backlog d'autorisations trop élevé"
+              value={ruleForm.label}
+              onChange={(e) => setRuleForm((f) => ({ ...f, label: e.target.value }))}
+              maxLength={120}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Métrique surveillée</Label>
+            <Select
+              value={ruleForm.metric}
+              onValueChange={(v) => setRuleForm((f) => ({ ...f, metric: v }))}
+            >
+              <SelectTrigger aria-label="Métrique"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(rulesData?.metrics ?? []).map((m) => (
+                  <SelectItem key={m.key} value={m.key}>
+                    {m.label}{m.unit ? ` (${m.unit.trim()})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(() => {
+              const selected = (rulesData?.metrics ?? []).find((m) => m.key === ruleForm.metric)
+              return selected ? <p className="text-[11px] text-muted-foreground">{selected.description}</p> : null
+            })()}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Comparateur</Label>
+              <Select
+                value={ruleForm.comparator}
+                onValueChange={(v) => setRuleForm((f) => ({ ...f, comparator: v as AlertingRule['comparator'] }))}
+              >
+                <SelectTrigger aria-label="Comparateur"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(rulesData?.comparators ?? []).map((c) => (
+                    <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-rule-threshold">Seuil</Label>
+              <Input
+                id="new-rule-threshold"
+                type="number"
+                min={0}
+                step="any"
+                value={ruleForm.threshold}
+                onChange={(e) => setRuleForm((f) => ({ ...f, threshold: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Sévérité de l'alerte</Label>
+              <Select
+                value={ruleForm.severite}
+                onValueChange={(v) => setRuleForm((f) => ({ ...f, severite: v as MonitoringEvent['severite'] }))}
+              >
+                <SelectTrigger aria-label="Sévérité"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INFO">Info</SelectItem>
+                  <SelectItem value="WARNING">Avertissement</SelectItem>
+                  <SelectItem value="ERROR">Erreur</SelectItem>
+                  <SelectItem value="CRITICAL">Critique</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-rule-cooldown">Cooldown (min)</Label>
+              <Input
+                id="new-rule-cooldown"
+                type="number"
+                min={1}
+                max={1440}
+                value={ruleForm.cooldownMinutes}
+                onChange={(e) => setRuleForm((f) => ({ ...f, cooldownMinutes: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Canaux de notification</Label>
+            <div className="flex flex-col gap-2 rounded-lg border p-3">
+              <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="new-rule-inapp">
+                <span className="flex items-center gap-2"><Bell className="h-3.5 w-3.5 text-muted-foreground" /> Événement in-app (file Alertes)</span>
+                <Checkbox
+                  id="new-rule-inapp"
+                  checked={ruleForm.notifyInApp}
+                  onCheckedChange={(v) => setRuleForm((f) => ({ ...f, notifyInApp: v === true }))}
+                />
+              </label>
+              <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="new-rule-slack">
+                <span className="flex items-center gap-2"><Zap className="h-3.5 w-3.5 text-muted-foreground" /> Slack (webhook)</span>
+                <Checkbox
+                  id="new-rule-slack"
+                  checked={ruleForm.notifySlack}
+                  onCheckedChange={(v) => setRuleForm((f) => ({ ...f, notifySlack: v === true }))}
+                />
+              </label>
+              <label className="flex items-center justify-between text-sm cursor-pointer" htmlFor="new-rule-email">
+                <span className="flex items-center gap-2"><MessageSquare className="h-3.5 w-3.5 text-muted-foreground" /> Email dédié</span>
+                <Checkbox
+                  id="new-rule-email"
+                  checked={ruleForm.notifyEmail}
+                  onCheckedChange={(v) => setRuleForm((f) => ({ ...f, notifyEmail: v === true }))}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* ─── ADR-0012 : Confirmation suppression règle ─── */}
+      <AlertDialog
+        open={!!deleteRuleTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteRuleTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Supprimer la règle ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              « {deleteRuleTarget?.label} » sera définitivement supprimée et ne déclenchera plus d'alerte.
+              Les règles système ne sont pas supprimables (désactivables uniquement).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={ruleSubmitting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground ds-shimmer"
+              disabled={ruleSubmitting}
+              onClick={handleDeleteRule}
+            >
+              {ruleSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Suppression…
+                </>
+              ) : (
+                'Supprimer définitivement'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -89,6 +89,12 @@ type Config struct {
 	// In production, configure via Render environment variables.
 	FirebaseProjectID         string
 	FirebaseServiceAccountKey string // JSON string of service account key (base64 encoded)
+
+	// ADR-0012 (monitoring P5) — alerting externe. Les deux sont optionnels :
+	// non configurés, les canaux sont journalisés + l'UI indique quoi configurer
+	// (jamais de silence feint — cf. channels de GET /api/monitoring/rules).
+	SlackWebhookURL string // SLACK_WEBHOOK_URL (incoming webhook Slack)
+	AlertingEmailTo string // ALERTING_EMAIL_TO (destinataire dédié des alertes email)
 }
 
 // Load reads configuration from environment variables.
@@ -139,6 +145,10 @@ func Load() (*Config, error) {
 		// Firebase Cloud Messaging (FCM) for mobile push.
 		FirebaseProjectID:         getEnv("FIREBASE_PROJECT_ID", ""),
 		FirebaseServiceAccountKey: getEnv("FIREBASE_SERVICE_ACCOUNT_KEY", ""),
+
+		// ADR-0012 (monitoring P5) — alerting externe.
+		SlackWebhookURL: getEnv("SLACK_WEBHOOK_URL", ""),
+		AlertingEmailTo: getEnv("ALERTING_EMAIL_TO", ""),
 	}
 
 	// Parse CORS origins (comma-separated)

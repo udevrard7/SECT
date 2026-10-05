@@ -4,6 +4,8 @@
 //   - Erreurs HTTP 5xx → Event{type=API, severite=ERROR}
 //   - Panics recovered → Event{type=SYSTEM, severite=CRITICAL}
 //   - Requêtes lentes (> 5s) → Event{type=API, severite=WARNING}
+//   - Échantillon de CHAQUE requête /api/* → RequestSampler (ADR-0012 :
+//     p50/p95 par endpoint — route normalisée au pattern chi)
 package monitoring
 
 import (
@@ -11,7 +13,10 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // statusWriter capture le status code pour le middleware.
@@ -36,8 +41,9 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 }
 
 // Middleware retourne un middleware chi qui enregistre les erreurs 5xx,
-// panics, et requêtes lentes dans MonitoringEvent via le Recorder.
-func Middleware(recorder *Recorder, logger *slog.Logger) func(http.Handler) http.Handler {
+// panics, requêtes lentes (Recorder) et échantillonne les requêtes API
+// (sampler, ADR-0012). recorder/sampler nil-safe.
+func Middleware(recorder *Recorder, logger *slog.Logger, sampler *RequestSampler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -76,8 +82,26 @@ func Middleware(recorder *Recorder, logger *slog.Logger) func(http.Handler) http
 			sw := &statusWriter{ResponseWriter: w}
 			next.ServeHTTP(sw, r)
 
-			// Post-request : enregistrer les erreurs 5xx
+			// ADR-0012 §3 : échantillonner CHAQUE requête /api/* (hors
+			// OPTIONS/CORS) pour les p50/p95 par endpoint. La route est
+			// lue APRÈS le handler via le RouteContext chi → pattern
+			// normalisé (/api/epreuves/{id}), pas l'UUID brut.
 			duration := time.Since(start)
+			if sampler != nil && strings.HasPrefix(r.URL.Path, "/api/") && r.Method != "OPTIONS" {
+				route := r.URL.Path
+				if rctx := chi.RouteContext(r.Context()); rctx != nil {
+					if p := rctx.RoutePattern(); p != "" {
+						route = p
+					}
+				}
+				status := sw.status
+				if status == 0 {
+					status = 200
+				}
+				sampler.Sample(r.Method, route, status, int(duration.Milliseconds()))
+			}
+
+			// Post-request : enregistrer les erreurs 5xx
 			if sw.status >= 500 {
 				if recorder != nil {
 					recorder.RecordError("API",

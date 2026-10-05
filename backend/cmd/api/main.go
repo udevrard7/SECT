@@ -59,7 +59,12 @@ func main() {
 	monRecorder := monitoring.NewRecorder(pool, logger)
 	defer monRecorder.Shutdown()
 	monHealthChecker := monitoring.NewHealthChecker(pool)
-	logger.Info("monitoring recorder + health checker initialized")
+	// ADR-0012 §3 (monitoring P5) : échantillonneur des requêtes API —
+	// alimente RequestLog (p50/p95 par endpoint, rétention 7 j, purge
+	// horaire intégrée). File async drop-dégradée (pattern Recorder).
+	monSampler := monitoring.NewRequestSampler(pool, logger)
+	defer monSampler.Shutdown()
+	logger.Info("monitoring recorder + health checker + request sampler initialized")
 
 	// ADR-0011 §4 — registre de workers : visibilité des 13 workers dans
 	// l'onglet « Système » de /monitoring (runs/erreurs/dernier run/durée).
@@ -341,13 +346,34 @@ func main() {
 	similarityWorker := worker.NewSimilarityWorker(pool, logger).WithRegistry(workerRegistry)
 	similarityWorker.Start(context.Background())
 
+	// ADR-0012 §4 (monitoring P5) : worker d'alerting — évalue les règles
+	// persistées (AlertingRule) toutes les 2 min contre les métriques
+	// réelles et dispatch : événement in-app (transition), Slack
+	// (SLACK_WEBHOOK_URL), email dédié (ALERTING_EMAIL_TO via le mailer
+	// Resend > SMTP > Log). Canaux non configurés = journalisés +
+	// exposés à l'UI (GET /rules → channels) — jamais de silence feint.
+	alertingEmailReady := cfg.ResendAPIKey != "" ||
+		(cfg.SMTPHost != "" && cfg.SMTPUser != "" && cfg.SMTPPassword != "" && cfg.SMTPFrom != "")
+	alertingCfg := monitoring.AlertingConfig{
+		SlackWebhookURL: cfg.SlackWebhookURL,
+		AlertingEmailTo: cfg.AlertingEmailTo,
+		EmailReady:      alertingEmailReady,
+		AppBaseURL:      cfg.AppBaseURL,
+	}
+	alertingWorker := worker.NewAlertingWorker(pool, logger, monRecorder, mailSvc, alertingCfg).WithRegistry(workerRegistry)
+	alertingWorker.Start(context.Background())
+
 	// MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
 	// utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
 	// avec message d'erreur gracieux si timeout. L'approche worker async avec
 	// channel in-memory ne fonctionnait pas de façon fiable sur Render free
 	// (cold start tue le worker goroutine avant traitement du job).
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC, alignementUC, ouvrageSocialUC)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC, alignementUC, ouvrageSocialUC, monSampler)
+
+	// ADR-0012 (monitoring P5) : config des canaux d'alerting exposée à
+	// l'UI (GET /api/monitoring/rules → channels).
+	server.WithAlertingConfig(alertingCfg)
 
 	// SECT-NOTIF-DISPATCHER-1 : dispatcher central de notifications.
 	// Instancié APRÈS le serveur (le hub SSE global est dans transport/http,

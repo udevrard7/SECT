@@ -64,6 +64,12 @@ type Server struct {
 	// Injecté via WithWorkerRegistry (setter pattern — évite d'étendre
 	// la signature NewServer déjà très longue).
 	workerRegistry *monitoring.WorkerRegistry
+	// ADR-0012 (monitoring P5) : échantillonneur de requêtes (p50/p95
+	// par endpoint — injecté en fin de signature NewServer car le
+	// middleware sampling est monté à la construction) + config des
+	// canaux d'alerting externe (setter WithAlertingConfig).
+	monSampler  *monitoring.RequestSampler
+	alertingCfg monitoring.AlertingConfig
 	// SECT-DEMO-REQUEST : mailer pour l'envoi d'emails depuis les handlers
 	// (demande de démo B2B, etc.) + URL publique du frontend.
 	mailer     mailer.Mailer
@@ -142,6 +148,14 @@ func (s *Server) WithWorkerRegistry(reg *monitoring.WorkerRegistry) *Server {
 	return s
 }
 
+// WithAlertingConfig injecte la config des canaux d'alerting externe
+// (ADR-0012 — Slack/email dédié ; exposée via GET /api/monitoring/rules
+// → channels pour que l'UI indique quoi configurer). Pattern setter.
+func (s *Server) WithAlertingConfig(cfg monitoring.AlertingConfig) *Server {
+	s.alertingCfg = cfg
+	return s
+}
+
 // NewServer crée et configure le serveur HTTP.
 func NewServer(
 	userRepo *repository.UserRepository,
@@ -204,6 +218,11 @@ func NewServer(
 	// propositions G1, veilles, évaluation badge lecteur assidu
 	// (ajouté en fin de signature pour minimiser le diff, pattern projet).
 	ouvrageSocialUC *usecase.OuvrageSocialUseCase,
+	// ADR-0012 (monitoring P5) : échantillonneur de requêtes API
+	// (p50/p95 par endpoint — le middleware sampling est monté dans
+	// setupRouter à la construction). Ajouté en fin de signature
+	// (pattern projet).
+	monSampler *monitoring.RequestSampler,
 ) *Server {
 	s := &Server{
 		dbPool:              dbPool,
@@ -244,6 +263,7 @@ func NewServer(
 		ouvrageUC:           ouvrageUC,
 		alignementUC:        alignementUC,
 		ouvrageSocialUC:     ouvrageSocialUC,
+		monSampler:          monSampler,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -287,7 +307,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Compress(5)) // OPT-8: gzip compression (level 5 = good ratio/speed balance)
 	// Monitoring middleware : capture erreurs 5xx + panics → MonitoringEvent
-	r.Use(monitoring.Middleware(s.monRecorder, nil))
+	// + échantillonne chaque requête /api/* (p50/p95, ADR-0012 §3).
+	r.Use(monitoring.Middleware(s.monRecorder, nil, s.monSampler))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -1222,6 +1243,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/overview", s.monitoringOverview)
 			// Bug B2 (audit monitoring) : healthcheck réel des services
 			r.Get("/health", s.monitoringHealthCheck)
+			// ADR-0012 (monitoring P5) : règles d'alerte persistées
+			// (CRUD) + p50/p95 par endpoint.
+			r.Get("/rules", s.monitoringRulesList)
+			r.Post("/rules", s.monitoringRuleCreate)
+			r.Put("/rules/{id}", s.monitoringRuleUpdate)
+			r.Delete("/rules/{id}", s.monitoringRuleDelete)
+			r.Get("/endpoints", s.monitoringEndpointsStats)
 			// MONITORING-FIX-M2 : mutations (POST/PATCH/DELETE).
 			r.Post("/", s.createMonitoringEvent)
 			// Action de masse : résoudre/ignorer plusieurs événements en une requête.
