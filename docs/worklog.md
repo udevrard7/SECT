@@ -5000,3 +5000,28 @@ Stage Summary:
 - JAMAIS PLUS : triple garde versionnée — render.yaml source de vérité complète (dérive P5 corrigée), ops/render_env_check.py (contrôle automatisé exit 1 sur écart, à jouer AVANT/APRÈS toute opération), runbook docs/ops/render-env-vars-runbook.md (règles d'or + procédure + historique des écritures Render). Le point clé documenté : le PUT bulk REMPLACE tout — toute opération doit relire le GET et renvoyer la liste COMPLÈTE.
 - Leçon sécurité : l'API Render renvoie les valeurs complètes des env vars — toujours relire/renvoyer depuis le GET (zéro retypage de secret), et vérifier le rôle d'un DSN avant de le remplacer (sect_app least-privilege vs owner BYPASSRLS).
 - Prod : Render LIVE dep-db1m3n49 (14 vars, mailer=resend), Vercel inchangé, Neon 133/133, résidu 0 ; scripts sect-audit/env_restore_verify.py + captures monres-01/01b/02.
+
+---
+Task ID: SECT-MONITORING-DISCORD-1
+Agent: Z.ai Code (session SECT)
+Task: Demande utilisateur : « le moniteur, je ne veux pas que les alertes soient envoyées par mail (risque d'épuisement de quota) — les alertes du moniteur admin doivent être envoyées par webhook » (URL webhook Discord fournie).
+
+Work Log:
+- Webhook Discord validé en direct AVANT tout (POST ?wait=true) : message livré (id 1556598571426521171) — URL opérationnelle.
+- Décision produit : Discord = canal PRINCIPAL de l'alerting ; email d'alerte désactivé partout (le mailer Resend reste INTACT pour les transactionnels : reset password, invitations, factures) ; Slack conservé (optionnel) ; in-app inchangé.
+- Migration 000134 (appliquée à Neon AVANT push, 133→134) : colonne notifyDiscord BOOLEAN NOT NULL DEFAULT true + UPDATE notifyEmail=false sur TOUTES les règles (claims ADMIN requis — FORCE RLS) + 4 ASSERTs (colonne NOT NULL défaut true, 0 règle email ON, ≥11 règles). Vérifié post-application : 11 règles, discord 11/11, email 0, 0 franchie.
+- Backend : config DISCORD_WEBHOOK_URL ; AlertingConfig.DiscordWebhookURL ; AlertingRule.NotifyDiscord (+ colonne partagée/Scan) ; worker sendDiscord (embeds colorés par sévérité : CRITICAL rouge, ERROR orange, WARNING jaune, INFO gris, récupération vert — footer « SECT Monitoring » + timestamp ISO) appelé sur breach ET recovery ; handlers channels.discordConfigured + DTO/input/INSERT/UPDATE notifyDiscord (défauts création : in-app+Discord ON, Slack+email OFF) ; main.go wiring.
+- Frontend : types (notifyDiscord, channels.discordConfigured) ; bandeau Alertes (Discord → webhook actif VERT / Slack non configuré neutre / « Email d'alerte désactivé (quota transactionnel préservé) » neutre — décision produit assumée, plus de warning mensonger) ; chips cartes règles (Webhook icon) ; toggle Discord dans l'éditeur ; EMPTY_FORM discord=true slack=false email=false.
+- Ops : render.yaml (DISCORD_WEBHOOK_URL sync:false REQUIRED + ALERTING_EMAIL_TO rétrogradée sync:false optionnelle) ; render_env_check.py (ALERTING_EMAIL_TO → OPTIONAL_KEYS) ; runbook inventaire 14 REQUIRED/18 optionnelles + ligne historique.
+- Render env (API, garde AVANT/APRÈS) : PUT 14 vars = 13 préservées byte-à-byte + DISCORD_WEBHOOK_URL, ALERTING_EMAIL_TO RETIRÉE ; sect_app/JWT/Resend intacts ; render_env_check exit 0.
+- Gates : gofmt 0, go build/vet 0, golangci-lint 0 issue, tsc 0, eslint 0, vitest 11/11.
+- BUG attrapé par l'E2E et corrigé (commit 820278a3) : mon INSERT création de règle avait 21 valeurs pour 20 colonnes (false littéral en trop + placeholder décalé) → 403 création refusée. Corrigé (20/20/14), redéployé, re-vérifié.
+- E2E prod 9/9 (sect-audit/mondiscord_e2e.py, deploy 820278a3) : W1 /health 200 ; W2 channels {discordConfigured:true, emailTo:"", slackConfigured:false, mailer:"resend"} ; W3 11 règles système discord=true email=false ; W4 création règle test toujours franchie (score_sante < 999, Discord seul canal) → 201 violée d'emblée ; W5 worker dispatch prouvé (breachedSince + lastNotifiedAt posés → sendDiscord appelé — message visible dans le salon Discord de l'utilisateur) ; W6 AUCUN email « [SECT Monitoring] » dans Resend (quota préservé, preuve par API) ; W7 PUT notifyDiscord → 200 (canal éditable par règle) ; W8 cleanup résidu 0 (11 seeds intacts, 0 custom, 0 événement test).
+- UI prod (fixture e2e-monui2, capture mondisc-01) : nav SERVICES 7/7 ; bandeau « Discord → webhook actif » VERT + « Slack non configuré » neutre + « Email d'alerte désactivé (quota transactionnel préservé) » (VLM confirmé) ; chips cartes : in-app + Discord actifs, Slack + email barrés ; 0 erreur console.
+- Worklog YAML des sections précédentes + captures : mondisc-01-alertes-discord-actif.png.
+
+Stage Summary:
+- Livré et prouvé en prod (commits 5e3f1630 + fix 820278a3, Render LIVE dep-db1n0fqvcj, Vercel auto) : les alertes monitoring partent par WEBHOOK DISCORD (embeds colorés par sévérité, breach + récupération), l'email d'alerte est désactivé partout (migration 000134) — le quota Resend est intégralement réservé aux transactionnels (mailer=resend intact, santé 7/7).
+- L'incident de quota ne peut plus se reproduire par config : DISCORD_WEBHOOK_URL est REQUIRED dans render.yaml + render_env_check (exit 1 si perdue), et le canal email est réactivable uniquement par choix explicite (ALERTING_EMAIL_TO + notifyEmail par règle).
+- Leçon : toujours compter placeholders vs colonnes vs args sur un INSERT édité (l'E2E a attrapé un 403 que build/vet/lint ne voyaient pas) ; la couleur « neutre » d'un canal désactivé volontairement ne doit pas ressembler à un warning (honnêteté dans les deux sens).
+- Prod : Render LIVE 820278a3 (14 vars), Vercel LIVE 820278a3, Neon 134/134, résidu 0 ; script réutilisable sect-audit/mondiscord_e2e.py.
