@@ -87,7 +87,7 @@ jobs:
           echo "📱 APK: $(basename $APK) ($SIZE)"
 
       - name: 📦 Upload APK artefact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sect-release-apk
           path: mobile/androidApp/build/outputs/apk/release/*.apk
@@ -217,7 +217,7 @@ jobs:
       # ── Upload IPA (si signé) ou .app zippé (simulateur) ──
       - name: 📦 Upload IPA
         if: ${{ vars.APPLE_CERT_B64 != '' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sect-release-ipa
           path: mobile/iosApp/build/ipa/*.ipa
@@ -241,7 +241,7 @@ jobs:
 
       - name: 📦 Upload iOS Simulator App
         if: ${{ vars.APPLE_CERT_B64 == '' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sect-release-ios-simulator
           path: mobile/iosApp/build/Build/Products/Release-iphonesimulator/*.zip
