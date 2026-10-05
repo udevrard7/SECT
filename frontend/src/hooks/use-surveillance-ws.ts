@@ -88,6 +88,7 @@ export function useSurveillanceWS({ epreuveIds, enabled, userId }: UseSurveillan
         if (enabledRef.current) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
           reconnectAttemptsRef.current++
+          // eslint-disable-next-line react-hooks/immutability -- auto-référence sûre à l'exécution : onclose ne peut fire qu'après la déclaration de connect (comportement de reconnexion voulu)
           reconnectTimeoutRef.current = setTimeout(connect, delay)
         }
       }
@@ -118,7 +119,6 @@ export function useSurveillanceWS({ epreuveIds, enabled, userId }: UseSurveillan
       }
       setConnectionStatus('disconnected')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, userId, connect])
 
   // Update subscriptions when epreuveIds change
