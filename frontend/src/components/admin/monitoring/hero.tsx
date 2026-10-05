@@ -399,10 +399,10 @@ export function ConsoleHero({
 
       {/* Pastille alertes actives (file dédiée — cohérente avec l'onglet) */}
       {activeAlertCount > 0 && (
-        <div className="flex items-center gap-2 border-t border-amber-400/20 bg-amber-400/[0.06] px-4 py-2 sm:px-6">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300/90">
-            File d'alertes : {activeAlertCount} événement(s) CRITIQUE / ERREUR / AVERTISSEMENT actif(s)
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-amber-400/20 bg-amber-400/[0.06] px-4 py-2 sm:px-6">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
+          <span className="min-w-0 font-mono text-[10px] uppercase leading-relaxed tracking-[0.14em] text-amber-300/90">
+            File d'alertes : {activeAlertCount} événement(s) critique / erreur / avertissement actif(s)
           </span>
         </div>
       )}
