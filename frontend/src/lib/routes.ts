@@ -208,6 +208,24 @@ export function getPageContext(
     }
   }
 
+  // 2bis. Page CONNUE mais absente de la nav du rôle (SECT-ADMIN-NAV-CONFORMITE :
+  // ex. /conformite pour l'ADMIN global — entrée sidebar retirée, la page
+  // oriente vers le mode assistance). On résout via ROUTE_TO_PAGE pour un
+  // titre de header correct, sans catégorie parente (la page n'est pas dans
+  // la sidebar de ce rôle). Sans ce fallback, le header affichait
+  // « Tableau de bord » (fallback 3) sur une page d'un tout autre sujet.
+  // NB : pour les alias en collision (/programme-academique, /epreuves),
+  // Object.fromEntries conserve le dernier PageId — acceptable ici, seul le
+  // libellé est utilisé.
+  const knownPageId = ROUTE_TO_PAGE[pathname]
+  if (knownPageId) {
+    return {
+      pageId: knownPageId,
+      pageTitle: PAGE_LABELS[knownPageId],
+      parentCategory: null,
+    }
+  }
+
   // 3. Fallback : dashboard (route inconnue ou non autorisée pour le rôle)
   return {
     pageId: 'dashboard',
@@ -387,10 +405,13 @@ const ADMIN_CATEGORIES: NavCategory[] = [
       // l'ADMIN sans établissement (mode assistance absent) via le select
       // d'établissement du formulaire de dépôt.
       { id: 'bibliotheque', label: 'Bibliothèque', icon: 'Library' },
-      // SECT-BIBLIO-P3 : audit de direction (ADR-0007 §P3) — ADR-0009 :
-      // l'ADMIN global y est orienté vers le mode assistance (l'audit
-      // sonde uniquement l'étab des claims).
-      { id: 'conformite', label: 'Conformité référentiels', icon: 'Scale' },
+      // SECT-ADMIN-NAV-CONFORMITE : l'entrée « Conformité référentiels » est
+      // retirée de la sidebar ADMIN — l'audit de conformité est l'outil du
+      // RESPONSABLE de l'établissement (ADR-0009 : il ne sonde QUE l'étab
+      // des claims). L'ADMIN y accède via le mode assistance, où la sidebar
+      // bascule automatiquement sur celle du RESPONSABLE (getEffectiveRole).
+      // La route /conformite reste joignable directement (bookmark) et
+      // oriente vers le mode assistance (AssistancePrompt).
     ],
   },
   {
@@ -688,8 +709,11 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // auparavant embarquée dans /programme-academique.
   'annee-academique': ['RESPONSABLE', 'ADMIN'],
   // SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de conformité — direction
-  // (RESPONSABLE de l'établissement + ADMIN ; l'ADMIN en mode assistance
-  // voit la nav RESPONSABLE via getEffectiveRole).
+  // (RESPONSABLE de l'établissement + ADMIN). SECT-ADMIN-NAV-CONFORMITE :
+  // l'entrée sidebar est retirée pour l'ADMIN global (outil du RESPONSABLE) ;
+  // l'ADMIN en mode assistance voit la nav RESPONSABLE via getEffectiveRole,
+  // et l'ADMIN global qui tape /conformite directement voit la carte
+  // AssistancePrompt (orientation vers /acces-etablissements).
   'conformite': ['RESPONSABLE', 'ADMIN'],
   // SECT-ETUDIANT-MES-ENSEIGNANTS-1 : page "Mes enseignants" réservée ETUDIANT.
   // La RLS Affectation_select (migration 000091, fonction
