@@ -4674,3 +4674,135 @@ READY `9ff4fc12`, CI verte ×2, résidu 0. Activation externe restante
 (côté utilisateur, aucun code) : créer un webhook Slack et poser
 SLACK_WEBHOOK_URL ; configurer RESEND_API_KEY (ou SMTP) pour l'envoi
 email réel — l'UI indique l'état dans l'onglet Alertes.
+
+---
+
+## SECT-MONITORING-UI-1 — Refonte UI/UX du module /monitoring : architecture modulaire, alignement parfait sur les endpoints backend
+
+**Date** : 5 octobre 2026 · **Scope** : frontend uniquement (aucune migration,
+aucun endpoint nouveau — le backend ADR-0011/0012 est la référence) ·
+**Commits** : `5dc62c44` (refonte) + `7c5364e3` (fix refresh détecté en E2E).
+
+### Contexte
+
+Demande produit : agir en agent frontend-styling-expert pour une refonte du
+module /monitoring en s'assurant que le frontend matche **parfaitement** les
+endpoints, la logique métier et les workflows backend livrés en
+SECT-MONITORING-ALIGN-1 (ADR-0011) et SECT-MONITORING-P5-1 (ADR-0012).
+
+### Audit préalable (15 constats dont 5 corrections majeures)
+
+1. **`details` jamais affiché et mal typé** : le backend stocke une STRING
+   JSON (colonne TEXT — `details.resolutionNotes` fusionnées à la résolution,
+   `{escalatedFrom, originalSeverite}` à l'escalade) ; le frontend la typait
+   `Record<string, unknown>` et ne la rendait nulle part.
+2. **Onglet Alertes couplé aux filtres Événements** : la file « alertes
+   actives » était calculée depuis la liste paginée/filtrée → se vidait si
+   l'admin filtrait `statut=RESOLU` ou changeait de page.
+3. **Fallback services fabriqués** : si `/api/monitoring/health` échouait,
+   6 services « Opérationnel » étaient inventés (violation de la règle
+   d'honnêteté ADR-0011).
+4. **Mapping service→type par heuristique** `name.includes(...)` — fragile,
+   remplacé par la map exacte des 6 noms du healthcheck.
+5. **KPIs incomplets** : `autorisationsEnAttente/Actives` (composantes réelles
+   du score) disponibles dans overview mais non affichés.
+
+### Livré
+
+- **Architecture** : monolithe `monitoring-page.tsx` (2886 l.) → 14 fichiers
+  dans `components/admin/monitoring/` (types/utils/badges/use-monitoring/
+  event-mutations/kpi-row/events-tab/services-tab/system-tab/alerts-tab/
+  trend-chart/event-dialogs/rule-dialogs) + orchestrateur slim (199 l.).
+- **Contrat exact** : `types.ts` reflète le JSON réel des 12 endpoints ;
+  `details` typé string + parsé → **lignes dépliables** (chevron
+  aria-expanded) affichant identifiant, resoluLe/resoluPar, notes de
+  résolution mises en avant, marqueur d'escalade, détails techniques en
+  dl clé/valeur, brut si non-JSON.
+- **Onglet Alertes** : requête dédiée `statut=ACTIF` (insensible aux filtres
+  Événements), tri franchies>actives>système, **jauge comparator-aware**
+  (SUP/SUP_EGAL = remplissage vers le seuil ; INF/INF_EGAL = marge
+  restante — l'ancienne barre `value/threshold` était trompeuse pour INF).
+- **Onglet Services** : zéro fallback — état d'erreur honnête + bouton
+  relancer ; bandeau global réel (overall + healthyCount/totalCount +
+  checkedAt) ; 6 cartes aux noms exacts avec latence mesurée, connexions DB,
+  dernière erreur.
+- **KPI row** : source unique overview (alignée dashboard), accents
+  dynamiques, **nouveau KPI « Backlog autorisations »**, état indisponible
+  honnête (« — », jamais de 0 vert fabriqué), **bandeau critique
+  actionnable** (CTA → onglet Alertes) si criticalEvents > 0, chip verdict
+  backend dans le header.
+- **Onglet Système** : KPIs sécurité complets, workers + filtre type +
+  recherche + colonne « Démarré » (startedAt) + erreur copiable, endpoints
+  p50/p95 + recherche + **tri par colonne** (aria-sort sur `<th>`),
+  `generatedAt` backend affiché, tendance isolée en `trend-chart.tsx`
+  **lazy-loadé** (recharts hors bundle initial).
+- **UX/a11y** : Tabs `forceMount` + `data-[state=inactive]:hidden` (les
+  filtres/pagination/sélection survivent aux changements d'onglet, comme
+  avant la refonte) ; reset page via setters (plus de setState-in-effect) ;
+  hydratation des dialogs par handlers ; aria-labels systématiques,
+  role=meter sur les jauges, aria-busy, responsive 2→6 colonnes.
+- **Fix E2E** (`7c5364e3`) : le bouton « Actualiser » n'invalide plus
+  seulement overview/health/alerts mais **toutes** les queries du module
+  (events/rules/endpoints inclus) via `useInvalidateMonitoring` élargi.
+- Correction annexe : directive eslint obsolète dans `use-surveillance-ws.ts`
+  remplacée par `react-hooks/immutability` justifiée (auto-référence
+  `connect` dans onclose — sûre à l'exécution).
+
+### Preuves (E2E UI navigateur prod, 15 screenshots, 0 erreur console)
+
+- KPIs live : score 78 % « Attention requise », 20 actifs, 0 critiques,
+  16 erreurs, 101 résolus 24 h, backlog 0 (1 active) — cohérents avec
+  l'état connu de la plateforme.
+- **Flux résolution→notes→affichage prouvé** : événement de test dédié
+  (POST API) → résolution avec notes dans le dialog → toast → filtre
+  RESOLU → ligne dépliable montrant « NOTES DE RÉSOLUTION » + résolu par
+  `e2e-monui-admin@sect-test.dev` + détails techniques préservés.
+- Services : 6 vrais checks (DB 2 ms/1 conn., Auth 7 ms, Évaluation 7 ms…),
+  bannière « Opérationnel ».
+- Système : runtime go1.27.1/28 goroutines, R2 joignable (sect-documents),
+  8 providers IA, autorisations 0 en attente/1 active, tendance 7 j,
+  workers 14 → filtre Périodiques = 8, endpoints 23 → tri p95 desc
+  (456→23 ms) → recherche « login » = 1 ligne → fenêtre 1 h = 18 lignes,
+  breakdown 78/100.
+- Alertes : file dédiée 20 (= badge onglet = KPI actifs — la cohérence
+  tripartite prouve l'indépendance des filtres), 1/11 règles franchie,
+  édition seuil errors-actifs 5→8 (persisté, carte « Seuil : > 8 ») puis
+  restauré 5, création règle custom (Backlog autorisations > 3) puis
+  suppression (toast + carte retirée + 0 bouton supprimer restant —
+  système protégé).
+- Tabs : filtres Événements (recherche « E2E-MONUI » + statut Résolu)
+  conservés après aller-retour Alertes → forceMount prouvé.
+- Fix refresh : instrumentation fetch → clic Actualiser = **6 requêtes**
+  /api/monitoring (events+overview+health+alerts+rules+endpoints).
+- Mobile 390×844 : KPIs 2 colonnes, tabs scrollables, aucun débordement
+  horizontal, 31 cartes Alertes intactes.
+- Console : uniquement 3 logs PWA info — **0 erreur, 0 page error**.
+
+### Leçons
+
+- **Détection de déploiement Vercel** : le hash du premier chunk de /login
+  change quand le graphe de chunks change (nouveaux fichiers) mais PAS pour
+  un fix intra-module — vérifier le **comportement** (compteur de requêtes
+  fetch instrumenté) plutôt qu'un hash de page non concernée.
+- **Radix Tabs forceMount** : le contenu reste monté mais **visible**
+  (`hidden` reste false) — il faut poser `data-[state=inactive]:hidden`
+  soi-même ; bénéfice double : état préservé ET queries actives pour
+  invalidateQueries.
+- Les nouvelles règles ESLint react-hooks v6 (`set-state-in-effect`,
+  `static-components`, `immutability`) ont rattrapé des patterns
+  historiques — les effets d'hydratation se remplacent avantageusement par
+  des handlers d'ouverture explicites.
+- Artefact d'affichage bash : `[h` dans une sortie rg/sed peut être avalé
+  par le pipeline (interprété comme séquence d'échappement) — vérifier au
+  `od -c` avant de conclure à une corruption de fichier (tsc full sans
+  tsbuildinfo a tranché).
+
+### État prod
+
+Neon 133/133 (inchangé), Render `7c5364e3` (backend inchangé, rebuild sain —
+/health ok v0.2.0), Vercel LIVE `7c5364e3` (fix vérifié comportementalement),
+tsc 0 (cache purgé), eslint 0/0, vitest 11/11, résidu 0 (1 événement test
+supprimé physiquement, 1 user fixture + refresh + audit logs purgés, 11
+seeds système intacts, seuil errors-actifs restauré à 5, 0 règle custom).
+Scripts réutilisables : `sect-audit/ui_fixtures_monui.py` +
+`e2e_monui_cleanup.py` + 15 screenshots `monui-*.png`.
