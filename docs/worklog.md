@@ -4292,3 +4292,114 @@ Stage Summary:
 - Prod : Neon 130/130, Render LIVE 09a9528e, Vercel READY, résidu 0
   partout ; scripts dryrun_rbac.py / e2e_rbac.py réutilisables dans
   sect-audit (session-local, hors repo).
+
+---
+
+Task ID: SECT-RBAC-AUDITLOGS-1
+Task: Fermer le dernier god-mode lecture — le journal d'audit par
+établissement (ADR-0010, « ADR-0009 bis » signalé par le worklog
+SECT-RBAC-AUDITS-1 comme dette résiduelle)
+
+Contexte : GET /api/etablissements/{id}/audit-logs donnait à l'ADMIN
+global un god-mode lecture en DEUX couches (handler
+`claims.Role != "ADMIN" && etab != → 403` + policy RLS AuditLog_select
+is_admin()) — sans motif, sans approbation, sans trace, pour n'importe
+quel établissement, même sans aucun EtablissementAccess. Le journal
+d'audit (qui a fait quoi, quand, depuis quelle IP) est la donnée la
+plus sensible du cloisonnement tenant — le paradoxe B-2 dans toute
+sa splendeur. Contrainte : la policy est PARTAGÉE avec la console
+plateforme /api/logs (logsListReal, ADMIN-only — vue légitime du
+propriétaire SaaS) qu'on ne devait PAS casser.
+
+Work Log:
+- Scan exhaustif des bypass restants : SetCurrentAnnee/GetCurrentAnnee/
+  Update déjà assistance-gated (ValidateAccessForEtablissement —
+  philosophie management) ; notification_helpers isole par tenant ;
+  /api/logs + /api/monitoring = consoles plateforme ADMIN-only
+  légitimes. Périmètre retenu : audit-logs uniquement.
+- ADR-0010 (docs/desktop/ADR/0010-rbac-auditlogs-etablissement.md) :
+  distinguo fondamental consigné — lecture TRANSVERSE plateforme =
+  rôle ADMIN (console /api/logs, policy is_admin() intacte) ; lecture
+  D'UN établissement = claims de cet établissement (RESPONSABLE ou
+  assistance).
+- Migration 000131 : nouvelle fonction SECURITY DEFINER
+  etablissement_audit_logs(p_etablissement_id, p_action, p_entite,
+  p_date_from, p_date_to, p_search) LANGUAGE sql — le cloisonnement
+  vit dans le WHERE (pattern 000130) : rôle ∈ (RESPONSABLE, ADMIN) ET
+  app.claims.etablissement_id = p_etablissement_id pour TOUS. Down =
+  DROP FUNCTION (l'ancien comportement vivait en SQL inline Go —
+  rollback = revert code d'abord, puis migrate down, ordre consigné).
+  4 ASSERTs post-migration (existence, SECURITY DEFINER, égalité
+  claims, rôles restreints, pas de bypass rôle-seul).
+- Go : handler listEtablissementAuditLogs — plus de bypass ADMIN,
+  message orientant vers le mode assistance ; repo
+  ListByEtablissement réécrit en 2 appels à la fonction (count + page
+  dans la même tx WithTx, pagination LIMIT/OFFSET côté Go, filtres en
+  args NULL-ables) — le WHERE dynamique à placeholders incréments
+  disparaît (123→~60 lignes) ; import strings retiré ; commentaires
+  router/handlers alignés.
+- Frontend : onglet Audit DÉRIVÉ du store (auditEtabId =
+  user.etablissementId — RESPONSABLE → son étab, assistance → l'étab
+  du JWT, global → null) au lieu du sélecteur management
+  (activeEtabId) ; ADMIN global → carte AssistancePrompt (composant
+  partagé 09a9528e, outil « Le journal d'audit ») ; AuditTab et
+  commentaires alignés. Le sélecteur global reste pour les onglets
+  management (périmètre EtablissementAccess, délibérément conservé).
+- Gates : go 1.27.1 réinstallé (SDK disparu du sandbox une 2e fois —
+  installé dans ~/sdk-go cette fois) ; build/vet/gofmt 0, tsc 0,
+  eslint 0, vitest 11/11. Incident tabs↔espaces récurent sur 3
+  fichiers Go → gofmt -w (diff final 111+/102-).
+- Dry-run Neon 11/11 (tx rollbackée, fixtures AuditLog DANS la tx) :
+  matrice ADMIN global/assistance/RESP propre/cross/ENS + NULL (connexion
+  FRAÎCHE endpoint DIRECT : 0 ligne rendue malgré les 1272 lignes
+  réelles E1 — la fonction re-check les claims même BYPASSRLS, c'est
+  LE point du SECURITY DEFINER), filtres action/entite/search/dates
+  insensibles à l'activité réelle (combinaison date+action), down →
+  UndefinedFunction. BUG RÉEL attrapé : les params date en timestamp
+  ne matchaient jamais l'appel Go (pgx envoie time.Time en
+  timestamptz) → params passés en timestamptz (sémantique identique à
+  l'ancien SQL inline). ASSERT multi-ligne : pg_get_functiondef
+  préserve les saut-de-ligne → checks remis sur une ligne (style
+  000130).
+- Hygiène : résidu « dry-etab-b » (etab orphelin créé hors tx par un
+  harnais de la session P4, 0 référence sur les 19 tables
+  etablissementId + EtablissementAccess) supprimé — la base revient à
+  1 établissement réel.
+- Déploiement : migration appliquée AVANT push (migrate v4.18.3
+  rebuildé -tags postgres, endpoint direct, 130→131, ASSERTs passés) →
+  commit d470de64 → CI verte ×2 (Frontend+Backend) → Render LIVE
+  dep-db1f03dckfvc73dmfdhg → Vercel READY d470de64.
+- E2E prod 11/11 + résidu 0 (e2e_auditlogs.py, fixtures
+  e2e-auditlogs-*) : god-mode mort (T2 : 403 là où c'était 200) ;
+  légitimes OK (RESP A 200 + 3 fixtures au travers de la fonction) ;
+  cross-etab 403 ; assistance COMPLET (entrée 200, A accessible + 3
+  fixtures, B refusé même en assistance, exit → re-blocage 403) ;
+  filtres API action/search + pagination total (T8) ;
+  NON-RÉGRESSION console plateforme /api/logs → 200 pour l'ADMIN
+  global (T10 — le distinguo ADR-0010 tient) ; message oriente vers
+  l'assistance (T11).
+- E2E UI navigateur (sect.ftci.fr, 3 screenshots, 0 erreur console) :
+  RESPONSABLE → /parametres → Audit = journal réel avec les 3 lignes
+  fixtures + filtre search → état vide propre ; ADMIN assistance
+  (entrée via le bouton « Mode assistance » de /acces-etablissements)
+  → Audit = mêmes 3 lignes (JWT scopé) ; ADMIN global (étab choisi via
+  le sélecteur management) → Audit = carte AssistancePrompt (« Le
+  journal d'audit est un outil de pilotage propre à chaque
+  établissement… ») dont le bouton navigue vers /acces-etablissements.
+  Fixtures UI purgées, résidu 0.
+
+Stage Summary:
+- Le dernier god-mode lecture par établissement est fermé : le journal
+  d'audit exige l'établissement des claims pour TOUS les rôles, en
+  DEUX couches (handler + fonction SECURITY DEFINER qui re-check même
+  BYPASSRLS) — cohérent avec ADR-0009 et B-2.
+- Le distinguo ADR-0010 est la règle pour la suite : lecture
+  transverse = console plateforme ADMIN-only (/api/logs,
+  /api/monitoring — policy is_admin() légitime) ; lecture d'UN
+  établissement = claims de cet établissement (RESPONSABLE ou
+  assistance), sans exception.
+- Dry-run et E2E ont chacun attrapé leur vérité : le dry-run le bug
+  timestamptz (signature Go↔SQL), l'E2E la non-régression /api/logs.
+- Prod : Neon 131/131, Render LIVE d470de64, Vercel READY, résidu 0
+  partout ; scripts dryrun_auditlogs.py / e2e_auditlogs.py réutilisables
+  dans sect-audit (session-local, hors repo).
