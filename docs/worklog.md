@@ -4806,3 +4806,101 @@ supprimé physiquement, 1 user fixture + refresh + audit logs purgés, 11
 seeds système intacts, seuil errors-actifs restauré à 5, 0 règle custom).
 Scripts réutilisables : `sect-audit/ui_fixtures_monui.py` +
 `e2e_monui_cleanup.py` + 15 screenshots `monui-*.png`.
+
+---
+
+## SECT-MONITORING-UI-2 — Refonte visuelle « console d'observabilité » du module /monitoring
+
+**Date** : 2026-10-05 · **Commits** : `4886fa12` (refonte) + `0928590d` (fix mobile E2E) · **Déploiement** : Vercel LIVE (frontend-only, backend inchangé Render `9ff4fc12`)
+
+### Contexte produit
+
+Reproche utilisateur après SECT-MONITORING-UI-1 : « tu n'as pas fait de refonte, rien n'a changé ».
+Audit honnête : VRAI — UI-1 avait livré restructuration de code (monolithe → 14 fichiers) +
+corrections d'alignement backend, mais visuellement la page gardait l'habillage standard de
+l'app (header kente + 6 StatCards + Tabs shadcn par défaut). Aucune identité propre.
+
+### Décision de design (frontend-styling-expert)
+
+Le module /monitoring devient visuellement **la salle des machines** de SECT — un langage
+« console d'observabilité » (Grafana/Datadog) adapté à l'identité Savane :
+
+- **Panneau héro sombre PERMANENT** (`.mon-console` : quasi-noir olive + grille technique +
+  halo radial lime, indépendant du thème clair/sombre) — liseré kente en tête conservé comme
+  signature de marque.
+- **Jauge en arc SVG 240°** avec graduations 0-100, halo lumineux, animation de remplissage
+  (dashoffset CSS) — le score 78/100 devient l'élément visuel central.
+- **Rail LIVE** : dot pulsant « EN DIRECT » (ambre « Suspendu » si auto-refresh off), horloge
+  MAJ mono, switch AUTO 30S, bouton ACTUALISER console.
+- **5 tuiles KPI sombres** (labels micro-caps mono, valeurs XL colorées par état) + rail
+  DÉCOMPOSITION (chips de pénalités −20 erreurs…) + barre d'alarme critique rouge + bandeau
+  file d'alertes ambre.
+- **Navigation console segmentée** : TabsList restylée (mono uppercase, pills remplies,
+  compteurs live par onglet : ÉVÉNEMENTS 15 / SERVICES 6/6 / SYSTÈME 14 / ALERTES 15).
+- **Onglet Événements → log console** : lignes à rail de sévérité (border-l-2), horodatage
+  mono HH:MM:SS, chips console, colonnes pinées col-start (les colonnes masquées Source/Durée
+  ne décalent pas les suivantes — piège d'auto-placement grid documenté), détails en bloc
+  **TERMINAL sombre** (`.mon-terminal` scanlines, payload JSON coloré clé/valeur lime).
+- **Onglet Services → status page** : bandeau de segments (un par service, façon page de
+  statut publique) + légende + lignes compactes riches (latence mono colorée, connexions DB,
+  dernière erreur) — remplace la grille de 6 cartes ; le score n'est plus dupliqué (il vit
+  dans le héro, source unique).
+- **Harmonisation console** Système + Alertes : CardTitles en kickers mono uppercase, bandeau
+  canaux ADR-0012 restructuré.
+- **Badges → chips console** (mono uppercase + pastille) propagés partout via badges.tsx.
+
+### Périmètre INCHANGÉ (alignement backend ADR-0011/0012 intact)
+
+Zéro logique modifiée : mêmes hooks (use-monitoring.ts), mêmes mutations
+(event-mutations.ts), même source unique /api/monitoring/overview, filtres backend +
+pagination + bulk + dialogs GlassModal identiques, forceMount préservé. kpi-row.tsx supprimé
+(remplacé par hero.tsx).
+
+### Pièges rencontrés
+
+- **Classes Tailwind dynamiques** : `config.color.replace('text-','bg-')` invisible au scanner
+  → maps littérales SEVERITY_DOT/STATUT_DOT dans badges.tsx.
+- **Auto-placement grid + colonnes masquées** : `hidden lg:block` retire l'élément du flux →
+  les cellules suivantes glissent dans les mauvaises colonnes → col-start explicites sur les
+  cellules pinnées (header + lignes).
+- **group-data-[state=active]** : les data-attributes vivent sur le TabsTrigger parent →
+  pattern group/ group-data- pour styler le compteur live.
+- **Dev server local SECT OOM-killed** (2,2 Go Turbopack dans un sandbox de 3,9 Go déjà occupé)
+  → vérification E2E directement sur prod après push (méthode éprouvée UI-1).
+
+### Gates & déploiement
+
+- tsc 0, eslint 0/0, vitest 11/11, CI frontend **passing**.
+- Commit `4886fa12` poussé → Vercel LIVE (vérifié comportementalement sur sect.ftci.fr).
+
+### E2E UI prod (fixture admin e2e-monui2-*, 8 screenshots monui2-*.png, 0 erreur console)
+
+- Héro : jauge 78/100 rendue avec halo (VLM : « high-quality, professional-looking dashboard,
+  no glaring rendering bugs »), verdict ATTENTION REQUISE, 5 tuiles (15/0/16→11/107/1),
+  décomposition −20 erreurs/−2 avertissements, file d'alertes 15.
+- Nav console : 4 onglets avec compteurs live (15, 6/6, 14, 15) — sélection + pills remplies.
+- Log console : colonnes HEURE/SÉVÉRITÉ/MESSAGE/SOURCE/DURÉE/STATUT/ACTIONS alignées, rail
+  rouge sévérité (VLM : « nice touch »), pagination page 2/3 OK, filtre 7 jours OK, état
+  préservé entre changements d'onglet (forceMount).
+- **Flux résolution PROUVÉ de bout en bout** : événement de test créé (SQL) → visible dans le
+  log → détails terminal (payload JSON e2eFixture parsé) → PATCH résolution avec notes →
+  terminal affiche Résolu le/Résolu par/Notes de résolution + payload.
+- Services : bandeau 6 segments « 6 opérationnels » + 6 lignes compactes. Système : 5 kickers
+  console (PROCESSUS BACKEND, INFRASTRUCTURE, TENDANCE, WORKERS, ENDPOINTS). Alertes : bandeau
+  canaux + ALERTES ACTIVES 15 + RÈGLES D'ALERTE 1/11 FRANCHIE(S).
+- **Défaut détecté par E2E VLM et corrigé** : bandeau file d'alertes débordait à 390px (texte
+  une ligne) → `0928590d` (flex-wrap + min-w-0) → redéployé → re-vérifié (wrappé, scrollWidth
+  390 = 0 overflow).
+- Cleanup RÉSIDU 0 : 1 événement test supprimé physiquement, 1 user fixture + RefreshToken +
+  AuditLog purgés, 11 seeds système intacts, seuil errors-actifs = 5, 0 custom.
+
+### Leçons
+
+- Une « refonte » se juge à l'œil : restructuration de code ≠ refonte visuelle — livrer
+  l'identité visible d'abord.
+- VLM sur screenshots = filet de sécurité réel : a attrapé le débordement mobile que le check
+  scrollWidth seul avait manqué (clippé par overflow-hidden, pas scrollable).
+- Toujours tester les grilles responsives avec colonnes conditionnellement masquées (le
+  auto-placement décale tout).
+
+**Prod : Vercel LIVE `0928590d`, Render inchangé, Neon 133/133, CI passing, résidu 0.**
