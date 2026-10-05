@@ -246,11 +246,11 @@ func (s *Server) monitoringRuleCreate(w http.ResponseWriter, r *http.Request) {
                         INSERT INTO "AlertingRule" ("id", "code", "label", "description", "metric", "comparator",
                                 "threshold", "severite", "enabled", "cooldownMinutes", "notifyInApp", "notifyDiscord",
                                 "notifySlack", "notifyEmail", "isSystem", "breachedSince", "lastNotifiedAt", "createdById", "createdAt", "updatedAt")
-                        VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, false, NULL, NULL, $15, now(), now())
+                        VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, true, $9, $10, $11, $12, $13, false, NULL, NULL, $14, now(), now())
                         RETURNING %s
                 `, monitoring.AlertingRuleColumns),
 			newID, code, *input.Label, derefString(input.Description), *input.Metric, *input.Comparator,
-			*input.Threshold, severite, cooldown, notifyInApp, notifyDiscord, notifySlack, notifyEmail, false, createdByID)
+			*input.Threshold, severite, cooldown, notifyInApp, notifyDiscord, notifySlack, notifyEmail, createdByID)
 		e, err := monitoring.ScanAlertingRule(row)
 		if err == nil {
 			rule = e
