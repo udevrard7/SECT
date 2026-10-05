@@ -1,31 +1,28 @@
-// events-tab.tsx — Onglet « Événements » (SECT-MONITORING-UI-1).
+// events-tab.tsx — Onglet « Événements » (SECT-MONITORING-UI-2).
 //
-// Flux complet : filtres backend (type/sévérité/statut/période) + pagination
-// réelle (total = COUNT même WHERE — ADR-0011 §7), sélection multiple →
-// action de masse (POST /api/monitoring/bulk), et LIGNES DÉPLIABLES qui
-// révèlent le champ `details` parsé (notes de résolution, escalade, payload
-// worker) + resoluLe/resoluPar + identifiant — avant, ces données backend
-// n'étaient jamais affichées.
+// Refonte visuelle « log console » : lignes de journal avec rail de
+// sévérité, horodatage mono, chips console et détails techniques en
+// bloc TERMINAL sombre (mon-terminal) — le langage salle des machines.
+//
+// LOGIQUE INTÉGRALEMENT CONSERVÉE de UI-1 : filtres backend
+// (type/sévérité/statut/période) + pagination réelle (total = COUNT
+// même WHERE — ADR-0011 §7), sélection multiple → action de masse
+// (POST /api/monitoring/bulk), lignes dépliables révélant le champ
+// `details` parsé (notes de résolution, escalade, payload worker).
 
 'use client'
 
 import { useMemo, useState } from 'react'
 import {
-  AlertTriangle,
   ArrowUpRight,
   Ban,
   CheckCircle2,
   ChevronDown,
-  Clock,
-  Filter,
-  Globe,
   Search,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
 import { PulseSkeleton } from '@/components/ds'
 import {
   Select,
@@ -34,22 +31,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import type { MonitoringEvent } from './types'
+import type { MonitoringEvent, Severity } from './types'
 import { SeverityBadge, StatutBadge, TypeBadge } from './badges'
-import { formatDate, formatDuration, detailValueToString, parseEventDetails, DETAIL_SPECIAL_KEYS } from './utils'
+import { formatDate, formatTime, formatDuration, detailValueToString, parseEventDetails, DETAIL_SPECIAL_KEYS } from './utils'
 import { useInvalidateMonitoring, useMonitoringEvents } from './use-monitoring'
 import { bulkEventsAction, escalateEvent, ignoreEvent, resolveEvent } from './event-mutations'
 import { BulkActionDialog, EscalateEventDialog, IgnoreEventDialog, ResolveEventDialog } from './event-dialogs'
 
 const PAGE_SIZE = 50
+
+/** Rail de sévérité (bord gauche coloré de chaque ligne) — littéral. */
+const SEVERITY_RAIL: Record<Severity, string> = {
+  INFO: 'border-l-zinc-300 dark:border-l-zinc-600',
+  WARNING: 'border-l-warning',
+  ERROR: 'border-l-destructive',
+  CRITICAL: 'border-l-secondary',
+}
 
 export function EventsTab({
   autoRefresh,
@@ -58,8 +55,7 @@ export function EventsTab({
   autoRefresh: boolean
   userEmail: string
 }) {
-  // ─── Filtres (tout changement de filtre ramène à la page 1 — sans effet :
-  // le reset se fait dans le setter, pas dans un useEffect) ───
+  // ─── Filtres (tout changement de filtre ramène à la page 1) ───
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [severiteFilter, setSeveriteFilter] = useState('all')
@@ -183,108 +179,107 @@ export function EventsTab({
     }
   }
 
+  const resetFilters = () => {
+    setSearch('')
+    setTypeFilter('all')
+    setSeveriteFilter('all')
+    setStatutFilter('all')
+    setSinceHours('all')
+    setPage(1)
+  }
+
   return (
     <div className="space-y-4">
-      {/* ─── Toolbar filtres ─── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <div className="relative sm:col-span-2 xl:col-span-2">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          <Input
-            placeholder="Rechercher (message, source)…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-            aria-label="Rechercher un événement"
-          />
+      {/* ─── Toolbar console ─── */}
+      <div className="rounded-xl border bg-card p-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden shrink-0 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground lg:inline">
+            Flux
+          </span>
+          <div className="relative min-w-[160px] flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Input
+              placeholder="Rechercher (message, source)…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 pl-9 font-mono text-xs"
+              aria-label="Rechercher un événement"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={changeFilter(setTypeFilter)}>
+            <SelectTrigger className="h-9 w-full font-mono text-xs sm:w-[150px]" aria-label="Filtrer par type">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les types</SelectItem>
+              <SelectItem value="API">API</SelectItem>
+              <SelectItem value="DATABASE">Base de données</SelectItem>
+              <SelectItem value="AUTH">Authentification</SelectItem>
+              <SelectItem value="EVALUATION">Évaluation</SelectItem>
+              <SelectItem value="PAYMENT">Paiement</SelectItem>
+              <SelectItem value="SYSTEM">Système</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={severiteFilter} onValueChange={changeFilter(setSeveriteFilter)}>
+            <SelectTrigger className="h-9 w-full font-mono text-xs sm:w-[150px]" aria-label="Filtrer par sévérité">
+              <SelectValue placeholder="Sévérité" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes sévérités</SelectItem>
+              <SelectItem value="INFO">Info</SelectItem>
+              <SelectItem value="WARNING">Avertissement</SelectItem>
+              <SelectItem value="ERROR">Erreur</SelectItem>
+              <SelectItem value="CRITICAL">Critique</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statutFilter} onValueChange={changeFilter(setStatutFilter)}>
+            <SelectTrigger className="h-9 w-full font-mono text-xs sm:w-[140px]" aria-label="Filtrer par statut">
+              <SelectValue placeholder="Statut" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les statuts</SelectItem>
+              <SelectItem value="ACTIF">Actif</SelectItem>
+              <SelectItem value="RESOLU">Résolu</SelectItem>
+              <SelectItem value="IGNORE">Ignoré</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sinceHours} onValueChange={changeFilter(setSinceHours)}>
+            <SelectTrigger className="h-9 w-full font-mono text-xs sm:w-[170px]" aria-label="Fenêtre temporelle">
+              <SelectValue placeholder="Période" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tout l&apos;historique</SelectItem>
+              <SelectItem value="24">24 dernières heures</SelectItem>
+              <SelectItem value="168">7 derniers jours</SelectItem>
+              <SelectItem value="720">30 derniers jours</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={typeFilter} onValueChange={changeFilter(setTypeFilter)}>
-          <SelectTrigger className="w-full" aria-label="Filtrer par type">
-            <Globe className="h-3.5 w-3.5 mr-1 shrink-0" aria-hidden="true" />
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les types</SelectItem>
-            <SelectItem value="API">API</SelectItem>
-            <SelectItem value="DATABASE">Base de données</SelectItem>
-            <SelectItem value="AUTH">Authentification</SelectItem>
-            <SelectItem value="EVALUATION">Évaluation</SelectItem>
-            <SelectItem value="PAYMENT">Paiement</SelectItem>
-            <SelectItem value="SYSTEM">Système</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={severiteFilter} onValueChange={changeFilter(setSeveriteFilter)}>
-          <SelectTrigger className="w-full" aria-label="Filtrer par sévérité">
-            <AlertTriangle className="h-3.5 w-3.5 mr-1 shrink-0" aria-hidden="true" />
-            <SelectValue placeholder="Sévérité" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes sévérités</SelectItem>
-            <SelectItem value="INFO">Info</SelectItem>
-            <SelectItem value="WARNING">Avertissement</SelectItem>
-            <SelectItem value="ERROR">Erreur</SelectItem>
-            <SelectItem value="CRITICAL">Critique</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={statutFilter} onValueChange={changeFilter(setStatutFilter)}>
-          <SelectTrigger className="w-full" aria-label="Filtrer par statut">
-            <Filter className="h-3.5 w-3.5 mr-1 shrink-0" aria-hidden="true" />
-            <SelectValue placeholder="Statut" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les statuts</SelectItem>
-            <SelectItem value="ACTIF">Actif</SelectItem>
-            <SelectItem value="RESOLU">Résolu</SelectItem>
-            <SelectItem value="IGNORE">Ignoré</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={sinceHours} onValueChange={changeFilter(setSinceHours)}>
-          <SelectTrigger className="w-full" aria-label="Fenêtre temporelle">
-            <Clock className="h-3.5 w-3.5 mr-1 shrink-0" aria-hidden="true" />
-            <SelectValue placeholder="Période" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tout l&apos;historique</SelectItem>
-            <SelectItem value="24">24 dernières heures</SelectItem>
-            <SelectItem value="168">7 derniers jours</SelectItem>
-            <SelectItem value="720">30 derniers jours</SelectItem>
-          </SelectContent>
-        </Select>
+        {(hasActiveFilters || totalEvents > 0) && !isLoading && (
+          <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {totalEvents} résultat(s){hasActiveFilters ? ' · filtres actifs' : ''} · page {page}/{totalPages}
+            </p>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" className="h-6 font-mono text-[10px] uppercase tracking-wider" onClick={resetFilters}>
+                Réinitialiser
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Compteur contexte + reset */}
-      {hasActiveFilters && !isLoading && (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {totalEvents} résultat(s) pour les filtres actifs — page {page}/{totalPages}
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={() => {
-              setSearch('')
-              setTypeFilter('all')
-              setSeveriteFilter('all')
-              setStatutFilter('all')
-              setSinceHours('all')
-              setPage(1)
-            }}
-          >
-            Réinitialiser les filtres
-          </Button>
-        </div>
-      )}
-
-      {/* ─── Skeleton ─── */}
+      {/* ─── Skeleton (lignes console) ─── */}
       {isLoading && (
-        <div className="space-y-3" aria-busy="true">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4">
-              <PulseSkeleton className="h-4 w-6" />
-              <PulseSkeleton className="h-4 w-20" />
-              <PulseSkeleton className="h-4 flex-1" />
-              <PulseSkeleton className="h-4 w-24" />
-              <PulseSkeleton className="h-4 w-20" />
+        <div className="space-y-1.5 rounded-xl border p-2" aria-busy="true">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-2 py-1.5">
+              <PulseSkeleton className="h-3.5 w-3.5 shrink-0" />
+              <PulseSkeleton className="h-3.5 w-14 shrink-0" />
+              <PulseSkeleton className="h-3.5 w-16 shrink-0" />
+              <PulseSkeleton className="h-3.5 w-20 shrink-0" />
+              <PulseSkeleton className="h-3.5 flex-1" />
+              <PulseSkeleton className="hidden h-3.5 w-14 shrink-0 md:block" />
             </div>
           ))}
         </div>
@@ -292,29 +287,18 @@ export function EventsTab({
 
       {/* ─── Empty state ─── */}
       {!isLoading && filteredEvents.length === 0 && (
-        <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-xl border border-dashed py-16 relative overflow-hidden">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <CheckCircle2 className="h-10 w-10 text-success-text" aria-hidden="true" />
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+            <CheckCircle2 className="h-8 w-8 text-success-text" aria-hidden="true" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun événement trouvé</h3>
-          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+          <h3 className="mt-4 font-mono text-sm font-semibold uppercase tracking-[0.12em]">Aucun événement</h3>
+          <p className="mt-1.5 max-w-sm text-center text-sm text-muted-foreground">
             {hasActiveFilters
               ? 'Aucun résultat ne correspond à vos filtres sur cette page.'
               : 'Aucun événement de monitoring enregistré. La plateforme fonctionne normalement.'}
           </p>
           {hasActiveFilters && (
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => {
-                setSearch('')
-                setTypeFilter('all')
-                setSeveriteFilter('all')
-                setStatutFilter('all')
-                setSinceHours('all')
-                setPage(1)
-              }}
-            >
+            <Button variant="outline" size="sm" className="mt-4 font-mono text-xs uppercase tracking-wider" onClick={resetFilters}>
               Réinitialiser les filtres
             </Button>
           )}
@@ -323,112 +307,98 @@ export function EventsTab({
 
       {/* ─── Bulk toolbar ─── */}
       {selectedIds.size > 0 && !isLoading && (
-        <div className="flex flex-col gap-3 rounded-lg border border-info/30 bg-info/5 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/15">
-              <CheckCircle2 className="h-4 w-4 text-info" aria-hidden="true" />
+        <div className="flex flex-col gap-3 rounded-xl border border-info/30 bg-info/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/15 font-mono text-[11px] font-bold text-info">
+              {selectedIds.size}
             </span>
-            <span className="font-medium">
-              {selectedIds.size} événement{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
+            <span className="font-mono text-xs uppercase tracking-wider">
+              Sélection — action de masse
             </span>
-            <span className="text-muted-foreground">— action de masse</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 border-success/40 text-success-text hover:bg-success/10 hover:text-success-text"
+              className="gap-1.5 border-success/40 font-mono text-[11px] uppercase tracking-wider text-success-text hover:bg-success/10 hover:text-success-text"
               disabled={bulkSubmitting}
               onClick={() => {
                 setBulkAction('resoudre')
                 setBulkDialogOpen(true)
               }}
             >
-              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-              Résoudre ({selectedIds.size})
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Résoudre
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+              className="gap-1.5 border-warning/40 font-mono text-[11px] uppercase tracking-wider text-warning hover:bg-warning/10 hover:text-warning"
               disabled={bulkSubmitting}
               onClick={() => {
                 setBulkAction('ignorer')
                 setBulkDialogOpen(true)
               }}
             >
-              <Ban className="h-4 w-4" aria-hidden="true" />
-              Ignorer ({selectedIds.size})
+              <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+              Ignorer
             </Button>
-            <Button variant="ghost" size="sm" className="gap-1.5" disabled={bulkSubmitting} onClick={clearSelection}>
-              Annuler la sélection
+            <Button
+              variant="ghost"
+              size="sm"
+              className="font-mono text-[11px] uppercase tracking-wider"
+              disabled={bulkSubmitting}
+              onClick={clearSelection}
+            >
+              Annuler
             </Button>
           </div>
         </div>
       )}
 
-      {/* ─── Table événements ─── */}
+      {/* ─── Log console (lignes dépliables) ─── */}
       {!isLoading && filteredEvents.length > 0 && (
-        <div className="rounded-lg border overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px]">
-                    <Checkbox
-                      checked={selectableEvents.length === 0 ? false : allSelected ? true : someSelected ? 'indeterminate' : false}
-                      onCheckedChange={toggleSelectAll}
-                      aria-label="Sélectionner tous les événements actifs de la page"
-                      disabled={selectableEvents.length === 0}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[36px] sr-only">Détails</TableHead>
-                  <TableHead className="w-[110px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Type
-                  </TableHead>
-                  <TableHead className="w-[130px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Sévérité
-                  </TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Message
-                  </TableHead>
-                  <TableHead className="w-[110px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Source
-                  </TableHead>
-                  <TableHead className="w-[80px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Durée
-                  </TableHead>
-                  <TableHead className="w-[90px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Statut
-                  </TableHead>
-                  <TableHead className="w-[130px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Créé le
-                  </TableHead>
-                  <TableHead className="w-[96px] text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
-                    Actions
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEvents.map((event) => (
-                  <EventRow
-                    key={event.id}
-                    event={event}
-                    expanded={expandedIds.has(event.id)}
-                    onToggleExpanded={() => toggleExpanded(event.id)}
-                    selected={selectedIds.has(event.id)}
-                    selectable={event.statut === 'ACTIF'}
-                    onToggleSelect={() => toggleSelectOne(event.id)}
-                    onResolve={() => {
-                      setResolveTarget(event)
-                      setResolveNotes('')
-                    }}
-                    onIgnore={() => setIgnoreTarget(event)}
-                    onEscalate={() => setEscalateTarget(event)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+        <div className="overflow-hidden rounded-xl border" aria-label="Journal des événements de monitoring">
+          {/* En-têtes de colonnes (desktop) — col-start explicites : les colonnes
+              masquées (Source < lg, Durée < xl) ne décalent PAS les suivantes. */}
+          <div
+            className="hidden grid-cols-[28px_26px_78px_100px_minmax(0,1fr)_100px_84px_88px_104px] items-center gap-2 border-b bg-muted/50 px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid"
+          >
+            <span>
+              <Checkbox
+                checked={selectableEvents.length === 0 ? false : allSelected ? true : someSelected ? 'indeterminate' : false}
+                onCheckedChange={toggleSelectAll}
+                aria-label="Sélectionner tous les événements actifs de la page"
+                disabled={selectableEvents.length === 0}
+              />
+            </span>
+            <span aria-hidden="true" />
+            <span>Heure</span>
+            <span>Sévérité</span>
+            <span>Message</span>
+            <span className="hidden lg:block lg:col-start-6">Source</span>
+            <span className="hidden xl:block xl:col-start-7">Durée</span>
+            <span className="md:col-start-8">Statut</span>
+            <span className="md:col-start-9 md:text-right">Actions</span>
+          </div>
+          <div className="divide-y">
+            {filteredEvents.map((event) => (
+              <EventLogRow
+                key={event.id}
+                event={event}
+                expanded={expandedIds.has(event.id)}
+                onToggleExpanded={() => toggleExpanded(event.id)}
+                selected={selectedIds.has(event.id)}
+                selectable={event.statut === 'ACTIF'}
+                onToggleSelect={() => toggleSelectOne(event.id)}
+                onResolve={() => {
+                  setResolveTarget(event)
+                  setResolveNotes('')
+                }}
+                onIgnore={() => setIgnoreTarget(event)}
+                onEscalate={() => setEscalateTarget(event)}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -436,30 +406,30 @@ export function EventsTab({
       {/* ─── Pagination backend (ADR-0011 §7) ─── */}
       {!isLoading && totalEvents > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            {totalEvents} événement{totalEvents > 1 ? 's' : ''} au total — page {page}/{totalPages} · {PAGE_SIZE} par page
+          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            {totalEvents} événement(s) · {PAGE_SIZE}/page
           </p>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs"
+              className="h-8 font-mono text-[11px] uppercase tracking-wider"
               disabled={page <= 1 || query.isFetching}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Précédent
+              ← Précédent
             </Button>
-            <span className="text-xs font-mono tabular-nums text-muted-foreground px-1">
+            <span className="px-1 font-mono text-xs tabular-nums text-muted-foreground">
               {page} / {totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs"
+              className="h-8 font-mono text-[11px] uppercase tracking-wider"
               disabled={page >= totalPages || query.isFetching}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
-              Suivant
+              Suivant →
             </Button>
           </div>
         </div>
@@ -477,16 +447,8 @@ export function EventsTab({
         onConfirm={handleResolve}
         submitting={submitting}
       />
-      <IgnoreEventDialog
-        target={ignoreTarget}
-        onClose={() => setIgnoreTarget(null)}
-        onConfirm={handleIgnore}
-      />
-      <EscalateEventDialog
-        target={escalateTarget}
-        onClose={() => setEscalateTarget(null)}
-        onConfirm={handleEscalate}
-      />
+      <IgnoreEventDialog target={ignoreTarget} onClose={() => setIgnoreTarget(null)} onConfirm={handleIgnore} />
+      <EscalateEventDialog target={escalateTarget} onClose={() => setEscalateTarget(null)} onConfirm={handleEscalate} />
       <BulkActionDialog
         open={bulkDialogOpen}
         count={selectedIds.size}
@@ -504,9 +466,9 @@ export function EventsTab({
   )
 }
 
-// ─── Ligne d'événement + panneau dépliable ───
+// ─── Ligne de log + panneau terminal dépliable ───
 
-function EventRow({
+function EventLogRow({
   event,
   expanded,
   onToggleExpanded,
@@ -538,12 +500,14 @@ function EventRow({
   const hasDetails = !!details || (!!event.details && event.details.trim() !== '')
 
   return (
-    <>
-      <TableRow
-        className={`group transition-colors ${selected ? 'bg-primary/5' : 'hover:bg-accent/50'}`}
-        data-selected={selected}
+    <div className={selected ? 'bg-primary/[0.06]' : undefined}>
+      <div
+        className={`flex flex-col gap-1.5 border-l-2 px-3 py-2.5 transition-colors md:grid md:grid-cols-[28px_26px_78px_100px_minmax(0,1fr)_100px_84px_88px_104px] md:items-center md:gap-x-2 md:gap-y-0 md:py-2 ${
+          SEVERITY_RAIL[event.severite]
+        } ${selected ? 'bg-primary/[0.06]' : 'hover:bg-accent/40'}`}
       >
-        <TableCell>
+        {/* Ligne méta (mobile) — aplatie en cellules de grille au desktop */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:contents">
           {selectable ? (
             <Checkbox
               checked={selected}
@@ -551,11 +515,9 @@ function EventRow({
               aria-label={`Sélectionner l'événement ${event.message.slice(0, 40)}`}
             />
           ) : (
-            <span className="block w-[16px]" />
+            <span className="block w-[16px]" aria-hidden="true" />
           )}
-        </TableCell>
-        <TableCell>
-          {hasDetails && (
+          {hasDetails ? (
             <button
               type="button"
               onClick={onToggleExpanded}
@@ -569,170 +531,184 @@ function EventRow({
                 aria-hidden="true"
               />
             </button>
+          ) : (
+            <span aria-hidden="true" className="w-6" />
           )}
-        </TableCell>
-        <TableCell>
-          <TypeBadge type={event.type} />
-        </TableCell>
-        <TableCell>
-          <SeverityBadge severite={event.severite} pulse={event.statut === 'ACTIF'} />
-        </TableCell>
-        <TableCell>
-          <p className="text-sm max-w-xs truncate" title={event.message}>
-            {event.message}
+
+          {/* Horodatage */}
+          <span
+            className="font-mono text-[11px] leading-none tabular-nums text-muted-foreground md:col-start-3"
+            title={formatDate(event.createdAt)}
+          >
+            {formatTime(event.createdAt)}
+          </span>
+
+          {/* Sévérité */}
+          <span className="md:col-start-4">
+            <SeverityBadge severite={event.severite} pulse={event.statut === 'ACTIF'} />
+          </span>
+
+          {/* Type — mobile uniquement (les chips portent l'info au desktop
+              via le panneau dépliable) */}
+          <span className="md:hidden">
+            <TypeBadge type={event.type} />
+          </span>
+
+          {/* Statut */}
+          <span className="ml-auto md:ml-0 md:col-start-8">
+            <StatutBadge statut={event.statut} />
+          </span>
+        </div>
+
+        {/* Message */}
+        <p className="min-w-0 truncate text-sm md:col-start-5" title={event.message}>
+          {event.message}
+        </p>
+
+        {/* Source */}
+        <span className="hidden truncate font-mono text-[11px] text-muted-foreground lg:block lg:col-start-6" title={event.source ?? undefined}>
+          {event.source || '—'}
+        </span>
+
+        {/* Durée */}
+        <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground xl:block xl:col-start-7">
+          {formatDuration(event.duree)}
+        </span>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-0.5 md:col-start-9">
+          {event.statut === 'ACTIF' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-success-text hover:text-success-text hover:bg-success/10"
+                onClick={onResolve}
+                title="Résoudre"
+                aria-label={`Résoudre : ${event.message.slice(0, 40)}`}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:bg-muted"
+                onClick={onIgnore}
+                title="Ignorer"
+                aria-label={`Ignorer : ${event.message.slice(0, 40)}`}
+              >
+                <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-warning hover:text-warning hover:bg-warning/10"
+                onClick={onEscalate}
+                title="Escalader au niveau critique"
+                aria-label={`Escalader : ${event.message.slice(0, 40)}`}
+              >
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </>
+          )}
+          {event.statut === 'RESOLU' && (
+            <span
+              className="font-mono text-[10px] uppercase tracking-wider text-success-text"
+              title={event.resoluPar ? `Résolu par ${event.resoluPar}` : undefined}
+            >
+              ✓ Traité
+            </span>
+          )}
+          {event.statut === 'IGNORE' && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Ignoré</span>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Panneau terminal (détails) ─── */}
+      {expanded && (
+        <div id={`details-${event.id}`} className="mon-terminal border-t border-white/[0.06] px-4 py-3.5 text-zinc-300">
+          <p className="mb-2.5 font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-lime-400/80">
+            ▍Détails · {event.id.slice(0, 8)}…
           </p>
-        </TableCell>
-        <TableCell>
-          <span className="text-sm text-muted-foreground">{event.source || '—'}</span>
-        </TableCell>
-        <TableCell>
-          <span className="text-sm font-mono tabular-nums">{formatDuration(event.duree)}</span>
-        </TableCell>
-        <TableCell>
-          <StatutBadge statut={event.statut} />
-        </TableCell>
-        <TableCell>
-          <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
-        </TableCell>
-        <TableCell>
-          <div className="flex items-center justify-end gap-1">
-            {event.statut === 'ACTIF' && (
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">Type</p>
+              <p className="mt-0.5 text-xs">
+                <TypeBadge type={event.type} />
+              </p>
+            </div>
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">Créé le</p>
+              <p className="mt-0.5 font-mono text-[11px]">{formatDate(event.createdAt)}</p>
+            </div>
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">Mis à jour</p>
+              <p className="mt-0.5 font-mono text-[11px]">{formatDate(event.updatedAt)}</p>
+            </div>
+            {event.statut === 'RESOLU' && (
               <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
-                  onClick={onResolve}
-                  title="Résoudre"
-                  aria-label={`Résoudre : ${event.message.slice(0, 40)}`}
-                >
-                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-muted-foreground hover:bg-muted"
-                  onClick={onIgnore}
-                  title="Ignorer"
-                  aria-label={`Ignorer : ${event.message.slice(0, 40)}`}
-                >
-                  <Ban className="h-4 w-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-warning hover:text-warning hover:bg-warning/10"
-                  onClick={onEscalate}
-                  title="Escalader au niveau critique"
-                  aria-label={`Escalader : ${event.message.slice(0, 40)}`}
-                >
-                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                </Button>
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">Résolu le</p>
+                  <p className="mt-0.5 font-mono text-[11px]">{formatDate(event.resoluLe)}</p>
+                </div>
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">Résolu par</p>
+                  <p className="mt-0.5 font-mono text-[11px] text-lime-400/90">{event.resoluPar || '—'}</p>
+                </div>
               </>
             )}
-            {event.statut === 'RESOLU' && (
-              <span className="text-xs text-success-text flex items-center gap-1" title={event.resoluPar ? `Résolu par ${event.resoluPar}` : undefined}>
-                <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                Résolu
-              </span>
-            )}
-            {event.statut === 'IGNORE' && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Ban className="h-3 w-3" aria-hidden="true" />
-                Ignoré
-              </span>
-            )}
           </div>
-        </TableCell>
-      </TableRow>
-      {expanded && (
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={10} className="p-0">
-            <div id={`details-${event.id}`} className="px-4 py-3 sm:px-6 space-y-3">
-              <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground mb-0.5">Identifiant</p>
-                  <p className="font-mono text-[11px] break-all">{event.id}</p>
-                </div>
-                {event.statut === 'RESOLU' && (
-                  <>
-                    <div>
-                      <p className="text-muted-foreground mb-0.5">Résolu le</p>
-                      <p className="font-medium">{formatDate(event.resoluLe)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-0.5">Résolu par</p>
-                      <p className="font-medium">{event.resoluPar || '—'}</p>
-                    </div>
-                  </>
-                )}
-                <div>
-                  <p className="text-muted-foreground mb-0.5">Mis à jour</p>
-                  <p className="font-medium">{formatDate(event.updatedAt)}</p>
-                </div>
-              </div>
 
-              {resolutionNotes && (
-                <div className="rounded-lg border border-success/30 bg-success/10 p-2.5 dark:bg-success/20">
-                  <p className="text-[11px] font-semibold text-success-text uppercase tracking-wide mb-1">
-                    Notes de résolution
-                  </p>
-                  <p className="text-sm">{resolutionNotes}</p>
-                </div>
-              )}
-
-              {escalatedFrom && (
-                <div className="rounded-lg border border-warning/30 bg-warning/10 p-2.5 dark:bg-warning/20">
-                  <p className="text-[11px] font-semibold text-warning uppercase tracking-wide mb-1">
-                    Escalade manuelle
-                  </p>
-                  <p className="text-xs">
-                    Escaladé depuis{' '}
-                    <code className="font-mono text-[11px] break-all">{escalatedFrom}</code>
-                    {originalSeverite && (
-                      <>
-                        {' '}
-                        (sévérité d&apos;origine :{' '}
-                        <Badge variant="outline" className="text-[10px] mx-0.5">
-                          {originalSeverite}
-                        </Badge>
-                        )
-                      </>
-                    )}
-                  </p>
-                </div>
-              )}
-
-              {genericEntries.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                    Détails techniques
-                  </p>
-                  <dl className="rounded-lg border divide-y">
-                    {genericEntries.map(([key, value]) => (
-                      <div key={key} className="grid grid-cols-[minmax(120px,auto)_1fr] gap-3 px-2.5 py-1.5">
-                        <dt className="font-mono text-[11px] text-muted-foreground break-all">{key}</dt>
-                        <dd className="text-xs font-mono break-all">{detailValueToString(value)}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              )}
-
-              {!details && event.details && event.details.trim() !== '' && (
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                    Détails (brut)
-                  </p>
-                  <p className="rounded-lg border p-2.5 text-xs font-mono break-all bg-muted/50">
-                    {event.details}
-                  </p>
-                </div>
-              )}
+          {resolutionNotes && (
+            <div className="mt-3 rounded-lg border border-lime-400/25 bg-lime-400/[0.07] p-2.5">
+              <p className="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-lime-400">
+                Notes de résolution
+              </p>
+              <p className="text-sm text-zinc-200">{resolutionNotes}</p>
             </div>
-          </TableCell>
-        </TableRow>
+          )}
+
+          {escalatedFrom && (
+            <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/[0.07] p-2.5">
+              <p className="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-400">
+                Escalade manuelle
+              </p>
+              <p className="font-mono text-[11px] text-zinc-300">
+                escaladé depuis <span className="break-all text-amber-300/90">{escalatedFrom}</span>
+                {originalSeverite && <> · sévérité d&apos;origine : {originalSeverite}</>}
+              </p>
+            </div>
+          )}
+
+          {genericEntries.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                Payload technique
+              </p>
+              <dl className="overflow-hidden rounded-lg border border-white/[0.08]">
+                {genericEntries.map(([key, value]) => (
+                  <div key={key} className="grid grid-cols-[minmax(110px,auto)_1fr] gap-3 border-b border-white/[0.05] px-2.5 py-1.5 last:border-b-0">
+                    <dt className="break-all font-mono text-[11px] text-lime-400/70">{key}</dt>
+                    <dd className="break-all font-mono text-[11px] text-zinc-300">{detailValueToString(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {!details && event.details && event.details.trim() !== '' && (
+            <div className="mt-3">
+              <p className="mb-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                Détails (brut)
+              </p>
+              <pre className="overflow-x-auto rounded-lg border border-white/[0.08] bg-black/30 p-2.5 font-mono text-[11px] text-zinc-300">
+                {event.details}
+              </pre>
+            </div>
+          )}
+        </div>
       )}
-    </>
+    </div>
   )
 }

@@ -472,6 +472,39 @@
   transform: scale(0.98);
 }
 
+/* ════════════════════════════════════════════════════════════════
+   MONITORING CONSOLE (SECT-MONITORING-UI-2) — identité « salle des
+   machines » du module /monitoring : panneau sombre permanent avec
+   grille technique, indépendant du thème clair/sombre de l'app.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Panneau « écran de contrôle » : quasi-noir teinté olive + grille
+   technique fine + halo radial lime en partie haute. */
+.mon-console {
+  background-color: #0b0d09;
+  background-image:
+    radial-gradient(ellipse 90% 70% at 50% -20%, rgba(132, 204, 22, 0.09), transparent 62%),
+    linear-gradient(rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    28px 28px,
+    28px 28px;
+}
+
+/* Bloc « terminal » pour les détails techniques (lignes d'événement
+   dépliables) : fond sombre + fines scanlines horizontales. */
+.mon-terminal {
+  background-color: #0d100a;
+  background-image: linear-gradient(rgba(163, 230, 53, 0.035) 1px, transparent 1px);
+  background-size: 100% 3px;
+}
+
+/* Jauge en arc : transition douce du remplissage au montage/refresh. */
+.mon-gauge-arc {
+  transition: stroke-dashoffset 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* ── Gamification : lueur par tier (subtile, pas excessive) ── */
 .ds-glow-bronze { box-shadow: 0 0 12px -4px oklch(0.665 0.151 54.5); }
 .ds-glow-silver { box-shadow: 0 0 12px -4px oklch(0.72 0.015 250); }

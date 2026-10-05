@@ -1,5 +1,5 @@
 // system-tab.tsx — Onglet « Système » : le couteau suisse admin (ADR-0011 §3,
-// refonte SECT-MONITORING-UI-1).
+// refonte SECT-MONITORING-UI-1, harmonisation console SECT-MONITORING-UI-2).
 //
 // Une seule source : GET /api/monitoring/overview. Améliorations refonte :
 //   - Infrastructure expose les KPIs sécurité complets (autorisations en
@@ -86,7 +86,7 @@ export function SystemTab({
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-warning/10">
             <Wrench className="h-8 w-8 text-warning" aria-hidden="true" />
           </div>
-          <h3 className="mt-3 text-lg font-semibold font-display tracking-tight">Vue système indisponible</h3>
+          <h3 className="mt-3 font-mono text-sm font-semibold uppercase tracking-[0.12em]">Vue système indisponible</h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
             Impossible de récupérer la vue système (/api/monitoring/overview). Réessayez.
           </p>
@@ -137,11 +137,13 @@ function RuntimeCard({ overview }: { overview: OverviewData }) {
   return (
     <Card className="ds-kente-top">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base font-display">
-          <Cpu className="h-4 w-4 text-primary-text" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <Cpu className="h-3.5 w-3.5 text-primary-text" aria-hidden="true" />
           Processus backend
         </CardTitle>
-        <CardDescription>Runtime Go — mesures en direct</CardDescription>
+        <CardDescription className="font-mono text-[10px] uppercase tracking-wider">
+          Runtime Go — mesures en direct
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2.5 text-sm">
         <Row label="Uptime" value={formatUptimeLong(r.uptimeSeconds)} mono />
@@ -172,11 +174,13 @@ function InfrastructureCard({ overview }: { overview: OverviewData }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base font-display">
-          <HardDrive className="h-4 w-4 text-primary-text" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <HardDrive className="h-3.5 w-3.5 text-primary-text" aria-hidden="true" />
           Infrastructure
         </CardTitle>
-        <CardDescription>DB, stockage, IA, maintenance, sécurité</CardDescription>
+        <CardDescription className="font-mono text-[10px] uppercase tracking-wider">
+          DB, stockage, IA, maintenance, sécurité
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2.5 text-sm">
         <Row
@@ -233,11 +237,13 @@ function TrendCard({ overview }: { overview: OverviewData }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base font-display">
-          <TrendingUp className="h-4 w-4 text-primary-text" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <TrendingUp className="h-3.5 w-3.5 text-primary-text" aria-hidden="true" />
           Tendance (7 jours)
         </CardTitle>
-        <CardDescription>Événements créés par jour et sévérité</CardDescription>
+        <CardDescription className="font-mono text-[10px] uppercase tracking-wider">
+          Événements créés par jour et sévérité
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="h-[240px]">
@@ -304,8 +310,8 @@ function WorkersCard({ overview }: { overview: OverviewData }) {
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-base font-display">
-              <Wrench className="h-4 w-4 text-primary-text" aria-hidden="true" />
+            <CardTitle className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+              <Wrench className="h-3.5 w-3.5 text-primary-text" aria-hidden="true" />
               Workers ({overview.workers.length})
               {inErrorCount > 0 && (
                 <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-[10px]">
@@ -313,10 +319,8 @@ function WorkersCard({ overview }: { overview: OverviewData }) {
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription className="mt-1 max-w-2xl">
-              Tâches de fond de la plateforme — les workers périodiques sont instrumentés (durée,
-              erreurs, panic-safe) ; les workers de file traitent les jobs à la demande (leur état
-              métier vit dans les tables de jobs).
+            <CardDescription className="mt-1 max-w-2xl font-mono text-[10px] uppercase tracking-wider">
+              Tâches de fond — périodiques instrumentés (durée, erreurs, panic-safe) · files à la demande
             </CardDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -485,13 +489,12 @@ function EndpointsCard({
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-base font-display">
-              <Gauge className="h-4 w-4 text-primary-text" aria-hidden="true" />
+            <CardTitle className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+              <Gauge className="h-3.5 w-3.5 text-primary-text" aria-hidden="true" />
               Endpoints API — latence p50/p95
             </CardTitle>
-            <CardDescription>
-              Échantillonnage réel des requêtes /api (routes normalisées) — fenêtre sélectionnable,
-              rétention 7 jours
+            <CardDescription className="font-mono text-[10px] uppercase tracking-wider">
+              Échantillonnage réel /api (routes normalisées) · fenêtre sélectionnable · rétention 7 j
             </CardDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -597,13 +600,12 @@ function ScoreBreakdownCard({ overview }: { overview: OverviewData }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base font-display">
-          <HeartPulse className="h-4 w-4 text-success-text" aria-hidden="true" />
-          Décomposition du score santé ({overview.score.score}/100)
+        <CardTitle className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <HeartPulse className="h-3.5 w-3.5 text-success-text" aria-hidden="true" />
+          Décomposition du score ({overview.score.score}/100)
         </CardTitle>
-        <CardDescription>
-          Formule backend unique — la même que la carte « Santé plateforme » du dashboard admin
-          (ADR-0011)
+        <CardDescription className="font-mono text-[10px] uppercase tracking-wider">
+          Formule backend unique — même source que le panneau héro et le dashboard (ADR-0011)
         </CardDescription>
       </CardHeader>
       <CardContent>

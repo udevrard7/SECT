@@ -210,17 +210,16 @@ export function AlertsTab({
   return (
     <div className="space-y-6">
       {/* ─── Bandeau canaux (état réel — dégradation honnête ADR-0012) ─── */}
-      <div className="rounded-lg border border-border bg-muted/30 p-3 flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div className="flex items-start gap-2 min-w-0 flex-1">
-          <Settings2 className="h-4 w-4 text-primary-text mt-0.5 shrink-0" aria-hidden="true" />
-          <div className="text-xs text-muted-foreground space-y-1">
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3.5 sm:flex-row sm:items-start">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          <Settings2 className="mt-0.5 h-4 w-4 shrink-0 text-primary-text" aria-hidden="true" />
+          <div className="space-y-1.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
             <p>
-              Règles d&apos;alerte <strong className="text-foreground">persistées</strong> : seuils,
-              sévérité, cooldown et canaux modifiables — évaluées côté backend toutes les 2 min
-              (worker d&apos;alerting). Un franchissement crée un événement in-app et notifie les
-              canaux activés.
+              RÈGLES <span className="font-semibold text-foreground">PERSISTÉES</span> · ÉVALUÉES
+              CÔTÉ BACKEND TOUTES LES 2 MIN (WORKER D&apos;ALERTING) · FRANCHISSEMENT →
+              ÉVÉNEMENT IN-APP + CANAUX ACTIVÉS
             </p>
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 normal-case">
               <span className="inline-flex items-center gap-1">
                 {channels?.slackConfigured ? (
                   <>
@@ -260,19 +259,18 @@ export function AlertsTab({
 
       {/* ─── Alertes actives (requête dédiée) ─── */}
       <section aria-label="Alertes actives">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
-            <BellRing className="h-5 w-5 text-success-text" aria-hidden="true" />
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.16em]">
+            <BellRing className="h-4 w-4 text-primary-text" aria-hidden="true" />
             Alertes actives
             {activeAlerts.length > 0 && (
-              <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+              <span className="rounded border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-destructive">
                 {activeAlerts.length}
-              </Badge>
+              </span>
             )}
           </h2>
-          <span className="text-xs text-muted-foreground">
-            CRITICAL &gt; ERREUR &gt; AVERTISSEMENT — rafraîchie{' '}
-            {autoRefresh ? 'toutes les 30 s' : 'manuellement'}
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            CRITICAL &gt; ERREUR &gt; AVERTISSEMENT · {autoRefresh ? 'AUTO 30 S' : 'MANUEL'}
           </span>
         </div>
 
@@ -343,20 +341,19 @@ export function AlertsTab({
 
       {/* ─── Règles persistées (ADR-0012) ─── */}
       <section aria-label="Règles d'alerte">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="mb-3.5 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
-              <Settings2 className="h-5 w-5 text-success-text" aria-hidden="true" />
+            <h2 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.16em]">
+              <Settings2 className="h-4 w-4 text-primary-text" aria-hidden="true" />
               Règles d&apos;alerte
               {rulesData && (
-                <Badge variant="outline" className="text-[10px] font-mono">
+                <span className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">
                   {rules.filter((r) => r.violated && r.enabled).length}/{rules.length} franchie(s)
-                </Badge>
+                </span>
               )}
             </h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Persistées en base, évaluées côté backend — seuils et canaux modifiables, aucune valeur
-              simulée
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              Persistées en base · évaluées backend · seuils et canaux modifiables · zéro valeur simulée
             </p>
           </div>
         </div>
