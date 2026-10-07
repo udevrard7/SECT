@@ -2,6 +2,7 @@
 
 import { getGreeting } from '@/lib/micro-copy'
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap,
@@ -23,6 +24,7 @@ import {
   Shield,
   Trophy,
   Eye,
+  ArrowRight,
 } from 'lucide-react'
 import {
   Card,
@@ -309,7 +311,34 @@ function ObjectiveCard() {
 
 
 // --- Alertes Timeline ---
+// SECT-DASH-ALERTES-FIX-1 : les alertes du dashboard responsable sont
+// CONTEXTUELLES (calculées côté backend à partir des stats : aucun enseignant,
+// aucune évaluation, taux de réussite faible, étudiants en difficulté — voir
+// stats_handlers.go « RAPPORTS-FIX-R4 »). Elles n'existent PAS dans la table
+// « Alerte » : il n'y a donc rien à « résoudre » via PATCH — elles disparaissent
+// d'elles-mêmes quand la situation sous-jacente change.
+// Avant ce fix, les items de la timeline étaient des div purs : le clic « pour
+// résoudre » ne faisait RIEN (signalement utilisateur). Désormais chaque item
+// est un bouton qui mène à la page où AGIR sur la situation.
+function getAlerteAction(type: string): { label: string; path: string } {
+  switch (type) {
+    case 'enseignants':
+      return { label: 'Gérer les enseignants', path: '/enseignants' }
+    case 'evaluations':
+      // NB : les épreuves sont créées par les ENSEIGNANTS — le libellé reste
+      // neutre pour le RESPONSABLE (il voit les évaluations de son étab).
+      return { label: 'Voir les évaluations', path: '/evaluations' }
+    case 'performance':
+      return { label: 'Analyser les résultats', path: '/rapports' }
+    case 'etudiants':
+      return { label: 'Accompagner les étudiants', path: '/etudiants' }
+    default:
+      return { label: 'Voir les alertes', path: '/alertes' }
+  }
+}
+
 function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
+  const router = useRouter()
   return (
     <Card>
       <CardHeader>
@@ -317,7 +346,13 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
           <AlertTriangle className="h-5 w-5 text-warning" />
           Alertes Récentes
         </CardTitle>
-        <CardDescription>Points d&apos;attention nécessitant votre intervention</CardDescription>
+        {/* SECT-DASH-ALERTES-FIX-1 : description honnête — ces alertes sont
+            contextuelles : on les traite en agissant, pas en cliquant
+            « résoudre ». Le clic mène à la page concernée. */}
+        <CardDescription>
+          Points d&apos;attention nécessitant votre intervention — cliquez sur une
+          alerte pour accéder à la page où la traiter
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {alertes.length === 0 ? (
@@ -329,16 +364,36 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
         ) : (
           <div className="relative pl-6">
             <div className="absolute left-0 top-0 h-full w-0.5 bg-border -translate-x-1/2 ml-3"></div>
-            {alertes.slice(0, 5).map((alerte, index) => (
-              <motion.div key={index} variants={itemVariants} className="mb-6 last:mb-0">
-                <div className={`absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 ${getSeverityBorder(alerte.severity)} flex items-center justify-center -translate-x-1/2 ml-0.5`}>
-                  {getSeverityIcon(alerte.severity)}
-                </div>
-                <p className="font-semibold text-sm">{alerte.titre}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{alerte.description}</p>
-                <Badge variant="outline" className="text-[10px] mt-1">{alerte.type}</Badge>
-              </motion.div>
-            ))}
+            {alertes.slice(0, 5).map((alerte, index) => {
+              const action = getAlerteAction(alerte.type)
+              return (
+                <motion.div key={index} variants={itemVariants} className="mb-6 last:mb-0">
+                  <div className={`pointer-events-none absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 ${getSeverityBorder(alerte.severity)} flex items-center justify-center -translate-x-1/2 ml-0.5`}>
+                    {getSeverityIcon(alerte.severity)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push(action.path)}
+                    className="w-full text-left rounded-lg p-2 -m-2 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 group"
+                    aria-label={`Alerte « ${alerte.titre} » — ${action.label}`}
+                    title={`${action.label} — cette alerte disparaîtra une fois la situation traitée`}
+                  >
+                    <p className="font-semibold text-sm group-hover:text-primary transition-colors">{alerte.titre}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{alerte.description}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <Badge variant="outline" className="text-[10px]">{alerte.type}</Badge>
+                      {/* SECT-DASH-ALERTES-FIX-1 : affordance explicite — avant,
+                          l'item paraissait cliquable « pour résoudre » mais
+                          n'avait AUCUN handler (signalement utilisateur). */}
+                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-primary">
+                        {action.label}
+                        <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                      </span>
+                    </div>
+                  </button>
+                </motion.div>
+              )
+            })}
           </div>
         )}
       </CardContent>
@@ -549,6 +604,8 @@ function ComparaisonAnneesCard({ data }: { data: StatsData }) {
 export function ResponsableDashboard() {
   const user = useAuthStore((s) => s.user)
   const name = user?.name ?? 'Responsable'
+  // SECT-DASH-ALERTES-FIX-1 : navigation douce pour le CTA du bandeau d'alertes.
+  const router = useRouter()
   // SECT-ANNEE-HISTOIRE-2 : établissement courant → années académiques.
   const etabId = user?.etablissementId || user?.etablissement?.id
 
@@ -829,11 +886,21 @@ export function ResponsableDashboard() {
                   </p>
                 </div>
               </div>
+              {/* SECT-DASH-ALERTES-FIX-1 : le CTA menait à /alertes — page qui
+                  n'affiche PAS ces alertes contextuelles (elle liste les
+                  alertes DB de la table « Alerte ») : l'utilisateur cliquait,
+                  atterrissait sur une page sans l'alerte vue sur le dashboard,
+                  et croyait que « résoudre » ne marchait pas. Désormais le CTA
+                  mène à la page où agir sur la première alerte (la timeline
+                  ci-dessous couvre les autres), navigation douce (router.push
+                  au lieu du reload complet window.location). */}
               <Button
                 className="bg-warning hover:bg-warning/90"
-                onClick={() => window.location.href = '/alertes'}
+                onClick={() => router.push(getAlerteAction(data.alertes[0].type).path)}
+                title={getAlerteAction(data.alertes[0].type).label}
               >
-                <AlertTriangle className="mr-2 h-4 w-4" /> Voir les alertes
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                {getAlerteAction(data.alertes[0].type).label}
               </Button>
             </CardContent>
           </Card>
