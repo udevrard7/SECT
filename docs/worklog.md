@@ -5045,3 +5045,35 @@ Stage Summary:
 - ÉTAT LIVE 100 % CONFORME, aucune régression depuis la livraison : alertes monitoring → webhook Discord (seul canal externe actif), email d'alerte OFF partout, mailer=resend intact pour les transactionnels, santé 7/7, score 83 BONNE_SANTE, garde env-vars exit 0, GitHub=Render=Vercel alignés sans drift.
 - Les statuts CANCELED Vercel post-5e3f1630 sont des skips volontaires (rootDirectory frontend, commits backend/docs) — pas des pannes ; ne pas « réparer » ce qui fonctionne.
 - Script de re-vérification réutilisable : sect-audit/verify_discord_live.py (14 checks, self-cleanup) ; leçon : deviner les clés JSON d'une API (« scoreSante ») au lieu de lire le handler coûte un faux négatif — la clé était « score », tout court.
+
+---
+Task ID: SECT-ALERTES-RESOLVEALL-FIX-1
+Agent: Z.ai Code (session SECT)
+Task: Signalement utilisateur : « le bouton "tout résoudre" dans Alertes et Notifications du responsable semble ne pas fonctionner ».
+
+Work Log:
+- Reproduction prod d'abord (fixture RESPONSABLE jetable e2e-resp-alert@sect-test.dev dans le MÊME etab que registrar@uniabidjan.com, University of Abidjan) :
+  - État réel du responsable : 1 seule alerte visible (historique, déjà résolue+lue), 0 notif non lue en cloche → page en MODE RÉEL.
+  - Clic « Tout résoudre » avec 0 non résolue → return SILENCIEUX : aucune requête, aucun toast, aucun changement visuel — bouton paraît mort. BUG CONFIRMÉ (exactement le signalement).
+  - Contre-test avec 3 alertes réelles non résolues (filière INFORMATIQUE, scopées RLS) : PATCH /api/alertes/{id} × 3 → 200, DB resolu+lue+resolvedAt+resolvedById posés, cloche unifiée vidée → LE BACKEND FONCTIONNE, le défaut est purement frontend UX.
+- Causes racines (2) dans alertes-page.tsx handleMarkAllAsResolved :
+  1. `if (unresolvedAlertes.length === 0) return` sans aucun feedback + bouton `disabled={bulkLoading}` seulement (jamais désactivé quand rien à résoudre) ;
+  2. `Promise.all(fetch…)` sans vérifier res.ok — fetch ne rejette PAS sur 4xx/5xx : un PATCH refusé (404/403) donnait quand même « Toutes les alertes résolues » + cache mensonger (retour des alertes au refresh).
+- Correctif (commit 74628886, frontend only, backend inchangé) :
+  - KPI nonResoluesCount calculé sur filteredAlertes ; bouton « Tout résoudre » disabled quand 0 (cohérent avec « Tout marquer comme lu »/nonLuesCount) ;
+  - toast.info « Rien à résoudre » sur le return à 0 (race-safe, idem handleMarkAllAsRead « Rien à marquer ») ;
+  - Promise.allSettled + res.ok : cache mis à jour UNIQUEMENT pour les succès, échec partiel → toast.warning honnête, échec total → toast.error, succès complet → toast.success ;
+  - 4e carte KPI « Non résolues » (grille sm:2 / lg:4) — l'état disabled devient auto-explicite.
+- Gates : tsc 0, eslint 0, vitest 11/11.
+- Vérif E2E prod (deploy Vercel dpl_FYKoSH8W3szeNE8jb9hRRqzaFhHh READY sur 74628886, fixture + 3 alertes reset non résolues) :
+  - avant clic : KPI Non résolues=3, bouton actif ; clic → 3 PATCH 200, toast succès, cartes « Résolue », KPI 0, bouton disabled ;
+  - reload : KPI 0 persisté, DB resolu=true + resolvedAt + resolvedById=e2e-resp-alert-1 ;
+  - scénario registrar (tout résolu) : page fraîche → « Tout marquer comme lu » ET « Tout résoudre » tous deux [disabled] — plus de bouton mort ;
+  - flux « Tout marquer comme lu » re-vérifié (1 non lue → batch → DB lue=true, bouton disabled) ;
+  - cleanup : alertes E2E 0, user E2E 0, base revenue à 2 alertes (état initial), résidu 0.
+- Capture : sect-audit/alertes-fix-verifie.png ; scripts réutilisables : probe_resp_alertes.py (probe/cleanup), test_resolve_flow.py.
+
+Stage Summary:
+- Livré et prouvé en prod (74628886, Vercel READY, backend inchangé) : le bouton « Tout résoudre » de la page Alertes et Notifications donne désormais TOUJOURS un retour — désactivé honnête quand rien à résoudre (cas réel du responsable), résolution réelle vérifiée bout-en-bout sinon, échecs signalés au lieu d'un succès mensonger.
+- Diagnostic clé : le backend n'était PAS en cause (PATCH et mark-all-read 200 en prod sur alertes scopées RLS) — purement un return silencieux + un Promise.all sans res.ok.
+- Leçon : un bouton qui « ne fait rien » est presque toujours un early-return sans feedback ; un fetch qui résout n'est pas un fetch qui réussit (vérifier res.ok avant de toaster).
