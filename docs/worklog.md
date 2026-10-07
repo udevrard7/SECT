@@ -5077,3 +5077,28 @@ Stage Summary:
 - Livré et prouvé en prod (74628886, Vercel READY, backend inchangé) : le bouton « Tout résoudre » de la page Alertes et Notifications donne désormais TOUJOURS un retour — désactivé honnête quand rien à résoudre (cas réel du responsable), résolution réelle vérifiée bout-en-bout sinon, échecs signalés au lieu d'un succès mensonger.
 - Diagnostic clé : le backend n'était PAS en cause (PATCH et mark-all-read 200 en prod sur alertes scopées RLS) — purement un return silencieux + un Promise.all sans res.ok.
 - Leçon : un bouton qui « ne fait rien » est presque toujours un early-return sans feedback ; un fetch qui résout n'est pas un fetch qui réussit (vérifier res.ok avant de toaster).
+
+---
+Task ID: SECT-DASH-ALERTES-FIX-1
+Agent: Z.ai Code (session SECT)
+Task: Signalement utilisateur : « je vois une alerte active sur le tableau de bord d'un responsable, quand on clique dessus pour résoudre rien ne se passe ».
+
+Work Log:
+- Reproduction prod AVANT de coder (fixture RESPONSABLE jetable, même etab que registrar@uniabidjan.com) : dashboard affiche « 1 alerte active » (bandeau) + timeline « Alertes Récentes » avec « Aucune évaluation créée » (type evaluations) ; clic sur l'item → AUCUNE réaction (URL inchangée, 0 erreur console) — l'item était un div PUR sans handler.
+- Analyse de la source : les alertes du dashboard viennent de /api/stats/responsable (champ alertes, RAPPORTS-FIX-R4 stats_handlers.go) — alertes CONTEXTUELLES calculées des stats (aucun enseignant / aucune évaluation / taux réussite <50% / étudiants en difficulté). Elles n'existent PAS dans la table « Alerte » : rien à résoudre via PATCH, elles disparaissent quand la situation sous-jacente change. Le bouton « résoudre » n'a donc pas de sens ici — le clic doit mener à la page où AGIR.
+- Double bug d'UX confirmé :
+  1. Items de la timeline inertes (div sans onClick, pas de cursor, pas d'affordance) ;
+  2. Bandeau : CTA « Voir les alertes » → /alertes, page qui N'AFFICHE PAS ces alertes contextuelles (elle liste les alertes DB — pour le registrar : 1 alerte historique résolue) → l'utilisateur atterrissait sur une page sans l'alerte vue = « rien ne se passe ».
+- Correctif (commit 390d1be6, frontend only — dashboard/responsable-dashboard.tsx) :
+  - getAlerteAction(type) : enseignants→/enseignants, evaluations→/evaluations, performance→/rapports, etudiants→/etudiants, défaut→/alertes — cibles vérifiées contre RESPONSABLE_CATEGORIES (routes accessibles au rôle uniquement ; /epreuves exclu car sidebar ENSEIGNANT) ;
+  - timeline : chaque item devient un <button> w-full text-left (hover:bg-muted/60, focus-visible ring, group-hover color, ArrowRight translate) avec affordance « label → », aria-label « Alerte « titre » — action », title explicatif « disparaîtra une fois la situation traitée » ; dot timeline en pointer-events-none ;
+  - bandeau : CTA devient le label d'action de la 1re alerte (ex. « Voir les évaluations ») → router.push (fini le window.location.href = reload complet) ;
+  - CardDescription honnête : « cliquez sur une alerte pour accéder à la page où la traiter » ; libellé evaluations neutre (« Voir les évaluations ») car les épreuves sont créées par les ENSEIGNANTS, pas le RESPONSABLE.
+- Gates : tsc 0, eslint 0, vitest 11/11. Vercel dpl_5u6kP135NcTFyQsiMJRFxjBbivR5 READY sur 390d1be6.
+- Vérif E2E prod (fixture recréé pour l'occasion) : timeline → bouton accessible « Alerte « Aucune évaluation créée » — Voir les évaluations » ; clic → navigation /evaluations confirmée ; bandeau → bouton « Voir les évaluations » ; clic → /evaluations ; 0 erreur console ; capture dash-alertes-fix-verifie.png.
+- Cleanup : fixture + tokens + audit supprimés, résidu 0.
+
+Stage Summary:
+- Livré et prouvé en prod (390d1be6, Vercel READY) : les alertes actives du dashboard responsable sont désormais TOUJOURS interactives — le clic mène à la page où agir (enseignants/évaluations/rapports/étudiants selon le type), le bandeau aussi, avec affordances visuelles explicites au lieu d'items inertes.
+- Diagnostic clé : alertes contextuelles stats ≠ alertes DB — « résoudre » n'existe pas pour elles, la bonne action est la navigation vers la page du domaine ; l'ancien CTA /alertes était un piège (page sans l'alerte vue).
+- Leçon : un élément qui ressemble à une carte cliquable sans handler est un bug UX même s'il ne casse rien techniquement ; toujours vérifier la cohérence dashboard → page cible (l'alerte promise doit être visible à l'arrivée).
