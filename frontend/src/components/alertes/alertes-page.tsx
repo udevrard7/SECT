@@ -404,6 +404,11 @@ export function AlertesPage() {
   // un filtre, sans attendre un refetch backend.
   const totalCount = filteredAlertes.length
   const nonLuesCount = filteredAlertes.filter((a) => !a.lue).length
+  // SECT-ALERTES-RESOLVEALL-FIX : compteur des non résolues — base de l'état
+  // disabled du bouton « Tout résoudre » (avant : bouton toujours actif, et
+  // un clic avec 0 alerte à résoudre retournait SILENCIEUSEMENT — aucun
+  // toast, aucun changement visuel → « le bouton ne fonctionne pas »).
+  const nonResoluesCount = filteredAlertes.filter((a) => !a.resolu).length
   const critiquesCount = filteredAlertes.filter((a) => a.severity === 'CRITICAL' && !a.resolu).length
 
   // ─── Mark as read ───
@@ -461,7 +466,13 @@ export function AlertesPage() {
     setBulkLoading(true)
     try {
       const unreadAlertes = filteredAlertes.filter((a) => !a.lue)
-      if (unreadAlertes.length === 0) return
+      // SECT-ALERTES-RESOLVEALL-FIX : feedback explicite au lieu d'un return
+      // silencieux (bouton désactivé en amont, mais race-safe si l'état
+      // change entre le rendu et le clic).
+      if (unreadAlertes.length === 0) {
+        toast.info('Rien à marquer', { description: 'Toutes les alertes affichées sont déjà lues.' })
+        return
+      }
       const unreadIds = new Set(unreadAlertes.map((a) => a.id))
       const markUnread = (prev: AlerteItem[]) =>
         prev.map((a) => (unreadIds.has(a.id) ? { ...a, lue: true } : a))
@@ -496,27 +507,63 @@ export function AlertesPage() {
     setBulkLoading(true)
     try {
       const unresolvedAlertes = filteredAlertes.filter((a) => !a.resolu)
-      if (unresolvedAlertes.length === 0) return
-      const unresolvedIds = new Set(unresolvedAlertes.map((a) => a.id))
-      const markResolved = (prev: AlerteItem[]) =>
-        prev.map((a) => (unresolvedIds.has(a.id) ? { ...a, resolu: true, lue: true } : a))
+      // SECT-ALERTES-RESOLVEALL-FIX : feedback explicite au lieu d'un return
+      // silencieux — c'est la cause du « bouton ne fonctionne pas » quand
+      // toutes les alertes visibles sont déjà résolues (cas réel : le
+      // responsable ne voit qu'une alerte historique déjà résolue).
+      if (unresolvedAlertes.length === 0) {
+        toast.info('Rien à résoudre', { description: 'Toutes les alertes affichées sont déjà résolues.' })
+        return
+      }
 
       if (isUsingFallback) {
-        updateAlertesCache(markResolved)
+        const unresolvedIds = new Set(unresolvedAlertes.map((a) => a.id))
+        updateAlertesCache((prev) =>
+          prev.map((a) => (unresolvedIds.has(a.id) ? { ...a, resolu: true, lue: true } : a))
+        )
         toast.success('Toutes les alertes résolues')
         return
       }
-      await Promise.all(
+      // SECT-ALERTES-RESOLVEALL-FIX : avant, Promise.all sans vérifier
+      // res.ok — fetch ne rejette PAS sur 404/403/500 : un PATCH refusé
+      // donnait quand même le toast « Toutes les alertes résolues » et la
+      // mise à jour cache mensongère (les alertes revenaient au refresh).
+      // Désormais : allSettled + res.ok, cache mis à jour UNIQUEMENT pour
+      // les succès, toast honnête (succès partiel signalé comme tel).
+      const results = await Promise.allSettled(
         unresolvedAlertes.map((a) =>
           fetch(`/api/alertes/${a.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ resolu: true, lue: true }),
-          })
+          }).then((res) => ({ id: a.id, ok: res.ok }))
         )
       )
-      updateAlertesCache(markResolved)
-      toast.success('Toutes les alertes résolues')
+      const okIds = new Set(
+        results
+          .filter(
+            (r): r is PromiseFulfilledResult<{ id: string; ok: boolean }> =>
+              r.status === 'fulfilled' && r.value.ok
+          )
+          .map((r) => r.value.id)
+      )
+      const failedCount = unresolvedAlertes.length - okIds.size
+      if (okIds.size === 0) {
+        toast.error('Erreur', { description: 'Impossible de résoudre les alertes. Réessayez ou rafraîchissez la page.' })
+        return
+      }
+      updateAlertesCache((prev) =>
+        prev.map((a) => (okIds.has(a.id) ? { ...a, resolu: true, lue: true } : a))
+      )
+      if (failedCount > 0) {
+        toast.warning(`${okIds.size} alerte${okIds.size > 1 ? 's' : ''} résolue${okIds.size > 1 ? 's' : ''}`, {
+          description: failedCount === 1
+            ? "1 alerte n'a pas pu être résolue — elle reste dans la liste."
+            : `${failedCount} alertes n'ont pas pu être résolues — elles restent dans la liste.`,
+        })
+      } else {
+        toast.success('Toutes les alertes résolues')
+      }
     } catch {
       toast.error('Erreur', { description: 'Impossible de résoudre toutes les alertes.' })
     } finally {
@@ -633,7 +680,7 @@ export function AlertesPage() {
             variant="outline"
             size="sm"
             onClick={handleMarkAllAsResolved}
-            disabled={bulkLoading}
+            disabled={bulkLoading || nonResoluesCount === 0}
             className="border-info/40 text-info hover:bg-info/10"
           >
             <CheckCircle2 className="h-4 w-4 mr-1" />
@@ -660,7 +707,11 @@ export function AlertesPage() {
       </div>
 
       {/* ─── Stats cards ─── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* SECT-ALERTES-RESOLVEALL-FIX : 4e carte « Non résolues » — rend
+          auto-explicite l'état disabled du bouton « Tout résoudre » (comme
+          « Non lues » explique celui de « Tout marquer comme lu »). Grille
+          2×2 sur sm, 4 colonnes sur lg. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
@@ -680,6 +731,17 @@ export function AlertesPage() {
             <div>
               <p className="text-xs text-muted-foreground">Non lues</p>
               <p className="text-xl font-bold font-mono tabular-nums">{nonLuesCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-primary ds-lift">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/15">
+              <CheckCircle2 className="h-5 w-5 text-info" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Non résolues</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{nonResoluesCount}</p>
             </div>
           </CardContent>
         </Card>
