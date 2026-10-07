@@ -5025,3 +5025,23 @@ Stage Summary:
 - L'incident de quota ne peut plus se reproduire par config : DISCORD_WEBHOOK_URL est REQUIRED dans render.yaml + render_env_check (exit 1 si perdue), et le canal email est réactivable uniquement par choix explicite (ALERTING_EMAIL_TO + notifyEmail par règle).
 - Leçon : toujours compter placeholders vs colonnes vs args sur un INSERT édité (l'E2E a attrapé un 403 que build/vet/lint ne voyaient pas) ; la couleur « neutre » d'un canal désactivé volontairement ne doit pas ressembler à un warning (honnêteté dans les deux sens).
 - Prod : Render LIVE 820278a3 (14 vars), Vercel LIVE 820278a3, Neon 134/134, résidu 0 ; script réutilisable sect-audit/mondiscord_e2e.py.
+
+---
+Task ID: SECT-MONITORING-DISCORD-VERIFY-1
+Agent: Z.ai Code (session reprise — re-vérification live post-livraison)
+Task: Session rouverte avec credentials re-fournis (GitHub/Vercel/Render/Neon) — vérifier que la livraison SECT-MONITORING-DISCORD-1 tient toujours en prod, que GitHub↔Render↔Vercel sont synchronisés, et qu'aucune régression n'est apparue (garde anti-dérive env-vars incluse).
+
+Work Log:
+- Re-clone du repo (sandbox réinitialisée) : GitHub↔local synchronisés à 47b39522 (HEAD = origin/main, arbre propre, 3 commits Discord présents : 5e3f1630 feat + 820278a3 fix + 47b39522 docs).
+- Garde env-vars AVANT tout : RENDER_API_KEY + ops/render_env_check.py → exit 0, inventaire live == render.yaml (0 erreur REQUIRED, 0 drift, 18 optionnelles désactivées) ; DISCORD_WEBHOOK_URL présente, ALERTING_EMAIL_TO absente (optionnelle, par design).
+- Render API : service srv-d9ed5bdaeets73auosj0 non suspendu, dernier déploiement dep-db1n0fqvcj2c73adpgd0 LIVE à 820278a3.
+- Vercel : prod READY = 5e3f1630 ; les builds suivants (820278a3, 47b39522 ×2) sont CANCELED par design — « Ignored Build Step » implicite via rootDirectory=frontend : commits backend/docs sans changement frontend → build sauté (exit 0 de git diff). Vérifié : git diff 5e3f1630..HEAD -- frontend/ = vide → ZÉRO drift frontend (le déclenchement manuel dpl_9V4Qgp a confirmé le skip, aucun fix nécessaire).
+- E2E live 14/14 (sect-audit/verify_discord_live.py, fixture admin jetable e2e-verify-disc@sect-test.dev via NEON_DIRECT_URL) : /health 200 (sect-api v0.2.0) ; login 200 role=ADMIN ; GET /rules → channels {discordConfigured:true, emailReady:true, emailTo:"", mailer:"resend", slackConfigured:false} + 11/11 règles système Discord ON / 0 email ON ; GET /monitoring/health 7/7 OPERATIONNEL ; GET /overview 200 score 83 BONNE_SANTE ; cleanup résidu 0 (AuditLog=1, RefreshToken=1, User=1 supprimés).
+- Vérif UI prod (agent-browser sur sect.ftci.fr, fixture jetable) : login OK → /monitoring → onglet SERVICES 7/7 dans la barre ; onglet ALERTES : bandeau « Discord → webhook actif » VERT + « Slack non configuré » neutre + « Email d'alerte désactivé (quota transactionnel préservé) » ; cartes : chips in-app + Discord actives, email barré, 2/11 règles franchies ; 0 erreur console (PWA info only). Capture mondisc-verify-alertes.png + confirmation VLM (indicateur Discord vert, email grisé/barré).
+- Contre-vérification code des chips Slack actives sur cartes : la chip reflète la PRÉFÉRENCE de la règle (notifySlack), pas la config globale ; le worker gate chaque canal par sa config (sendSlack → Warn + return si SLACK_WEBHOOK_URL vide, sendEmail → return si ALERTING_EMAIL_TO vide) — aucun envoi fantôme, bandeau honnête, conforme au design « dégradation honnête, jamais silencieux ».
+- Cleanup final : fixture admin supprimé (résidu 0), navigateur fermé.
+
+Stage Summary:
+- ÉTAT LIVE 100 % CONFORME, aucune régression depuis la livraison : alertes monitoring → webhook Discord (seul canal externe actif), email d'alerte OFF partout, mailer=resend intact pour les transactionnels, santé 7/7, score 83 BONNE_SANTE, garde env-vars exit 0, GitHub=Render=Vercel alignés sans drift.
+- Les statuts CANCELED Vercel post-5e3f1630 sont des skips volontaires (rootDirectory frontend, commits backend/docs) — pas des pannes ; ne pas « réparer » ce qui fonctionne.
+- Script de re-vérification réutilisable : sect-audit/verify_discord_live.py (14 checks, self-cleanup) ; leçon : deviner les clés JSON d'une API (« scoreSante ») au lieu de lire le handler coûte un faux négatif — la clé était « score », tout court.
