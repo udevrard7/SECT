@@ -93,8 +93,14 @@ jobs:
           tags: |
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # SECT-OCI-DEPLOY-3 : PAS de cache GHA — le backend type=gha ne scope
+          # pas les plateformes en multi-arch et a servi des layers amd64 à la
+          # cible arm64 (binaire x86-64 dans une image linux/arm64 → exec
+          # format error sur l'Ampere A1, preuve ELF e_machine=0x3E). Build
+          # sans cache ≈ 2 min (cross-compile native, QEMU seulement sur les
+          # stages alpine triviaux) : la correction prime sur la vitesse.
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
 
   # ------------------------------------------------------------
   # Deploy SSH sur la VM OCI
