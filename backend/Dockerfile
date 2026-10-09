@@ -9,16 +9,24 @@
 # pré-remplis par BuildKit (docker buildx --platform linux/arm64) et
 # retombent sur linux/amd64 en build simple — Render est inchangé.
 # Build ARM64 : docker buildx build --platform linux/arm64 .
+#
+# SECT-OCI-DEPLOY-3 (fix exec format error) : le builder tourne sur la
+# plateforme NATIVE du runner (--platform=$BUILDPLATFORM) et cross-compile
+# via GOARCH=$TARGETARCH — pattern Go canonique : pas d'émulation QEMU sur le
+# stage lourd (go mod download + go build). Avant ce fix, le binaire amd64 se
+# retrouvait dans l'image arm64 (exec format error sur l'A1) — preuve ELF
+# e_machine=0x3E dans l'image linux/arm64 sha256:5edb47f… du 09/10.
 # ============================================================
 
-# --- Stage 1: Build ---
-FROM golang:1.27-alpine AS builder
+# --- Stage 1: Build (cross-compile — NATIF sur le runner, zéro émulation) ---
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
 # SECT-OCI-HYBRID-1 : cible d'architecture (auto par BuildKit multi-plateforme,
 # défaut amd64 pour un docker build simple — ex. Render).
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-
+# BUILDPLATFORM (auto BuildKit) : plateforme du runner — le binaire Go est
+# cross-compilé pour TARGETARCH, le compilateur reste natif.
 WORKDIR /app
 
 # Copier les fichiers de dépendances en premier (cache Docker)
