@@ -1,0 +1,75 @@
+# ============================================================
+# SECT-OCI-HYBRID-1 — Déploiement backend sur VM OCI Marseille
+# (Ampere A1 ARM64, Always Free) — instance PRIMAIRE.
+#
+# api    : backend Go (image GHCR multi-arch, arm64 sur cette VM)
+# caddy  : reverse proxy TLS automatique (Let's Encrypt) + HTTP→HTTPS
+#
+# La VM exécute : cd /opt/sect && docker compose pull && docker compose up -d
+# (déclenché par GitHub Actions — voir .github/workflows/deploy-oci.yml)
+#
+# Render reste le STANDBY chaud (WORKERS_ENABLED=false, voir runbook).
+# ============================================================
+
+services:
+  api:
+    image: ${API_IMAGE:-ghcr.io/udevrard7/sect/sect-api:latest}
+    container_name: sect-api
+    restart: unless-stopped
+    env_file: /opt/sect/.env
+    environment:
+      # SECT-OCI-HYBRID-1 : PRIMAIRE — les 13 workers de fond tournent ICI
+      # (le standby Render a WORKERS_ENABLED=false). Redondant avec .env
+      # mais explicite : cette VM est la primaire, jamais le standby.
+      - WORKERS_ENABLED=true
+      - PORT=8080
+    expose:
+      - "8080"
+    # Pas de ports publiés : seul Caddy expose 80/443 vers l'extérieur.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          # A1 4 vCPU / 24 Go — marge large pour les workers IA (docs,
+          # audio, corrections) + le cache RAM des sessions d'examen.
+          cpus: "3.5"
+          memory: 20g
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: sect-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # SSE/WebSocket : Caddy gère le flush automatiquement, pas de port extra.
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # Domaine public de l'API (TLS automatique Let's Encrypt).
+      # Le runbook documente la création du DNS api.sect.ftci.fr → IP OCI.
+      - API_DOMAIN=${API_DOMAIN:-api.sect.ftci.fr}
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

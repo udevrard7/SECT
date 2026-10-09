@@ -1,0 +1,42 @@
+# SECT-OCI-HYBRID-1 — Caddyfile : reverse proxy TLS automatique.
+#
+# Caddy obtient/renouvelle le certificat Let's Encrypt pour API_DOMAIN
+# (défaut api.sect.ftci.fr, surchargeable dans .env) et proxifie vers le
+# conteneur api:8080.
+#
+# Points clés :
+#   - flush_interval -1 : streaming immédiat — INDISPENSABLE pour le SSE
+#     (notifications temps réel) et la surveillance WebSocket des examens ;
+#   - timeouts généreux : uploads de documents de cours (R2 presign côté
+#     client, mais l'API traite les fichiers), corrections IA longues ;
+#   - aucun header CORS ici : le backend gère CORS lui-même
+#     (CORS_ORIGINS dans .env — même liste que Render).
+
+{$API_DOMAIN} {
+	encode gzip zstd
+
+	# SSE + WebSocket : flush immédiat, connexions longues.
+	reverse_proxy api:8080 {
+		flush_interval -1
+		transport http {
+			response_header_timeout 120s
+		}
+	}
+
+	# Headers de sécurité (le backend pose les siens ; Caddy ajoute HSTS
+	# car il termine le TLS).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	request_body {
+		# Documents de cours + énoncés — 100 Mo de marge.
+		max_size 100MB
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

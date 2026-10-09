@@ -28,6 +28,7 @@ import {
   Search,
   TrendingUp,
   Wrench,
+  PauseCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -348,6 +349,27 @@ function WorkersCard({ overview }: { overview: OverviewData }) {
         </div>
       </CardHeader>
       <CardContent>
+        {/* SECT-OCI-HYBRID-1 : instance standby API-only — honnêteté UI.
+            Sans ce bandeau, 13 workers à 0 runs ressembleraient à une panne
+            alors que c'est un choix d'architecture (les workers tournent sur
+            la primaire OCI). */}
+        {overview.workersEnabled === false && (
+          <div
+            className="mb-3 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2.5"
+            role="status"
+          >
+            <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+            <div className="text-xs leading-relaxed">
+              <p className="font-semibold text-warning">
+                Instance standby — workers de fond désactivés ici
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                Cette instance sert l&apos;API uniquement (architecture hybride) : les tâches de
+                fond tournent sur l&apos;instance primaire. Ce n&apos;est pas une panne.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="max-h-96 overflow-y-auto scrollbar-thin rounded-lg border">
           <Table>
             <TableHeader className="sticky top-0 bg-card z-10">
@@ -397,7 +419,15 @@ function WorkersCard({ overview }: { overview: OverviewData }) {
                       {wk.startedAt ? getTimeAgo(wk.startedAt) : '—'}
                     </TableCell>
                     <TableCell>
-                      {inError ? (
+                      {wk.disabled ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] text-muted-foreground"
+                          title={wk.disabledReason}
+                        >
+                          Standby
+                        </Badge>
+                      ) : inError ? (
                         <Button
                           variant="ghost"
                           size="sm"

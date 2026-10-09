@@ -263,100 +263,10 @@ func main() {
 	// 4. Configurer le serveur HTTP
 	authMiddleware := middleware.Auth(signer)
 
-	// Workers réactivés (policies is_system ajoutées sur les 12 tables worker).
-	// SECURITY-BASCULE : les workers posent des claims system-worker via
-	// set_config('app.claims.user_id', 'system-worker', true) au lieu de
-	// SET LOCAL row_security = off. Les policies _all_system (is_system())
-	// permettent l'accès full aux 12 tables : AIProviderConfig, Chapter,
-	// Devoir, Document, DocumentAudio, Epreuve, EpreuveQuestion,
-	// GrilleEvaluation, Question, Reponse, SessionPassation, Soumission.
-	// QUESTIONS-IA-FAILOVER : passer aiService au worker pour bénéficier du
-	// failover automatique entre providers (ChatWithFailover).
-	iaWorker := worker.NewIAWorker(pool, logger, aiService)
-	iaWorker.RecoverInterruptedJobs(context.Background())
-	iaWorker.Start(context.Background())
-
-	correctionWorker := worker.NewCorrectionWorker(pool, logger, aiService)
-	correctionWorker.RecoverInterruptedCorrections(context.Background())
-	correctionWorker.Start(context.Background())
-
-	docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger, aiService)
-	docAnalyzer.RecoverInterruptedAnalyses(context.Background())
-	docAnalyzer.Start(context.Background())
-
-	practiceWorker := worker.NewPracticeWorker(pool, logger, aiService)
-	practiceWorker.Start(context.Background())
-
-	homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger, aiService)
-	homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
-	homeworkWorker.Start(context.Background())
-
-	audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger, aiService)
-	audioWorker.RecoverInterruptedAudioJobs(context.Background())
-	audioWorker.Start(context.Background())
-
-	// CLOTURE-AUTO-WORKER : worker périodique (60s) qui clôture automatiquement
-	// les épreuves EN_COURS dont dateFin + grâce est dépassée, ET les épreuves
-	// où tous les étudiants ont soumis (TOUS_SOUMIS). Garantit la clôture même
-	// sans étudiant actif pollant /api/epreuves/auto-close.
-	autoCloseWorker := worker.NewAutoCloseWorker(pool, logger).WithRegistry(workerRegistry)
-	autoCloseWorker.Start(context.Background())
-
-	// SECT-FACTURE-EMAIL : worker de relance J-7 avant expiration abonnement B2C.
-	// Vérifie toutes les 6h les abonnements ACTIF dont dateFin ≤ 7j, envoie email.
-	relanceWorker := worker.NewRelanceWorker(pool, logger, mailSvc, cfg.AppBaseURL).WithRegistry(workerRegistry)
-	relanceWorker.Start(context.Background())
-
-	// SECT-B2C-EXPIRE : worker d'expiration des abonnements B2C.
-	// Vérifie toutes les 1h les abonnements ACTIF dont dateFin < NOW(), les passe
-	// à EXPIRE (bloque l'accès), envoie email avec option renouvellement/downgrade.
-	expireWorker := worker.NewExpireWorker(pool, logger, mailSvc, cfg.AppBaseURL).WithRegistry(workerRegistry)
-	expireWorker.Start(context.Background())
-
-	// SECT-USER-CLEANUP-INFRA-1 : worker de cleanup des users soft-deleted > 90 jours.
-	// Vérifie toutes les 24h les users dont deletedAt < NOW() - 90 jours, journalise
-	// chaque suppression dans AuditLog (action=USER_HARD_DELETED_AUTO) AVANT le DELETE
-	// (pour traçabilité même si le DELETE échoue), puis hard-delete via cascade manuel
-	// sur les tables enfants (FK RESTRICT) + final DELETE FROM "User".
-	// Pattern identique à expire_worker.go (struct + ticker 24h + first run on startup).
-	cleanupWorker := worker.NewCleanupWorker(pool, logger).WithRegistry(workerRegistry)
-	cleanupWorker.Start(context.Background())
-
-	// SECT-PROMOTION-BACKEND-1 : worker de clôture d'année académique.
-	// Vérifie toutes les 10s les batches PENDING créés par POST
-	// /api/etablissements/{id}/cloture-annee, les passe en RUNNING, traitent
-	// chaque étudiant via cloturer_annee_etudiant (best-effort), puis marque
-	// le batch COMPLETED. Le frontend poll /status pour suivre la progression.
-	// Pattern identique à cleanup_worker.go (struct + ticker 10s + first run).
-	// Toutes les opérations DB utilisent SystemClaims() (is_system() dans les
-	// policies PromotionBatch_modify + User_select permet le bypass worker).
-	// Concurrency safety : SELECT ... FOR UPDATE SKIP LOCKED + UPDATE statut=
-	// RUNNING dans la même tx → claim atomique multi-instance safe.
-	promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo).WithRegistry(workerRegistry)
-	promotionWorker.Start(context.Background())
-
-	// SECT-BIBLIO-P4 (ADR-0008 §5) : purge de la corbeille bibliothèque.
-	// Ouvrages soft-déletés > 30 jours : AuditLog AVANT le DELETE, hard
-	// delete sous claims system (policy Ouvrage_delete is_system — 000128,
-	// l'app ne peut JAMAIS hard-deleter), CASCADE emporte lectures/
-	// sections/alignements/annotations, objet R2 supprimé POST-COMMIT.
-	// Pattern cleanup_worker : ticker 1h + premier check au boot.
-	bibliothequePurgeWorker := worker.NewBibliothequePurgeWorker(pool, logger, storageClient).WithRegistry(workerRegistry)
-	bibliothequePurgeWorker.Start(context.Background())
-
-	// FIX-5 : worker de détection de similarité entre copies (post-exam).
-	// Vérifie toutes les 5 min les épreuves CLOTUREE dont l'établissement
-	// a rapportFraude=true, compare les paires d'étudiants et insère
-	// dans SimilarityReport. Utilise SystemClaims() pour bypass RLS.
-	similarityWorker := worker.NewSimilarityWorker(pool, logger).WithRegistry(workerRegistry)
-	similarityWorker.Start(context.Background())
-
-	// ADR-0012 §4 (monitoring P5) : worker d'alerting — évalue les règles
-	// persistées (AlertingRule) toutes les 2 min contre les métriques
-	// réelles et dispatch : événement in-app (transition), Slack
-	// (SLACK_WEBHOOK_URL), email dédié (ALERTING_EMAIL_TO via le mailer
-	// Resend > SMTP > Log). Canaux non configurés = journalisés +
-	// exposés à l'UI (GET /rules → channels) — jamais de silence feint.
+	// ADR-0012 §4 (monitoring P5) : configuration des canaux d'alerting —
+	// exposée à l'UI (GET /api/monitoring/rules → channels) et réutilisée par
+	// le worker d'alerting. Hissée hors de la garde workers (SECT-OCI-HYBRID-1) :
+	// même en mode standby API-only, l'UI /monitoring montre la config réelle.
 	alertingEmailReady := cfg.ResendAPIKey != "" ||
 		(cfg.SMTPHost != "" && cfg.SMTPUser != "" && cfg.SMTPPassword != "" && cfg.SMTPFrom != "")
 	alertingCfg := monitoring.AlertingConfig{
@@ -366,8 +276,111 @@ func main() {
 		AppBaseURL:        cfg.AppBaseURL,
 		DiscordWebhookURL: cfg.DiscordWebhookURL, // SECT-MONITORING-DISCORD-1 — canal principal
 	}
-	alertingWorker := worker.NewAlertingWorker(pool, logger, monRecorder, mailSvc, alertingCfg).WithRegistry(workerRegistry)
-	alertingWorker.Start(context.Background())
+
+	// SECT-OCI-HYBRID-1 : mode standby API-only. Architecture hybride
+	// OCI (primaire) + Render (standby chaud) : l'instance de standby ne doit
+	// PAS faire tourner les 13 workers de fond — sans pg_advisory_lock, un
+	// double démarrage doublerait les alertes Discord, les clôtures auto et
+	// les corrections IA (courses concurrentes sur les files/marqueurs).
+	// WORKERS_ENABLED=false → API servie normalement, workers OFF.
+	// Défaut true : comportement mono-instance inchangé.
+	if cfg.WorkersEnabled {
+		// Workers réactivés (policies is_system ajoutées sur les 12 tables worker).
+		// SECURITY-BASCULE : les workers posent des claims system-worker via
+		// set_config('app.claims.user_id', 'system-worker', true) au lieu de
+		// SET LOCAL row_security = off. Les policies _all_system (is_system())
+		// permettent l'accès full aux 12 tables : AIProviderConfig, Chapter,
+		// Devoir, Document, DocumentAudio, Epreuve, EpreuveQuestion,
+		// GrilleEvaluation, Question, Reponse, SessionPassation, Soumission.
+		// QUESTIONS-IA-FAILOVER : passer aiService au worker pour bénéficier du
+		// failover automatique entre providers (ChatWithFailover).
+		iaWorker := worker.NewIAWorker(pool, logger, aiService)
+		iaWorker.RecoverInterruptedJobs(context.Background())
+		iaWorker.Start(context.Background())
+
+		correctionWorker := worker.NewCorrectionWorker(pool, logger, aiService)
+		correctionWorker.RecoverInterruptedCorrections(context.Background())
+		correctionWorker.Start(context.Background())
+
+		docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger, aiService)
+		docAnalyzer.RecoverInterruptedAnalyses(context.Background())
+		docAnalyzer.Start(context.Background())
+
+		practiceWorker := worker.NewPracticeWorker(pool, logger, aiService)
+		practiceWorker.Start(context.Background())
+
+		homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger, aiService)
+		homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
+		homeworkWorker.Start(context.Background())
+
+		audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger, aiService)
+		audioWorker.RecoverInterruptedAudioJobs(context.Background())
+		audioWorker.Start(context.Background())
+
+		// CLOTURE-AUTO-WORKER : worker périodique (60s) qui clôture automatiquement
+		// les épreuves EN_COURS dont dateFin + grâce est dépassée, ET les épreuves
+		// où tous les étudiants ont soumis (TOUS_SOUMIS). Garantit la clôture même
+		// sans étudiant actif pollant /api/epreuves/auto-close.
+		autoCloseWorker := worker.NewAutoCloseWorker(pool, logger).WithRegistry(workerRegistry)
+		autoCloseWorker.Start(context.Background())
+
+		// SECT-FACTURE-EMAIL : worker de relance J-7 avant expiration abonnement B2C.
+		// Vérifie toutes les 6h les abonnements ACTIF dont dateFin ≤ 7j, envoie email.
+		relanceWorker := worker.NewRelanceWorker(pool, logger, mailSvc, cfg.AppBaseURL).WithRegistry(workerRegistry)
+		relanceWorker.Start(context.Background())
+
+		// SECT-B2C-EXPIRE : worker d'expiration des abonnements B2C.
+		// Vérifie toutes les 1h les abonnements ACTIF dont dateFin < NOW(), les passe
+		// à EXPIRE (bloque l'accès), envoie email avec option renouvellement/downgrade.
+		expireWorker := worker.NewExpireWorker(pool, logger, mailSvc, cfg.AppBaseURL).WithRegistry(workerRegistry)
+		expireWorker.Start(context.Background())
+
+		// SECT-USER-CLEANUP-INFRA-1 : worker de cleanup des users soft-deleted > 90 jours.
+		// Vérifie toutes les 24h les users dont deletedAt < NOW() - 90 jours, journalise
+		// chaque suppression dans AuditLog (action=USER_HARD_DELETED_AUTO) AVANT le DELETE
+		// (pour traçabilité même si le DELETE échoue), puis hard-delete via cascade manuel
+		// sur les tables enfants (FK RESTRICT) + final DELETE FROM "User".
+		// Pattern identique à expire_worker.go (struct + ticker 24h + first run on startup).
+		cleanupWorker := worker.NewCleanupWorker(pool, logger).WithRegistry(workerRegistry)
+		cleanupWorker.Start(context.Background())
+
+		// SECT-PROMOTION-BACKEND-1 : worker de clôture d'année académique.
+		// Vérifie toutes les 10s les batches PENDING créés par POST
+		// /api/etablissements/{id}/cloture-annee, les passe en RUNNING, traitent
+		// chaque étudiant via cloturer_annee_etudiant (best-effort), puis marque
+		// le batch COMPLETED. Le frontend poll /status pour suivre la progression.
+		// Pattern identique à cleanup_worker.go (struct + ticker 10s + first run).
+		// Toutes les opérations DB utilisent SystemClaims() (is_system() dans les
+		// policies PromotionBatch_modify + User_select permet le bypass worker).
+		// Concurrency safety : SELECT ... FOR UPDATE SKIP LOCKED + UPDATE statut=
+		// RUNNING dans la même tx → claim atomique multi-instance safe.
+		promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo).WithRegistry(workerRegistry)
+		promotionWorker.Start(context.Background())
+
+		// SECT-BIBLIO-P4 (ADR-0008 §5) : purge de la corbeille bibliothèque.
+		// Ouvrages soft-déletés > 30 jours : AuditLog AVANT le DELETE, hard
+		// delete sous claims system (policy Ouvrage_delete is_system — 000128,
+		// l'app ne peut JAMAIS hard-deleter), CASCADE emporte lectures/
+		// sections/alignements/annotations, objet R2 supprimé POST-COMMIT.
+		// Pattern cleanup_worker : ticker 1h + premier check au boot.
+		bibliothequePurgeWorker := worker.NewBibliothequePurgeWorker(pool, logger, storageClient).WithRegistry(workerRegistry)
+		bibliothequePurgeWorker.Start(context.Background())
+
+		// FIX-5 : worker de détection de similarité entre copies (post-exam).
+		// Vérifie toutes les 5 min les épreuves CLOTUREE dont l'établissement
+		// a rapportFraude=true, compare les paires d'étudiants et insère
+		// dans SimilarityReport. Utilise SystemClaims() pour bypass RLS.
+		similarityWorker := worker.NewSimilarityWorker(pool, logger).WithRegistry(workerRegistry)
+		similarityWorker.Start(context.Background())
+
+		// ADR-0012 §4 : worker d'alerting — évalue les règles persistées
+		// (AlertingRule) toutes les 2 min, dispatch in-app/Discord/Slack/email.
+		alertingWorker := worker.NewAlertingWorker(pool, logger, monRecorder, mailSvc, alertingCfg).WithRegistry(workerRegistry)
+		alertingWorker.Start(context.Background())
+	} else {
+		workerRegistry.SetAllDisabled("Mode standby — WORKERS_ENABLED=false (les workers de fond tournent sur l'instance primaire)")
+		logger.Warn("workers de fond DESACTIVES (WORKERS_ENABLED=false) — instance standby API-only (architecture hybride OCI, primaire ailleurs)")
+	}
 
 	// MESSAGERIE-GROUP-TIMEOUT : la réponse IA en salon collectif (@assistant)
 	// utilise désormais un timeout serveur synchrone de 25s (< 30s Render free)
@@ -447,6 +460,8 @@ func main() {
 
 	// ADR-0011 — registre de workers exposé à /api/monitoring/overview.
 	server.WithWorkerRegistry(workerRegistry)
+	// SECT-OCI-HYBRID-1 : expose à /overview si les workers tournent ici.
+	server.WithWorkersEnabled(cfg.WorkersEnabled)
 	server.WithVapidPublicKey(cfg.VAPIDPublicKey)
 	logger.Info("Notification dispatcher configured", "pushEnabled", cfg.VAPIDPublicKey != "", "fcmEnabled", fcmSender != nil)
 

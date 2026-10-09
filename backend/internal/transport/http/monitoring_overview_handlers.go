@@ -196,14 +196,15 @@ func (s *Server) monitoringOverview(w http.ResponseWriter, r *http.Request) {
 			"etablissementsProteges": etabProteges,
 			"verificationIdentite":   etabVerification,
 		},
-		"runtime":     monitoring.CollectRuntime(),
-		"db":          map[string]any{"down": dbDown, "latencyMs": dbLatencyMs, "activeConns": activeConns},
-		"storage":     storageInfo,
-		"ai":          map[string]any{"providersActifs": providersActifs},
-		"maintenance": map[string]any{"active": maintenanceActive, "message": maintenanceMessage},
-		"workers":     s.workerRegistry.Snapshot(), // nil-safe
-		"trend":       trend,
-		"generatedAt": time.Now().UTC().Format(time.RFC3339),
+		"runtime":        monitoring.CollectRuntime(),
+		"db":             map[string]any{"down": dbDown, "latencyMs": dbLatencyMs, "activeConns": activeConns},
+		"storage":        storageInfo,
+		"ai":             map[string]any{"providersActifs": providersActifs},
+		"maintenance":    map[string]any{"active": maintenanceActive, "message": maintenanceMessage},
+		"workers":        s.workerRegistry.Snapshot(), // nil-safe
+		"workersEnabled": s.workersEnabled,            // SECT-OCI-HYBRID-1 : false = standby API-only
+		"trend":          trend,
+		"generatedAt":    time.Now().UTC().Format(time.RFC3339),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

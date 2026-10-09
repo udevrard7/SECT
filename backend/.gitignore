@@ -10,10 +10,11 @@
 # Firebase service account keys
 service-account*.json
 
-# Build outputs
+# Build outputs (ancrés à la racine backend/ — `api` nu ignorait aussi
+# le répertoire cmd/api/, SECT-OCI-HYBRID-1 a exposé ce piège)
 bin/
-api
-sect-api
+/api
+/sect-api
 *.exe
 *.exe~
 *.dll

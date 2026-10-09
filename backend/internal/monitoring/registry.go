@@ -31,6 +31,12 @@ type WorkerStatus struct {
 	LastDurationMs int64  `json:"lastDurationMs"` // durée de la dernière exécution
 	LastError      string `json:"lastError"`      // dernier message d'erreur, "" si OK
 	StartedAt      string `json:"startedAt"`      // enregistrement (RFC3339)
+	// SECT-OCI-HYBRID-1 : instance standby (WORKERS_ENABLED=false) — le
+	// worker est DÉCLARÉ dans le registre mais ne tourne pas ici (il tourne
+	// sur l'instance primaire). L'UI /monitoring l'affiche honnêtement au
+	// lieu de laisser croire à un worker en panne (runs=0 silencieux).
+	Disabled       bool   `json:"disabled"`
+	DisabledReason string `json:"disabledReason"` // ex: "Mode standby — WORKERS_ENABLED=false"
 }
 
 // workerEntry — état interne (champ mutable derrière mutex).
@@ -143,6 +149,21 @@ func (r *WorkerRegistry) Snapshot() []WorkerStatus {
 		out = append(out, r.entries[name].status)
 	}
 	return out
+}
+
+// SetAllDisabled marque TOUS les workers déclarés comme désactivés avec la
+// raison donnée (SECT-OCI-HYBRID-1 : mode standby — les workers ne tournent
+// pas sur CETTE instance, ils tournent sur la primaire). Nil-safe.
+func (r *WorkerRegistry) SetAllDisabled(reason string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, name := range r.order {
+		r.entries[name].status.Disabled = true
+		r.entries[name].status.DisabledReason = reason
+	}
 }
 
 // TrackContext — variante de Track pour les fonctions prenant un contexte

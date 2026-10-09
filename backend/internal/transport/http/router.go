@@ -64,6 +64,10 @@ type Server struct {
 	// Injecté via WithWorkerRegistry (setter pattern — évite d'étendre
 	// la signature NewServer déjà très longue).
 	workerRegistry *monitoring.WorkerRegistry
+	// SECT-OCI-HYBRID-1 : workers actifs sur CETTE instance ? Exposé à
+	// /overview (workersEnabled) — false en mode standby (WORKERS_ENABLED=false).
+	// Injecté via WithWorkersEnabled ; défaut true (mono-instance).
+	workersEnabled bool
 	// ADR-0012 (monitoring P5) : échantillonneur de requêtes (p50/p95
 	// par endpoint — injecté en fin de signature NewServer car le
 	// middleware sampling est monté à la construction) + config des
@@ -148,6 +152,14 @@ func (s *Server) WithWorkerRegistry(reg *monitoring.WorkerRegistry) *Server {
 	return s
 }
 
+// WithWorkersEnabled indique si les workers de fond tournent sur CETTE
+// instance (SECT-OCI-HYBRID-1 : false en mode standby — l'UI /monitoring
+// affiche alors honnêtement « standby » au lieu de workers à 0 runs).
+func (s *Server) WithWorkersEnabled(enabled bool) *Server {
+	s.workersEnabled = enabled
+	return s
+}
+
 // WithAlertingConfig injecte la config des canaux d'alerting externe
 // (ADR-0012 — Slack/email dédié ; exposée via GET /api/monitoring/rules
 // → channels pour que l'UI indique quoi configurer). Pattern setter.
@@ -225,6 +237,9 @@ func NewServer(
 	monSampler *monitoring.RequestSampler,
 ) *Server {
 	s := &Server{
+		// SECT-OCI-HYBRID-1 : défaut true — les workers tournent sauf si
+		// WithWorkersEnabled(false) est appelé (mode standby).
+		workersEnabled:      true,
 		dbPool:              dbPool,
 		userRepo:            userRepo,
 		userUC:              userUC,

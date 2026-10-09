@@ -3,10 +3,21 @@
 # ============================================================
 # Stage 1: Build (compile le binaire Go)
 # Stage 2: Runtime (image minimale Alpine avec le binaire)
+#
+# SECT-OCI-HYBRID-1 : build MULTI-ARCH. La VM OCI Marseille est Ampere A1
+# (ARM64) ; Render build en AMD64. Les ARG TARGETOS/TARGETARCH sont
+# pré-remplis par BuildKit (docker buildx --platform linux/arm64) et
+# retombent sur linux/amd64 en build simple — Render est inchangé.
+# Build ARM64 : docker buildx build --platform linux/arm64 .
 # ============================================================
 
 # --- Stage 1: Build ---
 FROM golang:1.27-alpine AS builder
+
+# SECT-OCI-HYBRID-1 : cible d'architecture (auto par BuildKit multi-plateforme,
+# défaut amd64 pour un docker build simple — ex. Render).
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 
 WORKDIR /app
 
@@ -18,7 +29,9 @@ RUN go mod download
 COPY . .
 
 # Compiler le binaire statique (CGO_DISABLED pour Alpine)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+# SECT-OCI-HYBRID-1 : GOARCH paramétré par TARGETARCH (arm64 sur OCI Ampere A1,
+# amd64 par défaut — Render inchangé).
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w" \
     -o /app/bin/sect-api \
     ./cmd/api

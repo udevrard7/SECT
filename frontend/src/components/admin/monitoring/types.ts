@@ -134,6 +134,11 @@ export interface OverviewWorker {
   lastDurationMs: number
   lastError: string
   startedAt: string
+  /** SECT-OCI-HYBRID-1 : true = ce worker ne tourne PAS sur cette
+   * instance (mode standby API-only — WORKERS_ENABLED=false) ; il tourne
+   * sur l'instance primaire. Absent sur les backends antérieurs. */
+  disabled?: boolean
+  disabledReason?: string
 }
 
 export interface TrendPoint {
@@ -155,6 +160,10 @@ export interface OverviewData {
   workers: OverviewWorker[]
   trend: TrendPoint[]
   generatedAt: string
+  /** SECT-OCI-HYBRID-1 : false = instance standby API-only (les workers
+   * de fond tournent sur la primaire, pas ici). Absent sur les backends
+   * antérieurs → traité comme true. */
+  workersEnabled?: boolean
 }
 
 // ─── Healthcheck services (GET /api/monitoring/health) ───

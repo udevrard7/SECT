@@ -100,6 +100,16 @@ type Config struct {
 	// (migration 000134 : notifyEmail=false) pour préserver le quota
 	// Resend pour les transactionnels (reset password, invitations, factures).
 	DiscordWebhookURL string // DISCORD_WEBHOOK_URL
+
+	// SECT-OCI-HYBRID-1 : mode standby API-only. L'architecture hybride
+	// OCI (primaire, 13 workers actifs) + Render (standby chaud, 0 trafic)
+	// exige que l'instance de STANDBY ne fasse PAS tourner les workers
+	// de fond (sinon : alertes Discord doublées, courses concurrentes sur
+	// breachedSince/lastNotifiedAt, corrections IA traitées deux fois —
+	// aucun pg_advisory_lock dans les workers).
+	// WORKERS_ENABLED=false → API servie normalement, workers OFF.
+	// Défaut true : comportement inchangé (mono-instance Render).
+	WorkersEnabled bool
 }
 
 // Load reads configuration from environment variables.
@@ -156,6 +166,9 @@ func Load() (*Config, error) {
 		AlertingEmailTo: getEnv("ALERTING_EMAIL_TO", ""),
 		// SECT-MONITORING-DISCORD-1 : canal principal de l'alerting.
 		DiscordWebhookURL: getEnv("DISCORD_WEBHOOK_URL", ""),
+
+		// SECT-OCI-HYBRID-1 : workers de fond activés par défaut.
+		WorkersEnabled: getEnvBool("WORKERS_ENABLED", true),
 	}
 
 	// Parse CORS origins (comma-separated)
@@ -182,6 +195,25 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvBool lit une variable booléenne. Valeurs acceptées pour true :
+// "true", "1", "yes", "on" (insensible à la casse). Tout le reste = false.
+// SECT-OCI-HYBRID-1 (WORKERS_ENABLED) — défaut géré par l'appelant.
+func getEnvBool(key string, fallback bool) bool {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		fmt.Printf("[config] %s invalide (%q) → défaut %v\n", key, raw, fallback)
+		return fallback
+	}
 }
 
 // getSessionIdleTimeout lit SESSION_IDLE_MINUTES (défaut 30, 0 = désactivé).
