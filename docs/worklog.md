@@ -5102,3 +5102,25 @@ Stage Summary:
 - Livré et prouvé en prod (390d1be6, Vercel READY) : les alertes actives du dashboard responsable sont désormais TOUJOURS interactives — le clic mène à la page où agir (enseignants/évaluations/rapports/étudiants selon le type), le bandeau aussi, avec affordances visuelles explicites au lieu d'items inertes.
 - Diagnostic clé : alertes contextuelles stats ≠ alertes DB — « résoudre » n'existe pas pour elles, la bonne action est la navigation vers la page du domaine ; l'ancien CTA /alertes était un piège (page sans l'alerte vue).
 - Leçon : un élément qui ressemble à une carte cliquable sans handler est un bug UX même s'il ne casse rien techniquement ; toujours vérifier la cohérence dashboard → page cible (l'alerte promise doit être visible à l'arrivée).
+---
+Task ID: SECT-DASH-ALERTES-VERIFY-1
+Agent: Z.ai Code (session reprise — re-vérification live post-livraison)
+Task: Session rouverte après réinitialisation du sandbox (credentials re-fournis) — vérifier que la livraison SECT-DASH-ALERTES-FIX-1 (390d1be6 : alertes du dashboard responsable cliquables) tient toujours en prod.
+
+Work Log:
+- Re-clone du repo (sandbox réinitialisé) : GitHub↔local synchronisés, HEAD 11f9bc6e, commits du fix présents (390d1be6 fix + 11f9bc6e worklog), prod Vercel READY = dpl_5u6kP135NcTFyQsiMJRFxjBbivR5 sur 390d1be6 (le build 11f9bc6e docs-only CANCELED par design rootDirectory=frontend — pas une panne).
+- Harnais recréé (sect-audit/ perdu au reset) : verify_dash_alertes_live.py — fixture RESPONSABLE jetable e2e-resp-alert@sect-test.dev (id e2e-resp-alert-1, etab The University of Abidjan = celui du registrar) + 6 checks API + self-cleanup.
+- Re-vérification API live 6/6 : /health 200 ; fixture créée propre ; login 200 role=RESPONSABLE ; GET /api/stats/responsable 200 champ alertes présent ; 1 alerte contextuelle « Aucune évaluation créée » (type=evaluations, warning, « 20 étudiant(s) inscrit(s) mais aucune épreuve créée ») — type mappé par getAlerteAction ; cleanup résidu 0.
+- Re-vérification UI prod (agent-browser sur sect.ftci.fr, fixture recréée) :
+  - dashboard : bandeau « 1 alerte active » + CTA « Voir les évaluations » [ex-« Voir les alertes » piégeux, disparu] ; timeline « Alertes Récentes » avec description honnête + bouton accessible « Alerte « Aucune évaluation créée » — Voir les évaluations » ;
+  - clic item timeline → navigation /evaluations CONFIRMÉE (l'inertie d'origine est bien guérie) ;
+  - clic CTA bandeau → navigation /evaluations CONFIRMÉE ;
+  - focus clavier : aria-label complet reçu + ring de focus actif (accessible) ;
+  - 0 erreur console, 0 warning (hors PWA info) ;
+  - capture full-page dash-verify-3-full.png : confirmée par VLM sur les 3 points clés (carte alerte jaune + bouton « Voir les évaluations », description « cliquez sur une alerte pour accéder à la page où la traiter », affordance « Voir les évaluations → » sur l'item).
+- Cleanup final : fixture supprimée (résidu 0), navigateur fermé. Aucune modification de code nécessaire — le fix tient en prod.
+
+Stage Summary:
+- ÉTAT LIVE 100 % CONFORME, aucune régression : les alertes actives du dashboard responsable réagissent au clic (timeline ET bandeau → page d'action /evaluations pour le type evaluations), accessibles au clavier, avec affordances visuelles explicites — le signalement d'origine (« cliquer pour résoudre ne fait rien ») est clos et vérifié en prod.
+- Rappel du design : ces alertes sont CONTEXTUELLES (stats), pas des lignes « Alerte » DB — « résoudre » n'existe pas pour elles ; la bonne action est la navigation vers la page du domaine (enseignants/évaluations/rapports/étudiants).
+- Script de re-vérification réutilisable : sect-audit/verify_dash_alertes_live.py (6 checks, self-cleanup, résidu 0) ; captures dash-verify-1-avant/2-apres-cta/3-full.png.
