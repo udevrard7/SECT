@@ -21,10 +21,15 @@
 # --- Stage 1: Build (cross-compile — NATIF sur le runner, zéro émulation) ---
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
-# SECT-OCI-HYBRID-1 : cible d'architecture (auto par BuildKit multi-plateforme,
-# défaut amd64 pour un docker build simple — ex. Render).
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+# Cible d'architecture : AUTO par BuildKit (multi-plateforme ET natif — Render
+# amd64 sans changement). Voir le commentaire de fix ci-dessous.
+# SECT-OCI-DEPLOY-3 (fix racine, cf log build #22) : les ARG automatiques de
+# plateforme se déclarent SANS DÉFAUT — un défaut (ex. ARG TARGETARCH=amd64)
+# ÉCRASE l'injection BuildKit en multi-arch et compile amd64 pour TOUTES les
+# cibles (binaire x86-64 dans l'image linux/arm64 → exec format error sur l'A1).
+# Sécurité builder legacy (pas buildx) : fallback shell dans le RUN ci-dessous.
+ARG TARGETOS
+ARG TARGETARCH
 # BUILDPLATFORM (auto BuildKit) : plateforme du runner — le binaire Go est
 # cross-compilé pour TARGETARCH, le compilateur reste natif.
 WORKDIR /app
@@ -39,7 +44,7 @@ COPY . .
 # Compiler le binaire statique (CGO_DISABLED pour Alpine)
 # SECT-OCI-HYBRID-1 : GOARCH paramétré par TARGETARCH (arm64 sur OCI Ampere A1,
 # amd64 par défaut — Render inchangé).
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-s -w" \
     -o /app/bin/sect-api \
     ./cmd/api
