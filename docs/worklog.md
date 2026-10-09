@@ -5146,3 +5146,77 @@ Stage Summary:
 - LIVRÉ (commit a020ca24, 15 fichiers +739/-109) : kit de migration hybride complet et testé — flag workers + honnêteté UI standby (backend + frontend), Dockerfile multi-arch ARM64, compose+Caddy production-ready, CI/CD GHCR→SSH avec porte anti-échec, runbook cutover/rollback. Le pipeline CI prouve le build ARM64 réel (premier run déclenché par le push).
 - EN ATTENTE : (1) clé privée OCI COMPLÈTE pour la sonde en profondeur + pilotage API ; (2) IP publique VM + accès SSH pour le déploiement réel (les secrets GitHub OCI_SSH_* ne sont pas encore posés — le job deploy se skip proprement) ; (3) bascule DNS api.sect.ftci.fr + variable Vercel + WORKERS_ENABLED=false sur Render (procédure runbook, à la main de l'utilisateur ou du next run avec accès).
 - Décision d'architecture : OCI = PRIMAIRE (tue les cold starts Render ~50 s, 24 Go pour les workers IA), Render = STANDBY chaud — l'actif-actif est explicitement interdit tant que les workers n'ont pas d'élection de leader (pg_advisory_lock), documenté au runbook §5.
+
+---
+Task ID: SECT-OCI-HYBRID-HANDOFF-1 (DETTE TECHNIQUE — transfert inter-agents)
+Agent: Z.ai Code (session de consignation — clôture de phase à la demande de l'utilisateur)
+Task: La migration hybride a pris trop de temps / trop de difficultés → décision utilisateur de consigner le plan de migration hybride comme DETTE TECHNIQUE au worklog : ce qui est fait, ce qui doit être corrigé, et le plan de reprise complet. La session est transmise à un autre agent pour l'exécuter.
+
+Work Log:
+- Reconstruction de l'historique perdu : 15 sections de déploiement (SECT-OCI-DEPLOY-2A → 2O) existaient uniquement dans le worklog sandbox (/home/z/my-project/worklog.md, perdu à chaque reset) — jamais poussées ici à cause de pannes de session 403 répétées. Elles sont résumées et SAUVÉES ci-dessous §B.2.
+- Sonde read-only de clôture (un seul appel SDK) : instance « Ftechci » RUNNING, VM.Standard.A1.Flex, IP publique 84.235.228.160 (RESERVED) ; DNS api.sect.ftci.fr toujours NXDOMAIN (5e confirmation) ; sect.ftci.fr → Vercel OK ; harnais /home/z/sect-audit intact.
+- Rédaction de la présente section + push (identité udevrard7 <ulrichdouh@gmail.com>).
+
+════════════════════════════════════════════════════════════════════
+DETTE TECHNIQUE — MIGRATION HYBRIDE RENDER → OCI MARSEILLE (plan de reprise)
+════════════════════════════════════════════════════════════════════
+
+§A. ARCHITECTURE CIBLE (décision verrouillée — ne pas rouvrir)
+- OCI eu-marseille-1 (Ampere A1, ARM64) = PRIMAIRE : API + 13 workers (process unique). Render = STANDBY CHAUD : API seule, WORKERS_ENABLED=false. Bascule DNS Cloudflare, rollback < 5 min. Neon Frankfurt central (~10-15 ms de Marseille).
+- INTERDIT : actif-actif. Les 13 workers (7 périodiques + 6 file : alerting Discord, auto-close, expiration, correction IA, audio, analyse docs) tournent in-process dans cmd/api/main.go SANS pg_advisory_lock ni élection de leader → deux instances actives = alertes Discord doublées, corrections IA/clôtures traitées deux fois. Ré-examinable UNIQUEMENT après ajout d'un verrou distribué (runbook §5).
+- Gardes permanentes (runbook §4) : jamais 2 primaires, jamais 0 primaire. Ordre de bascule strict (§3.6) : E2E OCI vert → DNS api.sect.ftci.fr → variable Vercel NEXT_PUBLIC_API_URL → WORKERS_ENABLED=false sur Render, en dernier.
+- État présent : Render https://sect-zead.onrender.com reste PRIMAIRE (prod inchangée, saine, workers actifs — vérifié E2E : workersEnabled=true, 14 workers, 0 disabled). AUCUNE urgence : la dette est un plan, pas une panne.
+
+§B. CE QUI A DÉJÀ ÉTÉ FAIT
+§B.1 — Livré, testé et poussé sur GitHub (a020ca24 kit + a5004535 worklog + e5e27ca9 note GHCR) :
+- Backend : flag WORKERS_ENABLED (config.go, défaut true → Render inchangé) ; garde dans main.go autour des 13 workers ; WorkerRegistry.SetAllDisabled + disabled/disabledReason ; workersEnabled exposé dans /api/monitoring/overview.
+- Frontend : bandeau « Instance standby — workers de fond désactivés ici » + badge Standby par worker (onglet Système /monitoring).
+- Dockerfile multi-arch (Render amd64 inchangé, linux/arm64 pour l'A1) ; deploy/oci/ (docker-compose + Caddyfile + .env.example) ; CI/CD .github/workflows/deploy-oci.yml (gate → buildx arm64+amd64 → GHCR → deploy SSH par digest immuable) ; runbook docs/ops/oci-hybrid-runbook.md (cutover §3.6, rollback §3.7, gardes §4).
+- Prouvé en prod : CI SUCCESS, image GHCR ghcr.io/udevrard7/sect/sect-api multi-arch VÉRIFIÉE (PRIVÉE par défaut → docker login read:packages requis sur la VM). Gates : go build/vet/gofmt/golangci-lint 0, tsc/eslint 0, vitest 11/11.
+§B.2 — Déploiement réel sur la VM (2A→2O, sandbox uniquement, sauvé ici) :
+- 2A (sonde passive) : VM « Ftechci » ocid1.instance.oc1.eu-marseille-1.anwxeljrq225leicqzeju4jy275mckcbonpdx3fk3r5awlmqzmklmcxeqcvq, Ubuntu 26.04 ARM64, user cloud-init = ubuntu. Réseau : VCN mikcloud-vcn 10.0.0.0/16, subnet 10.0.0.0/24, Security List ingress 0.0.0.0/0 tcp 22/80/443 (stateful, pas de NSG), Internet Gateway mikcloud-ig OK, IP publique 84.235.228.160 RESERVED (stable au stop/start). BOOT LOGS (console history) : la VM n'est PAS vierge — stack existante mikcloud.service (hotspot-API) + postgresql@18-main.service + caddy.service (5 starts OK) + mikcloud-backup.timer (snapshot Neon) ; AUCUN docker, AUCUN nginx. Metadata : PAS de user_data ; ssh_authorized_keys = 1 clé ed25519 d'origine (privée perdue) : ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOLHYHNvmFxItZ4tq6N8Z/+5vv8w2e1IkaNDu6F+vI+
+- 2B→2E : pannes de session sandbox 403 (meurt après 2-3 appels Bash) ; la VM (wedgée réseau : 22/80/443 timeout) a été rebootée PAR L'UTILISATEUR à 06:30 UTC → réseau revenu : HTTP 80 = 308 (Caddy), TCP 443 ouvert (handshake TLS KO sans SNI valide), TCP 22 OUVERT (bannière SSH-2.0-OpenSSH_10.2p1 Ubuntu-2ubuntu3.6).
+- 2F : Run Command (plugin Compute Instance Run Command, ENABLED dans agent_config) testé : commande ACCEPTED JAMAIS pickup → plugin MORT côté OS.
+- 2G→2N (8 tentatives rescue console série + GRUB init=/bin/bash) : SOFTRESET ACPI + spam ESC ; clés console en RSA (l'API OCI REFUSE ed25519 pour les console connections — InvalidParameter) ; proxy série port 443 ; GRUB JAMAIS interceptable (GRUB_TIMEOUT=0, pas de rendu menu sur ttyAMA0) ; grub> atteint parfois (2K/2M) mais le boot runtime n'a jamais abouti au root shell — incident : VM restée bloquée au prompt grub> (2M), redevenue saine en 2N : SSH a répondu « Authentication failed » (pas timeout) = preuve que sshd est VIVANT et qu'il ne manque QUE la clé dans authorized_keys. Partitionnement appris (2N) : gpt1 = root FS, gpt13 = /boot (fichiers vmlinuz à sa racine — pas dans un sous-répertoire /boot/), root=UUID=cf3ca9d3-6436-45cb-a67d-0bca258703dd.
+- 2O : Run Command re-testé post-reboot propre → BLOQUE définitivement (ACCEPTED, jamais pickup). Dernier état : RUNNING, IP RESERVED, grub.cfg disque INTACT, aucune destruction jamais (jamais terminate).
+- Clés générées dans le sandbox (/home/z/oci/, privées PERDUES au reset sandbox — publiques consignées ici pour mémoire) : sect_deploy_key (ed25519, SHA256:eDbXuX4Yr9ePqL8qTbEAIU8NUZ7GzSPP7LVDwKjxJlM=, publique : ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILoxDyTMow5iwaa+e5oCpDkF8hNd2COZHJ7GCp8AGGa/ sect-deploy) à injecter dans /home/ubuntu/.ssh/authorized_keys ; console_rsa_key (RSA 4096, pour les console connections OCI uniquement). Si le sandbox est reset, la privée n'existe plus : voir §D.1.
+
+§C. ÉTAT EXACT AU HANDOFF (vérifié ce jour, sonde read-only)
+- Instance : RUNNING, VM.Standard.A1.Flex, eu-marseille-1. SSH 22 ouvert (auth fail = clé absente, sshd sain). 80 = 308 caddy (stack mikcloud). 443 TCP ouvert, aucun SNI provisionné.
+- Render : PRIMAIRE, sain, workers actifs (vérifié E2E). GHCR : image multi-arch prête (privée). CI deploy-oci : gate skip (secrets OCI_SSH_* jamais posés).
+- DNS : api.sect.ftci.fr = NXDOMAIN (5 confirmations) ; zone ftci.fr sur Cloudflare ; sect.ftci.fr → Vercel.
+- AUCUNE écriture cloud en attente, aucune console connection résiduelle nettoyée OK, aucune donnée détruite.
+
+§D. CE QUI DOIT ÊTRE CORRIGÉ (blockers, par ordre de priorité)
+1. ACCÈS SSH À LA VM — LE BLOCKER UNIQUE (15 tentatives échouées). Chemins restants, dans l'ordre :
+   a. Clé privée SSH ORIGINALE de l'utilisateur : elle a été posée à la création de l'instance (ssh_authorized_keys metadata, cf §B.2). DEMANDER à l'utilisateur de la retrouver (machine locale ~/.ssh, gestionnaire de clés, export navigateur/terminal utilisé à la création). Si retrouvée → SSH direct, terminé en minutes. C'est la voie royale.
+   b. Sinon : rescue par boot volume — stop instance (IP RESERVED stable), détacher le boot volume via SDK, l'attacher à une seconde VM temporaire en device secondaire, monter (root=UUID=cf3ca9d3-…), injecter une nouvelle clé publique dans /home/ubuntu/.ssh/authorized_keys ET /root/.ssh/authorized_keys (chmod 700/600, chown ubuntu:ubuntu), umount, détacher, ré-attacher à l'instance d'origine (boot), start. Downtime 15-30 min. JAMAIS terminate.
+   c. À NE PAS RETENTER : console série + GRUB (GRUB_TIMEOUT=0, non interceptable — 8 échecs documentés §B.2) ; Run Command (plugin mort côté OS, 3 échecs dont 1 post-reboot propre) ; cloud-init (pas de user_data, immuable post-création).
+   d. À ÉVITER : recréer l'instance (destructif — la VM héberge mikcloud.service + postgres@18-main avec données LOCALES + timer snapshot Neon ; cf §D.3).
+2. DNS api.sect.ftci.fr : créer le record A (proxied) → 84.235.228.160 dans Cloudflare, zone ftci.fr. Actuellement NXDOMAIN — sans lui, pas de TLS (le Caddy ne peut pas provisionner le certificat, d'où le handshake 443 KO).
+3. CONFLIT AVEC LA STACK EXISTANTE (correction à apporter au kit deploy/oci) : la VM porte DÉJÀ caddy.service (mikcloud) qui écoute sur 80/443, et postgres@18-main local. Le docker-compose deploy/oci prévoit SON propre caddy → conflit de ports. Correction : exposer le conteneur api sur localhost (ex. 127.0.0.1:8090) et ajouter un vhost api.sect.ftci.fr au CADDY EXISTANT (reverse_proxy 127.0.0.1:8090), ou écouter le caddy du compose sur un autre port et proxyfier depuis l'existant. NE JAMAIS écraser/désactiver caddy.service ni postgres@18-main (prod mikcloud). Vérifier aussi les ressources (limits compose 3.5 CPU/20 Go à arbitrer avec la stack existante sur 4 vCPU/24 Go — prévoir n'est plus possible en aveugle, ajuster après coup d'œil via SSH : free -h, nproc, systemctl status).
+4. Secrets GitHub OCI_SSH_HOST / OCI_SSH_USER / OCI_SSH_KEY à poser (repo Settings → Secrets and variables → Actions) — sans eux le job deploy se skip (gate). L'image GHCR étant privée : docker login ghcr.io sur la VM avec un PAT scope read:packages (jamais dans le repo).
+5. /opt/sect/.env : secrets à COPIER depuis l'API Render (docs/ops/render-env-vars-runbook.md — 14 vars) — JAMAIS retaper. NEON_DATABASE_URL = rôle sect_app (PAS owner). WORKERS_ENABLED=true sur OCI (primaire), DB_MAX_CONNS=60.
+6. Cutover (runbook §3.6, ordre strict) : E2E OCI vert (harnais /home/z/sect-audit/verify_dash_alertes_live.py, BASE_URL paramétrable) → DNS api.sect.ftci.fr → Cloudflare → Vercel NEXT_PUBLIC_API_URL → WORKERS_ENABLED=false sur Render (EN DERNIER). Puis vérifier : /overview côté OCI = workersEnabled=true, côté Render = badge Standby + bandeau. Rollback < 5 min (§3.7) tant que non basculé.
+
+§E. PLAN DE REPRISE POUR L'AGENT SUIVANT (étapes ordonnées)
+1. Lire EN ENTIER : docs/ops/oci-hybrid-runbook.md + la présente section. Vérifier git log AVANT toute modification (leçon des resets). Identité git : udevrard7 <ulrichdouh@gmail.com> (author + committer). Worklogs DOUBLES à tenir : SECT/docs/worklog.md (officiel, poussé) + /home/z/my-project/worklog.md (sandbox). Secrets/clés privées : JAMAIS dans le repo (transmis en session uniquement).
+2. Résoudre §D.1 : demander d'abord la clé SSH originale à l'utilisateur (§D.1.a) ; sinon boot-volume rescue (§D.1.b). Ne jamais retenter console série/GRUB/Run Command (§D.1.c).
+3. SSH obtenu → état des lieux : systemctl status caddy mikcloud postgresql@18-main ; free -h ; nproc ; docker installé ? (non → installer) ; corriger le conflit caddy (§D.3) ; poser /opt/sect/.env (§D.5) ; docker login ghcr.io ; premier démarrage manuel + healthcheck.
+4. Poser les secrets GitHub (§D.4) → déclencher deploy-oci.yml (workflow_dispatch) → vérifier healthcheck + smoke /health.
+5. Cutover §3.6 une fois la stack stable 24 h recommandé ; E2E obligatoire avant DNS ; WORKERS_ENABLED=false sur Render EN DERNIER.
+6. Consigner la fin de la dette technique aux DEUX worklogs + push. Vérifier Render (badge Standby, /overview) et l'absence de doublons Discord (garde anti-actif-actif).
+
+§F. LEÇONS (à ne pas répéter — durées constatées)
+- Le sandbox meurt aléatoirement (403 Forbidden, tools morts) après 2-3 appels Bash consécutifs : UNE mission = UN SEUL appel (script python unique écrit puis exécuté) ; appels séquentiels stricts.
+- API console OCI : REFUSE les clés ed25519 (RSA obligatoire) ; GRUB_TIMEOUT=0 sur cette image → rescue GRUB non viable ; ne pas brûler 8 tentatives dessus la prochaine fois (2G→2N = ~1 h 15).
+- Run Command : plugin mort côté OS (ACCEPTED jamais pickup) — 3 tests dont 1 post-reboot propre : abandonné définitivement.
+- Backticks bash dans les messages de commit : mots avalés → heredoc/quotes simples, sinon amend + force-push avec lease (incident a020ca24).
+- IP publique RESERVED : survit au stop/start — les stop nécessaires au rescue boot-volume ne perdent pas l'IP.
+- La VM n'est PAS une VM vierge dédiée : mikcloud + postgres + caddy tournent déjà — toute l'infra SECT doit coexister (ports, CPU, RAM).
+- Toujours sonde passive AVANT action cloud ; jamais d'écriture sans justification ; jamais terminate.
+
+Stage Summary:
+- DETTE TECHNIQUE CONSIGNÉE ET POUSSÉE : architecture verrouillée (§A), inventaire exhaustif du livré (§B.1) et du déploiement réel 2A→2O sauvé de la perte (§B.2 — c'était le principal risque : ces 15 sections n'existaient qu'en sandbox), état vérifié (§C), blockers priorisés (§D), plan de reprise pas-à-pas (§E), leçons (§F).
+- LE BLOCKER UNIQUE est l'accès SSH : clé originale perdue, Run Command mort, GRUB non interceptable. Voie royale = clé originale de l'utilisateur (§D.1.a) ; sinon rescue boot volume non destructif (§D.1.b). Tout le reste (kit a020ca24, image GHCR multi-arch, CI/CD, runbook) est PRÊT et valable en l'état.
+- Prod SECT inchangée et saine : Render primaire, workers actifs — cette dette est un plan d'exécution, pas une panne. L'agent suivant reprend à §E.1.
