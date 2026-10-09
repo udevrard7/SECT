@@ -1,14 +1,23 @@
 # ============================================================
-# SECT-OCI-HYBRID-1 — Déploiement backend sur VM OCI Marseille
-# (Ampere A1 ARM64, Always Free) — instance PRIMAIRE.
+# SECT-OCI-HYBRID-1 (corrigé §D.3 / SECT-OCI-DEPLOY-3) — backend Go
+# sur VM OCI Marseille (Ampere A1 ARM64) — instance PRIMAIRE.
 #
-# api    : backend Go (image GHCR multi-arch, arm64 sur cette VM)
-# caddy  : reverse proxy TLS automatique (Let's Encrypt) + HTTP→HTTPS
+# ⚠️ La VM n'est PAS vierge : elle héberge déjà mikcloud avec SON
+# caddy SYSTÈME (api.mikcloud.ftci.fr → 127.0.0.1:4000) qui détient
+# 80/443, plus postgresql@18-main local. Ce compose est donc API-ONLY :
+#   - le conteneur publie 127.0.0.1:8090 (host) UNIQUEMENT ;
+#   - le TLS public est assuré par le caddy SYSTÈME via le vhost
+#     api.sect.ftci.fr → 127.0.0.1:8090 (deploy/oci/caddy-vhost.conf,
+#     à ajouter à /etc/caddy/Caddyfile — runbook §3.4) ;
+#   - NE JAMAIS lancer de conteneur caddy ici (conflit de ports avec
+#     la prod mikcloud) ni toucher à caddy/postgresql@18-main.
+#
+# WORKERS_ENABLED vit dans /opt/sect/.env (PAS ici) : false pendant
+# le bring-up (Render reste primaire — jamais d'actif-actif), basculé
+# à true au cutover (runbook §3.6 : Render standby AVANT, OCI après).
 #
 # La VM exécute : cd /opt/sect && docker compose pull && docker compose up -d
 # (déclenché par GitHub Actions — voir .github/workflows/deploy-oci.yml)
-#
-# Render reste le STANDBY chaud (WORKERS_ENABLED=false, voir runbook).
 # ============================================================
 
 services:
@@ -18,14 +27,13 @@ services:
     restart: unless-stopped
     env_file: /opt/sect/.env
     environment:
-      # SECT-OCI-HYBRID-1 : PRIMAIRE — les 13 workers de fond tournent ICI
-      # (le standby Render a WORKERS_ENABLED=false). Redondant avec .env
-      # mais explicite : cette VM est la primaire, jamais le standby.
-      - WORKERS_ENABLED=true
       - PORT=8080
-    expose:
-      - "8080"
-    # Pas de ports publiés : seul Caddy expose 80/443 vers l'extérieur.
+      # WORKERS_ENABLED : volontairement ABSENT ici — gouverné par .env
+      # (false au bring-up, true à la bascule §3.6).
+    ports:
+      # Localhost uniquement : seul le caddy système (mikcloud) parle à
+      # l'API ; rien n'est exposé directement sur Internet.
+      - "127.0.0.1:8090:8080"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
@@ -40,36 +48,8 @@ services:
     deploy:
       resources:
         limits:
-          # A1 4 vCPU / 24 Go — marge large pour les workers IA (docs,
-          # audio, corrections) + le cache RAM des sessions d'examen.
+          # A1 4 vCPU / 24 Go PARTAGÉS avec mikcloud + postgres local
+          # (~1 Go au repos) : borné large pour les workers IA
+          # (docs, audio, corrections) en laissant ~4 Go au système.
           cpus: "3.5"
           memory: 20g
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: sect-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      # SSE/WebSocket : Caddy gère le flush automatiquement, pas de port extra.
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      # Domaine public de l'API (TLS automatique Let's Encrypt).
-      # Le runbook documente la création du DNS api.sect.ftci.fr → IP OCI.
-      - API_DOMAIN=${API_DOMAIN:-api.sect.ftci.fr}
-    depends_on:
-      api:
-        condition: service_healthy
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  caddy_data:
-  caddy_config:

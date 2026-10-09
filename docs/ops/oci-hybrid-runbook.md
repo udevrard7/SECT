@@ -43,8 +43,8 @@
 | `backend/internal/transport/http/monitoring_overview_handlers.go` | `workersEnabled` exposé dans `/api/monitoring/overview` |
 | `frontend/src/components/admin/monitoring/types.ts` + `system-tab.tsx` | Bandeau « Instance standby » + badge `Standby` par worker (honnêteté UI) |
 | `backend/Dockerfile` | Multi-arch : `ARG TARGETARCH` — Render (amd64) inchangé, `buildx --platform linux/arm64` pour l'A1 |
-| `deploy/oci/docker-compose.yml` | api (healthcheck, limits 3.5 CPU/20 Go, logs rotés) + caddy (TLS auto, ports 80/443) |
-| `deploy/oci/Caddyfile` | Reverse proxy : `flush_interval -1` (SSE/WebSocket), HSTS, max body 100 Mo |
+| `deploy/oci/docker-compose.yml` | **API-only** (§D.3 corrigé) : publie `127.0.0.1:8090` uniquement — le caddy SYSTÈME de la VM (mikcloud) détient 80/443 ; healthcheck, limits 3.5 CPU/20 Go, logs rotés |
+| `deploy/oci/caddy-vhost.conf` | Vhost `api.sect.ftci.fr` → `127.0.0.1:8090` à AJOUTER au Caddy système : `flush_interval -1` (SSE/WebSocket), HSTS, max body 100 Mo |
 | `deploy/oci/.env.example` | Inventaire complet aligné sur render.yaml — secrets à COPIER depuis Render (jamais retaper) |
 | `.github/workflows/deploy-oci.yml` | build multi-arch → GHCR → SSH deploy (porte `gate` : skip propre tant que les secrets SSH sont absents) |
 
@@ -58,17 +58,25 @@ puis le SDK OCI liste : instances (shape/état/IP), VCN/subnets/security lists
 
 ### 3.2 Préparer la VM (SSH)
 
+⚠️ **La VM n'est PAS vierge** (découvert SECT-OCI-DEPLOY-2A/3) : elle héberge
+la prod **mikcloud** — caddy SYSTÈME (api.mikcloud.ftci.fr → 127.0.0.1:4000,
+détient 80/443), postgresql@18-main (127.0.0.1:5432), mikcloud.service.
+Le compose SECT est **API-only** sur `127.0.0.1:8090` — on ne lance JAMAIS
+de conteneur caddy ici, ni ne touche au Caddyfile existant autrement qu'en
+lui AJOUTANT le vhost §3.4.
+
 ```bash
 sudo mkdir -p /opt/sect && sudo chown $USER /opt/sect && cd /opt/sect
-# Docker + compose plugin (Ubuntu/Oracle Linux : voir doc officielle)
-curl -fsSL https://get.docker.com | sudo sh
+# Docker — paquets Ubuntu (la VM est en 26.04 ; get.docker.com peut ne pas
+# encore supporter cette distribution)
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2
 # Login GHCR — l'image est PRIVÉE (défaut GHCR pour les packages poussés
-# via GITHUB_TOKEN). Créer un PAT scope read:packages :
+# via GITHUB_TOKEN). PAT scope read:packages :
 # https://github.com/settings/tokens → cocher read:packages uniquement.
 echo "$GHCR_PAT" | docker login ghcr.io -u udevrard7 --password-stdin
 # Fichiers du repo (une seule fois)
 git clone --depth 1 https://github.com/udevrard7/SECT.git /tmp/sect
-cp /tmp/sect/deploy/oci/{docker-compose.yml,Caddyfile} /opt/sect/
+cp /tmp/sect/deploy/oci/{docker-compose.yml,caddy-vhost.conf} /opt/sect/
 cp /tmp/sect/deploy/oci/.env.example /opt/sect/.env && chmod 600 /opt/sect/.env
 ```
 
@@ -84,18 +92,29 @@ curl -s -H "Authorization: Bearer $RENDER_API_KEY" \
 ```
 
 Spécificités VM (déjà pré-remplies dans `.env.example`) :
-- `WORKERS_ENABLED=true` (PRIMAIRE)
+- `WORKERS_ENABLED=false` au **bring-up** (Render reste primaire — jamais
+  d'actif-actif) ; basculé à `true` au cutover §3.6
 - `DB_MAX_CONNS=60` (deux backends partagent le pooler Neon)
 - `NEON_DATABASE_URL` : garder le rôle **sect_app** (least-privilege) —
   PAS le DSN owner BYPASSRLS
 - `JWT_SECRET` : IDENTIQUE à Render (tokens interchangeables, zéro disruption)
 
-### 3.4 DNS + premier démarrage
+### 3.4 Vhost Caddy + DNS + premier démarrage
 
-1. Créer `api.sect.ftci.fr` → IP publique OCI (A record, proxy Cloudflare en
-   mode DNS-only le temps de l'émission Let's Encrypt, puis proxy on).
-2. `cd /opt/sect && docker compose up -d` → caddy obtient le certificat.
-3. `curl https://api.sect.ftci.fr/health` → `{"status":"ok"}`.
+1. Ajouter le vhost au Caddy SYSTÈME (mikcloud reste maître du 80/443) :
+   ```bash
+   cat /opt/sect/caddy-vhost.conf | sudo tee -a /etc/caddy/Caddyfile
+   sudo caddy validate --config /etc/caddy/Caddyfile
+   sudo systemctl reload caddy
+   ```
+   (Tant que le DNS n'existe pas, Caddy réessaie l'ACME en arrière-plan et
+   mikcloud continue de servir normalement.)
+2. `cd /opt/sect && docker compose up -d` → l'API écoute sur 127.0.0.1:8090
+   (`WORKERS_ENABLED=false` : mode standby API-only, aucun doublon).
+3. `curl -s http://127.0.0.1:8090/health` → `{"status":"ok"}`.
+4. Créer `api.sect.ftci.fr` → IP publique OCI 84.235.228.160 (A record,
+   Cloudflare DNS-only le temps de l'émission Let's Encrypt, puis proxy on).
+5. `curl https://api.sect.ftci.fr/health` → `{"status":"ok"}`.
 
 ### 3.5 CI/CD — secrets GitHub
 
@@ -109,14 +128,23 @@ Chaque push `backend/**` redéploie par digest immuable + healthcheck + smoke te
 
 ### 3.6 Bascule contrôlée (cutover)
 
-1. E2E sur OCI : rejouer `sect-audit/verify_discord_live.py` avec
-   `API=https://api.sect.ftci.fr` (login, règles, santé 7/7, score).
-2. Basculer le frontend : variable Vercel `NEXT_PUBLIC_API_URL` (ou équivalent
-   selon la config frontend) → `https://api.sect.ftci.fr` + redeploy Vercel.
+Ordre STRICT — jamais deux instances à workers actifs (doublons Discord/
+corrections IA), jamais zéro API en ligne :
+
+1. E2E sur OCI (API-only, workers standby) : rejouer `sect-audit/verify_dash_alertes_live.py`
+   avec `BASE_URL=https://api.sect.ftci.fr` (login, alertes, focus API).
+2. Basculer le trafic : record DNS `api.sect.ftci.fr` → 84.235.228.160 (s'il
+   n'existe pas déjà) + variable Vercel `NEXT_PUBLIC_API_URL` →
+   `https://api.sect.ftci.fr` + redeploy Vercel. Render sert toujours ses
+   workers — c'est OK, les deux instances ne font AUCUN double traitement
+   tant que les workers ne tournent que sur Render.
 3. **Passer Render en standby** : env var `WORKERS_ENABLED=false` sur Render
-   + redeploy (sinon doublons d'alertes/corrections).
-4. Vérifier /monitoring sur Render : bandeau « Instance standby » visible,
-   13 badges `Standby` (c'est la preuve que la garde fonctionne).
+   + redeploy (les 13 workers s'arrêtent là-bas).
+4. **Activer les workers sur OCI** : `/opt/sect/.env` → `WORKERS_ENABLED=true`
+   puis `cd /opt/sect && docker compose up -d` (les 13 workers démarrent ICI).
+5. Vérifier /monitoring DES DEUX côtés : côté OCI → 13 workers actifs ;
+   côté Render → bandeau « Instance standby » + 13 badges `Standby`
+   (c'est la preuve que la garde fonctionne).
 
 ### 3.7 Rollback (< 5 min)
 
@@ -143,10 +171,21 @@ Chaque push `backend/**` redéploie par digest immuable + healthcheck + smoke te
 - **Actif-actif interdit** tant que les workers n'ont pas de
   `pg_advisory_lock` (élection de leader) — explicitement hors scope ici.
 
-## 6. Bloqueurs en cours
+## 6. État du déploiement (mis à jour SECT-OCI-DEPLOY-3, 2026-10-09)
 
-- La clé privée OCI fournie est **tronquée** (~55 % — coupée avant
-  `-----END PRIVATE KEY-----`). La sonde en profondeur (instances, réseau,
-  plugins) et le pilotage API attendent la clé complète.
-- Les secrets GitHub `OCI_SSH_*` ne sont pas posés (nécessitent la VM).
-- L'IP publique de la VM n'est pas encore connue de ce poste.
+- ✅ **Accès SSH résolu** (rescue GRUB v7, clé `sect-deploy` injectée dans
+  authorized_keys ubuntu+root) — après 15 tentatives documentées 2A→2O.
+  Anomalie control plane constatée : `list_volume_attachments` retourne 0
+  (record d'attachment invisible) alors que le boot volume est attaché et
+  l'attach API le confirme (409) — le listing de ce tenancy/région est
+  cassé ; n'AUTORISER aucun détachement/reattach du boot volume (impossible
+  de toute façon sans OCID d'attachment).
+- ✅ Kit §D.3 corrigé : compose API-only 127.0.0.1:8090 + vhost caddy
+  système (`caddy-vhost.conf`), coexistence mikcloud documentée.
+- ⬜ DNS `api.sect.ftci.fr` → 84.235.228.160 (Cloudflare — action
+  utilisateur, record inexistant = NXDOMAIN confirmé).
+- ⬜ Secrets GitHub `OCI_SSH_HOST/USER/KEY` à poser (le job deploy CI se
+  skip proprement tant qu'ils sont absents).
+- ⬜ Cutover §3.6 (E2E → DNS/Vercel → Render standby → OCI workers on).
+- VM : Ubuntu 26.04 ARM64, 4 vCPU/24 Go (22 Go libres), Docker à installer,
+  IP publique RESERVED 84.235.228.160.
