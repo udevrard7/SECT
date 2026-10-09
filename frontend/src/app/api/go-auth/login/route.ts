@@ -11,7 +11,8 @@
  * un ancien service Render (sect-s1pb.onrender.com, 404 Not Found). Le fetch
  * recevait du texte brut "Not Found" → resp.json() levait SyntaxError → le
  * catch{} muet avalait l'erreur → 500 générique. Corrigé en mettant à jour
- * la variable Vercel → https://sect-zead.onrender.com (service actif).
+ * la variable Vercel → https://sect-zead.onrender.com (service actif à
+ * l'époque ; depuis SECT-OCI-CUTOVER-1 le primaire est l'OCI via API_BASE_URL).
  *
  * BUGFIX (SECT-LOGIN-TIMEOUT-FIX-1) : erreur récurrente "Le serveur d'authentification
  * met trop de temps à répondre" sur la page de login.
@@ -40,7 +41,10 @@ import { NextRequest, NextResponse } from 'next/server'
 // Vercel coupe la route serverless à 10s même si AbortController est à 25s.
 export const maxDuration = 30
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-zead.onrender.com'
+// SECT-OCI-CUTOVER-1 : API_BASE_URL (server-only) — primaire OCI Marseille.
+// NEXT_PUBLIC_API_URL reste réservé au rewrite DEV (next.config.ts) ; sa valeur
+// historique sur Vercel pointait sur Render et neutralisait le cutover.
+const API_URL = process.env.API_BASE_URL || 'https://api.sect.ftci.fr'
 
 // SECT-LOGIN-TIMEOUT-FIX-1 : 25s pour couvrir le cold start Render free
 // (jusqu'à ~30-50s en pic, mais la majorité des cold starts passent en <20s).

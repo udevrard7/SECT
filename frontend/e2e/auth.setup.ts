@@ -26,7 +26,7 @@ if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
     'jamais un compte de production). Voir frontend/.env.example.',
   )
 }
-const BACKEND_URL = process.env.BACKEND_URL || 'https://sect-zead.onrender.com'
+const BACKEND_URL = process.env.BACKEND_URL || 'https://api.sect.ftci.fr'
 
 setup('authenticate as admin', async ({ page, request }) => {
   // 1. Login direct sur le backend Go — retourne les tokens dans le body.

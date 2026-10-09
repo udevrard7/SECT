@@ -50,7 +50,8 @@ export const dynamic = 'force-dynamic'
 // coupe à 10s (défaut) → 500 générique sur Render cold start.
 export const maxDuration = 60
 
-const BACKEND_URL = 'https://sect-zead.onrender.com'
+// SECT-OCI-CUTOVER-1 : backend primaire OCI (surcharge API_BASE_URL = rollback Render).
+const BACKEND_URL = process.env.API_BASE_URL || 'https://api.sect.ftci.fr'
 const BACKEND_FETCH_TIMEOUT_MS = 20000
 const RENDER_PDF_TIMEOUT_MS = 90000
 const MAX_RETRIES = 2

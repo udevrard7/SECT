@@ -19,7 +19,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-zead.onrender.com'
+// SECT-OCI-CUTOVER-1 : API_BASE_URL (server-only) — primaire OCI Marseille.
+// NEXT_PUBLIC_API_URL reste réservé au rewrite DEV (next.config.ts) ; sa valeur
+// historique sur Vercel pointait sur Render et neutralisait le cutover.
+const API_URL = process.env.API_BASE_URL || 'https://api.sect.ftci.fr'
 
 // Timeout pour les appels backend : 12s (le cold start Render free peut
 // prendre jusqu'à ~30-50s, mais on ne veut pas bloquer la requête trop

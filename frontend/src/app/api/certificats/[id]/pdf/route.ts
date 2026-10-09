@@ -10,7 +10,7 @@
  *
  * Flow :
  *   1. Lit le cookie access_token (auth httpOnly posé par /api/go-auth/login)
- *   2. GET https://sect-zead.onrender.com/api/certificats/{id} (Bearer token)
+ *   2. GET {API_BASE_URL}/api/certificats/{id} (Bearer token)
  *   3. Mappe le Certificat Go → CertificatPDFData (interface frontend)
  *   4. renderCertificatPDF(data, orientation) → Buffer PDF
  *   5. Retourne le PDF avec Content-Type: application/pdf
@@ -26,7 +26,8 @@ export const dynamic = 'force-dynamic'
 // Génération @react-pdf + plusieurs fetch backend : au-delà du défaut 10 s (Hobby)
 export const maxDuration = 60
 
-const BACKEND_URL = 'https://sect-zead.onrender.com'
+// SECT-OCI-CUTOVER-1 : backend primaire OCI (surcharge API_BASE_URL = rollback Render).
+const BACKEND_URL = process.env.API_BASE_URL || 'https://api.sect.ftci.fr'
 
 export async function GET(
   req: NextRequest,

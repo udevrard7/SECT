@@ -26,7 +26,8 @@ export const dynamic = 'force-dynamic'
 // Génération @react-pdf + plusieurs fetch backend : au-delà du défaut 10 s (Hobby)
 export const maxDuration = 60
 
-const BACKEND_URL = 'https://sect-zead.onrender.com'
+// SECT-OCI-CUTOVER-1 : backend primaire OCI (surcharge API_BASE_URL = rollback Render).
+const BACKEND_URL = process.env.API_BASE_URL || 'https://api.sect.ftci.fr'
 
 interface EpreuveCol {
   id: string

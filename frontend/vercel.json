@@ -20,7 +20,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://sect-zead.onrender.com/api/:path*"
+      "destination": "https://api.sect.ftci.fr/api/:path*"
     }
   ],
   "headers": [
