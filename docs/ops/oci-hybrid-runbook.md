@@ -62,6 +62,10 @@ puis le SDK OCI liste : instances (shape/état/IP), VCN/subnets/security lists
 sudo mkdir -p /opt/sect && sudo chown $USER /opt/sect && cd /opt/sect
 # Docker + compose plugin (Ubuntu/Oracle Linux : voir doc officielle)
 curl -fsSL https://get.docker.com | sudo sh
+# Login GHCR — l'image est PRIVÉE (défaut GHCR pour les packages poussés
+# via GITHUB_TOKEN). Créer un PAT scope read:packages :
+# https://github.com/settings/tokens → cocher read:packages uniquement.
+echo "$GHCR_PAT" | docker login ghcr.io -u udevrard7 --password-stdin
 # Fichiers du repo (une seule fois)
 git clone --depth 1 https://github.com/udevrard7/SECT.git /tmp/sect
 cp /tmp/sect/deploy/oci/{docker-compose.yml,Caddyfile} /opt/sect/
