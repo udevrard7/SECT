@@ -68,17 +68,25 @@ lui AJOUTANT le vhost §3.4.
 ```bash
 sudo mkdir -p /opt/sect && sudo chown $USER /opt/sect && cd /opt/sect
 # Docker — paquets Ubuntu (la VM est en 26.04 ; get.docker.com peut ne pas
-# encore supporter cette distribution)
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2
+# encore supporter cette distribution). buildx requis pour tout build local.
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 docker-buildx
 # Login GHCR — l'image est PRIVÉE (défaut GHCR pour les packages poussés
 # via GITHUB_TOKEN). PAT scope read:packages :
 # https://github.com/settings/tokens → cocher read:packages uniquement.
-echo "$GHCR_PAT" | docker login ghcr.io -u udevrard7 --password-stdin
+echo "$GHCR_PAT" | sudo docker login ghcr.io -u udevrard7 --password-stdin
 # Fichiers du repo (une seule fois)
 git clone --depth 1 https://github.com/udevrard7/SECT.git /tmp/sect
 cp /tmp/sect/deploy/oci/{docker-compose.yml,caddy-vhost.conf} /opt/sect/
 cp /tmp/sect/deploy/oci/.env.example /opt/sect/.env && chmod 600 /opt/sect/.env
 ```
+
+**Fallback urgence** (image GHCR indisponible/cassée) — build natif ARM64 sur
+la VM (~40 s) : `git clone --depth 1 <repo> /tmp/sect-src && sudo env
+DOCKER_BUILDKIT=1 docker build --build-arg TARGETOS=linux --build-arg
+TARGETARCH=arm64 --build-arg BUILDPLATFORM=linux/arm64 -t sect-api:local
+/tmp/sect-src/backend/` puis `API_IMAGE=sect-api:local` dans `.env` (c'est ce
+qui a servi le 09/10 pendant que le build CI était cassé — cf worklog
+SECT-OCI-DEPLOY-3).
 
 ### 3.3 Remplir `/opt/sect/.env` — RÈGLE D'OR
 
@@ -171,21 +179,32 @@ corrections IA), jamais zéro API en ligne :
 - **Actif-actif interdit** tant que les workers n'ont pas de
   `pg_advisory_lock` (élection de leader) — explicitement hors scope ici.
 
-## 6. État du déploiement (mis à jour SECT-OCI-DEPLOY-3, 2026-10-09)
+## 6. État du déploiement (mis à jour SECT-OCI-DEPLOY-3, 2026-10-09 10:05 UTC)
 
-- ✅ **Accès SSH résolu** (rescue GRUB v7, clé `sect-deploy` injectée dans
-  authorized_keys ubuntu+root) — après 15 tentatives documentées 2A→2O.
-  Anomalie control plane constatée : `list_volume_attachments` retourne 0
-  (record d'attachment invisible) alors que le boot volume est attaché et
-  l'attach API le confirme (409) — le listing de ce tenancy/région est
-  cassé ; n'AUTORISER aucun détachement/reattach du boot volume (impossible
-  de toute façon sans OCID d'attachment).
-- ✅ Kit §D.3 corrigé : compose API-only 127.0.0.1:8090 + vhost caddy
-  système (`caddy-vhost.conf`), coexistence mikcloud documentée.
+- ✅ **Accès SSH résolu** (rescue GRUB v7 — clé `sect-deploy` dans authorized_keys
+  ubuntu+root) après 15 tentatives documentées 2A→2O. Anomalie control plane :
+  `list_volume_attachments` retourne 0 alors que le volume est attaché (l'API
+  d'attach le confirme : 409) — le listing du tenancy est cassé : ne JAMAIS
+  tenter de détacher/réattacher le boot volume.
+- ✅ **Kit §D.3 corrigé** (cbd21185) : compose API-only `127.0.0.1:8090` +
+  vhost `caddy-vhost.conf` (caddy SYSTÈME mikcloud), WORKERS_ENABLED piloté
+  par `.env`.
+- ✅ **VM outillée** : docker.io + compose v2 + buildx installés, GHCR login
+  OK (PAT read:packages), `/opt/sect/.env` rempli (14 vars COPIÉES de
+  l'API Render, `WORKERS_ENABLED=false`, `DB_MAX_CONNS=60`).
+- ✅ **Backend DÉPLOYÉ et SAIN sur OCI** (image GHCR CI `3fdb11d2`, ELF AArch64
+  vérifié) : `http://127.0.0.1:8090/health` → `{"status":"ok"}`, conteneur
+  healthy, logs « workers de fond DESACTIVES — instance standby API-only »,
+  mikcloud/caddy/postgres intacts (22 Go RAM libres).
+- ✅ **Build CI multi-arch RÉPARÉ** (3fdb11d2) : cause racine = les DÉFAUTS
+  `ARG TARGETOS=linux/TARGETARCH=amd64` écrasaient l'injection BuildKit des
+  auto-args → binaire amd64 dans l'image arm64 (preuve log #22 + ELF 0x3E).
+  Fix : ARG nus + fallback shell. Cache GHA retiré au passage (fc3a004f).
+- ✅ Vhost `api.sect.ftci.fr` → 127.0.0.1:8090 AJOUTÉ au Caddy système
+  (validé + reload ; TLS Let's Encrypt dès que le DNS existera).
 - ⬜ DNS `api.sect.ftci.fr` → 84.235.228.160 (Cloudflare — action
-  utilisateur, record inexistant = NXDOMAIN confirmé).
-- ⬜ Secrets GitHub `OCI_SSH_HOST/USER/KEY` à poser (le job deploy CI se
-  skip proprement tant qu'ils sont absents).
-- ⬜ Cutover §3.6 (E2E → DNS/Vercel → Render standby → OCI workers on).
-- VM : Ubuntu 26.04 ARM64, 4 vCPU/24 Go (22 Go libres), Docker à installer,
-  IP publique RESERVED 84.235.228.160.
+  utilisateur, NXDOMAIN confirmé) → puis `curl https://api.sect.ftci.fr/health`.
+- ⬜ Secrets GitHub `OCI_SSH_HOST/USER/KEY` (optionnel — active le job deploy
+  CI : redéploiement par digest immuable à chaque push backend).
+- ⬜ Cutover §3.6 (E2E → DNS/Vercel → Render `WORKERS_ENABLED=false` →
+  OCI `WORKERS_ENABLED=true` + `docker compose up -d`).
