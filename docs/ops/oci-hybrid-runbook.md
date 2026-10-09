@@ -202,9 +202,45 @@ corrections IA), jamais zéro API en ligne :
   Fix : ARG nus + fallback shell. Cache GHA retiré au passage (fc3a004f).
 - ✅ Vhost `api.sect.ftci.fr` → 127.0.0.1:8090 AJOUTÉ au Caddy système
   (validé + reload ; TLS Let's Encrypt dès que le DNS existera).
-- ⬜ DNS `api.sect.ftci.fr` → 84.235.228.160 (Cloudflare — action
-  utilisateur, NXDOMAIN confirmé) → puis `curl https://api.sect.ftci.fr/health`.
-- ⬜ Secrets GitHub `OCI_SSH_HOST/USER/KEY` (optionnel — active le job deploy
-  CI : redéploiement par digest immuable à chaque push backend).
-- ⬜ Cutover §3.6 (E2E → DNS/Vercel → Render `WORKERS_ENABLED=false` →
-  OCI `WORKERS_ENABLED=true` + `docker compose up -d`).
+- ✅ DNS `api.sect.ftci.fr` → 84.235.228.160 créé (Cloudflare, GREY/DNS-only
+  — voir §7 orange impossible). TLS Let's Encrypt émis par le Caddy système.
+- ✅ Secrets GitHub `OCI_SSH_HOST/USER/KEY` posés (API, 2026-10-09) — le job
+  deploy CI est ACTIF (redéploiement par digest immuable à chaque push backend).
+- ✅ **CUTOVER §3.6 EXÉCUTÉ (2026-10-09 ~22:25 UTC)** : E2E OCI 6/6 (×2) →
+  trafic Vercel basculé (commit 02de6dd, `via: 1.1 Caddy` prouvé sur
+  sect.ftci.fr/api/health) → Render standby (`WORKERS_ENABLED=false`,
+  dep-db4mhtrtqb8s7396tomg LIVE, 13 badges « Mode standby ») → OCI primaire
+  (`WORKERS_ENABLED=true` + compose up, 14 workers started). Vérifié
+  /api/monitoring/overview des deux côtés (fixture ADMIN jetable, résidu 0).
+  Rollback < 5 min : §3.7.
+
+## 7. Recette rescue SSH (v13 — SECT-OCI-CUTOVER-1, 2026-10-09)
+
+GRUB_TIMEOUT=0 sur cette image : GRUB ne lit JAMAIS le clavier au boot —
+l'interception par spam est VOIE MORTE (vérifié 4 rounds + 2G→2N historiques).
+La voie fiable passe par le **BootManagerMenuApp UEFI** (rend sur le port
+série et le lit via TerminalDxe) :
+
+1. Console connection OCI (clé RSA — ed25519 REFUSÉE par l'API console) ;
+   connexion : hop1 SSH `instance-console.<region>.oci.oraclecloud.com:443`
+   (username = OCID de la console connection, pkey=) → canal direct-tcpip
+   (OCID instance, 22) → `t2.auth_publickey(OCID_INSTANCE, clé)` → session
+   `get_pty + invoke_shell` (SANS ça les touches n'atteignent pas la console).
+2. SOFTSTOP → START. À t+1,2 s : UN SEUL burst `ESC` + `x`×24 (l'ESC en TÊTE
+   de la file SimpleTextIn → le poll BdsDxe lit l'ESC → menu ; les `x`
+   suivants sont drainés par l'app SANS la tuer — un 2e ESC dans la file
+   tuerait l'app : ESC = exit).
+3. Stabiliser 6 s SANS rien envoyer, puis flèches `\x1b[B` ×3 (TerminalDxe
+   traduit ANSI → SCAN_DOWN ; les LETTRES ne marchent pas) → surbrillance
+   Ubuntu→BlockVolume→Firmware Setup→**EFI Internal Shell** → `\r`.
+4. Shell UEFI : `fs0:\EFI\ubuntu` (ESP FAT). Backup + réécrire le stub
+   `grub.cfg` (echo ») avec `menuentry 'RESCUE' { linux (hd0,gpt13)/vmlinuz…
+   root=UUID=… rw init=/bin/bash console=ttyAMA0,115200n8 ; initrd … }` puis
+   `reset`. NB : les `\r` du echo cassent le parse → GRUB tombe en `grub>`
+   (shell) → taper `linux`/`initrd`/`boot` directement — encore plus simple.
+5. Root shell (`root@localhost:/#`) : injecter la clé dans
+   /home/ubuntu/.ssh + /root/.ssh (append, chmod 700/600) ; **RESTAURER le
+   stub original** (`mount /dev/sda15 /boot/efi`, `cp grub.cfg.sectbak
+   grub.cfg`) ; `sync` ; `exec /sbin/init` → boot propre → SSH.
+6. Actions API valides : start/stop/reset/softreset/softstop/diagnosticreboot
+   (STOPFORCE n'existe pas). Pendant un cycle reset, toute 2e action → 409.
