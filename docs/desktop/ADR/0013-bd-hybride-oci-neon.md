@@ -2,8 +2,8 @@
 
 | Champ | Valeur |
 |---|---|
-| **Statut** | Proposé — §10 expertises + **§11 vérifications console EXÉCUTÉES (10/10, tokens fournis par l'exploitant)** : mur CU-h confirmé conditionnellement, échéance estimée ~23-24/10 → décision exploitant requise (M1 recommandée, §11.4) |
-| **Date** | 10 octobre 2026 (§10 : soir ; §11 : même jour, vérifications console) |
+| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; plancher jour + phases 0-2 = décisions séparées |
+| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée) |
 | **Décideurs** | Ulrich EVRARD (exploitant), Z.ai Code (tutorat) |
 | **Parent** | ADR-0006 (migration backend OCI), ADR-0012 (monitoring p50/p95), runbook §3.6/§3.7 (bascules P2), SECT-FAILOVER-1/2 |
 
@@ -574,3 +574,110 @@ après résolution du mur.
 7. **Aucune des propositions §11.4 n'est exécutée par ce document** — M1, N2
    et N3 attendent une décision explicite de l'exploitant (l'horloge du mur
    rend la décision urgente, pas automatique). Le tuteur ne bascule rien.
+
+## 12. M1 — décision, implémentation, et intégration du PostgreSQL local (SECT-DB-HYBRID-5, 11 octobre 2026)
+
+### 12.1 Décision de l'exploitant (10/10, chat)
+
+**M1 approuvée** (« va y M1 (recommandée, 0 €) ») — N2 et N3 écartées pour
+l'instant. Fait nouveau simultané : l'exploitant signale que **la VM héberge
+déjà un PostgreSQL installé** (intégré au plan en §12.4).
+
+### 12.2 Implémentation livrée (commit 0feee790, déployée + vérifiée le 11/10)
+
+| Élément | Détail |
+|---|---|
+| `internal/worker/cadence.go` (nouveau) | `AdaptiveTicker` : intervalle recalculé à chaque cycle (transitions jour/nuit vivantes), aligné grille horaire, fenêtre nocturne, overrides env |
+| Fenêtre nocturne | 22:00-06:00 `Africa/Abidjan` (UTC+0), plancher 15 min — `WORKER_NIGHT_*` |
+| 8 workers périodiques | Bases JOUR inchangées (10 s/60 s/2 min/5 min/1 h/6 h/24 h) ; la nuit, plancher 15 min |
+| Pool pgx (`db.go`) | `MaxConnIdleTime` 5 min → **90 s** (`DB_MAX_CONN_IDLE_TIME`) ; `MinConns` 5 → **0** (les health-checks pgx — Ping/30 s sur conn idle — ne réveillent plus Neon) |
+| Sonde uptime | Nuit → process-only (retire `/db`) : un Ping DB/5 min interdirait la suspension (timeout 300 s) |
+| Workers « file » (6), flush cache RAM | Inchangés — zéro polling DB structurel (channel Go / écrit si sessions actives) |
+| Déploiement | backend-ci ✔, deploy-oci ✔ (VM healthy), sonde self-test E2E ✔ ; 3 chemins 200 (`db: up`, 40/39/25 ms) |
+
+**Deux renforcements d'ingénierie au-delà du texte §11.4** (sans changement
+de cadence jour, motivation mesurée) :
+
+1. **Alignement grille horaire** — sans lui, 4 tickers à 15 min
+d   désynchronisés entretiennent ~4 fenêtres d'éveil par quart d'heure
+   (≈ éveil nocturne ~100 %, annulant M1). Alignés (:00/:15/:30/:45), ils
+   partagent UNE fenêtre ≈ 6,5 min par 15 min (tick + résiduel idle 90 s +
+   timeout suspension 300 s) → **duty nocturne ~43 % ≈ 0,9 CU/nuit** (vs 2).
+2. **`MinConns` 5 → 0** — le « pool 30 s » du diagnostic §10.1 : pgx
+   health-check (Ping) chaque 30 s les conns idle, et MinConns=5 les recrée
+   indéfiniment → éveil sans aucune requête applicative. Corrigé.
+
+### 12.3 Arithmétique honnête post-livraison (correction du modèle §11.4)
+
+Le budget « ~60-80 CU-h » de §11.4 supposait des suspensions sur les fenêtres
+creuses de JOUR. Or avec promotion à 10 s (base inchangée), le jour reste
+éveillé en continu : **tout tick < 300 s interdit la suspension**. Donc :
+
+- **Mois PLEIN sans plancher jour : ~4,0 CU (jour) + ~0,9 CU (nuit) ≈ 4,9/j
+  → ~145 CU-h/mois → mur à ~21/11.**
+- **Cycle d'octobre en cours** : ~28 CU consommés au 11/10 soir (agrégat
+  laggué : 20,9 + 24/7 depuis) + ~20 j restants ≈ 4,9/j → **mur ~26-28/10**
+  (reculé de ~3 j vs sans M1, mais TOUJOURS DANS LE CYCLE).
+- **Avec plancher jour 15 min** (même mécanique que la nuit) : duty ~43 %
+  24 h/24 → **~2,6-2,9 CU/j → cycle final ~80-88 CU < 100 ✔ sous le mur.**
+
+**Décision attendue de l'exploitant (recommandée avant ~25/10 pour la
+marge)** : activer le plancher jour — UNE ligne dans `/opt/sect/.env` puis
+`docker compose up -d` :
+
+```
+WORKER_DAY_MIN_INTERVAL=15m
+```
+
+Arbitrage produit explicite : clôtures auto / alertes / promotion passent
+à ≤ 15 min de latence AUX HEURES CREUSES de jour (le vécu étudiant ne
+change pas — seuls les jobs de fond ralentissent quand personne n'utilise
+la plateforme ; en cas d'examen nocturne/à la demande, `WORKER_PROMOTION_NIGHT_EXEMPT=true` etc. restent disponibles).
+
+**Mesure 48 h (protocole)** : `GET /api/v2/projects/{id}/operations?limit=50`
+(suspend/start — TEMPS RÉEL) ; NE PAS utiliser `consumption`
+(`compute_time_seconds` = agrégat avec lag, lu figé à 75 206 s deux fois à
+24 h d'intervalle). Attendu dès la 1ʳᵉ nuit M1 : ~32 cycles suspend/start
+par nuit. Si le rythme reste > 3,5 CU/j après activation du plancher jour,
+réexaminer (trafic réel dominant → N2).
+
+### 12.4 Le PostgreSQL local de la VM — intégration au plan hybride
+
+**Fait (exploitant + preuve dépôt)** : la VM héberge déjà
+`postgresql@18-main` (~1 Go RAM au repos — commentaire
+`deploy/oci/docker-compose.yml`) AINSI QUE **mikcloud** (autre application,
+caddy système 80/443, `api.mikcloud.ftci.fr:4000`). Conséquences :
+
+1. **Question §11.2 (source du bucket `mikcloud-wal`) RÉSOLUE par
+   recoupement** : pipeline WAL-G de mikcloud (basebackup chiffré quotidien
+   03:01 UTC + WAL continus). Re-mesuré 11/10 20:45 : 2 339 objets /
+   2 005 Mo, croissance mesurée ~52 Mo/j → saturation ~10 Go vers
+   **mi-2027** (l'alerte « ≈16/10 » de §11.2 était ~4× trop pessimiste —
+   corrigée). Rétention (WAL-G retain / lifecycle) à planifier côté mikcloud
+   — non urgent, hors périmètre SECT.
+2. **Phases 1-2 accélérées** : PG 18 local = même version majeure que
+   Neon 18.6 → abonné de réplication idéal (§5.1). L'installation
+   « PostgreSQL 18 (pgdg arm64) » de la phase 2 est DÉJÀ LÀ — restent à
+   créer une base dédiée (`sect_replica`) dans un cluster dédié/isonolé
+   (NE PAS toucher au cluster mikcloud — garde docker-compose), DSN local
+   + schéma par golang-migrate, puis publication/souscription.
+3. **Phase 0 ajustée** — vérifications restantes côté VM (SSH, à la prochaine
+   fenêtre) : `pg_lsclusters` (version exacte), charge réelle du cluster
+   mikcloud, ports/`pg_hba`, `df -h`. L'anti-décision n°3 (jamais de port
+   PG exposé) s'applique au réplique comme au reste (OCI abonné → Neon
+   éditeur, en sortie seule).
+4. **Réponse à la question de l'exploitant** (« hybride tirant le meilleur
+   de chaque instance ») : c'est l'option C (§4.3), RENFORCÉE par ce fait —
+   Neon apporte le serverless (autosuspend/branching/PITR 6 h, source de
+   vérité) ; la VM apporte un PG 18 local 24 h/24 à 0 CU (réplique de
+   lecture/DR, restores de test mensuels de la phase 1 dans le PG local,
+   levier latence R4). Séquence inchangée : **phases 0-1 d'abord**
+   (backups décorrélés R1 — inoffensives, ~90 % du bénéfice résilience),
+   puis DÉCISION séparée sur la phase 2 (`wal_level=logical` IRRÉVERSIBLE
+   côté Neon, cf §5.4).
+
+### 12.5 Anti-décisions — ajout
+
+8. Le tuteur n'active ni le plancher jour (`WORKER_DAY_MIN_INTERVAL`), ni
+   la phase 2, sans décision explicite de l'exploitant — la mesure 48 h
+   d'abord pour le premier, l'étude d'irréversibilité pour la seconde.
