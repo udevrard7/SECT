@@ -1,0 +1,49 @@
+# ============================================================
+# SECT-UPTIME-PROBE-3 — Diagnostic cron A (JETABLE — à supprimer
+# après diagnostic)
+#
+# CONTEXTE : 0 tirage schedule sur le dépôt depuis la création de
+# la sonde P1 (uptime-probe.yml, 2026-10-10 10:44 UTC — syntaxes
+# */5 PUIS 2-57/5 testées, state=active, push/dispatch prouvés
+# runs #1-#4 SUCCESS, GitHub status operational, dépôt public non
+# fork, Actions enabled/all).
+#
+# OBJET : isoler la cause — DÉPÔT (enregistrement des schedules)
+# vs SYNTAXE (range/step « 2-57/5 ») vs FICHIER (registration de
+# la sonde bloquée).
+#
+#   A (ce fichier)   : cron */5 — la syntaxe la plus simple qui soit.
+#   B (cron-test-range.yml) : cron 4-59/5 — même famille range/step
+#                            que la sonde, phase décalée.
+#
+# LECTURE DES RÉSULTATS :
+#   A tire, B non                 → syntaxe range/step en cause
+#   A et B tirent (sonde non)     → registration de LA sonde bloquée
+#                                   → recréer sous nouveau nom
+#   ni A ni B                     → problème DÉPÔT → ticket support
+#
+# Workflow MINIMAL : ASCII pur, zéro action tierce, zéro secret,
+# zéro checkout. Les déclencheurs push (paths du fichier lui-même)
+# et workflow_dispatch prouvent l'enregistrement et l'exécution.
+# ============================================================
+name: Cron Test A (syntaxe simple)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cron-test-simple.yml"
+
+jobs:
+  ping:
+    name: "Ping"
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: "Ping"
+        run: |
+          echo "event=${GITHUB_EVENT_NAME}"
+          date -u "+%Y-%m-%d %H:%M:%S UTC"
