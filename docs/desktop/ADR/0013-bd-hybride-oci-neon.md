@@ -2,8 +2,8 @@
 
 | Champ | Valeur |
 |---|---|
-| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; plancher jour + phases 0-2 = décisions séparées |
-| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée) |
+| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; **mode « à la demande » + plancher jour + sonde grille DÉCIDÉS (exploitant, 10/10) et LIVRÉS en prod (10-11/10, commit 054efa7f, §13)** ; phases 0-2 = décisions séparées |
+| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée ; §13 : 10-11/10, mode « à la demande » + plancher jour + sonde grille livrés) |
 | **Décideurs** | Ulrich EVRARD (exploitant), Z.ai Code (tutorat) |
 | **Parent** | ADR-0006 (migration backend OCI), ADR-0012 (monitoring p50/p95), runbook §3.6/§3.7 (bascules P2), SECT-FAILOVER-1/2 |
 
@@ -681,3 +681,95 @@ caddy système 80/443, `api.mikcloud.ftci.fr:4000`). Conséquences :
 8. Le tuteur n'active ni le plancher jour (`WORKER_DAY_MIN_INTERVAL`), ni
    la phase 2, sans décision explicite de l'exploitant — la mesure 48 h
    d'abord pour le premier, l'étude d'irréversibilité pour la seconde.
+
+## 13. Mode « à la demande » + plancher jour — décision, implémentation, sonde corrigée (SECT-DB-HYBRID-6, 11 octobre 2026)
+
+### 13.1 Décision de l'exploitant (10/10, chat)
+
+Feu vert complet sur l'arbitrage §12.3 : « va y applique... la
+recommandation qui fera tenir sans suspension tout en gardant la
+réactivité de l'app », avec la spécification citée : les jobs de fond
+(clôtures auto, alertes, promotion) passent à ≤ 15 min aux heures creuses
+uniquement — le vécu étudiant ne change pas (pendant un examen réel, le
+trafic éveille le compute de toute façon) — et pour GARDER la
+réactivité 10 s des promotions, un MODE « À LA DEMANDE » : « le worker
+reste rapide quand des batches existent, ralentit sinon ». La décision
+couvre donc DEUX livrables liés :
+1. le plancher jour (`WORKER_DAY_MIN_INTERVAL=15m`) — l'anti-décision n°8
+   est levée par cette décision explicite ;
+2. le mode à la demande promotion — la contrepartie produit du plancher.
+
+### 13.2 Implémentation (commit 054efa7f, déployée + vérifiée le 10/10 21:51 UTC)
+
+| Élément | Détail |
+|---|---|
+| `internal/worker/wakeup.go` (nouveau) | `WakeupBus` in-process : `Subscribe` (canal buffer 1, jamais fermé) / `Notify` (non-bloquant, coalescent — un signal en attente suffit : le drain vide TOUT ce qui est PENDING, pas un batch par signal). Abonnement pris au CONSTRUCTEUR (`WithWakeup`), pas dans `Start` : aucune fenêtre où un Notify serait perdu avant la première écoute. |
+| `promotion_worker.go` | 3ᵉ case au select (`case <-w.wake` ; canal nil = case jamais prêt — idiome Go, zéro changement sans bus). `drainPendingBatches` : batches PENDING traités back-to-back jusqu'à épuisement. `processPendingBatches` retourne « un batch a-t-il été claimé » (false = rien/erreur lecture ; true = claimé, quel que soit le dénouement COMPLETED/FAILED). |
+| `promotion_handlers.go` | `runPromotion` appelle `s.promotionWakeup()` JUSTE APRÈS le COMMIT du batch PENDING, avant le 202 : pickup < 1 s — STRICTEMENT MIEUX que les 10 s de polling historiques. Nil-safe ; non-bloquant. |
+| `main.go` | Bus créé sous la garde `WorkersEnabled`, closure injectée au serveur (`WithPromotionWakeup`, pattern setter). En standby (Render, workers OFF) : Notify sans abonné = no-op — le chemin chaud n'existe que là où tournent les workers (primaire OCI), qui est aussi là où le chemin public route le trafic. Registre /monitoring : « promotion — à la demande (< 1 s) + filet 15 min ». |
+| Filet de sécurité | Ticker adaptatif M1 INCHANGÉ (planchers 15 min jour/nuit, grille alignée :00/:15/:30/:45) : rattrape tout ce qui n'est pas passé par l'API (reprise après restart, Notify perdu, chemin externe futur). |
+| Activation plancher jour | `deploy-oci.yml` : le script de déploiement SEED `WORKER_DAY_MIN_INTERVAL=15m` dans `/opt/sect/.env` SI la ligne n'existe pas (seed-once : jamais écrasée ensuite — l'exploitant garde la main sur la VM). Défaut code 0 inchangé (Render/dev locaux). Exécuté au déploiement du 10/10 (deploy-oci SUCCESS ⇒ seed posé, conteneur recréé avec la var). |
+| Sonde uptime | Gating grille remplace la fenêtre nocturne : check /db UNIQUEMENT sur le run minute%15==2 (:02/:17/:32/:47 — cron 2-57/5), qui rode la fenêtre d'éveil des ticks alignés (:00/:15/:30/:45) à coût marginal ≈ 0 ; tous les autres runs process-only. `PROBE_DBCHECK=force\|off` pour tests/exploitation (self-test E2E vert en 3 modes). |
+
+Vérifications : gofmt/vet/build 0 ; CI 3/3 SUCCESS (sonde uptime 9 s,
+backend-ci 121 s, deploy-oci 124 s) ; 3 chemins 200 post-déploiement
+(public /api/health/db 39 ms, direct OCI 40 ms, standby Render v0.2.0) ;
+audit indépendant du diff avant commit (12/12 points, aucune régression).
+
+### 13.3 Correction du modèle §12.3 — la sonde défaisait le plancher jour
+
+§12.3 projetait « duty ~43 % 24 h/24 » avec le plancher jour, mais la
+sonde pingait `/db` TOUTES LES 5 MIN DE JOUR (M1 §11.4 n'avait retiré le
+suffixe que la nuit) : un Ping DB/5 min interdit la suspension (timeout
+300 s) → le jour serait resté éveillé EN CONTINU, plancher ou pas — mur
+fin de cycle conservé, §12.3 invalidé par construction. Corrigé par le
+gating grille. Leçon générale : une chaîne d'éveil se casse sur le
+maillon le plus FRÉQUENT — la sonde (5 min) était plus fréquente que le
+plancher (15 min) ; tout élément réveillant Neon doit être inventorié
+AVANT d'arbitrer un budget.
+
+### 13.4 Arithmétique finale
+
+- Workers 15 min alignés 24 h/24 : ~6,5-7 min d'éveil par quart d'heure
+  (tick + conn idle 90 s + timeout suspension 300 s) → duty ~43-47 % ≈
+  **2,6-2,8 CU/j → ~78-85 CU/cycle** < 100 ✔. Le trafic réel d'usage
+  s'y AJOUTE (c'est le produit qui fonctionne — arbitrage §11.4
+  inchangé : pendant un examen, le trafic éveille le compute de toute
+  façon).
+- Sonde : ~0 marginal (elle rode la fenêtre d'éveil) ; pire cas jitter
+  cron +0,2 CU/j.
+- Cycle d'octobre en cours : ~28-30 CU consommés au déploiement +
+  ~21 j × 2,7 ≈ **~80-88 CU** → sous le mur, reset 01/11 (marge fine —
+  la mesure 48 h tranche, cf. §13.6).
+
+### 13.5 Sémantique du mode « à la demande » (garanties)
+
+- RAPIDE : POST /cloture-annee → COMMIT → Notify → drain < 1 s ; les
+  batches créés PENDANT le traitement sont traités back-to-back (le
+  signal coalescé resté en attente déclenche un second drain).
+- LENT sinon : filet ticker 15 min, grille alignée (UNE fenêtre d'éveil
+  pour tous les workers).
+- `run-sync` (POST /run-sync) : traitement synchrone inchangé —
+  palliatif en failover Render (aucun réveil cross-process ; le
+  primaire est seul à porter les workers — cohérent avec
+  l'architecture hybride).
+- Multi-instance : claim FOR UPDATE SKIP LOCKED inchangé — un réveil
+  « inutile » coûte un SELECT.
+- Intra-batch : la progression live (UPDATE par étudiant + polling
+  /status) est inchangée — c'est du traitement, pas de la cadence.
+
+### 13.6 Mesure 48 h (protocole §12.3 inchangé + attendus révisés)
+
+`GET /api/v2/projects/{id}/operations?limit=50` (suspend/start — temps
+réel). Attendus avec plancher 24 h/24 + sonde grille : **~4 cycles
+suspend/start par heure (~96/jour)**, et non plus seulement ~32/nuit. Si
+le rythme reste > 3,5 CU/j après 48 h, réexaminer (trafic réel dominant
+→ N2 Launch, reste documenté §10.4/§11.4).
+
+### 13.7 Anti-décisions — ajout
+
+9. Le mode à la demande ne s'étend à AUCUN autre worker sans décision
+   explicite de l'exploitant (chaque extension exige l'analyse de son
+   chemin d'entrée réel). La sonde ne repasse PAS au /db toutes les
+   5 min 24 h/24 sans décision explicite (elle déferait §13 par
+   construction — cf. §13.3).
