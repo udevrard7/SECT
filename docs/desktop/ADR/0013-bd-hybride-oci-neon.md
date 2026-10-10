@@ -2,8 +2,8 @@
 
 | Champ | Valeur |
 |---|---|
-| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; **mode « à la demande » + plancher jour + sonde grille DÉCIDÉS (exploitant, 10/10) et LIVRÉS en prod (10-11/10, commit 054efa7f, §13)** ; phases 0-2 = décisions séparées |
-| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée ; §13 : 10-11/10, mode « à la demande » + plancher jour + sonde grille livrés) |
+| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; **mode « à la demande » + plancher jour + sonde grille DÉCIDÉS (exploitant, 10/10) et LIVRÉS en prod (10-11/10, commit 054efa7f, §13)** ; §14 : projection capacité 5×2 000 étudiants (question exploitant — analyse chiffrée, aucune exécution) ; phases 0-2 = décisions séparées |
+| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée ; §13 : 10-11/10, mode « à la demande » + plancher jour + sonde grille livrés ; §14 : nuit du 10/10, projection capacité) |
 | **Décideurs** | Ulrich EVRARD (exploitant), Z.ai Code (tutorat) |
 | **Parent** | ADR-0006 (migration backend OCI), ADR-0012 (monitoring p50/p95), runbook §3.6/§3.7 (bascules P2), SECT-FAILOVER-1/2 |
 
@@ -773,3 +773,72 @@ le rythme reste > 3,5 CU/j après 48 h, réexaminer (trafic réel dominant
    chemin d'entrée réel). La sonde ne repasse PAS au /db toutes les
    5 min 24 h/24 sans décision explicite (elle déferait §13 par
    construction — cf. §13.3).
+
+---
+
+## 14. Projection capacité 5×2 000 étudiants — « le meilleur de chacun ? » (SECT-DB-HYBRID-7, 10 octobre 2026, nuit)
+
+### 14.1 La question de l'exploitant (3 volets)
+
+1. Pourquoi ne pas profiter de la puissance de l'instance A1 et maintenir la DB sur Neon ?
+2. N'y a-t-il pas une possibilité d'utiliser le meilleur de chacun ?
+3. Avec une instance free (à ~500), combien de temps Neon peut-il tenir si l'on a 5 établissements de plus de 2 000 étudiants ?
+
+### 14.2 Réponses courtes
+
+1. **C'est déjà l'architecture en place.** L'app et les 14 workers tournent sur la VM A1 (charge mesurée : CPU 1,6-2,7 %, RAM ~1 Go/24 — §11.2) et la DB est sur Neon. La puissance A1 ne soulage **aucun** des deux murs : chaque requête aboutit sur le compute Neon (CU-h) et chaque ligne sur son stockage. « Puissance A1 + DB Neon » = le statu quo — optimal pour le pilot, mais pas un levier supplémentaire à activer.
+2. **Oui, mais le patron « meilleur de chacun » a une limite structurelle.** L'option C (§4.3, §12.4) — Neon source de vérité + A1 réplique de lecture/DR + R2 pour les fichiers — reste le bon hybride, MAIS il ne déplace pas les écritures : les deux murs (CU-h, stockage) sont consommés par les écritures, qui restent chez Neon. À l'échelle 5×2 000, « le meilleur de chacun » exige donc un arbitrage : **N2** (Neon payant + la puissance A1 pour tout le calcul) ou **N3** (inversion : la puissance A1 POUR la DB, Neon DR froid).
+3. **Ça tient le pilot indéfiniment ; à 5×2 000 ça ne tient pas un semestre.** Mur stockage (1 GiB/branche) en ~2-8 semaines de période d'examens réelle — avec écrits rejetés à la limite, c'est-à-dire des copies d'étudiants en péril en plein examen ; mur CU-h dans le mois d'examens (autoscale 0,25→2 CU = burn ×4-8). Détail chiffré §14.4-14.5. (NB : la limite storage mesurée est **1 GiB**/branche, §11.1 — l'intuition « 500 Mo » du §2.4 avait déjà été corrigée par la console.)
+
+### 14.3 Hypothèses — mesurées vs projetées
+
+| Type | Donnée | Valeur | Source |
+|---|---|---|---|
+| **Mesuré** | Limite storage branche | 1 GiB (1 024 Mo) ; usage actuel 47 Mo | API Neon §11.1 |
+| **Mesuré** | Quota compute | 100 CU-h/cycle ; autoscale 0,25-2 CU | API Neon §11.1 |
+| **Mesuré** | Rythme post-§13 (bruit de fond) | ~2,6-2,8 CU/j → ~78-85 CU/cycle | ADR §13.4 |
+| **Mesuré** | RequestLog | ~172 o/ligne ; rétention 7 j (purge horaire) | §2.1 + monitoring/sampler.go |
+| **Mesuré** | Trafic actuel | ~800 req/j ; base pré-revenu | §10.1 |
+| **Projeté** | Poids d'une copie (réponses JSON + résultat + métadonnées) | **~25 Ko ±×2** (12-50 Ko) | à MESURER à la 1re épreuve réelle (§14.7-4) |
+| **Projeté** | Épreuves par étudiant par semestre | ~8-12 | hypothèse université |
+| **Projeté** | Concurrents par créneau d'examen | ~2 000 (1 établissement) ; ~300 req/étudiant/créneau (autosave 30 s × 90-120 min) | hypothèse |
+
+### 14.4 Mur n°1 — stockage (1 GiB) : ~2-8 semaines de période d'examens
+
+- Disponible : 1 024 − 47 ≈ **975 Mo**.
+- Copies durables : à 25 Ko/copie → ~39 000 copies ; à 12,5 Ko → ~78 000 ; à 50 Ko → ~20 000. Un semestre à 5×2 000 ≈ 10 000 étudiants × 10 épreuves = **~100 000 copies ≈ 2,5 Go** → **2,5× la limite, saturée en ~2-8 semaines de pleine période d'examens** (selon le Ko/copie réel).
+- RequestLog : borné par la rétention 7 j, mais la fenêtre de pointe pèse **100-500 Mo transitoires EN PLUS** pendant les semaines d'examens (600 000 req/créneau de 2 000 étudiants × 172 o ≈ 103 Mo/créneau, purge 7 j glissante).
+- **Comportement à la limite : les écritures sont REJETÉES** (branch logical size limit) — c'est-à-dire des INSERT de réponses/copies qui échouent en plein examen. C'est le pire scénario produit imaginable, et il est silencieux jusqu'au moment où il frappe.
+- Ce mur n'est PAS attaquable par des cadences (M1) ni par le pooling : c'est de la donnée métier qui s'accumule.
+
+### 14.5 Mur n°2 — CU-h (100/cycle) : le mois d'examens
+
+- Le bruit de fond post-§13 (~2,6-2,8 CU/j ≈ 80 CU/cycle) tient le mur **tant qu'il n'y a pas de trafic** — c'est le pilot d'aujourd'hui. ✔
+- Le trafic d'examen n'est pas optimisable : **c'est le produit**. Jour d'examen : compute éveillé ~12 h (0,25 CU = 3 CU) + autoscale sous charge — 2 000 concurrents qui écrivent en continu poussent vers 0,5-2 CU (burn ×2-8).
+- Mois contenant ~10 jours d'examens : 20 j × 2,7 CU + 10 × (3-12 CU) = **~84-175 CU** → même le scénario bas frôle le mur, tout autoscale le fait franchir → suspension jusqu'au reset = plateforme DOWN pendant/après les examens.
+- Leçon structurelle : **M1/§13 ont optimisé le bruit de fond ; à cette échelle, le signal (trafic réel) domine.** Ce n'est pas un défaut de réglage, c'est le plan Free.
+
+### 14.6 « Le meilleur de chacun » à 5×2 000 — les deux voies honnêtes
+
+| Critère | **N2 : Neon Launch/Scale + option C** | **N3 : inversion (PG primaire sur la VM A1)** |
+|---|---|---|
+| Coût | ~0,14 $/CU-h au-delà de l'inclus (§2.4) ; dizaines de $/mois en session d'examens | 0 € |
+| Murs Free | Tous levés (facturation à l'usage) | Tous levés (locaux : 4 OCPU/24 Go à 2-3 % de charge, disque 200 Go) |
+| Rôle de la puissance A1 | App + workers + **réplique lecture/DR** + exports (option C) | **Tout, DB incluse** (latence sub-ms app↔DB) |
+| Risques | Dépendance fournisseur ($) ; opérations gérées | SPOF app+DB (RTO ~1 h, RPO = dernier backup) ; chaîne P2 Render inopérante pour la DB (anti-décision n°3) ; backups WAL-G + tests de restore mensuels OBLIGATOIRES ; upgrades majeurs manuels |
+| Position dans le plan | **Naturel dès les premiers revenus B2B** | Souveraineté totale — à assumer en connaissance de cause (§11.4-N3, §12.4) |
+
+Note économique : 5 établissements × 2 000+ étudiants = **5 contrats B2B signés** — à ce stade, ~20-60 $/mois de DB est marginal devant le risque d'un échec d'examen (la confiance EdTech se perd une fois). N3 reste l'option indépendance si l'exploitant la préfère ; les deux voies sont préparées par les mêmes travaux (R1 backups + phase 2 réplique).
+
+### 14.7 Déclencheurs mesurables (à poser AVANT d'embarquer les 5 établissements)
+
+1. **`pg_database_size(current_database())` ≥ 600 Mo (60 % du GiB)** → décision sous 7 jours (mur DUR : écrits rejetés à 1 GiB).
+2. **Cadence > 3,5 CU/j soutenu hors période d'examens** → N2 (seuil §13.6 inchangé).
+3. **2e établissement signé OU 1re session d'examens > 500 étudiants planifiée** → bascule décisionnée et exécutée **avant** la session (jamais pendant).
+4. **1re épreuve pilote réelle** : mesurer le Ko/copie réel (taille des tables Reponse/SessionPassation ÷ nombre de copies — 2 requêtes SQL) → recalibrer §14.3 (la projection ±×2 devient une mesure).
+
+Proposition (décision exploitant) : règle d'alerte Discord « taille base ≥ 60 % » dans le module /monitoring (pattern alerting_worker existant) — le mur stockage est aujourd'hui **silencieux jusqu'à l'échec d'écriture**.
+
+### 14.8 Anti-décisions — ajout
+
+10. La bascule N2/N3 à l'échelle 5×2 000 est une décision d'exploitant, à exécuter hors période d'examens ; le tuteur n'embarque aucun établissement et ne déclenche aucune bascule sur la seule base de cette projection. Les déclencheurs §14.7 sont des seuils d'ALERTE, pas des automatismes.

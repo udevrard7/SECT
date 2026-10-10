@@ -5519,3 +5519,25 @@ Stage Summary:
 - RÉACTIVITÉ PROMOTION AMÉLIORÉE : pickup < 1 s après le POST /cloture-annee (vs 10 s avant) — le plancher jour ne coûte RIEN au vécu RESPONSABLE ; les autres jobs de fond (clôtures auto, alertes) passent à ≤ 15 min aux heures creuses (arbitrage approuvé par l'exploitant).
 - MESURE 48 h : API Neon operations → attendu ~4 cycles suspend/start par heure 24 h/24 (~96/jour). Le protocole (operations, PAS consumption qui lagge) est en ADR §12.3/§13.6.
 - SUIVIS OUVERTS inchangés : ticket cron GitHub Actions à soumettre par l'exploitant (sentinelles cron-test A/B en place, cf. SECT-UPTIME-PROBE-3) ; phases 0-1 de l'ADR-0013 (backups OCI + réplique PG 18 local) non lancées — décision séparée.
+
+---
+Task ID: SECT-DB-HYBRID-7
+Agent: Z.ai Code (session « Tuteurat » — réponse capacité 5×2 000 étudiants)
+Task: Répondre à la question exploitant : pourquoi ne pas profiter de la puissance de l'instance A1 en maintenant la DB sur Neon ; possibilité d'utiliser « le meilleur de chacun » ; et combien de temps le plan Free peut tenir avec 5 établissements de plus de 2 000 étudiants.
+
+Work Log:
+- État vérifié avant réponse : M1 + §13 en prod et poussés (commits 0feee790, 054efa7f — main == origin/main, arbre propre) ; internal/worker/cadence.go + internal/db/db.go relus pour confirmer ce qui est livré (AdaptiveTicker grille alignée, plancher 15 min jour/nuit, WakeupBus promotion < 1 s, MaxConnIdleTime 90 s, MinConns 0).
+- Retention RequestLog vérifiée dans le code : 7 jours, purge horaire (monitoring/sampler.go) — ~172 o/ligne mesuré ADR §2.1 → le RequestLog est BORNÉ mais pèse 100-500 Mo transitoires en semaine d'examens (fenêtre 7 j glissante).
+- Modèle de capacité construit sur les mesures ADR existantes (1 GiB/branche, 47 Mo actuels, 100 CU-h/cycle, 2,6-2,8 CU/j post-§13, autoscale 0,25-2 CU) + hypothèses projetées EXPLICITES (25 Ko/copie ±×2, ~10 épreuves/étudiant/semestre, ~2 000 concurrents/créneau, ~300 req/étudiant/créneau).
+- Verdict stockage : 975 Mo disponibles ; ~100 000 copies/semestre à 5×2 000 ≈ 2,5 Go = 2,5× la limite → saturée en ~2-8 semaines de pleine période d'examens ; à la limite Neon REJETTE les écrits (copies en péril en plein examen — pire scénario produit, silencieux jusqu'à l'impact).
+- Verdict CU-h : le mois contenant ~10 jours d'examens = ~84-175 CU (éveil 12 h/j + autoscale ×2-8 sous 2 000 concurrents) → mur franchi dans le mois d'examens ; M1/§13 ont optimisé le BRUIT DE FOND, à cette échelle le SIGNAL (trafic réel = le produit) domine — structurel au plan Free, pas un défaut de réglage.
+- Réponse « meilleur de chacun » : l'option C reste le patron mais ne déplace pas les écritures (les deux murs sont côté écriture) → à cette échelle l'arbitrage est N2 (Neon Launch/Scale payant + puissance A1 pour le calcul — recommandé dès les revenus B2B) vs N3 (inversion PG primaire sur la VM A1, 0 €, contreparties SPOF/P2/ops assumées) — tableau comparatif §14.6.
+- ADR-0013 §14 ajouté (8 sous-sections : question, réponses courtes, hypothèses mesurées vs projetées, les deux murs chiffrés, voies N2/N3, 4 déclencheurs mesurables, anti-décision 10) ; en-tête Statut/Date mis à jour. INCIDENT OUTILLAGE (répétition connue) : MultiEdit a appliqué 2 éditions d'en-tête puis rapporté un échec global (fichier à espaces insécables U+00A0 dans les guillemets français) — contourné par append heredoc + vérification git diff ; leçon réaffirmée : bytes-exacts sur ce dépôt.
+- AUCUNE modification de code, AUCUNE migration (Neon inchangée — rien à synchroniser) ; push docs-only.
+
+Stage Summary:
+- LIVRABLE : ADR-0013 §14 — réponse chiffrée : Neon Free tient le pilot indéfiniment (~80 CU/cycle, 47 Mo) ; à 5×2 000 étudiants il ne tient PAS le premier semestre d'examens (mur stockage 1 GiB en ~2-8 semaines de session, écrits rejetés à la limite ; mur CU-h dans le mois d'examens).
+- « MEILLEUR DE CHACUN » : l'architecture actuelle (A1 = app/workers, Neon = DB) EST déjà ce patron — la puissance A1 ne soulage ni les CU-h ni le stockage. À l'échelle : N2 (Neon payant, naturel aux premiers revenus) ou N3 (inversion souveraine 0 €) — les deux préparées par R1 backups + phase 2 réplique.
+- DÉCLENCHEURS posés (§14.7) : base ≥ 600 Mo → décision < 7 j ; cadence > 3,5 CU/j hors examens → N2 ; 2e établissement signé ou 1re session > 500 étudiants → bascule AVANT la session ; mesure Ko/copie à la 1re épreuve réelle.
+- PROPOSITION en attente de feu vert exploitant : règle d'alerte Discord « taille base ≥ 60 % du quota » dans le module /monitoring (le mur stockage est silencieux jusqu'à l'échec d'écriture).
+- SUIVIS OUVERTS inchangés : mesure 48 h §13.6 (~4 cycles suspend/start par heure attendus) ; ticket cron GitHub à soumettre ; phases 0-1 ADR (backups R1 = trou n°1) non lancées.
