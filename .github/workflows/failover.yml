@@ -29,8 +29,9 @@
 # Secrets :
 #   [dépôt]  OCI_SSH_HOST / OCI_SSH_USER / OCI_SSH_KEY (comme deploy-oci)
 #            UPTIME_DISCORD_WEBHOOK_URL (alertes — SECT-UPTIME-PROBE-1)
-#   [environnement production-failover]  RENDER_API_KEY — à poser UNE fois :
-#            GitHub → Settings → Environments → production-failover.
+#   [environnement production-failover]  RENDER_API_KEY — POSÉ le
+#            2026-10-10 (SECT-FAILOVER-2). Rotation : GitHub → Settings
+#            → Environments → production-failover.
 #
 # Interdits (kit exploitant + runbook §4) : jamais 2 primaires, poweroff
 # VM interdit (leçon N°282), ne pas basculer pendant un deploy-oci en

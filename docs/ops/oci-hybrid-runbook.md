@@ -185,8 +185,8 @@ corrections IA), jamais zéro API en ligne :
    règles d'or env vars) → vérifications + Discord.
    Ordre interne : arrêt OCI AVANT activation Render (garde §4) — jamais
    d'actif-actif, jamais de trafic vers une instance morte.
-   Prérequis unique : secret d'environnement `RENDER_API_KEY` (cf
-   `.github/CI-CD.md`).
+   Prérequis unique : secret d'environnement `RENDER_API_KEY` — POSÉ le
+   2026-10-10 (SECT-FAILOVER-2, cf `.github/CI-CD.md`).
 3. Une fois la VM réparée : workflow « Retour à la normale Render → OCI »
    (`failback.yml`) — §3.6 automatisée.
 
@@ -220,7 +220,8 @@ corrections IA), jamais zéro API en ligne :
   rebasculer), ordre anti-actif-actif strict (arrêt AVANT activation),
   commit de bascule versionné (vercel.json + 12 routes — preuve par
   en-têtes `x-render-origin-server`/`via: 1.1 Caddy`) et alertes Discord.
-  Secret requis : `RENDER_API_KEY` (environnement, cf `.github/CI-CD.md`).
+  Secret requis : `RENDER_API_KEY` (environnement, POSÉ le 2026-10-10 —
+  SECT-FAILOVER-2, cf `.github/CI-CD.md`).
   Scripts : `ops/failover_switch.sh` (bascule trafic), `ops/render_workers.sh`
   (toggle workers Render, règles d'or env vars). Limite connue : ne pas
   dérouler de bascule pendant un `deploy-oci.yml` en cours (groupe

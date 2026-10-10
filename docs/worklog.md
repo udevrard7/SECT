@@ -5359,3 +5359,22 @@ Stage Summary:
 - AUCUN IMPACT PRODUCTION au dépôt de P2 : workflows dispatch-only (aucun run automatique possible), scripts ops/ inactifs par eux-mêmes, render.yaml déclaratif (le service Render ne le lit pas), uptime-probe push-trigger = 1 run de self-test vert attendu.
 - ACTION MANUELLE UNIQUE RESTANTE (exploitant, 1 minute) : poser RENDER_API_KEY en secret de l'ENVIRONNEMENT production-failover (Settings → Environments → production-failover). Sans lui : dry-runs 100 % fonctionnels, exécutions réelles refusées proprement avant toute écriture avec instructions.
 - LIMITES DOCUMENTÉES : fenêtre zéro-worker ~1-2 min pendant un failback (ordre §3.6, alerting en pause — acceptable et documenté) ; ne pas dérouler de bascule pendant un deploy-oci en cours ; le workflow ne RÉPARE pas la VM (failback exige SSH OK) ; image OCI rafraîchissable via « Deploy backend to OCI » avant retour.
+
+---
+
+Task ID: SECT-FAILOVER-2
+Agent: Z.ai Code (session « Tuteurat » — pose des clés d'exécution)
+Task: Poser les clés fournies par l'exploitant (Render + Vercel) — RENDER_API_KEY en secret d'ENVIRONNEMENT production-failover (dernier maillon resté manuel en SECT-FAILOVER-1) et trio Vercel au niveau dépôt — pour rendre P2 100 % exécutable.
+
+Work Log:
+- Validité des clés prouvée EN DIRECT avant toute pose : API Render GET /v1/owners → 200 (workspace « FTCI workspace » tea-d8ut72o0697c73eu8tlg) ; GET /v1/services → service « SECT » srv-d9ed5bdaeets73auosj0 (repo udevrard7/SECT, rootDir backend, healthCheckPath /health, plan free, not_suspended) = exactement la cible par défaut de ops/render_env_check.py ; lecture env-vars du service OK (clés seules loggées — WORKERS_ENABLED=false confirmé sur le standby, relique kebab « workers-enabled » toujours présente, gérée par render_workers.sh). API Vercel GET /v2/user → 200 (udevrard7-ftci) ; GET /v9/projects → sect-app = prj_2d7GMM5mCUppVLy2jVPjqO01TOmR, org team_Hj5VeRoaCFeDsNDzx9vV65yW (cohérent avec https://sect-app.vercel.app).
+- Pose via API GitHub (PAT de session, droits admin, chiffrement libsodium sealed-box sur la clé publique de chaque cible, valeurs jamais en clair dans les logs) : RENDER_API_KEY → ENVIRONNEMENT production-failover (HTTP 201) ; VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID → secrets du DÉPÔT (HTTP 201 ×3). Re-listing API vérifié des deux côtés à 12:39 UTC : environnement = 1 secret, dépôt = 14 secrets.
+- Champ d'emploi : AUCUN workflow ne consomme le trio Vercel (bascule P2 = commit versionné, zéro token — méthode prouvée au cutover) ; il est posé pour l'EXPLOITATION (CLI/API Vercel en secours : rollback, redéploiement, aliases). Documenté dans CI-CD.md.
+- Docs mises à jour : en-tête failover.yml (RENDER_API_KEY POSÉ), CI-CD.md (section P2 marquée POSÉE + nouveau tableau « Exploitation Vercel »), runbook §3.6/§3.7 (prérequis marqué POSÉ).
+- Leçon d'outillage consignée : fausse alerte de « filtres branches corrompus (ain]) » dans 6 workflows — ARTEFACT d'affichage du terminal sandbox (le motif « [ma… » est masqué à l'affichage, transformant [main] en ain]) ; vérifié PAR LES OCTETS (od/python) : tous les workflows contiennent bien [main]/[main, develop], historique git vierge (git log -S vide). AUCUN commit de « réparation » effectué — la vérification factuelle avant écriture a évité un faux fix et un déploiement parasite.
+- Santé du chemin public confirmée à 12:42 UTC : GET https://sect.ftci.fr/api/health → 200 {"service":"sect-api","status":"ok"} à travers le rewrite Vercel — le futur cron P1 trouvera UP.
+
+Stage Summary:
+- P2 EST DÉSORMAIS 100 % EXÉCUTABLE : plus aucune action manuelle restante — un run réel failover.yml/failback.yml n'exige plus que les 3 barrières prévues (dry_run=false + mot de confirmation BASCULER/REVENIR + approbation udevrard7 sur l'environnement production-failover).
+- Clés d'exploitation Vercel disponibles côté dépôt (aucune consommation workflow — usage CLI/API secours uniquement).
+- SUIVI OUVERT : premier tirage cron (schedule) de la sonde P1 toujours absent à 12:42 UTC (~2 h après création du workflow ; state=active, cron */5 correctement lu, déclencheurs push/dispatch prouvés) — hypothèse principale : délai d'enregistrement des nouveaux schedules GitHub (1-3 h documentés). À recontrôler ; si toujours rien après plusieurs heures, envisager un cron décalé des minutes pleines (ex. 2-57/5) pour éviter les heures de charge.

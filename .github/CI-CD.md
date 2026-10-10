@@ -93,13 +93,23 @@ Allez dans **GitHub → Settings → Secrets and variables → Actions** :
 
 ### Bascules de production (P2 — secret d'ENVIRONNEMENT, pas du dépôt)
 
-**Settings → Environments → production-failover → Add environment secret**
-(approbateur : udevrard7 — chaque exécution réelle de `failover.yml`/
+**POSÉ le 2026-10-10 (SECT-FAILOVER-2) — rien à faire.** Emplacement
+(pour une rotation future) : **Settings → Environments →
+production-failover → Add environment secret** (approbateur : udevrard7 —
+chaque exécution réelle de `failover.yml`/
 `failback.yml` exige son approbation) :
 
 | Secret | Description |
 |--------|-------------|
 | `RENDER_API_KEY` | Clé API Render (`rnd_…`) — pilote `WORKERS_ENABLED` + redeploy via `ops/render_workers.sh`, garde `ops/render_env_check.py` |
+
+### Exploitation Vercel (POSÉS le 2026-10-10 — SECT-FAILOVER-2, aucun workflow ne les consomme)
+
+| Secret | Description |
+|--------|-------------|
+| `VERCEL_TOKEN` | Clé API Vercel (`vcp_…`) — secours CLI/API (rollback, redéploiement, aliases) ; les bascules P2 passent par commit versionné (zéro token) |
+| `VERCEL_ORG_ID` | Team Vercel — convention CLI |
+| `VERCEL_PROJECT_ID` | Projet `sect-app` — convention CLI |
 
 ## 🚀 Lancer un Release
 
