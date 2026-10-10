@@ -28,6 +28,12 @@
 #                       courant, cf P2 ; suffixe /db = dependency-aware
 #                       SECT-HEALTH-DB-1 : la sonde détecte aussi les pannes
 #                       Neon, pas seulement les pannes process)
+#   NIGHT_START_HOUR     début de la fenêtre nocturne UTC (défaut 22) —
+#                       pendant la fenêtre, la sonde retire le suffixe /db
+#                       (process-only) : un Ping DB toutes les 5 min
+#                       empêcherait la suspension Neon et détruirait le
+#                       budget CU-h visé par M1 (ADR-0013 §11.4)
+#   NIGHT_END_HOUR       fin de la fenêtre nocturne UTC (défaut 6)
 #   STANDBY_URL          défaut https://sect-zead.onrender.com/health
 #   DISCORD_WEBHOOK_URL  vide → mode dry-run (aucun envoi)
 #   ALERT_TEST=1         envoi une alerte 🧪 TEST étiquetée (preuve E2E webhook)
@@ -161,6 +167,32 @@ embed_payload() {  # $1=couleur $2=titre $3=description $4=fiches jq (array)
      --argjson fields "$4" '{embeds: [{title: $title, description: $desc,
        color: ($color | tonumber), fields: $fields, timestamp: $ts}]}'
 }
+
+# ── 0. Fenêtre nocturne M1 (ADR-0013 §11.4) ─────────────────────────────────
+# La sonde ne doit PAS réveiller Neon la nuit : un Ping DB toutes les 5 min
+# (cron GitHub /5) interdit la suspension (timeout Neon 300 s) et détruirait
+# le budget CU-h que M1 restaure. Pendant la fenêtre, la sonde retire le
+# suffixe /db → process-only (chemin public). Contrepartie explicite : une
+# panne Neon nocturne est détectée à la sortie de fenêtre (06:00 UTC) et par
+# le premier trafic réel qui échoue. Heures UTC — Africa/Abidjan est UTC+0
+# toute l'année ; garder synchronisé avec WORKER_NIGHT_* du backend.
+NIGHT_START_HOUR=$((10#${NIGHT_START_HOUR:-22}))
+NIGHT_END_HOUR=$((10#${NIGHT_END_HOUR:-6}))
+now_h=$((10#$(date -u +%H)))
+in_night=0
+if [ "$NIGHT_START_HOUR" -ne "$NIGHT_END_HOUR" ]; then
+  if [ "$NIGHT_START_HOUR" -lt "$NIGHT_END_HOUR" ]; then
+    if [ "$now_h" -ge "$NIGHT_START_HOUR" ] && [ "$now_h" -lt "$NIGHT_END_HOUR" ]; then
+      in_night=1
+    fi
+  elif [ "$now_h" -ge "$NIGHT_START_HOUR" ] || [ "$now_h" -lt "$NIGHT_END_HOUR" ]; then
+    in_night=1
+  fi
+fi
+if [ "$in_night" -eq 1 ] && [ "${PRIMARY_URL%/db}" != "$PRIMARY_URL" ]; then
+  PRIMARY_URL="${PRIMARY_URL%/db}"
+  log "M1 : fenêtre nocturne — sonde process-only ($PRIMARY_URL), Neon peut suspendre"
+fi
 
 # ── 1. Sondes ───────────────────────────────────────────────────────────────
 log "sonde PRIMAIRE  : $PRIMARY_URL"

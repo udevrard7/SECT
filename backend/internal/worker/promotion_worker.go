@@ -37,10 +37,14 @@ import (
 	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
-// promotionTickInterval : intervalle entre 2 checks de batches PENDING.
+// promotionTickInterval : intervalle de BASE entre 2 checks de batches PENDING.
 // 10s = bon compromis entre réactivité (le RESPONSABLE attend peu après POST)
-// et coût DB (1 SELECT toutes les 10s = négligeable). Aligné sur le spec
-// SECT-PROMOTION-BACKEND-1.
+// et coût DB. Aligné sur le spec SECT-PROMOTION-BACKEND-1.
+// M1 (ADR-0013 §11.4) : la cadence EFFECTIVE est adaptative — cette base est
+// surchargée la nuit par le plancher de fenêtre (défaut 15 min, cf.
+// internal/worker/cadence.go). NB : un SELECT toutes les 10 s n'est PAS
+// négligeable côté Neon — il interdit toute suspension du compute
+// (inactivité requise : 300 s).
 const promotionTickInterval = 10 * time.Second
 
 // PromotionWorker vérifie périodiquement les batches PENDING et les traite.
@@ -103,7 +107,8 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 		// créés pendant que le serveur était down — cf. cleanup_worker).
 		w.reg.TrackContext(ctx, "promotion", w.safeProcessPendingBatches)
 
-		ticker := time.NewTicker(promotionTickInterval)
+		// M1 (ADR-0013 §11.4) : cadence adaptative (plancher nocturne).
+		ticker := newAdaptiveTicker("promotion", promotionTickInterval)
 		defer ticker.Stop()
 
 		for {

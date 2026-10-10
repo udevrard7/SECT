@@ -59,7 +59,8 @@ func (w *ExpireWorker) Start(ctx context.Context) {
 		// Premier check immédiat au démarrage.
 		w.reg.TrackContext(ctx, "expire", w.checkAndExpire)
 
-		ticker := time.NewTicker(1 * time.Hour)
+		// M1 (ADR-0013 §11.4) : cadence adaptative, alignée grille horaire.
+		ticker := newAdaptiveTicker("expire", 1*time.Hour)
 		defer ticker.Stop()
 
 		for {

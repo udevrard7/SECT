@@ -50,13 +50,24 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
 	// + 585 req/s HTTP × ~10ms = 5.85 connexions + marge = ~20 connexions actives.
 	// MaxConns=100 donne un buffer confortable pour les pics.
 	config.MaxConns = int32(getEnvInt("DB_MAX_CONNS", 100))
-	config.MinConns = int32(getEnvInt("DB_MIN_CONNS", 5))
+	// M1 (ADR-0013 §11.4) : MinConns 5 → 0 par défaut. Avec MinConns=5, le
+	// pool recrée indéfiniment des connexions que MaxConnIdleTime referme, et
+	// chaque conn idle est health-checkée (Ping) toutes les 30 s
+	// (HealthCheckPeriod) → le compute Neon ne suspend JAMAIS, même sans
+	// requête applicative. À 0, le pool se vide après inactivité : plus rien
+	// ne tient Neon éveillé entre deux ticks espacés.
+	config.MinConns = int32(getEnvInt("DB_MIN_CONNS", 0))
 
 	// Health check pour détecter les connexions mortes (Neon cold start)
 	config.HealthCheckPeriod = 30 * time.Second
 
-	// Connection max idle time — fermer les connexions inactives après 5 min
-	config.MaxConnIdleTime = 5 * time.Minute
+	// Connection max idle time — M1 (ADR-0013 §11.4) : 5 min → 90 s par défaut,
+	// configurable. Neon suspend le compute après 300 s d'inactivité : fermer
+	// les connexions idle vite (90 s) laisse le temps au compute de dormir
+	// ENTRE deux ticks espacés (fenêtre nocturne ≥ 15 min). À 5 min, les conns
+	// held + leurs health-checks maintiennent l'éveil (preuve §11.1 : backends
+	// pgbouncer idle 7-47 min observés).
+	config.MaxConnIdleTime = getEnvDuration("DB_MAX_CONN_IDLE_TIME", 90*time.Second)
 
 	// Connection max lifetime — renouveler les connexions après 30 min
 	config.MaxConnLifetime = 30 * time.Minute
@@ -87,6 +98,18 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
+}
+
+// getEnvDuration retourne la valeur durée d'une variable d'environnement
+// (format Go : "90s", "15m", "1h30m"...), ou le fallback si absente/invalide.
+// M1 (ADR-0013 §11.4) : DB_MAX_CONN_IDLE_TIME.
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return fallback
 }
 
 // getEnvInt retourne la valeur entière d'une variable d'environnement, ou le fallback.

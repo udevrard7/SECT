@@ -78,13 +78,13 @@ func main() {
 	workerRegistry.Register("ia-practice", "Exercices pratiques IA (file)", "file", "événementiel")
 	workerRegistry.Register("ia-homework", "Correction des devoirs (file)", "file", "événementiel")
 	workerRegistry.Register("ia-audio", "Génération audio (file)", "file", "événementiel")
-	workerRegistry.Register("auto-close", "Clôture automatique des épreuves", "periodique", "60 s")
+	workerRegistry.Register("auto-close", "Clôture automatique des épreuves", "periodique", "60 s (nuit ≥ 15 min)")
 	workerRegistry.Register("relance", "Relances J-7 (abonnements B2C)", "periodique", "6 h")
 	workerRegistry.Register("expire", "Expiration des abonnements B2C", "periodique", "1 h")
 	workerRegistry.Register("cleanup", "Purge des utilisateurs soft-deleted (>90 j)", "periodique", "24 h")
-	workerRegistry.Register("promotion", "Clôture d'année académique", "periodique", "10 s")
+	workerRegistry.Register("promotion", "Clôture d'année académique", "periodique", "10 s (nuit ≥ 15 min)")
 	workerRegistry.Register("bibliotheque-purge", "Purge de la corbeille bibliothèque (>30 j)", "periodique", "1 h")
-	workerRegistry.Register("similarity", "Détection de similarité entre copies", "periodique", "5 min")
+	workerRegistry.Register("similarity", "Détection de similarité entre copies", "periodique", "5 min (nuit ≥ 15 min)")
 
 	// 3. Initialiser repositories + usecases
 	userRepo := repository.NewUserRepository(pool)

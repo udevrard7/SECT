@@ -68,7 +68,8 @@ func (w *CleanupWorker) Start(ctx context.Context) {
 		// Premier check immédiat au démarrage.
 		w.reg.TrackContext(ctx, "cleanup", w.checkAndCleanup)
 
-		ticker := time.NewTicker(24 * time.Hour)
+		// M1 (ADR-0013 §11.4) : cadence adaptative, alignée grille horaire.
+		ticker := newAdaptiveTicker("cleanup", 24*time.Hour)
 		defer ticker.Stop()
 
 		for {

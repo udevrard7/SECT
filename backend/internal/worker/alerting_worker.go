@@ -47,7 +47,10 @@ import (
 	"github.com/udevrard7/sect/backend/internal/monitoring"
 )
 
-// alertingCheckInterval — cadence d'évaluation des règles.
+// alertingCheckInterval — cadence de BASE d'évaluation des règles.
+// M1 (ADR-0013 §11.4) : la nuit, plancher de fenêtre (défaut 15 min) via
+// internal/worker/cadence.go — les alertes peuvent être retardées de ≤ 15 min
+// la nuit (arbitrage exploitant explicite).
 const alertingCheckInterval = 2 * time.Minute
 
 // AlertingWorker — évalue les règles persistées et dispatch les alertes.
@@ -82,7 +85,7 @@ func (w *AlertingWorker) WithRegistry(reg *monitoring.WorkerRegistry) *AlertingW
 
 // Start lance le worker (première évaluation au boot — rattrapage).
 func (w *AlertingWorker) Start(ctx context.Context) {
-	w.reg.Register("alerting", "Règles d'alerte + canaux externes", "periodique", "2 min")
+	w.reg.Register("alerting", "Règles d'alerte + canaux externes", "periodique", "2 min (nuit ≥ 15 min)")
 	w.logger.Info("AlertingWorker started", "interval", alertingCheckInterval,
 		"discordConfigured", w.cfg.DiscordWebhookURL != "",
 		"slackConfigured", w.cfg.SlackWebhookURL != "",
@@ -91,7 +94,8 @@ func (w *AlertingWorker) Start(ctx context.Context) {
 	go func() {
 		w.reg.TrackContext(ctx, "alerting", w.check)
 
-		ticker := time.NewTicker(alertingCheckInterval)
+		// M1 (ADR-0013 §11.4) : cadence adaptative (plancher nocturne).
+		ticker := newAdaptiveTicker("alerting", alertingCheckInterval)
 		defer ticker.Stop()
 		for {
 			select {

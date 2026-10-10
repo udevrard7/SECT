@@ -53,7 +53,9 @@ func (w *AutoCloseWorker) Start(ctx context.Context) {
 	w.logger.Info("AutoClose Worker started, checking every 60s...")
 
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		// M1 (ADR-0013 §11.4) : cadence adaptative — 60 s le jour, plancher
+		// nocturne aligné grille horaire la nuit (internal/worker/cadence.go).
+		ticker := newAdaptiveTicker("auto-close", 60*time.Second)
 		defer ticker.Stop()
 
 		// Premier check immédiat au démarrage (récupération des épreuves

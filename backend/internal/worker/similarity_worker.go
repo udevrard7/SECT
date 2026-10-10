@@ -52,7 +52,8 @@ func (w *SimilarityWorker) Start(ctx context.Context) {
 	w.logger.Info("Similarity Worker started, checking every 5min...")
 
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		// M1 (ADR-0013 §11.4) : cadence adaptative (plancher nocturne 15 min).
+		ticker := newAdaptiveTicker("similarity", 5*time.Minute)
 		defer ticker.Stop()
 
 		// Premier check immédiat au démarrage

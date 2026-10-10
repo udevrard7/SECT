@@ -61,7 +61,8 @@ func (w *RelanceWorker) Start(ctx context.Context) {
 		// expiré pendant que le serveur était down).
 		w.reg.TrackContext(ctx, "relance", w.checkAndSend)
 
-		ticker := time.NewTicker(6 * time.Hour)
+		// M1 (ADR-0013 §11.4) : cadence adaptative, alignée grille horaire.
+		ticker := newAdaptiveTicker("relance", 6*time.Hour)
 		defer ticker.Stop()
 
 		for {

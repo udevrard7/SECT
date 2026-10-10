@@ -76,7 +76,8 @@ func (w *BibliothequePurgeWorker) Start(ctx context.Context) {
 	go func() {
 		w.reg.TrackContext(ctx, "bibliotheque-purge", w.checkAndPurge)
 
-		ticker := time.NewTicker(bibliothequePurgeInterval)
+		// M1 (ADR-0013 §11.4) : cadence adaptative, alignée grille horaire.
+		ticker := newAdaptiveTicker("bibliotheque-purge", bibliothequePurgeInterval)
 		defer ticker.Stop()
 
 		for {
