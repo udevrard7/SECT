@@ -28,6 +28,7 @@
 | `uptime-probe.yml` | cron `2-57/5` UTC — décalé des minutes pleines, SECT-UPTIME-PROBE-2 (+ dispatch, push sur ses fichiers) | Sonde externe du CHEMIN PUBLIC (`sect.ftci.fr/api/health` via rewrite Vercel → suit le primaire courant) + keep-warm standby Render, alertes Discord 🔴/🟠/🟢 (SECT-UPTIME-PROBE-1, P1 ; cible élargie SECT-FAILOVER-1) |
 | `failover.yml` | dispatch UNIQUEMENT + approval `production-failover` | Bascule urgence OCI → Render (runbook §3.7 exécutable) : gardes → commit trafic (Vercel redéploie seul) → OCI `compose stop` (best-effort) → `WORKERS_ENABLED=true` Render → vérifs + Discord (SECT-FAILOVER-1, P2) |
 | `failback.yml` | dispatch UNIQUEMENT + approval `production-failover` | Retour à la normale Render → OCI (runbook §3.6 exécutable) : OCI standby API-only sain (GATE) → trafic → workers Render OFF → workers OCI ON → vérifs + Discord (SECT-FAILOVER-1, P2) |
+| `oci-db-probe.yml` | dispatch UNIQUEMENT (étude) | Sonde VM OCI **LECTURE SEULE** (SECT-DB-HYBRID-2, phase 0 ADR-0013) : ressources VM (free/docker stats, écart E4), RTT TCP VM→Neon ×10 + PG local, latence psql — réutilisable audits mensuels/DR ; secrets OCI_SSH_* uniquement, DSN jamais affiché |
 
 ### Normes appliquées (audit DevOps 2026-09)
 - **Actions épinglées par SHA** (anti supply-chain) — mises à jour via Dependabot

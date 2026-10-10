@@ -1,0 +1,118 @@
+# ============================================================
+# SECT-DB-HYBRID-2 — Sonde VM OCI « mesures étude BD »
+#
+# LECTURE SEULE STRICTE : ce workflow ne modifie RIEN sur la VM
+# Ftechci (aucun docker restart/stop/rm, aucun poweroff — leçon
+# N°282, aucune écriture disque). Il exécute en SSH les commandes
+# de mesure documentées dans l'annexe
+# docs/ops/SECT-DB-HYBRID-2-mesures.md (phase 0 de l'ADR-0013) :
+#
+#   1. identité VM (uptime, loadavg, cœurs)
+#   2. mémoire / disque (place réelle pour un service colocalisé)
+#   3. inventaire conteneurs (registre kit §1)
+#   4. docker stats — consommation RÉELLE (tranche l'écart E4 du kit)
+#   5. limites cgroups sect-api (écart E4 : attendu cpus 3.5 / mem 20g)
+#   6. ports écoutés (registre kit §1 — PG local 127.0.0.1:5432)
+#   7. RTT TCP VM → Neon (×10) — LA mesure manquante de la phase 0
+#   8. RTT TCP VM → PG local (référence colocalisée, ~0 ms)
+#   9. latence applicative psql (connexion complète + SELECT 1)
+#
+# Déclenchement : workflow_dispatch UNIQUEMENT (étude — pas de cron).
+# Secrets : [dépôt] OCI_SSH_HOST / OCI_SSH_USER / OCI_SSH_KEY (comme
+# deploy-oci.yml et failover.yml — aucun secret supplémentaire).
+# Sécurité : le DSN Neon est lu sur la VM (jamais affiché — seul le
+# host de l'endpoint est imprimé, public par nature) ; aucune valeur
+# d'env ne transite dans les logs.
+# Réutilisable : audits mensuels + exercices DR (ADR-0013 §5.3).
+# ============================================================
+name: Sonde VM OCI — mesures étude BD (lecture seule)
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: oci-db-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: "📏 Mesures VM (SSH lecture seule)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 🖥️ SSH OCI — mesures lecture seule
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            echo "══ 1. IDENTITÉ VM ══"
+            hostname
+            uptime
+            echo "cœurs : $(nproc)"
+            cat /proc/loadavg
+
+            echo "══ 2. MÉMOIRE / DISQUE ══"
+            free -h
+            df -h / | tail -1
+
+            echo "══ 3. CONTENEURS (inventaire — registre kit §1) ══"
+            docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+
+            echo "══ 4. CONSOMMATION RÉELLE (docker stats — écart E4) ══"
+            docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}'
+
+            echo "══ 5. LIMITES CGROUPS sect-api (écart E4 du kit) ══"
+            docker inspect sect-api --format 'NanoCpus={{.HostConfig.NanoCpus}} (compose: 3500000000) Memory={{.HostConfig.Memory}} (compose: 21474836480)'
+
+            echo "══ 6. PORTS ÉCOUTÉS (registre kit §1) ══"
+            ss -tln | grep -E ':(22|80|443|4000|5432|8090)[[:space:]]' || true
+
+            echo "══ 7. RTT VM → NEON (TCP connect ×10) ══"
+            ENV_FILE=/opt/sect/.env
+            if [ -r "$ENV_FILE" ]; then
+              DSNLINE=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' "$ENV_FILE" | head -1 || true)
+            else
+              DSNLINE=$(sudo grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' "$ENV_FILE" | head -1 || true)
+            fi
+            if [ -z "${DSNLINE:-}" ]; then
+              echo "  (DSN introuvable dans $ENV_FILE — section sautée)"
+            else
+              NEONHOST=$(printf '%s' "$DSNLINE" | sed -E 's#.*@([^:/?]+).*#\1#')
+              echo "endpoint : $NEONHOST"
+              for i in $(seq 1 10); do
+                S=$(date +%s%N)
+                (echo > /dev/tcp/$NEONHOST/5432) 2>/dev/null || true
+                E=$(date +%s%N)
+                echo "  tcp_connect_ms=$(( (E-S)/1000000 ))"
+              done
+            fi
+
+            echo "══ 8. RTT VM → PG LOCAL 127.0.0.1:5432 (référence colocalisée) ══"
+            for i in $(seq 1 3); do
+              S=$(date +%s%N)
+              (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null || true
+              E=$(date +%s%N)
+              echo "  tcp_connect_ms=$(( (E-S)/1000000 ))"
+            done
+
+            echo "══ 9. LATENCE APPLICATIVE psql (connexion complète + SELECT 1) ══"
+            if command -v psql >/dev/null 2>&1 && [ -n "${DSNLINE:-}" ]; then
+              psql --version
+              DSN=$(printf '%s' "$DSNLINE" | cut -d= -f2-)
+              for i in 1 2 3; do
+                TIMEFORMAT='  connexion_complete+query sec=%R'
+                { time psql "$DSN" -Atq -c 'SELECT 1' >/dev/null; } 2>&1
+              done
+              echo "  requêtes isolées sur connexion tenue (\\timing) :"
+              printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | psql "$DSN" -At 2>&1 | grep -E 'Time:' | head -3
+            else
+              echo "  psql absent ou DSN non lu — le RTT TCP (section 7) fait foi."
+            fi
+            echo "══ FIN DES MESURES (aucune écriture effectuée) ══"
