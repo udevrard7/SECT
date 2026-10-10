@@ -5378,3 +5378,19 @@ Stage Summary:
 - P2 EST DÉSORMAIS 100 % EXÉCUTABLE : plus aucune action manuelle restante — un run réel failover.yml/failback.yml n'exige plus que les 3 barrières prévues (dry_run=false + mot de confirmation BASCULER/REVENIR + approbation udevrard7 sur l'environnement production-failover).
 - Clés d'exploitation Vercel disponibles côté dépôt (aucune consommation workflow — usage CLI/API secours uniquement).
 - SUIVI OUVERT : premier tirage cron (schedule) de la sonde P1 toujours absent à 12:42 UTC (~2 h après création du workflow ; state=active, cron */5 correctement lu, déclencheurs push/dispatch prouvés) — hypothèse principale : délai d'enregistrement des nouveaux schedules GitHub (1-3 h documentés). À recontrôler ; si toujours rien après plusieurs heures, envisager un cron décalé des minutes pleines (ex. 2-57/5) pour éviter les heures de charge.
+
+---
+
+Task ID: SECT-UPTIME-PROBE-2
+Agent: Z.ai Code (session « Tuteurat » — suivi P1)
+Task: Diagnostiquer et corriger l'absence de tirage cron (schedule) de la sonde P1 (constat ouvert en fin de SECT-FAILOVER-1).
+
+Work Log:
+- Constat chiffré à 13:17 UTC : 0 run event=schedule sur TOUT le dépôt (API runs?event=schedule) malgré ~30 fenêtres */5 passées depuis la création (10:44) et le dernier push du fichier (12:02). Éliminations : workflow state=active ; bloc on: vérifié PROPRE octet par octet (Read + od — au passage, la « corruption branches: ain] » était un artefact d'affichage du terminal sandbox, le motif « [ma… » étant masqué à l'affichage) ; YAML parsé (schedule lu) ; permissions Actions OK (enabled, all) ; push/dispatch prouvés (runs #1-#4 SUCCESS).
+- Cause la plus probable : cron */5 incluant les minutes pleines (xx:00) — GitHub documente que les minutes populaires sont les premières droppées en charge — combiné à un premier enregistrement du schedule jamais effectué (30 fenêtres non-pleines sans AUCUN tirage).
+- Correctif (commit 2dddecb5) : cron 2-57/5 — toutes les 5 min DÉCALÉES des minutes pleines (xx:02, xx:07…), fréquence P1 inchangée ; le push du fichier relance par ailleurs l'enregistrement du schedule côté GitHub (méthode de réveil connue). Docs alignées : en-tête workflow, CI-CD.md (ligne du tableau), runbook §4.
+- Self-test : run #4 (push 2dddecb5) → SUCCESS (sonde UP sur le chemin public).
+
+Stage Summary:
+- Cron fiabilisé (2-57/5, hors minutes pleines) + réveil de l'enregistrement par push du fichier ; self-test vert.
+- SUIVI : confirmer le PREMIER tirage event=schedule (fenêtres décalées dès 13:22 UTC) ; si toujours rien après ~1 h de plus, escalade possible : cron minimal de test (workflow jetable) pour isoler « dépôt » vs « syntaxe », ou ticket support GitHub.
