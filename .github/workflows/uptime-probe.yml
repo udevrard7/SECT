@@ -23,6 +23,12 @@
 #     free : sinon endormi après 15 min, cold start ~50 s au
 #     moment d'une bascule P2)
 #
+# CIBLE = CHEMIN PUBLIC (SECT-FAILOVER-1/P2) : sect.ftci.fr/api/health
+# traverse le rewrite Vercel → il suit AUTOMATIQUEMENT le primaire
+# courant (OCI en temps normal, Render après failover.yml). L'URL
+# directe api.sect.ftci.fr resterait morte après une bascule → faux 🔴
+# éternels. La sonde mesure ce que voient les utilisateurs.
+#
 # Secret requis : UPTIME_DISCORD_WEBHOOK_URL (webhook Discord,
 # copié depuis l'API Render — jamais dans le dépôt).
 #
@@ -64,7 +70,7 @@ jobs:
 
       - name: 🔎 Sonde disponibilité
         env:
-          PRIMARY_URL: https://api.sect.ftci.fr/health
+          PRIMARY_URL: https://sect.ftci.fr/api/health # chemin public — suit le primaire courant (P2)
           STANDBY_URL: https://sect-zead.onrender.com/health
           DISCORD_WEBHOOK_URL: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
           GITHUB_TOKEN: ${{ github.token }}

@@ -1,0 +1,290 @@
+# ============================================================
+# SECT-FAILOVER-1 (chantier P2) — Bascule urgence OCI → Render
+#
+# Version EXÉCUTABLE du runbook §3.7 (docs/ops/oci-hybrid-runbook.md).
+# Déclenchement : workflow_dispatch UNIQUEMENT (décision humaine — jamais
+# de cron ni de push ici) :
+#   1. dry_run=true (DÉFAUT) : gardes + plan, AUCUNE écriture.
+#   2. dry_run=false + confirmer=BASCULER : exécution réelle, bloquée par
+#      l'APPROBATION d'environnement (production-failover — approbateur
+#      udevrard7 : bouton « Review deployments » dans le run).
+#
+# Ordre internalisé (§3.7 + garde §4 « désactiver AVANT d'activer ») :
+#   0. Gardes  : standby Render UP + env vars Render conformes.
+#   1. TRAFIC  : commit versionné (vercel.json + 12 routes serveur +
+#      manifest + render.yaml via ops/failover_switch.sh) → push →
+#      Vercel redéploie seul (zéro token Vercel — méthode prouvée au
+#      cutover 02de6dd). Preuve : en-tête x-render-origin-server: Render
+#      sur https://sect.ftci.fr/api/health.
+#   2. OCI     : docker compose stop — BEST-EFFORT : si la VM est morte
+#      (scénario nominal de la bascule), l'échec SSH est toléré (les
+#      workers sont morts avec elle : aucun doublon possible).
+#   3. RENDER  : WORKERS_ENABLED=true via ops/render_workers.sh
+#      (GET → PUT liste complète → deploy → live ; règles d'or du runbook
+#      env vars) → Render devient PRIMAIRE.
+#   4. Vérifs  : chemin public + Render direct + garde env vars + Discord.
+# Jamais d'actif-actif : les workers Render ne s'activent qu'après l'arrêt
+# OCI (ou sa mort constatée). Miroir : failback.yml (retour Render → OCI).
+#
+# Secrets :
+#   [dépôt]  OCI_SSH_HOST / OCI_SSH_USER / OCI_SSH_KEY (comme deploy-oci)
+#            UPTIME_DISCORD_WEBHOOK_URL (alertes — SECT-UPTIME-PROBE-1)
+#   [environnement production-failover]  RENDER_API_KEY — à poser UNE fois :
+#            GitHub → Settings → Environments → production-failover.
+#
+# Interdits (kit exploitant + runbook §4) : jamais 2 primaires, poweroff
+# VM interdit (leçon N°282), ne pas basculer pendant un deploy-oci en
+# cours (groupe concurrency différent — risque de redémarrage OCI).
+# ============================================================
+name: Bascule OCI → Render (failover)
+
+on:
+  workflow_dispatch:
+    inputs:
+      raison:
+        description: "Motif de la bascule (obligatoire — commit + Discord)"
+        required: true
+        type: string
+      dry_run:
+        description: "Simulation : gardes + plan, AUCUNE écriture"
+        required: false
+        default: true
+        type: boolean
+      confirmer:
+        description: "Exécution réelle : taper exactement BASCULER"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: sect-failover # PARTAGÉ avec failback.yml : jamais deux bascules simultanées
+  cancel-in-progress: false
+
+permissions:
+  contents: read # le job bascule élève à contents:write (commit de bascule)
+
+jobs:
+  # ------------------------------------------------------------
+  # Pré-vol : entrées valides + sondes publiques + plan détaillé.
+  # Aucun secret requis → testable à volonté (dry_run).
+  # ------------------------------------------------------------
+  preflight:
+    name: "🛫 Pré-vol (lectures seules)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: ✅ Validation des entrées
+        run: |
+          if [ "${{ inputs.dry_run }}" != "true" ] && [ "${{ inputs.confirmer }}" != "BASCULER" ]; then
+            echo "❌ Exécution réelle refusée : confirmer doit valoir exactement BASCULER (ou dry_run=true)." >&2
+            exit 1
+          fi
+          echo "Motif      : ${{ inputs.raison }}"
+          echo "Simulation : ${{ inputs.dry_run }}"
+
+      - name: 🔎 Sondes publiques (standby Render = GATE dure, OCI = info)
+        run: |
+          set -euo pipefail
+          oci_code="$(curl -sS --max-time 20 -o /tmp/oci.json -w '%{http_code}' https://api.sect.ftci.fr/health 2>/dev/null || true)"
+          [ -n "$oci_code" ] || oci_code=000
+          render_code="$(curl -sS --max-time 60 -o /tmp/render.json -w '%{http_code}' https://sect-zead.onrender.com/health 2>/dev/null || true)"
+          [ -n "$render_code" ] || render_code=000
+          echo "Primaire OCI  : code $oci_code $([ "$oci_code" = "200" ] && echo UP || echo '(DOWN — attendu en scénario de bascule)')"
+          echo "Standby Render : code $render_code"
+          if [ "$render_code" != "200" ] || ! grep -q '"status":"ok"' /tmp/render.json 2>/dev/null; then
+            echo "❌ STANDBY RENDER DOWN — la bascule n'a pas de destination saine." >&2
+            echo "   Le keep-warm de la sonde P1 doit le maintenir chaud (runbook §4)." >&2
+            exit 1
+          fi
+          echo "✅ Standby Render sain — bascule possible."
+
+      - name: 🖥️ SSH OCI (information — VM probablement morte en urgence)
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: cd /opt/sect && docker compose ps api
+
+      - name: 📝 Prévisualisation de la bascule (aucune écriture conservée)
+        run: |
+          set -euo pipefail
+          ops/failover_switch.sh render
+          echo
+          echo "── Fichiers engagés par le futur commit de bascule ──"
+          git --no-pager diff --stat
+          echo
+          git --no-pager diff | head -60 || true
+          git checkout -- .
+          echo "Pré-vol : rien de conservé (le diff ci-dessus est la prévisualisation)."
+
+  # ------------------------------------------------------------
+  # Bascule réelle — SOUMISE À APPROBATION (production-failover).
+  # ------------------------------------------------------------
+  bascule:
+    name: "🔀 Bascule réelle (approval requise)"
+    needs: preflight
+    if: ${{ inputs.dry_run != true && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production-failover
+    permissions:
+      contents: write # commit de bascule (github-actions[bot])
+    env:
+      RAISON: ${{ inputs.raison }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: 🔑 Garde RENDER_API_KEY (secret d'environnement)
+        run: |
+          if [ -z "${{ secrets.RENDER_API_KEY }}" ]; then
+            echo "❌ Secret RENDER_API_KEY absent de l'environnement production-failover." >&2
+            echo "→ GitHub → Settings → Environments → production-failover → Add environment secret :" >&2
+            echo "  RENDER_API_KEY = clé API Render (rnd_…, mêmes droits que ops/render_env_check.py)" >&2
+            echo "Bascule manuelle possible entre-temps : runbook §3.7 (dashboard Render + commit vercel.json)." >&2
+            exit 1
+          fi
+          echo "✅ RENDER_API_KEY présent."
+
+      - name: 📥 Checkout (main à jour)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: 🔁 Alignement sur origin/main (la bascule s'applique au dernier état)
+        run: git fetch origin main && git reset --hard origin/main
+
+      - name: 🟠 Discord — bascule DÉMARRÉE
+        env:
+          WEBHOOK: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
+        run: |
+          payload="$(jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg raison "$RAISON" --arg run "$RUN_URL" \
+            '{embeds:[{title:"🟠 SECT — bascule OCI → Render DÉMARRÉE",
+              description:("Motif : " + $raison + " — trafic vers Render, puis arrêt OCI, puis activation des workers Render."),
+              color:15105570, timestamp:$ts,
+              fields:[{name:"Run",value:$run,inline:false}]}]}')"
+          curl -fsS --max-time 10 -o /dev/null -X POST -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK" \
+            || echo "⚠️ Discord KO (non bloquant)"
+
+      - name: 🩺 Garde Render AVANT (env vars conformes — incident 2026-10-05 jamais rejoué)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: python3 ops/render_env_check.py
+
+      - name: 🔀 Trafic → Render (commit versionné + push, Vercel redéploie)
+        run: |
+          set -euo pipefail
+          ops/failover_switch.sh render
+          if git diff --quiet; then
+            echo "Déjà basculé — pas de nouveau commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            {
+              echo "ops(failover): SECT-FAILOVER-1 — bascule trafic API OCI → Render"
+              echo
+              printf 'Motif : %s\n' "$RAISON"
+              echo
+              echo "Exécuté par le workflow Bascule OCI → Render (run ${RUN_URL})."
+              echo "Retour à la normale : workflow « Retour à la normale Render → OCI » (failback.yml)."
+              echo "Mode manuel : runbook §3.7."
+            } > /tmp/msg_commit.txt
+            git commit -F /tmp/msg_commit.txt
+            git push
+            echo "Commit de bascule poussé — Vercel redéploie (1-4 min)."
+          fi
+
+      - name: "⏳ Preuve du basculement trafic (x-render-origin-server: Render)"
+        run: |
+          set -euo pipefail
+          echo "Interrogation de https://sect.ftci.fr/api/health toutes les 20 s (max 10 min)…"
+          for i in $(seq 1 30); do
+            hdrs="$(curl -sS --max-time 20 -D - -o /tmp/h.json https://sect.ftci.fr/api/health || true)"
+            if printf '%s' "$hdrs" | grep -qi '^x-render-origin-server: *Render'; then
+              echo "✅ Le trafic public est servi par Render :"
+              cat /tmp/h.json; echo
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "❌ Le trafic n'a pas basculé en 10 min (deploy Vercel échoué ?)." >&2
+          echo "   Le commit de bascule est poussé — vérifier https://vercel.com (projet SECT)." >&2
+          exit 1
+
+      - name: 🖥️ OCI — docker compose stop (best-effort, mort de VM tolérée)
+        id: oci-stop
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/sect
+            docker compose stop
+            docker compose ps
+            echo "OCI sect-api arrêté (anti-doublons workers — runbook §4)."
+
+      - name: 📣 Bilan arrêt OCI
+        if: always()
+        run: |
+          if [ "${{ steps.oci-stop.outcome }}" = "failure" ]; then
+            echo "⚠️ SSH OCI injoignable — attendu si la VM est morte (workers morts avec elle : aucun doublon possible)."
+            echo "   Si la VM vit encore : arrêter sect-api dès que possible (ssh VM → cd /opt/sect && docker compose stop)."
+          else
+            echo "✅ OCI sect-api arrêté proprement."
+          fi
+
+      - name: ⚙️ Render — WORKERS_ENABLED=true (GET→PUT complet→deploy→live)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: ops/render_workers.sh on
+
+      - name: 🩺 Garde Render APRÈS (aucune var perdue par le PUT)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: python3 ops/render_env_check.py
+
+      - name: ✅ Vérifications finales
+        run: |
+          set -euo pipefail
+          echo "— Chemin public (Vercel → primaire Render) :"
+          curl -fsS --max-time 20 https://sect.ftci.fr/api/health | jq -e '.status == "ok"' >/dev/null \
+            && echo "  ✅ sect.ftci.fr/api/health → status ok"
+          echo "— Render direct :"
+          curl -fsS --max-time 60 https://sect-zead.onrender.com/health | jq -e '.status == "ok"' >/dev/null \
+            && echo "  ✅ sect-zead.onrender.com/health → status ok"
+          echo "— Render est PRIMAIRE, OCI arrêté (ou mort), alerting assuré par Render."
+
+      - name: 🟢 Discord — bascule TERMINÉE
+        if: success()
+        env:
+          WEBHOOK: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
+        run: |
+          payload="$(jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg raison "$RAISON" --arg run "$RUN_URL" \
+            '{embeds:[{title:"🟢 SECT — bascule OCI → Render TERMINÉE (Render primaire)",
+              description:("Motif : " + $raison + " — trafic public sur Render, workers Render actifs, OCI arrêté. La sonde P1 suit le chemin public."),
+              color:52224, timestamp:$ts,
+              fields:[
+                {name:"Retour à la normale",value:"workflow « Retour à la normale Render → OCI » (failback.yml) une fois la VM réparée",inline:false},
+                {name:"Run",value:$run,inline:false}]}]}')"
+          curl -fsS --max-time 10 -o /dev/null -X POST -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK" \
+            || echo "⚠️ Discord KO (non bloquant)"
+
+      - name: 🔴 Discord — bascule ÉCHOUÉE
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
+        run: |
+          payload="$(jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg raison "$RAISON" --arg run "$RUN_URL" \
+            '{embeds:[{title:"🔴 SECT — bascule OCI → Render ÉCHOUÉE (intervention requise)",
+              description:("Motif : " + $raison + " — suivre le run pour identifier l'étape en échec, puis runbook §3.7 manuel au besoin."),
+              color:15158332, timestamp:$ts,
+              fields:[{name:"Run",value:$run,inline:false}]}]}')"
+          curl -fsS --max-time 10 -o /dev/null -X POST -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK" \
+            || echo "⚠️ Discord KO (non bloquant)"

@@ -144,6 +144,12 @@ Chaque push `backend/**` redéploie par digest immuable + healthcheck + smoke te
 
 ### 3.6 Bascule contrôlée (cutover)
 
+> **Version exécutable (P2, SECT-FAILOVER-1)** : le workflow « Retour à la
+> normale Render → OCI » (`.github/workflows/failback.yml`) automatise cette
+> procédure (gardes de santé, ordre strict, vérifications, alertes Discord)
+> sous approbation manuelle (environnement GitHub `production-failover`).
+> La procédure ci-dessous reste la référence manuelle (dashboard).
+
 Ordre STRICT — jamais deux instances à workers actifs (doublons Discord/
 corrections IA), jamais zéro API en ligne :
 
@@ -162,23 +168,63 @@ corrections IA), jamais zéro API en ligne :
    côté Render → bandeau « Instance standby » + 13 badges `Standby`
    (c'est la preuve que la garde fonctionne).
 
-### 3.7 Rollback (< 5 min)
+### 3.7 Bascule urgence OCI → Render
 
-1. Variable Vercel API URL → `https://sect-zead.onrender.com` + redeploy.
+**Voie normale (P2)** — workflow « Bascule OCI → Render (failover) »
+(`.github/workflows/failover.yml`) :
+
+1. Onglet Actions → « Bascule OCI → Render (failover) » → Run workflow :
+   saisir le motif, laisser `dry_run` coché → pré-vol (standby Render sain,
+   SSH OCI informatif, prévisualisation du commit de bascule).
+2. Relancer avec `confirmer = BASCULER` → **approbation requise**
+   (environnement `production-failover`, approbateur udevrard7) → le
+   workflow exécute : garde Render → commit trafic (vercel.json + 12
+   routes, Vercel redéploie seul — preuve `x-render-origin-server: Render`)
+   → `docker compose stop` sur OCI (**toléré si la VM est morte** — scénario
+   nominal) → `WORKERS_ENABLED=true` sur Render (GET→PUT complet→deploy,
+   règles d'or env vars) → vérifications + Discord.
+   Ordre interne : arrêt OCI AVANT activation Render (garde §4) — jamais
+   d'actif-actif, jamais de trafic vers une instance morte.
+   Prérequis unique : secret d'environnement `RENDER_API_KEY` (cf
+   `.github/CI-CD.md`).
+3. Une fois la VM réparée : workflow « Retour à la normale Render → OCI »
+   (`failback.yml`) — §3.6 automatisée.
+
+**Voie manuelle** (GitHub indisponible, ou secret absent) :
+
+1. Trafic → Render : variable Vercel `API_BASE_URL` →
+   `https://sect-zead.onrender.com` + redeploy **ET** bascule du rewrite
+   `vercel.json` (revert du dernier commit `ops(failover):` — le rewrite
+   CDN ne se pilote PAS par variable d'environnement).
 2. Render : `WORKERS_ENABLED=true` + redeploy (il redevient primaire).
 3. OCI : `docker compose stop` (éviter les doublons workers).
 
 ## 4. Gardes permanentes
 
 - **Détection externe (SECT-UPTIME-PROBE-1, P1)** : le workflow
-  `.github/workflows/uptime-probe.yml` (cron */5) sonde le primaire
-  `api.sect.ftci.fr/health` DEPUIS GitHub Actions — il survit à une panne
-  de la VM (le worker alerting SECT, lui, meurt avec elle) et prévient le
-  canal Discord principal (secret `UPTIME_DISCORD_WEBHOOK_URL`). Alertes 🔴
-  immédiate / 🟠 rappel ~30 min / 🟢 rétablissement ; l'onglet Actions du
-  workflow = historique de disponibilité (run rouge = DOWN). Le standby
-  Render est sondé au passage → **reste chaud** (pas de cold start de ~50 s
-  au moment d'une bascule §3.7).
+  `.github/workflows/uptime-probe.yml` (cron */5) sonde le **chemin
+  public** `https://sect.ftci.fr/api/health` (via le rewrite Vercel → il
+  suit automatiquement le primaire courant, OCI ou Render — l'URL directe
+  OCI resterait morte après une bascule, faux 🔴 éternels) DEPUIS GitHub
+  Actions : il survit à une panne de la VM (le worker alerting SECT, lui,
+  meurt avec elle) et prévient le canal Discord principal (secret
+  `UPTIME_DISCORD_WEBHOOK_URL`). Alertes 🔴 immédiate / 🟠 rappel ~30 min /
+  🟢 rétablissement ; l'onglet Actions du workflow = historique de
+  disponibilité (run rouge = DOWN). Le standby Render est sondé au passage
+  → **reste chaud** (pas de cold start de ~50 s au moment d'une bascule §3.7).
+- **Bascule/retour semi-automatiques (SECT-FAILOVER-1, P2)** : les
+  workflows `failover.yml` (OCI → Render, §3.7) et `failback.yml` (Render
+  → OCI, §3.6) exécutent la procédure sous **approbation manuelle**
+  (environnement GitHub `production-failover`, approbateur udevrard7),
+  avec gardes de santé (standby sain avant d'écrire, VM saine avant d'y
+  rebasculer), ordre anti-actif-actif strict (arrêt AVANT activation),
+  commit de bascule versionné (vercel.json + 12 routes — preuve par
+  en-têtes `x-render-origin-server`/`via: 1.1 Caddy`) et alertes Discord.
+  Secret requis : `RENDER_API_KEY` (environnement, cf `.github/CI-CD.md`).
+  Scripts : `ops/failover_switch.sh` (bascule trafic), `ops/render_workers.sh`
+  (toggle workers Render, règles d'or env vars). Limite connue : ne pas
+  dérouler de bascule pendant un `deploy-oci.yml` en cours (groupe
+  `concurrency` différent).
 - **Ordre bascule/rollback TOUJOURS** : désactiver les workers de l'instance
   qui cesse d'être primaire AVANT/juste après l'activation ailleurs. Deux
   primaires = doublons ; zéro primaire = alertes/corrections en pause.
@@ -217,6 +263,12 @@ corrections IA), jamais zéro API en ligne :
   `ARG TARGETOS=linux/TARGETARCH=amd64` écrasaient l'injection BuildKit des
   auto-args → binaire amd64 dans l'image arm64 (preuve log #22 + ELF 0x3E).
   Fix : ARG nus + fallback shell. Cache GHA retiré au passage (fc3a004f).
+- ✅ **P2 BASCULES SEMI-AUTOMATIQUES OPÉRATIONNELLES (SECT-FAILOVER-1,
+  2026-10-10)** : workflows `failover.yml` (§3.7) + `failback.yml` (§3.6 —
+  retour à la normale) sous approbation `production-failover` ;
+  `ops/failover_switch.sh` + `ops/render_workers.sh` ; `WORKERS_ENABLED`
+  versionné dans render.yaml (règle d'or 6) ; sonde P1 recentrée sur le
+  chemin public `sect.ftci.fr/api/health` (suit le primaire courant).
 - ✅ Vhost `api.sect.ftci.fr` → 127.0.0.1:8090 AJOUTÉ au Caddy système
   (validé + reload ; TLS Let's Encrypt dès que le DNS existera).
 - ✅ DNS `api.sect.ftci.fr` → 84.235.228.160 créé (Cloudflare, GREY/DNS-only

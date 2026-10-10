@@ -14,6 +14,15 @@ services:
         value: "8080"
       - key: ENVIRONMENT
         value: production
+      # ── Workers de fond (bascule primaire/standby — runbook §3.6/§3.7,
+      #    workflows failover.yml / failback.yml + ops/render_workers.sh) ──
+      # true = instance PRIMAIRE (alerting, jobs IA, clôtures…) ;
+      # false = STANDBY API-only. JAMAIS deux instances à true : actif-actif
+      # interdit (doublons alertes Discord / corrections IA — runbook §4).
+      # NB : Render ne normalise pas les clés — une relique « workers-enabled »
+      # (kebab) peut exister en prod : no-op, à ne pas confondre.
+      - key: WORKERS_ENABLED
+        value: "false"
       # ── Base de données Neon ──
       - key: NEON_DATABASE_URL
         sync: false

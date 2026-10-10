@@ -9,7 +9,7 @@ Index central de la documentation du monorepo.
 | [`mobile/`](./mobile/rbac-analysis.md) | Analyses mobile (RBAC multi-plateforme) |
 | [`ops/`](./ops/) | Runbooks ops : [`HANDOFF-INSTALL-BACKEND.md`](./ops/HANDOFF-INSTALL-BACKEND.md) (kit de conventions VM Ftechci — **obligatoire** pour toute intervention serveur), [`oci-hybrid-runbook.md`](./ops/oci-hybrid-runbook.md) (architecture hybride OCI/Render), [`render-env-vars-runbook.md`](./ops/render-env-vars-runbook.md), nettoyage historique git (planifié) |
 | [`../frontend/docs/design-system.md`](../frontend/docs/design-system.md) | Design system frontend (tokens, composants DS) |
-| [`../.github/CI-CD.md`](../.github/CI-CD.md) | Les 8 workflows GitHub Actions : triggers, secrets, normes (CI, deploys, **sonde uptime P1**) |
+| [`../.github/CI-CD.md`](../.github/CI-CD.md) | Les 10 workflows GitHub Actions : triggers, secrets, normes (CI, deploys, **sonde uptime P1**, **bascules failover/failback P2**) |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Conventions de commit, structure, sécurité, tests |
 | [`../.github/SECURITY.md`](../.github/SECURITY.md) | Politique de divulgation des vulnérabilités |
 
@@ -23,7 +23,7 @@ Index central de la documentation du monorepo.
 | Base | Neon PostgreSQL | 134 migrations appliquées (golang-migrate) |
 | Stockage | Cloudflare R2 | bucket `sect-documents` (documents, podcasts, soumissions) |
 
-> Bascule / rollback primaire↔standby : runbook [`ops/oci-hybrid-runbook.md`](./ops/oci-hybrid-runbook.md) §3.6/§3.7 (manuelle, ordre strict anti actif-actif). Conventions d'intervention sur la VM : [`ops/HANDOFF-INSTALL-BACKEND.md`](./ops/HANDOFF-INSTALL-BACKEND.md).
+> Bascule / rollback primaire↔standby : runbook [`ops/oci-hybrid-runbook.md`](./ops/oci-hybrid-runbook.md) §3.6/§3.7 — **semi-automatiques depuis SECT-FAILOVER-1 (P2)** : workflows [`failover.yml`](../.github/workflows/failover.yml) (OCI → Render) et [`failback.yml`](../.github/workflows/failback.yml) (retour à la normale), dispatch + approbation `production-failover`, ordre strict anti actif-actif. Conventions d'intervention sur la VM : [`ops/HANDOFF-INSTALL-BACKEND.md`](./ops/HANDOFF-INSTALL-BACKEND.md).
 
 > ⚠️ Les changements de variables d'environnement Render nécessitent un
 > déploiement manuel (l'autoDeploy ne réagit qu'aux push git).

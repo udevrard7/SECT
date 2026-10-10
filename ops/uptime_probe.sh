@@ -23,7 +23,8 @@
 # volontairement → historique vert/rouge = historique de disponibilité).
 #
 # Environnement :
-#   PRIMARY_URL          défaut https://api.sect.ftci.fr/health
+#   PRIMARY_URL          défaut https://sect.ftci.fr/api/health (chemin public
+#                       via le rewrite Vercel — suit le primaire courant, cf P2)
 #   STANDBY_URL          défaut https://sect-zead.onrender.com/health
 #   DISCORD_WEBHOOK_URL  vide → mode dry-run (aucun envoi)
 #   ALERT_TEST=1         envoi une alerte 🧪 TEST étiquetée (preuve E2E webhook)
@@ -39,7 +40,11 @@
 set -u -o pipefail
 
 WORKFLOW_FILE="${WORKFLOW_FILE:-uptime-probe.yml}"
-PRIMARY_URL="${PRIMARY_URL:-https://api.sect.ftci.fr/health}"
+# SECT-FAILOVER-1 (P2) : cible = CHEMIN PUBLIC (sect.ftci.fr/api/health via
+# le rewrite Vercel) — il suit automatiquement le primaire courant (OCI ↔
+# Render après failover/failback). L'URL directe OCI resterait morte après
+# une bascule → faux 🔴 éternels ; ici la sonde mesure le vécu utilisateur.
+PRIMARY_URL="${PRIMARY_URL:-https://sect.ftci.fr/api/health}"
 STANDBY_URL="${STANDBY_URL:-https://sect-zead.onrender.com/health}"
 GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-https://github.com}"
 TMP_BODY="$(mktemp)"
@@ -169,7 +174,7 @@ if [ "${ALERT_TEST:-0}" = "1" ]; then
   embed_payload "5814783" "🧪 TEST sonde SECT — webhook fonctionnel" \
     "Sonde exécutée manuellement : vérification bout-en-bout du canal d'alerte (P1). Aucune action requise." \
     "[
-      {\"name\":\"Primaire (OCI)\",\"value\":\"$PRIMARY_URL → $PRIMARY_CODE ($([ "$PRIMARY_OK" -eq 1 ] && echo UP || echo DOWN))\",\"inline\":false},
+      {\"name\":\"Chemin public\",\"value\":\"$PRIMARY_URL → $PRIMARY_CODE ($([ "$PRIMARY_OK" -eq 1 ] && echo UP || echo DOWN))\",\"inline\":false},
       {\"name\":\"Standby (Render)\",\"value\":\"$STANDBY_CODE ($([ "$STANDBY_OK" -eq 1 ] && echo UP || echo DOWN))\",\"inline\":false},
       {\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}
     ]" > /tmp/payload_test.json
@@ -183,9 +188,9 @@ standby_field="\"name\":\"Standby (Render)\",\"value\":\"$STANDBY_CODE — $([ "
 if [ "$PRIMARY_OK" -eq 1 ]; then
   if [ "$HISTORY_OK" -eq 1 ] && [ "$PREV_FAILURES" -ge 1 ]; then
     log "transition DOWN→UP : alerte rétablissement"
-    embed_payload "52224" "🟢 SECT API rétablie (primaire OCI)" \
+    embed_payload "52224" "🟢 SECT API rétablie (chemin public)" \
       "Le primaire répond à nouveau. Incident détecté pendant : $(duration_since "$OUTAGE_START")." \
-      "[{\"name\":\"Primaire (OCI)\",\"value\":\"$PRIMARY_URL → $PRIMARY_CODE UP\",\"inline\":false},{$standby_field},{\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}]" \
+      "[{\"name\":\"Chemin public\",\"value\":\"$PRIMARY_URL → $PRIMARY_CODE UP\",\"inline\":false},{$standby_field},{\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}]" \
       > "$TMP_BODY.p" ; send_discord "$(cat "$TMP_BODY.p")" || true
   else
     log "primaire UP, rien à signaler"
@@ -196,15 +201,15 @@ fi
 # Primaire DOWN
 if [ "$PREV_FAILURES" -eq 0 ]; then
   log "transition UP→DOWN (ou premier run) : alerte immédiate"
-  embed_payload "15158332" "🔴 SECT API DOWN (primaire OCI)" \
-    "Le backend primaire ne répond plus. Vérification puis bascule : runbook §3.7 (procédure P2 failover.yml à venir)." \
-    "[{\"name\":\"Primaire (OCI)\",\"value\":\"$PRIMARY_URL → code $PRIMARY_CODE — $PRIMARY_ERR\",\"inline\":false},{$standby_field},{\"name\":\"Occurrence\",\"value\":\"1er signalement ($now_iso)\",\"inline\":false},{\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}]" \
+  embed_payload "15158332" "🔴 SECT API DOWN (chemin public)" \
+    "L'API est injoignable sur le chemin public (Vercel → primaire). Vérifier le primaire puis basculer : workflow « Bascule OCI → Render (failover) » (ou runbook §3.7)." \
+    "[{\"name\":\"Chemin public\",\"value\":\"$PRIMARY_URL → code $PRIMARY_CODE — $PRIMARY_ERR\",\"inline\":false},{$standby_field},{\"name\":\"Occurrence\",\"value\":\"1er signalement ($now_iso)\",\"inline\":false},{\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}]" \
     > "$TMP_BODY.p" ; send_discord "$(cat "$TMP_BODY.p")" || true
 elif [ "$HISTORY_OK" -eq 1 ] && [ $((PREV_FAILURES % 6)) -eq 0 ]; then
   log "DOWN persistant ($PREV_FAILURES échecs) : rappel ~30 min"
   embed_payload "15105570" "🟠 SECT API toujours DOWN (rappel ~30 min)" \
     "Incident en cours depuis $(duration_since "$OUTAGE_START") ($PREV_FAILURES sondes consécutives). Rappel périodique tant que le primaire est indisponible." \
-    "[{\"name\":\"Primaire (OCI)\",\"value\":\"$PRIMARY_URL → code $PRIMARY_CODE — $PRIMARY_ERR\",\"inline\":false},{$standby_field},{\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}]" \
+    "[{\"name\":\"Chemin public\",\"value\":\"$PRIMARY_URL → code $PRIMARY_CODE — $PRIMARY_ERR\",\"inline\":false},{$standby_field},{\"name\":\"Run\",\"value\":\"$run_url\",\"inline\":false}]" \
     > "$TMP_BODY.p" ; send_discord "$(cat "$TMP_BODY.p")" || true
 else
   log "DOWN confirmé (échec n°$((PREV_FAILURES + 1))) — pas d'alerte cette fois (anti-spam)"
