@@ -72,7 +72,7 @@ jobs:
 
       - name: 🔎 Sonde disponibilité
         env:
-          PRIMARY_URL: https://sect.ftci.fr/api/health # chemin public — suit le primaire courant (P2)
+          PRIMARY_URL: https://sect.ftci.fr/api/health/db # chemin public + DB (SECT-HEALTH-DB-1) — suit le primaire courant ET détecte les pannes Neon
           STANDBY_URL: https://sect-zead.onrender.com/health
           DISCORD_WEBHOOK_URL: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
           GITHUB_TOKEN: ${{ github.token }}

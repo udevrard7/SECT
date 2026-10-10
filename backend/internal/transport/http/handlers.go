@@ -1,8 +1,10 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	db "github.com/udevrard7/sect/backend/internal/db"
@@ -11,12 +13,56 @@ import (
 )
 
 // health handler — vérifie l'état du serveur.
+// STATIQUE PAR CONCEPTION (ADR-0013 §7) : utilisé par le healthCheckPath
+// Render et le HEALTHCHECK Docker (sémantique "process alive") — ne doit
+// PAS dépendre de la DB, sinon une panne Neon provoquerait des restart-loops
+// de l'orchestrateur (Render/Docker) qui aggraveraient l'incident.
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
 		"service": "sect-api",
 		"version": "0.2.0",
+	})
+}
+
+// healthDB handler — vérifie la dépendance Neon (Ping pgxpool = SELECT vide
+// via le pool, donc le VRAI chemin utilisateur : pooler Neon + RLS).
+//
+// SECT-HEALTH-DB-1 (recommandation ADR-0013 §7) : la sonde externe
+// (ops/uptime_probe.sh) pointait sur /health STATIQUE → une panne Neon
+// totale laissait la sonde VERTE (trou de garde). Ce endpoint est
+// "dependency-aware" : 503 si la DB est injoignable, 200 sinon.
+//
+// Timeout 2 s : couvre un réveil de compute Neon (suspend → actif,
+// ~500 ms-3 s) ; en pratique les workers (10 s-24 h) maintiennent le
+// compute actif en continu — le timeout borne surtout les file d'attente
+// pool et pannes réseau. Le corps garde le champ "status":"ok" attendu
+// par http_probe (ops/uptime_probe.sh) : AUCUN changement requis côté
+// sonde au-delà de l'URL.
+func (s *Server) healthDB(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := s.dbPool.Ping(ctx)
+	latency := time.Since(start)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "degraded",
+			"service": "sect-api",
+			"db":      "down",
+		})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":     "ok",
+		"service":    "sect-api",
+		"db":         "up",
+		"latency_ms": latency.Milliseconds(),
 	})
 }
 

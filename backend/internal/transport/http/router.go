@@ -336,8 +336,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	// Health check (public)
 	// /health pour Render healthCheckPath (sans préfixe /api)
 	// /api/health pour le rewrite Vercel (préfixe /api/* → Go /api/*)
+	// /api/health/db pour la sonde externe : dependency-aware (SELECT 1
+	//   via le pool réel — ADR-0013 §7 / SECT-HEALTH-DB-1). /health reste
+	//   STATIQUE pour Render/Docker (process alive, jamais de restart-loop
+	//   sur panne DB).
 	r.Get("/health", s.health)
 	r.Get("/api/health", s.health)
+	r.Get("/api/health/db", s.healthDB)
 
 	// Auth routes publiques
 	r.Group(func(r chi.Router) {

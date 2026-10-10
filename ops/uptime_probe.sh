@@ -23,8 +23,11 @@
 # volontairement → historique vert/rouge = historique de disponibilité).
 #
 # Environnement :
-#   PRIMARY_URL          défaut https://sect.ftci.fr/api/health (chemin public
-#                       via le rewrite Vercel — suit le primaire courant, cf P2)
+#   PRIMARY_URL          défaut https://sect.ftci.fr/api/health/db (chemin
+#                       public via le rewrite Vercel — suit le primaire
+#                       courant, cf P2 ; suffixe /db = dependency-aware
+#                       SECT-HEALTH-DB-1 : la sonde détecte aussi les pannes
+#                       Neon, pas seulement les pannes process)
 #   STANDBY_URL          défaut https://sect-zead.onrender.com/health
 #   DISCORD_WEBHOOK_URL  vide → mode dry-run (aucun envoi)
 #   ALERT_TEST=1         envoi une alerte 🧪 TEST étiquetée (preuve E2E webhook)
@@ -40,11 +43,14 @@
 set -u -o pipefail
 
 WORKFLOW_FILE="${WORKFLOW_FILE:-uptime-probe.yml}"
-# SECT-FAILOVER-1 (P2) : cible = CHEMIN PUBLIC (sect.ftci.fr/api/health via
-# le rewrite Vercel) — il suit automatiquement le primaire courant (OCI ↔
-# Render après failover/failback). L'URL directe OCI resterait morte après
-# une bascule → faux 🔴 éternels ; ici la sonde mesure le vécu utilisateur.
-PRIMARY_URL="${PRIMARY_URL:-https://sect.ftci.fr/api/health}"
+# SECT-FAILOVER-1 (P2) + SECT-HEALTH-DB-1 : cible = CHEMIN PUBLIC + DB.
+# sect.ftci.fr/api/health/db traverse le rewrite Vercel — il suit
+# automatiquement le primaire courant (OCI ↔ Render après failover/
+# failback) ET sonde la dépendance Neon (Ping pool réel, 503 si DB down).
+# L'URL directe OCI resterait morte après une bascule → faux 🔴 éternels ;
+# sans le suffixe /db, une panne Neon laisserait la sonde verte. Ici la
+# sonde mesure le vécu utilisateur, DB comprise.
+PRIMARY_URL="${PRIMARY_URL:-https://sect.ftci.fr/api/health/db}"
 STANDBY_URL="${STANDBY_URL:-https://sect-zead.onrender.com/health}"
 GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-https://github.com}"
 TMP_BODY="$(mktemp)"
