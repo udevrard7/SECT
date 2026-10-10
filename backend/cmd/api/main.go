@@ -82,7 +82,7 @@ func main() {
 	workerRegistry.Register("relance", "Relances J-7 (abonnements B2C)", "periodique", "6 h")
 	workerRegistry.Register("expire", "Expiration des abonnements B2C", "periodique", "1 h")
 	workerRegistry.Register("cleanup", "Purge des utilisateurs soft-deleted (>90 j)", "periodique", "24 h")
-	workerRegistry.Register("promotion", "Clôture d'année académique", "periodique", "10 s (nuit ≥ 15 min)")
+	workerRegistry.Register(worker.WorkerPromotion, "Clôture d'année académique", "periodique", "à la demande (< 1 s) + filet 15 min")
 	workerRegistry.Register("bibliotheque-purge", "Purge de la corbeille bibliothèque (>30 j)", "periodique", "1 h")
 	workerRegistry.Register("similarity", "Détection de similarité entre copies", "periodique", "5 min (nuit ≥ 15 min)")
 
@@ -284,6 +284,10 @@ func main() {
 	// les corrections IA (courses concurrentes sur les files/marqueurs).
 	// WORKERS_ENABLED=false → API servie normalement, workers OFF.
 	// Défaut true : comportement mono-instance inchangé.
+	// ADR-0013 §13 (mode « à la demande ») : bus de réveil in-process du
+	// worker promotion. Déclaré AVANT la garde workers : le serveur HTTP
+	// référence la closure même en standby (Notify sans abonné = no-op).
+	var promotionWakeup *worker.WakeupBus
 	if cfg.WorkersEnabled {
 		// Workers réactivés (policies is_system ajoutées sur les 12 tables worker).
 		// SECURITY-BASCULE : les workers posent des claims system-worker via
@@ -345,7 +349,7 @@ func main() {
 		cleanupWorker.Start(context.Background())
 
 		// SECT-PROMOTION-BACKEND-1 : worker de clôture d'année académique.
-		// Vérifie toutes les 10s les batches PENDING créés par POST
+		// Pickup (mode à la demande §13 : réveil < 1 s) des batches PENDING créés par POST
 		// /api/etablissements/{id}/cloture-annee, les passe en RUNNING, traitent
 		// chaque étudiant via cloturer_annee_etudiant (best-effort), puis marque
 		// le batch COMPLETED. Le frontend poll /status pour suivre la progression.
@@ -354,7 +358,14 @@ func main() {
 		// policies PromotionBatch_modify + User_select permet le bypass worker).
 		// Concurrency safety : SELECT ... FOR UPDATE SKIP LOCKED + UPDATE statut=
 		// RUNNING dans la même tx → claim atomique multi-instance safe.
-		promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo).WithRegistry(workerRegistry)
+		// ADR-0013 §13 : le bus est créé ICI (workers actifs) — le handler
+		// POST /cloture-annee y notifie le worker dès le COMMIT du batch
+		// (pickup < 1 s) ; le ticker adaptatif M1 reste le filet de
+		// sécurité (planchers 15 min jour et nuit).
+		promotionWakeup = worker.NewWakeupBus()
+		promotionWorker := worker.NewPromotionWorker(pool, logger, promotionRepo).
+			WithRegistry(workerRegistry).
+			WithWakeup(promotionWakeup)
 		promotionWorker.Start(context.Background())
 
 		// SECT-BIBLIO-P4 (ADR-0008 §5) : purge de la corbeille bibliothèque.
@@ -460,6 +471,12 @@ func main() {
 
 	// ADR-0011 — registre de workers exposé à /api/monitoring/overview.
 	server.WithWorkerRegistry(workerRegistry)
+	// ADR-0013 §13 : réveil événementiel du worker promotion (mode à la
+	// demande). Uniquement si les workers tournent ICI (primaire OCI) — en
+	// standby, Notify sans abonné serait un no-op, on ne câble donc rien.
+	if promotionWakeup != nil {
+		server.WithPromotionWakeup(func() { promotionWakeup.Notify(worker.WorkerPromotion) })
+	}
 	// SECT-OCI-HYBRID-1 : expose à /overview si les workers tournent ici.
 	server.WithWorkersEnabled(cfg.WorkersEnabled)
 	server.WithVapidPublicKey(cfg.VAPIDPublicKey)

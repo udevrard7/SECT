@@ -130,6 +130,12 @@ type Server struct {
 	notifDispatcher *notification.Dispatcher
 	// SECT-NOTIF-VAPID-1 : clé publique VAPID pour l'endpoint /api/push/vapid-public-key.
 	vapidPublicKey string
+	// ADR-0013 §13 (mode « à la demande ») : réveille le worker promotion
+	// après le COMMIT d'un batch PENDING (POST /cloture-annee) — pickup
+	// < 1 s au lieu d'attendre le filet ticker (plancher 15 min). Closure
+	// injectée via WithPromotionWakeup (pattern setter) ; nil = pas de
+	// réveil (dev/tests sans workers — fallback ticker).
+	promotionWakeup func()
 }
 
 // WithNotificationDispatcher injecte le dispatcher de notifications après
@@ -165,6 +171,14 @@ func (s *Server) WithWorkersEnabled(enabled bool) *Server {
 // → channels pour que l'UI indique quoi configurer). Pattern setter.
 func (s *Server) WithAlertingConfig(cfg monitoring.AlertingConfig) *Server {
 	s.alertingCfg = cfg
+	return s
+}
+
+// WithPromotionWakeup injecte la closure de réveil du worker promotion
+// (ADR-0013 §13 — mode « à la demande ») : le handler runPromotion la
+// déclenche juste après le COMMIT du batch PENDING. Nil-safe.
+func (s *Server) WithPromotionWakeup(notify func()) *Server {
+	s.promotionWakeup = notify
 	return s
 }
 

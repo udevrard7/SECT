@@ -56,7 +56,8 @@ type runPromotionRequest struct {
 
 // runPromotion — POST /api/etablissements/{etablissementId}/cloture-annee
 //
-// Crée un batch PENDING (le worker pickup dans les 10s). Retourne 202 Accepted
+// Crée un batch PENDING (le worker pickup en < 1 s — réveil événementiel, mode
+// « à la demande » ADR-0013 §13 ; à défaut, filet ticker ≤ 15 min). Retourne 202 Accepted
 // + { batchId, statut: "PENDING" } pour que le frontend commence à poller
 // /status et afficher une barre de progression.
 //
@@ -93,6 +94,16 @@ func (s *Server) runPromotion(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return
+	}
+
+	// ADR-0013 §13 — mode « à la demande » : le batch est COMMITTÉ en base,
+	// on réveille le worker promotion IN-PROCESS. Pickup < 1 s (mieux que
+	// les 10 s de polling historiques) SANS tick 10 s permanent qui
+	// interdirait la suspension Neon (plancher jour 15 min actif côté VM).
+	// Nil-safe (dev sans workers — fallback filet ticker) ; non-bloquant
+	// (canal buffer 1, coalescing — cf. internal/worker/wakeup.go).
+	if s.promotionWakeup != nil {
+		s.promotionWakeup()
 	}
 
 	w.Header().Set("Content-Type", "application/json")

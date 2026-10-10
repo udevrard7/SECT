@@ -16,8 +16,9 @@
 // Concurrency safety : fetchAndClaimPendingBatch utilise SELECT ... FOR UPDATE
 // SKIP LOCKED + UPDATE statut=RUNNING dans la même tx → claim atomique. Si
 // plusieurs instances du worker tournent (Render multi-instance), chaque batch
-// est traité par exactement un worker. Le ticker 10s permet un pickup rapide
-// après création du batch.
+// est traité par exactement un worker. Pickup après création du batch : réveil
+// événementiel in-process < 1 s (ADR-0013 §13, wakeup.go) ; le ticker adaptatif est le
+// filet de sécurité.
 package worker
 
 import (
@@ -45,6 +46,10 @@ import (
 // internal/worker/cadence.go). NB : un SELECT toutes les 10 s n'est PAS
 // négligeable côté Neon — il interdit toute suspension du compute
 // (inactivité requise : 300 s).
+// §13 (mode « à la demande ») : ce ticker n'est plus le CHEMIN CHAUD mais le
+// FILET DE SÉCURITÉ — le pickup réactif vient du réveil événementiel
+// (wakeup.go, < 1 s après le POST). La base 10 s reste la valeur effective
+// si l'exploitant retire les planchers (WORKER_*_MIN_INTERVAL=0).
 const promotionTickInterval = 10 * time.Second
 
 // PromotionWorker vérifie périodiquement les batches PENDING et les traite.
@@ -54,6 +59,10 @@ type PromotionWorker struct {
 	promoRepo domain.PromotionRepository
 	stopCh    chan struct{}
 	reg       *monitoring.WorkerRegistry // ADR-0011 : registre monitoring (nil-safe)
+	// ADR-0013 §13 : réveil événementiel (mode « à la demande »). Canal
+	// buffer 1 fourni par WithWakeup ; nil = désactivé (le case du select
+	// n'est alors jamais prêt — idiome Go : canal nil = case désactivée).
+	wake <-chan struct{}
 }
 
 // NewPromotionWorker crée un nouveau worker de promotion.
@@ -73,12 +82,34 @@ func (w *PromotionWorker) WithRegistry(reg *monitoring.WorkerRegistry) *Promotio
 	return w
 }
 
-// Start lance le worker en goroutine (non-bloquant). Vérifie toutes les 10s
-// les batches PENDING et les traite. Premier check immédiat au démarrage
-// (comme CleanupWorker) pour rattraper les batches en attente si le serveur
-// a redémarré.
+// WithWakeup branche le bus de réveil événementiel (ADR-0013 §13 — mode
+// « à la demande »). L'abonnement est pris ICI (constructeur) et non dans
+// Start : la goroutine de Start peut ne pas encore écouter lorsque le
+// serveur HTTP sert sa première requête — un Notify arrivant dans cette
+// fenêtre serait perdu (fallback filet 15 min). Nil-safe : sans bus, le
+// canal reste nil → case jamais prêt.
+func (w *PromotionWorker) WithWakeup(bus *WakeupBus) *PromotionWorker {
+	if bus != nil {
+		w.wake = bus.Subscribe(WorkerPromotion)
+	}
+	return w
+}
+
+// Start lance le worker en goroutine (non-bloquant). Deux chemins de pickup :
+//
+//  1. MODE « À LA DEMANDE » (ADR-0013 §13) : le handler runPromotion notifie
+//     le bus (WithWakeup) dès le COMMIT d'un batch PENDING → réveil < 1 s
+//     (mieux que les 10 s de polling historiques), puis DRAIN back-to-back
+//     de tout ce qui est PENDING (« le worker reste rapide quand des
+//     batches existent, ralentit sinon »).
+//  2. FILET DE SÉCURITÉ : ticker adaptatif M1 (planchers jour/nuit 15 min) —
+//     rattrape ce qui n'est PAS passé par l'API (reprise après restart,
+//     Notify perdu, chemin externe futur).
+//
+// Premier check immédiat au démarrage (comme CleanupWorker) pour rattraper
+// les batches en attente si le serveur a redémarré.
 func (w *PromotionWorker) Start(ctx context.Context) {
-	w.logger.Info("Promotion Worker started, checking every 10s...")
+	w.logger.Info("Promotion Worker started — mode à la demande (réveil < 1 s) + filet adaptatif M1")
 
 	go func() {
 		defer close(w.stopCh)
@@ -105,10 +136,11 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 
 		// Premier check immédiat au démarrage (rattrapage des batches PENDING
 		// créés pendant que le serveur était down — cf. cleanup_worker).
-		w.reg.TrackContext(ctx, "promotion", w.safeProcessPendingBatches)
+		w.reg.TrackContext(ctx, WorkerPromotion, w.safeDrainPendingBatches)
 
-		// M1 (ADR-0013 §11.4) : cadence adaptative (plancher nocturne).
-		ticker := newAdaptiveTicker("promotion", promotionTickInterval)
+		// M1 (ADR-0013 §11.4/§13) : filet de sécurité adaptatif (planchers
+		// nocturne ET jour) — le chemin chaud est le réveil événementiel.
+		ticker := newAdaptiveTicker(WorkerPromotion, promotionTickInterval)
 		defer ticker.Stop()
 
 		for {
@@ -117,7 +149,10 @@ func (w *PromotionWorker) Start(ctx context.Context) {
 				w.logger.Info("Promotion Worker stopping...")
 				return
 			case <-ticker.C:
-				w.reg.TrackContext(ctx, "promotion", w.safeProcessPendingBatches)
+				w.reg.TrackContext(ctx, WorkerPromotion, w.safeDrainPendingBatches)
+			case <-w.wake: // nil-safe : canal nil = case jamais prêt (sans bus)
+				w.logger.Info("PromotionWorker: réveil événementiel — drain immédiat (mode à la demande)")
+				w.reg.TrackContext(ctx, WorkerPromotion, w.safeDrainPendingBatches)
 			}
 		}
 	}()
@@ -165,21 +200,42 @@ func (w *PromotionWorker) recoverOrphanBatches(ctx context.Context) {
 	}
 }
 
-// safeProcessPendingBatches wrap processPendingBatches avec un recover par
-// itération. Un panic sur un batch (données incohérentes, SQL inattendu) est
-// loggé + le worker continue les ticks suivants (au lieu de mourir).
-func (w *PromotionWorker) safeProcessPendingBatches(ctx context.Context) {
+// safeDrainPendingBatches wrap drainPendingBatches avec un recover. Un panic
+// sur un batch (données incohérentes, SQL inattendu) est loggé + le worker
+// continue les ticks suivants (au lieu de mourir).
+func (w *PromotionWorker) safeDrainPendingBatches(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			w.logger.Error("PromotionWorker: PANIC in processPendingBatches (recovered)",
+			w.logger.Error("PromotionWorker: PANIC in drain (recovered)",
 				"panic", r, "stack", string(debug.Stack()))
 		}
 	}()
-	w.processPendingBatches(ctx)
+	w.drainPendingBatches(ctx)
 }
 
-// processPendingBatches traite UN batch PENDING (le plus ancien). Si plusieurs
-// batches sont en attente, ils seront traités un par un aux prochains ticks.
+// drainPendingBatches traite les batches PENDING jusqu'à épuisement,
+// back-to-back (sans attendre le tick suivant). C'est le cœur du mode
+// « à la demande » (ADR-0013 §13) : réveillé par le POST /cloture-annee
+// (signal in-process) ou par le filet ticker, le worker ENCHAÎNE tout ce
+// qui est PENDING puis se rendort sur la grille lente.
+//
+// Terminaison garantie : chaque itération claim atomiquement UN batch
+// (PENDING → RUNNING via FOR UPDATE SKIP LOCKED) ; un batch traité sort de
+// PENDING (COMPLETED ou FAILED, y compris via les recover). Les créations
+// concurrentes pendant le drain sont précisément ce que le mode doit servir
+// vite — les traiter immédiatement est le comportement attendu, pas une
+// fuite.
+func (w *PromotionWorker) drainPendingBatches(ctx context.Context) {
+	for w.processPendingBatches(ctx) {
+	}
+}
+
+// processPendingBatches traite UN batch PENDING (le plus ancien) et retourne
+// true si un batch a été CLAIMÉ (quel que soit son dénouement — COMPLETED ou
+// FAILED : il sort de PENDING dans tous les cas, le drain peut donc passer
+// au suivant). Retourne false s'il n'y avait rien à claimer ou si le claim
+// lui-même a échoué (erreur de lecture — le drain s'arrête, le tick suivant
+// réessaye).
 //
 // Étapes :
 //  1. Claim atomique d'un batch PENDING (SELECT FOR UPDATE SKIP LOCKED +
@@ -194,15 +250,15 @@ func (w *PromotionWorker) safeProcessPendingBatches(ctx context.Context) {
 //     erreurCount + log + continue.
 //  7. UPDATE batch statut=COMPLETED + termineAt=NOW().
 //  8. INSERT AuditLog (action=PROMOTION_BATCH_COMPLETED, details avec counts).
-func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
+func (w *PromotionWorker) processPendingBatches(ctx context.Context) bool {
 	// 1. Claim atomique d'un batch PENDING.
 	batch, err := w.fetchAndClaimPendingBatch(ctx)
 	if err != nil {
 		w.logger.Error("PromotionWorker: fetch pending batch failed", "error", err)
-		return
+		return false
 	}
 	if batch == nil {
-		return // rien à traiter
+		return false // rien à traiter
 	}
 
 	w.logger.Info("PromotionWorker: processing batch (step 1 claim OK)",
@@ -256,7 +312,7 @@ func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
 			&errMsg)
 		w.logger.Error("PromotionWorker: ListEtudiantsForPromotion failed — batch FAILED",
 			"batchId", batch.ID, "error", err)
-		return
+		return true // claimé (déjà FAILED) — le drain regarde le suivant
 	}
 	w.logger.Info("PromotionWorker: step 3 OK", "batchId", batch.ID, "etudiantCount", len(etudiants))
 
@@ -268,7 +324,7 @@ func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
 	}
 	if err := w.promoRepo.UpdateBatchStatut(ctx, batch.ID, domain.PromotionBatchStatutRunning, counts, nil); err != nil {
 		w.logger.Error("PromotionWorker: update totalEtudiants failed", "batchId", batch.ID, "error", err)
-		return
+		return true // claimé — orphelin RUNNING récupéré au restart (recoverOrphan)
 	}
 
 	// 5. Parse les overrides depuis Details JSON.
@@ -374,6 +430,7 @@ func (w *PromotionWorker) processPendingBatches(ctx context.Context) {
 		"exclu", counts.ExcluCount,
 		"erreur", counts.ErreurCount,
 	)
+	return true // claimé et traité jusqu'au bout
 }
 
 // fetchAndClaimPendingBatch claim atomiquement le plus ancien batch PENDING :

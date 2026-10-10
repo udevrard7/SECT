@@ -123,6 +123,11 @@ jobs:
             cd /opt/sect
             # L'image par digest exact (immutabilité du déploiement)
             sed -i "s|^API_IMAGE=.*|API_IMAGE=${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}|" .env 2>/dev/null || true
+            # ADR-0013 §13 — plancher jour 15 min (décision exploitant, 10/10/2026).
+            # SEED-ONCE : posé seulement s'il n'existe pas déjà dans .env ;
+            # une valeur posée/modifiée à la main sur la VM n'est JAMAIS écrasée.
+            grep -q '^WORKER_DAY_MIN_INTERVAL=' .env || \
+              printf '# ADR-0013 §13 : plancher jour 15 min (décision exploitant 10/10/2026)\nWORKER_DAY_MIN_INTERVAL=15m\n' >> .env
             docker compose pull api
             docker compose up -d --remove-orphans
             docker image prune -f

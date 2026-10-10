@@ -28,12 +28,13 @@
 #                       courant, cf P2 ; suffixe /db = dependency-aware
 #                       SECT-HEALTH-DB-1 : la sonde détecte aussi les pannes
 #                       Neon, pas seulement les pannes process)
-#   NIGHT_START_HOUR     début de la fenêtre nocturne UTC (défaut 22) —
-#                       pendant la fenêtre, la sonde retire le suffixe /db
-#                       (process-only) : un Ping DB toutes les 5 min
-#                       empêcherait la suspension Neon et détruirait le
-#                       budget CU-h visé par M1 (ADR-0013 §11.4)
-#   NIGHT_END_HOUR       fin de la fenêtre nocturne UTC (défaut 6)
+#   PROBE_DBCHECK        force | off | (vide = gating grille §13) — le check
+#                       /db ne part par défaut que sur le run minute%15==2
+#                       (:02/:17/:32/:47, cf. cron 2-57/5) qui rode la
+#                       fenêtre d'éveil des ticks workers alignés
+#                       (:00/:15/:30/:45) ; les autres runs sont
+#                       process-only. NIGHT_START_HOUR/NIGHT_END_HOUR :
+#                       obsolètes, ignorés.
 #   STANDBY_URL          défaut https://sect-zead.onrender.com/health
 #   DISCORD_WEBHOOK_URL  vide → mode dry-run (aucun envoi)
 #   ALERT_TEST=1         envoi une alerte 🧪 TEST étiquetée (preuve E2E webhook)
@@ -168,30 +169,31 @@ embed_payload() {  # $1=couleur $2=titre $3=description $4=fiches jq (array)
        color: ($color | tonumber), fields: $fields, timestamp: $ts}]}'
 }
 
-# ── 0. Fenêtre nocturne M1 (ADR-0013 §11.4) ─────────────────────────────────
-# La sonde ne doit PAS réveiller Neon la nuit : un Ping DB toutes les 5 min
-# (cron GitHub /5) interdit la suspension (timeout Neon 300 s) et détruirait
-# le budget CU-h que M1 restaure. Pendant la fenêtre, la sonde retire le
-# suffixe /db → process-only (chemin public). Contrepartie explicite : une
-# panne Neon nocturne est détectée à la sortie de fenêtre (06:00 UTC) et par
-# le premier trafic réel qui échoue. Heures UTC — Africa/Abidjan est UTC+0
-# toute l'année ; garder synchronisé avec WORKER_NIGHT_* du backend.
-NIGHT_START_HOUR=$((10#${NIGHT_START_HOUR:-22}))
-NIGHT_END_HOUR=$((10#${NIGHT_END_HOUR:-6}))
-now_h=$((10#$(date -u +%H)))
-in_night=0
-if [ "$NIGHT_START_HOUR" -ne "$NIGHT_END_HOUR" ]; then
-  if [ "$NIGHT_START_HOUR" -lt "$NIGHT_END_HOUR" ]; then
-    if [ "$now_h" -ge "$NIGHT_START_HOUR" ] && [ "$now_h" -lt "$NIGHT_END_HOUR" ]; then
-      in_night=1
-    fi
-  elif [ "$now_h" -ge "$NIGHT_START_HOUR" ] || [ "$now_h" -lt "$NIGHT_END_HOUR" ]; then
-    in_night=1
-  fi
-fi
-if [ "$in_night" -eq 1 ] && [ "${PRIMARY_URL%/db}" != "$PRIMARY_URL" ]; then
+# ── 0. Gating DB-check sur la grille workers (ADR-0013 §13) ─────────────────
+# La sonde ne doit PAS réveiller Neon : un Ping DB toutes les 5 min (cron
+# GitHub 2-57/5) interdit la suspension (timeout Neon 300 s) — sous plancher
+# jour 15 min, le jour resterait éveillé en continu et §13 n'aurait AUCUN
+# effet (cf. §13.3 : la chaine d'éveil se casse sur le maillon le plus
+# fréquent). Règle unique 24 h/24 : le check /db ne part QUE sur le run qui
+# suit un tick worker aligné (grille :00/:15/:30/:45 → runs :02/:17/:32/:47,
+# minute % 15 == 2) — il rode la fenêtre d'éveil du tick (~6,5 min : tick +
+# conn idle 90 s + timeout 300 s) à coût marginal ≈ 0. Tous les autres
+# runs : process-only (chemin sans /db).
+# Contrepartie : détection d'une panne Neon ≤ 15 min 24 h/24 (vs 5 min le
+# jour / 8 h d'aveugle la nuit en M1 §11.4) — prix de la suspension.
+# NB : NIGHT_START_HOUR / NIGHT_END_HOUR sont OBSOLÈTES (ignorés).
+# PROBE_DBCHECK (test/exploitation) : force → check /db immédiat ;
+# off → process-only 24 h/24. Vide (défaut) = gating grille ci-dessus.
+probe_minute=$((10#$(date -u +%M)))
+strip=0
+case "${PROBE_DBCHECK:-}" in
+  force) log "PROBE_DBCHECK=force — check DB forcé (hors gating grille §13)" ;;
+  off)   strip=1 ;;
+  *)     [ $((probe_minute % 15)) -ne 2 ] && strip=1 ;;
+esac
+if [ "$strip" -eq 1 ] && [ "${PRIMARY_URL%/db}" != "$PRIMARY_URL" ]; then
   PRIMARY_URL="${PRIMARY_URL%/db}"
-  log "M1 : fenêtre nocturne — sonde process-only ($PRIMARY_URL), Neon peut suspendre"
+  log "grille §13 : run hors fenêtre d'éveil worker — sonde process-only ($PRIMARY_URL), Neon peut suspendre"
 fi
 
 # ── 1. Sondes ───────────────────────────────────────────────────────────────
