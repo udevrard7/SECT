@@ -2,8 +2,8 @@
 
 | Champ | Valeur |
 |---|---|
-| **Statut** | Proposé — étude complète livrée, décision attendue de l'exploitant |
-| **Date** | 10 octobre 2026 |
+| **Statut** | Proposé — étude complète livrée + **complément d'expertise §10** (mesures du 10/10 soir, §7 exécuté) ; vérifications console en attente (§10.4-R2) |
+| **Date** | 10 octobre 2026 (complément §10 : même jour, soir) |
 | **Décideurs** | Ulrich EVRARD (exploitant), Z.ai Code (tutorat) |
 | **Parent** | ADR-0006 (migration backend OCI), ADR-0012 (monitoring p50/p95), runbook §3.6/§3.7 (bascules P2), SECT-FAILOVER-1/2 |
 
@@ -47,7 +47,7 @@ reprise décorrélé** — déployé par phases, en commençant par ce qui rappo
 |---|---|---|
 | Localisation VM | **Marseille** (84.235.228.160, AS31898 Oracle) | géoloc IP |
 | Shape documentée | **VM.Standard.A1.Flex 4 OCPU / 24 Go** (ARM64) | ADR-0006, HANDOFF-INSTALL-BACKEND |
-| ⚠️ Quota Always Free **réduit mi-2026** | Ampere A1 : 4 OCPU/24 Go → **2 OCPU / 12 Go** (1 500 OCPU-h + 9 000 Go-h/mois) sans annonce publique | InfoQ 07/2026, terminalbytes 06/2026, fullmetalbrackets 01/2026 |
+| ⚠️ Quota Always Free **réduit mi-2026** | ~~Ampere A1 : 4 OCPU/24 Go → 2 OCPU / 12 Go~~ **✅ RÉSOLU (§10.2)** : la console de la tenancy affiche l'enveloppe INTÉGRALE 3 000 OCPU-h + 18 000 GB-h/mois (= 4 OCPU/24 Go) | console OCI (message exploitant, 10/10) |
 | Charge actuelle VM | sect-api (14 workers) + Caddy + OS — utilisation réelle non mesurée cette session (pas de SSH) | Annexe A du kit (E4 : limites cgroups à vérifier) |
 | Bloc Storage gratuit | 200 Go totaux (boot volumes inclus) | doc Oracle (inchangé) |
 | Object Storage gratuit | ~10 Go standard + 10 Go archive | doc Oracle |
@@ -286,6 +286,12 @@ ajouter un `GET /api/health/db` (ping `SELECT 1` avec timeout 2 s, sans
 authentification, sans détail) et l'inclure dans la sonde — le RPO de
 détection d'une panne Neon passe alors de « jamais détecté » à ≤ 5 min.
 
+> **✅ EXÉCUTÉ le 10/10 soir (SECT-HEALTH-DB-1, commit cac75ba6)** : endpoint
+> déployé sur OCI + Render, vérifié sur les 3 chemins (public/direct/standby),
+> sonde pointée dessus — voir §10.1. `/health` reste statique par conception
+> (healthCheckPath Render + HEALTHCHECK Docker = sémantique process-alive,
+> jamais de restart-loop sur panne DB).
+
 ## 8. Anti-décisions explicites (ce que cette ADR refuse)
 
 1. **Jamais deux primaires en écriture** (option A) — corruption silencieuse possible.
@@ -311,3 +317,106 @@ détection d'une panne Neon passe alors de « jamais détecté » à ≤ 5 min.
 *Références mesurées en §2 — toute décision devrait reprendre la phase 0
 avant engagement (notamment la ⚠️ facturation VM post-réduction du quota
 Always Free mi-2026).*
+
+---
+
+## 10. Complément d'expertise — SECT-DB-HYBRID-3 (10 octobre 2026, soir)
+
+Session de tuteurat demandée par l'exploitant : analyse approfondie **par le
+code et par les données DB** pour un système de BD hybride résilient (EdTech
+africaine), **aucune décision sans vérification console**. Ce complément met
+à jour l'ADR avec les mesures du soir et reformule les propositions.
+
+### 10.1 Mesures nouvelles (production + audit lecture seule `ops/db/neon_audit`)
+
+| Mesure | Valeur | Impact |
+|---|---|---|
+| Ping VM→Neon via `/api/health/db` (direct, pool) | **20 ms** | Confirme l'estimation §2.2 (15-25 ms) |
+| Idem via chemin public (Vercel→OCI→Neon) | 40 ms | Chemin utilisateur réel, pool inclus |
+| Ping Render→Neon (`/api/health/db` standby) | **4 ms** | Le standby Render (Francfort) est ~5× plus proche de la DB que le primaire (Marseille) — toute bascule P2 **améliore** la latence DB |
+| Redémarrage compute Neon | 2026-10-09 22:20:13 UTC (20 h 42 d'activité continue depuis) | **Cause inconnue** — reprise de suspension quota ? maintenance ? → question console n°1 |
+| Débit depuis redémarrage | 11,88 tx/s (885 492 tx / 20,7 h) | Dominé par monitoring interne Neon + workers + health-checks pool — le trafic applicatif réel n'est que ~800 req/j |
+| Trafic applicatif (RequestLog 7 j) | 4 868 req, ~811/j en moyenne (81→2 530/j, très variable) | Base pré-revenu confirmée |
+| Ancienneté projet (AuditLog) | depuis **2026-06-06** (~4 mois) | Les workers tournent 24/7 depuis des mois → l'historique console dira si le quota a déjà suspendu |
+| Séquences | **1 seule** (BIGSERIAL migration 000133, monitoring) | Resync de promotion DR = trivial (1 `setval`) |
+| `/api/health/db` | **Déployé et vérifié** (OCI + Render + sonde, run #7 vert) | Recommandation §7 EXÉCUTÉE (SECT-HEALTH-DB-1, commit cac75ba6) |
+
+### 10.2 Hypothèses résolues par l'exploitant (10/10)
+
+- **Quota OCI Always Free** : la console de la tenancy affiche
+  « 3 000 OCPU-h + 18 000 GB-h/mois (équivalent 4 OCPU / 24 Go) » —
+  l'enveloppe INTÉGRALE reste disponible. La ⚠️ §2.2 (réduction mi-2026)
+  ne s'applique PAS à cette tenancy → l'argument n°3 contre l'option B
+  (ressources insuffisantes) disparaît.
+- **Plan Neon** : Free 100 CU-h confirmé, objectif **0 coût** jusqu'à des
+  revenus stables.
+
+### 10.3 La tension critique quantifiée (le mur CU-h)
+
+Le modèle `ops/db/cu_model.py` (code-preuve) + les mesures du soir :
+
+- Workers (promotion **10 s**, auto_close 60 s, alerting 120 s…) + pool pgx
+  (HealthCheckPeriod 30 s, MinConns 5) maintiennent le compute éveillé 24/7 —
+  **preuve structurelle par le code** (aucun intervalle ≥ 5 min possible)
+  **+ preuve empirique** (plus ancienne connexion : 20 h 42, aucune suspension).
+- Besoin : 730 h × 0,25 CU = **182,5 CU-h/mois** vs **100 inclus** (Free).
+- **Si la limite est appliquée strictement** → mur vers le ~17ᵉ jour du cycle
+  → ~13 jours/mois de DB suspendue ; pire cas métier : suspension **en plein
+  examen** (S3 du modèle : autoscale ≤ 2 CU = burn ×8).
+- **Contradiction à résoudre par la console** : le projet tourne 24/7 depuis
+  ~4 mois sans incident de suspension rapporté — soit l'application de la
+  limite diffère des docs 2026 (laxité, seuil différent, taille CU différente),
+  soit des suspensions ont déjà eu lieu sans être attribuées (le redémarrage
+  du 10-09 22:20 en est-il une ?). **C'est LA question que la console Neon
+  doit trancher avant toute décision.**
+
+### 10.4 Propositions (en attente des vérifications console)
+
+**R1 — Backups Phase 1 (§6) : à exécuter dans TOUS les scénarios.**
+Trou n°1 actuel : aucune sauvegarde décorrélée de Neon n'existe. Design
+affiné : cron **sur la VM** (pas GitHub Actions — les schedules sont cassés,
+SECT-UPTIME-PROBE-3), `pg_dump` (24 Mo = secondes) chiffré `age` vers Object
+Storage OCI, rétention glissante 30 j, **test de restauration mensuel**
+documenté. RPO 24 h (option horaire : trivial en volume). Ne dépend d'aucune
+décision de cet ADR.
+
+**R2 — Vérifications console (bloquantes) — accès demandés à l'exploitant :**
+1. **Neon** : API key (console.neon.tech → Account → API keys) → vérifier
+   plan réel, consommation CU-h du cycle en cours + projection fin de mois,
+   historique de suspension, taille CU réelle du compute, usage storage.
+2. **VM OCI** : accès SSH (utilisateur + clé privée) → ressources réelles
+   (`docker stats`, `free -h`, disque libre), RTT VM→Neon mesuré depuis la
+   VM, et alignement opportuniste E1-E4 (Annexe A du kit VM).
+
+**R3 — Si le mur CU-h est confirmé réel : trois chemins :**
+- **N1 Réduction de veille** : ≤ 13,2 h/jour d'activité MAXIMUM au total
+  (100 CU-h ÷ 0,25 CU ÷ 30,4 j) — imposerait des cadences nocturnes ≥ 30 min
+  ET un plafond diurne → incompatible avec l'alerting 2 min pendant les
+  examens. **À peine viable — écarté sauf impossibilité des alternatives.**
+- **N2 Neon Launch** (~5-19 $/mois selon usage) : rompt l'objectif 0-coût —
+  décision exploitant, naturelle aux premiers revenus.
+- **N3 Inversion hybride (variante B')** : PostgreSQL primaire sur la VM
+  (latence sub-ms, 0 €, enveloppe 4/24 confirmée §10.2) + **Neon conservé
+  comme DR froid** (endpoint suspendu = 0 CU-h consommé ; les 100 CU-h du
+  plan couvrent ~16 jours de secours continu en urgence) + backups R1 +
+  runbook de promotion inversée (miroir §3.8). Les arguments structurels
+  contre B (§4.2) tiennent : SPOF combiné app+DB (RTO ~1 h vs minutes
+  aujourd'hui, RPO = dernière sauvegarde), et la place réelle côté VM doit
+  être vérifiée (compose API 3,5 CPU/20 Go — R2). C'est un compromis
+  **d'exploitant** (risque données vs coût), pas un choix technique — à ne
+  faire que si le mur est confirmé ET l'objectif 0-coût maintenu.
+
+**R4 — Option D (batch pgx / `SendBatch`)** : levier latence du chemin
+critique — chaque transaction RLS coûte 3-4 allers-retours (~60-160 ms à
+20-40 ms le RTT mesuré) ; le pipelining les réduit à 1. À faire dans tous
+les cas (rentabilise C comme N3).
+
+**R5 — Phase 2 réplication logique** : inchangée (décision séparée,
+post-vérifications). Les mesures du soir la **facilitent** (1 séquence,
+85/85 PK, 24 Mo, lag attendu ≈ 0) sans la rendre **urgente** (~800 req/j).
+
+### 10.5 Anti-décisions inchangées (§8) + ajout
+
+6. **Aucune bascule de primaire DB ne se fera sur la seule lecture de ce
+   document** — les vérifications console (§10.4-R2) sont un prérequis
+   explicite posé par l'exploitant.
