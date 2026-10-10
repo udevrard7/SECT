@@ -2,8 +2,8 @@
 
 | Champ | Valeur |
 |---|---|
-| **Statut** | Proposé — étude complète livrée + **complément d'expertise §10** (mesures du 10/10 soir, §7 exécuté) ; vérifications console en attente (§10.4-R2) |
-| **Date** | 10 octobre 2026 (complément §10 : même jour, soir) |
+| **Statut** | Proposé — §10 expertises + **§11 vérifications console EXÉCUTÉES (10/10, tokens fournis par l'exploitant)** : mur CU-h confirmé conditionnellement, échéance estimée ~23-24/10 → décision exploitant requise (M1 recommandée, §11.4) |
+| **Date** | 10 octobre 2026 (§10 : soir ; §11 : même jour, vérifications console) |
 | **Décideurs** | Ulrich EVRARD (exploitant), Z.ai Code (tutorat) |
 | **Parent** | ADR-0006 (migration backend OCI), ADR-0012 (monitoring p50/p95), runbook §3.6/§3.7 (bascules P2), SECT-FAILOVER-1/2 |
 
@@ -420,3 +420,157 @@ post-vérifications). Les mesures du soir la **facilitent** (1 séquence,
 6. **Aucune bascule de primaire DB ne se fera sur la seule lecture de ce
    document** — les vérifications console (§10.4-R2) sont un prérequis
    explicite posé par l'exploitant.
+
+---
+
+## 11. Vérifications console — SECT-DB-HYBRID-4 (10 octobre 2026, soir tard)
+
+L'exploitant a fourni les deux accès demandés en §10.4-R2 : **API key Neon**
+(token napi, org FTCI) et **clé API OCI** (fingerprint 8c:0d:c0:84, tenancy
+urielledouh, eu-marseille-1). Toutes les mesures ci-dessous sont des lectures
+directes des consoles via API officielles (jamais d'écriture), croisées avec
+une sonde SQL lecture seule (`pg_stat_activity`). Aucun secret ne figure dans
+ce document.
+
+### 11.1 Console Neon — le plan, le cycle, le sommeil, la consommation
+
+| Question ouverte (§10) | Réponse mesurée | Preuve |
+|---|---|---|
+| Plan réel ? | **Free confirmé** aux deux niveaux (utilisateur + organisation FTCI `org-gentle-pond-54934166`) | `GET /users/me`, `GET /users/me/organizations` |
+| Structure du projet | 1 projet (SECT `autumn-rain-10233998`), 1 branche (production), 1 endpoint read_write, aucune réplique ; PG 18, aws-eu-central-1 ; autoscale 0,25-2 CU ; PITR 6 h | `GET /projects?org_id=…` |
+| `enable_logical_replication` | **false** (cohérent : `wal_level=replica` mesuré §10.1 — phase 2 non engagée) | `GET /projects/{id}` |
+| Limite storage | **1 GiB** par branche (corrige §2.4 « 0,5 Go ») ; usage actuel 47 Mo / 1 024 Mo | `branch_logical_size_limit` |
+| Reset du quota | **2026-11-01T00:00:00Z** (cycle courant : 01/10 → 01/11) | `quota_reset_at` |
+| Fenêtre maintenance | samedi 00:00-01:00 UTC | `maintenance_window` |
+
+**Le scale-to-zero fonctionne — preuve par l'historique des opérations**
+(`GET /operations`, 200 dernières = 28/09 → 10/10) : 94 sessions
+suspend→start reconstruites, **89 h éveillé sur ~12 jours**. Nuits
+pré-cutover : 1 à 3 h d'éveil ; la plupart des sessions durent **5,2-5,4 min
+(= timeout 300 s + détection)** — un client périodique (~toutes les 30 min,
+identité non identifiée : reste d'ancienne chaîne ou moniteur externe)
+réveillait le compute qui se rendormait aussitôt. Jour le plus chargé :
+29/09 (22,6 h — travaux de cutover).
+
+**Le « redémarrage inexpliqué » du 09/10 22:20:13 est résolu** : il est
+précédé d'un `suspend_compute` à 22:08:31 — c'est un **réveil ordinaire**, et
+le commit de fin de cutover (`7324a1a5`) est poussé à 22:26 : c'est le trafic
+de production basculé sur la VM OCI qui a réveillé le compute. Question
+§10.1 close.
+
+**Post-cutover : éveil continu 24/7 — preuve par la base** (sonde
+`pg_stat_activity` au DSN direct, 19:48 UTC) : backends `pgbouncer` (user
+`sect_app`) idle depuis 7,5-47,5 min — le pool pgx de l'API VM via le pooler
+tient des connexions ouvertes ; les moniteurs internes Neon
+(`compute_monitor`, `vm-monitor`, `sql_exporter`) sont connectés depuis le
+start (21,5 h) et dominent le débit (886 641 tx — cohérent §10.1). Les ticks
+workers (promotion 10 s, auto_close 60 s, alerting 120 s, similarity 5 min —
+constantes vérifiées dans `internal/worker/*.go`) maintiennent une activité
+< 300 s d'intervalle en permanence → le compute ne peut plus jamais atteindre
+son seuil de sommeil.
+
+**Consommation du cycle en cours** : `active_time` = 287 556 s = **79,9 h
+éveillé** (01/10 → 10/10) ≈ **20 CU-h** (croisement : `compute_time_seconds`
+75 206 s ≈ 79,9 h × 0,25 CU ; l'écart +4 % s'explique par les pointes
+d'autoscale). **Rythme post-cutover : ~6,3 CU-h/jour** (24 h × 0,25 CU, plus
+pointes). Reste ~80 CU-h.
+
+### 11.2 Console OCI — la VM, la facturation, la charge réelle
+
+| Point vérifié | Valeur mesurée | Preuve |
+|---|---|---|
+| Tenancy / région | `urielledouh`, home **eu-marseille-1** (MRS), région unique | `iam tenancy get`, `region-subscription list` |
+| VM | **VM.Standard.A1.Flex 4 OCPU / 24 Go / 4 Gbps, RUNNING**, AD-1, **créée 08/10 01:12 UTC**, IP publique 84.235.228.160 confirmée | `compute instance list`, `network vnic get` |
+| Boot volume | 50 Go (AVAILABLE) | `bv boot-volume list` |
+| **Facturation** | **0,000 USD sur toute la vie de la tenancy** (aucune ligne avant 2026-10) | Usage API, granularité mensuelle |
+| **Charge réelle VM** | CPU **1,6-2,7 %** (pic pendant le cutover) ; RAM **4,0-4,7 % ≈ 1,05 Go / 24 Go** | Monitoring API (`oci_computeagent`, moyennes horaires 28/09 → 10/10) |
+
+L'enveloppe intégrale 4/24 (§10.2) est confirmée et la VM est **quasi vide**
+(les limites compose sect-api 3,5 CPU/20 Go plafonnent, l'usage réel est
+~0,1 CPU). Marge considérable pour toute option colocalisée.
+
+**Découverte annexe — bucket `mikcloud-wal`** (Object Storage, créé 09/10
+04:38) : un **pipeline d'archivage WAL chiffré est ACTIF dans la tenancy** —
+2 290 objets / 1 958 Mo ; rythme **60 WAL/heure (~45-56 Mo/h ≈ 1,2 Go/jour)** ;
+timeline 1, position 0/8E5 ; 6 basebackups chiffrés de 7-7,7 Mo (petite base,
+`archive_timeout` vraisemblablement 60 s). La source n'est pas identifiable
+par l'API (nom suggérant un autre projet de l'exploitant — à confirmer par
+SSH ; si elle tourne sur la VM SECT, la marge N3 doit en tenir compte).
+⚠️ **Alerte quota partagé** : ~10 Go d'Object Storage gratuit → saturation
+estimée vers le **16/10** sans politique de rétention (WAL-G `retain` ou
+lifecycle rule) — à traiter côté exploitant.
+
+### 11.3 Le mur CU-h — confirmé, daté, et la contradiction §10.3 résolue
+
+Les deux moitiés du paradoxe étaient vraies, chacune à sa période :
+
+- **Avant le cutover (jusqu'au 09/10 22:20)** : le primaire était Render
+  (spin-down 15 min) → rien ne tenait le compute éveillé → il dormait la
+  plupart du temps → consommation négligeable, **le mur était hors de portée**.
+- **Depuis le cutover (09/10 22:20 →)** : les workers de la VM tickent à
+  10 s/60 s/120 s/5 min via le pool → **jamais 300 s d'inactivité → éveil
+  24/7 confirmé par les ops (21 h+ continues) et par `pg_stat_activity`**.
+
+Projection du cycle courant : 20 CU-h consommés au 10/10 soir + ~6,3 CU-h/j
+au rythme actuel → **épuisement des 100 CU-h ≈ 23-24/10** (±1 j selon
+autoscale). Politique documentée du plan Free à l'épuisement : suspension du
+compute jusqu'au reset du cycle (**01/11**) — soit **7-9 jours de base
+injoignable**, jamais encore observée sur ce projet car le mur n'avait jamais
+été approché.
+
+**Correction importante de §10.3-N1** : l'incompatibilité alléguée « alerting
+2 min pendant les examens vs mise en veille » est un faux dilemme — pendant
+les fenêtres d'examen, le trafic réel éveille le compute de toute façon
+(l'alerting coûte alors 0 de plus) ; la veille permanente ne coûte que sur
+les **fenêtres creuses**, précisément là où quelques minutes de latence
+d'alerte sont sans conséquence.
+
+### 11.4 Propositions révisées (R3 remplacée ; R1/R4/R5 inchangées et toujours recommandées)
+
+**M1 — Cadences adaptatives (RECOMMANDÉE — 0 €, réversible, ~2 h de code + 48 h
+de mesure). À déployer avant le ~22/10 pour éviter la suspension de fin de
+cycle.**
+1. Rendre les intervalles workers configurables par env (défauts inchangés :
+   `promotionTickInterval`, `alertingCheckInterval`, etc. — constantes
+   aujourd'hui) ;
+2. Fenêtre creuse nocturne (ex. 22:00-06:00 UTC, Abidjan) où tous les ticks
+   passent à ≥ 10-15 min ;
+3. Côté pool pgx : `MaxConnIdleTime` ~90 s (les connexions idle ferment, le
+   compute peut dormir entre deux ticks — preuve §11.1 que des backends idle
+   persistent 7-47 min aujourd'hui).
+Budget estimé : nuits ~1-2 CU-h + jours ~6 max → mois type ≈ **60-80 CU-h <
+100**. Coût produit : alertes Discord et fermetures auto retardées de ≤ 15 min
+la nuit (arbitrage exploitant explicite).
+**Mesure zéro-risque à exécuter dès ce soir par l'exploitant** : arrêter les
+workers 30-60 min sur la VM et observer l'historique `GET /operations` —
+mesure directe du duty cycle atteignable sans écrire une ligne de code.
+
+**N2 — Neon Launch (~5-19 $/mois)** : inchangé (§10.4). Lève toute contrainte
+de cadence ; naturel aux premiers revenus ; révise la promesse 0-coût.
+
+**N3 — Inversion hybride (PG primaire sur VM)** : les ressources sont
+**confirmées disponibles** (§11.2 — marge massive). MAIS la vérification
+console fait émerger un **deal-breaker structurel supplémentaire** : le
+standby Render (bascule P2) ne peut pas joindre un PostgreSQL local à la VM
+sans exposer un port DB — **interdit par l'anti-décision n°3** → N3 détruit
+la chaîne P1/P2 (le secours applicatif meurt avec la base) pour contourner
+un mur de quota temporaire. À réserver au scénario « Launch refusé ET M1
+insuffisante ». Les arguments §4.2 restent.
+
+**R1 (backups pg_dump chiffrés → Object Storage)** : inchangée, toujours le
+trou n°1. Nota : le bucket `mikcloud-wal` prouve qu'une chaîne d'archivage
+chiffrée vers Object Storage tourne déjà dans la tenancy (outil WAL-G
+compatible) — SECT peut réutiliser le patron. Attention au quota partagé
+(§11.2).
+
+**R4 (batch pgx `SendBatch`)** : inchangée — levier latence, rentabilise tout.
+
+**R5 (phase 2 réplication logique)** : inchangée — facilitée par les mesures
+(1 séquence, 85/85 PK, 24 Mo), non urgente (~800 req/j), décision séparée
+après résolution du mur.
+
+### 11.5 Anti-décisions (inchangées §8/§10.5) + ajout
+
+7. **Aucune des propositions §11.4 n'est exécutée par ce document** — M1, N2
+   et N3 attendent une décision explicite de l'exploitant (l'horloge du mur
+   rend la décision urgente, pas automatique). Le tuteur ne bascule rien.
