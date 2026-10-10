@@ -2,6 +2,14 @@
 
 **Task ID : SECT-OCI-HYBRID-1** · État : kit livré, bascule en attente d'accès VM
 
+> **⚠️ Conventions VM OBLIGATOIRES** : toute intervention sur la VM Ftechci
+> (installation, mise à jour, rollback, recréation de conteneur, édition du
+> Caddyfile) est soumise au kit de l'exploitant :
+> [`HANDOFF-INSTALL-BACKEND.md`](./HANDOFF-INSTALL-BACKEND.md) — publication
+> 127.0.0.1 uniquement, env-file `/etc/<app>/<service>.env` 600 root, limites
+> cgroups, **poweroff invité INTERDIT** (leçon N°282), audit de conformité
+> sect-api et plan d'alignement en Annexe A dudit kit (SECT-VM-CONVENTIONS-1).
+
 ## 1. Architecture cible
 
 ```
