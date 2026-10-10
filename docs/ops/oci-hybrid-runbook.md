@@ -202,7 +202,8 @@ corrections IA), jamais zéro API en ligne :
 ## 4. Gardes permanentes
 
 - **Détection externe (SECT-UPTIME-PROBE-1, P1)** : le workflow
-  `.github/workflows/uptime-probe.yml` (cron */5) sonde le **chemin
+  `.github/workflows/uptime-probe.yml` (cron 2-57/5, décalé des minutes
+  pleines — SECT-UPTIME-PROBE-2) sonde le **chemin
   public** `https://sect.ftci.fr/api/health` (via le rewrite Vercel → il
   suit automatiquement le primaire courant, OCI ou Render — l'URL directe
   OCI resterait morte après une bascule, faux 🔴 éternels) DEPUIS GitHub

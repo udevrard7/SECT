@@ -7,8 +7,10 @@
 # GitHub Actions : elle survit à la VM et prévient le canal Discord
 # principal (même webhook que le monitoring SECT).
 #
-# Cadence : toutes les 5 min (cron GitHub — peut dériver de
-# quelques minutes en période de charge, sans gravité).
+# Cadence : toutes les 5 min, décalées des minutes pleines (2-57/5,
+# SECT-UPTIME-PROBE-2 — GitHub droppe en priorité les minutes
+# populaires type xx:00 ; dérive de quelques minutes possible en
+# charge, sans gravité).
 #
 # Machine à états STATELESS : l'état UP/DOWN est dérivé de
 # l'historique des conclusions des runs de CE workflow (lecture
@@ -43,7 +45,7 @@ name: Sonde uptime SECT
 
 on:
   schedule:
-    - cron: "*/5 * * * *" # UTC
+    - cron: "2-57/5 * * * *" # UTC, décalé des minutes pleines (SECT-UPTIME-PROBE-2)
   workflow_dispatch:
   push:
     branches: [main]
