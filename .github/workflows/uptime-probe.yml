@@ -1,0 +1,74 @@
+# ============================================================
+# SECT-UPTIME-PROBE-1 — Sonde de disponibilité externe (chantier P1)
+#
+# TROU FERMÉ : l'alerting SECT (worker Discord) tourne sur la VM
+# primaire OCI — si la VM meurt, personne n'alerte (constat
+# SECT-VM-CONVENTIONS-1 / audit failover). Cette sonde vit sur
+# GitHub Actions : elle survit à la VM et prévient le canal Discord
+# principal (même webhook que le monitoring SECT).
+#
+# Cadence : toutes les 5 min (cron GitHub — peut dériver de
+# quelques minutes en période de charge, sans gravité).
+#
+# Machine à états STATELESS : l'état UP/DOWN est dérivé de
+# l'historique des conclusions des runs de CE workflow (lecture
+# seule, permission `actions: read`). Un run rouge = sonde vue
+# DOWN → l'onglet Actions devient l'historique de disponibilité.
+#
+# Règles d'alerte (ops/uptime_probe.sh) :
+#   - UP→DOWN : alerte 🔴 immédiate (+ email GitHub au proprio)
+#   - DOWN persistant : rappel 🟠 tous les 6 échecs (~30 min)
+#   - DOWN→UP : alerte 🟢 rétablissement avec durée d'incident
+#   - standby Render sondé à chaque run → reste CHAUD (plan
+#     free : sinon endormi après 15 min, cold start ~50 s au
+#     moment d'une bascule P2)
+#
+# Secret requis : UPTIME_DISCORD_WEBHOOK_URL (webhook Discord,
+# copié depuis l'API Render — jamais dans le dépôt).
+#
+# Zéro action tierce (supply-chain) : checkout épinglé SHA +
+# bash/curl/jq du runner uniquement.
+#
+# NB : GitHub désactive les workflows planifiés après 60 jours
+# d'inactivité du dépôt — ce dépôt actif n'est pas concerné ;
+# sinon Actions → workflow → Enable.
+# ============================================================
+name: Sonde uptime SECT
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/uptime-probe.yml"
+      - "ops/uptime_probe.sh"
+
+concurrency:
+  group: uptime-probe
+  cancel-in-progress: false # la file d'attente préserve l'état (jamais annuler une sonde en cours)
+
+permissions:
+  actions: read # lecture de l'historique des runs (machine à états)
+  contents: read
+
+jobs:
+  probe:
+    name: "🔎 Primaire OCI + standby Render"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: 🔎 Sonde disponibilité
+        env:
+          PRIMARY_URL: https://api.sect.ftci.fr/health
+          STANDBY_URL: https://sect-zead.onrender.com/health
+          DISCORD_WEBHOOK_URL: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: bash ops/uptime_probe.sh

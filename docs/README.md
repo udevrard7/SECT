@@ -9,7 +9,7 @@ Index central de la documentation du monorepo.
 | [`mobile/`](./mobile/rbac-analysis.md) | Analyses mobile (RBAC multi-plateforme) |
 | [`ops/`](./ops/) | Runbooks ops : [`HANDOFF-INSTALL-BACKEND.md`](./ops/HANDOFF-INSTALL-BACKEND.md) (kit de conventions VM Ftechci — **obligatoire** pour toute intervention serveur), [`oci-hybrid-runbook.md`](./ops/oci-hybrid-runbook.md) (architecture hybride OCI/Render), [`render-env-vars-runbook.md`](./ops/render-env-vars-runbook.md), nettoyage historique git (planifié) |
 | [`../frontend/docs/design-system.md`](../frontend/docs/design-system.md) | Design system frontend (tokens, composants DS) |
-| [`../.github/CI-CD.md`](../.github/CI-CD.md) | Les 6 workflows GitHub Actions : triggers, secrets, normes |
+| [`../.github/CI-CD.md`](../.github/CI-CD.md) | Les 8 workflows GitHub Actions : triggers, secrets, normes (CI, deploys, **sonde uptime P1**) |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Conventions de commit, structure, sécurité, tests |
 | [`../.github/SECURITY.md`](../.github/SECURITY.md) | Politique de divulgation des vulnérabilités |
 

@@ -5313,3 +5313,25 @@ Stage Summary:
 - DETTE DOCUMENTÉE (pas d'action VM cette session — pas d'accès SSH) : écarts E1-E4 consignés avec recette d'alignement pas-à-pas à la prochaine intervention VM (une seule session suffit : cp env, sed compose env_file, force-recreate, docker inspect de contrôle).
 - PROCHAINES ÉTAPES convenues avec l'utilisateur : P1 (sonde de disponibilité externe — ferme le trou « l'alerting meurt avec la VM ») puis P2 (workflow de bascule semi-automatique avec approval manuelle) — à exécuter EN RESPECTANT le présent kit (E1/E2/E4 en profitent : une seule intervention VM regroupe tout).
 
+
+---
+Task ID: SECT-UPTIME-PROBE-1
+Agent: Z.ai Code (session « Tuteurat » — chantier P1)
+Task: Fermer le trou de détection « l'alerting meurt avec la VM » : sonde de disponibilité EXTERNE au primaire OCI (audit failover de la même session) — recommandation retenue : GitHub Actions cron (versionnée dans le dépôt, gratuite sur dépôt public, zéro service tiers) plutôt qu'UptimeRobot.
+
+Work Log:
+- Constat initial (audit failover) : le worker alerting SECT (2 min) tourne SUR la VM primaire → sa mort = silence Discord ; aucune sonde externe en place (ADR-0006 mentionnait UptimeRobot en recommandation non appliquée). Détection d'une panne nocturne = les utilisateurs au matin.
+- Design : workflow .github/workflows/uptime-probe.yml (cron */5 UTC + workflow_dispatch + push sur ses propres fichiers) appelant ops/uptime_probe.sh (bash + curl + jq du runner, ZÉRO action tierce hors checkout épinglé SHA 11d5960 — norme supply-chain du dépôt).
+- MACHINE À ÉTATS STATELESS : l'état UP/DOWN est dérivé de l'historique des conclusions des runs du workflow lui-même (API Actions, permission actions:read uniquement — aucun credential d'écriture, aucun fichier d'état, aucun PAT persistant). Un run rouge = sonde vue DOWN → l'onglet Actions devient l'historique de disponibilité. Repli gracieux : API injoignable → chaque DOWN alerte.
+- Règles d'alerte : transition UP→DOWN → 🔴 immédiate ; DOWN persistant → 🟠 rappel tous les 6 échecs (~30 min) ; DOWN→UP → 🟢 rétablissement avec durée d'incident (calculée sur le created_at du plus ancien échec de la série). Anti-spam par construction.
+- KEEP-WARM DU STANDBY : le run sonde aussi sect-zead.onrender.com/health → le plan free Render (endormissement 15 min, cold start ~50 s) ne s'applique plus → bascule P2 sans attente. Vérifié : un seul service free sur le compte (750 h/mois > 744 h toujours-on). État standby rapporté dans chaque alerte (⚠️ si down = plan de bascule compromis), sans machine à états propre (périmètre volontaire, documenté).
+- Secret UPTIME_DISCORD_WEBHOOK_URL posé sur le dépôt via API (sealed box PyNaCl, HTTP 201) — valeur lue depuis l'API Render (règle d'or : jamais retaper un secret ; procédure render-env-vars-runbook). JAMAIS dans le dépôt.
+- Tests en sandbox avant push : bash -n OK ; dry-run UP (200/200, exit 0) ; dry-run DOWN via URL invalide (404 détecté, exit 1, payload 🔴 construit) ; PREUVE E2E webhook : alerte 🧪 TEST étiquetée envoyée au canal Discord de prod → 204.
+- Premier run déclenché par LE push lui-même (trigger push paths) : primaire UP → exit 0, aucun état écrit, aucun faux positif.
+- Doc : CI-CD.md (2 lignes manquantes ajoutées : deploy-oci.yml rétroactivement + uptime-probe.yml ; normes complétées actions:read/concurrency file) ; runbook §4 gardes permanentes (détection externe en tête) ; docs/README.md (compteur workflows 6→8).
+
+Stage Summary:
+- P1 ACCOMPLI ET PROUVÉ : une panne du primaire OCI est maintenant détectée en ≤ 5-10 min par une sonde EXTERNE à la VM, avec alerte Discord 🔴 immédiate + rappels 🟠 + 🟢 rétablissement ; bonus : email GitHub au propriétaire sur run cron en échec, historique de disponibilité visible dans l'onglet Actions, standby Render maintenu chaud pour la bascule P2.
+- COÛT : 0 € (dépôt public), ~15 s de runner toutes les 5 min, zéro nouvelle dépendance externe, zéro credential d'écriture (GITHUB_TOKEN éphémère lecture seule).
+- LIMITES DOCUMENTÉES : cron GitHub peut dériver de quelques minutes ; standby sans machine à états propre (rapporté dans les alertes seulement) ; workflows cron désactivés après 60 jours d'inactivité dépôt (non concerné, activité continue) ; l'alerte(TEST) 🧪 visible dans le Discord de prod est la preuve E2E du 10/10.
+- PROCHAINE ÉTAPE : P2 — workflow failover.yml (bascule §3.7 semi-automatique avec approval manuelle : var Vercel + redeploy, Render WORKERS_ENABLED=true, OCI compose stop), à dérouler en respectant SECT-VM-CONVENTIONS-1 (E1/E2/E4 alignables dans la même fenêtre SSH si nécessaire).

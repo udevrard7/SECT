@@ -170,6 +170,15 @@ corrections IA), jamais zéro API en ligne :
 
 ## 4. Gardes permanentes
 
+- **Détection externe (SECT-UPTIME-PROBE-1, P1)** : le workflow
+  `.github/workflows/uptime-probe.yml` (cron */5) sonde le primaire
+  `api.sect.ftci.fr/health` DEPUIS GitHub Actions — il survit à une panne
+  de la VM (le worker alerting SECT, lui, meurt avec elle) et prévient le
+  canal Discord principal (secret `UPTIME_DISCORD_WEBHOOK_URL`). Alertes 🔴
+  immédiate / 🟠 rappel ~30 min / 🟢 rétablissement ; l'onglet Actions du
+  workflow = historique de disponibilité (run rouge = DOWN). Le standby
+  Render est sondé au passage → **reste chaud** (pas de cold start de ~50 s
+  au moment d'une bascule §3.7).
 - **Ordre bascule/rollback TOUJOURS** : désactiver les workers de l'instance
   qui cesse d'être primaire AVANT/juste après l'activation ailleurs. Deux
   primaires = doublons ; zéro primaire = alertes/corrections en pause.

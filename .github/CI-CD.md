@@ -24,12 +24,14 @@
 | `mobile-release.yml` | tag `v*` | Build release signé → GitHub Release avec binaires |
 | `build-desktop.yml` | push/PR sur `desktop/**` | Build Wails v2 3 OS (Windows/macOS/Linux) + packaging .deb/.rpm |
 | `release-desktop.yml` | tag `desktop-v*` | Build + signing (optionnel) → GitHub Release + `latest.json` auto-update |
+| `deploy-oci.yml` | push `main` sur `backend/**`·`deploy/oci/**` (+ dispatch) | Image Docker multi-arch → GHCR (digest) → SSH VM OCI → `docker compose up` + healthcheck (primaire — SECT-OCI-HYBRID-1) |
+| `uptime-probe.yml` | cron `*/5` UTC (+ dispatch, push sur ses fichiers) | Sonde externe de disponibilité : primaire OCI + keep-warm standby Render, alertes Discord 🔴/🟠/🟢 (SECT-UPTIME-PROBE-1, P1) |
 
 ### Normes appliquées (audit DevOps 2026-09)
 - **Actions épinglées par SHA** (anti supply-chain) — mises à jour via Dependabot
 - **`timeout-minutes`** sur tous les jobs (CI 10-30 min, builds OS 60-90 min)
-- **`permissions: contents: read`** par défaut (jobs de release seulement : `write`)
-- **`concurrency` + `cancel-in-progress`** sur les CI (pas d'empilement de runs)
+- **`permissions: contents: read`** par défaut (jobs de release seulement : `write` ; sonde uptime : `actions: read` pour sa machine à états)
+- **`concurrency` + `cancel-in-progress`** sur les CI (pas d'empilement de runs ; sonde uptime : file d'attente, jamais annulée — l'état compte)
 - Outils épinglés : golangci-lint `v2.14.0` (config `backend/.golangci.yml`), Wails `v2.13.0`, nfpm `v2.47.0`, bun `1.3.14`
 
 ## 🤖 Comment ça marche concrètement
