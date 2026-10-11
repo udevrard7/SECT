@@ -92,12 +92,8 @@ jobs:
             echo "── erreurs récentes du cluster 5433 (sync workers) ──"
             sudo -n journalctl -u postgresql@18-sect --since "30 min ago" --no-pager 2>/dev/null | grep -iE "error|duplicate|conflict|wal" | tail -12 || true
             echo "── fraîcheur (dernier apply) ──"
-            PG psql -d sect_replica -c "SELECT subname, received_lsn, latest_end_lsn, latest_end_time, now() - latest_end_time AS age_dernier_apply FROM pg_stat_subscription"
+            PG psql -d sect_replica -c "SELECT subname, received_lsn, latest_end_lsn, latest_end_time, now() - latest_end_time AS age_dernier_apply FROM pg_stat_subscription" || true
             echo "── timers (doivent être actifs, :02/:32) ──"
-            systemctl list-timers 'sect-*' --no-pager | head -8
-            if [ "$RC" -ne 0 ]; then
-              echo "MARK 5 : ÉCHEC (rc=$RC) — les slots tablesync zombies côté Neon doivent être droppés (ils retiennent du WAL)"
-            else
-              echo "MARK 5 : TERMINÉ — réplique promotion-ready (voie D §3.8, RPO ≤ 30 min)"
-            fi
-            exit $RC
+            systemctl list-timers 'sect-*' --no-pager || true
+            echo "MARK 5 : rc=$RC — 0 = réplique promotion-ready (voie D §3.8, RPO ≤ 30 min sur TOUT)"
+            exit "$RC"
