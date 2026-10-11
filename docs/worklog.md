@@ -5594,3 +5594,17 @@ Stage Summary:
 - PHASE 2 LIVRÉE : réplication logique Neon→VM opérationnelle en fenêtres calées grille M1 (RPO 30 min), base sect_replica dédiée (jamais mikcloud), fresh-run des migrations rétabli (000058 + règles double-cible §16.5), mesure CU décisive documentée (§16.3/16.4).
 - L'EXPLOITANT doit faire : (1) l'ESCROW PHYSIQUE de la clé age livrée (coffre + papier/USB — perte des deux = backups définitivement illisibles, voulu) ; (2) surveiller les emails OCI (reclaim possible après le 15/10, verdict §15.6) ; (3) mesure 48 h §13.6 à compléter (CU avec les fenêtres sync).
 - Neon SYNC : rien à synchroniser côté base de données (aucune migration nouvelle — 000058 corrigée = no-op là-bas). Push en udevrard7 <ulrichdouh@gmail.com>.
+
+---
+Task ID: SECT-REPLICA-2 (suite) — preuve du cycle + correctifs de garde
+Agent: Z.ai Code (session « Tuteurat » — phase 2, suite/fin)
+Task: Vérifier le comportement réel des fenêtres de sync (timer :02/:32) et du nightly 03:32, corriger ce que la réalité a révélé.
+
+Work Log:
+- Fenêtre 03:02 : ÉCHEC immédiat — journal : « sudo: The no new privileges flag is set, which prevents sudo from running as root » (unité durcie copiée sur sect-backup.service, qui tourne root sans sudo — le script sync en dépendait). Correctif : service en User=postgres (auth peer directe, plus aucun sudo — self-test qui l'interdit en COMMANDE, mot construit dynamiquement pour ne pas se détecter lui-même) ; ProtectSystem=full (strict bloquait les sockets /var/run/postgresql).
+- Fenêtre 03:32 : CYCLE COMPLET PROUVÉ — ENABLE 03:32:00 → convergence 15 s → DISABLE 03:32:15 → walsender parti → suspend_compute 03:50:16 (PREMIER suspend depuis 02:28) : l'autosuspend est restauré par les fenêtres, CU marginal ≈ 0 (ADR §16.4 enrichi de la preuve).
+- Nightly 03:32 : journal SUCCÈS (9 s) MAIS analyse croisée bucket : le dump.age avait changé de taille (1274609→1275550 = uploadé) mais l'index.json (taille fixe) NON → dossier INCOHÉRENT (nouveau dump + anciens checksums). CAUSE : la couche S3-compat OCI (provider « Other ») ne persiste pas le mtime → rclone retombe sur TAILLE SEULE → skip silencieux des fichiers de taille identique. Piège d'observation documenté : time-created d'OCI ne bouge PAS sur overwrite. Correctif : rclone --ignore-times (upload inconditionnel). Vérifié en prod : re-run manuel → sha256 de l'index du bucket = sha256 du dump téléchargé (dossier cohérent).
+- Dashboard sandbox (page /) : le polling auto du /health/db réveillait Neon en continu — passé à la demande (bouton « tester », discipline CU) ; cache mémoire 30 s côté GitHub.
+
+Stage Summary:
+- La boucle phase 2 est FERMÉE : souscription vivante par fenêtres calées grille M1, autosuspend prouvé restauré, RPO 30 min, nightly backup cohérent par construction (--ignore-times), 2 nouveaux pièges documentés (NoNewPrivileges×sudo, S3-compat×mtime) + règles drone-ssh (case, else) — tout consigné ADR §16.

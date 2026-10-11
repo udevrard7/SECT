@@ -1017,7 +1017,14 @@ bout en bout le jour même, mesures à l'appui.
   operations API). Coût implicite : compute 24/7 ≈ 720 h × 0,25 CU ≈
   **180 CU-h/cycle — incompatible avec le budget Free de 100 CU-h**.
 
-### 16.4 Décision : réplication en FENÊTRES calées sur la grille M1
+### 16.4 Décision : réplication en FENÊTRES calées sur la grille M1 — CYCLE COMPLET PROUVÉ (03:32-03:50 UTC)
+
+Preuve observée le 11/10 (journaux + operations API Neon) : fenêtre 03:32:00
+(ENABLE) → convergence 15 s (received=latest ×3) → DISABLE 03:32:15 →
+walsender parti → `suspend_compute` à 03:50:16 — **le premier suspend depuis
+02:28** : l'autosuspend est RESTAURÉ par les fenêtres, coût CU marginal ≈ 0.
+Première fenêtre 03:02 avait échoué (unité durcie NoNewPrivileges qui
+interdit sudo — service désormais User=postgres, plus aucune élévation).
 
 La souscription ne vit que par fenêtres chevauchant les éveils DÉJÀ payés
 par les workers : timer :02/:32 UTC → ENABLE à T+1-2 min du tick, DISABLE à
@@ -1048,6 +1055,15 @@ rejoue pas) :
   l'ancienne AVANT le CREATE ; (3) grants/REVOKE ON FUNCTION toujours
   QUALIFIÉS (signature complète) ; (4) ne jamais référencer un objet avant
   sa création (le sweep du 11/10 n'a plus trouvé que 000058 fautif).
+- **rclone × OCI Object Storage (découvert en vérifiant le nightly 03:32)** :
+  la couche S3-compat (provider « Other ») ne persiste pas le mtime →
+  rclone retombe sur TAILLE SEULE → un re-run du même jour skippait
+  silencieusement les fichiers de taille identique (l'index, à taille
+  fixe, restait ancien alors que le dump changeait → dossier potentiellement
+  INCOHÉRENT). Corrigé : `--ignore-times` (upload inconditionnel, 4
+  fichiers ~1,3 Mo). Preuve post-fix : sha256 de l'index = sha256 du dump
+  téléchargé. Accessoire : `time-created` OCI ne bouge PAS sur overwrite
+  (juger sur les etags/tailles, pas sur lui).
 
 ### 16.6 Limites documentées du POC
 
