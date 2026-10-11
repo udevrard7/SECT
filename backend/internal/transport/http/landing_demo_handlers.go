@@ -57,7 +57,15 @@ const (
 	// lieu du JSON d'erreur. 20s laisse 10s de marge pour livrer la
 	// réponse ET l'écriture est sous-write-deadline garanti par le
 	// ResponseController ci-dessous.
-	landingDemoTimeout = 20 * time.Second // timeout de l'appel IA
+	// SECT-LATENCY-4 : 20s → 25s. Mesure prod 19:57 : les 2 providers
+	// morts en tête (Mistral 403, Groq 404) ne coûtent plus que 0,4 s
+	// (hard-fail cooldown 30 min) et OpenRouter (seul chat fonctionnel)
+	// coupait sa génération de QCM EN COURS à 12 s (kimi-k2.6 ≈ 46 tok/s
+	// + TTFB + variabilité de charge : un QCM complet ≈ 10-14 s). Budget
+	// 25 s → OpenRouter reçoit sa part fixe PLEINE de 15 s, il reste
+	// ~9 s pour le fallback. La livraison de la réponse reste garantie
+	// par le réarmement de deadline (timeout+15s) ci-dessous.
+	landingDemoTimeout = 25 * time.Second // timeout de l'appel IA
 )
 
 type landingDemoEntry struct {

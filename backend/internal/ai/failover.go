@@ -71,8 +71,9 @@ func auditCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // (connexion ouverte, jamais de réponse) consommait TOUT le budget — la
 // chaîne de failover n'avait plus rien à distribuer aux suivants (3×30s
 // constatés en prod : un seul essai effectif, 0 événement loggable).
-// Politique v2 (run 38165377283) : part FIXE de 12s par tentative (dans la
-// limite du restant) — la v1 « moitié du restant » affamait les providers
+// Politique v3 (SECT-LATENCY-4, mesure prod 19:57) : part FIXE de 15s par
+// tentative (dans la limite du restant). v2 = 12s — la v1 « moitié du
+// restant » affamait les providers
 // de fin de chaîne (OpenRouter coupé à 4,7s alors qu'un QCM complet
 // demande ~6s : providers lents en tête + part décroissante = les
 // meilleurs jamais à l'aise). Budget long (workers, 5 min) : inchangé.
@@ -91,7 +92,13 @@ func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc, bool)
 	if remaining >= 60*time.Second {
 		return ctx, func() {}, false
 	}
-	perAttempt := 12 * time.Second
+	// SECT-LATENCY-4 : 15 s (mesure prod 19:57 — kimi-k2.6/OpenRouter
+	// générait un QCM complet à ~46 tok/s : TTFB 1-2 s + ~400 tokens ≈
+	// 10-12 s ; la part de 12 s coupait la réponse EN COURS. 15 s couvre
+	// la génération avec marge pour la variabilité de charge des modèles
+	// gratuits, tout en restant bornée (un provider pendant ne peut plus
+	// emporter le budget).
+	perAttempt := 15 * time.Second
 	capped := remaining < perAttempt
 	if capped {
 		perAttempt = remaining
