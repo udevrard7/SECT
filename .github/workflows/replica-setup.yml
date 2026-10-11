@@ -63,6 +63,10 @@ jobs:
             # ── 1. dépôt (migrations) ──
             TMP=$(mktemp -d /tmp/sect-replica-src.XXXXXX)
             git clone --depth 1 --quiet https://github.com/udevrard7/SECT.git "$TMP"
+            # lisible par postgres (migrate tourne en peer) — dépôt public,
+            # zéro secret dans le clone (constaté run #38104359312 : mktemp
+            # est 700 ssh-user → « permission denied » pour postgres).
+            chmod -R a+rX "$TMP"
 
             # ── 2. golang-migrate (linux-arm64, posé une fois) ──
             if [ ! -x /opt/sect/bin/migrate ]; then
