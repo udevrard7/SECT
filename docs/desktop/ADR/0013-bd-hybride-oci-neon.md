@@ -1082,3 +1082,91 @@ rejoue pas) :
 14. La souscription sect_poc ne reste JAMAIS active hors des fenêtres calées
     grille M1 (mesure §16.3 : autosuspend bloqué ≈ 180 CU-h/cycle — budget
     Free fichu). Le timer est la seule porte.
+
+## 17. Phase 3 exécutée — lectures analytiques locales + DR runbook (SECT-REPLICA-3, 11 octobre 2026)
+
+Feu vert de l'exploitant : « continu la phase suivante » — §6 phase 3
+exécutée le jour même, POC §16 étant concluant (RPO 30 min, coût ≈ 0 CU).
+
+### 17.1 Lectures analytiques locales derrière feature flag (§6 ✔)
+
+- **Mécanisme** : `REPLICA_DATABASE_URL` (vide = OFF — comportement 100 %
+  inchangé). Pool dédié `db.NewReplica` : minuscule (MaxConns 4, MinConns 0,
+  idle 60 s — le cluster 5433 ne consomme rien au repos), même
+  `QueryExecModeDescribeExec` que le pool primaire (sémantique RLS identique,
+  cf. le bug RLS-FIX — zéro divergence).
+- **Périmètre (endpoints exports/agrégats SEULEMENT, §6)** : les routes
+  ADMIN lecture-seule dont les requêtes ne lisent QUE des tables
+  répliquées — `GET /api/logs` (AuditLog) et `GET /api/monitoring/endpoints`
+  (RequestLog p50/p95). Toutes les autres lectures et TOUTES les écritures
+  restent sur Neon (anti-décision 1). Les endpoints Reponse ne sont PAS
+  éligibles (jointures Session/Question/User non répliquées).
+- **Repli automatique** : réplique down/erreur → WARN journalisé + requête
+  rejouée sur Neon (le flag ne dégrade JAMAIS le service — la source de
+  vérité reste Neon). Boot résilient : réplique injoignable au démarrage →
+  API démarre sans le flag (ré-armable au restart suivant).
+- **Instrumentation observable** : en-tête `X-Sect-Read-Source`
+  (`replica`/`primary`/`primary-fallback`) + section `replica` dans
+  `/api/monitoring/overview` (enabled/up/latencyMs).
+- **Sécurité réseau** : réseau docker FIXE `sect` 172.28.0.0/24 (compose) ;
+  le cluster 5433 n'écoute QUE `localhost,172.28.0.1` (jamais 0.0.0.0) ;
+  pg_hba scopé `172.28.0.0/24 scram-sha-256` ; rôle applicatif
+  `neondb_owner` créé LOCALEMENT `NOSUPERUSER NOBYPASSRLS` (le nom que les
+  policies `TO neondb_owner` attendent — zéro dérive de schéma, la
+  checklist double-cible §16.5 reste vraie) + grants `SELECT` sur les 3
+  tables répliquées UNIQUEMENT. Security List OCI fermée sur 5433
+  (anti-décision 3 : rien d'exposé publiquement).
+
+### 17.2 Runbook §3.8 « Reprise sur réplique OCI » + outillage DR (§6 ✔)
+
+- **`ops/replica/dr_gate.sh`** : garde de santé LECTURE SEULE G1-G8
+  (cluster, base, fraîcheur, souscription, Neon public+pooler, Render,
+  disque, backups) — verdict GO/NO-GO. Decision support : la promotion
+  reste HUMAINE (anti-décision 4).
+- **`ops/replica/resync_sequences.sql`** : le geste de promotion §16.6 —
+  `setval(max(colonne))` générique (pg_depend) + séquences autonomes
+  listées pour resync manuel. Idempotent.
+- **`ops/replica/dr_promote.sh`** : dry-run par défaut + plan affiché ;
+  `--prepare-publication` (online, 0 coupure, idempotent : élargit la
+  publication aux 85 tables + copie initiale fenêtrée — pré-positionnement
+  recommandé avant les 5 établissements, §14.7) ; `--confirm PROMOUVOIR`
+  (mot exact, symétrie failover.yml) : stop writers → sync finale
+  best-effort → `DROP SUBSCRIPTION` (slot détachable : `SET (slot_name =
+  NONE)` si origine morte) → grants RW → resync séquences → bascule DSN
+  `.env` (ancien DSN conservé `# pre-dr-*`) → `up -d` + health + Discord.
+- **Arbre de décision documenté (runbook §3.8)** : la promotion de la
+  réplique « telle quelle » (3 tables) laisserait 82 tables vides — la
+  reprise réelle passe par la **voie B** (restore break-glass du backup
+  complet — chemin prouvé mensuellement) ou la **voie D** (réplique
+  pré-positionnée par `--prepare-publication`, RPO 30 min sur TOUT).
+
+### 17.3 Correction de l'ADR §6 : le retour vers Neon n'est PAS une réplication inverse
+
+Le plan §6 phase 3 esquissait « réplication inverse : OCI publie → Neon
+souscrit ». **Rejeté** : cela exigerait d'exposer 5433 publiquement
+(anti-décision 3 — même temporairement ; les IP sources de Neon ne sont
+ni documentées ni garanties) pour économiser un dump/restore de ~24 Mo.
+Le retour documenté (runbook §3.8-C) : freeze écritures → `pg_dump` local
+→ `pg_restore --clean --if-exists` dans Neon (le moteur prouvé par les
+tests de restauration) → DSN restaurés → pipeline réplique relancé
+(workflows idempotents). Minutes, zéro exposition, données identiques.
+
+### 17.4 Exercice DR trimestriel (§6 ✔)
+
+`dr-drill.yml` (dispatch + cron trimestriel sentinelle) : restore complet
+chiffré du dernier backup → base éphémère `sect_drill` → resync séquences
+→ **boot du conteneur API réel** (même digest que la prod,
+`WORKERS_ENABLED=false` — zéro worker/écriture) sur le réseau fixe →
+vérifs `/health`, `/api/health/db` (pool sur la base restaurée) et
+`/api/logs` avec JWT ADMIN forgé (RLS + claims + données restaurées) →
+teardown intégral (conteneur, base, identité escrow shred). La preuve du
+chemin §3.8 sans toucher la production — miroir des rehearsals failback P2.
+
+### 17.5 Anti-décisions — ajout
+
+15. Les lectures analytiques locales ne JAMAIS servies par la réplique
+    sans repli Neon (le feature flag dégrade la latence, jamais la
+    disponibilité — `X-Sect-Read-Source: primary-fallback` observable).
+16. Le rôle applicatif local ne reçoit les grants RW (INSERT/UPDATE/
+    DELETE) QUE par `dr_promote.sh --confirm PROMOUVOIR` — en régime
+    normal il est SELECT-seul sur les 3 tables répliquées.

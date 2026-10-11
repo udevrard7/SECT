@@ -146,10 +146,17 @@ jobs:
 
             echo "MARK 9 : PREUVE end-to-end (JWT ADMIN forgé sur la VM)"
             JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
-            NEON_URL=$(grep '^NEON_DATABASE_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
-            ADMIN_ID=$("$PGB/psql" "$NEON_URL" -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' AND \"mustChangePwd\"=false LIMIT 1" | xargs)
+            # NB : lookup ADMIN via le DSN DIRECT (rôle BYPASSRLS — cf.
+            # sect_backup.sh) : le DSN pooler est soumis à la RLS User_select
+            # sans claims → 0 ligne (prouvé run #38126433514).
+            NEON_DIRECT=$(grep '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            ADMIN_ID=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' AND \"mustChangePwd\"=false LIMIT 1" | xargs)
             if [ -z "$ADMIN_ID" ]; then
-              ADMIN_ID=$("$PGB/psql" "$NEON_URL" -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' LIMIT 1" | xargs)
+              ADMIN_ID=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' LIMIT 1" | xargs)
+            fi
+            if [ -z "$ADMIN_ID" ]; then
+              echo "ÉCHEC : aucun ADMIN trouvé via NEON_DIRECT_URL"
+              exit 1
             fi
             echo "admin id : ${ADMIN_ID:0:8}…"
             TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'drill@sect.ftci.fr','name':'DR Drill','iat':int(time.time()),'exp':int(time.time())+600,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
@@ -161,24 +168,26 @@ jobs:
             echo "── /api/logs (via chemin public) ──"
             curl -sS --max-time 15 -D /tmp/h1 -o /tmp/r1 -H "Authorization: Bearer $TOK" 'https://api.sect.ftci.fr/api/logs?limit=3'
             grep -i 'x-sect-read-source' /tmp/h1 || echo "ATTENTION : en-tête X-Sect-Read-Source absent (image pas encore phase 3 ?)"
-            python3 -c "import json;d=json.load(open('/tmp/r1'));print('total logs :',d['total'])"
+            python3 -c "import json;d=json.load(open('/tmp/r1'));print('réponse /api/logs — total :',d.get('total','ABSENT (auth ?)'),'/ keys:',sorted(d.keys())[:6])"
 
             echo "── /api/monitoring/endpoints (24h) ──"
             curl -sS --max-time 15 -D /tmp/h2 -o /tmp/r2 -H "Authorization: Bearer $TOK" 'https://api.sect.ftci.fr/api/monitoring/endpoints?window=24h'
             grep -i 'x-sect-read-source' /tmp/h2 || true
-            python3 -c "import json;d=json.load(open('/tmp/r2'));print('endpoints mesurés :',len(d['endpoints']))"
+            python3 -c "import json;d=json.load(open('/tmp/r2'));print('endpoints mesurés :',len(d.get('endpoints',[])))"
 
             SRC1=$(grep -i 'x-sect-read-source' /tmp/h1 | tr -d '\r' | awk '{print $2}')
             SRC2=$(grep -i 'x-sect-read-source' /tmp/h2 | tr -d '\r' | awk '{print $2}')
             echo "sources : logs=$SRC1 endpoints=$SRC2"
             if [ "$SRC1" != "replica" ]; then
-              echo "ÉCHEC : /api/logs servi par '$SRC1' au lieu de 'replica'"
+              echo "ÉCHEC : /api/logs servi par '$SRC1' au lieu de 'replica' — corps : $(head -c 300 /tmp/r1)"
               exit 1
             fi
             if [ "$SRC2" != "replica" ]; then
-              echo "ÉCHEC : /api/monitoring/endpoints servi par '$SRC2' au lieu de 'replica'"
+              echo "ÉCHEC : /api/monitoring/endpoints servi par '$SRC2' au lieu de 'replica' — corps : $(head -c 300 /tmp/r2)"
               exit 1
             fi
+            TOTAL_LOGS=$(python3 -c "import json;print(json.load(open('/tmp/r1')).get('total',0))")
+            echo "PREUVE : $TOTAL_LOGS lignes AuditLog servies par la réplique locale (0 CU Neon)"
             rm -f /tmp/h1 /tmp/r1 /tmp/h2 /tmp/r2
             sudo -n rm -rf "$TMP"
             echo "— lectures analytiques locales ACTIVÉES ET PROUVÉES (source=replica) —"
