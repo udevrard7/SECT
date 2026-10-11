@@ -11,10 +11,12 @@
 # MODES :
 #   dr_promote.sh                        → DRY RUN : plan + gate, 0 écriture
 #   dr_promote.sh --prepare-publication  → PRÉ-POSITIONNEMENT online (0 coupure) :
-#        élargit la publication sect_poc aux 85 tables + copie initiale
-#        via fenêtre (la réplique devient « promotion-ready », RPO
-#        complet ≤ 30 min — recommandé AVANT d'embarquer des établissements,
-#        cf. ADR §14.7) ;
+#        élargit la publication sect_poc aux 84 tables applicatives
+#        (schema_migrations EXCLU : golang-migrate la tient localement —
+#        la copie initiale doublerait sa PK et bloquerait le sync worker)
+#        + copie initiale via fenêtre (la réplique devient « promotion-ready »,
+#        RPO complet ≤ 30 min — recommandé AVANT d'embarquer des
+#        établissements, cf. ADR §14.7) ;
 #   dr_promote.sh --confirm PROMOUVOIR   → exécution réelle (irréversible
 #        sans la procédure de retour §3.8-C).
 #
@@ -120,9 +122,15 @@ wait_rel_ready() { # $1 timeout s — toutes les tables de la souscription en é
 if [ "$MODE" = "prepare" ]; then
     log "PRÉ-POSITIONNEMENT : élargissement publication + copie initiale"
     # 1. Tables de Neon pas encore dans la publication sect_poc
-    TO_ADD=$(neon_psql "SELECT string_agg(format('%L',t), ', ') FROM pg_tables pt, LATERAL (SELECT quote_ident(pt.schemaname)||'.'||quote_ident(pt.tablename) AS t) x WHERE pt.schemaname='public' AND to_regclass(pt.schemaname||'.'||pt.tablename) IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_publication_tables pp WHERE pp.pubname='sect_poc' AND pp.schemaname=pt.schemaname AND pp.tablename=pt.tablename)")
-    if [ -z "$TO_ADD" ] || [ "$TO_ADD" = "" ] || [ "$TO_ADD" = "NULL" ]; then
-        log "publication déjà complète (85/85 tables)"
+    #    (identifiants via quote_ident — JAMAIS %L : un littéral chaîne est
+    #    un identifiant invalide pour ALTER PUBLICATION, piège du run
+    #    #38131147494 ; et PAS de to_regclass sur nom non quoté : le fold
+    #    minuscules élimine toutes les tables CamelCase — piège n°2, la
+    #    sonde de validation n'a retourné QUE schema_migrations à cause
+    #    de lui ; schema_migrations exclu — cf. en-tête)
+    TO_ADD=$(neon_psql "SELECT string_agg(t, ', ') FROM pg_tables pt, LATERAL (SELECT quote_ident(pt.schemaname)||'.'||quote_ident(pt.tablename) AS t) x WHERE pt.schemaname='public' AND pt.tablename <> 'schema_migrations' AND NOT EXISTS (SELECT 1 FROM pg_publication_tables pp WHERE pp.pubname='sect_poc' AND pp.schemaname=pt.schemaname AND pp.tablename=pt.tablename)")
+    if [ -z "${TO_ADD:-}" ] || [ "$TO_ADD" = "NULL" ]; then
+        log "publication déjà complète (84/84 tables applicatives)"
     else
         log "tables à ajouter : ${TO_ADD:0:200}…"
         neon_psql "ALTER PUBLICATION sect_poc ADD TABLE $TO_ADD" || die "ALTER PUBLICATION échoué"
