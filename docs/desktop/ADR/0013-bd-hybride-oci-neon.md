@@ -1170,3 +1170,38 @@ chemin §3.8 sans toucher la production — miroir des rehearsals failback P2.
 16. Le rôle applicatif local ne reçoit les grants RW (INSERT/UPDATE/
     DELETE) QUE par `dr_promote.sh --confirm PROMOUVOIR` — en régime
     normal il est SELECT-seul sur les 3 tables répliquées.
+
+### 17.6 Exécution réelle du drill + pièges résolus en conditions (11/10, runs #38127309915→#38128653822)
+
+L'exercice DR a été exécuté le jour même — 5 itérations de réalité avant
+le **SUCCESS** (run #38128653822) :
+
+- **Preuve complète** : restore chiffré du backup daily/2026-10-11 →
+  `sect_drill` (85/85 tables, counts exacts) → grants → **resync séquence**
+  (`RequestLog_id_seq` → 4986) → **boot du conteneur API réel** (digest
+  prod, `WORKERS_ENABLED=false`) → `/health` 200, `/api/health/db` up
+  (0 ms local), **`/api/logs` = 2741 lignes via JWT ADMIN forgé + RLS**
+  → teardown intégral + Discord. **Contrôle prod inclus** : après le
+  ré-affirmation du mot de passe, `X-Sect-Read-Source: replica` sur le
+  chemin public — le pool réplique de la prod s'est **auto-guéri** (les
+  connexions pgx repartent seules, sans restart).
+- **Piège n°1 — setval() fold les noms non quotés** : un nom de séquence
+  en chaîne NON quoté est foldé en minuscules (`RequestLog_id_seq` →
+  `requestlog_id_seq` inexistant). Corrigé : `pg_get_serial_sequence()`
+  (nom proprement quoté + couvre serial ET identity).
+- **Piège n°2 — les globals de restauration CLOBBRENT le mot de passe
+  local** : le `pg_dumpall --globals` de Neon contient
+  `ALTER ROLE neondb_owner PASSWORD '<Neon>'` → tout restore (test
+  mensuel OU drill) écrase le mot de passe local des lectures phase 3 →
+  le pool réplique passe en 28P01 → repli Neon silencieux (feature OFF).
+  Contre-mesure : le restore **ré-affirme** le mot de passe local depuis
+  `/opt/sect/.env` après les globals (sect_restore_test.sh + drill).
+- **Piège n°3 — parse JSON en shell** : `json.loads('''$VAR'''`) mange
+  les `\"` du JSON embeddé → échec silencieux → faux négatif (les
+  données étaient là dès la 1ʳᵉ itération). Règle : toujours passer par
+  un fichier.
+- Ancillary : la lecture ADMIN out-of-band doit passer par le DSN DIRECT
+  (BYPASSRLS) — le DSN pooler sans claims = RLS User_select = 0 ligne ;
+  et l'image OCI Ubuntu porte un `INPUT REJECT icmp-host-prohibited`
+  par défaut (iptables-persistent) → toute écoute sur une IP docker
+  bridge exige une règle ACCEPT explicite + persistance.
