@@ -2,8 +2,8 @@
 
 | Champ | Valeur |
 |---|---|
-| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; **mode « à la demande » + plancher jour + sonde grille DÉCIDÉS (exploitant, 10/10) et LIVRÉS en prod (10-11/10, commit 054efa7f, §13)** ; §14 : projection capacité 5×2 000 étudiants (question exploitant — analyse chiffrée, aucune exécution) ; phases 0-2 = décisions séparées |
-| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée ; §13 : 10-11/10, mode « à la demande » + plancher jour + sonde grille livrés ; §14 : nuit du 10/10, projection capacité) |
+| **Statut** | Proposé — §10-11 expertises/vérifications console ; **M1 DÉCIDÉE (exploitant, 10/10) et IMPLÉMENTÉE en prod (11/10, commit 0feee790, §12)** ; **mode « à la demande » + plancher jour + sonde grille DÉCIDÉS (exploitant, 10/10) et LIVRÉS en prod (10-11/10, commit 054efa7f, §13)** ; §14 : projection capacité 5×2 000 étudiants (question exploitant — analyse chiffrée, aucune exécution) ; **§15 : phases 0-1 (backups chiffrés + alerte taille) DÉCIDÉES (exploitant, 11/10 — D1-D10) et LIVRÉES (11/10) : outillage + workflows + migration 000135 APPLIQUÉE (Neon 135), mise en service exploitant en cours (runbook)** ; phase 2 = décision séparée |
+| **Date** | 10-11 octobre 2026 (§10 : soir ; §11 : vérifications console ; §12 : 11/10, M1 livrée ; §13 : 10-11/10, mode « à la demande » + plancher jour + sonde grille livrés ; §14 : nuit du 10/10, projection capacité ; §15 : 11/10, phases 0-1 exécutées) |
 | **Décideurs** | Ulrich EVRARD (exploitant), Z.ai Code (tutorat) |
 | **Parent** | ADR-0006 (migration backend OCI), ADR-0012 (monitoring p50/p95), runbook §3.6/§3.7 (bascules P2), SECT-FAILOVER-1/2 |
 
@@ -842,3 +842,109 @@ Proposition (décision exploitant) : règle d'alerte Discord « taille base ≥ 
 ### 14.8 Anti-décisions — ajout
 
 10. La bascule N2/N3 à l'échelle 5×2 000 est une décision d'exploitant, à exécuter hors période d'examens ; le tuteur n'embarque aucun établissement et ne déclenche aucune bascule sur la seule base de cette projection. Les déclencheurs §14.7 sont des seuils d'ALERTE, pas des automatismes.
+
+## 15. Phases 0-1 exécutées — backups chiffrés + alerte taille base (SECT-BACKUP-1 / SECT-DB-ALERT-1, 11 octobre 2026)
+
+### 15.1 Décision de l'exploitant (11/10, chat)
+
+« **D1-D10 validées, GO** » — avec le fil conducteur : une app performante qui
+ne s'écroule pas sous forte charge. Toutes les décisions de cette section
+servent ce but par la verticale « ne jamais s'effondrer SILENCIEUSEMENT » :
+backups PROUVÉS restaurables, mur stockage rendu visible (D10), watchdog
+anti-silence, calibration CU du pipeline de sauvegarde.
+
+### 15.2 Preuve d'intégrité mesurée (prérequis D1 — le risque silencieux n°1 écarté)
+
+Un dump Neon sur des tables RLS FORCE par un rôle sans privilèges serait
+silencieusement amputé des lignes filtrées. Sonde jetable lecture seule
+(pgx, exécutée puis supprimée, jamais commitée — protocole habituel) :
+
+- `neondb_owner` (le rôle du DSN direct, celui de pg_dump) porte
+  **`bypassrls=true`** (non-superuser, createrole) sur Neon ;
+- counts SANS claims sur les tables FORCE (AlertingRule, RequestLog,
+  AuditLog, Reponse) : **complets** — 11 règles, 4 886 / 2 741 / 597 lignes,
+  + User 29, Epreuve 6.
+
+**Conclusion mesurée : `pg_dump` via le DSN direct capture TOUTES les
+lignes, tables RLS FORCE incluses — un backup amputé par RLS est exclu par
+construction.** (La preuve vaut pour CE rôle ; si un jour le DSN change de
+rôle, refaire la sonde avant de faire confiance aux backups.)
+
+### 15.3 Livré — inventaire (commit associé à ce §15)
+
+| Livrable | Contenu / décision couverte |
+|---|---|
+| `ops/backup/sect_backup.sh` | Flux D1-D9 : pg_dump -Fc + pg_dumpall globals + manifest (counts User/Epreuve/Reponse/RequestLog/AuditLog + policies + tables) → age (clé publique seule) → rclone → Object Storage ; rétention 30 j + 12 mensuels ; échec = Discord (loud) ; `--announce` pour la 1ʳᵉ fois |
+| `ops/backup/sect_restore_test.sh` | Preuve D6/D8 : download → sha256 vs index clair → déchiffrement (clé escrow passée par `--identity-file`) → restore cluster dédié 5433 → vérification EXACTE des counts/policies vs manifest → PASS/FAIL Discord + marker `restore-ok-<mois>`. EST le moteur break-glass (`--keep`) |
+| `ops/backup/sect_backup_watchdog.sh` | Silence > 36 h → Discord ; listing bucket (dégradation visible) ; rappel mensuel test restore (jours 1-3, marker mensuel) |
+| `ops/backup/vm_audit.sh` | Phase 0 lecture seule : host/PG (pg_lsclusters, bases, écoute, cluster dédié, pg_hba résumé)/docker/ports/prérequis + reclaim §15.6. Ne fail jamais (collecte) |
+| `ops/backup/install.sh` | Idempotent : apt rclone+age+git, scripts/units en place, **cluster dédié `sect` 5433 127.0.0.1 (D6 — jamais le cluster mikcloud)**, seed-once `backup.env` 600, timers armés SEULEMENT si env configuré |
+| `ops/backup/systemd/` | `sect-backup.timer` 03:32 UTC (Persistent, AccuracySec 30 s) + `sect-backup-watchdog.timer` 12:32 UTC ; services durcis (ProtectSystem, NoNewPrivileges) |
+| `.github/workflows/backup-install.yml` | Job self-test (bash -n + `--self-test` de chaque script + systemd-analyze) TOUJOURS vert + gate secrets SSH + job install idempotent (clone token éphémère → `/opt/sect/backup` → install.sh) |
+| `.github/workflows/vm-audit.yml` | `workflow_dispatch` manuel : audit lecture seule, rapport dans le log du job |
+| `docs/ops/backup-restore-runbook.md` | Mise en service complète : console OCI (bucket, IAM group+policy scopée, CSK), escrow DOUBLÉ, 1ᵉʳ backup + 1ʳᵉ preuve restore, test mensuel, break-glass « Neon down » (RTO 15-30 min), évolutions (horaire = 1 ligne calée grille) |
+| Backend (SECT-DB-ALERT-1, D10) | Métrique `db_size_mb` au catalogue (`CollectMetrics`, `MetricsSnapshot.Value`) + **migration 000135** : règle système `db-taille-quota` — `db_size_mb SUP_EGAL 600`, CRITICAL, cooldown 1440 min, in-app + Discord (pattern claims ADMIN + asserts des migrations 000133/000134). **APPLIQUÉE : Neon 134 → 135 (11/10)** |
+
+Self-tests CI internes (chacun `--self-test`) : parseur env SANS eval (un DSN
+contient `&` — un `source` cassé enverrait l'affectation en arrière-plan :
+faille documentée), rétention (`oldest_beyond`), manifest (SQL quoté,
+anti-injection), fonctions d'audit. Trois défauts réels attrapés par les
+self-tests avant tout déploiement (inversion rétention, dispatch, units) —
+la CI travaille déjà.
+
+### 15.4 Calage CU — arithmétique (à ne pas casser)
+
+Le timer 03:32 UTC tombe DANS la fenêtre d'éveil du tick 03:30 de la grille
+M1 (§13.4 : tick + conn idle 90 s + timeout suspension 300 s → awake
+≈ 03:30→03:36:30). Un dump de 47 Mo dure quelques secondes → il chevauche
+une fenêtre DÉJÀ payée : **coût CU marginal ≈ 0** (un réveil isolé mal calé
+coûterait ~0,8 CU/mois). Le watchdog 12:32 ne touche PAS Neon (marker local
++ listing bucket + Discord). Anti-décision : ce calage ne se déplace pas
+hors grille sans refaire l'arithmétique (§13.4 leçon générale : la chaîne
+d'éveil se casse sur le maillon le plus fréquent).
+
+### 15.5 Sécurité — menaces couvertes (D2/D7)
+
+- Clé privée age : JAMAIS sur la VM ni dans le bucket — escrow exploitant
+  DOUBLÉ (coffre + hors site). Perte des deux = backups illisibles (voulu) ;
+- Chiffrement double couche : age client-side + SSE bucket par défaut ;
+- IAM : utilisateur `sect-backup` sans console, CSK rotative, policy
+  `manage objects` scopée au SEUL bucket — rien d'autre n'est lisible ;
+- Aucun port exposé (flux en SORTIE uniquement : Neon 5432, Object Storage
+  443, Discord 443) — anti-décision n°3 intacte ;
+- Break-glass humain uniquement (anti-décision n°4) : le script restore
+  fournit le moteur, le runbook §7 le geste — jamais d'automatisation.
+
+### 15.6 Reclaim Oracle — état après audit outillé
+
+Charge mesurée §11.2 (CPU 1,6-2,7 %, RAM ~2/24 Go) : la VM est dans la bande
+« idle » de la politique A1 (95ᵉ percentile < 20 % / 7 j consécutifs —
+reclaim possible). **Les 95ᵉ percentiles 7 j n'existent que dans la console
+OCI** : `vm_audit.sh` imprime la checklist exacte (Compute metrics CPU/réseau/
+mémoire + les 5 slots Volume Backups Always Free) et le verdict à reporter
+ici. Réflexion : la tenancy n'a jamais été reclaimée en ~4 mois (mikcloud
+compte dans les métriques de l'instance) ; le backup décorrélé livré ici est
+précisément la parade au pire cas (instance stoppée/terminée → restore
+Object Storage vers n'importe quel PostgreSQL ≥ 16).
+
+### 15.7 État de mise en service (qui fait quoi maintenant)
+
+| Étape | Qui | Statut |
+|---|---|---|
+| Code + workflows + migration 000135 appliquée | tuteur | **FAIT** (ce commit) |
+| CI self-test + install (Actions, 1 clic chacun) | exploitant | À lancer — runbook §2 |
+| Console OCI : bucket + IAM + CSK (§3.1-3.2) | exploitant | ~15 min, une fois |
+| Clé age + escrow doublé (§3.3) | exploitant | ~5 min, une fois — CRITIQUE |
+| `backup.env` renseigné (§3.4) puis activation (§4) | exploitant | ~10 min |
+| **1ᵉʳ backup `--announce` + 1ʳᵉ preuve de restore (§5)** | exploitant | Le jour même — OBLIGATOIRE |
+| Mesure 48 h §13.6 (2 curls API Neon) | exploitant | Clé API Neon à poser |
+| Rapport vm-audit à reporter ici (§15.6) | exploitant | Après run du workflow |
+
+### 15.8 Anti-décisions — ajout
+
+11. La clé privée age ne vit JAMAIS durablement sur la VM : pour un test
+    break-glass, elle est apportée, utilisée, retirée (dans cet ordre).
+12. Aucune promotion automatique d'un backup/réplique — le break-glass est
+    un geste humain approuvé (runbook §7 ; symétrie anti-décision n°4).
+13. Le calage 03:32 UTC ne bouge pas hors de la grille M1 sans refaire
+    l'arithmétique §13.4/§15.4 (idem pour tout futur rythme horaire).

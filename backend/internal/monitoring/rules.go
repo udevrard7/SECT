@@ -60,6 +60,10 @@ var MetricCatalog = []MetricDef{
 	{"workers_en_erreur", "Workers en erreur", "", "Workers dont la dernière exécution a échoué"},
 	{"p95_api_ms", "Latence p95 API (1 h)", " ms", "Percentile 95 des requêtes API (RequestLog, fenêtre 1 h)"},
 	{"erreurs_5xx_24h", "Erreurs 5xx (24 h)", "", "Réponses API ≥ 500 sur les dernières 24 h (RequestLog)"},
+	// SECT-DB-ALERT-1 (ADR-0013 §14.7/§15, décision D10) : le mur stockage
+	// Neon Free (1 GiB/branche) est SILENCIEUX jusqu'au rejet d'écrits en
+	// plein examen — cette métrique le rend visible.
+	{"db_size_mb", "Taille base de données", " Mo", "pg_database_size — mur Neon Free : écrits rejetés à 1 GiB (ADR-0013 §14.4) ; règle système db-taille-quota à 60 %"},
 }
 
 // metricDefs — index du catalogue par clé.
@@ -130,6 +134,7 @@ type MetricsSnapshot struct {
 	WorkersEnErreur      int
 	P95ApiMs             int
 	Erreurs5xx24h        int
+	DBSizeMB             int64 // SECT-DB-ALERT-1 (D10) : taille de la base en Mo (entier)
 }
 
 // Value retourne la valeur numérique d'une métrique du catalogue
@@ -161,6 +166,8 @@ func (m MetricsSnapshot) Value(metric string) (float64, bool) {
 		return float64(m.P95ApiMs), true
 	case "erreurs_5xx_24h":
 		return float64(m.Erreurs5xx24h), true
+	case "db_size_mb":
+		return float64(m.DBSizeMB), true
 	}
 	return 0, false
 }
@@ -207,6 +214,12 @@ func CollectMetrics(ctx context.Context, pool *pgxpool.Pool, claims appdb.Sessio
                         SELECT count(*) FROM "RequestLog"
                         WHERE "status" >= 500 AND "createdAt" > now() - INTERVAL '24 hours'
                 `).Scan(&m.Erreurs5xx24h)
+
+		// Taille de la base (Mo entier) — SECT-DB-ALERT-1 (D10) : rend
+		// visible le mur 1 GiB du plan Neon Free (écrits rejetés à la
+		// limite, ADR-0013 §14.4). Fonction système : aucun privilège
+		// requis, aucune table RLS concernée.
+		_ = tx.QueryRow(ctx, `SELECT pg_database_size(current_database()) / (1024 * 1024)`).Scan(&m.DBSizeMB)
 		return nil
 	})
 

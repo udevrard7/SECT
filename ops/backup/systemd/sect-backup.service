@@ -1,0 +1,21 @@
+# SECT-BACKUP-1 (ADR-0013 §15) — backup nocturne Neon chiffré.
+[Unit]
+Description=SECT — backup nocturne Neon (pg_dump+age+Object Storage)
+Documentation=https://github.com/udevrard7/SECT/blob/main/docs/ops/backup-restore-runbook.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sect/backup/sect_backup.sh
+User=root
+# Calage CU : le TIMER (pas le service) porte l'heure 03:32 UTC —
+# DANS la fenêtre d'éveil du tick 03:30 de la grille M1 (ADR-0013 §13.4).
+Nice=10
+IOSchedulingClass=idle
+# Durcissement : tout est en lecture sauf le staging.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sect-backup /run
+ProtectHome=true
+PrivateTmp=true

@@ -1,0 +1,15 @@
+# SECT-BACKUP-1 (ADR-0013 §15) — watchdog quotidien 12:32 UTC.
+# Ne touche PAS Neon (marker local + listing bucket + Discord) :
+# aucun calage CU requis — 12:32 est simplement une heure creuse
+# lisible. Persistent : rattrape un run manqué au reboot.
+[Unit]
+Description=SECT — watchdog backups quotidien (12:32 UTC)
+
+[Timer]
+OnCalendar=*-*-* 12:32:00 UTC
+Persistent=true
+AccuracySec=1min
+Unit=sect-backup-watchdog.service
+
+[Install]
+WantedBy=timers.target

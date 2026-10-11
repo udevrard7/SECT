@@ -1,0 +1,16 @@
+# SECT-BACKUP-1 (ADR-0013 §15) — watchdog backups.
+[Unit]
+Description=SECT — watchdog backups (silence >36 h + rappel restore mensuel)
+Documentation=https://github.com/udevrard7/SECT/blob/main/docs/ops/backup-restore-runbook.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sect/backup/sect_backup_watchdog.sh
+User=root
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sect-backup
+ProtectHome=true
+PrivateTmp=true

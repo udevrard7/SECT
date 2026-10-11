@@ -1,0 +1,112 @@
+# ============================================================
+# SECT-BACKUP-1 — Outilage backups : self-test CI + install OCI
+# (ADR-0013 §15, phases 0-1 — feu vert exploitant 11/10/2026)
+#
+# 1. self-test : syntaxe bash + --self-test de chaque script
+#    (le parseur env, la rétention, le manifest — sans aucune VM) ;
+# 2. gate     : les secrets SSH sont-ils posés ? (sinon SKIPPÉ,
+#    le self-test reste vert — même porte que deploy-oci.yml) ;
+# 3. install  : SSH → clone du dépôt (token éphémère) → copie
+#    ops/backup/ → install.sh IDEMPOTENT (deps, cluster dédié 5433,
+#    seed-once backup.env, timers armés seulement si env configuré).
+#
+# Les timers ne consomment RIENT tant que backup.env n'est pas
+# renseigné (runbook §3) — l'exploitant garde la main.
+# ============================================================
+name: Backup tooling (OCI)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ops/backup/**'
+      - '.github/workflows/backup-install.yml'
+  workflow_dispatch:
+
+jobs:
+  # ------------------------------------------------------------
+  self-test — tourne TOUJOURS (même sans secrets SSH)
+  # ------------------------------------------------------------
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntaxe bash (bash -n)
+        run: |
+          set -e
+          for f in ops/backup/*.sh; do
+            echo "— bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Self-tests internes (parseur env, rétention, manifest)
+        run: |
+          set -e
+          for f in ops/backup/*.sh; do
+            echo "— $f --self-test"
+            bash "$f" --self-test
+          done
+
+      - name: Unités systemd (systemd-analyze verify)
+        run: |
+          set -e
+          for u in ops/backup/systemd/*.service ops/backup/systemd/*.timer; do
+            echo "— verify $u"
+            systemd-analyze verify "$u"
+          done
+
+  # ------------------------------------------------------------
+  gate — secrets SSH présents ? (porte deploy-oci, éprouvée)
+  # ------------------------------------------------------------
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets présents — install activée"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents — install SKIPPÉE (self-test seul)"
+          fi
+
+  # ------------------------------------------------------------
+  install — idempotent sur la VM (after self-test only)
+  # ------------------------------------------------------------
+  install:
+    needs: [self-test, gate]
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Installation idempotente (clone + install.sh)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            TMP=$(mktemp -d /tmp/sect-backup-src.XXXXXX)
+            # Clone éphémère du dépôt (token à durée de vie courte,
+            # scope repo — retiré du disque en fin de script).
+            command -v git >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq git; }
+            git clone --depth 1 --quiet \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+              "$TMP" || { echo "ÉCHEC clone (token/permissions)"; exit 1; }
+            cd "$TMP"
+            git checkout -q "${{ github.sha }}"
+            # Copie de l'outillage (scripts + units + exemple env)
+            sudo mkdir -p /opt/sect/backup
+            sudo cp -r ops/backup/. /opt/sect/backup/
+            sudo bash /opt/sect/backup/install.sh
+            # Nettoyage : ni clone, ni token résiduels
+            sudo rm -rf "$TMP"
+            echo "— état final —"
+            systemctl list-timers 'sect-backup*' --no-pager || true
+            ls -la /opt/sect/backup/ | head -20

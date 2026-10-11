@@ -1,0 +1,55 @@
+# ============================================================
+# SECT-BACKUP-0 — Audit VM OCI à la demande (lecture seule).
+#
+# Déclenchement MANUEL UNIQUEMENT (workflow_dispatch) — l'exploitant
+# clique « Run workflow » quand il veut le rapport (phase 0, avant
+# la mise en service des backups, ou à toute vérification).
+#
+# Sortie : rapport complet dans le log du job (à reporter dans
+# ADR-0013 §15 / runbook). Aucune écriture sur la VM.
+# ============================================================
+name: VM audit (lecture seule)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets présents — audit activé"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents — audit impossible"
+          fi
+
+  audit:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Audit lecture seule (rapport ci-dessous)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            TMP=$(mktemp -d /tmp/sect-audit-src.XXXXXX)
+            command -v git >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq git; }
+            git clone --depth 1 --quiet \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+              "$TMP" || { echo "ÉCHEC clone"; exit 1; }
+            cd "$TMP"
+            git checkout -q "${{ github.sha }}"
+            bash ops/backup/vm_audit.sh || true   # l'audit ne fail jamais (collecte)
+            sudo rm -rf "$TMP"
+            echo "— fin de l'audit (rapport à conserver : ADR-0013 §15) —"

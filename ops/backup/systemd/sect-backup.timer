@@ -1,0 +1,20 @@
+# SECT-BACKUP-1 (ADR-0013 §15) — timer 03:32 UTC.
+# D4 (systemd, Persistent) + calage CU : 03:32 tombe DANS la fenêtre
+# d'éveil du tick 03:30 de la grille M1 (tick + conn idle 90 s +
+# timeout suspension Neon 300 s → awake ≈ 03:30→03:36:30) : le dump
+# (47 Mo = secondes) chevauche une fenêtre DÉJÀ payée → coût CU
+# marginal ≈ 0. NE PAS déplacer hors de la grille sans refaire
+# l'arithmétique de l'ADR-0013 §13.4/§15.
+# AccuracySec serré : rester dans la fenêtre d'éveil.
+[Unit]
+Description=SECT — backup nocturne 03:32 UTC (dans la fenêtre grille M1)
+
+[Timer]
+OnCalendar=*-*-* 03:32:00 UTC
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=0
+Unit=sect-backup.service
+
+[Install]
+WantedBy=timers.target
