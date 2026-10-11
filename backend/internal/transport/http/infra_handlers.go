@@ -119,8 +119,14 @@ func computeDRReadiness(infra monitoring.InfraSnapshot) drReadiness {
 	if infra.Replica.TablesApp < 80 {
 		return drReadiness{VoieD: "PARTIELLE", Detail: "tables présentes insuffisantes pour la promotion (dr_promote --prepare-publication à rejouer)"}
 	}
-	if infra.Replica.DataFreshnessMin != nil && *infra.Replica.DataFreshnessMin > 45 {
-		return drReadiness{VoieD: "PARTIELLE", Detail: "fraîcheur des données > 45 min (fenêtres grille M1 interrompues ?)"}
+	// Seuil 90 min = CELUI de la règle système replica-fraicheur (3 fenêtres
+	// grille manquées). En dessous, une fraîcheur élevée traduit le plus souvent
+	// un SILENCE D'ÉCRITURE (soirée/nuit — mesuré 11/10 : dernière requête à
+	// 16:43, grille saine), pas une réplique en retard : seules les données
+	// NOUVELLES voyagent. dr_gate.sh (superuser) reste le verdict réel avant
+	// toute promotion humaine.
+	if infra.Replica.DataFreshnessMin != nil && *infra.Replica.DataFreshnessMin > 90 {
+		return drReadiness{VoieD: "PARTIELLE", Detail: "fraîcheur des données > 90 min (règle replica-fraicheur franchie) — grille M1 interrompue OU long silence d'écriture : vérifier sect-replica-sync.timer avant promotion"}
 	}
 	return drReadiness{VoieD: "PRETE", Detail: "réplique pré-positionnée — promotion par décision humaine (dr_promote --confirm PROMOUVOIR, runbook §3.8-C)"}
 }
