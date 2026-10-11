@@ -50,16 +50,16 @@ jobs:
     needs: gate
     if: needs.gate.outputs.ready == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 80
     steps:
-      - name: Pré-positionnement (publication 85 tables + copie initiale)
+      - name: Pré-positionnement (publication 84 tables + copie initiale)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}
           key: ${{ secrets.OCI_SSH_KEY }}
           script_stop: true
-          command_timeout: 27m
+          command_timeout: 75m
           script: |
             set -euo pipefail
             PGB=/usr/lib/postgresql/18/bin
@@ -80,14 +80,24 @@ jobs:
             PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription_rel WHERE srsubstate='r'" | xargs echo "tables en état r AVANT :"
 
             echo "MARK 3 : exécution --prepare-publication (online, idempotent)"
+            set +e
             sudo -n /opt/sect/replica/dr_promote.sh --prepare-publication
+            RC=$?
+            set -e
 
-            echo "MARK 4 : preuves APRÈS"
+            echo "MARK 4 : preuves/diagnostics (rc=$RC — s'exécute même en échec)"
             PG psql -d sect_replica -c "SELECT srsubstate, count(*) FROM pg_subscription_rel GROUP BY 1 ORDER BY 1"
-            PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription_rel WHERE srsubstate='r'" | xargs echo "tables en état r APRÈS :"
+            PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription_rel WHERE srsubstate='r'" | xargs echo "tables en état r :"
             PG psql -d sect_replica -tAc "SELECT subenabled FROM pg_subscription WHERE subname='sect_poc'" | xargs echo "souscription ENABLE (doit être f) :"
+            echo "── erreurs récentes du cluster 5433 (sync workers) ──"
+            sudo -n journalctl -u postgresql@18-sect --since "30 min ago" --no-pager 2>/dev/null | grep -iE "error|duplicate|conflict|wal" | tail -12
             echo "── fraîcheur (dernier apply) ──"
             PG psql -d sect_replica -c "SELECT subname, received_lsn, latest_end_lsn, latest_end_time, now() - latest_end_time AS age_dernier_apply FROM pg_stat_subscription"
             echo "── timers (doivent être actifs, :02/:32) ──"
             systemctl list-timers 'sect-*' --no-pager | head -8
-            echo "MARK 5 : TERMINÉ — réplique promotion-ready (voie D §3.8, RPO ≤ 30 min)"
+            if [ "$RC" -ne 0 ]; then
+              echo "MARK 5 : ÉCHEC (rc=$RC) — les slots tablesync zombies côté Neon doivent être droppés (ils retiennent du WAL)"
+            else
+              echo "MARK 5 : TERMINÉ — réplique promotion-ready (voie D §3.8, RPO ≤ 30 min)"
+            fi
+            exit $RC

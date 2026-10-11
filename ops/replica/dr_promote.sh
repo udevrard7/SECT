@@ -140,10 +140,18 @@ if [ "$MODE" = "prepare" ]; then
     # 2. Fenêtre : enable + REFRESH PUBLICATION + copie initiale + disable
     #    (ENABLE tolérant : la fenêtre grille M1 :02/:32 peut l'avoir déjà
     #    fait — lancer ce mode de préférence à :15/:45, hors fenêtres)
+    #    Sync workers 2→4 (halve le temps de copie 84 tables — GUCs
+    #    rechargés à chaud, sighup ; piège n°4 du run #38131341078 : la
+    #    copie ne convergeait PAS en 900 s avec 2 workers, et les sync
+    #    tués laissent des SLOTS ZOMBIES côté Neon → à dropper après
+    #    échec, ils retiennent du WAL — limite 1 GiB)
+    PG psql -d postgres -c "ALTER SYSTEM SET max_logical_replication_workers = '8'" || true
+    PG psql -d postgres -c "ALTER SYSTEM SET max_sync_workers_per_subscription = '4'" || true
+    PG psql -d postgres -c "SELECT pg_reload_conf()" >/dev/null || true
     log "fenêtre de copie initiale (enable → refresh → r partout → disable)"
     PG psql -d "$DB" -c "ALTER SUBSCRIPTION sect_poc ENABLE" >/dev/null 2>&1 || log "souscription déjà ENABLE (fenêtre grille ?)"
     PG psql -d "$DB" -c "ALTER SUBSCRIPTION sect_poc REFRESH PUBLICATION" >/dev/null || die "REFRESH PUBLICATION échoué"
-    wait_rel_ready 900 || { PG psql -d "$DB" -c "ALTER SUBSCRIPTION sect_poc DISABLE" >/dev/null 2>&1 || true; die "copie initiale non convergée en 900 s"; }
+    wait_rel_ready 3600 || { PG psql -d "$DB" -c "ALTER SUBSCRIPTION sect_poc DISABLE" >/dev/null 2>&1 || true; die "copie initiale non convergée en 3600 s"; }
     wait_convergence 300 || true
     PG psql -d "$DB" -c "ALTER SUBSCRIPTION sect_poc DISABLE" >/dev/null || die "DISABLE échoué (CRITIQUE : autosuspend Neon bloqué — §16.3)"
     counts=$(local_psql "SELECT count(*) FROM pg_subscription_rel WHERE srsubstate='r'")
