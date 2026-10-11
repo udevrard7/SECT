@@ -76,37 +76,58 @@ command -v rclone >/dev/null && log "rclone $(rclone version | head -1 | awk '{p
 command -v age    >/dev/null && log "age présent"
 
 # ── 2. Fichiers en place ──
+# NB : dans le chemin Actions, SRC_DIR == DEST (le workflow copie
+# ops/backup/ → /opt/sect/backup/ PUIS exécute install.sh depuis là) :
+# la boucle ne copie alors RIEN (chmod seul) — plus de « cp: same file ».
 mkdir -p "$DEST" "$STAGING" "$DEST/systemd"
 chmod 0755 "$DEST"; chmod 0700 "$STAGING"
 for f in sect_backup.sh sect_backup_watchdog.sh sect_restore_test.sh vm_audit.sh install.sh sect_backup.env.example; do
-    if [ -f "$SRC_DIR/$f" ]; then
-        install -m 0755 "$SRC_DIR/$f" "$DEST/$f" 2>/dev/null \
-            || cp "$SRC_DIR/$f" "$DEST/$f" && chmod 0755 "$DEST/$f"
+    [ -f "$SRC_DIR/$f" ] || continue
+    if [ "$SRC_DIR" != "$DEST" ]; then
+        install -m 0755 "$SRC_DIR/$f" "$DEST/$f"
     fi
+    chmod 0755 "$DEST/$f"
 done
-cp "$DEST"/sect_backup.sh "$DEST"/sect_backup_watchdog.sh "$DEST"/sect_restore_test.sh /dev/null 2>/dev/null || true
-for u in "$DEST"/systemd/*.service "$DEST"/systemd/*.timer; do
+for u in "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.timer; do
     [ -f "$u" ] || continue
-    install -m 0644 "$u" "$UNIT_DST/$(basename "$u")" 2>/dev/null \
-        || { cp "$u" "$UNIT_DST/"; chmod 0644 "$UNIT_DST/$(basename "$u")"; }
+    install -m 0644 "$u" "$UNIT_DST/$(basename "$u")"
 done
 
 # ── 3. Cluster dédié SECT (D6 — 5433, localhost) ──
 if command -v pg_lsclusters >/dev/null 2>&1; then
+    PG_VER="$(ls /etc/postgresql 2>/dev/null | sort -n | tail -1)"
+    [ -n "$PG_VER" ] || { echo "aucun /etc/postgresql — pgdg requis (ADR-0013 §12.4)"; exit 1; }
     if pg_lsclusters 2>/dev/null | awk '$2=="sect" && $4=="online"{found=1} END{exit !found}'; then
         log "cluster « sect » déjà en ligne (5433) — rien à faire"
-    elif pg_lsclusters 2>/dev/null | awk '$2=="sect"{found=1} END{exit !found}'; then
-        log "cluster « sect » existe mais offline — démarrage"
-        pg_ctlcluster 18 sect start || pg_ctlcluster $(ls /etc/postgresql | head -1) sect start || true
     else
-        log "création du cluster dédié « sect » (port 5433 — ne touche pas à 18-main/mikcloud)"
-        PG_VER="$(ls /etc/postgresql 2>/dev/null | sort -n | tail -1)"
-        [ -n "$PG_VER" ] || { echo "aucun /etc/postgresql — pgdg requis (ADR-0013 §12.4)"; exit 1; }
-        pg_createcluster "$PG_VER" sect -- -p 5433
-        # Écoute localhost UNIQUEMENT (anti-décision n°3 : jamais de port PG exposé)
-        echo "listen_addresses = '127.0.0.1'" >> "/etc/postgresql/$PG_VER/sect/postgresql.conf"
-        pg_ctlcluster "$PG_VER" sect start
-        log "cluster « sect » créé et démarré (127.0.0.1:5433)"
+        # Reliquat d'une création AVORTÉE (initdb interrompu — p.ex. par
+        # l'ancien bug « -- -p 5433 » passé à initdb) : cluster listé mais
+        # SANS PG_VERSION = AUCUNE donnée → purge et recréation propres.
+        if pg_lsclusters 2>/dev/null | awk '$2=="sect"{found=1} END{exit !found}' \
+           && [ ! -s "/var/lib/postgresql/$PG_VER/sect/PG_VERSION" ]; then
+            log "création avortée détectée (pas de PG_VERSION) — purge avant recréation"
+            pg_dropcluster --stop "$PG_VER" sect >/dev/null 2>&1 || true
+            rm -rf "/var/lib/postgresql/$PG_VER/sect" "/etc/postgresql/$PG_VER/sect"
+        fi
+        if pg_lsclusters 2>/dev/null | awk '$2=="sect"{found=1} END{exit !found}'; then
+            log "cluster « sect » existe mais offline — démarrage"
+        else
+            log "création du cluster dédié « sect » (port 5433 — ne touche pas à 18-main/mikcloud)"
+            # NOTE : le port passe par postgresql.conf (ci-dessous), PAS par
+            # « -- -p » (options après « -- » = initdb, qui ne connaît pas -p).
+            pg_createcluster "$PG_VER" sect || { echo "ÉCHEC pg_createcluster"; exit 1; }
+        fi
+        CONF="/etc/postgresql/$PG_VER/sect/postgresql.conf"
+        [ -f "$CONF" ] || { echo "config cluster sect introuvable : $CONF"; exit 1; }
+        # Écoute localhost UNIQUEMENT (anti-décision n°3 : jamais de port PG
+        # exposé) + port 5433 EXPLICITE (la dernière valeur du conf gagne).
+        grep -q "^listen_addresses = '127.0.0.1'" "$CONF" \
+            || echo "listen_addresses = '127.0.0.1'" >> "$CONF"
+        grep -q "^port = 5433" "$CONF" \
+            || echo "port = 5433" >> "$CONF"
+        pg_ctlcluster "$PG_VER" sect start \
+            || { echo "ÉCHEC démarrage cluster sect (pg_ctlcluster)"; exit 1; }
+        log "cluster « sect » prêt (127.0.0.1:5433)"
     fi
 else
     log "AVERTISSEMENT : pg_lsclusters absent — cluster dédié NON créé (installer postgresql pgdg d'abord, relancer)"
