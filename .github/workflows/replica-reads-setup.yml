@@ -142,11 +142,35 @@ jobs:
               fi
               sleep 2
             done
-            echo "── diagnostics boot réplique ──"
-            sudo -n grep '^REPLICA_DATABASE_URL=' /opt/sect/.env | sed -E 's/:[^:@]+@/:***@/' || true
-            sudo -n docker inspect -f '{{json .Config.Env}}' sect-api | tr ',' '\n' | grep REPLICA | sed -E 's/:[^:@]+@/:***@/' || echo "(REPLICA absente de Config.Env !)"
-            sudo -n docker exec sect-api sh -c 'echo "longueur REPLICA_DATABASE_URL dans le conteneur : ${#REPLICA_DATABASE_URL}"'
-            sudo -n docker logs sect-api 2>&1 | grep -iE 'replica|starting SECT' | head -8 || true
+            echo "MARK 8b : pare-feu — autoriser 172.28.0.0/24 → 5433 (OCI Ubuntu : INPUT REJECT par défaut)"
+            echo "── iptables INPUT (avant) ──"
+            sudo -n iptables -L INPUT -n --line-numbers | head -12 || true
+            if ! sudo -n iptables -C INPUT -s 172.28.0.0/24 -p tcp --dport 5433 -j ACCEPT 2>/dev/null; then
+              sudo -n iptables -I INPUT 1 -s 172.28.0.0/24 -p tcp --dport 5433 -j ACCEPT
+              echo "règle iptables INSÉRÉE (172.28.0.0/24 → 5433 ACCEPT)"
+            fi
+            if sudo -n command -v netfilter-persistent >/dev/null 2>&1; then
+              sudo -n netfilter-persistent save
+              echo "règle persistée (netfilter-persistent)"
+            fi
+            if ! sudo -n command -v netfilter-persistent >/dev/null 2>&1; then
+              sudo -n install -m 0644 /dev/null /etc/systemd/system/sect-allow-5433-bridge.service
+              printf '%s\n' '[Unit]' 'Description=SECT: allow docker bridge 172.28.0.0/24 -> postgres 5433 (phase 3)' 'Before=docker.service' '[Service]' 'Type=oneshot' 'ExecStart=/usr/sbin/iptables -I INPUT 1 -s 172.28.0.0/24 -p tcp --dport 5433 -j ACCEPT' 'RemainAfterExit=yes' '[Install]' 'WantedBy=multi-user.target' | sudo -n tee /etc/systemd/system/sect-allow-5433-bridge.service >/dev/null
+              sudo -n systemctl daemon-reload
+              sudo -n systemctl enable sect-allow-5433-bridge.service >/dev/null 2>&1 || true
+              echo "persistance via unit systemd sect-allow-5433-bridge"
+            fi
+
+            echo "MARK 8c : redémarrage API (le pool réplique ne se tente qu'au boot)"
+            sudo -n docker compose restart api >/dev/null
+            for i in $(seq 1 15); do
+              if sudo -n docker inspect -f '{{.State.Health.Status}}' sect-api | grep -q healthy; then
+                echo "API healthy"
+                break
+              fi
+              sleep 2
+            done
+            sudo -n docker logs --since 2m sect-api 2>&1 | grep -iE 'replica' | head -3 || true
 
             echo "MARK 9 : PREUVE end-to-end (JWT ADMIN forgé sur la VM)"
             JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
