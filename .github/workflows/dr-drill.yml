@@ -155,7 +155,11 @@ jobs:
             TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'drill@sect.ftci.fr','name':'DR Drill','iat':int(time.time()),'exp':int(time.time())+600,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
             LOGS=$(sudo -n docker exec sect-api-drill wget -qO- --header "Authorization: Bearer $TOK" 'http://localhost:8080/api/logs?limit=3' 2>/dev/null || echo '{}')
             echo "réponse brute /api/logs (300 c) : ${LOGS:0:300}"
-            TOTAL=$(python3 -c "import json;d=json.loads('''$LOGS''');print(d.get('total',0))" 2>/dev/null || echo 0)
+            # NB : JAMAIS d'embedding shell du JSON dans python (les \" y sont
+            # mangés par le parseur python → json.loads échoue en silence → 0) :
+            # on passe par un fichier, comme la preuve du reads-setup (run #38128414766).
+            printf '%s' "$LOGS" > /tmp/drill-logs.json
+            TOTAL=$(python3 -c "import json;print(json.load(open('/tmp/drill-logs.json')).get('total',0))" 2>/dev/null || echo 0)
             echo "/api/logs total sur la base restaurée : $TOTAL"
             [ "$TOTAL" -gt 0 ] || { echo "ÉCHEC : AuditLog vide via l'API (auth ? RLS ? — voir diagnostics ci-dessus)"; exit 1; }
 
@@ -169,6 +173,7 @@ jobs:
             rm -f /tmp/ph /tmp/pr
 
             echo "MARK 9 : teardown intégral"
+            rm -f /tmp/drill-logs.json
             sudo -n docker rm -f sect-api-drill >/dev/null
             PG psql -d postgres -c "DROP DATABASE IF EXISTS sect_drill WITH (FORCE)" >/dev/null
             sudo -n rm -rf "$TMP"
