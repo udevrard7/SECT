@@ -1,0 +1,85 @@
+name: Infra monitoring verify
+
+# SECT-INFRA-MONITOR-1 (11/10) — vérification EN CONDITIONS RÉELLES du
+# monitoring d'infrastructure, après déploiement :
+#   1. GET /health (statique) ;
+#   2. JWT ADMIN forgé sur la VM (pattern dr-drill MARK 8 — id admin lu
+#      sur la RÉPLIQUE locale 5433, secret JWT dans /opt/sect/.env) ;
+#   3. GET /api/monitoring/infra : assertions — readSource=replica,
+#      voie D, tables, âge backup (PREUVE du montage compose ro), VM ;
+#   4. GET /api/monitoring/rules : les 3 règles système 000136
+#      présentes (replica-fraicheur, backup-fraicheur, disque-libre).
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
+# (piège n°7 — uniquement if…then…fi), JSON parsé via FICHIER (jamais
+# d'embedding shell), grep non bloquants.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Vérification /api/monitoring/infra (JWT ADMIN réel)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+
+            echo "MARK 1 : /health (statique)"
+            curl -fsS --max-time 10 http://127.0.0.1:8090/health || { echo "ÉCHEC : API pas joignable sur 8090"; exit 1; }
+            echo
+
+            echo "MARK 2 : JWT ADMIN (id lu sur la réplique locale 5433 — 0 CU)"
+            JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            ADMIN_ID=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc 'SELECT id FROM "User" WHERE role='"'"'ADMIN'"'"' LIMIT 1' | xargs)
+            [ -n "$ADMIN_ID" ] || { echo "ÉCHEC : aucun ADMIN dans la base répliquée"; exit 1; }
+            TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'infra-verify@sect.ftci.fr','name':'Infra Verify','iat':int(time.time()),'exp':int(time.time())+600,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
+
+            echo "MARK 3 : GET /api/monitoring/infra"
+            CODE=$(curl -sS --max-time 30 -o /tmp/infra.json -w '%{http_code}' -H "Authorization: Bearer $TOK" http://127.0.0.1:8090/api/monitoring/infra)
+            echo "HTTP $CODE"
+            [ "$CODE" = "200" ] || { echo "ÉCHEC : /api/monitoring/infra a répondu $CODE (404 = déployer la nouvelle image ; 401/403 = claims)"; cat /tmp/infra.json 2>/dev/null || true; exit 1; }
+            head -c 1600 /tmp/infra.json; echo
+
+            echo "MARK 4 : assertions (JSON parsé via FICHIER — piège embedding)"
+            SRC=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));print(d.get('readSource',''))")
+            VOIE=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));print(d.get('dr',{}).get('voieD',''))")
+            TABLES=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));print(d.get('replica',{}).get('tablesApp',0))")
+            AGEH=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));print(d.get('backups',{}).get('ageH','absent'))")
+            DISK=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));print(round(d.get('vm',{}).get('diskFreePct',0),1))")
+            FRESH=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));r=d.get('replica') or {};print(round(r.get('dataFreshnessMin') or -1,1))")
+            NEONC=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));n=d.get('neon') or {};print(n.get('configured',False))")
+            NEONS=$(python3 -c "import json;d=json.load(open('/tmp/infra.json'));n=d.get('neon') or {};print(n.get('endpointState',''))")
+            echo "readSource=$SRC voieD=$VOIE tables=$TABLES backupAgeH=$AGEH diskFree%=$DISK freshnessMin=$FRESH neon=$NEONC/$NEONS"
+            [ "$SRC" = "replica" ] || { echo "ÉCHEC : readSource=$SRC (pool réplique non branché ?)"; exit 1; }
+            [ "$TABLES" -ge 80 ] || { echo "ÉCHEC : tables=$TABLES (réplique dégradée)"; exit 1; }
+            [ "$AGEH" != "absent" ] || { echo "ÉCHEC : backups.ageH absent — le montage compose /state/backup n'est pas appliqué (déployer)"; exit 1; }
+            [ "$DISK" != "0" ] || { echo "ÉCHEC : VM.diskFreePct=0 — /proc/statfs illisible"; exit 1; }
+
+            echo "MARK 5 : règles système 000136 présentes (via /api/monitoring/rules)"
+            CODE2=$(curl -sS --max-time 30 -o /tmp/rules.json -w '%{http_code}' -H "Authorization: Bearer $TOK" http://127.0.0.1:8090/api/monitoring/rules)
+            [ "$CODE2" = "200" ] || { echo "ÉCHEC : /api/monitoring/rules a répondu $CODE2"; exit 1; }
+            printf '%s' "$(cat /tmp/rules.json)" > /tmp/rules2.json
+            N3=$(python3 -c "
+import json
+d=json.load(open('/tmp/rules2.json'))
+rules=d.get('rules',d if isinstance(d,list) else [])
+want={'replica-fraicheur','backup-fraicheur','disque-libre'}
+have={r.get('code') for r in rules if isinstance(r,dict)}
+print(len(want & have))")
+            echo "règles 000136 présentes : $N3/3"
+            [ "$N3" = "3" ] || { echo "ÉCHEC : règles système 000136 absentes — migration à appliquer"; exit 1; }
+
+            echo "── SUCCÈS : monitoring d'infrastructure VÉRIFIÉ en conditions réelles"
+            rm -f /tmp/infra.json /tmp/rules.json /tmp/rules2.json
