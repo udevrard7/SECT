@@ -1,0 +1,151 @@
+# ============================================================
+# SECT-LATENCY-1 — Audit de latence système & application
+#
+# MESURES EN CONDITIONS RÉELLES, LECTURE SEULE STRICTE :
+#   A. API (traitement pur) : /health + /api/monitoring/overview
+#      en BOUCLE LOCALE sur 127.0.0.1:8090 → zéro réseau, la
+#      latence mesurée EST le temps serveur (Go + DB).
+#   B. Latence UTILISATEUR RÉELLE : GET /api/monitoring/endpoints
+#      → p50/p95 par route depuis RequestLog (7 jours de trafic
+#      réel, ADR-0012 §3) — la donnée qui compte pour l'Afrique.
+#   C. Neon (primaire) : RTT TCP ×10 + connexion complète ×3 +
+#      requêtes tenues ×3 (pattern oci-db-probe §7/§9).
+#   D. Réplique locale 5433 : idem (référence colocalisée).
+#   E. Chemin utilisateur complet : sect.ftci.fr/api/health
+#      (rewrite Vercel → OCI) mesuré DEPUIS la VM (Europe).
+#
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
+# (piège n°7 — uniquement if…then…fi), JSON parsé via FICHIER
+# (jamais d'embedding shell), grep non bloquants.
+#
+# Déclenchement : workflow_dispatch UNIQUEMENT (audit à la
+# demande — chaque run Neon ici consomme quelques ms de CU,
+# négligeables vs grille M1).
+# Secrets : OCI_SSH_HOST / OCI_SSH_USER / OCI_SSH_KEY (communs).
+# ============================================================
+name: Audit latence SECT
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: "⏱️ Mesures latence (SSH lecture seule)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: SSH OCI — batterie de mesures latence
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            API=http://127.0.0.1:8090
+
+            echo "══ A. API — TRAITEMENT PUR (localhost, 0 réseau) ══"
+            echo "── /health ×10 ──"
+            TOT=0
+            for i in $(seq 1 10); do
+              MS=$(curl -s -o /dev/null -w '%{time_total}' --max-time 5 "$API/health" | awk '{printf "%.1f", $1*1000}')
+              echo "  health_ms=$MS"
+            done
+            echo "── /health/db ×5 (SELECT 1 via pool applicatif) ──"
+            for i in $(seq 1 5); do
+              MS=$(curl -s -o /dev/null -w '%{time_total}' --max-time 5 "$API/api/health/db" | awk '{printf "%.1f", $1*1000}')
+              echo "  healthdb_ms=$MS"
+            done
+
+            echo
+            echo "══ JWT ADMIN (pattern infra-verify MARK 2 — id lu sur la réplique, 0 CU) ══"
+            JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            ADMIN_ID=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc 'SELECT id FROM "User" WHERE role='"'"'ADMIN'"'"' LIMIT 1' | xargs)
+            [ -n "$ADMIN_ID" ] || { echo "ÉCHEC : aucun ADMIN dans la base répliquée"; exit 1; }
+            TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'latency-audit@sect.ftci.fr','name':'Latency Audit','iat':int(time.time()),'exp':int(time.time())+900,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
+
+            echo "── /api/monitoring/overview ×5 (KPIs + ping DB + réplique) ──"
+            for i in $(seq 1 5); do
+              MS=$(curl -s -o /dev/null -w '%{time_total}' --max-time 15 -H "Authorization: Bearer $TOK" "$API/api/monitoring/overview" | awk '{printf "%.1f", $1*1000}')
+              echo "  overview_ms=$MS"
+            done
+            curl -s --max-time 15 -H "Authorization: Bearer $TOK" "$API/api/monitoring/overview" -o /tmp/ov.json
+            echo "  db.latencyMs=$(python3 -c "import json;d=json.load(open('/tmp/ov.json'));print(d.get('db',{}).get('latencyMs','?'),'| down:',d.get('db',{}).get('down','?'),'| conns actives:',d.get('db',{}).get('activeConns','?'),'| réplique:',(d.get('replica') or {}).get('latencyMs',(d.get('replica') or {}).get('enabled',False)))" 2>/dev/null || echo "parse ko")"
+
+            echo
+            echo "══ B. LATENCE UTILISATEUR RÉELLE — p50/p95 par endpoint (RequestLog) ══"
+            for WIN in 24h 7d; do
+              CODE=$(curl -sS --max-time 30 -o /tmp/ep.json -w '%{http_code}' -H "Authorization: Bearer $TOK" "$API/api/monitoring/endpoints?window=$WIN")
+              [ "$CODE" = "200" ] || { echo "ÉCHEC : /api/monitoring/endpoints?window=$WIN a répondu $CODE"; cat /tmp/ep.json 2>/dev/null || true; exit 1; }
+              echo "── fenêtre $WIN ── top 25 par p95 ──"
+              echo 'aW1wb3J0IGpzb24KZCA9IGpzb24ubG9hZChvcGVuKCcvdG1wL2VwLmpzb24nKSkKZXBzID0gW2UgZm9yIGUgaW4gKGQuZ2V0KCdlbmRwb2ludHMnKSBvciBbXSkgaWYgaXNpbnN0YW5jZShlLCBkaWN0KV0KZXBzLnNvcnQoa2V5PWxhbWJkYSBlOiAoZS5nZXQoJ3A5NU1zJykgb3IgMCksIHJldmVyc2U9VHJ1ZSkKcHJpbnQoZiIgIHsncm91dGUnOjU2c30geydyZXEnOj42c30geydwNTAnOj42c30geydwOTUnOj42c30geydhdmcnOj42c30geydtYXgnOj42c30geydlcnIlJzo+NXN9IikKZm9yIGUgaW4gZXBzWzoyNV06CiAgICBlciA9IGUuZ2V0KCdlcnJvclJhdGUnKSBvciAwCiAgICBwcmludChmIiAgeyhlLmdldCgnbWV0aG9kJywnJykrJyAnK3N0cihlLmdldCgncm91dGUnLCcnKSkpWzo1Nl06NTZzfSB7ZS5nZXQoJ3RvdGFsJywwKTo+NmR9IHtlLmdldCgncDUwTXMnLDApOj42ZH0ge2UuZ2V0KCdwOTVNcycsMCk6PjZkfSB7ZS5nZXQoJ2F2Z01zJywwKTo+NmR9IHtlLmdldCgnbWF4TXMnLDApOj42ZH0ge2VyKjEwMDo+NC4wZn0lIikKcHJpbnQoZiIgIC0+IHtsZW4oZXBzKX0gcm91dGVzIGluc3RydW1lbnRlZXMiKQo=' | base64 -d > /tmp/ep_table.py
+              python3 /tmp/ep_table.py
+            done
+
+            echo
+            echo "══ C. NEON (primaire) — réseau + connexion + requêtes ══"
+            DSNLINE=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' /opt/sect/.env | head -1 || true)
+            if [ -n "$DSNLINE" ]; then
+              NEONHOST=$(printf '%s' "$DSNLINE" | sed -E 's#.*@([^:/?]+).*#\1#')
+              echo "  endpoint : $NEONHOST — RTT TCP ×10"
+              for i in $(seq 1 10); do
+                S=$(date +%s%N)
+                (echo > /dev/tcp/$NEONHOST/5432) 2>/dev/null || true
+                E=$(date +%s%N)
+                echo "    tcp_connect_ms=$(( (E-S)/1000000 ))"
+              done
+              DSN=$(printf '%s' "$DSNLINE" | cut -d= -f2-)
+              echo "  connexion complète + SELECT 1 ×3"
+              for i in 1 2 3; do
+                TIMEFORMAT='    connect_query_s=%R'
+                { time psql "$DSN" -Atq -c 'SELECT 1' >/dev/null; } 2>&1
+              done
+              echo "  requêtes tenues (\\timing) ×3"
+              printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | psql "$DSN" -At 2>&1 | grep -E 'Time:' | head -3
+            else
+              echo "  (DSN introuvable — section sautée)"
+            fi
+
+            echo
+            echo "══ D. RÉPLIQUE LOCALE 5433 — référence colocalisée ══"
+            echo "  TCP ×3 (gateway docker 172.28.0.1)"
+            for i in 1 2 3; do
+              S=$(date +%s%N)
+              (echo > /dev/tcp/172.28.0.1/5433) 2>/dev/null || true
+              E=$(date +%s%N)
+              echo "    tcp_connect_ms=$(( (E-S)/1000000 ))"
+            done
+            REPLLINE=$(grep '^REPLICA_DATABASE_URL=' /opt/sect/.env | head -1 || true)
+            if [ -n "$REPLLINE" ]; then
+              echo "  connexion complète + SELECT 1 ×3 (rôle applicatif, DSN de l'API)"
+              RDSN=$(printf '%s' "$REPLLINE" | cut -d= -f2-)
+              for i in 1 2 3; do
+                TIMEFORMAT='    connect_query_s=%R'
+                { time "$PGB/psql" "$RDSN" -Atq -c 'SELECT 1' >/dev/null; } 2>&1
+              done
+              echo "  requêtes tenues (\\timing) ×3"
+              printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | "$PGB/psql" "$RDSN" -At 2>&1 | grep -E 'Time:' | head -3
+            else
+              echo "  (REPLICA_DATABASE_URL absent — réplique OFF, section sautée)"
+            fi
+
+            echo
+            echo "══ E. CHEMIN UTILISATEUR COMPLET (depuis Marseille) ══"
+            echo "── sect.ftci.fr/api/health (rewrite Vercel → OCI) ×3 ──"
+            for i in 1 2 3; do
+              curl -s -o /dev/null -w "  ttfb_s=%{time_starttransfer} total_s=%{time_total} http=%{http_code}\n" --max-time 20 https://sect.ftci.fr/api/health
+            done
+            echo "── api.sect.ftci.fr direct (TLS caddy) ×3 ──"
+            for i in 1 2 3; do
+              curl -s -o /dev/null -w "  ttfb_s=%{time_starttransfer} tls_s=%{time_appconnect} http=%{http_code}\n" --max-time 20 https://api.sect.ftci.fr/health
+            done
+
+            echo
+            echo "══ FIN — aucune écriture effectuée ══"
+            rm -f /tmp/ep.json /tmp/ov.json
