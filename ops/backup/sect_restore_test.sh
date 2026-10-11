@@ -153,6 +153,10 @@ sudo -n true 2>/dev/null || die "sudo non-interactif requis"
 if ! sudo -n pg_lsclusters 2>/dev/null | awk -v p="$RESTORE_PORT" '$3==p && $4=="online"{found=1} END{exit !found}'; then
     die "cluster dédié (port $RESTORE_PORT) absent ou offline — install.sh le crée (runbook §4)"
 fi
+# le staging est root-only (umask 077) mais pg_restore/psql tournent en
+# postgres (auth peer) — sans ce chown : « Permission denied » sur le dump
+# (constaté run #38103148731) et globals silencieusement non appliqués.
+chown -R postgres:postgres "$WORK"
 
 local_pg psql -d postgres -c "DROP DATABASE IF EXISTS \"$RESTORE_DB\"" >/dev/null \
     || die "DROP DATABASE échoué"
