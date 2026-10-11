@@ -63,9 +63,14 @@ done
 if [ -n "$need_install" ]; then
     log "installation apt :$need_install"
     export DEBIAN_FRONTEND=noninteractive
+    # Un dépôt TIERS cassé (constaté : caddy/cloudsmith → 402 Payment
+    # Required) ne doit PAS bloquer l'install : update NON fatal, on
+    # installe sur les listes déjà présentes (rclone/age sont en Ubuntu
+    # universe, git partout). L'échec d'INSTALL seul est bloquant.
     apt-get update -qq \
-        && apt-get install -y -qq $need_install \
-        || { echo "ÉCHEC apt — vérifier les dépôts pgdg/ubuntu (runbook §4)"; exit 1; }
+        || log "AVERTISSEMENT : apt-get update partiel (dépôt tiers cassé ?) — tentative sur les listes existantes"
+    apt-get install -y -qq $need_install \
+        || { echo "ÉCHEC apt install — vérifier les dépôts pgdg/ubuntu (runbook §4)"; exit 1; }
 fi
 command -v rclone >/dev/null && log "rclone $(rclone version | head -1 | awk '{print $2}')"
 command -v age    >/dev/null && log "age présent"
