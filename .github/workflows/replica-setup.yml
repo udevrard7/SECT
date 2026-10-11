@@ -3,25 +3,22 @@
 # (base dédiée sect_replica sur le cluster DÉDIÉ 5433 — jamais
 # mikcloud/18-main/5432).
 #
-# Étapes (toutes idempotentes, marqueurs MARK n pour diagnostic) :
-#   1. clone du dépôt (migrations backend/db/db/migrations) ;
-#   2. binaire golang-migrate linux-arm64 → /opt/sect/bin/migrate ;
-#   3. base sect_replica sur le cluster 5433 (socket, auth peer) ;
-#   4. schéma posé par golang-migrate (DSN LOCAL — ADR §6) ;
-#   5. souscription sect_poc → publication sect_poc (Neon,
-#      DSN lu DANS /opt/sect/.env sur la VM — il ne la quitte pas),
-#      copy_data=true ;
-#   6. état initial (pg_subscription, pg_stat_subscription, counts).
+# ⚠ RÈGLES drone-ssh (script_stop:true) — le plugin injecte
+# « DRONE_SSH_PREV_COMMAND_EXIT_CODE=$? ; if [ … -ne 0 ]; then
+# exit …; fi; » APRÈS CHAQUE LIGNE. Interdits donc :
+#   - « case/esac » multiligne (garde injecté dans le corps →
+#     erreur de syntaxe — run #38102728636) ;
+#   - « else »/« elif » (le garde après le mot-clé else voit
+#     $? = 1, le statut de la condition FAUSSE → exit SILENCIEUX
+#     — runs #38104359312/#38104688451, prouvé par marqueurs) ;
+#   → chaque condition = un « if … then … fi » SANS else ; les
+#     if précédents sont des marqueurs « MARK n » pour diagnostic.
 #
-# Prérequis (déjà posés) : wal_level=logical côté Neon (irréversible,
-# setting PROJET — PATCH /projects, PAS endpoint), publication
-# sect_poc (RequestLog, AuditLog, Reponse), cluster dédié 5433.
-#
-# NB : PAS de « case … esac » ni pipeline en condition d'un if —
-# script_stop:true fait injecter par drone-ssh un garde d'exit APRÈS
-# CHAQUE ligne, qui (a) casse un case multiligne, (b) rend muet un
-# échec de condition-pipeline (run #38104359312 mort sans message
-# après « 4.18.3 »). Les vérifications passent par des variables.
+# Étapes (idempotentes) : clone (migrations) → binaire migrate
+# (arm64) → base sect_replica → schéma golang-migrate (DSN local)
+# → souscription sect_poc (DSN Neon lu DANS /opt/sect/.env) →
+# état initial. Prérequis posés : wal_level=logical (setting
+# PROJET Neon — irréversible), publication sect_poc (3 tables).
 # ============================================================
 name: Replica setup (phase 2 POC)
 
@@ -89,7 +86,8 @@ jobs:
             if [ "$DB_EXISTS" != "1" ]; then
               PG psql -d postgres -c "CREATE DATABASE sect_replica"
               echo "base sect_replica créée (cluster dédié 5433 — jamais mikcloud)"
-            else
+            fi
+            if [ "$DB_EXISTS" = "1" ]; then
               echo "base sect_replica déjà présente"
             fi
 
@@ -105,7 +103,8 @@ jobs:
             if [ "$SUB_EXISTS" != "1" ]; then
               PG psql -d sect_replica -c "CREATE SUBSCRIPTION sect_poc CONNECTION '$SUB_DSN' PUBLICATION sect_poc WITH (copy_data = true, create_slot = true, enabled = true)"
               echo "souscription sect_poc créée (copy_data initial en cours)"
-            else
+            fi
+            if [ "$SUB_EXISTS" = "1" ]; then
               echo "souscription sect_poc déjà présente"
             fi
 
