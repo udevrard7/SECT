@@ -1323,6 +1323,13 @@ exécutées de bout en bout, avec les arbitrages indiqués ci-dessous.
 6. CI : `grep` sans correspondance = exit 1 sous `set -e` → les
    diagnostics « preuves » tuaient le workflow APRÈS le succès
    (2 runs rouges à tort) — `|| true` systématique sur les greps.
+7. **drone-ssh `script_stop` + `else/elif` = exit 1 SILENCIEUX** — la
+   règle documentée dans l'en-tête de `dr-drill.yml` s'applique à TOUT
+   workflow : `replica-status` a marché 10:44 (branche *then*) puis est
+   mort à 11:07 en prenant le `else` pour la première fois (19 ms, zéro
+   message) ; `dr-prepare` est mort 2× pareil sur son `if/else` final.
+   Patron obligatoire : `if … then … fi` seuls (deux `if` à conditions
+   opposées), jamais de `else`/`elif` dans un script drone-ssh.
 
 ### 18.6 Anti-décisions — ajout
 
