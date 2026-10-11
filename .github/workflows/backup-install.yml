@@ -1,5 +1,5 @@
 # ============================================================
-# SECT-BACKUP-1 — Outilage backups : self-test CI + install OCI
+# SECT-BACKUP-1 — Outillage backups : self-test CI + install OCI
 # (ADR-0013 §15, phases 0-1 — feu vert exploitant 11/10/2026)
 #
 # 1. self-test : syntaxe bash + --self-test de chaque script
@@ -10,7 +10,7 @@
 #    ops/backup/ → install.sh IDEMPOTENT (deps, cluster dédié 5433,
 #    seed-once backup.env, timers armés seulement si env configuré).
 #
-# Les timers ne consomment RIENT tant que backup.env n'est pas
+# Les timers ne consomment RIEN tant que backup.env n'est pas
 # renseigné (runbook §3) — l'exploitant garde la main.
 # ============================================================
 name: Backup tooling (OCI)
@@ -25,7 +25,7 @@ on:
 
 jobs:
   # ------------------------------------------------------------
-  self-test — tourne TOUJOURS (même sans secrets SSH)
+  # self-test — tourne TOUJOURS (même sans secrets SSH)
   # ------------------------------------------------------------
   self-test:
     runs-on: ubuntu-latest
@@ -58,7 +58,7 @@ jobs:
           done
 
   # ------------------------------------------------------------
-  gate — secrets SSH présents ? (porte deploy-oci, éprouvée)
+  # gate — secrets SSH présents ? (porte deploy-oci, éprouvée)
   # ------------------------------------------------------------
   gate:
     runs-on: ubuntu-latest
@@ -76,7 +76,7 @@ jobs:
           fi
 
   # ------------------------------------------------------------
-  install — idempotent sur la VM (after self-test only)
+  # install — idempotent sur la VM (après self-test uniquement)
   # ------------------------------------------------------------
   install:
     needs: [self-test, gate]
