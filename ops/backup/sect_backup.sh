@@ -219,6 +219,11 @@ for f in "sect-$DATE.dump" "sect-globals-$DATE.sql" "sect-manifest-$DATE.json"; 
     age -r "$AGE_RECIPIENT" -o "$RUN_DIR/$f.age" "$RUN_DIR/$f" \
         || die "chiffrement age a échoué pour $f"
 done
+# D2 : les originaux CLAIRS ne quittent JAMAIS la VM — le rclone qui
+# suit copie le RUN_DIR entier, il ne doit plus rien contenir de
+# lisible (constaté sur le 1ᵉʳ backup : dump clair uploadé avec les
+# .age — bug corrigé + objets clairs purgés du bucket le jour même).
+rm -f "$RUN_DIR/sect-$DATE.dump" "$RUN_DIR/sect-globals-$DATE.sql" "$RUN_DIR/sect-manifest-$DATE.json"
 
 # 5. Index clair (checksums des fichiers CHIFFRÉS — vérifiables sans la clé)
 {
