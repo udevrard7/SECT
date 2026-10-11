@@ -60,39 +60,148 @@ func IsValidNiveauEtude(n string) bool {
 	return false
 }
 
-// Ouvrage — un livre de la bibliothèque d'un établissement.
+// ──────────────────────────────────────────────────────────────────────
+// SECT-BIBLIO-5 (000137) : visibilité 3 niveaux + statut de modération.
+// ──────────────────────────────────────────────────────────────────────
+
+// VisibiliteOuvrage — le périmètre de diffusion d'un ouvrage (000137) :
 //
-// SÉMANTIQUE DES CHAMPS DE SCOPING (ADR-0007) :
+//	PLATEFORME    — déposé par l'ADMIN global : destiné à TOUS les
+//	                clients SECT (établissements) ;
+//	ETABLISSEMENT — déposé par le RESPONSABLE : son établissement ;
+//	CLASSE        — déposé par l'ENSEIGNANT : ses classes uniquement
+//	                (ciblage OuvrageClasse, intersection scellée
+//	                serveur avec EnseignantFiliere).
 //
-//	EtablissementID = contrôle d'accès (RLS) ;
-//	FiliereID / Niveau = recommandation (filtrage UI) — NULL = « pertinent
-//	pour tous », PAS « caché ».
+// Le périmètre est TOUJOURS dérivé du rôle authentifié dans le
+// usecase — le client ne choisit jamais sa visibilité (défense
+// serveur, miroir des policies RLS Ouvrage_insert 000137).
+type VisibiliteOuvrage string
+
+const (
+	VisibilitePlateforme    VisibiliteOuvrage = "PLATEFORME"
+	VisibiliteEtablissement VisibiliteOuvrage = "ETABLISSEMENT"
+	VisibiliteClasse        VisibiliteOuvrage = "CLASSE"
+)
+
+// VisibilitesOuvrage — liste exhaustive (validation + UI).
+var VisibilitesOuvrage = []VisibiliteOuvrage{
+	VisibilitePlateforme,
+	VisibiliteEtablissement,
+	VisibiliteClasse,
+}
+
+// IsValidVisibiliteOuvrage vérifie l'appartenance à l'enum (400 sinon).
+func IsValidVisibiliteOuvrage(v VisibiliteOuvrage) bool {
+	switch v {
+	case VisibilitePlateforme, VisibiliteEtablissement, VisibiliteClasse:
+		return true
+	}
+	return false
+}
+
+// StatutOuvrage — le cycle de modération human-in-the-loop (000137) :
+// un dépôt ENSEIGNANT naît BROUILLON (invisible des étudiants) et est
+// validé par le RESPONSABLE de son établissement ; les dépôts ADMIN et
+// RESPONSABLE naissent VALIDE.
+type StatutOuvrage string
+
+const (
+	StatutOuvrageValide    StatutOuvrage = "VALIDE"
+	StatutOuvrageBrouillon StatutOuvrage = "BROUILLON"
+)
+
+// OuvrageClasseInput — un ciblage « classe » (filière, niveau) demandé
+// à la création/édition. Le usecase INTERSECTE avec les classes
+// réelles de l'enseignant (usurpation impossible côté serveur).
+type OuvrageClasseInput struct {
+	FiliereID string `json:"filiereId"`
+	Niveau    string `json:"niveau"` // enum NiveauEtude en DB
+}
+
+// OuvrageClasseRef — un ciblage persisté (DTO API).
+type OuvrageClasseRef struct {
+	FiliereID string             `json:"filiereId"`
+	Niveau    string             `json:"niveau"`
+	Filiere   *OuvrageFiliereRef `json:"filiere,omitempty"` // LEFT JOIN UI
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// SECT-BIBLIO-5 (tâche 2) : analyse IA du PDF, pré-remplissage assisté.
+// L'IA PROPOSE (valeur + confiance + preuve sourcée par champ),
+// l'HUMAIN dispose (valide, complète ou corrige) — jamais d'écriture
+// en base sans relecture humaine.
+// ──────────────────────────────────────────────────────────────────────
+
+// AnalyseOuvrageField — un champ proposé par l'IA avec son niveau de
+// confiance (0-100) et sa preuve (extrait source du document).
+type AnalyseOuvrageField struct {
+	Valeur    string `json:"valeur"`
+	Confiance int    `json:"confiance"`
+	Preuve    string `json:"preuve,omitempty"`
+}
+
+// AnalyseOuvrageResult — réponse de POST /api/ouvrages/analyze.
+// Disponible=false → saisie manuelle (l'IA est une AIDE, son absence
+// ne bloque JAMAIS le dépôt : erreur honnête, pattern document.go).
+type AnalyseOuvrageResult struct {
+	Disponible       bool                `json:"disponible"`
+	Raison           string              `json:"raison,omitempty"`
+	Titre            AnalyseOuvrageField `json:"titre"`
+	Auteurs          AnalyseOuvrageField `json:"auteurs"`
+	Editeur          AnalyseOuvrageField `json:"editeur"`
+	Edition          AnalyseOuvrageField `json:"edition"`
+	AnneePublication AnalyseOuvrageField `json:"anneePublication"`
+	ISBN             AnalyseOuvrageField `json:"isbn"`
+	Langue           AnalyseOuvrageField `json:"langue"`
+	Themes           AnalyseOuvrageField `json:"themes"`
+	Description      AnalyseOuvrageField `json:"description"`
+	Modele           string              `json:"modele,omitempty"`
+	PagesAnalysees   int                 `json:"pagesAnalysees"`
+}
+
+// Ouvrage — un livre de la bibliothèque (000137 : périmètre 3 niveaux).
+//
+// SÉMANTIQUE DES CHAMPS DE SCOPING (évolution ADR-0007/000137) :
+//
+//	Visibility = contrôle d'accès principal (RLS) :
+//	  PLATEFORME (tous les clients SECT) / ETABLISSEMENT (le sien) /
+//	  CLASSE (ciblage OuvrageClasse) ;
+//	EtablissementID = NULL pour un dépôt PLATEFORME de l'ADMIN
+//	  global ; sinon l'établissement d'appartenance (conservé en
+//	  provenance après une promotion PLATEFORME — retour possible) ;
+//	FiliereID / Niveau = recommandation (filtrage UI) — NULL =
+//	  « pertinent pour tous », PAS « caché ».
 type Ouvrage struct {
-	ID                     string           `json:"id"`
-	EtablissementID        string           `json:"etablissementId"`
-	Titre                  string           `json:"titre"`
-	Auteurs                *string          `json:"auteurs,omitempty"` // JSON array
-	Categorie              CategorieOuvrage `json:"categorie"`
-	Editeur                *string          `json:"editeur,omitempty"`
-	Edition                *string          `json:"edition,omitempty"`
-	AnneePublication       *int             `json:"anneePublication,omitempty"`
-	ISBN                   *string          `json:"isbn,omitempty"`
-	Langue                 *string          `json:"langue,omitempty"`
-	FiliereID              *string          `json:"filiereId,omitempty"`
-	Niveau                 *string          `json:"niveau,omitempty"` // enum NiveauEtude en DB
-	Themes                 *string          `json:"themes,omitempty"` // JSON array
-	Description            *string          `json:"description,omitempty"`
-	LicenceOrigine         string           `json:"licenceOrigine"`
-	DateExpirationDroits   *time.Time       `json:"dateExpirationDroits,omitempty"`
-	NomFichier             string           `json:"nomFichier"`
-	CheminStockage         *string          `json:"cheminStockage,omitempty"` // clé R2
-	TailleFichier          int              `json:"tailleFichier"`
-	TypeMime               string           `json:"typeMime"`
-	TelechargementAutorise bool             `json:"telechargementAutorise"`
-	CreatedByID            string           `json:"createdById"`
-	CreatedAt              time.Time        `json:"createdAt"`
-	UpdatedAt              time.Time        `json:"updatedAt"`
-	DeletedAt              *time.Time       `json:"deletedAt,omitempty"`
+	ID                     string            `json:"id"`
+	EtablissementID        string            `json:"etablissementId"` // "" = ouvrage PLATEFORME sans établissement
+	Titre                  string            `json:"titre"`
+	Auteurs                *string           `json:"auteurs,omitempty"` // JSON array
+	Categorie              CategorieOuvrage  `json:"categorie"`
+	Editeur                *string           `json:"editeur,omitempty"`
+	Edition                *string           `json:"edition,omitempty"`
+	AnneePublication       *int              `json:"anneePublication,omitempty"`
+	ISBN                   *string           `json:"isbn,omitempty"`
+	Langue                 *string           `json:"langue,omitempty"`
+	FiliereID              *string           `json:"filiereId,omitempty"`
+	Niveau                 *string           `json:"niveau,omitempty"` // enum NiveauEtude en DB
+	Themes                 *string           `json:"themes,omitempty"` // JSON array
+	Description            *string           `json:"description,omitempty"`
+	LicenceOrigine         string            `json:"licenceOrigine"`
+	DateExpirationDroits   *time.Time        `json:"dateExpirationDroits,omitempty"`
+	NomFichier             string            `json:"nomFichier"`
+	CheminStockage         *string           `json:"cheminStockage,omitempty"` // clé R2
+	TailleFichier          int               `json:"tailleFichier"`
+	TypeMime               string            `json:"typeMime"`
+	TelechargementAutorise bool              `json:"telechargementAutorise"`
+	Visibility             VisibiliteOuvrage `json:"visibility"`
+	Statut                 StatutOuvrage     `json:"statut"`
+	CreatedByID            string            `json:"createdById"`
+	CreatedAt              time.Time         `json:"createdAt"`
+	UpdatedAt              time.Time         `json:"updatedAt"`
+	DeletedAt              *time.Time        `json:"deletedAt,omitempty"`
+	// Classes — ciblage « classe » (visibility=CLASSE uniquement).
+	Classes []OuvrageClasseRef `json:"classes"`
 	// DroitsExpires — dérivé (badge UI ADMIN) ; les lecteurs ne reçoivent
 	// jamais ces lignes (auto-masquage policy Ouvrage_select).
 	DroitsExpires bool `json:"droitsExpires"`
@@ -113,6 +222,8 @@ type OuvrageListParams struct {
 	Categorie      CategorieOuvrage
 	FiliereID      string
 	Niveau         string
+	Visibilite     VisibiliteOuvrage // filtre provenance (000137)
+	Statut         StatutOuvrage     // filtre modération (brouillons)
 	Page           int
 	Limit          int
 	IncludeDeleted bool // ADMIN uniquement (corbeille + restore)
@@ -126,13 +237,15 @@ type OuvrageListResult struct {
 	Limit    int        `json:"limit"`
 }
 
-// CreateOuvrageInput — création (upload ADMIN, G1).
+// CreateOuvrageInput — création (upload ADMIN/RESPONSABLE/ENSEIGNANT,
+// 000137 : le périmètre est DÉRIVÉ DU RÔLE par le usecase, jamais pris
+// du client).
 type CreateOuvrageInput struct {
 	// ID — généré par le usecase pour construire la clé R2
 	// ouvrages/{id}/… AVANT l'INSERT (ADR-0007 §stockage) ; vide = le
 	// repository en génère un.
 	ID                     string
-	EtablissementID        string
+	EtablissementID        string // "" → NULL (dépôt PLATEFORME de l'ADMIN global)
 	Titre                  string
 	Auteurs                *string
 	Categorie              CategorieOuvrage
@@ -152,6 +265,9 @@ type CreateOuvrageInput struct {
 	TailleFichier          int
 	TypeMime               string
 	TelechargementAutorise bool
+	Visibility             VisibiliteOuvrage
+	Statut                 StatutOuvrage
+	Classes                []OuvrageClasseInput // visibility=CLASSE (intersection scellée serveur)
 	CreatedByID            string
 }
 
@@ -176,6 +292,17 @@ type UpdateOuvrageInput struct {
 	LicenceOrigine         *string
 	DateExpirationDroits   *time.Time
 	TelechargementAutorise *bool
+	// Visibility — promotion/démotion de périmètre : ADMIN SEUL (le
+	// usecase le refuse sinon ; la policy Ouvrage_update 000137 fige
+	// la visibilité des non-admin en 2e ligne de défense).
+	Visibility *VisibiliteOuvrage
+	// Statut — modération (BROUILLON→VALIDE) : RESPONSABLE de
+	// l'établissement ou ADMIN (jamais l'enseignant déposant).
+	Statut *StatutOuvrage
+	// Classes — remplacement du ciblage CLASSE (l'intersection avec
+	// les classes réelles de l'enseignant est scellée serveur).
+	Classes      []OuvrageClasseInput
+	UnsetClasses bool
 
 	UnsetAuteurs          bool
 	UnsetEditeur          bool
@@ -214,6 +341,12 @@ type OuvrageRepository interface {
 	// SumTaillesByEtablissement — quota stockage bibliothèque (ADR-0007 :
 	// cumul tailleFichier par etablissement, soft-deleted inclus).
 	SumTaillesByEtablissement(ctx context.Context, etablissementID string) (int64, error)
+	// SumTaillesPlateforme — quota du catalogue commun (ouvrages
+	// PLATEFORME, 000137) ; soft-deleted inclus.
+	SumTaillesPlateforme(ctx context.Context) (int64, error)
+	// MesClassesEnseignant — les classes (filière, niveau) de
+	// l'enseignant courant (EnseignantFiliere, RLS : ses lignes).
+	MesClassesEnseignant(ctx context.Context) ([]OuvrageClasseRef, error)
 	// AuditLecture — journalise un accès fichier (ouvrage.lecture).
 	AuditLecture(ctx context.Context, entry OuvrageAuditEntry) error
 }

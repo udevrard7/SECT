@@ -977,15 +977,29 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		// lecteur de la bibliothèque.
 		r.Route("/api/ouvrages", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+
+			// SECT-BIBLIO-5 (000137) : analyse IA du PDF (tâche 2 :
+			// pré-remplissage assisté, jamais bloquant) et classes
+			// destinataires de l'enseignant — routes STATIQUES déclarées
+			// avant /{id} (leçon router P3 : littéral AVANT).
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/analyze", s.analyzeOuvrage)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Get("/mes-classes", s.mesClassesOuvrage)
+
 			r.Get("/", s.listOuvrages)
 			r.Get("/{id}", s.getOuvrage)
 			r.Get("/{id}/fichier", s.getOuvrageFichier)
 			r.Get("/{id}/lecture", s.getOuvrageLecture)
 			r.Put("/{id}/lecture", s.putOuvrageLecture)
-			r.With(middleware.RequireRole("ADMIN")).Post("/", s.uploadOuvrage)
-			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.updateOuvrage)
-			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.deleteOuvrage)
-			r.With(middleware.RequireRole("ADMIN")).Post("/{id}/restore", s.restoreOuvrage)
+			// 000137 : dépôt élargi ADMIN/RESPONSABLE/ENSEIGNANT (G1
+			// évolue — l'étudiant reste lecteur) ; le périmètre est
+			// DÉRIVÉ DU RÔLE côté serveur (usecase + policies RLS).
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/", s.uploadOuvrage)
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Patch("/{id}", s.updateOuvrage)
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Delete("/{id}", s.deleteOuvrage)
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/{id}/restore", s.restoreOuvrage)
+			// 000137 : modération human-in-the-loop — le RESPONSABLE
+			// publie les brouillons (dépôts enseignants) de SON étab.
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/{id}/valider", s.validerOuvrage)
 			// SECT-BIBLIO-P3 (ADR-0007 §P3) : TOC curaté — lecture tous rôles
 			// (RLS déléguée à Ouvrage_select), écritures ADMIN (G1).
 			r.Get("/{id}/sections", s.listOuvrageSections)

@@ -5772,3 +5772,115 @@ ai-providers-set-model.yml (tous dispatch, clés jamais affichées).
 - `go vet ./...` 0 erreur, `go build ./cmd/api` OK, `gofmt` conforme (tabs rétablies après édition).
 - `tsc --noEmit` 0 erreur (frontend).
 - `SESSION_IDLE_MINUTES` absente côté Render → aucun changement dashboard requis ; le défaut code pilote la prod après auto-deploy.
+## SECT-BIBLIO-5 — Bibliothèque : visibilité 3 niveaux + analyse IA du PDF (transposition sandbox → production, 000137)
+
+Demande exploitant (validée en sandbox BIBLIOTHEQUE-1/BIBLIOTHEQUE-2, cf.
+worklog sandbox) : (1) les documents de l'ADMIN plateforme sont destinés à
+TOUS les clients SECT — pas à une seule université (le catalogue « par
+établissement » G2 de 000123 forçait l'admin à re-déposer le même PDF dans
+chaque établissement) ; (2) le RESPONSABLE peut déposer pour SON
+établissement uniquement ; (3) l'ENSEIGNANT peut déposer pour SES classes
+uniquement ; (4) le formulaire d'ajout est pré-rempli par analyse IA du PDF,
+l'humain valide ou complète (tâche 2 — réduire fautes de frappe et délai
+d'ajout, budget 0 € : providers existants + extraction texte pure Go).
+
+Migration 000137 (APPLIQUÉE en prod Neon, v137, 2,2 s) :
+- enums VisibiliteOuvrage (PLATEFORME/ETABLISSEMENT/CLASSE) + StatutOuvrage
+  (VALIDE/BROUILLON) ; colonnes visibility/statut sur Ouvrage (défauts =
+  comportement 000123 inchangé pour l'existant) ; etablissementId NULLABLE
+  (dépôt PLATEFORME de l'admin global) + CHECK non-PLATEFORME ⇒ étab requis.
+- Table OuvrageClasse (ciblage classe = (filiereId, niveau), une « classe »
+  SECT = Filiere×NiveauEtude, cf. salons 000122), ON DELETE CASCADE.
+- FONCTIONS SECURITY DEFINER (anti-récursion RLS, pattern
+  000020/current_user_filiere_id) : current_user_classes() (étudiant : sa
+  filière+niveau ∪ enseignant : EnseignantFiliere),
+  ouvrage_visible_par_classes(), ouvrage_visible(p_ouvrage_id) — SOURCE DE
+  VÉRITÉ UNIQUE de la visibilité (toutes les policies y délèguent désormais),
+  ouvrage_parent_gestionnable().
+- Policies réécrites : Ouvrage_select → ouvrage_visible (PLATEFORME VALIDE
+  visible de tous ; ETABLISSEMENT = son étab ; CLASSE = intersection classes ;
+  BROUILLON = déposant + responsable d'étab + admin — JAMAIS l'étudiant) ;
+  Ouvrage_insert dérivé du rôle (resp : ETABLISSEMENT+son étab+VALIDE ; ens :
+  CLASSE+son étab+createdById=lui+BROUILLON) ; Ouvrage_update fige la
+  visibilité des non-admin (WITH CHECK). OuvrageClasse_select/insert/delete ;
+  l'insert enseignant EXIGE classe ∈ ses classes (3e ligne de défense).
+  Délégation des policies voisines à ouvrage_visible : OuvrageLecture_*,
+  OuvrageSection_select, AlignementOuvrage_* (partie ouvrage ; le parent
+  Document garde user_etab_id), OuvrageAnnotation_*.
+- bibliotheque_activite_etablissement() : les lectures d'ouvrages PLATEFORME
+  comptent dans l'activité de l'étab qui les a lus (WHERE etab = p OR
+  visibility='PLATEFORME') + statut=VALIDE.
+- ASSERTs post-migration (pattern 000122) ; .down.sql complet (policies
+  000123/000124/000126/000127 restaurées à l'identique).
+
+Backend Go :
+- domain/ouvrage.go : VisibiliteOuvrage, StatutOuvrage, OuvrageClasseInput/
+  Ref, AnalyseOuvrageField/Result (valeur+confiance 0-100+preuve sourcée par
+  champ — l'humain voit POURUQUOI l'IA propose) ; Ouvrage.Visibility/Statut/
+  Classes ; etablissementId scan NULL→"" (PLATEFORME).
+- repository/ouvrage.go : Create insère ouvrage + classes (même tx ; FK
+  23503 → ValidationError, usurpation 42501 → UnauthorizedError) ; List avec
+  filtres visibility/statut + loadOuvrageClasses (2e requête groupée ANY($1),
+  RLS-checked) ; Update : sets visibility/statut + remplacement ciblage ;
+  MesClassesEnseignant (EnseignantFiliere RLS-scoped) ; SumTaillesPlateforme
+  (quota catalogue commun).
+- usecase/ouvrage.go : deriveScope() — périmètre TOUJOURS dérivé du rôle
+  (ADMIN global → PLATEFORME, etablissementId NULL ; ADMIN assistance →
+  ETABLISSEMENT de l'étab assisté ADR-0009 ; RESPONSABLE → ETABLISSEMENT
+  son étab VALIDE ; ENSEIGNANT → CLASSE son étab BROUILLON, classes
+  INTERSECTÉES avec EnseignantFiliere — usurpation vidée serveur, 400 si
+  vide ; ETUDIANT → 403). Update : resp = son étab, ens = son dépôt,
+  visibility = ADMIN seul (promotion CONSERVE l'étab d'origine — retour
+  possible, leçon sandbox), statut = resp/admin (jamais l'enseignant).
+  ValiderOuvrage (resp de SON étab / admin). SoftDelete/Restore élargis au
+  périmètre (canManageOuvrage). Quota : plateforme → SumTaillesPlateforme,
+  sinon par établissement. Analyze() : extraction texte des 8 premières
+  pages via ledongthuc/pdf (pure Go, zéro dépendance externe — les PDFs
+  scannés → texte vide → Disponible=false honnête, saisie manuelle, JAMAIS
+  bloquant) + ChatCompletion sur l'AIService existant (failover/cooldowns
+  SECT-LATENCY-3/4 réutilisés, aucun coût nouveau) ; prompt JSON strict
+  confiance+preuve ; clamps (année 1400-2100, preuve 200c, confiance 0-100).
+- transport : POST /api/ouvrages/analyze (ADMIN/RESP/ENS, multipart,
+  réponse 200 {disponible:false,raison} si impossible), GET /api/ouvrages/
+  mes-classes (ENS), POST /api/ouvrages/{id}/valider (RESP/ADMIN) ; upload/
+  PATCH/DELETE/restore élargis ADMIN/RESP/ENS (RequireRole) ; PATCH parse
+  visibility/statut/classes. Routes statiques AVANT /{id} (leçon router P3).
+- main.go : aiService créé AVANT le bloc biblio (injecté dans
+  NewOuvrageUseCase). Makefile : recettes 8-espaces → tabs (make cassé).
+
+Frontend (bibliotheque-page.tsx + ouvrages-types.ts) :
+- Types : VisibiliteOuvrage/StatutOuvrage/OuvrageClasseRef/
+  AnalyseOuvrageResult + libellés ; Ouvrage.visibility/statut/classes.
+- Bouton « Ajouter un document » pour ADMIN/RESP/ENS (l'étudiant lecteur) ;
+  légende des 3 niveaux (Globe/Building2/GraduationCap) ; filtre
+  Provenance + param visibility ; filtres statut via RLS.
+- Dialog dépôt : bandeau de portée par rôle (le serveur scelle, le
+  bandeau informe) ; analyse IA automatique au choix du fichier (état en
+  cours animé, bandeau résultat modèle+pages, bandeau « indisponible —
+  saisie manuelle » si échec honnête) ; LigneIA sous chaque champ
+  pré-rempli (IA · confiance % — « preuve verbatim ») ; classes
+  destinatrices ENSEIGNANT (chips togglables, Obligatoire, bouton
+  disabled sans classe) ; select Établissement = ADMIN global seul ;
+  messages de succès par rôle (enseignant : « brouillon — visible après
+  validation par le responsable »).
+- Cartes : badges provenance (tooltip « visible par… ») + « À valider » ;
+  classes destinatrices affichées ; bouton Valider (resp/admin) sur les
+  brouillons ; menu Gérer élargi au périmètre (peutGererUI approxime, la
+  RLS reste la défense réelle).
+- Bandeau de modération resp/admin (« N document(s) en attente »).
+- PropositionsView : onDeposer étendu au RESPONSABLE (dépôt direct
+  ETABLISSEMENT — la file G1 P4 reste pour les demandes vers l'ADMIN).
+
+Vérifications : go build ./... EXIT 0 ; go vet ./... EXIT 0 ; gofmt -w
+appliqué ; tsc --noEmit EXIT 0 ; eslint (bibliotheque/ + ouvrages-types)
+EXIT 0 ; migration up appliquée prod (v137) puis vérifs SQL : 7 policies
+Ouvrage+OuvrageClasse, 4 fonctions DEFINER, ouvrage_visible()=false sans
+claims, 0 ouvrage non-PLATEFORME sans étab.
+
+Reste en piste : conforme_referentiels_etablissement() pourrait inclure
+les ouvrages PLATEFORME alignés (fonction 000126 inchangée — impact mineur
+: seuls les ouvrages de l'étab comptent dans l'audit de couverture) ;
+annotations P4 sur ouvrages plateforme : policy déléguée mais l'UI
+d'annotation reste scopée par ouvrage consulté ; aucune donnée sensible
+créée pendant l'implémentation (table Ouvrage vide en prod au moment du
+déploiement).

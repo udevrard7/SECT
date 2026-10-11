@@ -249,10 +249,17 @@ func main() {
 	sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
 	resultatUC := usecase.NewResultatUseCase(resultatRepo)
 	documentUC := usecase.NewDocumentUseCase(documentRepo, storageClient)
+	// AI-CONNECT-1 : AIService — lit le provider actif depuis AIProviderConfig
+	// et fait les appels chat completion vers le provider (Mistral, Groq,
+	// etc.). Créé ICI (avant le bloc bibliothèque) car SECT-BIBLIO-5
+	// (000137) l'injecte dans OuvrageUseCase pour l'analyse IA du PDF.
+	aiService := ai.NewAIService(pool)
+
 	// SECT-BIBLIO-P1 (ADR-0007) : quota stockage bibliothèque lu depuis
 	// BIBLIOTHEQUE_QUOTA_MO (défaut 2048 Mo) dans le usecase.
 	// SECT-BIBLIO-P2 : le usecase porte aussi la lecture mesurée.
-	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient)
+	// SECT-BIBLIO-5 (000137) : aiService pour l'analyse IA (tâche 2).
+	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient, aiService)
 	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant.
 	alignementUC := usecase.NewAlignementUseCase(alignementRepo, ouvrageSectionRepo)
 	// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — annotations,
@@ -267,10 +274,6 @@ func main() {
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
 	examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo, storageClient)
-
-	// AI-CONNECT-1 : AIService — lit le provider actif depuis AIProviderConfig
-	// et fait les appels chat completion vers le provider (Mistral, Groq, etc.).
-	aiService := ai.NewAIService(pool)
 
 	// AI-PROVIDERS-1 : AIProviderUseCase — logique métier pour la gestion des AI providers.
 	aiProviderRepo := repository.NewAIProviderRepository(pool)

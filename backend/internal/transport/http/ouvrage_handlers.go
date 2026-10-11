@@ -32,16 +32,24 @@ func (s *Server) listOuvrages(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	params := domain.OuvrageListParams{
-		Search:    strings.TrimSpace(q.Get("q")),
-		Categorie: domain.CategorieOuvrage(q.Get("categorie")),
-		FiliereID: strings.TrimSpace(q.Get("filiereId")),
-		Niveau:    strings.TrimSpace(q.Get("niveau")),
+		Search:     strings.TrimSpace(q.Get("q")),
+		Categorie:  domain.CategorieOuvrage(q.Get("categorie")),
+		FiliereID:  strings.TrimSpace(q.Get("filiereId")),
+		Niveau:     strings.TrimSpace(q.Get("niveau")),
+		Visibilite: domain.VisibiliteOuvrage(strings.TrimSpace(q.Get("visibility"))),
+		Statut:     domain.StatutOuvrage(strings.TrimSpace(q.Get("statut"))),
 	}
 	if params.Categorie == "" || !domain.IsValidOuvrageCategorie(params.Categorie) {
 		params.Categorie = "" // filtre invalide ignoré (c'est un filtre UI, pas une saisie)
 	}
 	if params.Niveau != "" && !domain.IsValidNiveauEtude(params.Niveau) {
 		params.Niveau = ""
+	}
+	if params.Visibilite != "" && !domain.IsValidVisibiliteOuvrage(params.Visibilite) {
+		params.Visibilite = ""
+	}
+	if params.Statut != "" && params.Statut != domain.StatutOuvrageValide && params.Statut != domain.StatutOuvrageBrouillon {
+		params.Statut = ""
 	}
 	if v := q.Get("page"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -83,11 +91,15 @@ func (s *Server) getOuvrage(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"ouvrage": o})
 }
 
-// uploadOuvrage — POST /api/ouvrages (multipart/form-data, ADMIN).
-// Champs : file (PDF, requis) ; titre, categorie, licenceOrigine,
-// etablissementId (requis) ; auteurs, editeur, edition, anneePublication,
-// isbn, langue, filiereId, niveau, themes, description,
-// dateExpirationDroits (RFC3339 ou YYYY-MM-DD), telechargementAutorise.
+// uploadOuvrage — POST /api/ouvrages (multipart/form-data ;
+// ADMIN/RESPONSABLE/ENSEIGNANT — 000137, le périmètre est DÉRIVÉ DU
+// RÔLE côté serveur : le champ etablissementId du formulaire n'est
+// plus qu'une information ignorée hors mode assistance ADMIN).
+// Champs : file (PDF, requis) ; titre, categorie, licenceOrigine ;
+// auteurs, editeur, edition, anneePublication, isbn, langue, filiereId,
+// niveau, themes, description, dateExpirationDroits (RFC3339 ou
+// YYYY-MM-DD), telechargementAutorise ; classes (JSON array
+// [{"filiereId","niveau"}] — ENSEIGNANT, intersection scellée serveur).
 func (s *Server) uploadOuvrage(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
@@ -144,6 +156,18 @@ func (s *Server) uploadOuvrage(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	}
+	// classesPtr — ciblage ENSEIGNANT : JSON array [{filiereId, niveau}].
+	classesPtr := func() []domain.OuvrageClasseInput {
+		v := strings.TrimSpace(r.FormValue("classes"))
+		if v == "" {
+			return nil
+		}
+		var classes []domain.OuvrageClasseInput
+		if err := json.Unmarshal([]byte(v), &classes); err != nil {
+			return nil // mal formé : le usecase exigera ≥ 1 classe légitime
+		}
+		return classes
+	}
 
 	input := domain.CreateOuvrageInput{
 		EtablissementID:        strings.TrimSpace(r.FormValue("etablissementId")),
@@ -164,6 +188,7 @@ func (s *Server) uploadOuvrage(w http.ResponseWriter, r *http.Request) {
 		NomFichier:             header.Filename,
 		TypeMime:               domain.OuvrageMime,
 		TelechargementAutorise: r.FormValue("telechargementAutorise") == "true",
+		Classes:                classesPtr(),
 		CreatedByID:            claims.UserID,
 	}
 
@@ -280,6 +305,37 @@ func patchOuvrageFromRaw(body map[string]json.RawMessage) (domain.UpdateOuvrageI
 			if err = json.Unmarshal(raw, &v); err == nil && v != nil {
 				out.TelechargementAutorise = v
 			}
+		case "visibility":
+			// 000137 : promotion/démotion de périmètre — le
+			// usecase la réserve à l'ADMIN (403 sinon).
+			var v *string
+			if err = json.Unmarshal(raw, &v); err == nil && v != nil {
+				vis := domain.VisibiliteOuvrage(*v)
+				out.Visibility = &vis
+			}
+		case "statut":
+			// 000137 : modération BROUILLON→VALIDE — le usecase
+			// la réserve au RESPONSABLE/ADMIN (403 sinon).
+			var v *string
+			if err = json.Unmarshal(raw, &v); err == nil && v != nil {
+				st := domain.StatutOuvrage(*v)
+				out.Statut = &st
+			}
+		case "classes":
+			// 000137 : remplacement du ciblage CLASSE —
+			// null = vider, array = nouveau ciblage (l'intersection
+			// avec les classes réelles de l'enseignant est scellée
+			// serveur dans le usecase).
+			var rawClasses []domain.OuvrageClasseInput
+			if err = json.Unmarshal(raw, &rawClasses); err == nil {
+				out.Classes = rawClasses
+			} else {
+				var v *json.RawMessage
+				if err2 := json.Unmarshal(raw, &v); err2 == nil && v == nil {
+					out.UnsetClasses = true
+					err = nil
+				}
+			}
 		}
 		if err != nil {
 			return out, err
@@ -370,4 +426,88 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+// analyzeOuvrage — POST /api/ouvrages/analyze (multipart/form-data ;
+// ADMIN/RESPONSABLE/ENSEIGNANT — SECT-BIBLIO-5, tâche 2).
+// Reçoit le PDF du futur ouvrage, extrait le texte des premières
+// pages (lib pure Go) et demande au LLM configuré (failover de
+// l'AIService) les métadonnées bibliographiques avec confiance +
+// preuve par champ. Le formulaire est PRÉ-REMPLI côté client, puis
+// l'HUMAIN valide, complète ou corrige (human-in-the-loop) — aucune
+// de ces valeurs n'est persistée sans relecture.
+// Réponse TOUJOURS 200 {disponible:false, raison} si l'analyse est
+// impossible (PDF scanné, IA en échec) : la saisie manuelle reste
+// possible, l'aide ne doit jamais bloquer le dépôt.
+func (s *Server) analyzeOuvrage(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 100<<20)
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "fichier trop volumineux ou formulaire invalide (max 100 Mo)")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "fichier 'file' requis")
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "lecture du fichier échouée")
+		return
+	}
+
+	result, err := s.ouvrageUC.Analyze(r.Context(), claims, content, header.Filename)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+// mesClassesOuvrage — GET /api/ouvrages/mes-classes (ENSEIGNANT).
+// Les classes (filière × niveau) de l'enseignant courant — pour le
+// sélecteur « classes destinataires » du formulaire de dépôt (le
+// serveur intersecte de toute façon avec ces classes : usurpation
+// impossible, 000137).
+func (s *Server) mesClassesOuvrage(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	classes, err := s.ouvrageUC.MesClasses(r.Context(), claims)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"classes": classes})
+}
+
+// validerOuvrage — POST /api/ouvrages/{id}/valider
+// (RESPONSABLE/ADMIN — SECT-BIBLIO-5) : publie un BROUILLON (dépôt
+// enseignant) — human-in-the-loop, le responsable modère son
+// établissement.
+func (s *Server) validerOuvrage(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	o, err := s.ouvrageUC.ValiderOuvrage(r.Context(), claims, chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ouvrage": o})
 }

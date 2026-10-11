@@ -70,6 +70,12 @@ import {
   BellRing,
   Inbox,
   MessageSquareText,
+  // SECT-BIBLIO-5 (000137) : visibilité 3 niveaux + analyse IA.
+  Globe,
+  Building2,
+  GraduationCap,
+  Sparkles,
+  BadgeCheck,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -149,9 +155,14 @@ import {
   type OuvrageActivite,
   type BibliothequeActiviteResult,
   type OuvrageVeille,
+  type AnalyseOuvrageResult,
+  type VisibiliteOuvrage,
+  type OuvrageClasseRef,
   CATEGORIES_OUVRAGE,
   NIVEAUX_ETUDE,
   categorieLabel,
+  visibiliteOuvrageLabel,
+  visibiliteOuvrageDescription,
   parseAuteurs,
   tailleAffichable,
   tempsAffichable,
@@ -199,6 +210,29 @@ const BADGE_VARIANTS: Record<
 
 const MAX_TAILLE_FICHIER = 100 * 1024 * 1024 // 100 Mo (domain.MaxTailleOuvrage)
 
+// SECT-BIBLIO-5 (tâche 2) : ligne de preuve sous un champ pré-rempli par
+// l'IA — confiance % + extrait source. L'humain voit POURUQUOI la valeur
+// est proposée et peut la corriger (human-in-the-loop).
+function LigneIA({
+  champ,
+}: {
+  champ?: { valeur: string; confiance: number; preuve?: string }
+}) {
+  if (!champ || !champ.valeur || champ.confiance <= 0) return null
+  const preuve = champ.preuve ?? ''
+  return (
+    <p className="text-[11px] leading-snug text-muted-foreground flex items-start gap-1">
+      <Sparkles className="h-3 w-3 mt-0.5 shrink-0 text-primary" />
+      <span>
+        IA · {champ.confiance} %
+        {preuve
+          ? ` — « ${preuve.slice(0, 90)}${preuve.length > 90 ? '…' : ''} »`
+          : ''}
+      </span>
+    </p>
+  )
+}
+
 // ════════════════════════════════════════════════════════════════════
 // BibliothequePage
 // ════════════════════════════════════════════════════════════════════
@@ -208,9 +242,16 @@ export function BibliothequePage() {
   const queryClient = useQueryClient()
 
   const isAdmin = user?.role === 'ADMIN'
+  const estResponsable = user?.role === 'RESPONSABLE'
+  const estEnseignant = user?.role === 'ENSEIGNANT'
+  // SECT-BIBLIO-5 (000137) : dépôt élargi — ADMIN (catalogue commun
+  // PLATEFORME), RESPONSABLE (son établissement), ENSEIGNANT (ses
+  // classes, brouillon validé par le responsable). L'étudiant reste
+  // lecteur. Le périmètre est DÉRIVÉ DU RÔLE côté serveur — jamais choisi.
+  const peutDeposer = isAdmin || estResponsable || estEnseignant
   // L'ADMIN en mode assistance agit sur son établissement courant ; l'ADMIN
-  // global choisit l'établissement dans le formulaire de dépôt (G2 : le
-  // catalogue est PAR ÉTABLISSEMENT).
+  // global dépose dans le catalogue commun (PLATEFORME, 000137 — pour TOUS
+  // les clients SECT, corrige « destiné à une seule université »).
   const adminAssistance = isAdmin && !!user?.etablissementId
 
   // ─── SECT-BIBLIO-P2 : vue Catalogue / Activité ───
@@ -241,6 +282,9 @@ export function BibliothequePage() {
   const [categorie, setCategorie] = useState<string>('toutes')
   const [filiereFiltre, setFiliereFiltre] = useState<string>('toutes')
   const [niveauFiltre, setNiveauFiltre] = useState<string>('tous')
+  // SECT-BIBLIO-5 (000137) : filtre provenance (PLATEFORME /
+  // ETABLISSEMENT / CLASSE).
+  const [provenanceFiltre, setProvenanceFiltre] = useState<string>('toutes')
   const [page, setPage] = useState(1)
   const [corbeille, setCorbeille] = useState(false) // ADMIN : voir la corbeille
   // SECT-BIBLIO-P4 : veilles thématiques (alertes nouveautés).
@@ -259,13 +303,15 @@ export function BibliothequePage() {
     setCategorie('toutes')
     setFiliereFiltre('toutes')
     setNiveauFiltre('tous')
+    setProvenanceFiltre('toutes')
     setPage(1)
   }
   const filtresActifs =
     search !== '' ||
     categorie !== 'toutes' ||
     filiereFiltre !== 'toutes' ||
-    niveauFiltre !== 'tous'
+    niveauFiltre !== 'tous' ||
+    provenanceFiltre !== 'toutes'
 
   // ─── SECT-BIBLIO-P4 : veilles de l'utilisateur (chips sous les filtres) ───
   const veillesQuery = useQuery({
@@ -358,6 +404,7 @@ export function BibliothequePage() {
   if (categorie !== 'toutes') params.set('categorie', categorie)
   if (filiereFiltre !== 'toutes') params.set('filiereId', filiereFiltre)
   if (niveauFiltre !== 'tous') params.set('niveau', niveauFiltre)
+  if (provenanceFiltre !== 'toutes') params.set('visibility', provenanceFiltre)
   params.set('page', String(page))
   params.set('limit', '12')
   if (corbeille && isAdmin) params.set('includeDeleted', 'true')
@@ -409,6 +456,24 @@ export function BibliothequePage() {
     enabled: isAdmin && !adminAssistance,
     staleTime: 5 * 60_000,
   })
+
+  // ─── SECT-BIBLIO-5 (000137) : classes de l'enseignant — sélecteur
+  // « classes destinatrices » du formulaire de dépôt (le serveur
+  // intersecte de toute façon : usurpation impossible). ───
+  const mesClassesQuery = useQuery<OuvrageClasseRef[]>({
+    queryKey: ['ouvrages-mes-classes'],
+    queryFn: async () => {
+      const res = await fetch('/api/ouvrages/mes-classes', {
+        credentials: 'include',
+      })
+      if (!res.ok) return []
+      const body = await res.json().catch(() => ({}))
+      return (body?.classes ?? []) as OuvrageClasseRef[]
+    },
+    enabled: estEnseignant,
+    staleTime: 5 * 60_000,
+  })
+  const mesClasses = mesClassesQuery.data ?? []
 
   // ─── SECT-BIBLIO-P2 : activité de lecture (vue enseignante) ───
   // ADR-0009 : l'étab sondé est toujours celui des claims (dérivé du
@@ -682,7 +747,7 @@ export function BibliothequePage() {
     }
   }
 
-  // ─── Dialog dépôt (ADMIN) ───
+  // ─── Dialog dépôt (ADMIN/RESPONSABLE/ENSEIGNANT — 000137) ───
   const [depotOuvert, setDepotOuvert] = useState(false)
   const [fichier, setFichier] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -693,6 +758,18 @@ export function BibliothequePage() {
     id: string
     titre: string
   } | null>(null)
+
+  // SECT-BIBLIO-5 (tâche 2 — 000137) : analyse IA du PDF. L'IA PROPOSE
+  // (valeur + confiance + preuve par champ), l'HUMAIN dispose — les
+  // champs pré-remplis restent éditables, les boutons d'enregistrement
+  // exigent les champs requis complétés par l'humain.
+  const [analyseEnCours, setAnalyseEnCours] = useState(false)
+  const [analyse, setAnalyse] = useState<AnalyseOuvrageResult | null>(null)
+  // SECT-BIBLIO-5 (000137) : classes destinatrices sélectionnées
+  // (ENSEIGNANT — intersection scellée serveur avec EnseignantFiliere).
+  const [classesSelectionnees, setClassesSelectionnees] = useState<
+    { filiereId: string; niveau: string }[]
+  >([])
 
   const [fTitre, setFTitre] = useState('')
   const [fCategorie, setFCategorie] = useState<string>('')
@@ -730,6 +807,66 @@ export function BibliothequePage() {
     setFDescription('')
     setFExpiration('')
     setDepotProposition(null)
+    setAnalyse(null)
+    setAnalyseEnCours(false)
+    setClassesSelectionnees([])
+  }
+
+  // SECT-BIBLIO-5 (tâche 2) : analyse IA du PDF — lancée automatiquement
+  // au choix du fichier. PRÉ-REMPLIT le formulaire (valeur + confiance +
+  // preuve), JAMAIS bloquante : indisponible → toast d'information et
+  // saisie manuelle (le principe reste human-in-the-loop).
+  const lancerAnalyse = async (f: File) => {
+    setAnalyse(null)
+    setAnalyseEnCours(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', f)
+      const res = await fetch('/api/ouvrages/analyze', {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${res.status}`)
+      }
+      const result = (await res.json()) as AnalyseOuvrageResult
+      setAnalyse(result)
+      if (result.disponible) {
+        // Pré-remplissage HUMAIN-ÉDITABLE (les champs restent modifiables).
+        if (result.titre.valeur) setFTitre(result.titre.valeur)
+        if (result.auteurs.valeur) setFAuteurs(result.auteurs.valeur)
+        if (result.editeur.valeur) setFEditeur(result.editeur.valeur)
+        if (result.edition.valeur) setFEdition(result.edition.valeur)
+        if (result.anneePublication.valeur) setFAnnee(result.anneePublication.valeur)
+        if (result.isbn.valeur) setFIsbn(result.isbn.valeur)
+        if (result.langue.valeur) setFLangue(result.langue.valeur)
+        if (result.themes.valeur) setFThemes(result.themes.valeur)
+        if (result.description.valeur) setFDescription(result.description.valeur)
+        const remplis = Object.values(result).filter(
+          (v) =>
+            v &&
+            typeof v === 'object' &&
+            'valeur' in v &&
+            String((v as { valeur?: string }).valeur ?? '').trim() !== '',
+        ).length
+        toast.success('Formulaire pré-rempli par l’IA', {
+          description: `${remplis} champ(s) proposé(s) — vérifiez et complétez avant d’enregistrer (modèle ${result.modele ?? 'n/a'}, ${result.pagesAnalysees} page(s) analysée(s)).`,
+        })
+      } else {
+        toast.info('Analyse IA indisponible', {
+          description: `${result.raison ?? 'Analyse impossible'} — remplissez le formulaire manuellement.`,
+        })
+      }
+    } catch (err) {
+      // Erreur honnête : l'aide ne bloque JAMAIS le dépôt.
+      toast.info('Analyse IA impossible', {
+        description: err instanceof Error ? err.message : 'Erreur inconnue',
+      })
+    } finally {
+      setAnalyseEnCours(false)
+    }
   }
 
   const onChoisirFichier = (f: File | null) => {
@@ -747,6 +884,9 @@ export function BibliothequePage() {
       return
     }
     setFichier(f)
+    // Tâche 2 : l'analyse IA part immédiatement (pré-remplissage
+    // assisté pendant que l'utilisateur regarde le formulaire).
+    lancerAnalyse(f)
   }
 
   const soumettreDepot = async () => {
@@ -765,9 +905,21 @@ export function BibliothequePage() {
       })
       return
     }
-    if (!fEtablissement) {
+    // SECT-BIBLIO-5 (000137) : l'établissement n'est requis que pour
+    // l'ADMIN global (mode assistance : dérivé des claims ; RESP/ENS :
+    // dérivé du rôle serveur — plus de select, plus d'erreur possible).
+    if (isAdmin && !adminAssistance && !fEtablissement) {
       toast.error('Établissement manquant', {
-        description: 'Le catalogue est par établissement (G2).',
+        description: 'Choisissez l’établissement d’origine du document.',
+      })
+      return
+    }
+    // ENSEIGNANT : au moins une classe destinataire (le serveur
+    // ré-verifie l’intersection — usurpation impossible).
+    if (estEnseignant && classesSelectionnees.length === 0) {
+      toast.error('Classe destinataire manquante', {
+        description:
+          'Sélectionnez au moins une de vos classes : le document ne sera visible que de ses étudiants.',
       })
       return
     }
@@ -810,6 +962,10 @@ export function BibliothequePage() {
       // P1 : lecture in-browser par défaut — le téléchargement est un
       // opt-in par ouvrage (PATCH telechargementAutorise).
       fd.append('telechargementAutorise', 'false')
+      // SECT-BIBLIO-5 (000137) : ciblage classes de l'ENSEIGNANT.
+      if (estEnseignant && classesSelectionnees.length > 0) {
+        fd.append('classes', JSON.stringify(classesSelectionnees))
+      }
       // SECT-BIBLIO-P4 : liaison à la proposition ACCEPTEE (file G1).
       if (depotProposition) fd.append('propositionId', depotProposition.id)
 
@@ -829,9 +985,23 @@ export function BibliothequePage() {
           queryKey: ['ouvrages-propositions'],
         })
       }
-      toast.success(`« ${fTitre.trim()} » déposé`, {
-        description:
-          "L'ouvrage est disponible dans le catalogue de l'établissement.",
+      // SECT-BIBLIO-5 : le message suit le périmètre dérivé du rôle.
+      const messageDepot = estEnseignant
+        ? {
+            titre: `« ${fTitre.trim()} » déposé en brouillon`,
+            description:
+              'Il sera visible de vos classes destinatrices dès validation par le responsable de votre établissement.',
+          }
+        : {
+            titre: `« ${fTitre.trim()} » déposé`,
+            description: estResponsable
+              ? "L'ouvrage est disponible pour les membres de votre établissement."
+              : adminAssistance
+                ? "L'ouvrage est disponible pour les membres de l'établissement assisté."
+                : 'L’ouvrage est disponible dans le catalogue commun à TOUS les établissements clients SECT.',
+          }
+      toast.success(messageDepot.titre, {
+        description: messageDepot.description,
       })
       // P4 : la liaison proposition peut échouer APRÈS un dépôt réussi
       // (ex : proposition retranchée entre-temps) — avertissement honnête.
@@ -997,10 +1167,61 @@ export function BibliothequePage() {
     }
   }
 
+  // ─── SECT-BIBLIO-5 (000137) : modération human-in-the-loop — le
+  // RESPONSABLE publie les brouillons (dépôts enseignants) de SON
+  // établissement ; l'ADMIN peut tout valider. Le serveur re-vérifie.
+  const validerOuvrage = async (o: Ouvrage) => {
+    try {
+      const res = await fetch(`/api/ouvrages/${o.id}/valider`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Erreur ${res.status}`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['ouvrages'] })
+      toast.success(`« ${o.titre} » validé`, {
+        description:
+          'Le document est désormais visible des classes destinatrices.',
+      })
+    } catch (err) {
+      toast.error('Validation impossible', {
+        description: err instanceof Error ? err.message : 'Erreur inconnue',
+      })
+    }
+  }
+
+  // SECT-BIBLIO-5 (000137) : droit de gestion approximé côté UI (la
+  // DÉFENSE RÉELLE est la RLS serveur — canManageOuvrage + policies).
+  const peutGererUI = (o: Ouvrage) =>
+    isAdmin ||
+    (estResponsable && o.etablissementId === user?.etablissementId) ||
+    (estEnseignant && o.createdById === user?.id)
+  const peutValiderUI = (o: Ouvrage) =>
+    o.statut === 'BROUILLON' && !o.deletedAt && (isAdmin || estResponsable)
+
   // ─── Rendu carte ouvrage ───
+  // SECT-BIBLIO-5 (000137) : badges de provenance (Globe/Building2/
+  // GraduationCap — qui voit le document) et statut de modération.
+  const ICONES_PROVENANCE: Record<
+    VisibiliteOuvrage,
+    typeof Globe
+  > = {
+    PLATEFORME: Globe,
+    ETABLISSEMENT: Building2,
+    CLASSE: GraduationCap,
+  }
   const carteOuvrage = (o: Ouvrage, i: number) => {
     const enCorbeille = !!o.deletedAt
     const auteurs = parseAuteurs(o.auteurs)
+    const IconeProvenance = ICONES_PROVENANCE[o.visibility] ?? Building2
+    const classesAffichees = (o.classes ?? [])
+      .map(
+        (c) =>
+          `${c.filiere?.nom ?? c.filiereId} · ${c.niveau}`,
+      )
+      .slice(0, 2)
     return (
       <EntityCard
         key={o.id}
@@ -1019,6 +1240,51 @@ export function BibliothequePage() {
         meta={`${o.filiere?.nom ?? 'Toutes filières'} · ${o.niveau ?? 'Tous niveaux'} · ${tailleAffichable(o.tailleFichier)}${o.anneePublication ? ` · ${o.anneePublication}` : ''}`}
         index={i}
       >
+        {/* SECT-BIBLIO-5 : provenance + statut de modération. */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className="gap-1 cursor-help"
+              >
+                <IconeProvenance className="h-3 w-3" />
+                {visibiliteOuvrageLabel(o.visibility)}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              {visibiliteOuvrageDescription(o.visibility)}
+            </TooltipContent>
+          </Tooltip>
+          {o.statut === 'BROUILLON' && (
+            <Badge
+              variant="outline"
+              className="gap-1 border-amber-500/40 text-amber-600 dark:text-amber-400"
+            >
+              À valider
+            </Badge>
+          )}
+        </div>
+        {/* SECT-BIBLIO-5 : classes destinatrices (visibility=CLASSE). */}
+        {o.visibility === 'CLASSE' && classesAffichees.length > 0 && (
+          <p className="text-xs text-muted-foreground mb-2 flex flex-wrap gap-1">
+            {classesAffichees.map((c) => (
+              <Badge
+                key={c}
+                variant="secondary"
+                className="font-normal"
+              >
+                <GraduationCap className="h-3 w-3 mr-1" />
+                {c}
+              </Badge>
+            ))}
+            {(o.classes ?? []).length > 2 && (
+              <span className="text-muted-foreground">
+                +{(o.classes ?? []).length - 2}
+              </span>
+            )}
+          </p>
+        )}
         {o.droitsExpires && (
           <Badge variant="destructive" className="mb-2">
             <ShieldAlert className="h-3 w-3 mr-1" />
@@ -1041,6 +1307,19 @@ export function BibliothequePage() {
             <BookOpen className="h-3.5 w-3.5" />
             Lire
           </Button>
+          {/* SECT-BIBLIO-5 : modération — publier un brouillon
+              (RESPONSABLE de l'étab / ADMIN). */}
+          {peutValiderUI(o) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+              onClick={() => validerOuvrage(o)}
+            >
+              <BadgeCheck className="h-3.5 w-3.5" />
+              Valider
+            </Button>
+          )}
           {o.telechargementAutorise && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1059,7 +1338,7 @@ export function BibliothequePage() {
               </TooltipContent>
             </Tooltip>
           )}
-          {isAdmin && (
+          {peutGererUI(o) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="ghost" className="ml-auto">
@@ -1113,7 +1392,8 @@ export function BibliothequePage() {
               <p className="text-sm text-muted-foreground max-w-2xl">
                 Référentiels officiels, ouvrages de référence, recherche
                 académique et pratique professionnelle — la source normative
-                de votre établissement.
+                partagée : catalogue commun SECT, documents de votre
+                établissement et ouvrages de vos classes.
               </p>
             </div>
             <div className="flex flex-col items-stretch gap-3 sm:items-end">
@@ -1160,28 +1440,45 @@ export function BibliothequePage() {
                   )}
                 </ToggleGroup>
               )}
-              {isAdmin && (
+              {peutDeposer && (
                 <Button
                   onClick={() => setDepotOuvert(true)}
                   className="ds-shimmer gap-2"
                 >
                   <Plus className="h-4 w-4" />
-                  Ajouter un ouvrage
+                  Ajouter un document
                 </Button>
               )}
             </div>
+          </div>
+          {/* SECT-BIBLIO-5 (000137) : légende des 3 niveaux de diffusion. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <Globe className="h-3.5 w-3.5 text-primary" />
+              Catalogue SECT — tous les établissements clients
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              Établissement — le vôtre uniquement
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <GraduationCap className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+              Classes — vos étudiants uniquement
+            </span>
           </div>
         </div>
       </div>
 
       {/* SECT-BIBLIO-P4 : file de propositions G1 — le RESPONSABLE
           propose (métadonnées), l'ADMIN tranche puis dépose le fichier
-          (dépôt pré-lié via propositionId). */}
+          (dépôt pré-lié via propositionId). SECT-BIBLIO-5 (000137) : le
+          RESPONSABLE peut aussi déposer directement (son périmètre =
+          son établissement). */}
       {vue === 'propositions' && peutProposer ? (
         <PropositionsView
           filieresOptions={filieresOptions}
           onDeposer={
-            isAdmin
+            isAdmin || estResponsable
               ? (p) => {
                   setDepotProposition({ id: p.id, titre: p.titre })
                   setFTitre(p.titre)
@@ -1359,6 +1656,43 @@ export function BibliothequePage() {
         </div>
       ) : (
         <>
+      {/* SECT-BIBLIO-5 (000137) : bandeau de modération — brouillons
+          (dépôts enseignants) en attente de validation par le
+          responsable de l'établissement / l'ADMIN. */}
+      {(isAdmin || estResponsable) &&
+        !corbeille &&
+        ouvrages.some((o) => o.statut === 'BROUILLON') && (
+          <Card className="border-amber-500/40 bg-amber-500/5">
+            <CardContent className="pt-4 pb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-sm">
+                <BadgeCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <span>
+                  <span className="font-medium">
+                    {ouvrages.filter((o) => o.statut === 'BROUILLON').length}{' '}
+                    document(s) en attente
+                  </span>{' '}
+                  <span className="text-muted-foreground">
+                    — déposés par des enseignants, visibles uniquement après
+                    votre validation (page courante).
+                  </span>
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  resetFiltres()
+                  setCorbeille(false)
+                }}
+                className="gap-1.5"
+              >
+                <Filter className="h-3.5 w-3.5" />
+                Réinitialiser les filtres
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -1454,6 +1788,28 @@ export function BibliothequePage() {
                         {c.label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* SECT-BIBLIO-5 (000137) : filtre provenance — qui voit
+                  le document (plateforme / établissement / classes). */}
+              <div>
+                <Label className="text-xs text-muted-foreground">Provenance</Label>
+                <Select
+                  value={provenanceFiltre}
+                  onValueChange={(v) => {
+                    setProvenanceFiltre(v)
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger className="w-[190px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="toutes">Toutes</SelectItem>
+                    <SelectItem value="PLATEFORME">Catalogue SECT</SelectItem>
+                    <SelectItem value="ETABLISSEMENT">Établissement</SelectItem>
+                    <SelectItem value="CLASSE">Classes</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1602,9 +1958,9 @@ export function BibliothequePage() {
               <p className="text-sm text-muted-foreground mt-1">
                 {filtresActifs
                   ? 'Essayez de réinitialiser les filtres.'
-                  : isAdmin
-                    ? 'Déposez le premier ouvrage de référence (PDF).'
-                    : "Les ouvrages déposés par l'administration apparaîtront ici."}
+                  : peutDeposer
+                    ? 'Déposez le premier document (PDF) — l’analyse IA pré-remplira le formulaire.'
+                    : "Les documents déposés par l'administration et vos enseignants apparaîtront ici."}
               </p>
             </div>
           </CardContent>
@@ -1642,20 +1998,58 @@ export function BibliothequePage() {
         </>
       )}
 
-      {/* ─── Dialog dépôt (ADMIN) ─── */}
+      {/* ─── Dialog dépôt (ADMIN/RESPONSABLE/ENSEIGNANT — 000137) ─── */}
       <Dialog open={depotOuvert} onOpenChange={setDepotOuvert}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">Ajouter un ouvrage</DialogTitle>
+            <DialogTitle className="font-display">Ajouter un document</DialogTitle>
             <DialogDescription>
-              Dépôt réservé à l'administration (G1). PDF uniquement, 100 Mo max.
-              La lecture se fait dans le navigateur ; le téléchargement est
-              désactivé par défaut.
+              {/* SECT-BIBLIO-5 (000137) : le périmètre est DÉRIVÉ DU RÔLE
+                  (le serveur le scelle — ce bandeau informe, il ne
+                  décide pas). */}
+              {estEnseignant
+                ? 'Vos classes uniquement — le document naît « à valider » et devient visible de vos étudiants après validation par le responsable de votre établissement.'
+                : estResponsable
+                  ? "Votre établissement uniquement — visible des membres de votre établissement dès le dépôt."
+                  : adminAssistance
+                    ? "Établissement assisté — visible de ses membres dès le dépôt."
+                    : 'Catalogue commun SECT — visible par TOUS les établissements clients dès le dépôt.'}
+              {' '}PDF uniquement, 100 Mo max. L'analyse IA pré-remplit le
+              formulaire : vous vérifiez, complétez et validez.
             </DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="max-h-[58vh] pr-3">
             <div className="space-y-4">
+              {/* SECT-BIBLIO-5 : bandeau de portée (couleur du niveau). */}
+              <div
+                className={`rounded-lg border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${
+                  estEnseignant
+                    ? 'border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300'
+                    : estResponsable || adminAssistance
+                      ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300'
+                      : 'border-primary/30 bg-primary/5 text-foreground'
+                }`}
+              >
+                {estEnseignant ? (
+                  <GraduationCap className="h-4 w-4 mt-0.5 shrink-0" />
+                ) : estResponsable || adminAssistance ? (
+                  <Building2 className="h-4 w-4 mt-0.5 shrink-0" />
+                ) : (
+                  <Globe className="h-4 w-4 mt-0.5 shrink-0" />
+                )}
+                <span>
+                  <span className="font-medium">Publication : </span>
+                  {estEnseignant
+                    ? 'vos classes destinatrices (à sélectionner ci-dessous)'
+                    : estResponsable
+                      ? 'votre établissement'
+                      : adminAssistance
+                        ? "l'établissement assisté"
+                        : 'tous les établissements clients SECT'}
+                </span>
+              </div>
+
               {/* Fichier */}
               <div
                 role="button"
@@ -1703,10 +2097,119 @@ export function BibliothequePage() {
                   <div className="space-y-1">
                     <BookOpen className="h-8 w-8 text-muted-foreground mx-auto" />
                     <p className="text-sm">Glissez le PDF ici ou cliquez</p>
-                    <p className="text-xs text-muted-foreground">PDF · max 100 Mo</p>
+                    <p className="text-xs text-muted-foreground">
+                      PDF · max 100 Mo · l'analyse IA démarre automatiquement
+                    </p>
                   </div>
                 )}
               </div>
+
+              {/* SECT-BIBLIO-5 (tâche 2) : état de l'analyse IA —
+                  l'IA PROPOSE, l'humain dispose (human-in-the-loop). */}
+              {analyseEnCours && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-2.5 text-sm flex items-center gap-2.5">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                  <span className="text-muted-foreground">
+                    Analyse du document par l'IA en cours — le formulaire se
+                    pré-remplit automatiquement…
+                  </span>
+                </div>
+              )}
+              {analyse?.disponible && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-2.5 text-sm space-y-1">
+                  <p className="flex items-center gap-1.5 font-medium">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Formulaire pré-rempli par l'IA
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Chaque valeur proposée reste éditable et sa preuve est
+                    citée sous le champ concerné — vérifiez, complétez les
+                    champs manquants (en particulier catégorie et licence),
+                    puis enregistrez.
+                    {analyse.modele ? ` Modèle : ${analyse.modele} · ` : ' '}
+                    {analyse.pagesAnalysees} page(s) analysée(s).
+                  </p>
+                </div>
+              )}
+              {analyse && !analyse.disponible && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3.5 py-2.5 text-sm text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>
+                    Analyse IA indisponible — {analyse.raison ?? 'raison inconnue'}.{' '}
+                    Remplissez le formulaire manuellement : le dépôt reste
+                    entièrement possible.
+                  </span>
+                </div>
+              )}
+
+              {/* SECT-BIBLIO-5 (000137) : classes destinatrices de
+                  l'ENSEIGNANT — chips togglables, au moins une requise
+                  (le serveur intersecte avec EnseignantFiliere :
+                  usurpation impossible). */}
+              {estEnseignant && (
+                <div className="space-y-2 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3.5 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-sm font-medium flex items-center gap-1.5">
+                      <GraduationCap className="h-4 w-4" />
+                      Classes destinatrices
+                    </Label>
+                    <Badge variant="outline" className="text-[10px]">
+                      Obligatoire
+                    </Badge>
+                  </div>
+                  {mesClassesQuery.isLoading ? (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Chargement de vos classes…
+                    </p>
+                  ) : mesClasses.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Vous n'avez pas encore de classe affectée — demandez au
+                      responsable de votre établissement de vous affecter à
+                      une filière et un niveau.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {mesClasses.map((c) => {
+                        const cle = `${c.filiereId}|${c.niveau}`
+                        const active = classesSelectionnees.some(
+                          (s) => s.filiereId === c.filiereId && s.niveau === c.niveau,
+                        )
+                        return (
+                          <button
+                            key={cle}
+                            type="button"
+                            onClick={() =>
+                              setClassesSelectionnees((prev) =>
+                                active
+                                  ? prev.filter(
+                                      (s) =>
+                                        !(
+                                          s.filiereId === c.filiereId &&
+                                          s.niveau === c.niveau
+                                        ),
+                                    )
+                                  : [...prev, { filiereId: c.filiereId, niveau: c.niveau }],
+                              )
+                            }
+                            aria-pressed={active}
+                            className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                              active
+                                ? 'border-rose-500 bg-rose-500 text-white'
+                                : 'border-border bg-card hover:border-rose-500/50'
+                            }`}
+                          >
+                            {c.filiere?.nom ?? c.filiereId} · {c.niveau}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Seuls les étudiants de ces classes verront le document.
+                  </p>
+                </div>
+              )}
 
               {/* Champs principaux */}
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1718,6 +2221,8 @@ export function BibliothequePage() {
                     onChange={(e) => setFTitre(e.target.value)}
                     placeholder="Ex : Mathématiques L1 — Analyse, cours et exercices"
                   />
+                  {/* SECT-BIBLIO-5 : preuve IA sous le champ. */}
+                  <LigneIA champ={analyse?.disponible ? analyse.titre : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Catégorie *</Label>
@@ -1734,7 +2239,10 @@ export function BibliothequePage() {
                     </SelectContent>
                   </Select>
                 </div>
-                {!adminAssistance && (
+                {/* SECT-BIBLIO-5 (000137) : le select établissement ne
+                    concerne plus que l'ADMIN global (étab d'origine
+                    informatif) ; RESP/ENS voient le bandeau de portée. */}
+                {isAdmin && !adminAssistance && (
                   <div className="space-y-1.5">
                     <Label>Établissement *</Label>
                     <Select
@@ -1808,6 +2316,7 @@ export function BibliothequePage() {
                     onChange={(e) => setFAuteurs(e.target.value)}
                     placeholder="Ex : Koffi A. ; Traoré M."
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.auteurs : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-editeur">Éditeur</Label>
@@ -1816,6 +2325,7 @@ export function BibliothequePage() {
                     value={fEditeur}
                     onChange={(e) => setFEditeur(e.target.value)}
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.editeur : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-edition">Édition</Label>
@@ -1825,6 +2335,7 @@ export function BibliothequePage() {
                     onChange={(e) => setFEdition(e.target.value)}
                     placeholder="Ex : 3e édition"
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.edition : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-annee">Année de publication</Label>
@@ -1835,6 +2346,7 @@ export function BibliothequePage() {
                     onChange={(e) => setFAnnee(e.target.value)}
                     placeholder="Ex : 2024"
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.anneePublication : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-isbn">ISBN</Label>
@@ -1843,6 +2355,7 @@ export function BibliothequePage() {
                     value={fIsbn}
                     onChange={(e) => setFIsbn(e.target.value)}
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.isbn : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-langue">Langue</Label>
@@ -1852,6 +2365,7 @@ export function BibliothequePage() {
                     onChange={(e) => setFLangue(e.target.value)}
                     placeholder="Ex : Français"
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.langue : undefined} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-expiration">
@@ -1876,6 +2390,7 @@ export function BibliothequePage() {
                     onChange={(e) => setFThemes(e.target.value)}
                     placeholder="Ex : analyse ; dérivées ; intégrales"
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.themes : undefined} />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="biblio-description">Description</Label>
@@ -1886,6 +2401,7 @@ export function BibliothequePage() {
                     placeholder="Résumé et usage pédagogique recommandé…"
                     rows={3}
                   />
+                  <LigneIA champ={analyse?.disponible ? analyse.description : undefined} />
                 </div>
               </div>
             </div>
@@ -1895,13 +2411,21 @@ export function BibliothequePage() {
             <Button variant="outline" onClick={() => setDepotOuvert(false)}>
               Annuler
             </Button>
+            {/* SECT-BIBLIO-5 : classes requises pour l'enseignant — le
+                bouton guide la complétion humaine (l'IA a pré-rempli,
+                l'humain complète/valide). */}
             <Button
               onClick={soumettreDepot}
-              disabled={depotEnCours}
+              disabled={
+                depotEnCours ||
+                (estEnseignant && classesSelectionnees.length === 0)
+              }
               className="gap-2"
             >
               {depotEnCours && <Loader2 className="h-4 w-4 animate-spin" />}
-              Déposer l'ouvrage
+              {estEnseignant
+                ? 'Enregistrer le brouillon'
+                : "Enregistrer le document"}
             </Button>
           </DialogFooter>
         </DialogContent>

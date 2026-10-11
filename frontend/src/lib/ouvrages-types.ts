@@ -44,6 +44,82 @@ export function categorieLabel(c: CategorieOuvrage): string {
 
 export const NIVEAUX_ETUDE: string[] = ['L1', 'L2', 'L3', 'M1', 'M2', 'DOCTORAT']
 
+// ════════════════════════════════════════════════════════════════════
+// SECT-BIBLIO-5 (000137) — visibilité 3 niveaux + analyse IA du PDF.
+// Miroir Go : backend/internal/domain/ouvrage.go (VisibiliteOuvrage,
+// StatutOuvrage, AnalyseOuvrage*).
+// ════════════════════════════════════════════════════════════════════
+
+export type VisibiliteOuvrage = 'PLATEFORME' | 'ETABLISSEMENT' | 'CLASSE'
+
+export type StatutOuvrage = 'VALIDE' | 'BROUILLON'
+
+export interface OuvrageClasseRef {
+  filiereId: string
+  /** enum NiveauEtude en DB. */
+  niveau: string
+  filiere?: OuvrageFiliereRef | null
+}
+
+/** Libellé + description d'un niveau de visibilité (légende UI). */
+export function visibiliteOuvrageLabel(v: VisibiliteOuvrage): string {
+  switch (v) {
+    case 'PLATEFORME':
+      return 'Catalogue SECT'
+    case 'CLASSE':
+      return 'Mes classes'
+    default:
+      return 'Mon établissement'
+  }
+}
+
+export function visibiliteOuvrageDescription(v: VisibiliteOuvrage): string {
+  switch (v) {
+    case 'PLATEFORME':
+      return 'Visible par tous les établissements clients SECT'
+    case 'CLASSE':
+      return 'Visible uniquement par les classes destinataires'
+    default:
+      return 'Visible par les membres de l’établissement'
+  }
+}
+
+export function statutOuvrageLabel(s: StatutOuvrage): string {
+  return s === 'BROUILLON' ? 'À valider' : 'Validé'
+}
+
+/** Un champ proposé par l'analyse IA (valeur + confiance + preuve
+ * sourcée — l'humain voit POURQUOI l'IA propose une valeur). */
+export interface AnalyseOuvrageField {
+  valeur: string
+  /** 0-100 : 100 = explicitement imprimé sur la page de titre. */
+  confiance: number
+  preuve?: string
+}
+
+/** Réponse POST /api/ouvrages/analyze. disponible=false → saisie
+ * manuelle (l'aide ne bloque JAMAIS le dépôt). */
+export interface AnalyseOuvrageResult {
+  disponible: boolean
+  raison?: string
+  titre: AnalyseOuvrageField
+  auteurs: AnalyseOuvrageField
+  editeur: AnalyseOuvrageField
+  edition: AnalyseOuvrageField
+  anneePublication: AnalyseOuvrageField
+  isbn: AnalyseOuvrageField
+  langue: AnalyseOuvrageField
+  themes: AnalyseOuvrageField
+  description: AnalyseOuvrageField
+  modele?: string
+  pagesAnalysees: number
+}
+
+/** Réponse GET /api/ouvrages/mes-classes (ENSEIGNANT). */
+export interface MesClassesResult {
+  classes: OuvrageClasseRef[]
+}
+
 export interface OuvrageFiliereRef {
   id: string
   code: string
@@ -76,6 +152,12 @@ export interface Ouvrage {
   tailleFichier: number
   typeMime: string
   telechargementAutorise: boolean
+  /** 000137 : périmètre de diffusion (dérivé du rôle côté serveur). */
+  visibility: VisibiliteOuvrage
+  /** 000137 : cycle de modération (dépôt enseignant → BROUILLON). */
+  statut: StatutOuvrage
+  /** 000137 : ciblage « classe » (visibility=CLASSE uniquement). */
+  classes: OuvrageClasseRef[]
   createdById: string
   createdAt: string
   updatedAt: string
