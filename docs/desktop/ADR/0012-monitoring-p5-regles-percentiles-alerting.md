@@ -240,3 +240,108 @@ HTTP 200, readSource=replica, voie D, tables ≥ 80, âge backup lu,
 diskFreePct > 0, règles 000136 = 3/3. Dernier état : SUCCÈS
 (run 38159850405, 17:29 UTC — 5 253 RequestLog, backup 13,5 h,
 restore marker 2026-10, CU cycle 24,75/100, disque 78 % libre).
+
+## Addendum — SECT-LATENCY-1/2/3 : audit latence + corrections (11 octobre 2026)
+
+### Mesures de référence (workflows latency-audit / latency-diag, lecture seule)
+
+| Composant | Mesure | Verdict |
+|---|---|---|
+| Handler Go pur (`/health`) | 0,6-0,9 ms | sain |
+| Pool → Neon (connexion tenue) | 20-23 ms | sain (Marseille→Francfort) |
+| Nouvelle connexion Neon | 176-212 ms | sain (chemin froid) |
+| TCP Neon (RTT) | 25-31 ms | sain |
+| Réplique locale 5433 (socket) | 0,05-0,23 ms | sain |
+| api.sect.ftci.fr direct (TLS caddy) | 16-23 ms | sain |
+| sect.ftci.fr via rewrite Vercel | 217-428 ms | coût du relais Vercel |
+| POST /api/landing-demo | 30 002 ms, 100 % erreur, réponse VIDE | CASSÉ → corrigé |
+| GET /api/monitoring/overview | 892-1 430 ms | 5× trop lent → corrigé |
+
+**Conclusion système : l'infrastructure (option C) n'est PAS le goulot.** Les
+deux vrais problèmes étaient applicatifs : la chaîne IA du landing-demo et le
+WriteTimeout du serveur HTTP.
+
+### Cause racine n°1 — WriteTimeout tuait les réponses tardives en silence
+
+Le serveur (`cmd/api/main.go`) pose `WriteTimeout: 30s` à la lecture des
+headers. Test local (WriteTimeout=3s, écrits chaque seconde) : tout écrit TCP
+après le deadline disparaît SILENCIEUSEMENT — `Fprintf` retourne `err=nil`,
+le client ne reçoit RIEN, puis EOF (connexion tuée par le serveur).
+
+Victimes :
+1. `POST /api/landing-demo` : le 503 était journalisé à 30 001 ms mais la
+   connexion mourait AVANT l'écriture → curl exit 52, http=000, réponse vide.
+2. Les 3 flux SSE (messagerie, notifications, surveillance) : heartbeats 45s
+   et événements perdus au-delà de 30 s de connexion → EventSource du
+   navigateur se reconnecte en boucle ; le RequestLog enregistrait des
+   « latences » de 950 s = durée de vie de connexions zombies.
+
+Fix : `http.ResponseController.SetWriteDeadline` (mécanisme prévu par
+net/http pour les timeouts par-réponse). Pré-requis : `Unwrap()` sur les
+wrappers maison de ResponseWriter (statusRecorder, statusWriter — chi
+compress l'avait déjà en v5.3.2). Les 3 hubs SSE réarment le deadline avant
+chaque flush ; landing-demo l'étend à l'entrée du handler (réponse TOUJOURS
+livrée, même l'erreur).
+
+**Règle d'architecture désormais obligatoire** : tout handler qui peut
+écrire après 30 s (SSE, génération IA, export) DOIT réarmer son write
+deadline via ResponseController — ou finir AVANT 30 s.
+
+### Cause racine n°2 — chaîne IA sans budget par tentative ni cooldown
+
+Mesures providers (run 38164208378, clés de prod, depuis l'hôte) :
+Mistral p1 = 403 (0,09 s, « not available in your subscription tier ») ;
+Groq p3 = 404 (0,05 s, modèle inexistant) ; MuleRouter p4 = 200 mais TTFB
+5,8-6,6 s pour 20 tokens (QCM complet ≈ 30 s+) ; OpenRouter p5 = 200 en
+0,5-1,1 s (fonctionnel) ; DeepSeek = 402 (crédits épuisés) ; Cerebras/ZAI =
+404 (modèles invalides).
+
+Le 30 s observé : Mistral+Groq échouent vite, puis MuleRouter consommait
+TOUT le budget — OpenRouter (le seul rapide et valide) n'était jamais
+essayé. De plus `AIFailoverEvent` était écrit avec le ctx de la requête déjà
+mort → table vide ; et `ChatCompletion` passait un logger nil → échecs
+invisibles dans les logs serveur.
+
+Fix :
+1. `attemptCtx` : part FIXE de 12 s par tentative quand le budget parent est
+   court (< 60 s) ; budgets longs (workers, 5 min) inchangés ;
+2. cooldown mémoire ENFIN implémenté (`FailoverConfig.CooldownDurationMs`,
+   défaut 60 s) : un provider en échec est écarté jusqu'à guérison ou
+   expiration — le provider de tête reste toujours essayé pour garantir
+   une erreur parlable ;
+3. `AIFailoverEvent` via ctx DÉTACHÉ (`context.WithoutCancel` + 3 s) ;
+4. logger réel (`slog.Default()`) ;
+5. landing-demo : budget 20 s + 503 livré avec message actionnable + WARN
+   serveur de la cause.
+
+**Vérifié en prod (run 38166366991)** : essai 1 = 200 en 19,0 s (QCM
+kimi-k2.6 complet), essai 2 (cooldown armé) = 200 en 4,5 s.
+
+### Améliorations connexes
+
+- `monitoring/overview` : 7 blocs séquentiels (0,9-1,4 s mesurés, poll
+  console 60 s) parallélisés par WaitGroup — 211-264 ms mesurés post-fix
+  (~5×).
+- `monitoring/endpoints` : les flux SSE restent loggés dans RequestLog mais
+  sont EXCLUS des percentiles (durée de connexion ≠ latence de requête).
+
+### Nettoyage providers (données opérateur, découvertes par l'audit)
+
+Mistral : le plan n'inclut pas mistral-large-latest (403 tier_not_allowed,
+code 1910) → clé/plan ou modèle à corriger. Groq : le modèle
+`llama-3.1-8b-instant` n'existe plus ou l'org n'y a pas accès. DeepSeek :
+crédits épuisés (402). Cerebras `qwen3.7-max` et ZAI `default` : modèles
+invalides (404). Tant qu'au moins un provider rapide est configuré, la
+démo répond en 2-5 s sans même solliciter le cooldown.
+
+### Pièges documentés (complément §18.5)
+
+8. Un wrapper de ResponseWriter SANS `Unwrap()` masque
+   `ResponseController` → `SetWriteDeadline` échoue en silence. Tout
+   wrapper ajouté à l'avenir DOIT implémenter `Unwrap()`.
+9. Les durées SSE dans RequestLog ne sont PAS des latences : les exclure
+   des agrégations percentile (fait) et ne jamais s'en servir de seuil
+   d'alerte.
+10. Un context expiré tue aussi les écritures d'audit « best-effort » :
+    tout log d'erreur conditionné par l'échec qu'on diagnostique DOIT
+    utiliser un ctx détaché (`WithoutCancel` + timeout court).
