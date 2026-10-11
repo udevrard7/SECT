@@ -5746,3 +5746,29 @@ de scripts = générer par outil + round-trip AST (un \ perdu = SyntaxError VM).
 
 Workflows ajoutés : ai-providers-reorder.yml, openrouter-model-bench.yml,
 ai-providers-set-model.yml (tous dispatch, clés jamais affichées).
+
+---
+
+## SESSION-TIMEOUT-2 — Fenêtre d'inactivité 30 min → 60 min (11 octobre 2026)
+
+**Demande** : « lorsque un utilisateur est connecté à l'app, il se déconnecte après une période de 30 min d'inactivité ; augmenter la période d'inactivité avant déconnexion auto à 1 h ».
+
+### Analyse
+
+- Mécanisme SESSION-TIMEOUT-1 (migration 000106) : expiration **glissante** du refresh token — `RefreshToken.IsIdleExpired(lastActivity, idleTimeout)` compare la dernière rotation à `sessionIdleTimeout`. Chaque refresh réussi repousse la fenêtre ; le keep-alive frontend (5 min) la repousse pendant l'activité → l'utilisateur actif n'est jamais déconnecté.
+- Le timeout vient de `getSessionIdleTimeout()` (env `SESSION_IDLE_MINUTES`, 0 = désactivé). **La variable n'est PAS définie sur Render** (vérifié API Render `GET /v1/services/{id}/env-vars`) → la prod utilise le **défaut code = 30 min**.
+- Décision : changer le défaut code 30 → 60 min (s'applique dev + prod au prochain deploy, sans env var). L'override `SESSION_IDLE_MINUTES` reste disponible (valeur 0 = désactivé inchangée).
+
+### Modifications
+
+- `backend/internal/config/config.go` : défaut `30 * time.Minute` → `60 * time.Minute` (branche vide + fallback invalide + warning) + commentaires à jour.
+- `backend/internal/usecase/auth.go` : commentaires `ex: 30 min` → `60 min` (NewAuthUseCase, Refresh).
+- `frontend/src/hooks/use-session-keepalive.ts` : docstring « fenêtre d'inactivité backend (60 min, SESSION-TIMEOUT-2) ».
+- `frontend/src/components/auth/login-form.tsx` : bannières « session expirée par inactivité 1 h » (2 commentaires).
+- Comportement inchangé par ailleurs : grâce replay 60 s, rotation, kill-switch, audit TOKEN_REFRESH_GRACE.
+
+### Validation
+
+- `go vet ./...` 0 erreur, `go build ./cmd/api` OK, `gofmt` conforme (tabs rétablies après édition).
+- `tsc --noEmit` 0 erreur (frontend).
+- `SESSION_IDLE_MINUTES` absente côté Render → aucun changement dashboard requis ; le défaut code pilote la prod après auto-deploy.

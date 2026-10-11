@@ -13,7 +13,8 @@ import { withSessionLock } from '@/lib/session-lock'
  * 1. Interval 10 min → 5 MIN. L'access token dure 15 min ; un check toutes
  *    les 5 min laisse une marge x3 (un check transient raté ne fait plus
  *    expirer le token avant le suivant). Chaque check réussi fait aussi
- *    glisser la fenêtre d'inactivité backend (30 min) — un utilisateur actif
+ *    glisser la fenêtre d'inactivité backend (60 min, SESSION-TIMEOUT-2) —
+ *    un utilisateur actif
  *    n'est jamais déconnecté.
  *
  * 2. Verrou multi-onglets (navigator.locks, cf. lib/session-lock.ts) : les

@@ -34,7 +34,7 @@ type Config struct {
 
 	// SessionIdleTimeout (SESSION-TIMEOUT-1) : déconnexion après inactivité
 	// (glissante — chaque refresh réussi repousse la fenêtre). Env
-	// SESSION_IDLE_MINUTES, défaut 30. 0 = désactivé (retour au comportement
+	// SESSION_IDLE_MINUTES, défaut 60 (1 h, SESSION-TIMEOUT-2). 0 = désactivé (retour au comportement
 	// pré-000106 : expiration absolue du refresh token 7 j uniquement).
 	SessionIdleTimeout time.Duration
 
@@ -248,17 +248,17 @@ func getEnvBool(key string, fallback bool) bool {
 	}
 }
 
-// getSessionIdleTimeout lit SESSION_IDLE_MINUTES (défaut 30, 0 = désactivé).
-// Valeurs invalides (non numériques, négatives) → fallback 30 min + warning.
+// getSessionIdleTimeout lit SESSION_IDLE_MINUTES (défaut 60, 0 = désactivé).
+// Valeurs invalides (non numériques, négatives) → fallback 60 min + warning.
 func getSessionIdleTimeout() time.Duration {
 	raw := os.Getenv("SESSION_IDLE_MINUTES")
 	if raw == "" {
-		return 30 * time.Minute
+		return 60 * time.Minute
 	}
 	minutes, err := strconv.Atoi(raw)
 	if err != nil || minutes < 0 {
-		fmt.Printf("[config] SESSION_IDLE_MINUTES invalide (%q) → défaut 30 min\n", raw)
-		return 30 * time.Minute
+		fmt.Printf("[config] SESSION_IDLE_MINUTES invalide (%q) → défaut 60 min\n", raw)
+		return 60 * time.Minute
 	}
 	return time.Duration(minutes) * time.Minute
 }

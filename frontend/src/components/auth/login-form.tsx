@@ -131,7 +131,7 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   // SESSION-TIMEOUT-1 : bannière informative quand on arrive de /login?error=SessionExpired
-  // (session expirée par inactivité 30 min ou tokens absents) — l'utilisateur
+  // (session expirée par inactivité 1 h ou tokens absents) — l'utilisateur
   // comprend POURQUOI il a été déconnecté au lieu d'un login muet.
   const [sessionNote, setSessionNote] = useState<string | null>(null)
 
@@ -178,7 +178,7 @@ export function LoginForm() {
   }, [])
 
   // SESSION-TIMEOUT-1 : bannière « session expirée » quand on arrive de la
-  // redirection proxy /login?error=SessionExpired (30 min d'inactivité ou
+  // redirection proxy /login?error=SessionExpired (1 h d'inactivité ou
   // tokens expirés). Utilise window.location (pas useSearchParams) pour éviter
   // un suspense boundary sur une page 100 % statique.
   useEffect(() => {

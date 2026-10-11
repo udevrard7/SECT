@@ -69,7 +69,7 @@ type AuthUseCase struct {
 // NewAuthUseCase crée un nouveau AuthUseCase.
 // mailer peut être un SMTPMailer (production) ou un LogMailer (dev/fallback).
 // appBaseURL sert à construire le lien de reset (ex: https://sect-app.vercel.app).
-// sessionIdleTimeout : déconnexion après inactivité (ex: 30 min). Le keep-alive
+// sessionIdleTimeout : déconnexion après inactivité (ex: 60 min, SESSION-TIMEOUT-2). Le keep-alive
 // frontend (toutes les 5 min) fait glisser la fenêtre pendant l'activité.
 func NewAuthUseCase(authRepo domain.AuthRepository, signer *jwt.Signer, ml mailer.Mailer, appBaseURL string, sessionIdleTimeout time.Duration) *AuthUseCase {
 	return &AuthUseCase{authRepo: authRepo, signer: signer, mailer: ml, appBaseURL: appBaseURL, sessionIdleTimeout: sessionIdleTimeout}
@@ -270,7 +270,7 @@ type RefreshRequest struct {
 // nouveau couple de tokens ; replay au-delà de la grâce = InvalidTokenError.
 // Un replay dans la grâce est journalisé TOKEN_REFRESH_GRACE (surveillance).
 //
-// SESSION-TIMEOUT-1 (inactivité 30 min) : la session expire si la dernière
+// SESSION-TIMEOUT-1/2 (inactivité 60 min) : la session expire si la dernière
 // activité (dernière rotation réussie) est plus vieille que sessionIdleTimeout.
 // Glissante : le keep-alive frontend (5 min) la repousse pendant l'activité.
 func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, userAgent string) (*LoginResponse, error) {
