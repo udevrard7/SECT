@@ -1,0 +1,93 @@
+# ============================================================
+# SECT-OPS-1 — DR pré-positionnement : publication élargie
+# (ADR-0013 §17.2 / §18 — exécution de la recommandation
+#  « pré-positionnement AVANT les 5 établissements »).
+#
+# Ce que ça fait (dr_promote.sh --prepare-publication, online,
+# idempotent, 0 coupure) :
+#   1. ALTER PUBLICATION sect_poc ADD TABLE <les 85 tables> (Neon) ;
+#   2. fenêtre dédiée : ENABLE → REFRESH PUBLICATION → copie
+#      initiale des nouvelles tables (état 'r') → DISABLE ;
+#   3. Discord + preuves.
+#
+# Résultat : la réplique 5433 devient « promotion-ready » —
+# RPO ≤ 30 min sur TOUTES les tables (voie D du runbook §3.8),
+# au lieu de 3 tables.
+#
+# ⚠ TIMING : à lancer de préférence à :15/:45 UTC (hors fenêtres
+# grille M1 :02/:32 — ENABLE tolérant si chevauchement, mais la
+# copie initiale mérite une fenêtre dégagée).
+# ⚠ ANTI-DÉCISION 4 : ce workflow ne PROMEUT rien — la promotion
+# reste dr_promote.sh --confirm PROMOUVOIR (humain).
+#
+# Secrets : OCI_SSH_* (comme replica-status / dr-drill).
+# ============================================================
+name: DR pré-positionnement (publication complète)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sect-dr-prepare
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents (OCI_SSH_HOST/USER/KEY)"
+          fi
+
+  prepare:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Pré-positionnement (publication 85 tables + copie initiale)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 27m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            PG() { sudo -n -u postgres "$PGB/$1" -p 5433 "${@:2}"; }
+
+            echo "MARK 1 : clone + refresh outillage /opt/sect/replica"
+            date -u
+            TMP=$(mktemp -d /tmp/sect-drprep.XXXXXX)
+            git clone --depth 1 --quiet https://github.com/udevrard7/SECT.git "$TMP"
+            chmod -R a+rX "$TMP"
+            sudo -n mkdir -p /opt/sect/replica
+            sudo -n cp -r "$TMP/ops/replica/." /opt/sect/replica/
+            sudo -n chmod 0755 /opt/sect/replica/dr_gate.sh /opt/sect/replica/dr_promote.sh
+            rm -rf "$TMP"
+
+            echo "MARK 2 : état AVANT (lecture seule)"
+            PG psql -d sect_replica -c "SELECT subname, subenabled, subslotname, subpublications FROM pg_subscription"
+            PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription_rel WHERE srsubstate='r'" | xargs echo "tables en état r AVANT :"
+
+            echo "MARK 3 : exécution --prepare-publication (online, idempotent)"
+            sudo -n /opt/sect/replica/dr_promote.sh --prepare-publication
+
+            echo "MARK 4 : preuves APRÈS"
+            PG psql -d sect_replica -c "SELECT srsubstate, count(*) FROM pg_subscription_rel GROUP BY 1 ORDER BY 1"
+            PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription_rel WHERE srsubstate='r'" | xargs echo "tables en état r APRÈS :"
+            PG psql -d sect_replica -tAc "SELECT subenabled FROM pg_subscription WHERE subname='sect_poc'" | xargs echo "souscription ENABLE (doit être f) :"
+            echo "── fraîcheur (dernier apply) ──"
+            PG psql -d sect_replica -c "SELECT subname, received_lsn, latest_end_lsn, latest_end_time, now() - latest_end_time AS age_dernier_apply FROM pg_stat_subscription"
+            echo "── timers (doivent être actifs, :02/:32) ──"
+            systemctl list-timers 'sect-*' --no-pager | head -8
+            echo "MARK 5 : TERMINÉ — réplique promotion-ready (voie D §3.8, RPO ≤ 30 min)"
