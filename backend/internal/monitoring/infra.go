@@ -80,16 +80,16 @@ type VMInfo struct {
 
 // ReplicaInfo — état de la réplique logique sect_replica (cluster
 // 5433). DataFreshnessMin est le RPO VÉCU (âge de la donnée la plus
-// récente répliquée) ; LastApplyMin l'âge du dernier WAL appliqué
-// (vue pg_stat_subscription, lisible sans privilège superuser).
+// récente répliquée) — LA métrique de référence du RPO. NB (mesuré
+// infra-verify 11/10) : pg_stat_subscription JOINT pg_subscription
+// (superuser-only) — le rôle applicatif y voit zéro ligne ; les stats
+// de souscription ne sont donc PAS exposées : seule la donnée fait foi.
 type ReplicaInfo struct {
 	Up               bool      `json:"up"`
 	Err              string    `json:"err,omitempty"`
 	CollectedAt      time.Time `json:"collectedAt"`
 	DataFreshnessMin *float64  `json:"dataFreshnessMin,omitempty"` // RPO vécu
-	LastApplyMin     *float64  `json:"lastApplyMin,omitempty"`
-	ActiveWorkers    int       `json:"activeWorkers"`
-	TablesApp        int       `json:"tablesApp"` // tables applicatives présentes (84 attendues)
+	TablesApp        int       `json:"tablesApp"`                  // tables applicatives présentes (84 attendues)
 	DBSizeMB         int64     `json:"dbSizeMB"`
 }
 
@@ -209,7 +209,7 @@ func collectReplica(ctx context.Context, pool *pgxpool.Pool, claims appdb.Sessio
 		var freshness *float64
 		var nullOK any
 		if err := tx.QueryRow(ctx, `
-                        SELECT EXTRACT(EPOCH FROM (now() - max("createdAt"))) / 60.0
+                        SELECT EXTRACT(EPOCH FROM (now() - max("createdAt")))::float8 / 60.0
                         FROM "RequestLog"
                 `).Scan(&nullOK); err == nil && nullOK != nil {
 			if f, ok := nullOK.(float64); ok {
@@ -218,19 +218,11 @@ func collectReplica(ctx context.Context, pool *pgxpool.Pool, claims appdb.Sessio
 		}
 		ri.DataFreshnessMin = freshness
 
-		// 2. Dernier WAL appliqué + workers actifs (vue stats publique).
-		var lastApply any
-		if err := tx.QueryRow(ctx, `
-                        SELECT max(latest_end_time), count(pid) FROM pg_stat_subscription
-                `).Scan(&lastApply, &ri.ActiveWorkers); err == nil && lastApply != nil {
-			if t, ok := lastApply.(time.Time); ok {
-				min := time.Since(t).Minutes()
-				if min < 0 {
-					min = 0
-				}
-				ri.LastApplyMin = &min
-			}
-		}
+		// 2. SKIP pg_stat_subscription : la vue JOINT pg_subscription
+		//    (catalogue superuser-only) — le rôle applicatif NOSUPERUSER
+		//    y voit ZÉRO ligne (mesuré, run infra-verify 11/10). La
+		//    fraîcheur des DONNÉES ci-dessus est la métrique de référence
+		//    du RPO — pas les stats de souscription.
 
 		// 3. Tables applicatives présentes (84 attendues — publication
 		//    sect_poc élargie SECT-OPS-1 ; schema_migrations tenu localement

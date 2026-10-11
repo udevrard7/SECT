@@ -313,8 +313,6 @@ export function InfraTab({ autoRefresh }: { autoRefresh: boolean }) {
                 v={minutesLabel(r.dataFreshnessMin)}
                 tone={r.dataFreshnessMin != null && r.dataFreshnessMin > 45 ? 'text-destructive' : undefined}
               />
-              <KV k="Dernier WAL appliqué" v={minutesLabel(r.lastApplyMin)} />
-              <KV k="Workers actifs" v={`${r.activeWorkers} (fenêtre grille : 2)`} />
               <KV k="Tables applicatives" v={`${r.tablesApp} / 84`} />
               <KV k="Taille base" v={`${r.dbSizeMB} Mo`} />
               {r.err && <p className="text-[11px] text-destructive">{r.err}</p>}

@@ -511,8 +511,6 @@ export interface InfraReplica {
   err?: string
   collectedAt: string
   dataFreshnessMin?: number | null
-  lastApplyMin?: number | null
-  activeWorkers: number
   tablesApp: number
   dbSizeMB: number
 }

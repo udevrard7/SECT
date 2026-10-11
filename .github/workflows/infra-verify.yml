@@ -67,6 +67,11 @@ jobs:
             [ "$AGEH" != "absent" ] || { echo "ÉCHEC : backups.ageH absent — le montage compose /state/backup n'est pas appliqué (déployer)"; exit 1; }
             [ "$DISK" != "0" ] || { echo "ÉCHEC : VM.diskFreePct=0 — /proc/statfs illisible"; exit 1; }
 
+            echo "MARK 4.5 : diagnostic réplique (psql superuser — données de référence)"
+            PG() { sudo -n -u postgres "$PGB/$1" -p 5433 "${@:2}"; }
+            PG psql -d sect_replica -tAc 'SELECT '"'"'RequestLog count/max : '"'"' || count(*) || '"'"' / '"'"' || COALESCE(max("createdAt")::text, '"'"'NULL'"'"') FROM "RequestLog"'
+            PG psql -d postgres -tAc "SELECT 'souscription : ' || subname || ' enabled=' || subenabled FROM pg_subscription" || true
+
             echo "MARK 5 : règles système 000136 présentes (via /api/monitoring/rules)"
             CODE2=$(curl -sS --max-time 30 -o /tmp/rules.json -w '%{http_code}' -H "Authorization: Bearer $TOK" http://127.0.0.1:8090/api/monitoring/rules)
             [ "$CODE2" = "200" ] || { echo "ÉCHEC : /api/monitoring/rules a répondu $CODE2"; exit 1; }

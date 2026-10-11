@@ -156,6 +156,12 @@ jobs:
             if [ -n "${NEON_API_KEY_SECRET:-}" ] && ! grep -q '^NEON_API_KEY=' .env; then
               printf '# SECT-INFRA-MONITOR-1 : monitoring infra (control plane — ne réveille pas le compute)\nNEON_API_KEY=%s\nNEON_PROJECT_ID=autumn-rain-10233998\n' "$NEON_API_KEY_SECRET" >> .env
             fi
+            # SECT-INFRA-MONITOR-1 : staging backup lisible par l'utilisateur
+            # du conteneur (sect — non root). Uniquement timestamps + markers
+            # mensuels : zéro secret. Le dir avait été créé 750 pendant l'ère
+            # User=postgres du service (mesuré : permission denied run 38158907538).
+            chmod 0755 /var/lib/sect-backup 2>/dev/null || true
+            chmod a+r /var/lib/sect-backup/last_success /var/lib/sect-backup/restore-ok-* 2>/dev/null || true
             docker compose pull api
             docker compose up -d --remove-orphans
             docker image prune -f
