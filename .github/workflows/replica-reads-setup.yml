@@ -143,14 +143,10 @@ jobs:
               sleep 2
             done
             echo "── diagnostics boot réplique ──"
-            sudo -n docker logs --tail 40 sect-api 2>&1 | grep -iE 'replica|panic|fatal' || true
-            ENV_COUNT=$(sudo -n docker exec sect-api sh -c 'env | grep -c "^REPLICA_DATABASE_URL=" || true')
-            echo "REPLICA_DATABASE_URL dans le conteneur : $ENV_COUNT ligne(s)"
-            echo "── test auth host→172.28.0.1 en tant que neondb_owner ──"
-            PASS2=$(echo "$DSN" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
-            if PGPASSWORD="$PASS2" "$PGB/psql" -h 172.28.0.1 -p 5433 -U neondb_owner -d sect_replica -tAc "SELECT 'auth OK : ' || count(*) FROM \"RequestLog\"" 2>&1; then
-              echo "auth+réseau+grants OK depuis le host"
-            fi
+            sudo -n grep '^REPLICA_DATABASE_URL=' /opt/sect/.env | sed -E 's/:[^:@]+@/:***@/' || true
+            sudo -n docker inspect -f '{{json .Config.Env}}' sect-api | tr ',' '\n' | grep REPLICA | sed -E 's/:[^:@]+@/:***@/' || echo "(REPLICA absente de Config.Env !)"
+            sudo -n docker exec sect-api sh -c 'echo "longueur REPLICA_DATABASE_URL dans le conteneur : ${#REPLICA_DATABASE_URL}"'
+            sudo -n docker logs sect-api 2>&1 | grep -iE 'replica|starting SECT' | head -8 || true
 
             echo "MARK 9 : PREUVE end-to-end (JWT ADMIN forgé sur la VM)"
             JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
