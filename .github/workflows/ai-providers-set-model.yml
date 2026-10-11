@@ -57,10 +57,10 @@ jobs:
               exit 1
             fi
 
-            BASE=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"baseUrl\", $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
-            KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"apiKey\", $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
+            BASE=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"baseUrl\", \$q\$\$q\$) FROM \"AIProviderConfig\" WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$" | xargs)
+            KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"apiKey\", \$q\$\$q\$) FROM \"AIProviderConfig\" WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$" | xargs)
             if [ -z "$KEY" ]; then
-              KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"extraConfig\"->>$q$apiKey$q$, $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
+              KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"extraConfig\"->>\$q\$apiKey\$q\$, \$q\$\$q\$) FROM \"AIProviderConfig\" WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$" | xargs)
             fi
             if [ -z "$KEY" ]; then
               echo "ÉCHEC : clé du provider introuvable en base"
@@ -68,7 +68,7 @@ jobs:
             fi
 
             echo "── 1. État AVANT ──"
-            "$PGB/psql" "$NEON_DIRECT" -c "SELECT \"id\", \"name\", \"model\", \"priority\" FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$"
+            "$PGB/psql" "$NEON_DIRECT" -c "SELECT \"id\", \"name\", \"model\", \"priority\" FROM \"AIProviderConfig\" WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$"
 
             echo "── 2. Garde-fou : $NEW_MODEL existe dans /models du provider ──"
             if [ -n "$BASE" ]; then
@@ -93,9 +93,9 @@ jobs:
             fi
 
             echo "── 3. UPDATE (réversible : relancer avec l'ancien slug) ──"
-            OLD_MODEL=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"model\", $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
-            "$PGB/psql" "$NEON_DIRECT" -v ON_ERROR_STOP=1 -c "UPDATE \"AIProviderConfig\" SET \"model\" = $q$$NEW_MODEL$q$, \"updatedAt\" = CURRENT_TIMESTAMP WHERE \"id\" = $q$$PROVIDER_ID$q$"
+            OLD_MODEL=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"model\", \$q\$\$q\$) FROM \"AIProviderConfig\" WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$" | xargs)
+            "$PGB/psql" "$NEON_DIRECT" -v ON_ERROR_STOP=1 -c "UPDATE \"AIProviderConfig\" SET \"model\" = \$q\$$NEW_MODEL\$q\$, \"updatedAt\" = CURRENT_TIMESTAMP WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$"
 
             echo "── 4. État APRÈS ──"
-            "$PGB/psql" "$NEON_DIRECT" -c "SELECT \"id\", \"name\", \"model\", \"priority\" FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$"
+            "$PGB/psql" "$NEON_DIRECT" -c "SELECT \"id\", \"name\", \"model\", \"priority\" FROM \"AIProviderConfig\" WHERE \"id\" = \$q\$$PROVIDER_ID\$q\$"
             echo "Ancien modèle (pour rollback) : $OLD_MODEL"
