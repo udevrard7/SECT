@@ -1,0 +1,57 @@
+# ============================================================
+# SECT-REPLICA-1 — État de la réplique (mesures phase 2 ADR §6) :
+# lag (pg_stat_subscription), counts répliqués, charge VM.
+# Réutilisable à volonté (dispatch manuel) — lecture seule.
+# ============================================================
+name: Replica status (mesures POC)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents"
+          fi
+
+  status:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: État réplique (lecture seule)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            PG() { sudo -n -u postgres "$PGB/$1" -p 5433 "${@:2}"; }
+
+            echo "── pg_subscription ──"
+            PG psql -d sect_replica -c "SELECT subname, subenabled, subslotname, subpublications FROM pg_subscription"
+            echo "── pg_stat_subscription (lag) ──"
+            PG psql -d sect_replica -c "SELECT subname, pid, received_lsn, latest_end_lsn, latest_end_time, now() - latest_end_time AS retard_erreur FROM pg_stat_subscription"
+            echo "── counts répliqués ──"
+            for T in RequestLog AuditLog Reponse; do
+              echo -n "$T : "
+              PG psql -d sect_replica -tAc "SELECT count(*) FROM \"$T\""
+            done
+            echo "── charge VM (instantané) ──"
+            uptime
+            sar -u 1 3 2>/dev/null | tail -4 || true
+            echo "── sect-api docker ──"
+            docker ps --filter name=sect-api --format '{{.Names}} | {{.Status}}' || true
+            docker stats --no-stream --format '{{.Name}} | CPU {{.CPUPerc}} | RAM {{.MemUsage}}' 2>/dev/null | head -8 || true

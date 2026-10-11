@@ -1,0 +1,116 @@
+# ============================================================
+# SECT-REPLICA-1 — Phase 2 ADR-0013 §6 : POC réplication logique
+# (base dédiée sect_replica sur le cluster DÉDIÉ 5433 — jamais
+# mikcloud/18-main/5432).
+#
+# Étapes (toutes idempotentes) :
+#   1. clone du dépôt (migrations backend/db/db/migrations) ;
+#   2. binaire golang-migrate linux-arm64 → /opt/sect/bin/migrate ;
+#   3. base sect_replica sur le cluster 5433 (socket, auth peer) ;
+#   4. schéma posé par golang-migrate (DSN LOCAL — ADR §6) ;
+#   5. souscription sect_poc → publication sect_poc (Neon,
+#      DSN lu DANS /opt/sect/.env sur la VM — il ne la quitte pas),
+#      copy_data=true ;
+#   6. état initial (pg_subscription, pg_stat_subscription).
+#
+# Prérequis (déjà posés) : wal_level=logical côté Neon (irréversible,
+# setting PROJET — PATCH /projects, PAS endpoint), publication
+# sect_poc (RequestLog, AuditLog, Reponse), cluster dédié 5433.
+#
+# NB : PAS de « case … esac » dans ce script — script_stop:true fait
+# injecter par drone-ssh un garde d'exit APRÈS CHAQUE ligne, qui
+# casserait la syntaxe d'un case multiligne (if/fi et { } survivent).
+# ============================================================
+name: Replica setup (phase 2 POC)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets présents — setup activé"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents — setup impossible"
+          fi
+
+  setup:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Base sect_replica + schéma + souscription
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            PG() { sudo -n -u postgres "$PGB/$1" -p 5433 "${@:2}"; }
+
+            # ── 1. dépôt (migrations) ──
+            TMP=$(mktemp -d /tmp/sect-replica-src.XXXXXX)
+            git clone --depth 1 --quiet https://github.com/udevrard7/SECT.git "$TMP"
+
+            # ── 2. golang-migrate (linux-arm64, posé une fois) ──
+            if [ ! -x /opt/sect/bin/migrate ]; then
+              sudo mkdir -p /opt/sect/bin
+              curl -fsSL -o /tmp/migrate.tgz https://github.com/golang-migrate/migrate/releases/download/v4.18.3/migrate.linux-arm64.tar.gz
+              sudo tar xzf /tmp/migrate.tgz -C /tmp migrate
+              sudo install -m 0755 /tmp/migrate /opt/sect/bin/migrate
+            fi
+            /opt/sect/bin/migrate -version
+
+            # ── 3. cluster dédié en ligne ? ──
+            pg_lsclusters 2>/dev/null | awk '$2=="sect" && $4=="online"{f=1} END{exit !f}' \
+              || { echo "ÉCHEC : cluster dédié « sect » (5433) offline — installer d'abord (Backup tooling)"; exit 1; }
+
+            # ── 4. base sect_replica (idempotent) ──
+            if ! PG psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sect_replica'" | grep -q 1; then
+              PG psql -d postgres -c "CREATE DATABASE sect_replica"
+              echo "base sect_replica créée (cluster dédié 5433 — jamais mikcloud)"
+            else
+              echo "base sect_replica déjà présente"
+            fi
+
+            # ── 5. schéma par golang-migrate (DSN LOCAL, socket peer) ──
+            sudo -n -u postgres /opt/sect/bin/migrate \
+              -path "$TMP/backend/db/db/migrations" \
+              -database "postgresql:///sect_replica?host=/var/run/postgresql&port=5433" up
+            PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'" | xargs echo "tables public :"
+
+            # ── 6. souscription sect_poc (DSN Neon lu sur la VM) ──
+            SUB_DSN="$(grep -E '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)"
+            [ -n "$SUB_DSN" ] || { echo "ÉCHEC : NEON_DIRECT_URL introuvable dans /opt/sect/.env"; exit 1; }
+            if PG psql -d sect_replica -tAc "SELECT 1 FROM pg_subscription WHERE subname='sect_poc'" | grep -q 1; then
+              echo "souscription sect_poc déjà présente"
+            else
+              PG psql -d sect_replica -c "CREATE SUBSCRIPTION sect_poc CONNECTION '$SUB_DSN' PUBLICATION sect_poc WITH (copy_data = true, create_slot = true, enabled = true)"
+              echo "souscription sect_poc créée (copy_data initial en cours côté Neer…)"
+            fi
+
+            # ── 7. état initial (après un temps de copie) ──
+            sleep 30
+            echo "── pg_subscription ──"
+            PG psql -d sect_replica -c "SELECT subname, subenabled, subslotname, subpublications FROM pg_subscription"
+            echo "── pg_stat_subscription ──"
+            PG psql -d sect_replica -c "SELECT subname, pid, received_lsn, latest_end_lsn, latest_end_time FROM pg_stat_subscription"
+            echo "── counts répliqués ──"
+            for T in RequestLog AuditLog Reponse; do
+              echo -n "$T : "
+              PG psql -d sect_replica -tAc "SELECT count(*) FROM \"$T\""
+            done
+            sudo rm -rf "$TMP"
+            echo "— fin du setup réplique (mesures : workflow « Replica status ») —"
