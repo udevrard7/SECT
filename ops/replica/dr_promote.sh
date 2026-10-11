@@ -145,6 +145,25 @@ if [ "$MODE" = "prepare" ]; then
     #    copie ne convergeait PAS en 900 s avec 2 workers, et les sync
     #    tués laissent des SLOTS ZOMBIES côté Neon → à dropper après
     #    échec, ils retiennent du WAL — limite 1 GiB)
+    #
+    #    PIÈGE n°5 — AUTO-GUÉRISON SEEDS : les migrations seedent des
+    #    lignes sur la réplique (diagnostic 11/10 : Plan 3, BadgeDefinition
+    #    7, AlertingRule 12) → la COPY initiale y viole la PK en boucle.
+    #    Purge des lignes LOCALES des tables en attente AVANT la fenêtre,
+    #    en mode replica (FK désarmés — jamais TRUNCATE CASCADE : ça
+    #    viderait des tables déjà en 'r' qui les référencent, ex. User→Plan).
+    PG psql -d "$DB" -c "ALTER SUBSCRIPTION sect_poc DISABLE" >/dev/null 2>&1 || true
+    PENDING=$(local_psql "SELECT srrelid::regclass FROM pg_subscription_rel WHERE srsubstate <> 'r'")
+    if [ -n "${PENDING:-}" ] && [ "$PENDING" != "NULL" ]; then
+        while IFS= read -r T; do
+            [ -z "$T" ] && continue
+            ROWS=$(local_psql "SELECT count(*) FROM $T")
+            if [ "${ROWS:-0}" -gt 0 ] 2>/dev/null; then
+                log "auto-guérison : $T a $ROWS lignes locales (seed migration) → purge"
+                PG psql -d "$DB" -c "SET session_replication_role = replica; DELETE FROM $T;" >/dev/null || die "purge $T échouée"
+            fi
+        done <<< "$PENDING"
+    fi
     PG psql -d postgres -c "ALTER SYSTEM SET max_logical_replication_workers = '8'" || true
     PG psql -d postgres -c "ALTER SYSTEM SET max_sync_workers_per_subscription = '4'" || true
     PG psql -d postgres -c "SELECT pg_reload_conf()" >/dev/null || true
