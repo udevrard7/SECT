@@ -94,11 +94,11 @@ BEGIN
 END $$;
 
 -- ── Preuve : état final lisible par l'exploitant ──
+-- (pg_sequences n'expose PAS is_called — last_value suffit comme preuve
+-- de resync ; next_value réel = last_value + 1 pour une séquence servie.)
 SELECT schemaname,
        sequencename,
-       last_value,
-       CASE WHEN is_called THEN 'next=' || (last_value + 1)
-            ELSE 'next=1' END AS next_value
+       last_value
 FROM pg_sequences
 WHERE schemaname = 'public'
 ORDER BY sequencename;
