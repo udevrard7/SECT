@@ -509,6 +509,12 @@ func (s *Server) monitoringEndpointsStats(w http.ResponseWriter, r *http.Request
                                 COALESCE(max("durationMs"), 0)::int
                         FROM "RequestLog"
                         WHERE "createdAt" > now() - make_interval(hours => $1::int)
+                          -- SECT-LATENCY-3 : les flux SSE (messagerie/stream,
+                          -- notifications, surveillance) restent loggés mais sont
+                          -- EXCLUS des percentiles — leur durée = durée de vie de
+                          -- la connexion (950s mesurés), pas une latence de requête.
+                          -- Ils faussaient tout le classement p95.
+                          AND "route" NOT LIKE '%/stream%'
                         GROUP BY "method", "route"
                         ORDER BY total DESC
                         LIMIT 100
