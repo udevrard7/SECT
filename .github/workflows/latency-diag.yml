@@ -62,8 +62,8 @@ jobs:
 
             echo
             echo "── 3. Test live POST /api/landing-demo (localhost, chronométré) ──"
-            curl -s -o /tmp/demo.json -w "http=%{http_code} total_s=%{time_total}\n" --max-time 60 -X POST -H "Content-Type: application/json" -d '{"topic":"La photosynthese"}' "$API/api/landing-demo"
-            head -c 500 /tmp/demo.json; echo
+            curl -s -o /tmp/demo.json -w "http=%{http_code} total_s=%{time_total}\n" --max-time 60 -X POST -H "Content-Type: application/json" -d '{"topic":"La photosynthese"}' "$API/api/landing-demo" || echo "  (curl exit $? — réponse vide, connexion fermée sans réponse)"
+            head -c 500 /tmp/demo.json 2>/dev/null || true; echo
 
             echo
             echo "── 3b. AIFailoverEvent (réplique, 10 derniers) + connectivity providers ──"
