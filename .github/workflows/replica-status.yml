@@ -46,13 +46,14 @@ jobs:
             PG psql -d sect_replica -c "SELECT subname, pid, received_lsn, latest_end_lsn, latest_end_time, now() - latest_end_time AS retard_erreur FROM pg_stat_subscription"
             echo "── tables en attente de sync (noms + lignes locales) ──"
             PENDING=$(PG psql -d sect_replica -tAc "SELECT srrelid::regclass FROM pg_subscription_rel WHERE srsubstate <> 'r'" 2>/dev/null || true)
+            if [ -z "$PENDING" ]; then
+              echo "(aucune — 84/84 en 'r')"
+            fi
             if [ -n "$PENDING" ]; then
               echo "$PENDING" | while read -r T; do
                 [ -n "$T" ] && echo -n "$T : lignes locales = " && PG psql -d sect_replica -tAc "SELECT count(*) FROM $T"
               done
               PG psql -d sect_replica -c "SELECT srrelid::regclass AS table, srsubstate FROM pg_subscription_rel WHERE srsubstate <> 'r' ORDER BY 1"
-            else
-              echo "(aucune — 84/84 en 'r')"
             fi
             echo "── erreurs tablesync récentes (journal 5433) ──"
             sudo -n journalctl -u postgresql@18-sect --since "2 hours ago" --no-pager 2>/dev/null | grep -iE "ERROR|duplicate|violat|conflict" | tail -15 || true
