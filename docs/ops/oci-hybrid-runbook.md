@@ -199,6 +199,105 @@ corrections IA), jamais zéro API en ligne :
 2. Render : `WORKERS_ENABLED=true` + redeploy (il redevient primaire).
 3. OCI : `docker compose stop` (éviter les doublons workers).
 
+### 3.8 Reprise sur réplique OCI (DR base de données — SECT-REPLICA-3)
+
+> Miroir base de données des bascules §3.6/§3.7. **Anti-décision 4
+> (ADR-0013 §8) : jamais de promotion automatique** — cette section
+> exécute une décision humaine, preuves à l'appui. Outillage :
+> `ops/replica/dr_gate.sh` (lecture seule) + `ops/replica/dr_promote.sh`
+> (dry-run par défaut) + `ops/replica/resync_sequences.sql` — déployés
+> sur la VM dans `/opt/sect/replica/` par le workflow « Replica setup ».
+
+**A. État des lieux (pré-positionné par défaut)**
+
+| Élément | État | Conséquence DR |
+|---|---|---|
+| Réplique logique `sect_replica` (cluster 5433) | 3 tables (RequestLog, AuditLog, Reponse), fenêtres :02/:32 | RPO 30 min sur ces tables SEULEMENT |
+| Backups chiffrés Object Storage (nightly 03:32) | **LA base 85/85 tables** + restore prouvé (§15) | RPO 24 h sur TOUT, restore ≈ minutes (24 Mo) |
+| Publication `sect_poc` | 3 tables | Promouvoir la réplique « telle quelle » = **82 tables vides** (app inutilisable : aucun login) |
+
+Deux chemins de reprise selon la préparation (l'exploitant choisit) :
+
+- **Voie B (toujours disponible) — restore break-glass** : la base
+  complète vient du DERNIER BACKUP, pas de la réplique. C'est le chemin
+  prouvé mensuellement par `backup-restore-test.yml` :
+  `sudo /opt/sect/backup/sect_restore_test.sh --identity-file <clé escrow>`
+  (la base restaurée `sect_restore_test` sert de primaire temporaire —
+  adapter le DSN du conteneur comme en §3.8-D). RPO = nightly.
+- **Voie D (si pré-positionnement fait) — promotion de la réplique** :
+  quand `dr_promote.sh --prepare-publication` a été exécuté (publication
+  élargie aux 85 tables + copie initiale), la réplique devient
+  « promotion-ready » : RPO 30 min sur TOUT. **Recommandé avant
+  d'embarquer les 5 établissements** (déclencheurs ADR §14.7).
+
+**B. Garde de santé (decision support, lecture seule)**
+
+```bash
+sudo -n /opt/sect/replica/dr_gate.sh        # verdict GO/NO-GO + preuves G1-G8
+```
+
+Critères d'arbre de décision (à considérer AVANT de promouvoir) :
+
+1. **Neon réellement down ?** `/api/health/db` public en échec
+   **> 5 min** + `pg_isready` pooler muet + (si possible) status
+   Neon — ne PAS promouvoir sur un simple cold start (~3 s).
+2. **Le standby Render (API) ne suffit-il pas ?** Render sert l'API
+   tant que Neon répond — si seul le backend OCI est touché, c'est
+   §3.7 (failover API), PAS cette section.
+3. **Durée d'incident estimée** : < 1 h → attendre Neon (RPO 0) ;
+   longue/indéterminée → la voie B (backup) est le chemin nominal,
+   la voie D si pré-positionnée.
+
+**C. Exécution de la promotion (voie D — réversible par dump/restore)**
+
+```bash
+# 1. Dry run : plan + état, AUCUNE écriture
+sudo -n /opt/sect/replica/dr_promote.sh
+
+# 2. Exécution réelle (mot exact exigé — symétrie failover.yml §3.7)
+sudo -n /opt/sect/replica/dr_promote.sh --confirm PROMOUVOIR
+```
+
+Séquence interne (automatisée) : stop writers → sync finale
+best-effort → `DROP SUBSCRIPTION` (slot détaché si origine morte :
+`SET (slot_name = NONE)`) → grants RW → **resync séquences**
+(`resync_sequences.sql` — §16.6 : la réplication logique ne les porte
+pas) → bascule DSN `.env` (l'ancien DSN Neon conservé en
+`# pre-dr-…`, `.env` sauvegardé) → `docker compose up -d` →
+`/health/db` 200 attendu → Discord.
+
+**Retour vers Neon (§3.8-C retour)** — par **dump/restore, JAMAIS par
+réplication inverse** : « OCI publie → Neon souscrit » exigerait
+d'exposer 5433 publiquement (anti-décision 3 — même temporairement,
+le port + les IP Neon non garanties = risque inutile pour 24 Mo de
+données). Procédure :
+
+1. VM : `docker compose stop api` (geler les écritures).
+2. Dump de la base promue : `sudo -n -u postgres /usr/lib/postgresql/18/bin/pg_dump -p 5433 -Fc sect_replica > /tmp/sect-dr.dump`.
+3. Restore dans Neon (DSN direct `.env`) : `pg_restore --clean --if-exists --no-owner --no-privileges -d "$NEON_DIRECT_URL" /tmp/sect-dr.dump` (le moteur est celui prouvé par les tests de restauration — 85/85 tables).
+4. Restaurer le DSN Neon dans `/opt/sect/.env` (retirer les lignes
+   `# pre-dr-…`), `REPLICA_DATABASE_URL` à reconfigurer (setup
+   lectures locales), puis `docker compose up -d`.
+5. Relancer le pipeline réplique : workflow « Replica setup »
+   (idempotent) + « Backup tooling » si besoin.
+6. Vérifier : `/api/health/db` 200, counts cohérents, Discord.
+
+**D. Bascule DSN manuelle (voie B ou secours §3.7)** — le conteneur
+API pointe vers la base locale par `/opt/sect/.env` :
+`NEON_DATABASE_URL=postgresql://neondb_owner:…@172.28.0.1:5433/<base>` 
+(réseau docker fixe `sect` 172.28.0.0/24 — passerelle 172.28.0.1 ;
+le cluster 5433 n'écoute QUE localhost + cette passerelle, jamais
+0.0.0.0, Security List OCI fermée sur 5433). Puis
+`cd /opt/sect && docker compose up -d`. **Workers : toujours UNE
+seule instance primaire** (jamais d'actif-actif — garde §4).
+
+**Exercice trimestriel** (comme un failback P2) : workflow
+« Exercice DR (réplique) » (`dr-drill.yml`) — restore complet d'un
+backup dans une base éphémère `sect_drill`, resync séquences, boot
+du conteneur API réel contre cette base, `/health` + `/health/db`
+200 attendus, teardown. Preuve que le chemin §3.8-B/D fonctionne
+SANS toucher à la production.
+
 ## 4. Gardes permanentes
 
 - **Détection externe (SECT-UPTIME-PROBE-1, P1)** : le workflow

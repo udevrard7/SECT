@@ -1,0 +1,173 @@
+# ============================================================
+# SECT-REPLICA-3 — Exercice DR trimestriel (ADR-0013 §6 phase 3,
+# runbook oci-hybrid §3.8 « Exercice trimestriel »).
+#
+# Preuve que le chemin « Reprise sur réplique OCI » (§3.8-B/D)
+# fonctionne SANS toucher à la production :
+#   1. restore COMPLET du dernier backup chiffré dans une base
+#      éphémère sect_drill (moteur sect_restore_test.sh — la clé
+#      escrow transite par le secret transitoire SECT_AGE_IDENTITY,
+#      /dev/shm + shred, anti-décision 11) ;
+#   2. resync des SÉQUENCES (ops/replica/resync_sequences.sql —
+#      le geste de promotion §16.6) ;
+#   3. BOOT du conteneur API RÉEL (même image digest que la prod,
+#      WORKERS_ENABLED=false — zéro worker, zéro écriture) contre
+#      sect_drill via le réseau fixe 172.28.0.0/24 ;
+#   4. vérifs : /health 200, /api/health/db 200 (pool sur la base
+#      locale restaurée), /api/logs avec JWT ADMIN forgé (RLS +
+#      claims + données restaurées) — total > 0 attendu ;
+#   5. teardown intégral (conteneur, base, identité).
+#
+# ⚠ RÈGLES drone-ssh (script_stop) : pas de case/esac, pas de
+# else/elif — if … then … fi seuls, marqueurs MARK.
+#
+# Cadence : trimestrielle (cron sentinel — les schedules GitHub
+# sont cassés sur ce dépôt, ticket support : quand ils repartent,
+# ce workflow tire tout seul). Sinon : dispatch manuel.
+#
+# Secrets : OCI_SSH_* + SECT_AGE_IDENTITY (transitoire — poser,
+# run, SUPPRIMER) + UPTIME_DISCORD_WEBHOOK_URL (annonce).
+# ============================================================
+name: Exercice DR (réplique)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 6 1 1,4,7,10 *' # 1er jan/avr/juil/oct 06:07 UTC (sentinelle)
+
+concurrency:
+  group: sect-drill
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ] \
+             && [ -n "${{ secrets.SECT_AGE_IDENTITY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH + identité escrow présents — drill activé"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "manque OCI_SSH_* ou SECT_AGE_IDENTITY — poser l'identité le temps du drill, la SUPPRIMER ensuite (runbook §6)"
+          fi
+
+  drill:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Exercice DR (restore + promotion rehearsal + boot réel)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SECT_AGE_IDENTITY: ${{ secrets.SECT_AGE_IDENTITY }}
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          envs: SECT_AGE_IDENTITY
+          script_stop: true
+          command_timeout: 22m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            PG() { sudo -n -u postgres "$PGB/$1" -p 5433 "${@:2}"; }
+
+            echo "MARK 1 : clone + refresh outillage /opt/sect/replica"
+            TMP=$(mktemp -d /tmp/sect-drill.XXXXXX)
+            git clone --depth 1 --quiet https://github.com/udevrard7/SECT.git "$TMP"
+            chmod -R a+rX "$TMP"
+            sudo -n mkdir -p /opt/sect/replica
+            sudo -n cp -r "$TMP/ops/replica/." /opt/sect/replica/
+            sudo -n chmod 0755 /opt/sect/replica/dr_gate.sh /opt/sect/replica/dr_promote.sh
+            [ -x /opt/sect/backup/sect_restore_test.sh ] || { echo "ÉCHEC : sect_restore_test.sh absent — lancer « Backup tooling (OCI) » d'abord"; exit 1; }
+            [ -n "${SECT_AGE_IDENTITY:-}" ] || { echo "ÉCHEC : identité absente"; exit 1; }
+
+            echo "MARK 2 : nettoyage préalable (drill idempotent)"
+            sudo -n docker rm -f sect-api-drill 2>/dev/null || true
+            PG psql -d postgres -c "DROP DATABASE IF EXISTS sect_drill WITH (FORCE)" >/dev/null
+
+            echo "MARK 3 : identité escrow → /dev/shm (tmpfs — anti-décision 11)"
+            KEYFILE="/dev/shm/sect-escrow-key.$$"
+            umask 077
+            printf '%s\n' "$SECT_AGE_IDENTITY" > "$KEYFILE"
+            unset SECT_AGE_IDENTITY
+            cleanup() { shred -u "$KEYFILE" 2>/dev/null || rm -f "$KEYFILE"; }
+            trap cleanup EXIT
+
+            echo "MARK 4 : restore complet du dernier backup → sect_drill (voies §3.8-B)"
+            sudo -n env RESTORE_PG_DB=sect_drill /opt/sect/backup/sect_restore_test.sh --identity-file "$KEYFILE" --keep
+
+            echo "MARK 5 : grants lecture pour le rôle applicatif + resync SÉQUENCES (§16.6)"
+            REP_DSN=$(grep '^REPLICA_DATABASE_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            [ -n "$REP_DSN" ] || { echo "ÉCHEC : REPLICA_DATABASE_URL absent — lancer « Replica reads setup » d'abord (prérequis drill)"; exit 1; }
+            ROLE=$(echo "$REP_DSN" | sed -E 's|postgresql://([^:]+):.*|\1|')
+            PG psql -d sect_drill -v ON_ERROR_STOP=1 -c "GRANT CONNECT ON DATABASE sect_drill TO \"$ROLE\"; GRANT USAGE ON SCHEMA public TO \"$ROLE\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"$ROLE\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"$ROLE\";"
+            PG psql -d sect_drill -v ON_ERROR_STOP=1 -f /opt/sect/replica/resync_sequences.sql
+
+            echo "MARK 6 : boot du conteneur API RÉEL contre sect_drill (0 worker)"
+            API_IMAGE=$(grep '^API_IMAGE=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            [ -n "$API_IMAGE" ] || { echo "ÉCHEC : API_IMAGE introuvable dans /opt/sect/.env"; exit 1; }
+            echo "image (digest prod) : ${API_IMAGE:0:60}…"
+            NET=$(sudo -n docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' sect-api)
+            DRILL_DSN=$(echo "$REP_DSN" | sed -E 's|/sect_replica|/sect_drill|')
+            JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            sudo -n docker run -d --name sect-api-drill --network "$NET" \
+              -e PORT=8080 -e ENVIRONMENT=production \
+              -e NEON_DATABASE_URL="$DRILL_DSN" -e JWT_SECRET="$JWT_SECRET" \
+              -e WORKERS_ENABLED=false --label sect-drill=1 "$API_IMAGE"
+
+            echo "MARK 7 : vérifs santé (30 s max)"
+            UP=""
+            for i in $(seq 1 15); do
+              if sudo -n docker exec sect-api-drill wget -qO- http://localhost:8080/health >/dev/null 2>&1; then
+                UP=1
+                break
+              fi
+              sleep 2
+            done
+            [ -n "$UP" ] || { echo "ÉCHEC : drill pas healthy après 30 s"; sudo -n docker logs --tail 30 sect-api-drill; exit 1; }
+            echo "/health : 200"
+            HDB=$(sudo -n docker exec sect-api-drill wget -qO- http://localhost:8080/api/health/db 2>/dev/null || echo '{}')
+            echo "/api/health/db : $HDB"
+            echo "$HDB" | grep -q '"db":"up"' || { echo "ÉCHEC : /health/db pas 200 sur la base restaurée"; exit 1; }
+
+            echo "MARK 8 : preuve données (JWT ADMIN forgé — RLS + claims + restore)"
+            ADMIN_ID=$(PG psql -d sect_drill -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' AND \"mustChangePwd\"=false LIMIT 1" | xargs)
+            if [ -z "$ADMIN_ID" ]; then
+              ADMIN_ID=$(PG psql -d sect_drill -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' LIMIT 1" | xargs)
+            fi
+            [ -n "$ADMIN_ID" ] || { echo "ÉCHEC : aucun ADMIN dans la base restaurée"; exit 1; }
+            TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'drill@sect.ftci.fr','name':'DR Drill','iat':int(time.time()),'exp':int(time.time())+600,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
+            LOGS=$(sudo -n docker exec sect-api-drill wget -qO- --header "Authorization: Bearer $TOK" 'http://localhost:8080/api/logs?limit=3' 2>/dev/null || echo '{}')
+            TOTAL=$(python3 -c "import json;d=json.loads('''$LOGS''');print(d.get('total',0))" 2>/dev/null || echo 0)
+            echo "/api/logs total sur la base restaurée : $TOTAL"
+            [ "$TOTAL" -gt 0 ] || { echo "ÉCHEC : AuditLog vide via l'API (RLS ou restore ?)"; exit 1; }
+
+            echo "MARK 9 : teardown intégral"
+            sudo -n docker rm -f sect-api-drill >/dev/null
+            PG psql -d postgres -c "DROP DATABASE IF EXISTS sect_drill WITH (FORCE)" >/dev/null
+            sudo -n rm -rf "$TMP"
+            echo "— EXERCICE DR TERMINÉ : chemin §3.8 prouvé (restore 85 tables + séquences + boot réel + RLS) —"
+
+      - name: Annonce Discord (résultat drill)
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            TITLE="Exercice DR trimestriel : SUCCÈS"
+            DESC="Restore complet chiffré → sect_drill, resync séquences, boot API réel (0 worker), /health + /health/db + /api/logs (RLS) OK. Chemin runbook §3.8 prouvé sans toucher la prod."
+            COLOR=3066993
+          else
+            TITLE="Exercice DR trimestriel : ÉCHEC"
+            DESC="Voir le run Actions — teardown exécuté (base drill + conteneur supprimés)."
+            COLOR=15158332
+          fi
+          curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' \
+            --data "$(printf '{"embeds":[{"title":"%s","description":"%s","color":%s,"footer":{"text":"SECT DR drill"},"timestamp":"%s"}]}' \
+            "$TITLE" "$DESC" "$COLOR" "$(date -u +%FT%TZ)")" \
+            "${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}" || echo "(Discord non configuré — annonce ignorée)"

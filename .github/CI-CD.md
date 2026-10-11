@@ -29,6 +29,15 @@
 | `failover.yml` | dispatch UNIQUEMENT + approval `production-failover` | Bascule urgence OCI → Render (runbook §3.7 exécutable) : gardes → commit trafic (Vercel redéploie seul) → OCI `compose stop` (best-effort) → `WORKERS_ENABLED=true` Render → vérifs + Discord (SECT-FAILOVER-1, P2) |
 | `failback.yml` | dispatch UNIQUEMENT + approval `production-failover` | Retour à la normale Render → OCI (runbook §3.6 exécutable) : OCI standby API-only sain (GATE) → trafic → workers Render OFF → workers OCI ON → vérifs + Discord (SECT-FAILOVER-1, P2) |
 | `oci-db-probe.yml` | dispatch UNIQUEMENT (étude) | Sonde VM OCI **LECTURE SEULE** (SECT-DB-HYBRID-2, phase 0 ADR-0013) : ressources VM (free/docker stats, écart E4), RTT TCP VM→Neon ×10 + PG local, latence psql — réutilisable audits mensuels/DR ; secrets OCI_SSH_* uniquement, DSN jamais affiché |
+| `backup-install.yml` | push sur `ops/backup/**` (+ dispatch) | Self-tests scripts + installation **idempotente** sur la VM : cluster PG dédié `sect` 5433, `/opt/sect/backup/` (backup.env seedé, timers **désactivés** tant que non configuré) — SECT-BACKUP-1/2 |
+| `backup-configure.yml` | dispatch UNIQUEMENT | Écrit le `backup.env` réel sur la VM (DSN Neon + CSK S3 + destinataire age lus sur place) + **arme les timers** nightly/daily (runbook §3.4/§4) |
+| `backup-run.yml` | dispatch UNIQUEMENT | Exécute `sect_backup.sh --announce` (dump chiffré age → Object Storage + Discord) — le geste du jour de mise en service (§5-1) |
+| `backup-restore-test.yml` | dispatch UNIQUEMENT (mensuel, secret transitoire `SECT_AGE_IDENTITY`) | LA preuve qu'un backup existe : download → checksums → déchiffrement escrow → restore 5433 → vérification EXACTE counts/policies vs manifest → marker `restore-ok-<mois>` (§5-2/§6) |
+| `vm-audit.yml` | dispatch UNIQUEMENT (lecture seule) | Audit VM (OS, clusters PG, conteneurs, disque/RAM) — alimente le verdict reclaim ADR-0013 §15.6 |
+| `replica-setup.yml` | dispatch UNIQUEMENT (idempotent) | Phase 2 ADR-0013 : base `sect_replica` (cluster 5433) + schéma golang-migrate 135/135 + souscription `sect_poc` + outillage sync fenêtrée :02/:32 |
+| `replica-status.yml` | dispatch UNIQUEMENT (lecture seule) | Mesures réplique : `pg_subscription`, lag, counts répliqués, charge VM (sar + docker) |
+| `replica-reads-setup.yml` | dispatch UNIQUEMENT (idempotent) | Phase 3 ADR-0013 §6 : active les **lectures analytiques locales** — réseau docker fixe 172.28.0.0/24, rôle `neondb_owner` local (SELECT 3 tables), pg_hba scopé, `REPLICA_DATABASE_URL` (feature flag) + preuve end-to-end JWT (`X-Sect-Read-Source: replica` attendu) |
+| `dr-drill.yml` | dispatch + cron trimestriel (sentinelle) | **Exercice DR** (runbook §3.8) : restore complet chiffré → `sect_drill` éphémère + resync séquences + **boot du conteneur API réel** (0 worker) + vérifs `/health`, `/health/db`, `/api/logs` (RLS) + teardown — sans toucher la prod |
 
 ### Normes appliquées (audit DevOps 2026-09)
 - **Actions épinglées par SHA** (anti supply-chain) — mises à jour via Dependabot

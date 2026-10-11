@@ -1,0 +1,184 @@
+# ============================================================
+# SECT-REPLICA-3 — Phase 3 ADR-0013 §6 : mise en service des
+# lectures analytiques locales (réplique 5433) sur la VM OCI.
+#
+# Étapes (idempotentes — re-excutable à volonté) :
+#   1. compose à jour (réseau FIXE 172.28.0.0/24 — passerelle
+#      172.28.0.1, jamais exposé : Security List OCI fermée sur 5433) ;
+#   2. réseau créé (docker compose up -d — flag toujours OFF à ce
+#      stade : le .env n'a pas encore REPLICA_DATABASE_URL) ;
+#   3. cluster 5433 : listen_addresses localhost,172.28.0.1
+#      (ALTER SYSTEM — idempotent, restart du cluster sect SEULEMENT,
+#      jamais mikcloud) + pg_hba scopé 172.28.0.0/24 scram ;
+#   4. rôle applicatif neondb_owner (le nom qu'attendent les policies
+#      TO neondb_owner — créé NOSUPERUSER NOBYPASSRLS localement,
+#      mot de passe généré sur la VM, jamais dans le dépôt) + grants
+#      SELECT sur les 3 tables répliquées UNIQUEMENT ;
+#   5. .env : REPLICA_DATABASE_URL (feature flag ON) ;
+#   6. redémarrage API + PREUVE end-to-end : /health, /api/logs et
+#      /api/monitoring/endpoints avec JWT ADMIN forgé sur la VM —
+#      l'en-tête X-Sect-Read-Source: replica attendu.
+#
+# ⚠ RÈGLES drone-ssh (script_stop) : pas de case/esac, pas de
+# else/elif — chaque condition = un if … then … fi, marqueurs MARK.
+#
+# Secrets : OCI_SSH_HOST / OCI_SSH_USER / OCI_SSH_KEY.
+# ============================================================
+name: Replica reads setup (phase 3)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sect-replica-reads-setup
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets présents — setup activé"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents — setup impossible"
+          fi
+
+  setup:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Activation lectures analytiques locales + preuve
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 18m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            PG() { sudo -n -u postgres "$PGB/$1" -p 5433 "${@:2}"; }
+
+            echo "MARK 1 : clone du dépôt (compose + scripts)"
+            TMP=$(mktemp -d /tmp/sect-reads.XXXXXX)
+            git clone --depth 1 --quiet https://github.com/udevrard7/SECT.git "$TMP"
+            chmod -R a+rX "$TMP"
+
+            echo "MARK 2 : compose à jour (réseau fixe 172.28.0.0/24)"
+            if ! sudo -n test -f /opt/sect/docker-compose.yml.pre-phase3; then
+              sudo -n cp /opt/sect/docker-compose.yml /opt/sect/docker-compose.yml.pre-phase3
+              echo "ancien compose sauvegardé (docker-compose.yml.pre-phase3)"
+            fi
+            sudo -n cp "$TMP/deploy/oci/docker-compose.yml" /opt/sect/docker-compose.yml
+            grep -q '172.28.0.0/24' /opt/sect/docker-compose.yml
+            echo "compose contient le réseau fixe"
+
+            echo "MARK 3 : réseau créé + conteneur sur le réseau (flag encore OFF)"
+            cd /opt/sect
+            sudo -n docker compose up -d --remove-orphans
+            NET=$(sudo -n docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' sect-api)
+            echo "réseau conteneur : $NET"
+            NET_GW=$(sudo -n docker network inspect -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' "$NET")
+            echo "passerelle réseau : $NET_GW"
+            if [ "$NET_GW" != "172.28.0.1" ]; then
+              echo "ÉCHEC : passerelle $NET_GW != 172.28.0.1 (compose non pris en compte ?)"
+              exit 1
+            fi
+
+            echo "MARK 4 : cluster sect — listen localhost+172.28.0.1 (idempotent)"
+            CUR_LISTEN=$(PG psql -d postgres -tAc "SHOW listen_addresses" | xargs)
+            echo "listen_addresses actuel : $CUR_LISTEN"
+            if [ "$CUR_LISTEN" != "localhost,172.28.0.1" ]; then
+              PG psql -d postgres -c "ALTER SYSTEM SET listen_addresses = 'localhost,172.28.0.1'"
+              sudo -n systemctl restart postgresql@18-sect
+              sleep 3
+              NEW_LISTEN=$(PG psql -d postgres -tAc "SHOW listen_addresses" | xargs)
+              echo "listen_addresses nouveau : $NEW_LISTEN"
+            fi
+
+            echo "MARK 5 : pg_hba scopé 172.28.0.0/24 scram (idempotent)"
+            HBA=/etc/postgresql/18/sect/pg_hba.conf
+            if ! sudo -n grep -q '172.28.0.0/24' "$HBA"; then
+              printf '\n# SECT-REPLICA-3 : lectures analytiques API -> sect_replica (réseau docker fixe)\nhost sect_replica neondb_owner 172.28.0.0/24 scram-sha-256\nhost sect_drill neondb_owner 172.28.0.0/24 scram-sha-256\nhost sect_restore_test neondb_owner 172.28.0.0/24 scram-sha-256\n' | sudo -n tee -a "$HBA" >/dev/null
+              sudo -n systemctl reload postgresql@18-sect
+              echo "pg_hba étendu + reload"
+            fi
+
+            echo "MARK 6 : rôle applicatif neondb_owner + grants SELECT (3 tables)"
+            PASS=$(openssl rand -hex 24)
+            PG psql -d postgres -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='neondb_owner') THEN CREATE ROLE neondb_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE; END IF; END \$\$"
+            PG psql -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE neondb_owner LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '$PASS'"
+            PG psql -d sect_replica -v ON_ERROR_STOP=1 -c "GRANT CONNECT ON DATABASE sect_replica TO neondb_owner"
+            PG psql -d sect_replica -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO neondb_owner"
+            PG psql -d sect_replica -v ON_ERROR_STOP=1 -c "GRANT SELECT ON \"RequestLog\", \"AuditLog\", \"Reponse\" TO neondb_owner"
+            echo "rôle + grants OK (SELECT 3 tables — RW seulement via dr_promote.sh)"
+
+            echo "MARK 7 : feature flag REPLICA_DATABASE_URL dans /opt/sect/.env"
+            DSN="postgresql://neondb_owner:${PASS}@172.28.0.1:5433/sect_replica?sslmode=disable"
+            if grep -q '^REPLICA_DATABASE_URL=' /opt/sect/.env; then
+              sudo -n sed -i "s|^REPLICA_DATABASE_URL=.*|REPLICA_DATABASE_URL=$DSN|" /opt/sect/.env
+            fi
+            if ! grep -q '^REPLICA_DATABASE_URL=' /opt/sect/.env; then
+              printf '\n# SECT-REPLICA-3 (ADR-0013 phase 3) : lectures analytiques locales\nREPLICA_DATABASE_URL=%s\n' "$DSN" | sudo -n tee -a /opt/sect/.env >/dev/null
+            fi
+            sudo -n grep -c '^REPLICA_DATABASE_URL=' /opt/sect/.env | xargs echo "lignes REPLICA_DATABASE_URL :"
+
+            echo "MARK 8 : redémarrage API avec le flag ON"
+            cd /opt/sect
+            sudo -n docker compose up -d --remove-orphans
+            for i in $(seq 1 15); do
+              if sudo -n docker inspect -f '{{.State.Health.Status}}' sect-api | grep -q healthy; then
+                echo "API healthy"
+                break
+              fi
+              sleep 2
+            done
+            sudo -n docker logs --tail 5 sect-api 2>&1 | grep -i 'replica' || true
+
+            echo "MARK 9 : PREUVE end-to-end (JWT ADMIN forgé sur la VM)"
+            JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            NEON_URL=$(grep '^NEON_DATABASE_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            ADMIN_ID=$("$PGB/psql" "$NEON_URL" -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' AND \"mustChangePwd\"=false LIMIT 1" | xargs)
+            if [ -z "$ADMIN_ID" ]; then
+              ADMIN_ID=$("$PGB/psql" "$NEON_URL" -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' LIMIT 1" | xargs)
+            fi
+            echo "admin id : ${ADMIN_ID:0:8}…"
+            TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'drill@sect.ftci.fr','name':'DR Drill','iat':int(time.time()),'exp':int(time.time())+600,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
+            if [ -z "$TOK" ]; then
+              echo "ÉCHEC : forgage JWT impossible"
+              exit 1
+            fi
+
+            echo "── /api/logs (via chemin public) ──"
+            curl -sS --max-time 15 -D /tmp/h1 -o /tmp/r1 -H "Authorization: Bearer $TOK" 'https://api.sect.ftci.fr/api/logs?limit=3'
+            grep -i 'x-sect-read-source' /tmp/h1 || echo "ATTENTION : en-tête X-Sect-Read-Source absent (image pas encore phase 3 ?)"
+            python3 -c "import json;d=json.load(open('/tmp/r1'));print('total logs :',d['total'])"
+
+            echo "── /api/monitoring/endpoints (24h) ──"
+            curl -sS --max-time 15 -D /tmp/h2 -o /tmp/r2 -H "Authorization: Bearer $TOK" 'https://api.sect.ftci.fr/api/monitoring/endpoints?window=24h'
+            grep -i 'x-sect-read-source' /tmp/h2 || true
+            python3 -c "import json;d=json.load(open('/tmp/r2'));print('endpoints mesurés :',len(d['endpoints']))"
+
+            SRC1=$(grep -i 'x-sect-read-source' /tmp/h1 | tr -d '\r' | awk '{print $2}')
+            SRC2=$(grep -i 'x-sect-read-source' /tmp/h2 | tr -d '\r' | awk '{print $2}')
+            echo "sources : logs=$SRC1 endpoints=$SRC2"
+            if [ "$SRC1" != "replica" ]; then
+              echo "ÉCHEC : /api/logs servi par '$SRC1' au lieu de 'replica'"
+              exit 1
+            fi
+            if [ "$SRC2" != "replica" ]; then
+              echo "ÉCHEC : /api/monitoring/endpoints servi par '$SRC2' au lieu de 'replica'"
+              exit 1
+            fi
+            rm -f /tmp/h1 /tmp/r1 /tmp/h2 /tmp/r2
+            sudo -n rm -rf "$TMP"
+            echo "— lectures analytiques locales ACTIVÉES ET PROUVÉES (source=replica) —"
