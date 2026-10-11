@@ -915,30 +915,53 @@ d'éveil se casse sur le maillon le plus fréquent).
 - Break-glass humain uniquement (anti-décision n°4) : le script restore
   fournit le moteur, le runbook §7 le geste — jamais d'automatisation.
 
-### 15.6 Reclaim Oracle — état après audit outillé
+### 15.6 Reclaim Oracle — VERDICT après audit outillé + Monitoring API (11/10/2026)
 
-Charge mesurée §11.2 (CPU 1,6-2,7 %, RAM ~2/24 Go) : la VM est dans la bande
-« idle » de la politique A1 (95ᵉ percentile < 20 % / 7 j consécutifs —
-reclaim possible). **Les 95ᵉ percentiles 7 j n'existent que dans la console
-OCI** : `vm_audit.sh` imprime la checklist exacte (Compute metrics CPU/réseau/
-mémoire + les 5 slots Volume Backups Always Free) et le verdict à reporter
-ici. Réflexion : la tenancy n'a jamais été reclaimée en ~4 mois (mikcloud
-compte dans les métriques de l'instance) ; le backup décorrélé livré ici est
-précisément la parade au pire cas (instance stoppée/terminée → restore
-Object Storage vers n'importe quel PostgreSQL ≥ 16).
+L'audit (vm-audit.yml, 01:14 UTC) a fourni la charge instantanée ; les 95ᵉ
+percentiles 7 j — « n'existent que dans la console » — ont été extraits par
+le tuteur via l'API Monitoring (l'équivalent exact des graphes console) :
+
+| Métrique (95ᵉ pct, fenêtre 7 j glissante) | Mesuré | Seuil « idle » |
+|---|---|---|
+| CPU | 9-13 % (pic 13,1 %, stable ~9 %) | < 20 % |
+| Mémoire | 4,42 % (1,2/24 Go) | < 20 % |
+| Réseau | ~0,05 % effectif (2,0 GiB rx / 3,4 GiB tx cumulés/boot) | < 20 % |
+
+**Verdict : reclaim = risque RÉEL mais pas encore déclenchable.** Toutes
+les métriques sont dans la bande « idle » de la politique A1 (CPU + réseau +
+mémoire < 20 % pendant 7 j consécutifs) — MAIS l'instance n'a été créée que
+le 08/10 01:12 UTC : la fenêtre « 7 jours consécutifs » ne peut pas être
+complète avant ~le 15/10. Deux amortisseurs : la tenancy n'a jamais été
+reclaimée en ~4 mois (mikcloud actif dedans — ses pics comptent dans les
+métriques), et Oracle annonce par email avant tout stop. La parade
+structurante est livrée par ce même train : backups chiffrés décorrélés
+Object Storage → un stop/reclaim ne perd AUCUNE donnée SECT (restore vers
+n'importe quel PostgreSQL ≥ 16, runbook §7).
+
+Actions exploitant : (a) surveiller les emails OCI (pré-avis avant stop) ;
+(b) le futur N3 (VM primaire) ferait mécaniquement passer le CPU au-dessus
+du seuil ; (c) re-vérifier les percentiles après le 15/10 si le sujet
+revient. Volume Backups Always Free : 0/5 slots utilisés (audit).
 
 ### 15.7 État de mise en service (qui fait quoi maintenant)
 
-| Étape | Qui | Statut |
+| Étape | Qui | Statut (mise en service effective 11/10/2026, 02:07 UTC) |
 |---|---|---|
-| Code + workflows + migration 000135 appliquée | tuteur | **FAIT** (ce commit) |
-| CI self-test + install (Actions, 1 clic chacun) | exploitant | À lancer — runbook §2 |
-| Console OCI : bucket + IAM + CSK (§3.1-3.2) | exploitant | ~15 min, une fois |
-| Clé age + escrow doublé (§3.3) | exploitant | ~5 min, une fois — CRITIQUE |
-| `backup.env` renseigné (§3.4) puis activation (§4) | exploitant | ~10 min |
-| **1ᵉʳ backup `--announce` + 1ʳᵉ preuve de restore (§5)** | exploitant | Le jour même — OBLIGATOIRE |
-| Mesure 48 h §13.6 (2 curls API Neon) | exploitant | Clé API Neon à poser |
-| Rapport vm-audit à reporter ici (§15.6) | exploitant | Après run du workflow |
+| Code + workflows + migration 000135 appliquée | tuteur | **FAIT** |
+| CI self-test + install (run #38101701353 + fixs) | tuteur (délégation) | **FAIT** — cluster 5433 créé, scripts/unités en place |
+| Console OCI : bucket + IAM + CSK (§3.1-3.2) | tuteur (CLI OCI, délégation) | **FAIT** — sect-backups/user/group/policy scopée + CSK prouvée S3 (75 s propagation) |
+| Clé age + escrow doublé (§3.3) | tuteur → **exploitant** | **GÉNÉRÉE + testée** — l'escrow physique (coffre + papier/USB) reste à faire PAR L'EXPLOITANT avec le fichier livré (download/) |
+| `backup.env` renseigné (§3.4) puis activation (§4) | tuteur (backup-configure.yml) | **FAIT** — timers ARMÉS (03:32/12:32 UTC), is-enabled ✓ |
+| **1ᵉʳ backup `--announce` + 1ʳᵉ preuve de restore (§5)** | tuteur (backup-run/restore-test.yml) | **FAIT, PREUVÉ** — daily/2026-10-11 chiffré ; restore PASS : 85/85 tables, 233/233 policies, counts exacts, escrow vérifié ; marker restore-ok-2026-10 |
+| Mesure 48 h §13.6 (2 curls API Neon) | tuteur | En cours (premier point §16.3 ; à compléter sur 48 h) |
+| Rapport vm-audit → verdict reclaim (§15.6) | tuteur | **FAIT** (voir §15.6 ci-dessus) |
+
+Détail : la mise en service a été exécutée de bout en bout par le tuteur sur
+délégation explicite de l'exploitant (« toute l'opération doit être gérée de
+bout en bout par toi ») — chaque geste reste auditable dans les logs des
+workflows (runs GitHub Actions listés §16). Le secret transitoire
+SECT_AGE_IDENTITY a été posé pour le test puis SUPPRIMÉ (vérifié absent) —
+anti-décision 11 respectée.
 
 ### 15.8 Anti-décisions — ajout
 
@@ -948,3 +971,98 @@ Object Storage vers n'importe quel PostgreSQL ≥ 16).
     un geste humain approuvé (runbook §7 ; symétrie anti-décision n°4).
 13. Le calage 03:32 UTC ne bouge pas hors de la grille M1 sans refaire
     l'arithmétique §13.4/§15.4 (idem pour tout futur rythme horaire).
+
+## 16. Phase 2 exécutée — POC réplication logique (SECT-REPLICA-1/2, 11 octobre 2026)
+
+Feu vert de l'exploitant : « et enchaîne la phase 2 » — POC §6 exécuté de
+bout en bout le jour même, mesures à l'appui.
+
+### 16.1 Décisions irréversibles appliquées (validées)
+
+- **wal_level=logical sur Neon** — piège documenté : le setting est un
+  paramètre **PROJET** (`PATCH /v2/projects/{id}` avec
+  `{"project":{"settings":{"enable_logical_replication":true}}}`), PAS un
+  setting endpoint (le champ y est silencieusement ignoré — spec OpenAPI v2
+  de référence). Vérifié SQL après restart du compute (01:39:06 UTC).
+  Une fois posé il ne se désactive plus (§5.4) — assumé.
+- **Publication `sect_poc`** : RequestLog, AuditLog, Reponse. Le rôle du DSN
+  direct (neondb_owner) porte `rolreplication` (vérifié SQL) — pas de rôle
+  dédié nécessaire.
+
+### 16.2 Livré
+
+| Livrable | Contenu |
+|---|---|
+| `ops/replica/sect_replica_sync.sh` | Fenêtre de réplication : ENABLE → convergence (received_lsn == latest_end_lsn ×3, horodatage frais) → DISABLE |
+| `ops/replica/systemd/` | `sect-replica-sync.service` (durci, oneshot) + `.timer` (**:02/:32 UTC**, Persistent — D4 : systemd, pas GitHub Actions) |
+| `.github/workflows/replica-setup.yml` | Setup idempotent + auto-réparant (tant que la souscription n'existe pas, sect_replica est un scratch : DROP WITH FORCE + recréation + migrations) : base dédiée sur le cluster **5433 (jamais mikcloud)**, schéma par golang-migrate (135/135, DSN local socket peer), souscription, outillage sync |
+| `.github/workflows/replica-status.yml` | Mesures à la demande : pg_subscription, lag, counts répliqués, charge VM (sar + docker) |
+| Migration 000058 corrigée | Fresh-run-safe (voir §16.5) |
+
+### 16.3 Mesures (le cœur du POC — mesurées, pas projetées)
+
+- **Lag** : received_lsn == latest_end_lsn en continu (keepalives ~5 s) ;
+  retard affiché ≈ 1,3 s (fréquence keepalive, pas un vrai retard) ;
+- **Live** : RequestLog suit le trafic réel en direct (4 886 → 4 888 pendant
+  la session — chaque requête API journalisée arrive sur la réplique) ;
+- **API prod : ingérence NULLE** — /health 0,93 s, /health/db 1,16 s
+  (plage habituelle), les lectures de prod ne changent pas (§6 phase 2 ✔) ;
+- **Charge VM** : négligeable (loadavg 0,14 ; le pic %sys 22 % mesuré
+  provenait du déploiement backend déclenché par le push de la migration
+  000058, pas de la réplication) ;
+- **DÉCOUVERTE DÉCISIVE — une souscription active 24/7 EMPÊCHE
+  l'autosuspend Neon** : le walsender vivant fait avancer `last_active`
+  (keepalives interprétés comme activité). Mesuré : AUCUN suspend ≥ 8 min
+  après sa création, contre un rythme de 5:16 par cycle avant (historique
+  operations API). Coût implicite : compute 24/7 ≈ 720 h × 0,25 CU ≈
+  **180 CU-h/cycle — incompatible avec le budget Free de 100 CU-h**.
+
+### 16.4 Décision : réplication en FENÊTRES calées sur la grille M1
+
+La souscription ne vit que par fenêtres chevauchant les éveils DÉJÀ payés
+par les workers : timer :02/:32 UTC → ENABLE à T+1-2 min du tick, DISABLE à
+la convergence (secondes pour notre volume) → le walsender quitte AVANT le
+point de suspension habituel → **coût CU marginal ≈ 0 le jour** (fenêtre
+dans le tick :00/:30). La nuit, la grille étant plus clairsemée, le :32 peut
+être un éveil isolé (~5 min × 0,25 CU ≈ 0,8 CU/mois — à surveiller sur la
+mesure 48 h §13.6). Le slot conserve le WAL entre fenêtres (volume trivial :
+3 tables, ~Go de marge). **RPO réplique : ≤ 30 min** — pour un usage
+DR/analytique, conforme au but de la phase 2.
+
+### 16.5 Dettes découvertes et corrigées — la checklist double-cible naît ici
+
+Le fresh-run séquentiel sur la réplique a révélé que les migrations
+historiques n'étaient PAS rejouables à neuf (Neon les a absorbées au fil de
+l'eau au moment de leur écriture — le drift est invisible tant qu'on ne
+rejoue pas) :
+
+- **000058** : `create_b2c_subscription` passe de 5 à 6 args — un CREATE
+  OR REPLACE de signature différente crée une SURCHARGE au lieu de
+  remplacer, et ses grants non qualifiés échouaient (« function name is not
+  unique », run #38104688451). Corrigé au patron du dépôt (000070/000082) :
+  DROP IF EXISTS de l'ancienne signature + grants qualifiés. No-op côté
+  Neon (déjà appliquée, jamais rejouée).
+- **RÈGLES pour toute migration future (la « checklist double-cible » du
+  plan §6)** : (1) un fresh-run séquentiel sur la réplique fait partie de
+  la définition du fini ; (2) changer une signature de fonction = DROP
+  l'ancienne AVANT le CREATE ; (3) grants/REVOKE ON FUNCTION toujours
+  QUALIFIÉS (signature complète) ; (4) ne jamais référencer un objet avant
+  sa création (le sweep du 11/10 n'a plus trouvé que 000058 fautif).
+
+### 16.6 Limites documentées du POC
+
+- **Séquences non répliquées** (publication tables seules) — toute
+  promotion N3 exige le resync des séquences (déjà prévu §3.8 runbook
+  hybride) ;
+- **Extensions fournisseur** : pg_session_jwt (auth JWT du backend,
+  hors migrations, posée main sur Neon) est absente de la réplique vanilla —
+  sans impact sur les 3 tables répliquées ; à traiter avant toute
+  promotion N3 ;
+- RLS : l'apply worker passe en superuser du cluster dédié (bypass
+  standard de la réplication logique — les données sont identiques).
+
+### 16.7 Anti-décisions — ajout
+
+14. La souscription sect_poc ne reste JAMAIS active hors des fenêtres calées
+    grille M1 (mesure §16.3 : autosuspend bloqué ≈ 180 CU-h/cycle — budget
+    Free fichu). Le timer est la seule porte.

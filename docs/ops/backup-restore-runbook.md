@@ -115,9 +115,22 @@ sudo /opt/sect/backup/sect_restore_test.sh --identity-file /chemin/vers/sect-bac
 
 En cas d'échec : `journalctl -u sect-backup.service -e` (ou la sortie du script restore). Les causes classiques : CSK/policy (§3.2), namespace erroné (§3.2-2), DSN pooler au lieu de direct.
 
-## 6. Test de restauration mensuel (~15 min, rappel auto)
+## 6. Test de restauration mensuel (~5 min, rappel auto)
 
-Le watchdog rappelle sur Discord les 1-3 du mois tant que `restore-ok-<mois>` manque. Procédure = §5-2 (avec ou sans `--date`). **Un backup non testé n'existe pas** — c'est la raison d'être du marker.
+Le watchdog rappelle sur Discord les 1-3 du mois tant que `restore-ok-<mois>` manque. **Un backup non testé n'existe pas** — c'est la raison d'être du marker.
+
+Procédure (depuis le 11/10/2026 — le workflow `backup-restore-test.yml` remplace le SSH manuel, la clé privée ne touche la VM qu'en tmpfs `/dev/shm` puis est détruite) :
+
+1. GitHub → Settings → Actions → Secrets → **poser** `SECT_AGE_IDENTITY` =
+   la ligne `AGE-SECRET-KEY-1…` de la clé escrow (**MONOLIGNE** — sans les
+   lignes `# commentaire`, sinon drone-ssh casse le script) ;
+2. Actions → **« Backup restore test (preuve) »** → Run workflow (date vide
+   = le plus récent ; `--keep` = break-glass §7) ;
+3. lire le **PASS** dans le log : checksums → déchiffrement → restore
+   cluster dédié → counts/policies vs manifest ;
+4. **SUPPRIMER** le secret `SECT_AGE_IDENTITY` (la clé ne vit jamais
+   durablement dans GitHub — anti-décision 11 ; l'escrow reste la seule
+   source).
 
 ## 7. Break-glass — « Neon down / corrompu » (RTO ~15-30 min)
 
