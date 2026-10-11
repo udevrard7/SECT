@@ -73,17 +73,14 @@ jobs:
             echo "── 2. Garde-fou : $NEW_MODEL existe dans /models du provider ──"
             if [ -n "$BASE" ]; then
               curl -s --max-time 15 -H "Authorization: Bearer $KEY" "$(echo "$BASE" | sed 's:/$::')/models" -o /tmp/pm.json
-              FOUND=$(python3 -c "import json,sys
-            try:
-                d=json.load(open('/tmp/pm.json'))
-            except Exception:
-                d={}
-            ids=[m.get('id','') for m in (d.get('data') or d.get('models') or [])]
-            print('FOUND' if '$NEW_MODEL' in ids else 'ABSENT')" 2>/dev/null || echo "PARSE_ERR")
-              if [ "$FOUND" = "FOUND" ]; then
-                echo "OK : $NEW_MODEL est bien proposé par le provider."
+              # NB : grep brut du slug (robuste — le parsing python -c
+              # multi-lignes via drone-ssh s'était révélé fragile) :
+              # la réponse contient "id":"<slug>".
+              FOUND=$(grep -c "\"$NEW_MODEL\"" /tmp/pm.json || true)
+              if [ "$FOUND" -ge 1 ] 2>/dev/null; then
+                echo "OK : $NEW_MODEL est bien proposé par le provider ($FOUND occurrence(s))."
               fi
-              if [ "$FOUND" != "FOUND" ]; then
+              if [ "$FOUND" -lt 1 ] 2>/dev/null; then
                 echo "ÉCHEC : $NEW_MODEL absent de /models du provider (slug invalide ?) — AUCUNE modification."
                 exit 1
               fi
