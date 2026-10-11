@@ -1,0 +1,58 @@
+# ============================================================
+# SECT-BACKUP-1 — Backup manuel (runbook §5-1 et dépannage)
+#
+# Exécute /opt/sect/backup/sect_backup.sh sur la VM (le même
+# moteur que le timer 03:32 UTC). Usage :
+#   - première mise en service : announce=true (le succès est
+#     annoncé sur Discord — « le premier backup existe ») ;
+#   - dépannage/rejeu : announce=false (comportement timer).
+#
+# Ne remplace PAS le timer (D4 : systemd, PAS GitHub Actions —
+# les schedules de ce dépôt sont cassés, SECT-UPTIME-PROBE-3).
+# ============================================================
+name: Backup run (manuel)
+
+on:
+  workflow_dispatch:
+    inputs:
+      announce:
+        description: "Notifier le succès sur Discord (première mise en service)"
+        type: boolean
+        default: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets présents — run activé"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "SSH secrets absents — run impossible"
+          fi
+
+  backup:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backup (sect_backup.sh)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            [ -x /opt/sect/backup/sect_backup.sh ] || {
+              echo "ÉCHEC : sect_backup.sh absent — lancer « Backup tooling (OCI) » d'abord"; exit 1; }
+            EXTRA=""
+            if [ "${{ inputs.announce }}" = "true" ]; then EXTRA="--announce"; fi
+            # shellcheck disable=SC2086
+            sudo /opt/sect/backup/sect_backup.sh $EXTRA

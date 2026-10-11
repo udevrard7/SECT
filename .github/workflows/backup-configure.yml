@@ -1,0 +1,111 @@
+# ============================================================
+# SECT-BACKUP-1 — Mise en service : /opt/sect/backup.env (runbook §3.4-§4)
+#
+# Équivalent « bout en bout » du geste « sudo nano backup.env » :
+#   1. lit NEON_DIRECT_URL + DISCORD_WEBHOOK_URL DANS /opt/sect/.env
+#      sur la VM (ces valeurs ne la quittent jamais) ;
+#   2. y ajoute les secrets passés par GitHub (endpoint/CSK/age
+#      public — posés via l'API Actions Secrets) ;
+#   3. ré-écrit /opt/sect/backup.env (chmod 600) puis relance
+#      install.sh (idempotent) → timers ARMÉS (backup 03:32 UTC,
+#      watchdog 12:32 UTC) ;
+#   4. affiche l'état final des timers.
+#
+# Secrets GitHub requis (en plus de OCI_SSH_HOST/USER/KEY) :
+#   SECT_OS_ENDPOINT            — <namespace>.compat.objectstorage.eu-marseille-1.oraclecloud.com
+#   SECT_OCI_CSK_ACCESS_KEY     — CSK de l'utilisateur OCI sect-backup (§3.2)
+#   SECT_OCI_CSK_SECRET         — secret de cette CSK
+#   SECT_AGE_RECIPIENT          — clé PUBLIQUE age (age1…, §3.3)
+#   UPTIME_DISCORD_WEBHOOK_URL  — fallback si DISCORD_WEBHOOK_URL absent du .env VM
+#
+# Aucun secret n'est journalisé : ils transitent par l'env de la
+# session SSH (appleboy « envs »), jamais dans le corps du script.
+# ============================================================
+name: Backup configure (OCI)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ] \
+             && [ -n "${{ secrets.SECT_OS_ENDPOINT }}" ] \
+             && [ -n "${{ secrets.SECT_OCI_CSK_ACCESS_KEY }}" ] \
+             && [ -n "${{ secrets.SECT_OCI_CSK_SECRET }}" ] \
+             && [ -n "${{ secrets.SECT_AGE_RECIPIENT }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "secrets présents — configuration activée"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "secret(s) manquant(s) : OCI_SSH_* ou SECT_OS_ENDPOINT / SECT_OCI_CSK_ACCESS_KEY / SECT_OCI_CSK_SECRET / SECT_AGE_RECIPIENT (runbook §3)"
+          fi
+
+  configure:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Écriture backup.env + activation des timers
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SECT_OS_ENDPOINT: ${{ secrets.SECT_OS_ENDPOINT }}
+          SECT_OCI_CSK_ACCESS_KEY: ${{ secrets.SECT_OCI_CSK_ACCESS_KEY }}
+          SECT_OCI_CSK_SECRET: ${{ secrets.SECT_OCI_CSK_SECRET }}
+          SECT_AGE_RECIPIENT: ${{ secrets.SECT_AGE_RECIPIENT }}
+          SECT_DISCORD_FALLBACK: ${{ secrets.UPTIME_DISCORD_WEBHOOK_URL }}
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          envs: SECT_OS_ENDPOINT,SECT_OCI_CSK_ACCESS_KEY,SECT_OCI_CSK_SECRET,SECT_AGE_RECIPIENT,SECT_DISCORD_FALLBACK
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            # ── 0. outillage installé ? (Backup tooling d'abord — runbook §2-2) ──
+            [ -f /opt/sect/backup/install.sh ] || {
+              echo "ÉCHEC : /opt/sect/backup/install.sh absent — lancer « Backup tooling (OCI) » d'abord"; exit 1; }
+
+            # ── 1. valeurs LOCALES à la VM (ne la quittent jamais — §3.4) ──
+            NEON_URL="$(grep -E '^NEON_DIRECT_URL=' /opt/sect/.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$NEON_URL" ] || { echo "ÉCHEC : NEON_DIRECT_URL introuvable dans /opt/sect/.env"; exit 1; }
+            DISCORD="$(grep -E '^DISCORD_WEBHOOK_URL=' /opt/sect/.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DISCORD" ] && [ -n "${SECT_DISCORD_FALLBACK:-}" ]; then
+              DISCORD="$SECT_DISCORD_FALLBACK"
+              echo "DISCORD_WEBHOOK_URL absent du .env VM — fallback uptime utilisé"
+            fi
+
+            # ── 2. ré-écriture de backup.env (aucune valeur journalisée) ──
+            sudo install -m 0600 /dev/null /opt/sect/backup.env
+            {
+              printf '%s\n' "# SECT backup.env — posé par backup-configure.yml (runbook §3.4)"
+              printf '%s\n' "NEON_DIRECT_URL=$NEON_URL"
+              printf '%s\n' "BACKUP_BUCKET=sect-backups"
+              printf '%s\n' "RCLONE_REMOTE=oci"
+              printf '%s\n' "RCLONE_CONFIG_OCI_TYPE=s3"
+              printf '%s\n' "RCLONE_CONFIG_OCI_PROVIDER=Other"
+              printf '%s\n' "RCLONE_CONFIG_OCI_ENDPOINT=${SECT_OS_ENDPOINT:-}"
+              printf '%s\n' "RCLONE_CONFIG_OCI_REGION=eu-marseille-1"
+              printf '%s\n' "RCLONE_CONFIG_OCI_ACCESS_KEY_ID=${SECT_OCI_CSK_ACCESS_KEY:-}"
+              printf '%s\n' "RCLONE_CONFIG_OCI_SECRET_ACCESS_KEY=${SECT_OCI_CSK_SECRET:-}"
+              printf '%s\n' "AGE_RECIPIENT=${SECT_AGE_RECIPIENT:-}"
+              printf '%s\n' "DISCORD_WEBHOOK_URL=$DISCORD"
+              printf '%s\n' "RETENTION_DAILY=30"
+              printf '%s\n' "RETENTION_MONTHLY=12"
+              printf '%s\n' "MANIFEST_TABLES=User,Epreuve,Reponse,RequestLog,AuditLog"
+            } | sudo tee /opt/sect/backup.env >/dev/null
+            sudo chmod 600 /opt/sect/backup.env
+            echo "backup.env écrit ($(grep -c '=' /opt/sect/backup.env) clés, valeurs masquées)"
+
+            # ── 3. install.sh (idempotent) → détecte l'env configuré → ARMEMENT ──
+            sudo bash /opt/sect/backup/install.sh
+
+            # ── 4. état final (preuve) ──
+            systemctl list-timers 'sect-backup*' --no-pager || true
+            systemctl is-enabled sect-backup.timer sect-backup-watchdog.timer || true

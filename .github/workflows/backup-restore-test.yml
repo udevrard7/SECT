@@ -1,0 +1,98 @@
+# ============================================================
+# SECT-BACKUP-1 — Test de restauration : LA preuve (runbook §5-2/§6)
+#
+# Exécute sect_restore_test.sh sur la VM : download du dernier
+# backup → checksums → déchiffrement age (clé PRIVÉE escrow) →
+# restore cluster dédié 5433 → vérification EXACTE counts/policies
+# vs manifest → marker restore-ok-<mois>.
+#
+# La clé privée arrive par le secret GitHub SECT_AGE_IDENTITY
+# (posé/supprimé autour du test — D2/anti-décision 11 : elle ne
+# vit JAMAIS durablement ni sur la VM ni dans GitHub) :
+#   1. écrire le secret SECT_AGE_IDENTITY (Settings → Actions) ;
+#   2. Run workflow (date vide = backup le plus récent) ;
+#   3. SUPPRIMER le secret après le run (un test mensuel ne le
+#      laisse pas traîner — runbook §6).
+# Sur la VM, l'identité est posée dans /dev/shm (tmpfs = RAM,
+# jamais le disque) et détruite (shred) en fin de run.
+#
+# --keep = break-glass (runbook §7) : la base restaurée reste en
+# place — geste humain uniquement, jamais automatisé.
+# ============================================================
+name: Backup restore test (preuve)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Backup à tester (YYYY-MM-DD) — vide = le plus récent"
+        required: false
+        default: ""
+      keep:
+        description: "--keep : garder la base restaurée (break-glass §7)"
+        type: boolean
+        default: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.OCI_SSH_HOST }}" ] && [ -n "${{ secrets.OCI_SSH_KEY }}" ] \
+             && [ -n "${{ secrets.SECT_AGE_IDENTITY }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "SSH + identité escrow présents — test activé"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "manque OCI_SSH_* ou SECT_AGE_IDENTITY — poser l'identité le temps du test, la SUPPRIMER ensuite (runbook §6)"
+          fi
+
+  restore:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test de restauration (sect_restore_test.sh)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SECT_AGE_IDENTITY: ${{ secrets.SECT_AGE_IDENTITY }}
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          envs: SECT_AGE_IDENTITY
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            [ -x /opt/sect/backup/sect_restore_test.sh ] || {
+              echo "ÉCHEC : sect_restore_test.sh absent — lancer « Backup tooling (OCI) » d'abord"; exit 1; }
+            [ -n "${SECT_AGE_IDENTITY:-}" ] || { echo "ÉCHEC : identité absente"; exit 1; }
+
+            # identité → /dev/shm (tmpfs : RAM, jamais le disque — anti-décision 11)
+            KEYFILE="/dev/shm/sect-escrow-key.$$"
+            umask 077
+            printf '%s\n' "$SECT_AGE_IDENTITY" > "$KEYFILE"
+            unset SECT_AGE_IDENTITY
+            cleanup() { shred -u "$KEYFILE" 2>/dev/null || rm -f "$KEYFILE"; }
+            trap cleanup EXIT
+
+            ARGS="--identity-file $KEYFILE"
+            RDATE="${{ inputs.date }}"
+            if [ -n "$RDATE" ]; then
+              case "$RDATE" in
+                [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ARGS="$ARGS --date $RDATE" ;;
+                *) echo "ÉCHEC : date invalide (attendu YYYY-MM-DD) : $RDATE"; exit 1 ;;
+              esac
+            fi
+            if [ "${{ inputs.keep }}" = "true" ]; then
+              ARGS="$ARGS --keep"
+              echo "— --keep : mode break-glass, la base restera en place (runbook §7) —"
+            fi
+
+            # shellcheck disable=SC2086
+            sudo /opt/sect/backup/sect_restore_test.sh $ARGS
+            echo "— ne pas oublier : SUPPRIMER le secret SECT_AGE_IDENTITY (runbook §6) —"

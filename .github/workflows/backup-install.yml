@@ -52,10 +52,22 @@ jobs:
       - name: Unités systemd (systemd-analyze verify)
         run: |
           set -e
+          rc=0
           for u in ops/backup/systemd/*.service ops/backup/systemd/*.timer; do
             echo "— verify $u"
-            systemd-analyze verify "$u"
+            # « Command /opt/sect/… is not executable » est ATTENDU sur le
+            # runner (ExecStart pointe le chemin installé sur la VM — même
+            # filtre que install.sh --self-test, qui l'a prévu) ; tout
+            # AUTRE message = unit réellement invalide = échec.
+            out="$(systemd-analyze verify "$u" 2>&1 \
+                   | grep -v 'is not executable: No such file or directory' || true)"
+            if [ -n "$out" ]; then
+              echo "unit invalide $u :"
+              echo "$out"
+              rc=1
+            fi
           done
+          exit $rc
 
   # ------------------------------------------------------------
   # gate — secrets SSH présents ? (porte deploy-oci, éprouvée)
