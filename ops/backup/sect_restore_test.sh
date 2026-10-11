@@ -154,8 +154,11 @@ if ! sudo -n pg_lsclusters 2>/dev/null | awk -v p="$RESTORE_PORT" '$3==p && $4==
     die "cluster dédié (port $RESTORE_PORT) absent ou offline — install.sh le crée (runbook §4)"
 fi
 # le staging est root-only (umask 077) mais pg_restore/psql tournent en
-# postgres (auth peer) — sans ce chown : « Permission denied » sur le dump
-# (constaté run #38103148731) et globals silencieusement non appliqués.
+# postgres (auth peer) — sans ces chown : « Permission denied » sur le dump
+# (constaté runs #38103148731/#38103470730) et globals silencieusement non
+# appliqués. Le PARENT doit être traversable par postgres (il est 700 root
+# depuis install.sh — qui chown désormais aussi postgres).
+chown postgres:postgres "$STAGING_DIR" 2>/dev/null || true
 chown -R postgres:postgres "$WORK"
 
 local_pg psql -d postgres -c "DROP DATABASE IF EXISTS \"$RESTORE_DB\"" >/dev/null \

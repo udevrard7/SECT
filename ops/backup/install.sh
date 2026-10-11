@@ -79,8 +79,11 @@ command -v age    >/dev/null && log "age présent"
 # NB : dans le chemin Actions, SRC_DIR == DEST (le workflow copie
 # ops/backup/ → /opt/sect/backup/ PUIS exécute install.sh depuis là) :
 # la boucle ne copie alors RIEN (chmod seul) — plus de « cp: same file ».
+# STAGING : postgres doit pouvoir le TRAVERSER (pg_restore en auth peer
+# lit les dumps du restore-test) — root reste insensible au chown.
 mkdir -p "$DEST" "$STAGING" "$DEST/systemd"
 chmod 0755 "$DEST"; chmod 0700 "$STAGING"
+chown postgres:postgres "$STAGING" 2>/dev/null || true
 for f in sect_backup.sh sect_backup_watchdog.sh sect_restore_test.sh vm_audit.sh install.sh sect_backup.env.example; do
     [ -f "$SRC_DIR/$f" ] || continue
     if [ "$SRC_DIR" != "$DEST" ]; then
