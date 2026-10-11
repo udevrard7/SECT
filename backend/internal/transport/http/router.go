@@ -136,6 +136,14 @@ type Server struct {
 	// injectée via WithPromotionWakeup (pattern setter) ; nil = pas de
 	// réveil (dev/tests sans workers — fallback ticker).
 	promotionWakeup func()
+	// ADR-0013 §6 Phase 3 (SECT-REPLICA-3) : pool de LECTURE vers la
+	// réplique logique sect_replica (cluster local 5433 de la VM OCI).
+	// nil = feature flag OFF (comportement inchangé, tout sur Neon).
+	// Renseigné via WithReplicaPool si REPLICA_DATABASE_URL est posé.
+	// UNIQUEMENT des lectures analytiques (routes ADMIN sur tables
+	// répliquées) — jamais d'écriture (anti-décision 1), avec repli
+	// automatique sur le primaire Neon au moindre échec.
+	replicaPool *pgxpool.Pool
 }
 
 // WithNotificationDispatcher injecte le dispatcher de notifications après
@@ -180,6 +188,24 @@ func (s *Server) WithAlertingConfig(cfg monitoring.AlertingConfig) *Server {
 func (s *Server) WithPromotionWakeup(notify func()) *Server {
 	s.promotionWakeup = notify
 	return s
+}
+
+// WithReplicaPool active les lectures analytiques locales (ADR-0013 §6
+// Phase 3 — SECT-REPLICA-3). nil (défaut) = flag OFF. Un pool valide
+// n'est construit QUE si cfg.ReplicaDatabaseURL est renseigné (main.go).
+func (s *Server) WithReplicaPool(pool *pgxpool.Pool) *Server {
+	s.replicaPool = pool
+	return s
+}
+
+// replicaReadSource retourne la source effective des lectures analytiques
+// pour instrumentation (en-tête X-Sect-Read-Source + /overview). Séparé de
+// replicaReadPool pour ne pas exposer le pool hors des handlers concernés.
+func (s *Server) replicaReadSource() string {
+	if s.replicaPool != nil {
+		return "replica"
+	}
+	return "primary"
 }
 
 // NewServer crée et configure le serveur HTTP.

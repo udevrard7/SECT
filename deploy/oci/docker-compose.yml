@@ -34,6 +34,10 @@ services:
       # Localhost uniquement : seul le caddy système (mikcloud) parle à
       # l'API ; rien n'est exposé directement sur Internet.
       - "127.0.0.1:8090:8080"
+    # ADR-0013 §6 Phase 3 : réseau fixe 172.28.0.0/24 (passerelle
+    # 172.28.0.1) — le seul chemin conteneur → cluster sect 5433.
+    networks:
+      - sect
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
@@ -53,3 +57,18 @@ services:
           # (docs, audio, corrections) en laissant ~4 Go au système.
           cpus: "3.5"
           memory: 20g
+
+# ADR-0013 §6 Phase 3 (SECT-REPLICA-3) — réseau FIXE pour les lectures
+# analytiques locales : le conteneur API joint le cluster Postgres dédié
+# « sect » (port 5433, base sect_replica) via la passerelle 172.28.0.1 de
+# CE réseau docker privé. Subnet fixe = IP de passerelle déterministe
+# (postgres n'écoute QUE localhost + 172.28.0.1 — jamais 0.0.0.0, jamais
+# exposé : la Security List OCI ne forward pas 5433 vers Internet).
+# Retour arrière : supprimer la clé REPLICA_DATABASE_URL de /opt/sect/.env
+# suffit (le réseau inutilisé ne dérange personne).
+networks:
+  sect:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

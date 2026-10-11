@@ -104,6 +104,24 @@ func (s *Server) monitoringOverview(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// ─── Réplique locale (ADR-0013 §6 Phase 3) : état du flag + latence ───
+	// nil-safe par conception : flag OFF → "replica": {"enabled": false}
+	// (visible dans l'onglet Système — jamais de silence feint sur l'état
+	// de la source des lectures analytiques).
+	replicaInfo := map[string]any{"enabled": false}
+	if s.replicaPool != nil {
+		replicaInfo["enabled"] = true
+		replicaInfo["source"] = "sect_replica@5433"
+		replicaInfo["analyticsReadSource"] = s.replicaReadSource()
+		rStart := time.Now()
+		if err := s.replicaPool.Ping(r.Context()); err != nil {
+			replicaInfo["up"] = false
+		} else {
+			replicaInfo["up"] = true
+			replicaInfo["latencyMs"] = time.Since(rStart).Milliseconds()
+		}
+	}
+
 	// ─── Score santé (formule unique, partagée avec statsAdmin) ───
 	score := monitoring.ComputeScore(monitoring.ScoreInputs{
 		CriticalActifs:         criticalCount,
@@ -198,6 +216,7 @@ func (s *Server) monitoringOverview(w http.ResponseWriter, r *http.Request) {
 		},
 		"runtime":        monitoring.CollectRuntime(),
 		"db":             map[string]any{"down": dbDown, "latencyMs": dbLatencyMs, "activeConns": activeConns},
+		"replica":        replicaInfo,
 		"storage":        storageInfo,
 		"ai":             map[string]any{"providersActifs": providersActifs},
 		"maintenance":    map[string]any{"active": maintenanceActive, "message": maintenanceMessage},

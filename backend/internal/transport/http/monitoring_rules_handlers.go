@@ -19,6 +19,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/monitoring"
@@ -485,9 +487,16 @@ func (s *Server) monitoringEndpointsStats(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// ADR-0013 §6 Phase 3 (SECT-REPLICA-3) — lecture analytique locale :
+	// RequestLog est une table RÉPLIQUÉE (publication sect_poc) et cette route
+	// est ADMIN-only lecture-seule → servie par la réplique locale (0 CU Neon)
+	// quand le feature flag est ON, avec repli automatique sur le primaire
+	// (même pattern que logsListReal — cf. stub_handlers_real.go).
 	stats := []endpointStat{}
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		rows, err := tx.Query(r.Context(), `
+
+	runStatsQuery := func(pool *pgxpool.Pool) error {
+		return appdb.WithTx(r.Context(), pool, claims, func(tx pgx.Tx) error {
+			rows, err := tx.Query(r.Context(), `
                         SELECT "method", "route",
                                 count(*)::int AS total,
                                 count(*) FILTER (WHERE "status" >= 500)::int AS errors,
@@ -501,23 +510,44 @@ func (s *Server) monitoringEndpointsStats(w http.ResponseWriter, r *http.Request
                         ORDER BY total DESC
                         LIMIT 100
                 `, windowHours)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var e endpointStat
-			if err := rows.Scan(&e.Method, &e.Route, &e.Total, &e.Errors, &e.P50Ms, &e.P95Ms, &e.AvgMs, &e.MaxMs); err == nil {
-				if e.Total > 0 {
-					e.ErrorRate = float64(e.Errors) / float64(e.Total)
-				}
-				stats = append(stats, e)
+			if err != nil {
+				return err
 			}
-		}
-		return nil
-	})
+			defer rows.Close()
+			for rows.Next() {
+				var e endpointStat
+				if err := rows.Scan(&e.Method, &e.Route, &e.Total, &e.Errors, &e.P50Ms, &e.P95Ms, &e.AvgMs, &e.MaxMs); err == nil {
+					if e.Total > 0 {
+						e.ErrorRate = float64(e.Errors) / float64(e.Total)
+					}
+					stats = append(stats, e)
+				}
+			}
+			return nil
+		})
+	}
 
+	readSource := "primary"
+	if s.replicaPool != nil {
+		readSource = "replica"
+		if err := runStatsQuery(s.replicaPool); err != nil {
+			// Repli explicite sur le primaire — jamais de silence feint, la
+			// console p50/p95 reste fonctionnelle même réplique down.
+			slog.Warn("replica read failed — falling back to Neon (RequestLog)",
+				"error", err, "handler", "monitoringEndpointsStats")
+			stats = []endpointStat{}
+			if err2 := runStatsQuery(s.dbPool); err2 != nil {
+				slog.Error("primary read also failed (RequestLog)", "error", err2)
+			}
+			readSource = "primary-fallback"
+		}
+	} else if err := runStatsQuery(s.dbPool); err != nil {
+		slog.Error("primary read failed (RequestLog)", "error", err)
+	}
+
+	// Instrumentation observable (runbook §3.8 — preuve de routage).
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Sect-Read-Source", readSource)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"window":      r.URL.Query().Get("window"),
 		"windowHours": windowHours,

@@ -100,6 +100,48 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// NewReplica crée le pool de LECTURE vers la réplique logique locale
+// sect_replica (cluster 5433 de la VM OCI — ADR-0013 §6 Phase 3).
+//
+// Différences avec New (pool Neon) — la réplique est un Postgres local :
+//   - pool MINUSCULE : MaxConns 4 par défaut (REPLICA_MAX_CONNS) — les
+//     endpoints servis sont 2 routes ADMIN analytiques, jamais de charge ;
+//   - MinConns 0, idle 60 s : le cluster 5433 ne doit rien consommer au
+//     repos (il partage la VM avec mikcloud et postgres 18-main) ;
+//   - même QueryExecModeDescribeExec que le pool primaire : les policies
+//     RLS de la réplique (mêmes migrations, cf. §16.5 checklist double-cible)
+//     exigent la sémantique Describe pour l'évaluation des SET LOCAL
+//     app.claims.* — identique au primaire, zéro divergence de comportement.
+//
+// Le flag est géré par l'appelant (cfg.ReplicaDatabaseURL vide = jamais
+// appelé) — ce constructeur n'exécute que lorsque la fonctionnalité est ON.
+func NewReplica(databaseURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse replica database URL: %w", err)
+	}
+
+	config.MaxConns = int32(getEnvInt("REPLICA_MAX_CONNS", 4))
+	config.MinConns = int32(getEnvInt("REPLICA_MIN_CONNS", 0))
+	config.MaxConnIdleTime = getEnvDuration("REPLICA_MAX_CONN_IDLE_TIME", 60*time.Second)
+	config.MaxConnLifetime = 5 * time.Minute
+	config.HealthCheckPeriod = 30 * time.Second
+	config.ConnConfig.ConnectTimeout = 3 * time.Second // local : rapide ou rien
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		return nil, fmt.Errorf("create replica pool: %w", err)
+	}
+
+	if err := pool.Ping(context.Background()); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping replica database: %w", err)
+	}
+
+	return pool, nil
+}
+
 // getEnvDuration retourne la valeur durée d'une variable d'environnement
 // (format Go : "90s", "15m", "1h30m"...), ou le fallback si absente/invalide.
 // M1 (ADR-0013 §11.4) : DB_MAX_CONN_IDLE_TIME.

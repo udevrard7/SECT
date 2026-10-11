@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
@@ -125,14 +126,27 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
 	result := []logEntry{}
 	var totalCount int
 
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// L3 : requête COUNT séparée pour le vrai total (pas len(result)).
-		countQuery := fmt.Sprintf(`SELECT count(*) FROM "AuditLog" %s`, whereClause)
-		_ = tx.QueryRow(r.Context(), countQuery, args...).Scan(&totalCount)
+	// ADR-0013 §6 Phase 3 (SECT-REPLICA-3) — lecture analytique locale :
+	// AuditLog est une table RÉPLIQUÉE (publication sect_poc) et cette route
+	// est ADMIN-only lecture-seule → servie par la réplique locale (0 CU Neon)
+	// quand le feature flag est ON, avec repli automatique sur le primaire si
+	// la réplique échoue (cluster 5433 arrêté, fenêtre de sync, etc. — la
+	// source de vérité reste Neon, le repli est toujours SÛR : mêmes données).
+	//
+	// La fonction de query est paramétrée par le pool pour éviter la
+	// duplication du SQL — un seul corps, deux cibles.
+	runLogsQuery := func(pool *pgxpool.Pool) error {
+		return appdb.WithTx(r.Context(), pool, claims, func(tx pgx.Tx) error {
+			// L3 : requête COUNT séparée pour le vrai total (pas len(result)).
+			countQuery := fmt.Sprintf(`SELECT count(*) FROM "AuditLog" %s`, whereClause)
+			_ = tx.QueryRow(r.Context(), countQuery, args...).Scan(&totalCount)
 
-		// L2 : SELECT avec LIMIT + OFFSET (pagination réelle).
-		args = append(args, limit, offset)
-		query := fmt.Sprintf(`
+			// L2 : SELECT avec LIMIT + OFFSET (pagination réelle).
+			// COPIE LOCALE (repli-safe) : la closure peut être rejouée sur le
+			// primaire après un échec réplique — un append sur args capturé
+			// doublerait limit/offset au 2e passage (pgx : arg count mismatch).
+			qargs := append(append([]any{}, args...), limit, offset)
+			query := fmt.Sprintf(`
                         SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
                                "details", "adresseIp", "createdAt"
                         FROM "AuditLog"
@@ -141,25 +155,49 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
                         LIMIT $%d OFFSET $%d
                 `, whereClause, argIdx, argIdx+1)
 
-		rows, err := tx.Query(r.Context(), query, args...)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			l := logEntry{}
-			var createdAt time.Time
-			if err := rows.Scan(&l.ID, &l.UserID, &l.UserEmail, &l.Action, &l.Entite,
-				&l.EntiteID, &l.Details, &l.AdresseIP, &createdAt); err != nil {
+			rows, err := tx.Query(r.Context(), query, qargs...)
+			if err != nil {
 				return err
 			}
-			l.CreatedAt = createdAt.UTC().Format(time.RFC3339)
-			result = append(result, l)
-		}
-		return rows.Err()
-	})
+			defer rows.Close()
+			for rows.Next() {
+				l := logEntry{}
+				var createdAt time.Time
+				if err := rows.Scan(&l.ID, &l.UserID, &l.UserEmail, &l.Action, &l.Entite,
+					&l.EntiteID, &l.Details, &l.AdresseIP, &createdAt); err != nil {
+					return err
+				}
+				l.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+				result = append(result, l)
+			}
+			return rows.Err()
+		})
+	}
 
+	readSource := "primary"
+	if s.replicaPool != nil {
+		readSource = "replica"
+		if err := runLogsQuery(s.replicaPool); err != nil {
+			// Repli explicite (jamais de silence feint) : on rejoue la requête
+			// sur le primaire — l'admin console reste fonctionnelle quoi qu'il
+			// arrive à la réplique (le flag ne doit jamais DÉGRADER le service).
+			slog.Warn("replica read failed — falling back to Neon (AuditLog)",
+				"error", err, "handler", "logsListReal")
+			result = []logEntry{}
+			totalCount = 0
+			if err2 := runLogsQuery(s.dbPool); err2 != nil {
+				slog.Error("primary read also failed (AuditLog)", "error", err2)
+			}
+			readSource = "primary-fallback"
+		}
+	} else if err := runLogsQuery(s.dbPool); err != nil {
+		slog.Error("primary read failed (AuditLog)", "error", err)
+	}
+
+	// Instrumentation observable (runbook §3.8 — preuve de routage) :
+	// l'admin peut vérifier d'un coup d'œil quelle source a servi la requête.
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Sect-Read-Source", readSource)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"logs":  result,
 		"total": totalCount,

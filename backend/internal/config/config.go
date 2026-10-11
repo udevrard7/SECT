@@ -110,6 +110,22 @@ type Config struct {
 	// WORKERS_ENABLED=false → API servie normalement, workers OFF.
 	// Défaut true : comportement inchangé (mono-instance Render).
 	WorkersEnabled bool
+
+	// ADR-0013 §6 Phase 3 (SECT-REPLICA-3) — lectures analytiques locales.
+	// REPLICA_DATABASE_URL = DSN vers la réplique logique sect_replica sur
+	// le cluster local 5433 de la VM OCI (host 172.28.0.1, réseau docker
+	// dédié — jamais exposé publiquement, cf. runbook §3.8).
+	//
+	// FEATURE FLAG : vide (défaut) → flag OFF, comportement 100 % inchangé
+	// (toutes les lectures sur Neon). Renseigné → les endpoints analytiques
+	// ADMIN lecture-seule sur tables répliquées (GET /api/logs sur AuditLog,
+	// GET /api/monitoring/endpoints sur RequestLog) sont servis par la
+	// réplique locale avec repli automatique sur Neon en cas d'erreur
+	// (0 CU consommé côté Neon pour ces lectures ; RPO ≤ 30 min documenté
+	// ADR §16.4). Les écritures et toutes les autres lectures restent sur
+	// Neon — la réplique n'est JAMAIS une cible d'écriture hors promotion
+	// DR runbook §3.8 (anti-décision 1).
+	ReplicaDatabaseURL string
 }
 
 // Load reads configuration from environment variables.
@@ -169,6 +185,10 @@ func Load() (*Config, error) {
 
 		// SECT-OCI-HYBRID-1 : workers de fond activés par défaut.
 		WorkersEnabled: getEnvBool("WORKERS_ENABLED", true),
+
+		// ADR-0013 §6 Phase 3 — feature flag lectures analytiques
+		// réplique locale (vide = OFF, cf. doc du champ).
+		ReplicaDatabaseURL: getEnv("REPLICA_DATABASE_URL", ""),
 	}
 
 	// Parse CORS origins (comma-separated)

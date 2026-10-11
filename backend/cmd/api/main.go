@@ -25,6 +25,8 @@ import (
 	httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
 	"github.com/udevrard7/sect/backend/internal/usecase"
 	"github.com/udevrard7/sect/backend/internal/worker"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -34,6 +36,10 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("starting SECT API server", "version", "0.2.0")
+
+	// ADR-0013 §6 Phase 3 : pool réplique (nil = flag OFF). Déclaré au
+	// niveau main pour l'injection via setter APRÈS NewServer.
+	var replicaPoolRef *pgxpool.Pool
 
 	// 1. Configuration
 	cfg, err := config.Load()
@@ -51,6 +57,25 @@ func main() {
 	}
 	defer pool.Close()
 	logger.Info("connected to Neon Postgres")
+
+	// 2a. ADR-0013 §6 Phase 3 (SECT-REPLICA-3) — feature flag lectures
+	// analytiques locales : le pool réplique n'est construit QUE si
+	// REPLICA_DATABASE_URL est posé (vide = flag OFF, tout sur Neon).
+	// En cas d'échec (cluster 5433 arrêté au boot) : WARNING et DÉMARRAGE
+	// SANS le flag — le primaire Neon sert tout, la panne de la réplique
+	// ne doit JAMAIS empêcher l'API de démarrer (dégradation gracieuse,
+	// ré-armable au prochain redémarrage une fois le cluster revenu).
+	if cfg.ReplicaDatabaseURL != "" {
+		replicaPool, rerr := appdb.NewReplica(cfg.ReplicaDatabaseURL)
+		if rerr != nil {
+			logger.Error("replica pool UNAVAILABLE — analytics reads stay on Neon",
+				"error", rerr)
+		} else {
+			defer replicaPool.Close()
+			replicaPoolRef = replicaPool
+			logger.Info("connected to local replica (sect_replica) — analytics reads ON")
+		}
+	}
 
 	// 2b. Monitoring : Event Recorder (async) + Health Checker
 	// Bug B1+B2 (audit monitoring 2025) : table MonitoringEvent était vide,
@@ -400,6 +425,10 @@ func main() {
 	// (cold start tue le worker goroutine avant traitement du job).
 
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, surveillanceHub, aiService, aiProviderUC, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker, mailSvc, cfg.AppBaseURL, quotaRepo, studentSignupLinkUC, teacherSignupLinkUC, authRepo, promotionUC, inscriptionRepo, ouvrageUC, alignementUC, ouvrageSocialUC, monSampler)
+
+	// ADR-0013 §6 Phase 3 : injection du pool réplique (nil-safe — nil =
+	// flag OFF, comportement inchangé). Voir WithReplicaPool.
+	server.WithReplicaPool(replicaPoolRef)
 
 	// ADR-0012 (monitoring P5) : config des canaux d'alerting exposée à
 	// l'UI (GET /api/monitoring/rules → channels).
