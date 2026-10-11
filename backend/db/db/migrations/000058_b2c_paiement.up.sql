@@ -23,6 +23,14 @@ ALTER TABLE "Abonnement" ADD COLUMN IF NOT EXISTS "periodeAbonnement" TEXT DEFAU
 -- ═══ 3. Recréer la fonction create_b2c_subscription avec logique paiement ═══
 -- Prof Solo (prixMensuel = 0) → statut ACTIF directement
 -- Prof Premium (prixMensuel > 0) → statut EN_ATTENTE_PAIEMENT
+-- NOTE fresh-run (SECT-REPLICA-1, 11/10/2026) : la version de 000056 a 5 args
+-- (sans p_periode_abonnement) — un CREATE OR REPLACE de signature différente
+-- crée une SURCHARGE au lieu de remplacer, et les grants non qualifiés en fin
+-- de fichier devenaient ambigus (« function name is not unique » — échec du
+-- schéma à neuf sur la réplique, run #38104688451). Patron déjà utilisé par
+-- 000070/000082 : DROP de l'ancienne signature AVANT, grants QUALIFIÉS.
+-- (No-op côté Neon : migration déjà appliquée là-bas, jamais rejouée.)
+DROP FUNCTION IF EXISTS public.create_b2c_subscription(text, text, text, text, text);
 CREATE OR REPLACE FUNCTION public.create_b2c_subscription(
   p_plan_id text,
   p_user_name text,
@@ -195,7 +203,8 @@ END;
 $function$;
 
 -- ═══ 5. Permissions ═══
-REVOKE EXECUTE ON FUNCTION public.create_b2c_subscription FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_b2c_subscription TO PUBLIC;
+-- (qualifiées — cf. note fresh-run en tête de fichier)
+REVOKE EXECUTE ON FUNCTION public.create_b2c_subscription(text, text, text, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.create_b2c_subscription(text, text, text, text, text, text) TO PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.confirm_b2c_payment FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.confirm_b2c_payment TO PUBLIC;

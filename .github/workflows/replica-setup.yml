@@ -81,22 +81,26 @@ jobs:
               exit 1
             fi
 
-            echo "MARK 4 : base sect_replica"
+            echo "MARK 4 : état actuel de sect_replica"
             DB_EXISTS=$(PG psql -d postgres -tAc "SELECT count(*) FROM pg_database WHERE datname='sect_replica'" | tr -d '[:space:]' || true)
-            if [ "$DB_EXISTS" != "1" ]; then
-              PG psql -d postgres -c "CREATE DATABASE sect_replica"
-              echo "base sect_replica créée (cluster dédié 5433 — jamais mikcloud)"
-            fi
+            SUB_COUNT=0
             if [ "$DB_EXISTS" = "1" ]; then
-              echo "base sect_replica déjà présente"
+              SUB_COUNT=$(PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription WHERE subname='sect_poc'" | tr -d '[:space:]' || true)
             fi
 
-            echo "MARK 5 : schéma par golang-migrate (DSN local, socket peer)"
-            sudo -n -u postgres /opt/sect/bin/migrate -path "$TMP/backend/db/db/migrations" -database "postgresql:///sect_replica?host=/var/run/postgresql&port=5433" up
-            echo "MARK 6 : comptage tables"
-            PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'" | xargs echo "tables public :"
+            if [ "$SUB_COUNT" = "1" ]; then
+              echo "souscription déjà en place — schéma NON retouché (idempotence)"
+            fi
 
-            echo "MARK 7 : souscription sect_poc (DSN Neon lu sur la VM)"
+            if [ "$SUB_COUNT" != "1" ]; then
+              echo "MARK 5 : reconstruction propre (pas de souscription → sect_replica = scratch)"
+              PG psql -d postgres -c "DROP DATABASE IF EXISTS sect_replica WITH (FORCE)"
+              PG psql -d postgres -c "CREATE DATABASE sect_replica"
+              sudo -n -u postgres /opt/sect/bin/migrate -path "$TMP/backend/db/db/migrations" -database "postgresql:///sect_replica?host=/var/run/postgresql&port=5433" up
+              PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'" | xargs echo "tables public :"
+            fi
+
+            echo "MARK 6 : souscription sect_poc (DSN Neon lu sur la VM)"
             SUB_DSN="$(grep -E '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)"
             [ -n "$SUB_DSN" ] || { echo "ÉCHEC : NEON_DIRECT_URL introuvable dans /opt/sect/.env"; exit 1; }
             SUB_EXISTS=$(PG psql -d sect_replica -tAc "SELECT count(*) FROM pg_subscription WHERE subname='sect_poc'" | tr -d '[:space:]' || true)
