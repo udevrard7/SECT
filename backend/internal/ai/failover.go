@@ -19,6 +19,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -75,54 +76,122 @@ func auditCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // de fin de chaîne (OpenRouter coupé à 4,7s alors qu'un QCM complet
 // demande ~6s : providers lents en tête + part décroissante = les
 // meilleurs jamais à l'aise). Budget long (workers, 5 min) : inchangé.
-func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+//
+// SECT-LATENCY-4 : retourne aussi « capped » — vrai quand le restant était
+// INFÉRIEUR à la part fixe, c'est-à-dire quand le provider n'a pas reçu sa
+// part complète. Une deadline-exceeded sur une tentative capped est la
+// faute du BUDGET PARENT (pas du provider) : le failover ne doit PAS le
+// mettre en cooldown (cf. innocence dans ChatWithFailover).
+func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc, bool) {
 	dl, ok := ctx.Deadline()
 	if !ok {
-		return ctx, func() {}
+		return ctx, func() {}, false
 	}
 	remaining := time.Until(dl)
 	if remaining >= 60*time.Second {
-		return ctx, func() {}
+		return ctx, func() {}, false
 	}
 	perAttempt := 12 * time.Second
-	if remaining < perAttempt {
+	capped := remaining < perAttempt
+	if capped {
 		perAttempt = remaining
 	}
-	return context.WithTimeout(ctx, perAttempt)
+	if perAttempt <= 0 {
+		// Budget parent déjà épuisé : le ctx renvoyé est immédiatement mort.
+		c, cancel := context.WithTimeout(ctx, 0)
+		return c, cancel, true
+	}
+	c, cancel := context.WithTimeout(ctx, perAttempt)
+	return c, cancel, capped
 }
 
 // ──────────────────────────────────────────────────────────────────────────
 // SECT-LATENCY-3 : cooldown mémoire (implémentation de CooldownDurationMs)
+// SECT-LATENCY-4 : cooldown JUSTE — deux distinctions mesurées en prod :
+//   1. INNOCENT : un provider coupé par le budget PARENT épuisé (pas par sa
+//      propre lenteur) ne reçoit AUCUN cooldown. Avant, OpenRouter — le seul
+//      provider fonctionnel — était mis en cooldown 5 min parce que
+//      MuleRouter (priorité devant lui) avait mangé 12 s du budget de 20 s
+//      du landing-demo : la chaîne punissait le sauveteur pour la faute du
+//      retardataire, et l'essai suivant partait avec 0 provider disponible.
+//   2. HARD-FAIL : une erreur client PERMANENTE (401/403 clé invalide, 404
+//      modèle inexistant, 402 crédits) reçoit un cooldown ÉTENDU (30 min)
+//      au lieu du cooldown général. Ces erreurs ne se guérissent pas seules
+//      — les retenter toutes les 5 min ne fait que brûler du budget et du
+//      bruit d'audit. La règle « provider de tête toujours essayé » ne
+//      l'exempte plus : un 403 permanent en priorité 1 ne doit pas être
+//      réessayé à CHAQUE appel (0,2 s + 1 événement d'audit à chaque fois).
 // ──────────────────────────────────────────────────────────────────────────
 
-// providerInCooldown indique si le provider a échoué il y a moins de
-// CooldownDurationMs. Le provider de TÊTE (priorité 1) est toujours essayé
-// quoi qu'il arrive (garantit une tentative réelle et une erreur parlante
-// quand tout le reste est en cooldown).
-func (s *AIService) providerInCooldown(id string, config FailoverConfig) bool {
-	if config.CooldownDurationMs <= 0 {
-		return false
+// cooldownEntry : moment du dernier échec + nature (hard ou transitoire).
+type cooldownEntry struct {
+	at   time.Time
+	hard bool // erreur client permanente → cooldown étendu 30 min
+}
+
+// hardFailCooldown : fenêtre fixe pour les erreurs de configuration (clé,
+// modèle, crédits). Indépendante du réglage CooldownDurationMs (qui couvre
+// le transitoire : 429, 5xx, timeouts réseau).
+const hardFailCooldown = 30 * time.Minute
+
+// isHardFail détermine si une erreur d'appel provider est une erreur client
+// PERMANENTE (ne se corrige pas sans intervention) : 401/403/404/402, et
+// tout 4xx sauf 408 (request timeout) et 429 (quota — transitoire par
+// nature). Les 5xx sont transitoires (panne du provider, réessayable).
+func isHardFail(err error) bool {
+	var phe *ProviderHTTPError
+	if errors.As(err, &phe) {
+		switch phe.StatusCode {
+		case 408, 429:
+			return false
+		}
+		return phe.StatusCode >= 400 && phe.StatusCode < 500
 	}
+	return false
+}
+
+// providerInCooldown indique si le provider a échoué récemment : fenêtre
+// CooldownDurationMs (transitoire) ou hardFailCooldown (permanent). Le
+// provider de TÊTE (priorité 1) reste exempté pour garantir une tentative
+// réelle et une erreur parlante — SAUF s'il est en hard-fail (cf. ci-dessus).
+func (s *AIService) providerInCooldown(id string, config FailoverConfig) bool {
 	s.failMu.Lock()
 	defer s.failMu.Unlock()
 	if s.lastFailures == nil {
 		return false
 	}
-	t, ok := s.lastFailures[id]
+	e, ok := s.lastFailures[id]
 	if !ok {
 		return false
 	}
-	return time.Since(t) < time.Duration(config.CooldownDurationMs)*time.Millisecond
+	if e.hard {
+		return time.Since(e.at) < hardFailCooldown
+	}
+	if config.CooldownDurationMs <= 0 {
+		return false
+	}
+	return time.Since(e.at) < time.Duration(config.CooldownDurationMs)*time.Millisecond
 }
 
-// providerFailed enregistre l'échec (démarre le cooldown).
-func (s *AIService) providerFailed(id string) {
+// providerHardFailed indique si le DERNIER échec du provider était une
+// erreur client permanente. Utilisé pour retirer l'exemption de tête au
+// provider priorité 1 cassé en configuration (403/404 à répétition).
+func (s *AIService) providerHardFailed(id string) bool {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	e, ok := s.lastFailures[id]
+	return ok && e.hard
+}
+
+// providerFailed enregistre l'échec (démarre le cooldown). hard=true pour
+// une erreur client permanente (cooldown étendu).
+func (s *AIService) providerFailed(id string, hard bool) {
 	s.failMu.Lock()
 	defer s.failMu.Unlock()
 	if s.lastFailures == nil {
-		s.lastFailures = make(map[string]time.Time)
+		s.lastFailures = make(map[string]cooldownEntry)
 	}
-	s.lastFailures[id] = time.Now()
+	s.lastFailures[id] = cooldownEntry{at: time.Now(), hard: hard}
 }
 
 // providerSucceeded efface le cooldown (guérison).
@@ -173,14 +242,23 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 
 	var lastErr error
 	var prevProvider *ActiveProvider // BUG #10 fix: pour tracer fromProvider→toProvider
+
+	// SECT-LATENCY-4 : pré-filtrage des providers éligibles (cooldown),
+	// AVANT de boucler, pour garantir le garde-fou : si TOUT est en
+	// cooldown, on tente quand même le provider de tête — une tentative
+	// réelle avec une erreur parlante vaut mieux qu'un échec abstrait
+	// « tous en cooldown » sans aucune mesure réseau.
+	type eligibleProvider struct {
+		idx int
+		p   *ActiveProvider
+	}
+	var eligible []eligibleProvider
 	for i, p := range providers {
-		// SECT-LATENCY-3 : cooldown — un provider qui vient d'échouer (ou
-		// d'exploser son budget par tentative) est écarté pendant
-		// CooldownDurationMs (défaut 60s). Effet : un provider chroniquement
-		// lent en tête de chaîne (MuleRouter, TTFB 5,8s pour 20 tokens)
-		// ne peut plus monopoliser le budget à CHAQUE appel — le bon provider
-		// (OpenRouter, 0,5s) reçoit enfin le budget complet dès l'appel suivant.
-		if i > 0 && s.providerInCooldown(p.ID, config) {
+		// La tête (i=0) reste exemptée de cooldown pour garantir une
+		// tentative réelle — SAUF hard-fail (erreur client permanente :
+		// la retenter ne peut pas réussir ; mesure prod : Mistral 403
+		// priorité 1 retenté à CHAQUE appel, 0,2 s + 1 événement d'audit).
+		if (i > 0 || s.providerHardFailed(p.ID)) && s.providerInCooldown(p.ID, config) {
 			if logger != nil {
 				logger.Warn("AI provider en cooldown, sauté",
 					"provider", p.Name,
@@ -189,10 +267,39 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 			}
 			continue
 		}
+		eligible = append(eligible, eligibleProvider{idx: i, p: p})
+	}
+	if len(eligible) == 0 {
+		if logger != nil {
+			logger.Warn("Tous les providers IA en cooldown — tentative du provider de tête en dernier recours",
+				"provider", providers[0].Name,
+			)
+		}
+		eligible = append(eligible, eligibleProvider{idx: 0, p: providers[0]})
+	}
+
+	for _, ep := range eligible {
+		i, p := ep.idx, ep.p
+
+		// SECT-LATENCY-4 : budget parent épuisé → ne pas « torturer »
+		// les providers suivants avec des miettes. Mesuré en prod :
+		// DeepSeek, Cerebras et ZAI recevaient 0,1-0,3 s en fin de
+		// chaîne et échouaient instantanément par deadline — polluant
+		// l'audit d'événements FAIL_OVER trompeurs (leurs erreurs
+		// réelles sont 402/404 en < 1 s, pas des timeouts).
+		if dl, ok := ctx.Deadline(); ok && time.Until(dl) < 500*time.Millisecond {
+			if logger != nil {
+				logger.Warn("Budget IA parent épuisé avant d'essayer le provider suivant",
+					"provider", p.Name,
+				)
+			}
+			break
+		}
 
 		// Tenter l'appel avec ce provider — borné par tentative si le
 		// budget global est court (SECT-LATENCY-3, cf. attemptCtx).
-		attCtx, cancelAttempt := attemptCtx(ctx)
+		// capped = le provider n'a pas reçu sa part fixe complète.
+		attCtx, cancelAttempt, capped := attemptCtx(ctx)
 		result, err := s.chatWithProvider(attCtx, p, messages)
 		cancelAttempt()
 		if err == nil {
@@ -219,11 +326,29 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 		// Échec : logger et passer au suivant.
 		lastErr = err
 		prevProvider = p
-		s.providerFailed(p.ID)
+
+		// SECT-LATENCY-4 — COOLDOWN JUSTE : un provider n'est mis en
+		// cooldown QUE s'il est coupable (l'échec lui appartient :
+		// erreur HTTP du provider, deadline de SA part fixe, réseau).
+		// Innocent si l'erreur est une annulation/deadline ET :
+		//   - la tentative était capped (part fixe non perçue, coupé
+		//     par le budget PARENT — cas mesuré : OpenRouter recevait
+		//     7,4 s restants au lieu de ses 12 s), ou
+		//   - le ctx parent est mort (budget épuisé / client parti).
+		// Avant le fix, le SAUVETEUR était puni 5 min pour la faute
+		// du retardataire qui avait mangé le budget — l'appel suivant
+		// partait avec AUCUN provider disponible (0,4 s → 503 sec).
+		deadlineErr := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+		innocent := deadlineErr && (capped || ctx.Err() != nil)
+		if !innocent {
+			s.providerFailed(p.ID, isHardFail(err))
+		}
 		if logger != nil {
 			logger.Warn("AI provider échec, bascule vers le suivant",
 				"provider", p.Name,
 				"error", err.Error(),
+				"innocent", innocent,
+				"hard_fail", isHardFail(err),
 				"next_index", i+1,
 				"total_providers", len(providers),
 			)
@@ -233,11 +358,6 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 		// BUG #10 fix: passer le provider suivant pour fromProvider/toProvider.
 		nextProvider := getNextProvider(providers, i+1)
 		s.logFailoverEvent(ctx, p, nextProvider, err, i+1 < len(providers))
-
-		// Si pas de retryAllProviders et qu'on a essayé tous les providers, sortir.
-		if !config.RetryAllProviders && i+1 >= len(providers) {
-			break
-		}
 	}
 
 	return nil, fmt.Errorf("tous les providers IA ont échoué, dernière erreur: %w", lastErr)
@@ -478,7 +598,9 @@ func (s *AIService) chatWithProvider(ctx context.Context, p *ActiveProvider, mes
 		if len(snippet) > 300 {
 			snippet = snippet[:300] + "…"
 		}
-		return nil, fmt.Errorf("provider %s returned HTTP %d: %s", p.Name, resp.StatusCode, snippet)
+		// SECT-LATENCY-4 : erreur typée (cf. ProviderHTTPError) pour que
+		// le failover distingue erreurs permanentes et transitoires.
+		return nil, &ProviderHTTPError{ProviderName: p.Name, StatusCode: resp.StatusCode, Body: snippet}
 	}
 
 	var parsed struct {

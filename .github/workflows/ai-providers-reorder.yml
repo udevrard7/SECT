@@ -1,0 +1,87 @@
+# ============================================================
+# SECT-LATENCY-4 — Réordonnancement providers IA (chat)
+#
+# CONTEXTE (mesures run 38168775851 + live 19:36) :
+#   MuleRouter (priorité 4) répond 200 mais génère à ~230 ms/token
+#   (TTFB 4,7 s pour 20 tokens) — un QCM complet demande ~2 min.
+#   Ordonné DEVANT OpenRouter (priorité 5, kimi-k2.6, QCM complet
+#   en 6-9 s), il brûle sa part fixe de 12 s du budget landing-demo
+#   (20 s) à CHAQUE appel sans pouvoir jamais réussir : OpenRouter,
+#   seul provider chat fonctionnel, n'héritait que de ~7,4 s.
+#
+# GESTE (réversible, data-only — le code SECT-LATENCY-4 rend le
+# système résilient même SANS ce réordonnancement) :
+#   OpenRouter AI   : priority 5 → 4
+#   MuleRouter AI   : priority 4 → 5
+# MuleRouter reste ACTIF : filet de secours pour les workers à
+# budget long (5 min) où ses 2 min de génération passent.
+#
+# Écriture via NEON_DIRECT_URL (rôle BYPASSRLS — pattern
+# replica-reads-setup) : réveille le compute Neon une fois
+# (~0,02 CU, négligeable sur la baseline 3,35 CU/j).
+#
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
+# (piège n°7) ; DSN lu sur la VM, jamais affiché ; if…then…fi seuls.
+# ============================================================
+name: Réordonnancement providers IA
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  reorder:
+    name: "🔀 OpenRouter avant MuleRouter (chat)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: SSH OCI — UPDATE priorités chat (Neon direct)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            NEON_DIRECT=$(grep '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            if [ -z "$NEON_DIRECT" ]; then
+              echo "ÉCHEC : NEON_DIRECT_URL absent de /opt/sect/.env"
+              exit 1
+            fi
+
+            echo "── 1. État AVANT (providers chat actifs, par priorité) ──"
+            "$PGB/psql" "$NEON_DIRECT" -c 'SELECT "priority", "id", "name", "model" FROM "AIProviderConfig" WHERE "isActive" = true AND COALESCE(capability, $q$chat$q$) = $q$chat$q$ ORDER BY "priority" ASC'
+
+            echo "── 2. Réordonnancement (réversible : rééchanger 4 et 5) ──"
+            # NB : un seul -c multi-instructions = UNE transaction (protocole
+            # simple query) ; ON_ERROR_STOP fait échouer le run en cas d'erreur.
+            # (Pas de heredoc : drone-ssh + indentation du délimiteur = piège.)
+            "$PGB/psql" "$NEON_DIRECT" -v ON_ERROR_STOP=1 -c "UPDATE \"AIProviderConfig\" SET \"priority\" = 4, \"updatedAt\" = CURRENT_TIMESTAMP WHERE \"id\" = 'openrouter-provider-001' AND \"priority\" = 5; UPDATE \"AIProviderConfig\" SET \"priority\" = 5, \"updatedAt\" = CURRENT_TIMESTAMP WHERE \"id\" = 'mulerouter-provider-001' AND \"priority\" = 4;"
+
+            echo "── 3. État APRÈS + vérification ──"
+            "$PGB/psql" "$NEON_DIRECT" -c 'SELECT "priority", "id", "name", "model" FROM "AIProviderConfig" WHERE "isActive" = true AND COALESCE(capability, $q$chat$q$) = $q$chat$q$ ORDER BY "priority" ASC'
+            OR_POS=$("$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT "priority" FROM "AIProviderConfig" WHERE "id" = $q$openrouter-provider-001$q$')
+            MR_POS=$("$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT "priority" FROM "AIProviderConfig" WHERE "id" = $q$mulerouter-provider-001$q$')
+            echo "OpenRouter position : $OR_POS ; MuleRouter position : $MR_POS"
+            if [ "$OR_POS" -lt "$MR_POS" ]; then
+              echo "OK : OpenRouter est bien AVANT MuleRouter."
+            fi
+            if [ "$OR_POS" -ge "$MR_POS" ]; then
+              echo "ÉCHEC : l'ordre attendu n'est pas atteint (OpenRouter doit être < MuleRouter)."
+              exit 1
+            fi
+
+            echo "── 4. Cohérence : aucune priorité dupliquée chez les actifs chat ──"
+            DUP=$("$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT COUNT(*) FROM (SELECT "priority" FROM "AIProviderConfig" WHERE "isActive" = true AND COALESCE(capability, $q$chat$q$) = $q$chat$q$ GROUP BY "priority" HAVING COUNT(*) > 1) d')
+            if [ "$DUP" = "0" ]; then
+              echo "OK : aucune priorité dupliquée."
+            fi
+            if [ "$DUP" != "0" ]; then
+              echo "ÉCHEC : priorité dupliquée détectée ($DUP) — corriger avant de continuer."
+              exit 1
+            fi

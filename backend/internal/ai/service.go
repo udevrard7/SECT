@@ -48,6 +48,25 @@ type ChatResult struct {
 	Model   string // modèle effectivement utilisé (renvoyé par le provider)
 }
 
+// ProviderHTTPError signale une réponse HTTP d'erreur DU PROVIDER (statut
+// >= 400) avec son code. SECT-LATENCY-4 : avant, l'échec était un simple
+// fmt.Errorf("provider X returned HTTP NNN") — le failover ne pouvait pas
+// distinguer une erreur TRANSITOIRE (429 quota, 500, 503) d'une erreur
+// CLIENT PERMANENTE (401/403 clé invalide, 404 modèle inexistant, 402
+// crédits épuisés). Conséquence mesurée en prod : Mistral 403 et Groq 404
+// étaient retentés à chaque appel (0,4 s brûlées) puisqu'ils ne recevaient
+// que le cooldown général. errors.As sur ce type permet au failover
+// d'appliquer un cooldown ÉTENDU (30 min) aux erreurs de configuration.
+type ProviderHTTPError struct {
+	ProviderName string
+	StatusCode   int
+	Body         string
+}
+
+func (e *ProviderHTTPError) Error() string {
+	return fmt.Sprintf("provider %s returned HTTP %d: %s", e.ProviderName, e.StatusCode, e.Body)
+}
+
 // ActiveProvider est la projection d'une ligne AIProviderConfig lue depuis la
 // DB. Seuls les champs nécessaires à l'appel API sont conservés.
 //
@@ -86,8 +105,11 @@ type AIService struct {
 	// écarté pendant le cooldown — il ne reprend sa place dans la chaîne
 	// qu'après guérison du symptôme ou expiration. Map limitée par le nombre
 	// de providers configurés (quelques unités) — pas de fuite réaliste.
+	// SECT-LATENCY-4 : l'entrée porte aussi le flag « hard » (erreur client
+	// PERMANENTE : 401/403 clé, 404 modèle, 402 crédits — cf. isHardFail)
+	// qui étend le cooldown à 30 min, indépendamment du réglage général.
 	failMu       sync.Mutex
-	lastFailures map[string]time.Time
+	lastFailures map[string]cooldownEntry
 }
 
 // NewAIService construit un AIService à partir du pool Neon.
@@ -100,7 +122,7 @@ func NewAIService(dbPool *pgxpool.Pool) *AIService {
 		// double coût). Maintenant les 2 paths ont le même timeout 5min,
 		// cohérent avec le frontend (AbortController 120-360s).
 		client:       &http.Client{Timeout: 5 * time.Minute},
-		lastFailures: make(map[string]time.Time),
+		lastFailures: make(map[string]cooldownEntry),
 	}
 }
 
@@ -181,9 +203,23 @@ func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMes
 			break
 		}
 
+		// SECT-LATENCY-4 : même discipline de cooldown que ChatWithFailover —
+		// un provider en échec récent (surtout hard-fail : clé/modèle/crédits)
+		// est écarté au lieu d'être retenté à chaque message de messagerie.
+		// La tête est exemptée SAUF hard-fail (sinon un 403 permanent en p1
+		// serait réessayé à chaque appel).
+		if (i > 0 || s.providerHardFailed(p.ID)) && s.providerInCooldown(p.ID, config) {
+			slog.Warn("ChatCompletionStream : provider en cooldown, sauté",
+				"provider", p.Name,
+				"cooldown_ms", config.CooldownDurationMs,
+			)
+			continue
+		}
+
 		result, streamErr := s.tryStreamProvider(ctx, p, messages, onChunk)
 		if streamErr == nil {
 			// Succès du stream
+			s.providerSucceeded(p.ID)
 			if i > 0 {
 				slog.Info("ChatCompletionStream failover réussi",
 					"failed_provider", providers[0].Name,
@@ -194,6 +230,11 @@ func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMes
 		}
 
 		// Échec avant le premier token → essayer le provider suivant.
+		// SECT-LATENCY-4 : un provider coupé par l'annulation du ctx PARENT
+		// (budget épuisé ou client parti) n'est pas coupable — pas de cooldown.
+		if ctx.Err() == nil {
+			s.providerFailed(p.ID, isHardFail(streamErr))
+		}
 		lastErr = streamErr
 		slog.Warn("ChatCompletionStream provider échec, bascule",
 			"provider", p.Name,
@@ -250,7 +291,9 @@ func (s *AIService) tryStreamProvider(ctx context.Context, p *ActiveProvider, me
 		if len(snippet) > 300 {
 			snippet = snippet[:300] + "…"
 		}
-		return nil, fmt.Errorf("provider %s returned HTTP %d: %s", p.Name, resp.StatusCode, snippet)
+		// SECT-LATENCY-4 : erreur typée (cf. ProviderHTTPError) pour que le
+		// failover distingue erreurs permanentes et transitoires.
+		return nil, &ProviderHTTPError{ProviderName: p.Name, StatusCode: resp.StatusCode, Body: snippet}
 	}
 
 	// Lire le stream SSE ligne par ligne. Format OpenAI :
