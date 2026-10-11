@@ -1,0 +1,101 @@
+# ============================================================
+# SECT-LATENCY-4 — Changement de modèle d'un provider IA (réversible)
+#
+# CONTEXTE (bench run 38171451395, 20:15) : kimi-k2.6 = 13,9-16,1 s
+# par QCM ; qwen/qwen3.8-27b = 3,2-4,2 s (JSON valide ×2, marge ×4).
+# Le landing-demo a besoin de vitesse et stabilité.
+#
+# GARDE-FOU : le modèle demandé DOIT exister dans GET /models de la
+# clé du provider (échec immédiat sinon — pas de trou silencieux).
+# Réversible : relancer avec l'ancien slug pour restaurer.
+#
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
+# (piège n°7) ; clés jamais affichées ; dollar-quoting psql.
+# ============================================================
+name: Changement modèle provider IA
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider_id:
+        description: "ID du provider (défaut : openrouter-provider-001)"
+        required: false
+        default: "openrouter-provider-001"
+      model:
+        description: "Nouveau slug de modèle (ex: qwen/qwen3.8-27b)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  setmodel:
+    name: "🎛️ UPDATE model (avec garde-fou /models)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: SSH OCI — UPDATE model provider (Neon direct)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            PROVIDER_ID="${{ github.event.inputs.provider_id }}"
+            NEW_MODEL="${{ github.event.inputs.model }}"
+            NEON_DIRECT=$(grep '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            if [ -z "$NEON_DIRECT" ]; then
+              echo "ÉCHEC : NEON_DIRECT_URL absent de /opt/sect/.env"
+              exit 1
+            fi
+            if [ -z "$NEW_MODEL" ]; then
+              echo "ÉCHEC : modèle vide"
+              exit 1
+            fi
+
+            BASE=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"baseUrl\", $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
+            KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"apiKey\", $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
+            if [ -z "$KEY" ]; then
+              KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"extraConfig\"->>$q$apiKey$q$, $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
+            fi
+            if [ -z "$KEY" ]; then
+              echo "ÉCHEC : clé du provider introuvable en base"
+              exit 1
+            fi
+
+            echo "── 1. État AVANT ──"
+            "$PGB/psql" "$NEON_DIRECT" -c "SELECT \"id\", \"name\", \"model\", \"priority\" FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$"
+
+            echo "── 2. Garde-fou : $NEW_MODEL existe dans /models du provider ──"
+            if [ -n "$BASE" ]; then
+              curl -s --max-time 15 -H "Authorization: Bearer $KEY" "$(echo "$BASE" | sed 's:/$::')/models" -o /tmp/pm.json
+              FOUND=$(python3 -c "import json,sys
+            try:
+                d=json.load(open('/tmp/pm.json'))
+            except Exception:
+                d={}
+            ids=[m.get('id','') for m in (d.get('data') or d.get('models') or [])]
+            print('FOUND' if '$NEW_MODEL' in ids else 'ABSENT')" 2>/dev/null || echo "PARSE_ERR")
+              if [ "$FOUND" = "FOUND" ]; then
+                echo "OK : $NEW_MODEL est bien proposé par le provider."
+              fi
+              if [ "$FOUND" != "FOUND" ]; then
+                echo "ÉCHEC : $NEW_MODEL absent de /models du provider (slug invalide ?) — AUCUNE modification."
+                exit 1
+              fi
+            fi
+            if [ -z "$BASE" ]; then
+              echo "AVERTISSEMENT : baseUrl vide — garde-fou /models impossible, UPDATE direct."
+            fi
+
+            echo "── 3. UPDATE (réversible : relancer avec l'ancien slug) ──"
+            OLD_MODEL=$("$PGB/psql" "$NEON_DIRECT" -tAc "SELECT COALESCE(\"model\", $q$$q$) FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$" | xargs)
+            "$PGB/psql" "$NEON_DIRECT" -v ON_ERROR_STOP=1 -c "UPDATE \"AIProviderConfig\" SET \"model\" = $q$$NEW_MODEL$q$, \"updatedAt\" = CURRENT_TIMESTAMP WHERE \"id\" = $q$$PROVIDER_ID$q$"
+
+            echo "── 4. État APRÈS ──"
+            "$PGB/psql" "$NEON_DIRECT" -c "SELECT \"id\", \"name\", \"model\", \"priority\" FROM \"AIProviderConfig\" WHERE \"id\" = $q$$PROVIDER_ID$q$"
+            echo "Ancien modèle (pour rollback) : $OLD_MODEL"
