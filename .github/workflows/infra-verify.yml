@@ -70,16 +70,9 @@ jobs:
             echo "MARK 5 : règles système 000136 présentes (via /api/monitoring/rules)"
             CODE2=$(curl -sS --max-time 30 -o /tmp/rules.json -w '%{http_code}' -H "Authorization: Bearer $TOK" http://127.0.0.1:8090/api/monitoring/rules)
             [ "$CODE2" = "200" ] || { echo "ÉCHEC : /api/monitoring/rules a répondu $CODE2"; exit 1; }
-            printf '%s' "$(cat /tmp/rules.json)" > /tmp/rules2.json
-            N3=$(python3 -c "
-import json
-d=json.load(open('/tmp/rules2.json'))
-rules=d.get('rules',d if isinstance(d,list) else [])
-want={'replica-fraicheur','backup-fraicheur','disque-libre'}
-have={r.get('code') for r in rules if isinstance(r,dict)}
-print(len(want & have))")
+            N3=$(python3 -c "import json; d=json.load(open('/tmp/rules.json')); rules=d.get('rules',d if isinstance(d,list) else []); want={'replica-fraicheur','backup-fraicheur','disque-libre'}; have={r.get('code') for r in rules if isinstance(r,dict)}; print(len(want & have))")
             echo "règles 000136 présentes : $N3/3"
             [ "$N3" = "3" ] || { echo "ÉCHEC : règles système 000136 absentes — migration à appliquer"; exit 1; }
 
             echo "── SUCCÈS : monitoring d'infrastructure VÉRIFIÉ en conditions réelles"
-            rm -f /tmp/infra.json /tmp/rules.json /tmp/rules2.json
+            rm -f /tmp/infra.json /tmp/rules.json
