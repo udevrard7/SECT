@@ -83,10 +83,14 @@ jobs:
             ARGS="--identity-file $KEYFILE"
             RDATE="${{ inputs.date }}"
             if [ -n "$RDATE" ]; then
-              case "$RDATE" in
-                [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ARGS="$ARGS --date $RDATE" ;;
-                *) echo "ÉCHEC : date invalide (attendu YYYY-MM-DD) : $RDATE"; exit 1 ;;
-              esac
+              # NB : PAS de « case … esac » ici — script_stop:true fait injecter
+              # un garde d'exit par drone-ssh APRÈS CHAQUE ligne, et un case
+              # multiligne le reçoit dans son corps (erreur de syntaxe, run
+              # #38102728636) ; if/fi et { } y survivent.
+              if ! [[ "$RDATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                echo "ÉCHEC : date invalide (attendu YYYY-MM-DD) : $RDATE"; exit 1
+              fi
+              ARGS="$ARGS --date $RDATE"
             fi
             if [ "${{ inputs.keep }}" = "true" ]; then
               ARGS="$ARGS --keep"
