@@ -5668,3 +5668,41 @@ Décision de l'exploitant (11/10, chat) : « mettre à jour le système de monit
 - VÉRIFICATION EN CONDITIONS RÉELLES (workflow infra-verify.yml, dispatch) : JWT ADMIN forgé sur la VM (pattern dr-drill) + assertions. 3 itérations de réalité : (1) run 38158907538 — endpoint 200 EN PROD, voie D PRETE, 84 tables, Neon configuré (seed OK) MAIS staging permission denied + fraîcheur NULL ; (2) diagnostic → 3 causes : EXTRACT() numeric non assertable (cast ::float8), pg_stat_subscription superuser-only (jointure pg_subscription — champs retirés, la fraîcheur des DONNÉES fait foi), staging 750 hérité User=postgres + chmod sans sudo (utilisateur SSH non root) ; (3) run 38159850405 SUCCÈS : readSource=replica, 84 tables, fraîcheur 46,5 min (= silence d'écriture, dernière requête 16:43 — mesuré 5 253 lignes), backup 13,5 h + marker 2026-10, disque 78 % libre, CU cycle 24,75/100, règles 000136 3/3.
 - POLISH honnête : seuil voie D 45 → 90 min (aligné règle replica-fraicheur) — un silence d'écriture du soir n'est pas une grille cassée ; le verdict réel avant promotion reste dr_gate.sh (superuser).
 - Docs : addendum ADR-0012 (pièges + principe « rien ne réveille Neon ») + runbook §10 + ce worklog. Commits b4ec7dbc→893c09b0 (7 poussés en udevrard7 <ulrichdouh@gmail.com>).
+
+---
+
+## SECT-LATENCY-1/2/3 — Audit latence système & application + corrections (11 octobre 2026)
+
+**Demande** : « vérifier la latence du système et de l'application, corriger et/ou améliorer ».
+
+### Mesures (workflows latency-audit.yml / latency-diag.yml, lecture seule + 2 appels de test)
+
+- **Système sain** : handler Go 0,6-0,9 ms ; pool→Neon 20-23 ms (tenu) / 176-212 ms (connexion neuve) / TCP 25-31 ms ; réplique 5433 socket 0,05-0,23 ms ; api.sect.ftci.fr 16-23 ms (TLS) ; sect.ftci.fr via Vercel 217-428 ms. L'option C n'est pas le goulot.
+- **Cassé** : POST /api/landing-demo = 30 002 ms, 100 % erreur sur 7 jours, réponse VIDE (curl exit 52, http=000).
+- **Lent** : GET /api/monitoring/overview 892-1 430 ms (poll console 60 s) ; p95 métier 0,3-2 s.
+
+### Causes racines (prouvées)
+
+1. **WriteTimeout serveur 30 s** (posé à la lecture des headers) : tout écrit TCP après 30 s de vie de requête disparaît en silence (err=nil côté serveur, jamais reçu côté client, puis EOF — test local WriteTimeout=3s). Victimes : le 503 du landing-demo jamais livré + les 3 flux SSE perdus au-delà de 30 s (heartbeats 45 s et événements, reconnections EventSource, « latences » 950 s = connexions zombies).
+2. **Chaîne IA sans budget par tentative ni cooldown** : Mistral 403 (tier) → Groq 404 (modèle) → MuleRouter (TTFB 5,8 s pour 20 tokens) mangeait TOUT le budget → OpenRouter (0,5 s, fonctionnel) jamais essayé. AIFailoverEvent écrit avec ctx mort = table vide ; logger nil = échecs invisibles.
+
+### Corrections (5 commits, 0408f7c6 → daa8233c, tous déployés verts)
+
+- `writedeadline.go` : helper rearmWriteDeadline (ResponseController) + `Unwrap()` sur statusRecorder/statusWriter.
+- 3 hubs SSE (messagerie, notifications, surveillance) : deadline réarmée avant chaque flush.
+- landing-demo : budget 20 s, 503 TOUJOURS livré (message actionnable), WARN serveur de la cause.
+- failover : part fixe 12 s/tentative (budgets courts), cooldown mémoire 60 s ENFIN implémenté (FailoverConfig le promettait), AIFailoverEvent en ctx détaché (WithoutCancel + 3 s), logger réel.
+- monitoring/overview : 7 blocs parallélisés (WaitGroup) → 211-264 ms mesurés (~5×).
+- monitoring/endpoints : SSE exclus des percentiles.
+- Workflows : piège n°7 éradiqué (else/elif), DSN Neon ciblé + garde anti-réplique, réplique via socket unix, colonne errorDetails, sonde providers dynamique + egress conteneur + appels chat réels (clés jamais affichées).
+
+### Vérification en prod (run 38166366991, post-déploiement daa8233c)
+
+- landing-demo essai 1 : **200 en 18,99 s** (QCM kimi-k2.6 complet, « ferredoxine »).
+- landing-demo essai 2 (cooldown armé) : **200 en 4,49 s** (QCM « plastoquinone »).
+- AIFailoverEvent peuplé : Mistral 403 tier_not_allowed code 1910, Groq 404 modèle inexistant, DeepSeek 402 Insufficient Balance — le diagnostic n'a plus de zones muettes.
+- WARN serveur complet dans docker logs (chaîne de bascule visible).
+
+### Reste pour l'exploitant (données, pas code)
+
+Corriger les providers IA (5/8 renvoient des erreurs immédiates) : plan/clé Mistral (mistral-large-latest interdit au tier), modèle Groq inexistant, crédits DeepSeek, modèles Cerebras/ZAI invalides. Avec un provider rapide en tête, la démo répond en 2-5 s sans solliciter le cooldown.
