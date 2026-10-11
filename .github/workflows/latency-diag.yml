@@ -1,0 +1,72 @@
+# ============================================================
+# SECT-LATENCY-2 — Diagnostic endpoint landing-demo (502/30s)
+#
+# CONTEXT : l'audit de latence (SECT-LATENCY-1) a révélé
+# POST /api/landing-demo à 30002ms + 100% erreur (30s = timeout
+# du handler). Reproduit en direct : 502 après 30,5s.
+#
+# MESURES (lecture seule + 1 requête publique de test) :
+#   1. Providers IA actifs (GET /api/ai-providers/ — ADMIN) ;
+#   2. Health failover (GET /api/ai-providers/failover/health) ;
+#   3. Requête POST /api/landing-demo sur localhost:8090
+#      (chronométrée) PENDANT que docker logs capture ;
+#   4. Les 60 dernières lignes de log sect-api après l'appel.
+#
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous
+# script_stop (piège n°7), JSON via FICHIER, aucune clé API
+# affichée (les handlers masquent — vérifié par construction).
+# ============================================================
+name: Diagnostic landing-demo
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    name: "🔎 Diag landing-demo (SSH)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: SSH OCI — diagnostic chaîne IA landing
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            API=http://127.0.0.1:8090
+
+            JWT_SECRET=$(grep '^JWT_SECRET=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            ADMIN_ID=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc 'SELECT id FROM "User" WHERE role='"'"'ADMIN'"'"' LIMIT 1' | xargs)
+            [ -n "$ADMIN_ID" ] || { echo "ÉCHEC : aucun ADMIN"; exit 1; }
+            TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'latency-diag@sect.ftci.fr','name':'Latency Diag','iat':int(time.time()),'exp':int(time.time())+900,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
+
+            echo "── 1. Providers IA configurés (ADMIN) ──"
+            CODE=$(curl -sS --max-time 30 -o /tmp/ai.json -w '%{http_code}' -H "Authorization: Bearer $TOK" "$API/api/ai-providers/")
+            echo "HTTP $CODE"
+            echo 'aW1wb3J0IGpzb24KZCA9IGpzb24ubG9hZChvcGVuKCcvdG1wL2FpLmpzb24nKSkKcHJvdnMgPSBkLmdldCgncHJvdmlkZXJzJykgb3IgZC5nZXQoJ2RhdGEnKSBvciAoZCBpZiBpc2luc3RhbmNlKGQsIGxpc3QpIGVsc2UgW10pCmZvciBwIGluIHByb3ZzOgogICAgaWYgaXNpbnN0YW5jZShwLCBkaWN0KToKICAgICAgICBwcmludCgnICAnLCBwLmdldCgnbmFtZScpLCAnfCBhY3RpdmU6JywgcC5nZXQoJ2lzQWN0aXZlJyksICd8IHByb3ZpZGVyOicsIHAuZ2V0KCdwcm92aWRlcicpLCAnfCBiYXNlVVJMOicsIHAuZ2V0KCdiYXNlVXJsJykgb3IgcC5nZXQoJ2Jhc2VVUkwnKSwgJ3wgbW9kZWw6JywgcC5nZXQoJ21vZGVsJyksICd8IHByaW9yaXR5OicsIHAuZ2V0KCdwcmlvcml0eScpKQo=' | base64 -d > /tmp/ai_list.py
+            python3 /tmp/ai_list.py 2>/dev/null || { echo "(parse direct ko — dump brut tronqué)"; head -c 800 /tmp/ai.json; }
+
+            echo
+            echo "── 2. Health failover IA ──"
+            CODE=$(curl -sS --max-time 30 -o /tmp/fh.json -w '%{http_code}' -H "Authorization: Bearer $TOK" "$API/api/ai-providers/failover/health")
+            echo "HTTP $CODE"
+            head -c 600 /tmp/fh.json; echo
+
+            echo
+            echo "── 3. Test live POST /api/landing-demo (localhost, chronométré) ──"
+            curl -s -o /tmp/demo.json -w "http=%{http_code} total_s=%{time_total}\n" --max-time 60 -X POST -H "Content-Type: application/json" -d '{"topic":"La photosynthese"}' "$API/api/landing-demo"
+            head -c 500 /tmp/demo.json; echo
+
+            echo
+            echo "── 4. Logs sect-api (60 dernières lignes) ──"
+            docker logs sect-api --tail 60 2>&1 | tail -60
+
+            rm -f /tmp/ai.json /tmp/fh.json /tmp/demo.json
