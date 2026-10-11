@@ -145,6 +145,8 @@ jobs:
             echo "$HDB" | grep -q '"db":"up"' || { echo "ÉCHEC : /health/db pas 200 sur la base restaurée"; exit 1; }
 
             echo "MARK 8 : preuve données (JWT ADMIN forgé — RLS + claims + restore)"
+            echo "── diagnostic RLS direct (SET ROLE + claims, sans l'app) ──"
+            PG psql -d sect_drill -c "BEGIN; SET LOCAL app.claims.role = 'ADMIN'; SET ROLE neondb_owner; SELECT count(*) AS auditlog_visible_admin FROM \"AuditLog\"; ROLLBACK;"
             ADMIN_ID=$(PG psql -d sect_drill -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' AND \"mustChangePwd\"=false LIMIT 1" | xargs)
             if [ -z "$ADMIN_ID" ]; then
               ADMIN_ID=$(PG psql -d sect_drill -tAc "SELECT id FROM \"User\" WHERE role='ADMIN' LIMIT 1" | xargs)
@@ -152,9 +154,10 @@ jobs:
             [ -n "$ADMIN_ID" ] || { echo "ÉCHEC : aucun ADMIN dans la base restaurée"; exit 1; }
             TOK=$(JWT_SECRET="$JWT_SECRET" ADMIN_ID="$ADMIN_ID" python3 -c "import os,json,time,hmac,hashlib,base64; b64=lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p=b64(json.dumps({'sub':os.environ['ADMIN_ID'],'role':'ADMIN','etablissement_id':'','email':'drill@sect.ftci.fr','name':'DR Drill','iat':int(time.time()),'exp':int(time.time())+600,'typ':'access','must_change_pwd':False}).encode()); print((h+b'.'+p+b'.'+b64(hmac.new(os.environ['JWT_SECRET'].encode(),h+b'.'+p,hashlib.sha256).digest())).decode())")
             LOGS=$(sudo -n docker exec sect-api-drill wget -qO- --header "Authorization: Bearer $TOK" 'http://localhost:8080/api/logs?limit=3' 2>/dev/null || echo '{}')
+            echo "réponse brute /api/logs (300 c) : ${LOGS:0:300}"
             TOTAL=$(python3 -c "import json;d=json.loads('''$LOGS''');print(d.get('total',0))" 2>/dev/null || echo 0)
             echo "/api/logs total sur la base restaurée : $TOTAL"
-            [ "$TOTAL" -gt 0 ] || { echo "ÉCHEC : AuditLog vide via l'API (RLS ou restore ?)"; exit 1; }
+            [ "$TOTAL" -gt 0 ] || { echo "ÉCHEC : AuditLog vide via l'API (auth ? RLS ? — voir diagnostics ci-dessus)"; exit 1; }
 
             echo "── contrôle prod : /api/logs public (auto-guérison du pool réplique) ──"
             curl -sS --max-time 15 -D /tmp/ph -o /tmp/pr -H "Authorization: Bearer $TOK" 'https://api.sect.ftci.fr/api/logs?limit=3'
