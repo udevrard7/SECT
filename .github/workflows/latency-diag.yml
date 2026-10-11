@@ -73,12 +73,43 @@ jobs:
             done
 
             echo
-            echo "── 3c. Test SSE : heartbeat au-delà de 30s ? (100s d'écoute) ──"
-            timeout 100 curl -sN --max-time 100 -H "Authorization: Bearer $TOK" "$API/api/messagerie/stream" 2>/dev/null | while IFS= read -r LINE; do
-              [ "$LINE" = ": heartbeat" ] && echo "  [$(date +%H:%M:%S)] HEARTBEAT REÇU"
-              [ "${LINE:0:5}" = "data:" ] && echo "  [$(date +%H:%M:%S)] event: ${LINE:6:60}"
-            done | head -20 || true
-            echo "  (fin écoute SSE)"
+            echo "── 3b-2. Appels chat RÉELS avec les clés de prod (clés jamais affichées) ──"
+            echo "  (a) env du conteneur (proxy sortant ?) :"
+            docker inspect --format '{{.Config.Env}}' sect-api 2>/dev/null | tr ',' '\n' | grep -iE 'proxy|no_proxy' || echo "    aucun proxy dans Config.Env"
+            echo "  (b) egress HTTPS depuis le CONTENEUR (wget busybox, chronométré) :"
+            for EURL in https://api.mistral.ai/v1/models https://api.groq.com/openai/v1/models; do
+              S=$(date +%s%N)
+              OUTW=$(docker exec sect-api wget -q -O - -T 10 --header='X-probe: 1' "$EURL" 2>&1 | head -c 80) || OUTW="(wget exit $?)"
+              E=$(date +%s%N)
+              echo "    $EURL → $(( (E-S)/1000000 ))ms — ${OUTW:0:100}"
+            done
+            echo "  (c) appel chat complet par provider ACTIF (lu sur la réplique, 0 CU) — depuis l'HÔTE :"
+            echo 'aW1wb3J0IGpzb24sIG9zCnRyeToKICAgIGQgPSBqc29uLmxvYWQob3BlbignL3RtcC9wcm9iZV8nICsgb3MuZW52aXJvblsnUFJPViddICsgJy5qc29uJykpCiAgICBjaCA9IChkLmdldCgnY2hvaWNlcycpIG9yIFt7fV0pWzBdCiAgICBwcmludCgnICAgICAgY29udGVudTonLCAoY2guZ2V0KCdtZXNzYWdlJykgb3Ige30pLmdldCgnY29udGVudCcsJycpWzo2MF0sICd8IHVzYWdlOicsIGQuZ2V0KCd1c2FnZScse30pLmdldCgndG90YWxfdG9rZW5zJykpCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgIHByaW50KCcgICAgICAoclx1MDBlOXBvbnNlIG5vbi1KU09OOicsIHN0cihlKVs6ODBdLCAnKScpCg==' | base64 -d > /tmp/probe_parse.py
+            sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -Atc 'SELECT "id" FROM "AIProviderConfig" WHERE "isActive"=true AND COALESCE("capability",$q$chat$q$)=$q$chat$q$ ORDER BY "priority" ASC' 2>/dev/null > /tmp/prov_ids.txt || echo "    (lecture providers impossible)"
+            while IFS= read -r PROV; do
+              [ -n "$PROV" ] || continue
+              KEY=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc "SELECT COALESCE(\"apiKey\",'') FROM \"AIProviderConfig\" WHERE id='$PROV'" 2>/dev/null | xargs) || KEY=""
+              BASE=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc "SELECT COALESCE(\"baseUrl\",'') FROM \"AIProviderConfig\" WHERE id='$PROV'" 2>/dev/null | xargs) || BASE=""
+              MODEL=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc "SELECT COALESCE(\"model\",'') FROM \"AIProviderConfig\" WHERE id='$PROV'" 2>/dev/null | xargs) || MODEL=""
+              MAXTOK=$(sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc "SELECT COALESCE(\"maxTokens\",4096) FROM \"AIProviderConfig\" WHERE id='$PROV'" 2>/dev/null | xargs) || MAXTOK="?"
+              if [ -n "$KEY" ] && [ -n "$BASE" ] && [ -n "$MODEL" ]; then
+                echo "    $PROV (model=$MODEL maxTokens=$MAXTOK) :"
+                curl -s -o /tmp/probe_$PROV.json -w "      http=%{http_code} ttfb_s=%{time_starttransfer} total_s=%{time_total}\n" --max-time 35 \
+                  -X POST "$BASE/chat/completions" \
+                  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+                  -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Réponds uniquement par le mot OK\"}],\"max_tokens\":20}" || echo "      ÉCHEC curl exit $?"
+                PROV="$PROV" python3 /tmp/probe_parse.py 2>/dev/null || true
+              fi
+              if [ -z "$KEY" ] || [ -z "$BASE" ] || [ -z "$MODEL" ]; then
+                echo "    $PROV : clé/base/model introuvables côté réplique (clé vide ?)"
+              fi
+            done < /tmp/prov_ids.txt
+            rm -f /tmp/prov_ids.txt /tmp/probe_*.json
+
+            echo
+            echo "── 3c. Test SSE : ce que renvoie réellement /api/messagerie/stream (5s) ──"
+            timeout 6 curl -sN --max-time 5 -H "Authorization: Bearer $TOK" -w "\n  [curl http=%{http_code}]\n" "$API/api/messagerie/stream" 2>&1 | head -8 || true
+            echo "  (fin test SSE — le run précédent a montré un 403 immédiat : test invalidant, pas un bug)"
 
             echo
             echo "── 4. Logs sect-api (60 dernières lignes) ──"

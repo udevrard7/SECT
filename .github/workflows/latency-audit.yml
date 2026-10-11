@@ -90,7 +90,19 @@ jobs:
 
             echo
             echo "══ C. NEON (primaire) — réseau + connexion + requêtes ══"
-            DSNLINE=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' /opt/sect/.env | head -1 || true)
+            # SECT-LATENCY-2 fix : l'ancien grep '^(NEON_DATABASE_URL|DATABASE_URL)='
+            # attrapait DATABASE_URL en premier (ordre du fichier) = DSN de la
+            # RÉPLIQUE locale 172.28.0.1:5433 → pg_hba FATAL (run 38161315216).
+            # On vise NEON_DATABASE_URL précisément, avec garde-fou anti-réplique.
+            DSNLINE=$(grep '^NEON_DATABASE_URL=' /opt/sect/.env | head -1 || true)
+            [ -n "$DSNLINE" ] || DSNLINE=$(grep '^DATABASE_URL=' /opt/sect/.env | head -1 || true)
+            if printf '%s' "$DSNLINE" | grep -q '172\.28\.0\.1'; then
+              echo "  (DSN trouvé pointe vers la réplique locale — pas Neon — section sautée)"
+              DSNLINE=""
+            fi
+            if [ -z "$DSNLINE" ]; then
+              echo "  (DSN Neon introuvable dans /opt/sect/.env — section C sautée)"
+            fi
             if [ -n "$DSNLINE" ]; then
               NEONHOST=$(printf '%s' "$DSNLINE" | sed -E 's#.*@([^:/?]+).*#\1#')
               echo "  endpoint : $NEONHOST — RTT TCP ×10"
@@ -108,8 +120,6 @@ jobs:
               done
               echo "  requêtes tenues (\\timing) ×3"
               printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | psql "$DSN" -At 2>&1 | grep -E 'Time:' | head -3
-            else
-              echo "  (DSN introuvable — section sautée)"
             fi
 
             echo
@@ -131,7 +141,8 @@ jobs:
               done
               echo "  requêtes tenues (\\timing) ×3"
               printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | "$PGB/psql" "$RDSN" -At 2>&1 | grep -E 'Time:' | head -3
-            else
+            fi
+            if [ -z "$REPLLINE" ]; then
               echo "  (REPLICA_DATABASE_URL absent — réplique OFF, section sautée)"
             fi
 
