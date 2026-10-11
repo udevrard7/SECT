@@ -13,13 +13,17 @@
 # les ticks de la grille M1 (déjà payés par les workers) :
 #   ENABLE → attend la convergence (received_lsn == latest_end_lsn,
 #   horodatage frais, 3 fois de suite) → DISABLE.
-# Le walsender quitte l'endpoint AVANT le point de suspension
-# habituel → coût CU marginal ≈ 0 (arithmétique §13.4/§15.4).
+#
+# ⚠ TOURNER EN USER postgres (User=postgres dans l'unité systemd) :
+# le service est durci NoNewPrivileges=true — sudo y est IMPOSSIBLE
+# (échec du premier passage 03:02:00 : « no new privileges flag…
+# prevents sudo from running as root »). Le script n'utilise donc
+# NI sudo NI élévation : auth peer postgres directe.
 #
 # Ne touche JAMAIS au cluster mikcloud (18-main/5432) — tout passe
 # par le cluster DÉDIÉ sect (5433, 127.0.0.1 — D6).
 #
-# usage : sect_replica_sync.sh (via systemd) | --self-test (CI)
+# usage : sect_replica_sync.sh (systemd, user postgres) | --self-test (CI)
 # ============================================================
 set -euo pipefail
 
@@ -34,18 +38,27 @@ log() { printf '%s [%s] %s\n' "$(date -u +%FT%TZ)" "$LOGTAG" "$*"; }
 self_test() {
     local rc=0
     bash -n "$0" || rc=1
-    # convergence() : les clés de la requête existent dans le script
     grep -q 'received_lsn = latest_end_lsn' "$0" || { echo "self-test: requête de convergence absente"; rc=1; }
+    # le script ne doit contenir AUCUNE élévation en COMMANDE (unité durcie
+    # — NoNewPrivileges la rendrait inopérante, cf. échec 03:02:00). Le mot
+    # est construit dynamiquement pour que CE contrôle ne se détecte pas
+    # lui-même (les commentaires qui l'évoquent sont épargnés aussi).
+    local w1="su" w2="do"
+    if grep -v '^\s*#' "$0" | grep -qF "${w1}${w2}"; then
+        echo "self-test: élévation interdite en commande (unité NoNewPrivileges)"
+        rc=1
+    fi
     if [ $rc -eq 0 ]; then echo "self-test: OK"; else echo "self-test: ÉCHEC"; fi
     exit $rc
 }
 [ "${1:-}" = "--self-test" ] && self_test
 
-PSQL() { sudo -n -u postgres "$PGB/psql" -p "$PORT" -d "$DB" -tAc "$1"; }
+PSQL() { "$PGB/psql" -p "$PORT" -d "$DB" -tAc "$1"; }
+PSQLC() { "$PGB/psql" -p "$PORT" -d "$DB" -c "$1"; }
 
 # ── 1. fenêtre : ENABLE ──
 log "ENABLE sect_poc (fenêtre calée grille M1)"
-sudo -n -u postgres "$PGB/psql" -p "$PORT" -d "$DB" -c "ALTER SUBSCRIPTION sect_poc ENABLE"
+PSQLC "ALTER SUBSCRIPTION sect_poc ENABLE"
 
 # ── 2. attendre la convergence (3 confirmations espacées de 5 s) ──
 ok=0
@@ -70,5 +83,5 @@ else
 fi
 
 # ── 3. fermeture : DISABLE (l'endpoint peut se suspendre au rythme habituel) ──
-sudo -n -u postgres "$PGB/psql" -p "$PORT" -d "$DB" -c "ALTER SUBSCRIPTION sect_poc DISABLE"
+PSQLC "ALTER SUBSCRIPTION sect_poc DISABLE"
 log "DISABLE sect_poc — fenêtre fermée (coût CU marginal ≈ 0)"
