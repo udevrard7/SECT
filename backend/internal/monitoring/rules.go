@@ -12,13 +12,13 @@
 package monitoring
 
 import (
-        "context"
-        "time"
+	"context"
+	"time"
 
-        "github.com/jackc/pgx/v5"
-        "github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-        appdb "github.com/udevrard7/sect/backend/internal/db"
+	appdb "github.com/udevrard7/sect/backend/internal/db"
 )
 
 // AlertingConfig — configuration des canaux externes (ADR-0012 §4).
@@ -29,172 +29,172 @@ import (
 // SECT-MONITORING-DISCORD-1 : Discord est le canal principal de
 // l'alerting ; l'email dédié est optionnel (quota transactionnel).
 type AlertingConfig struct {
-        SlackWebhookURL   string
-        AlertingEmailTo   string
-        EmailReady        bool   // un mailer réel (Resend/SMTP) est configuré
-        AppBaseURL        string // pour le lien /monitoring dans les messages
-        DiscordWebhookURL string // SECT-MONITORING-DISCORD-1
+	SlackWebhookURL   string
+	AlertingEmailTo   string
+	EmailReady        bool   // un mailer réel (Resend/SMTP) est configuré
+	AppBaseURL        string // pour le lien /monitoring dans les messages
+	DiscordWebhookURL string // SECT-MONITORING-DISCORD-1
 }
 
 // ─── Catalogue des métriques évaluables (ADR-0012 §2) ───
 
 // MetricDef — une métrique du catalogue (clé stable, libellé, unité).
 type MetricDef struct {
-        Key         string `json:"key"`
-        Label       string `json:"label"`
-        Unit        string `json:"unit"`
-        Description string `json:"description"`
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Unit        string `json:"unit"`
+	Description string `json:"description"`
 }
 
 // MetricCatalog — les métriques évaluables. Une règle ne peut référencer
 // QUE ces clés (400 sinon) — pas de règle orpheline.
 var MetricCatalog = []MetricDef{
-        {"score_sante", "Score santé plateforme", "/100", "Score 0-100 (formule ADR-0011, même valeur que la carte dashboard)"},
-        {"critical_actifs", "Événements critiques actifs", "", "MonitoringEvent ACTIF sévérité CRITICAL"},
-        {"errors_actifs", "Erreurs actives", "", "MonitoringEvent ACTIF sévérité ERROR"},
-        {"warnings_actifs", "Avertissements actifs", "", "MonitoringEvent ACTIF sévérité WARNING"},
-        {"backlog_autorisations", "Backlog autorisations", "", "EtablissementAccess EN_ATTENTE"},
-        {"db_latency_ms", "Latence base de données", " ms", "Ping DB mesuré à l'évaluation"},
-        {"db_down", "Base de données indisponible", "0/1", "1 = ping DB en échec"},
-        {"providers_ia_actifs", "Fournisseurs IA actifs", "", "AIProviderConfig isActive"},
-        {"workers_en_erreur", "Workers en erreur", "", "Workers dont la dernière exécution a échoué"},
-        {"p95_api_ms", "Latence p95 API (1 h)", " ms", "Percentile 95 des requêtes API (RequestLog, fenêtre 1 h)"},
-        {"erreurs_5xx_24h", "Erreurs 5xx (24 h)", "", "Réponses API ≥ 500 sur les dernières 24 h (RequestLog)"},
-        // SECT-DB-ALERT-1 (ADR-0013 §14.7/§15, décision D10) : le mur stockage
-        // Neon Free (1 GiB/branche) est SILENCIEUX jusqu'au rejet d'écrits en
-        // plein examen — cette métrique le rend visible.
-        {"db_size_mb", "Taille base de données", " Mo", "pg_database_size — mur Neon Free : écrits rejetés à 1 GiB (ADR-0013 §14.4) ; règle système db-taille-quota à 60 %"},
-        // SECT-INFRA-MONITOR-1 (11/10, addendum ADR-0012) : l'INFRASTRUCTURE
-        // hybride entre dans le catalogue — mesurée LOCALEMENT (réplique 5433,
-        // /proc, staging backup) SANS jamais réveiller Neon (§13.3).
-        {"replica_lag_min", "Fraîcheur réplique (RPO vécu)", " min", "now() − max(createdAt RequestLog) sur la réplique 5433 — règle replica-fraicheur : ≥ 90 min = 3 fenêtres grille M1 manquées (voie D dégradée)"},
-        {"backup_age_h", "Âge du dernier backup", " h", "Fichier last_success du pipeline sect_backup (staging monté ro) — règle backup-fraicheur : ≥ 36 h (alignée watchdog §5-3) ; voie B = RPO break-glass"},
-        {"disk_free_pct", "Disque libre VM", " %", "statfs / de la VM OCI (maillon fragile ADR-0013 §3 : un disque plein tuerait API + réplique + DR) — règle disque-libre : ≤ 15 %"},
+	{"score_sante", "Score santé plateforme", "/100", "Score 0-100 (formule ADR-0011, même valeur que la carte dashboard)"},
+	{"critical_actifs", "Événements critiques actifs", "", "MonitoringEvent ACTIF sévérité CRITICAL"},
+	{"errors_actifs", "Erreurs actives", "", "MonitoringEvent ACTIF sévérité ERROR"},
+	{"warnings_actifs", "Avertissements actifs", "", "MonitoringEvent ACTIF sévérité WARNING"},
+	{"backlog_autorisations", "Backlog autorisations", "", "EtablissementAccess EN_ATTENTE"},
+	{"db_latency_ms", "Latence base de données", " ms", "Ping DB mesuré à l'évaluation"},
+	{"db_down", "Base de données indisponible", "0/1", "1 = ping DB en échec"},
+	{"providers_ia_actifs", "Fournisseurs IA actifs", "", "AIProviderConfig isActive"},
+	{"workers_en_erreur", "Workers en erreur", "", "Workers dont la dernière exécution a échoué"},
+	{"p95_api_ms", "Latence p95 API (1 h)", " ms", "Percentile 95 des requêtes API (RequestLog, fenêtre 1 h)"},
+	{"erreurs_5xx_24h", "Erreurs 5xx (24 h)", "", "Réponses API ≥ 500 sur les dernières 24 h (RequestLog)"},
+	// SECT-DB-ALERT-1 (ADR-0013 §14.7/§15, décision D10) : le mur stockage
+	// Neon Free (1 GiB/branche) est SILENCIEUX jusqu'au rejet d'écrits en
+	// plein examen — cette métrique le rend visible.
+	{"db_size_mb", "Taille base de données", " Mo", "pg_database_size — mur Neon Free : écrits rejetés à 1 GiB (ADR-0013 §14.4) ; règle système db-taille-quota à 60 %"},
+	// SECT-INFRA-MONITOR-1 (11/10, addendum ADR-0012) : l'INFRASTRUCTURE
+	// hybride entre dans le catalogue — mesurée LOCALEMENT (réplique 5433,
+	// /proc, staging backup) SANS jamais réveiller Neon (§13.3).
+	{"replica_lag_min", "Fraîcheur réplique (RPO vécu)", " min", "now() − max(createdAt RequestLog) sur la réplique 5433 — règle replica-fraicheur : ≥ 90 min = 3 fenêtres grille M1 manquées (voie D dégradée)"},
+	{"backup_age_h", "Âge du dernier backup", " h", "Fichier last_success du pipeline sect_backup (staging monté ro) — règle backup-fraicheur : ≥ 36 h (alignée watchdog §5-3) ; voie B = RPO break-glass"},
+	{"disk_free_pct", "Disque libre VM", " %", "statfs / de la VM OCI (maillon fragile ADR-0013 §3 : un disque plein tuerait API + réplique + DR) — règle disque-libre : ≤ 15 %"},
 }
 
 // metricDefs — index du catalogue par clé.
 var metricDefs = func() map[string]MetricDef {
-        m := make(map[string]MetricDef, len(MetricCatalog))
-        for _, d := range MetricCatalog {
-                m[d.Key] = d
-        }
-        return m
+	m := make(map[string]MetricDef, len(MetricCatalog))
+	for _, d := range MetricCatalog {
+		m[d.Key] = d
+	}
+	return m
 }()
 
 // MetricDefByKey retourne la définition (ok=false si inconnue).
 func MetricDefByKey(key string) (MetricDef, bool) {
-        d, ok := metricDefs[key]
-        return d, ok
+	d, ok := metricDefs[key]
+	return d, ok
 }
 
 // ComparatorDef — un comparateur de seuil.
 type ComparatorDef struct {
-        Key   string `json:"key"`
-        Label string `json:"label"`
+	Key   string `json:"key"`
+	Label string `json:"label"`
 }
 
 // Comparators — les 4 comparateurs supportés.
 var Comparators = []ComparatorDef{
-        {"SUP", "> seuil"},
-        {"SUP_EGAL", "≥ seuil"},
-        {"INF", "< seuil"},
-        {"INF_EGAL", "≤ seuil"},
+	{"SUP", "> seuil"},
+	{"SUP_EGAL", "≥ seuil"},
+	{"INF", "< seuil"},
+	{"INF_EGAL", "≤ seuil"},
 }
 
 // ComparatorValid — true si le comparateur est connu.
 func ComparatorValid(c string) bool {
-        switch c {
-        case "SUP", "SUP_EGAL", "INF", "INF_EGAL":
-                return true
-        }
-        return false
+	switch c {
+	case "SUP", "SUP_EGAL", "INF", "INF_EGAL":
+		return true
+	}
+	return false
 }
 
 // Compare applique le comparateur (value comparator threshold).
 func Compare(value float64, comparator string, threshold float64) bool {
-        switch comparator {
-        case "SUP":
-                return value > threshold
-        case "SUP_EGAL":
-                return value >= threshold
-        case "INF":
-                return value < threshold
-        case "INF_EGAL":
-                return value <= threshold
-        }
-        return false
+	switch comparator {
+	case "SUP":
+		return value > threshold
+	case "SUP_EGAL":
+		return value >= threshold
+	case "INF":
+		return value < threshold
+	case "INF_EGAL":
+		return value <= threshold
+	}
+	return false
 }
 
 // ─── Métriques mesurées (une seule source backend) ───
 
 // MetricsSnapshot — toutes les métriques du catalogue, mesurées.
 type MetricsSnapshot struct {
-        ScoreSante           int
-        CriticalActifs       int
-        ErrorActifs          int
-        WarningActifs        int
-        BacklogAutorisations int
-        DBDown               bool
-        DBLatencyMs          int64
-        ProvidersIAActifs    int
-        WorkersEnErreur      int
-        P95ApiMs             int
-        Erreurs5xx24h        int
-        DBSizeMB             int64 // SECT-DB-ALERT-1 (D10) : taille de la base en Mo (entier)
+	ScoreSante           int
+	CriticalActifs       int
+	ErrorActifs          int
+	WarningActifs        int
+	BacklogAutorisations int
+	DBDown               bool
+	DBLatencyMs          int64
+	ProvidersIAActifs    int
+	WorkersEnErreur      int
+	P95ApiMs             int
+	Erreurs5xx24h        int
+	DBSizeMB             int64 // SECT-DB-ALERT-1 (D10) : taille de la base en Mo (entier)
 
-        // SECT-INFRA-MONITOR-1 : métriques d'infrastructure (mesures
-        // LOCALES — réplique 5433, /proc, staging backup). Les booléens
-        // *OK portent la DISPONIBILITÉ : une sonde absente (réplique
-        // OFF, staging non monté, Render standby) rend la métrique
-        // INÉVALUABLE (ok=false) — une règle ne peut PAS se déclencher
-        // sur une mesure qui n'existe pas (jamais 0 silencieux).
-        ReplicaLagMin  float64
-        ReplicaLagOK   bool
-        BackupAgeH     float64
-        BackupAgeOK    bool
-        DiskFreePct    float64
-        DiskFreeOK     bool
+	// SECT-INFRA-MONITOR-1 : métriques d'infrastructure (mesures
+	// LOCALES — réplique 5433, /proc, staging backup). Les booléens
+	// *OK portent la DISPONIBILITÉ : une sonde absente (réplique
+	// OFF, staging non monté, Render standby) rend la métrique
+	// INÉVALUABLE (ok=false) — une règle ne peut PAS se déclencher
+	// sur une mesure qui n'existe pas (jamais 0 silencieux).
+	ReplicaLagMin float64
+	ReplicaLagOK  bool
+	BackupAgeH    float64
+	BackupAgeOK   bool
+	DiskFreePct   float64
+	DiskFreeOK    bool
 }
 
 // Value retourne la valeur numérique d'une métrique du catalogue
 // (ok=false si clé inconnue). db_down est exposé 0/1 pour SUP_EGAL 1.
 func (m MetricsSnapshot) Value(metric string) (float64, bool) {
-        switch metric {
-        case "score_sante":
-                return float64(m.ScoreSante), true
-        case "critical_actifs":
-                return float64(m.CriticalActifs), true
-        case "errors_actifs":
-                return float64(m.ErrorActifs), true
-        case "warnings_actifs":
-                return float64(m.WarningActifs), true
-        case "backlog_autorisations":
-                return float64(m.BacklogAutorisations), true
-        case "db_latency_ms":
-                return float64(m.DBLatencyMs), true
-        case "db_down":
-                if m.DBDown {
-                        return 1, true
-                }
-                return 0, true
-        case "providers_ia_actifs":
-                return float64(m.ProvidersIAActifs), true
-        case "workers_en_erreur":
-                return float64(m.WorkersEnErreur), true
-        case "p95_api_ms":
-                return float64(m.P95ApiMs), true
-        case "erreurs_5xx_24h":
-                return float64(m.Erreurs5xx24h), true
-        case "db_size_mb":
-                return float64(m.DBSizeMB), true
-        case "replica_lag_min":
-                return m.ReplicaLagMin, m.ReplicaLagOK
-        case "backup_age_h":
-                return m.BackupAgeH, m.BackupAgeOK
-        case "disk_free_pct":
-                return m.DiskFreePct, m.DiskFreeOK
-        }
-        return 0, false
+	switch metric {
+	case "score_sante":
+		return float64(m.ScoreSante), true
+	case "critical_actifs":
+		return float64(m.CriticalActifs), true
+	case "errors_actifs":
+		return float64(m.ErrorActifs), true
+	case "warnings_actifs":
+		return float64(m.WarningActifs), true
+	case "backlog_autorisations":
+		return float64(m.BacklogAutorisations), true
+	case "db_latency_ms":
+		return float64(m.DBLatencyMs), true
+	case "db_down":
+		if m.DBDown {
+			return 1, true
+		}
+		return 0, true
+	case "providers_ia_actifs":
+		return float64(m.ProvidersIAActifs), true
+	case "workers_en_erreur":
+		return float64(m.WorkersEnErreur), true
+	case "p95_api_ms":
+		return float64(m.P95ApiMs), true
+	case "erreurs_5xx_24h":
+		return float64(m.Erreurs5xx24h), true
+	case "db_size_mb":
+		return float64(m.DBSizeMB), true
+	case "replica_lag_min":
+		return m.ReplicaLagMin, m.ReplicaLagOK
+	case "backup_age_h":
+		return m.BackupAgeH, m.BackupAgeOK
+	case "disk_free_pct":
+		return m.DiskFreePct, m.DiskFreeOK
+	}
+	return 0, false
 }
 
 // CollectMetrics mesure TOUTES les métriques du catalogue côté backend.
@@ -209,29 +209,29 @@ func (m MetricsSnapshot) Value(metric string) (float64, bool) {
 // /proc, staging backup). Nil-safe : sans infra, les métriques
 // d'infrastructure sont INDISPONIBLES (ok=false), pas nulles.
 func CollectMetrics(ctx context.Context, pool *pgxpool.Pool, claims appdb.SessionClaims, reg *WorkerRegistry, infra *InfraSnapshot) MetricsSnapshot {
-        var m MetricsSnapshot
+	var m MetricsSnapshot
 
-        // Métriques d'infrastructure — AVANT le early-return pool nil :
-        // la VM et le runtime API restent mesurables même sans base
-        // (c'est précisément l'intérêt quand la base est down).
-        if infra != nil {
-                m.DiskFreePct, m.DiskFreeOK = infra.VM.DiskFreePct, infra.VM.DiskTotalBytes > 0
-                if infra.Replica != nil && infra.Replica.Up && infra.Replica.DataFreshnessMin != nil {
-                        m.ReplicaLagMin = *infra.Replica.DataFreshnessMin
-                        m.ReplicaLagOK = true
-                }
-                if infra.Backups != nil && infra.Backups.AgeH != nil {
-                        m.BackupAgeH = *infra.Backups.AgeH
-                        m.BackupAgeOK = true
-                }
-        }
+	// Métriques d'infrastructure — AVANT le early-return pool nil :
+	// la VM et le runtime API restent mesurables même sans base
+	// (c'est précisément l'intérêt quand la base est down).
+	if infra != nil {
+		m.DiskFreePct, m.DiskFreeOK = infra.VM.DiskFreePct, infra.VM.DiskTotalBytes > 0
+		if infra.Replica != nil && infra.Replica.Up && infra.Replica.DataFreshnessMin != nil {
+			m.ReplicaLagMin = *infra.Replica.DataFreshnessMin
+			m.ReplicaLagOK = true
+		}
+		if infra.Backups != nil && infra.Backups.AgeH != nil {
+			m.BackupAgeH = *infra.Backups.AgeH
+			m.BackupAgeOK = true
+		}
+	}
 
-        if pool == nil {
-                return m
-        }
+	if pool == nil {
+		return m
+	}
 
-        _ = appdb.WithTx(ctx, pool, claims, func(tx pgx.Tx) error {
-                _ = tx.QueryRow(ctx, `
+	_ = appdb.WithTx(ctx, pool, claims, func(tx pgx.Tx) error {
+		_ = tx.QueryRow(ctx, `
                         SELECT
                                 count(*) FILTER (WHERE "statut" = 'ACTIF' AND "severite" = 'CRITICAL'),
                                 count(*) FILTER (WHERE "statut" = 'ACTIF' AND "severite" = 'ERROR'),
@@ -239,91 +239,91 @@ func CollectMetrics(ctx context.Context, pool *pgxpool.Pool, claims appdb.Sessio
                         FROM "MonitoringEvent"
                 `).Scan(&m.CriticalActifs, &m.ErrorActifs, &m.WarningActifs)
 
-                _ = tx.QueryRow(ctx, `
+		_ = tx.QueryRow(ctx, `
                         SELECT count(*) FROM "EtablissementAccess" WHERE "statut" = 'EN_ATTENTE'
                 `).Scan(&m.BacklogAutorisations)
 
-                _ = tx.QueryRow(ctx, `
+		_ = tx.QueryRow(ctx, `
                         SELECT count(*) FROM "AIProviderConfig" WHERE "isActive" = true
                 `).Scan(&m.ProvidersIAActifs)
 
-                // p95 API (fenêtre 1 h) — RequestLog (ADR-0012 §3).
-                _ = tx.QueryRow(ctx, `
+		// p95 API (fenêtre 1 h) — RequestLog (ADR-0012 §3).
+		_ = tx.QueryRow(ctx, `
                         SELECT COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY "durationMs"), 0)::int
                         FROM "RequestLog"
                         WHERE "createdAt" > now() - INTERVAL '1 hour'
                 `).Scan(&m.P95ApiMs)
 
-                // Erreurs 5xx sur 24 h — RequestLog.
-                _ = tx.QueryRow(ctx, `
+		// Erreurs 5xx sur 24 h — RequestLog.
+		_ = tx.QueryRow(ctx, `
                         SELECT count(*) FROM "RequestLog"
                         WHERE "status" >= 500 AND "createdAt" > now() - INTERVAL '24 hours'
                 `).Scan(&m.Erreurs5xx24h)
 
-                // Taille de la base (Mo entier) — SECT-DB-ALERT-1 (D10) : rend
-                // visible le mur 1 GiB du plan Neon Free (écrits rejetés à la
-                // limite, ADR-0013 §14.4). Fonction système : aucun privilège
-                // requis, aucune table RLS concernée.
-                _ = tx.QueryRow(ctx, `SELECT pg_database_size(current_database()) / (1024 * 1024)`).Scan(&m.DBSizeMB)
-                return nil
-        })
+		// Taille de la base (Mo entier) — SECT-DB-ALERT-1 (D10) : rend
+		// visible le mur 1 GiB du plan Neon Free (écrits rejetés à la
+		// limite, ADR-0013 §14.4). Fonction système : aucun privilège
+		// requis, aucune table RLS concernée.
+		_ = tx.QueryRow(ctx, `SELECT pg_database_size(current_database()) / (1024 * 1024)`).Scan(&m.DBSizeMB)
+		return nil
+	})
 
-        // DB : ping réel (hors tx — mesure le pool, pas une transaction).
-        pingStart := time.Now()
-        if err := pool.Ping(ctx); err != nil {
-                m.DBDown = true
-        } else {
-                m.DBLatencyMs = time.Since(pingStart).Milliseconds()
-        }
+	// DB : ping réel (hors tx — mesure le pool, pas une transaction).
+	pingStart := time.Now()
+	if err := pool.Ping(ctx); err != nil {
+		m.DBDown = true
+	} else {
+		m.DBLatencyMs = time.Since(pingStart).Milliseconds()
+	}
 
-        // Workers en erreur (registre in-memory, nil-safe).
-        for _, w := range reg.Snapshot() {
-                if w.LastError != "" {
-                        m.WorkersEnErreur++
-                }
-        }
+	// Workers en erreur (registre in-memory, nil-safe).
+	for _, w := range reg.Snapshot() {
+		if w.LastError != "" {
+			m.WorkersEnErreur++
+		}
+	}
 
-        // Score santé — MÊME formule que /overview (ADR-0011 §1). NB :
-        // EtablissementsProteges est informatif (pénalité nulle) → le score
-        // d'une règle score_sante ne peut pas diverger de la carte dashboard.
-        score := ComputeScore(ScoreInputs{
-                CriticalActifs:         m.CriticalActifs,
-                ErrorActifs:            m.ErrorActifs,
-                WarningActifs:          m.WarningActifs,
-                AutorisationsEnAttente: m.BacklogAutorisations,
-                DBIndisponible:         m.DBDown,
-                DBLatencyMs:            m.DBLatencyMs,
-                ProvidersIAActifs:      m.ProvidersIAActifs,
-        })
-        m.ScoreSante = score.Score
+	// Score santé — MÊME formule que /overview (ADR-0011 §1). NB :
+	// EtablissementsProteges est informatif (pénalité nulle) → le score
+	// d'une règle score_sante ne peut pas diverger de la carte dashboard.
+	score := ComputeScore(ScoreInputs{
+		CriticalActifs:         m.CriticalActifs,
+		ErrorActifs:            m.ErrorActifs,
+		WarningActifs:          m.WarningActifs,
+		AutorisationsEnAttente: m.BacklogAutorisations,
+		DBIndisponible:         m.DBDown,
+		DBLatencyMs:            m.DBLatencyMs,
+		ProvidersIAActifs:      m.ProvidersIAActifs,
+	})
+	m.ScoreSante = score.Score
 
-        return m
+	return m
 }
 
 // ─── Règles persistées (table AlertingRule, migration 000133) ───
 
 // AlertingRule — une règle d'alerte persistée.
 type AlertingRule struct {
-        ID              string     `json:"id"`
-        Code            string     `json:"code"`
-        Label           string     `json:"label"`
-        Description     *string    `json:"description"`
-        Metric          string     `json:"metric"`
-        Comparator      string     `json:"comparator"`
-        Threshold       float64    `json:"threshold"`
-        Severite        string     `json:"severite"`
-        Enabled         bool       `json:"enabled"`
-        CooldownMinutes int        `json:"cooldownMinutes"`
-        NotifyInApp     bool       `json:"notifyInApp"`
-        NotifyDiscord   bool       `json:"notifyDiscord"` // SECT-MONITORING-DISCORD-1 — canal principal
-        NotifySlack     bool       `json:"notifySlack"`
-        NotifyEmail     bool       `json:"notifyEmail"`
-        IsSystem        bool       `json:"isSystem"`
-        BreachedSince   *time.Time `json:"breachedSince"`
-        LastNotifiedAt  *time.Time `json:"lastNotifiedAt"`
-        CreatedByID     *string    `json:"createdById"`
-        CreatedAt       time.Time  `json:"createdAt"`
-        UpdatedAt       time.Time  `json:"updatedAt"`
+	ID              string     `json:"id"`
+	Code            string     `json:"code"`
+	Label           string     `json:"label"`
+	Description     *string    `json:"description"`
+	Metric          string     `json:"metric"`
+	Comparator      string     `json:"comparator"`
+	Threshold       float64    `json:"threshold"`
+	Severite        string     `json:"severite"`
+	Enabled         bool       `json:"enabled"`
+	CooldownMinutes int        `json:"cooldownMinutes"`
+	NotifyInApp     bool       `json:"notifyInApp"`
+	NotifyDiscord   bool       `json:"notifyDiscord"` // SECT-MONITORING-DISCORD-1 — canal principal
+	NotifySlack     bool       `json:"notifySlack"`
+	NotifyEmail     bool       `json:"notifyEmail"`
+	IsSystem        bool       `json:"isSystem"`
+	BreachedSince   *time.Time `json:"breachedSince"`
+	LastNotifiedAt  *time.Time `json:"lastNotifiedAt"`
+	CreatedByID     *string    `json:"createdById"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
 }
 
 // AlertingRuleColumns — SELECT/RETURNING partagé (handler + worker).
@@ -334,61 +334,61 @@ const AlertingRuleColumns = `"id", "code", "label", "description", "metric", "co
 
 // ScanAlertingRule scanne une ligne selon AlertingRuleColumns.
 func ScanAlertingRule(row interface {
-        Scan(dest ...any) error
+	Scan(dest ...any) error
 }) (*AlertingRule, error) {
-        r := &AlertingRule{}
-        if err := row.Scan(&r.ID, &r.Code, &r.Label, &r.Description, &r.Metric, &r.Comparator,
-                &r.Threshold, &r.Severite, &r.Enabled, &r.CooldownMinutes, &r.NotifyInApp, &r.NotifyDiscord,
-                &r.NotifySlack, &r.NotifyEmail, &r.IsSystem, &r.BreachedSince, &r.LastNotifiedAt, &r.CreatedByID,
-                &r.CreatedAt, &r.UpdatedAt); err != nil {
-                return nil, err
-        }
-        return r, nil
+	r := &AlertingRule{}
+	if err := row.Scan(&r.ID, &r.Code, &r.Label, &r.Description, &r.Metric, &r.Comparator,
+		&r.Threshold, &r.Severite, &r.Enabled, &r.CooldownMinutes, &r.NotifyInApp, &r.NotifyDiscord,
+		&r.NotifySlack, &r.NotifyEmail, &r.IsSystem, &r.BreachedSince, &r.LastNotifiedAt, &r.CreatedByID,
+		&r.CreatedAt, &r.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // ListAlertingRules — toutes les règles (claims ADMIN via handler, ou
 // SystemClaims via worker — la policy select accepte les deux).
 func ListAlertingRules(ctx context.Context, pool *pgxpool.Pool, claims appdb.SessionClaims) ([]AlertingRule, error) {
-        rules := []AlertingRule{}
-        err := appdb.WithTx(ctx, pool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(ctx, `
+	rules := []AlertingRule{}
+	err := appdb.WithTx(ctx, pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
                         SELECT `+AlertingRuleColumns+`
                         FROM "AlertingRule"
                         ORDER BY "isSystem" DESC, "code" ASC
                 `)
-                if err != nil {
-                        return err
-                }
-                defer rows.Close()
-                for rows.Next() {
-                        r, err := ScanAlertingRule(rows)
-                        if err != nil {
-                                return err
-                        }
-                        rules = append(rules, *r)
-                }
-                return rows.Err()
-        })
-        if err != nil {
-                return nil, err
-        }
-        return rules, nil
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			r, err := ScanAlertingRule(rows)
+			if err != nil {
+				return err
+			}
+			rules = append(rules, *r)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rules, nil
 }
 
 // EvaluateRule — statut live d'une règle contre un snapshot.
 type RuleStatus struct {
-        Rule         *AlertingRule
-        CurrentValue float64
-        Violated     bool
+	Rule         *AlertingRule
+	CurrentValue float64
+	Violated     bool
 }
 
 // Evaluate retourne le statut live (valeur mesurée + franchissement).
 // Une métrique inconnue (ne peut plus arriver : validée à la création)
 // rend Violated=false avec CurrentValue 0.
 func Evaluate(rule *AlertingRule, m MetricsSnapshot) RuleStatus {
-        v, ok := m.Value(rule.Metric)
-        if !ok {
-                return RuleStatus{Rule: rule, CurrentValue: 0, Violated: false}
-        }
-        return RuleStatus{Rule: rule, CurrentValue: v, Violated: Compare(v, rule.Comparator, rule.Threshold)}
+	v, ok := m.Value(rule.Metric)
+	if !ok {
+		return RuleStatus{Rule: rule, CurrentValue: 0, Violated: false}
+	}
+	return RuleStatus{Rule: rule, CurrentValue: v, Violated: Compare(v, rule.Comparator, rule.Threshold)}
 }
