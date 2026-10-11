@@ -1,0 +1,97 @@
+# ============================================================
+# SECT-LATENCY-4 — Benchmark modèles OpenRouter (prompt QCM réel)
+#
+# CONTEXTE (mesure 20:07) : kimi-k2.6 répond en 6,2 s à un essai
+# puis >15 s au suivant (files partagées variables). Le landing-demo
+# a besoin d'un modèle RAPIDE ET STABLE en français (QCM ~400 tokens).
+#
+# MESURE (lecture seule + ~12 appels chat de test) :
+#   1. Clé OpenRouter lue en base (NEON_DIRECT) — jamais affichée ;
+#   2. GET /api/v1/models → slugs candidats réels (kimi-k2.6 référence,
+#      llama-3.3-70b, gemini-flash, qwen3, deepseek-chat + :free) ;
+#   3. Pour chaque slug : 2 essais avec un prompt QCM équivalent au
+#      landing-demo (max_tokens 4096) — http/TTFB/total/mots/validité ;
+#   4. Validité : la réponse contient "question" + "options".
+#
+# DÉCISION ensuite assistée : changer "model" du provider
+# openrouter-provider-001 (UPDATE réversible) si un candidat domine
+# kimi-k2.6 sur la stabilité.
+#
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
+# (piège n°7) ; scripts Python via base64 (pattern maison — heredoc
+# indenté = SyntaxError Python) ; clé dans une variable, jamais echo ;
+# if…then…fi seuls ; dollar-quoting psql pour les littéraux.
+# ============================================================
+name: Benchmark modèles OpenRouter
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: "🏁 QCM réel × candidats (mesure)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: SSH OCI — benchmark modèles (egress VM)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 11m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            NEON_DIRECT=$(grep '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            if [ -z "$NEON_DIRECT" ]; then
+              echo "ÉCHEC : NEON_DIRECT_URL absent de /opt/sect/.env"
+              exit 1
+            fi
+            KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT COALESCE("apiKey", $q$$q$) FROM "AIProviderConfig" WHERE "id" = $q$openrouter-provider-001$q$' | xargs)
+            if [ -z "$KEY" ]; then
+              KEY=$("$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT COALESCE("extraConfig"->>$q$apiKey$q$, $q$$q$) FROM "AIProviderConfig" WHERE "id" = $q$openrouter-provider-001$q$' | xargs)
+            fi
+            if [ -z "$KEY" ]; then
+              echo "ÉCHEC : clé OpenRouter introuvable en base"
+              exit 1
+            fi
+            echo "Clé chargée (masquée, longueur ${#KEY})."
+
+            echo "── 1. Slugs candidats accessibles (GET /models) ──"
+            curl -s --max-time 15 -H "Authorization: Bearer $KEY" https://openrouter.ai/api/v1/models -o /tmp/orm.json
+            echo 'aW1wb3J0IGpzb24KdHJ5OgogICAgZCA9IGpzb24ubG9hZChvcGVuKCcvdG1wL29ybS5qc29uJykpCmV4Y2VwdCBFeGNlcHRpb246CiAgICBkID0geyJkYXRhIjogW119CmlkcyA9IFttLmdldCgiaWQiLCAiIikgZm9yIG0gaW4gZC5nZXQoImRhdGEiLCBbXSldCndhbnRlZCA9IFsibW9vbnNob3RhaS9raW1pLWsyLjYiLCAibW9vbnNob3RhaS9raW1pLWsyLjY6ZnJlZSIsCiAgICAgICAgICAibWV0YS1sbGFtYS9sbGFtYS0zLjMtNzBiLWluc3RydWN0IiwgIm1ldGEtbGxhbWEvbGxhbWEtMy4zLTcwYi1pbnN0cnVjdDpmcmVlIiwKICAgICAgICAgICJnb29nbGUvZ2VtaW5pLTIuMC1mbGFzaC0wMDEiLCAiZ29vZ2xlL2dlbWluaS0yLjAtZmxhc2gtZXhwOmZyZWUiLAogICAgICAgICAgInF3ZW4vcXdlbjMtOGI6ZnJlZSIsICJkZWVwc2Vlay9kZWVwc2Vlay1jaGF0LXYzLjE6ZnJlZSIsCiAgICAgICAgICAibWlzdHJhbGFpL21pc3RyYWwtc21hbGwtMjRiLWluc3RydWN0OmZyZWUiXQpvdXQgPSBbdyBmb3IgdyBpbiB3YW50ZWQgaWYgdyBpbiBpZHNdCmlmIGxlbihvdXQpIDwgMzoKICAgIGZvciBwcmVmIGluIFsia2ltaS1rMi42IiwgImxsYW1hLTMuMy03MGIiLCAiZ2VtaW5pLTIuMC1mbGFzaCIsICJxd2VuMyIsICJkZWVwc2Vlay1jaGF0Il06CiAgICAgICAgZXh0cmEgPSBbaSBmb3IgaSBpbiBpZHMgaWYgcHJlZiBpbiBpIGFuZCAoIjpmcmVlIiBpbiBpIG9yIGkuc3BsaXQoIjoiKVswXSBpbiBpZHMpXQogICAgICAgIG91dC5leHRlbmQoeCBmb3IgeCBpbiBleHRyYSBpZiB4IG5vdCBpbiBvdXQpCmZvciBvIGluIG91dFs6OF06CiAgICBwcmludChvKQo=' | base64 -d > /tmp/cand.py
+            python3 /tmp/cand.py > /tmp/candidates.txt
+            N=$(wc -l < /tmp/candidates.txt)
+            echo "Candidats trouvés : $N"
+            sed 's/^/  - /' /tmp/candidates.txt
+            if [ "$N" = "0" ]; then
+              echo "ÉCHEC : aucun candidat trouvé dans /models (réponse API inattendue ?)"
+              head -c 300 /tmp/orm.json
+              exit 1
+            fi
+
+            echo "── 2. Prompt QCM (équivalent landing-demo) ×2 par modèle ──"
+            echo 'aW1wb3J0IGpzb24sIHN5cwptb2RlbCA9IHN5cy5hcmd2WzFdCnN5c3RlbSA9ICgiVHUgZXMgdW4gZ2VuZXJhdGV1ciBkZSBxdWVzdGlvbnMgZCdleGFtZW4gdW5pdmVyc2l0YWlyZSBleHBlcnQuXG4iCiAgICAgICAgICAiR2VuZXJlIFVORSBzZXVsZSBxdWVzdGlvbiBRQ00gKGEgY2hvaXggdW5pcXVlKSBhdSBmb3JtYXQgSlNPTiBzdHJpY3QuXG4iCiAgICAgICAgICAiUmVwb25kcyBVTklRVUVNRU5UIGF2ZWMgdW4gb2JqZXQgSlNPTiB2YWxpZGUsIHNhbnMgbWFya2Rvd24sIHNhbnMgdGV4dGUgYXV0b3VyLlxuXG4iCiAgICAgICAgICAiRm9ybWF0IE9CTElHQVRPSVJFIDpcbiIKICAgICAgICAgICd7XG4gICJxdWVzdGlvbiI6ICJFbm9uY2UgY2xhaXIgZXQgcHJlY2lzIGRlIGxhIHF1ZXN0aW9uIixcbicKICAgICAgICAgICcgICJvcHRpb25zIjogWyJvcHRpb24gQSIsICJvcHRpb24gQiIsICJvcHRpb24gQyIsICJvcHRpb24gRCJdLFxuJwogICAgICAgICAgJyAgImNvcnJlY3RJbmRleCI6IDAsXG4nCiAgICAgICAgICAnICAiZGlmZmljdWx0eSI6ICJGYWNpbGUiLFxuJwogICAgICAgICAgJyAgImV4cGxhbmF0aW9uIjogIkV4cGxpY2F0aW9uIGNvbmNpc2UgZGUgcG91cnF1b2kgbGEgcmVwb25zZSBjb3JyZWN0ZSBlc3QganVzdGUiXG59XG5cbicKICAgICAgICAgICJDb250cmFpbnRlcyA6XG4iCiAgICAgICAgICAnLSAib3B0aW9ucyIgOiBFWEFDVEVNRU5UIDQgcHJvcG9zaXRpb25zIGRpc3RpbmN0ZXMgZXQgcGxhdXNpYmxlcy5cbicKICAgICAgICAgICctICJjb3JyZWN0SW5kZXgiIDogZW50aWVyIGRlIDAgYSAzIGRlc2lnbmFudCBsJ3VuaXF1ZSBib25uZSByZXBvbnNlLlxuJwogICAgICAgICAgJy0gImRpZmZpY3VsdHkiIDogdW5lIGRlcyB2YWxldXJzICJGYWNpbGUiLCAiTW95ZW4iLCAiRGlmZmljaWxlIi5cbicKICAgICAgICAgICctICJxdWVzdGlvbiIgZXQgIm9wdGlvbnMiIDogZW4gZnJhbmNhaXMsIG5pdmVhdSBlbnNlaWduZW1lbnQgc3VwZXJpZXVyLlxuJwogICAgICAgICAgJy0gImV4cGxhbmF0aW9uIiA6IDEgYSAzIHBocmFzZXMgbWF4aW11bSwgcGVkYWdvZ2lxdWUuXG4nCiAgICAgICAgICAiLSBBdWN1biB0ZXh0ZSBob3JzIGR1IEpTT04uIikKdXNlciA9ICgiR2VuZXJlIHVuZSBxdWVzdGlvbiBRQ00gZGUgbml2ZWF1IHVuaXZlcnNpdGFpcmUgc3VyIGxlIHN1amV0IHN1aXZhbnQgOlxuXG4iCiAgICAgICAgIkxhIHBob3Rvc3ludGhlc2VcblxuIgogICAgICAgICJSZXBvbmRzIFVOSVFVRU1FTlQgYXZlYyBsZSBKU09OIGRlbWFuZGUuIikKcHJpbnQoanNvbi5kdW1wcyh7Im1vZGVsIjogbW9kZWwsICJtZXNzYWdlcyI6IFsKICAgIHsicm9sZSI6ICJzeXN0ZW0iLCAiY29udGVudCI6IHN5c3RlbX0sCiAgICB7InJvbGUiOiAidXNlciIsICJjb250ZW50IjogdXNlcn1dLCAidGVtcGVyYXR1cmUiOiAwLjcsICJtYXhfdG9rZW5zIjogNDA5Nn0pKQo=' | base64 -d > /tmp/qcm_req.py
+            echo 'aW1wb3J0IGpzb24KZCA9IGpzb24ubG9hZChvcGVuKCIvdG1wL3Jlc3AuanNvbiIpKQpjID0gKGQuZ2V0KCJjaG9pY2VzIikgb3IgW3t9XSlbMF0KbSA9IChjLmdldCgibWVzc2FnZSIpIG9yIHt9KQpzID0gbS5nZXQoImNvbnRlbnQiKSBvciAiIgpuID0gbGVuKHMuc3BsaXQoKSkKb2sgPSAiSlNPTi1PSyIgaWYgKCJxdWVzdGlvbiIgaW4gcyBhbmQgIm9wdGlvbnMiIGluIHMpIGVsc2UgIklOVkFMSURFIgpwcmludCgibW90c19zb3J0aWU9JWQgdmFsaWRpdGU9JXMiICUgKG4sIG9rKSkK' | base64 -d > /tmp/parse.py
+
+            while IFS= read -r MODEL; do
+              [ -n "$MODEL" ] || continue
+              for TRY in 1 2; do
+                python3 /tmp/qcm_req.py "$MODEL" > /tmp/req.json
+                curl -s -o /tmp/resp.json -w "$(printf '%-48s essai %s : http=%%{http_code} ttfb_s=%%{time_starttransfer} total_s=%%{time_total}' "$MODEL" "$TRY")" \
+                  --max-time 45 -X POST https://openrouter.ai/api/v1/chat/completions \
+                  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+                  -d @/tmp/req.json || echo "  $MODEL essai $TRY : ÉCHEC curl exit $?"
+                echo ""
+                python3 /tmp/parse.py 2>/dev/null || echo "    (réponse non parsable)"
+                sleep 2
+              done
+            done < /tmp/candidates.txt
+
+            rm -f /tmp/req.json /tmp/resp.json /tmp/orm.json /tmp/candidates.txt /tmp/cand.py /tmp/qcm_req.py /tmp/parse.py
+            echo "── Fin du benchmark (UPDATE réversible du modèle si un candidat domine kimi-k2.6) ──"

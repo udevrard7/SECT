@@ -130,11 +130,22 @@ func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc, bool)
 //      réessayé à CHAQUE appel (0,2 s + 1 événement d'audit à chaque fois).
 // ──────────────────────────────────────────────────────────────────────────
 
-// cooldownEntry : moment du dernier échec + nature (hard ou transitoire).
+// cooldownEntry : moment du dernier échec + nature.
 type cooldownEntry struct {
 	at   time.Time
 	hard bool // erreur client permanente → cooldown étendu 30 min
+	slow bool // lenteur pure (deadline de SA part fixe) → cooldown court 60 s
 }
+
+// slowCooldown : fenêtre pour un échec de LENTEUR (le provider a répondu
+// trop lentement mais fonctionne). SECT-LATENCY-4 : la congestion des
+// modèles gratuits (files partagées OpenRouter) oscille à la MINUTE —
+// l'écart 5 min était contre-productif : après un échec lent du SEUL
+// provider fonctionnel, le visiteur qui réessaiait dans la minute tombait
+// sur des providers morts ou inutilisables, jamais sur le bon. 60 s
+// laisse respirer (anti-monopole en tête de chaîne) sans l'exclure trop
+// longtemps. Une vraie panne (réseau, 5xx) garde le cooldown complet.
+const slowCooldown = 60 * time.Second
 
 // hardFailCooldown : fenêtre fixe pour les erreurs de configuration (clé,
 // modèle, crédits). Indépendante du réglage CooldownDurationMs (qui couvre
@@ -174,6 +185,9 @@ func (s *AIService) providerInCooldown(id string, config FailoverConfig) bool {
 	if e.hard {
 		return time.Since(e.at) < hardFailCooldown
 	}
+	if e.slow {
+		return time.Since(e.at) < slowCooldown
+	}
 	if config.CooldownDurationMs <= 0 {
 		return false
 	}
@@ -191,14 +205,15 @@ func (s *AIService) providerHardFailed(id string) bool {
 }
 
 // providerFailed enregistre l'échec (démarre le cooldown). hard=true pour
-// une erreur client permanente (cooldown étendu).
-func (s *AIService) providerFailed(id string, hard bool) {
+// une erreur client permanente (cooldown étendu). slow=true pour un échec
+// de lenteur pure (deadline de sa part fixe — cooldown court).
+func (s *AIService) providerFailed(id string, hard, slow bool) {
 	s.failMu.Lock()
 	defer s.failMu.Unlock()
 	if s.lastFailures == nil {
 		s.lastFailures = make(map[string]cooldownEntry)
 	}
-	s.lastFailures[id] = cooldownEntry{at: time.Now(), hard: hard}
+	s.lastFailures[id] = cooldownEntry{at: time.Now(), hard: hard, slow: slow}
 }
 
 // providerSucceeded efface le cooldown (guérison).
@@ -348,7 +363,11 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 		deadlineErr := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 		innocent := deadlineErr && (capped || ctx.Err() != nil)
 		if !innocent {
-			s.providerFailed(p.ID, isHardFail(err))
+			// SECT-LATENCY-4 : un échec par deadline de SA PROPRE part fixe
+			// (pas capped, parent vivant) = LENTEUR pure, pas panne → cooldown
+			// court (60 s) : la congestion des modèles gratuits oscille à la
+			// minute. Réseau/5xx/4xx → cooldown général ; 4xx permanent → hard.
+			s.providerFailed(p.ID, isHardFail(err), deadlineErr)
 		}
 		if logger != nil {
 			logger.Warn("AI provider échec, bascule vers le suivant",

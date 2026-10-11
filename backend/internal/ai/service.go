@@ -233,7 +233,10 @@ func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMes
 		// SECT-LATENCY-4 : un provider coupé par l'annulation du ctx PARENT
 		// (budget épuisé ou client parti) n'est pas coupable — pas de cooldown.
 		if ctx.Err() == nil {
-			s.providerFailed(p.ID, isHardFail(streamErr))
+			// Pas d'attemptCtx ici (budget long) : toute deadline vient du
+			// parent → elle aurait été innocente ci-dessus. Une deadline ici
+			// avec parent vivant n'arrive pas ; slow=false est donc sûr.
+			s.providerFailed(p.ID, isHardFail(streamErr), false)
 		}
 		lastErr = streamErr
 		slog.Warn("ChatCompletionStream provider échec, bascule",
