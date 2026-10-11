@@ -61,9 +61,14 @@ jobs:
             head -c 600 /tmp/fh.json; echo
 
             echo
-            echo "── 3. Test live POST /api/landing-demo (localhost, chronométré) ──"
-            curl -s -o /tmp/demo.json -w "http=%{http_code} total_s=%{time_total}\n" --max-time 60 -X POST -H "Content-Type: application/json" -d '{"topic":"La photosynthese"}' "$API/api/landing-demo" || echo "  (curl exit $? — réponse vide, connexion fermée sans réponse)"
-            head -c 500 /tmp/demo.json 2>/dev/null || true; echo
+            echo "── 3. Test live POST /api/landing-demo ×2 espacés de 3s ──"
+            echo "  (SECT-LATENCY-3 : l'essai 2 profite du cooldown — les providers"
+            echo "   en échec à l'essai 1 sont écartés, OpenRouter reçoit le budget)"
+            for TRY in 1 2; do
+              curl -s -o /tmp/demo.json -w "  essai $TRY : http=%{http_code} total_s=%{time_total}s\n" --max-time 60 -X POST -H "Content-Type: application/json" -d '{"topic":"La photosynthese"}' "$API/api/landing-demo" || echo "  essai $TRY : (curl exit $? — réponse vide)"
+              head -c 400 /tmp/demo.json 2>/dev/null || true; echo
+              sleep 3
+            done
 
             echo
             echo "── 3b. AIFailoverEvent (réplique, 10 derniers) + connectivity providers ──"
