@@ -214,8 +214,9 @@ log "backup $DATE — staging $RUN_DIR"
 [ -s "$RUN_DIR/sect-manifest-$DATE.json" ] || die "manifest vide — refus de continuer"
 
 # 4. Chiffrement age (D2) — clé publique seulement sur la VM
+#    (-r = destinataire LITTÉRAL ; -R serait un FICHIER de destinataires)
 for f in "sect-$DATE.dump" "sect-globals-$DATE.sql" "sect-manifest-$DATE.json"; do
-    age -R "$AGE_RECIPIENT" -o "$RUN_DIR/$f.age" "$RUN_DIR/$f" \
+    age -r "$AGE_RECIPIENT" -o "$RUN_DIR/$f.age" "$RUN_DIR/$f" \
         || die "chiffrement age a échoué pour $f"
 done
 
