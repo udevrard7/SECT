@@ -167,3 +167,76 @@ cooldown hors [1, 1440] → 400.
 - Patterns réutilisés : Recorder async (drop-dégradé), WorkerRegistry
   TrackContext (panic-safe), WithRegistry/fin de signature NewServer,
   SystemClaims + WithSystemTx, seeds idempotents ON CONFLICT.
+
+---
+
+## Addendum — SECT-INFRA-MONITOR-1 : monitoring d'INFRASTRUCTURE hybride (11 octobre 2026)
+
+### Motivation
+
+Le P5 (cette ADR) regardait l'APPLICATION : requêtes, score, workers,
+santé des services. Or l'option C (ADR-0013) a construit une
+infrastructure décisionnelle — réplique 5433, backups chiffrés, VM OCI,
+DR voie D, mur CU Neon — qui n'était visible dans AUCUNE console du
+produit (uniquement dans les ops hors prod : workflows, Discord, le
+dashboard sandbox du tuteurat). La demande de l'exploitant (11/10) :
+« un système de monitoring à la pointe de notre infrastructure ».
+
+### Décision
+
+Un 5ᵉ onglet « Infrastructure » dans la console super admin
+(/monitoring), alimenté par **GET /api/monitoring/infra** (ADMIN), et
+3 règles système (migration 000136) qui étendent l'alerting existant
+à l'infrastructure :
+
+| Règle | Métrique | Seuil | Sévérité | Rationale |
+|---|---|---|---|---|
+| replica-fraicheur | replica_lag_min | ≥ 90 | WARNING | 3 fenêtres grille M1 manquées (voie D dégradée) |
+| backup-fraicheur | backup_age_h | ≥ 36 | CRITICAL | RPO voie B — aligné watchdog §5-3 |
+| disque-libre | disk_free_pct | ≤ 15 | CRITICAL | le maillon fragile §3 (disque plein = API + réplique + DR morts ensemble) |
+
+### Principe directeur (leçon §13.3 appliquée à l'observabilité)
+
+**Rien dans ce module ne réveille Neon.** Les mesures viennent de :
+la réplique locale 5433 (RPO vécu = now() − max(createdAt RequestLog)),
+/proc + statfs (la VM), le staging backup monté ro dans le conteneur
+(/state/backup — fichiers last_success et markers restore-ok-* que
+les scripts écrivent déjà), et le control plane Neon (API console
+UNIQUEMENT — optionnel, cache 5 min process-wide). La sonde du
+primaire (?probe=primary) est un geste VOLONTAIRE de l'admin : un
+bouton, un ping, un toast qui rappelle le coût grille.
+
+### Disponibilité ≠ zéro
+
+Chaque métrique d'infrastructure porte un flag de disponibilité
+(*OK dans MetricsSnapshot) : une sonde absente (standby Render sans
+réplique, staging non monté) rend la métrique INÉVALUABLE — une règle
+ne peut PAS se déclencher sur une mesure qui n'existe pas. C'est la
+version alerting de « jamais 0 silencieux ».
+
+### Pièges résolus en conditions (runs 38158907538 → 38159850405)
+
+1. **EXTRACT() renvoie numeric** : un scan pgx dans interface{} ne
+   type-assert PAS en float64 → valeur silencieusement perdue. Cast
+   ::float8 côté SQL.
+2. **pg_stat_subscription JOINT pg_subscription** (superuser-only) :
+   le rôle applicatif NOSUPERUSER y voit ZÉRO ligne. Les stats de
+   souscription ne sont pas exposées — la fraîcheur des DONNÉES est
+   la métrique de référence du RPO.
+3. **Le staging /var/lib/sect-backup était 750** (héritage de l'ère
+   User=postgres du service) : l'utilisateur conteneur (sect, non
+   root) ne pouvait pas traverser. Remédiation sudo chmod dans
+   deploy-oci (chaque déploiement la ré-affirme).
+4. **Un silence d'écriture n'est pas une grille cassée** : fraîcheur
+   46 min à 17:29 = dernière REQUÊTE à 16:43 (mesuré : 5 253 lignes,
+   max 16:43:01, souscription enabled=false entre fenêtres = normal).
+   Le seuil voie D est aligné sur la règle (90 min), le verdict réel
+   avant promotion reste dr_gate.sh (superuser).
+
+### Vérification en conditions réelles (workflow infra-verify)
+
+JWT ADMIN forgé sur la VM (pattern dr-drill MARK 8), assertions :
+HTTP 200, readSource=replica, voie D, tables ≥ 80, âge backup lu,
+diskFreePct > 0, règles 000136 = 3/3. Dernier état : SUCCÈS
+(run 38159850405, 17:29 UTC — 5 253 RequestLog, backup 13,5 h,
+restore marker 2026-10, CU cycle 24,75/100, disque 78 % libre).

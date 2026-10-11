@@ -474,3 +474,35 @@ backups décorrélés (un reclaim ne perd AUCUNE donnée).
 - Après le 15/10 : si les 3 axes restent < 20 % sur la fenêtre
   complète, le risque est « actif mais amorti » (emails + playbook) —
   réévaluer au N3 (VM primaire → CPU franchit le seuil mécaniquement).
+
+## 10. Console monitoring infrastructure — onglet /monitoring (SECT-INFRA-MONITOR-1, 11/10/2026)
+
+La console super admin a un 5ᵉ onglet « Infrastructure » (backend :
+`GET /api/monitoring/infra`, ADMIN — addendum ADR-0012). Ce qu'il
+montre et ce qu'il NE fait PAS :
+
+- **Réplique 5433** : RPO vécu (âge de la donnée la plus récente
+  répliquée), 84 tables attendues, taille. Verdict voie D
+  (PRETE/PARTIELLE/ABSENTE) — synthèse indicative, le verdict réel
+  avant promotion reste `dr_gate.sh` (superuser).
+- **Backups** : âge du dernier backup (fichier `last_success` du
+  staging, monté ro via compose `/state/backup`) + marker du dernier
+  test de restauration mensuel.
+- **VM** : uptime, charge, disque/mémoire (règles à 15 %/10 %).
+- **Neon** : état endpoint + CU du cycle/24 h — via le CONTROL PLANE
+  uniquement (ne réveille pas le compute ; `NEON_API_KEY` seedée une
+  fois par deploy-oci depuis le secret GitHub du même nom).
+- **Sonde primaire** : bouton VOLONTAIRE (`?probe=primary`) — un ping
+  data réveille le compute ~5 min. Jamais automatique (§13.3).
+- **Règles système 000136** (évaluées par l'AlertingWorker toutes les
+  2 min, Discord) : replica-fraicheur ≥ 90 min, backup-fraicheur
+  ≥ 36 h (alignée watchdog §5-3), disque-libre ≤ 15 %.
+
+Vérification post-déploiement : workflow « Infra monitoring verify »
+(`infra-verify.yml`, dispatch) — JWT ADMIN réel + assertions. Dernier
+état : SUCCÈS (run 38159850405).
+
+NB pièges (addendum ADR-0012) : `EXTRACT()` = numeric (cast ::float8) ;
+`pg_stat_subscription` superuser-only via sa jointure — la fraîcheur
+des DONNÉES fait foi ; un silence d'écriture (soirée) n'est pas une
+grille cassée (seuil voie D = 90 min, aligné sur la règle).
