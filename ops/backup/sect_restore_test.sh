@@ -172,6 +172,24 @@ local_pg psql -d postgres -v ON_ERROR_STOP=0 -f "$WORK/sect-globals-$WANT_DATE.s
     && log "globals : appliqués sans erreur" \
     || log "globals : erreurs journalisées (rôles pré-existants — non fatal) : $(grep -c ERROR "$WORK/globals.err" 2>/dev/null || echo '?')"
 
+# SECT-REPLICA-3 — PIÈGE (prouvé drill #38127660042) : les globals de Neon
+# contiennent ALTER ROLE neondb_owner PASSWORD '<mot de passe NEON>' — le
+# restore CLOBBRE donc le mot de passe LOCAL posé par le setup des lectures
+# analytiques (phase 3). Le pool réplique de l'API (connexions cyclantes)
+# se mettrait à échouer en 28P01 → repli Neon silencieux = feature OFF.
+# Contre-mesure : ré-affirmer le mot de passe LOCAL depuis /opt/sect/.env
+# (REPLICA_DATABASE_URL) immédiatement après les globals.
+REP_DSN_LOCAL="$(grep -E '^REPLICA_DATABASE_URL=' /opt/sect/.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+if [ -n "$REP_DSN_LOCAL" ]; then
+    REP_PASS_LOCAL="$(printf '%s' "$REP_DSN_LOCAL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')"
+    REP_ROLE_LOCAL="$(printf '%s' "$REP_DSN_LOCAL" | sed -E 's|postgresql://([^:]+):.*|\1|')"
+    if [ -n "$REP_PASS_LOCAL" ] && [ -n "$REP_ROLE_LOCAL" ]; then
+        local_pg psql -d postgres -c "ALTER ROLE \"$REP_ROLE_LOCAL\" PASSWORD '$REP_PASS_LOCAL'" >/dev/null 2>&1 \
+            && log "rôle local $REP_ROLE_LOCAL : mot de passe local RÉ-AFFIRMÉ (anti-clobber globals)" \
+            || log "AVERTISSEMENT : impossible de ré-affirmer le mot de passe local de $REP_ROLE_LOCAL"
+    fi
+fi
+
 # Schéma + données + policies RLS
 log "pg_restore (schéma + données + RLS)…"
 # Les extensions spécifiques au FOURNISSEUR (pg_session_jwt = Neon, utilisée

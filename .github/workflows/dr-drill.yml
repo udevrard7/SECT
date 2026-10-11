@@ -107,6 +107,13 @@ jobs:
             REP_DSN=$(grep '^REPLICA_DATABASE_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
             [ -n "$REP_DSN" ] || { echo "ÉCHEC : REPLICA_DATABASE_URL absent — lancer « Replica reads setup » d'abord (prérequis drill)"; exit 1; }
             ROLE=$(echo "$REP_DSN" | sed -E 's|postgresql://([^:]+):.*|\1|')
+            PASS_DRILL=$(echo "$REP_DSN" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
+            # PIÈGE (prouvé run #38127660042) : les globals restaurés CLOBBRENT le
+            # mot de passe local du rôle (ALTER ROLE ... PASSWORD '<Neon>') — on le
+            # RÉ-AFFIRME depuis .env AVANT de booter le conteneur (auto-guérison du
+            # pool réplique de la prod incluse : ses connexions repartent seules).
+            PG psql -d postgres -c "ALTER ROLE \"$ROLE\" PASSWORD '$PASS_DRILL'" >/dev/null
+            echo "mot de passe local $ROLE ré-affirmé (anti-clobber globals)"
             PG psql -d sect_drill -v ON_ERROR_STOP=1 -c "GRANT CONNECT ON DATABASE sect_drill TO \"$ROLE\"; GRANT USAGE ON SCHEMA public TO \"$ROLE\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"$ROLE\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"$ROLE\";"
             PG psql -d sect_drill -v ON_ERROR_STOP=1 -f /opt/sect/replica/resync_sequences.sql
 
@@ -148,6 +155,15 @@ jobs:
             TOTAL=$(python3 -c "import json;d=json.loads('''$LOGS''');print(d.get('total',0))" 2>/dev/null || echo 0)
             echo "/api/logs total sur la base restaurée : $TOTAL"
             [ "$TOTAL" -gt 0 ] || { echo "ÉCHEC : AuditLog vide via l'API (RLS ou restore ?)"; exit 1; }
+
+            echo "── contrôle prod : /api/logs public (auto-guérison du pool réplique) ──"
+            curl -sS --max-time 15 -D /tmp/ph -o /tmp/pr -H "Authorization: Bearer $TOK" 'https://api.sect.ftci.fr/api/logs?limit=3'
+            PSRC=$(grep -i 'x-sect-read-source' /tmp/ph | tr -d '\r' | awk '{print $2}')
+            echo "source prod : $PSRC"
+            if [ "$PSRC" != "replica" ]; then
+              echo "AVERTISSEMENT : la prod sert par '$PSRC' — relancer « Replica reads setup » si persistant"
+            fi
+            rm -f /tmp/ph /tmp/pr
 
             echo "MARK 9 : teardown intégral"
             sudo -n docker rm -f sect-api-drill >/dev/null
