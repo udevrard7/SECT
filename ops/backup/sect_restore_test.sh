@@ -174,8 +174,18 @@ local_pg psql -d postgres -v ON_ERROR_STOP=0 -f "$WORK/sect-globals-$WANT_DATE.s
 
 # Schéma + données + policies RLS
 log "pg_restore (schéma + données + RLS)…"
-local_pg pg_restore --no-owner --no-privileges -d "$RESTORE_DB" "$WORK/sect-$WANT_DATE.dump" \
-    || die "pg_restore a échoué"
+# Les extensions spécifiques au FOURNISSEUR (pg_session_jwt = Neon, utilisée
+# par l'auth JWT du backend) sont absentes du cluster dédié vanilla : leurs
+# CREATE/COMMENT échouent — sans impact sur les données/policies, que le
+# manifest (étape suivante) juge souverainement. Toute AUTRE erreur = fatal.
+local_pg pg_restore --no-owner --no-privileges -d "$RESTORE_DB" "$WORK/sect-$WANT_DATE.dump" 2>"$WORK/pg_restore.err" \
+    || {
+        if grep -v 'pg_session_jwt' "$WORK/pg_restore.err" | grep -v 'errors ignored on restore' | grep -qi 'error'; then
+            cat "$WORK/pg_restore.err" >&2 || true
+            die "pg_restore a échoué (erreurs réelles, cf. stderr ci-dessus)"
+        fi
+        log "AVERTISSEMENT : extensions fournisseur (pg_session_jwt) absentes du cluster dédié — ignorées ; la conformité au manifest reste vérifiée ci-dessous"
+    }
 
 # ───────────────────────── 5. Vérification vs manifest (D8) ─────────────────────────
 PGB="$(dirname "$(sudo -n -u postgres sh -c 'command -v psql' 2>/dev/null || echo /usr/lib/postgresql/18/bin/psql)")"
