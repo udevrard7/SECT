@@ -212,9 +212,9 @@ corrections IA), jamais zéro API en ligne :
 
 | Élément | État | Conséquence DR |
 |---|---|---|
-| Réplique logique `sect_replica` (cluster 5433) | 3 tables (RequestLog, AuditLog, Reponse), fenêtres :02/:32 | RPO 30 min sur ces tables SEULEMENT |
-| Backups chiffrés Object Storage (nightly 03:32) | **LA base 85/85 tables** + restore prouvé (§15) | RPO 24 h sur TOUT, restore ≈ minutes (24 Mo) |
-| Publication `sect_poc` | 3 tables | Promouvoir la réplique « telle quelle » = **82 tables vides** (app inutilisable : aucun login) |
+| Réplique logique `sect_replica` (cluster 5433) | **84/84 tables en 'r'** (pré-positionnées le 11/10, SECT-OPS-1), fenêtres :02/:32 | RPO 30 min sur TOUT |
+| Backups chiffrés Object Storage (nightly 03:32) | **LA base 85/85 tables** + restore prouvé (§15) | RPO 24 h sur TOUT, restore ≈ minutes (24 Mo) — chemin mensuellement prouvé |
+| Publication `sect_poc` | **84 tables** (84 applicatives ; `schema_migrations` tenu localement par golang-migrate) | Voie D prête : promotion = TOUTES les tables (ADR §18.1) |
 
 Deux chemins de reprise selon la préparation (l'exploitant choisit) :
 
@@ -414,3 +414,63 @@ série et le lit via TerminalDxe) :
    grub.cfg`) ; `sync` ; `exec /sbin/init` → boot propre → SSH.
 6. Actions API valides : start/stop/reset/softreset/softstop/diagnosticreboot
    (STOPFORCE n'existe pas). Pendant un cycle reset, toute 2e action → 409.
+
+## 9. Reclaim OCI Always Free — veille et playbook de réponse (SECT-OPS-1, 11/10/2026)
+
+### 9.1 Le risque, mesuré
+
+La politique Oracle : une instance Always Free peut être reclaimée si,
+7 jours consécutifs durant, **CPU p95 < 20 % ET réseau < 20 % ET mémoire
+< 20 %** (A1). Mesures (Monitoring API, fenêtre 3,4 j au 11/10 — journées
+de travail lourd : drills, restores, réplication) :
+
+| Axe | p95 mesuré | Seuil |
+|---|---|---|
+| CPU | 19,93 % (24 h : 17,72 % ; croisière 10/10 : 9-13 %) | < 20 % |
+| Mémoire | 6,23 % (1,5/24 Go) | < 20 % |
+| Réseau | 2,2/3,2 GiB par 24 h (0,22/0,32 Mbps moyens) | < 20 % |
+
+Fenêtre 7 j complète le **15/10 01:12 UTC**. **Signal opérationnel :
+l'email OCI** (pré-avis avant tout stop) — le surveiller. Décisions
+actées (ADR §18.4) : rester Always Free, ne PAS gamer les métriques,
+PAS de PAYG sans décision exploitant — le risque est couvert par les
+backups décorrélés (un reclaim ne perd AUCUNE donnée).
+
+### 9.2 Si un email de pré-avis arrive (dans l'ordre)
+
+1. **Ne pas paniquer** : les données sont INTACTES hors de la VM
+   (Object Storage chiffré + clé escrow). La perte potentielle : le
+   temps de reconstruction de l'API (image GHCR = pull et relance)
+   et de la réplique (§3.8-A).
+2. **Répondre à l'email / garder l'instance** si l'interface le permet
+   (Oracle propose parfois un keep explicite).
+3. **Contre-mesures légères** (légitimes) : vérifier que les tâches
+   réelles tournent (backup nightly 03:32, fenêtres réplique :02/:32,
+   drill trimestriel) — elles suffisent en régime chargé.
+4. **Dernier recours** : conversion PAYG (gratuite si quotas respectés
+   — 3 000 OCPU-h/mois ; notre VM 4 OCPU/24 Go ≈ 2 976 h/mois) —
+   DÉCISION EXPLOITANT uniquement (moyen de paiement requis, risque
+   de dépassement).
+5. **Si la VM doit mourir** (reclaim effectif ou décision) :
+   - dropper **immédiatement** sur Neon : le slot `sect_poc` ET tout
+     slot `pg_*_sync_*` (un slot orphelin retient le WAL → saturation
+     du stockage 1 GiB — ADR §18.5-n°5) :
+     ```sql
+     SELECT slot_name, active FROM pg_replication_slots;
+     SELECT pg_drop_replication_slot('sect_poc');  -- et les pg_*_sync_*
+     ```
+   - reprise de service : Render (standby WORKERS_ENABLED=false →
+     activer les workers via le dashboard Render) + bascule DNS/rewrite
+     le cas échéant ; reconstruction VM possible sur une autre région
+     (runbook §3, outillage idempotent).
+   - la réplique/DR se reconstruit par les workflows idempotents
+     (« Replica setup », « Replica reads setup », « DR pré-positionnement »).
+
+### 9.3 Veille récurrente
+
+- Dashboard sandbox : compte à rebours fenêtre 7 j + verdict p95
+  rafraîchis à l'ouverture ; re-vérification Manuel possible via
+  Monitoring API (protocole §15.6).
+- Après le 15/10 : si les 3 axes restent < 20 % sur la fenêtre
+  complète, le risque est « actif mais amorti » (emails + playbook) —
+  réévaluer au N3 (VM primaire → CPU franchit le seuil mécaniquement).

@@ -38,6 +38,7 @@
 | `replica-status.yml` | dispatch UNIQUEMENT (lecture seule) | Mesures réplique : `pg_subscription`, lag, counts répliqués, charge VM (sar + docker) |
 | `replica-reads-setup.yml` | dispatch UNIQUEMENT (idempotent) | Phase 3 ADR-0013 §6 : active les **lectures analytiques locales** — réseau docker fixe 172.28.0.0/24, rôle `neondb_owner` local (SELECT 3 tables), pg_hba scopé, `REPLICA_DATABASE_URL` (feature flag) + preuve end-to-end JWT (`X-Sect-Read-Source: replica` attendu) |
 | `dr-drill.yml` | dispatch + cron trimestriel (sentinelle) | **Exercice DR** (runbook §3.8) : restore complet chiffré → `sect_drill` éphémère + resync séquences + **boot du conteneur API réel** (0 worker) + vérifs `/health`, `/health/db`, `/api/logs` (RLS) + teardown — sans toucher la prod |
+| `dr-prepare-publication.yml` | dispatch UNIQUEMENT (à lancer à :15/:45) | **DR pré-positionnement** (ADR §18.1) : élargit la publication `sect_poc` aux 84 tables applicatives + copie initiale fenêtrée (auto-guérison seeds, sync workers 4) → réplique promotion-ready, RPO 30 min sur TOUT — NE promeut rien (anti-décision 17) |
 
 ### Normes appliquées (audit DevOps 2026-09)
 - **Actions épinglées par SHA** (anti supply-chain) — mises à jour via Dependabot

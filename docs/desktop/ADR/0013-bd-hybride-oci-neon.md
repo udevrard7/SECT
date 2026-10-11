@@ -1205,3 +1205,133 @@ le **SUCCESS** (run #38128653822) :
   et l'image OCI Ubuntu porte un `INPUT REJECT icmp-host-prohibited`
   par défaut (iptables-persistent) → toute écoute sur une IP docker
   bridge exige une règle ACCEPT explicite + persistance.
+
+## 18. Les 4 actions d'exploitation post-phase 3 (SECT-OPS-1, 11 octobre 2026)
+
+Décision de l'exploitant (11/10, chat) : « met en ouvre toute ces action et
+décide selon tes recommandation » — les 4 actions en attente de §17 sont
+exécutées de bout en bout, avec les arbitrages indiqués ci-dessous.
+
+### 18.1 Action 1 — Pré-positionnement EXÉCUTÉ : publication 84 tables, RPO 30 min sur TOUT (voie D prête)
+
+- **Décision (déléguée, exécutée)** : élargir la publication AVANT les
+  5 établissements (déclencheur §14.7), pour que la réplique soit
+  « promotion-ready » (voie D du runbook §3.8) — au lieu de 3 tables
+  sur 87 objets.
+- **Livrés** : workflow `dr-prepare-publication.yml` (dispatch manuel —
+  à lancer à :15/:45, hors fenêtres grille :02/:32) ; `dr_promote.sh`
+  durci (auto-guérison seeds + sync workers 4 + timeouts 3600 s) ;
+  `replica-status.yml` enrichi (noms des tables en attente + lignes
+  locales + erreurs journal 5433 — le diagnostic qui a résolu le piège
+  n°4 ci-dessous).
+- **Preuve (runs #38131341078 → #38133382381, 11/10 10:13→10:51)** :
+  publication `sect_poc` = **84 tables** côté Neon (85 objets publics
+  − `schema_migrations`, tenu localement par golang-migrate) ; côté
+  réplique **84/84 en état 'r'**, convergence 5-10 s, souscription
+  re-DISABLE (grille M1 préservée, autosuspend intact) ; 0 slot zombie
+  restant sur Neon.
+- **Ce que ça change** : en cas de DR, la voie D (promotion) reprend
+  TOUTES les tables à RPO ≤ 30 min — la voie B (restore nightly)
+  reste le chemin mensuellement prouvé. `schema_migrations` n'est PAS
+  répliqué : la réplique tient son propre registre (mêmes 134
+  migrations, vérifiées par le fresh-run §16.5).
+
+### 18.2 Action 2 — Escrow physique : package prêt-à-imprimer LIVRÉ (le geste final reste humain)
+
+- Livré dans la sandbox : `download/escrow/ESCROW-SECT-age.pdf` (A4,
+  imprimable tel quel) — QR code de la clé privée **vérifié machine**
+  (le QR du PDF décode exactement la clé de 74 caractères — zéro risque
+  de retranscription), clé en clair monospace, clé publique
+  d'empreinte, avertissement, procédure de test mensuel, lignes de
+  signature déposée/reçue. Source HTML + PNG fournis.
+- **Ce qui reste à l'exploitant (5 minutes, non automatisable)** :
+  imprimer → sceller → coffre (escrow n°2 papier), copie hors site ou
+  USB si double papier refusé ; l'escrow n°1 (password manager) reste
+  la première copie ; détruire ensuite les copies de travail.
+- Rappel (anti-décision 11) : les deux escrows perdus = backups
+  DÉFINITIVEMENT illisibles — c'est voulu.
+
+### 18.3 Action 3 — Mesure 48 h §13.6 : baseline posée + surveillance outillée (verdict 12-13/10)
+
+- **Fenêtres de mesure** : M1 live depuis le 10/10 21:51 UTC → verdict
+  48 h le **12/10 21:51 UTC** ; phase 3 complète (lectures locales +
+  fenêtres) depuis le 11/10 09:37 → fenêtre post-phase-3 complète le
+  **13/10 09:37**.
+- **Baseline (11/10 ~10:00, operations API, éveil reconstruit)** :
+  depuis M1 (12,5 h) : **6,95 h éveil → 1,74 CU → 3,35 CU/j** (SOUS le
+  seuil de ré-examen de 3,5 CU/j) ; 49 cycles suspend/start sur 24 h
+  (2,0/h contre ~4/h attendus — nuits clairsemées). Les 24 h
+  glissantes (4,62 CU/j) mélangent le pré-M1 : non représentatives.
+- **Outillage** : panneau CU live du dashboard sandbox (éveil reconstruit
+  + cycles + verdict vs 3,5 CU/j, rafraîchi à l'ouverture) ; baseline
+  JSON archivée (`download/cu-measure/operations-baseline-*.json`).
+- **Lecture du verdict** : > 3,5 CU/j soutenu hors examens → réexaminer
+  (N2 Launch, §13.6 inchangé). NB : les sondes ADMIN (drills, restores,
+  ce pré-positionnement) réveillent Neon quelques minutes chacune — à
+  retrancher mentalement du verdict (≈ 0,02 CU par réveil de 5 min).
+
+### 18.4 Action 4 — Reclaim OCI : verdict fenêtre partielle + PLAYBOOK (décision : rester Always Free)
+
+- **Mesures fraîches (11/10 10:50, Monitoring API, p95 sur 30 min)** :
+  CPU **19,93 %** (24 h : 17,72 % — max 52,97 %), mémoire **6,23 %**,
+  réseau ~2,2 GiB rx / 3,2 GiB tx par 24 h (0,22/0,32 Mbps moyens).
+  Les 3 axes sont SOUS les seuils « idle » (< 20 %) — mais la fenêtre
+  ne couvre que 3,4 j (création 08/10 01:12) et ce sont des journées
+  de travail lourd (drills, restores, réplications) : le régime de
+  croisière mesuré le 10/10 était CPU p95 9-13 %.
+- **Fenêtre 7 j complète le 15/10 01:12 UTC.** Le signal opérationnel
+  reste l'EMAIL OCI (pré-avis avant tout stop) — à surveiller.
+- **Décisions (déléguées, exécutées)** : (a) rester Always Free — ne
+  PAS gamer les métriques (charge factice = anti-pattern, détection
+  certaine à terme) ; (b) ne PAS convertir en PAYG sans décision
+  explicite de l'exploitant (moyen de paiement + risque de dépassement
+  du quota 3 000 OCPU-h/mois) ; (c) le risque est couvert
+  structurellement : backups chiffrés Object Storage décorrélés de la
+  VM → un reclaim ne perd AUCUNE donnée SECT (runbook §7) ; (d) le
+  N3 futur (VM primaire) ferait mécaniquement passer le CPU au-dessus
+  du seuil.
+- **Playbook livré (runbook §9)** — inclut le geste CRITIQUE nouveau :
+  si la VM meurt/reclaimée, **dropper le slot `sect_poc` (et tout slot
+  `pg_*_sync_*`) sur Neon** — un slot orphelin retient le WAL
+  indéfiniment contre la limite de stockage 1 GiB (piège n°5).
+
+### 18.5 Pièges résolus en conditions (prepare-publication, runs du 11/10)
+
+1. `format('%L', t)` produit un LITTÉRAL chaîne (`'public.X'`) —
+   identifiant invalide pour `ALTER PUBLICATION` (run #38131147494).
+   Toujours `quote_ident()` pour les identifiants en SQL dynamique.
+2. `to_regclass('public.'||nom)` sur un nom CamelCase NON quoté fold
+   en minuscules → `NULL` → le filtre éliminait SILENCIEUSEMENT toutes
+   les tables applicatives (la requête ne retenait que
+   `schema_migrations`, la seule minuscule). La preuve : la sonde de
+   validation pré-push n'a rien vu — seul l'exécution réelle l'a révélé.
+3. `schema_migrations` ne doit JAMAIS être publié : golang-migrate la
+   remplit sur la réplique → la COPY initiale violerait sa PK.
+4. **Les SEEDS de migrations peuplent la réplique** (Plan 3,
+   BadgeDefinition 7, AlertingRule 12 lignes — diagnostic
+   replica-status 11/10) → COPY initiale = violation PK en boucle →
+   sync workers en retry infini (81 tables sychronisées, 3 bloquées).
+   Fix générique (dans `dr_promote.sh`) : purge des lignes locales des
+   tables en attente, en mode `session_replication_role = replica`
+   (FK désarmés). **JAMAIS `TRUNCATE CASCADE`** : il viderait des
+   tables déjà 'r' qui les référencent (ex. User→Plan).
+5. **Slots tablesync zombies** : chaque worker tué (échec, fenêtre
+   interrompue, annulation) abandonne un slot `pg_<sub>_sync_<relid>...`
+   qui RETIENT le WAL côté Neon (limite 1 GiB). Le nom étant
+   déterministe par table, un retry réussi le nettoie ; sinon :
+   `SELECT pg_drop_replication_slot(...)` sur slots inactifs.
+6. CI : `grep` sans correspondance = exit 1 sous `set -e` → les
+   diagnostics « preuves » tuaient le workflow APRÈS le succès
+   (2 runs rouges à tort) — `|| true` systématique sur les greps.
+
+### 18.6 Anti-décisions — ajout
+
+17. Le pré-positionnement (voie D prête) ne PROMEUT rien : la
+    promotion reste `--confirm PROMOUVOIR` par décision humaine
+    (anti-décision 4 inchangée ; le workflow refuse tout mode confirm).
+18. Aucune charge factice pour élever les métriques reclaim au-dessus
+    de 20 % : la réponse au pré-avis OCI est le playbook §9 du
+    runbook, pas la triche sur la mesure.
+19. Pas de conversion PAYG de la tenancy sans décision explicite de
+    l'exploitant (moyen de paiement + vigilance quota) — l'option est
+    documentée dans le playbook comme parade de dernier recours.
