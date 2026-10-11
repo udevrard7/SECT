@@ -237,13 +237,20 @@ rm -f "$RUN_DIR/sect-$DATE.dump" "$RUN_DIR/sect-globals-$DATE.sql" "$RUN_DIR/sec
     printf '\n  }\n}\n'
 } > "$RUN_DIR/sect-index-$DATE.json"
 
-# 6. Upload (D3) — vérification taille par rclone à la copie
-rclone copy "$RUN_DIR" "${RCLONE_REMOTE}:${BACKUP_BUCKET}/daily/$DATE/" \
+# 6. Upload (D3) — vérification taille par rclone à la copie.
+#    --ignore-times : la couche S3-compat OCI (provider « Other ») ne
+#    persiste pas le mtime → rclone retombe sur une comparaison TAILLE
+#    SEULE → un run du même jour dont les fichiers font la même taille
+#    était SKIPPÉ silencieusement (constaté 11/10 : run 03:32 « SUCCÈS »
+#    sans aucun objet mis à jour — et un dump qui grossit sans que l'index
+#    (taille fixe) change donnerait un dossier INCOHÉRENT). L'upload est
+#    donc inconditionnel (4 fichiers, ~1,3 Mo — le coût est nul).
+rclone copy --ignore-times "$RUN_DIR" "${RCLONE_REMOTE}:${BACKUP_BUCKET}/daily/$DATE/" \
     || die "upload rclone a échoué (endpoint/CSK/policy — runbook §3.1-3.2)"
 
 # 7. Mensuel (D9) — copie supplémentaire le 1ᵉʳ du mois
 if [ "$(date -u +%d)" = "01" ]; then
-    rclone copy "$RUN_DIR" "${RCLONE_REMOTE}:${BACKUP_BUCKET}/monthly/$MON/" \
+    rclone copy --ignore-times "$RUN_DIR" "${RCLONE_REMOTE}:${BACKUP_BUCKET}/monthly/$MON/" \
         || log "AVERTISSEMENT : copie mensuelle a échoué (non fatal)"
 fi
 
