@@ -66,6 +66,21 @@ jobs:
             head -c 500 /tmp/demo.json; echo
 
             echo
+            echo "── 3b. AIFailoverEvent (réplique, 10 derniers) + connectivity providers ──"
+            sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc 'SELECT "createdAt"::timestamp(0), "eventType", "providerId", left("errorMessage", 120) FROM "AIFailoverEvent" ORDER BY "createdAt" DESC LIMIT 10' 2>/dev/null || echo "(table absente ou vide côté réplique)"
+            for HOSTURL in https://api.mistral.ai/v1/models https://api.groq.com/openai/v1/models https://openrouter.ai/api/v1/models https://api.deepseek.com/v1/models https://api.cerebras.ai/v1/models https://z.ai/api/v1/models; do
+              curl -s -o /dev/null -w "  $HOSTURL → http=%{http_code} connect_s=%{time_connect} tls_s=%{time_appconnect} total_s=%{time_total}\n" --max-time 8 "$HOSTURL" || echo "  $HOSTURL → INJOIGNABLE (timeout 8s)"
+            done
+
+            echo
+            echo "── 3c. Test SSE : heartbeat au-delà de 30s ? (100s d'écoute) ──"
+            timeout 100 curl -sN --max-time 100 -H "Authorization: Bearer $TOK" "$API/api/messagerie/stream" 2>/dev/null | while IFS= read -r LINE; do
+              [ "$LINE" = ": heartbeat" ] && echo "  [$(date +%H:%M:%S)] HEARTBEAT REÇU"
+              [ "${LINE:0:5}" = "data:" ] && echo "  [$(date +%H:%M:%S)] event: ${LINE:6:60}"
+            done | head -20 || true
+            echo "  (fin écoute SSE)"
+
+            echo
             echo "── 4. Logs sect-api (60 dernières lignes) ──"
             docker logs sect-api --tail 60 2>&1 | tail -60
 
