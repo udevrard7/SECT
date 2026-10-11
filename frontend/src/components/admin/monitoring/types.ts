@@ -478,3 +478,80 @@ export const SEVERITY_PRIORITY: Record<Severity, number> = {
   WARNING: 2,
   INFO: 3,
 }
+
+// ── SECT-INFRA-MONITOR-1 (11/10) : contrat GET /api/monitoring/infra ──
+// État de l'INFRASTRUCTURE hybride (option C, ADR-0013) — onglet
+// « Infrastructure » de la console super admin. Discipline CU §13.3 :
+// réplique + VM + staging backup en LOCAL (0 CU) ; Neon = control plane
+// seul (optionnel) ; sonde primaire UNIQUEMENT à la demande (?probe=).
+
+export interface InfraAPI {
+  uptimeS: number
+  goroutines: number
+  heapMB: number
+  numCPU: number
+}
+
+export interface InfraVM {
+  uptimeS: number
+  load1: number
+  load5: number
+  load15: number
+  cpus: number
+  diskTotalBytes: number
+  diskFreeBytes: number
+  diskFreePct: number
+  memTotalBytes: number
+  memFreeBytes: number
+  memFreePct: number
+}
+
+export interface InfraReplica {
+  up: boolean
+  err?: string
+  collectedAt: string
+  dataFreshnessMin?: number | null
+  lastApplyMin?: number | null
+  activeWorkers: number
+  tablesApp: number
+  dbSizeMB: number
+}
+
+export interface InfraBackups {
+  readable: boolean
+  err?: string
+  lastSuccessAt?: string | null
+  ageH?: number | null
+  lastRestoreTest?: string
+}
+
+export interface InfraNeon {
+  configured: boolean
+  projectId?: string
+  endpointState?: string
+  compute24hS: number
+  cycleFrom?: string
+  cycleComputeS: number
+  quotaCUS: number
+  err?: string
+  measuredAt: string
+}
+
+export interface InfraPrimaryProbe {
+  at: string
+  up: boolean
+  latencyMs: number
+  err?: string
+}
+
+export interface InfraData {
+  generatedAt: string
+  readSource: 'replica' | 'primary'
+  api: InfraAPI
+  vm: InfraVM
+  replica: InfraReplica | null
+  backups: InfraBackups | null
+  neon: InfraNeon | null
+  primary: InfraPrimaryProbe | null
+  dr: { voieD: 'PRETE' | 'PARTIELLE' | 'ABSENTE'; detail: string }
+}

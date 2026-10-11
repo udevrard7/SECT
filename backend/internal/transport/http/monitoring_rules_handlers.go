@@ -85,7 +85,8 @@ func (s *Server) monitoringRulesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Statut live : métriques mesurées backend (mêmes sources que /overview).
-	metrics := monitoring.CollectMetrics(r.Context(), s.dbPool, claims, s.workerRegistry)
+	infra := monitoring.CollectInfraPtr(r.Context(), s.replicaPool, claims, s.infraStateDir)
+	metrics := monitoring.CollectMetrics(r.Context(), s.dbPool, claims, s.workerRegistry, infra)
 
 	out := make([]alertingRuleResponse, 0, len(rules))
 	for i := range rules {
@@ -266,7 +267,8 @@ func (s *Server) monitoringRuleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Réponse avec statut live immédiat.
-	metrics := monitoring.CollectMetrics(r.Context(), s.dbPool, claims, s.workerRegistry)
+	infra := monitoring.CollectInfraPtr(r.Context(), s.replicaPool, claims, s.infraStateDir)
+	metrics := monitoring.CollectMetrics(r.Context(), s.dbPool, claims, s.workerRegistry, infra)
 	st := monitoring.Evaluate(rule, metrics)
 	def, _ := monitoring.MetricDefByKey(rule.Metric)
 
@@ -389,7 +391,8 @@ func (s *Server) monitoringRuleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics := monitoring.CollectMetrics(r.Context(), s.dbPool, claims, s.workerRegistry)
+	infra := monitoring.CollectInfraPtr(r.Context(), s.replicaPool, claims, s.infraStateDir)
+	metrics := monitoring.CollectMetrics(r.Context(), s.dbPool, claims, s.workerRegistry, infra)
 	st := monitoring.Evaluate(rule, metrics)
 	def, _ := monitoring.MetricDefByKey(rule.Metric)
 

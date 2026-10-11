@@ -26,12 +26,13 @@
 //   monitoring/*-dialogs.tsx     — GlassModal/AlertDialog contrôlés
 
 import { useState } from 'react'
-import { Activity, Bell, Server, Wrench } from 'lucide-react'
+import { Activity, Bell, Network, Server, Wrench } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { ConsoleHero } from './monitoring/hero'
 import { EventsTab } from './monitoring/events-tab'
+import { InfraTab } from './monitoring/infra-tab'
 import { ServicesTab } from './monitoring/services-tab'
 import { SystemTab } from './monitoring/system-tab'
 import { AlertsTab } from './monitoring/alerts-tab'
@@ -42,7 +43,7 @@ import {
   useMonitoringOverview,
 } from './monitoring/use-monitoring'
 
-type TabValue = 'evenements' | 'services' | 'systeme' | 'alertes'
+type TabValue = 'evenements' | 'infrastructure' | 'services' | 'systeme' | 'alertes'
 
 export function MonitoringPage() {
   const { user } = useAuthStore()
@@ -90,6 +91,7 @@ export function MonitoringPage() {
       overview && overview.kpis.activeEvents > 0
         ? { label: String(overview.kpis.activeEvents), tone: overview.kpis.criticalEvents > 0 ? 'danger' : 'neutral' }
         : null,
+    infrastructure: null,
     services: health ? { label: `${health.healthyCount}/${health.totalCount}`, tone: 'neutral' } : null,
     systeme: overview ? { label: String(overview.workers.length), tone: 'neutral' } : null,
     alertes:
@@ -127,6 +129,14 @@ export function MonitoringPage() {
             <TabCount count={tabCounts.evenements} />
           </TabsTrigger>
           <TabsTrigger
+            value="infrastructure"
+            className="group gap-2 rounded-lg px-3.5 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <Network className="h-3.5 w-3.5" aria-hidden="true" />
+            Infrastructure
+            <TabCount count={tabCounts.infrastructure} />
+          </TabsTrigger>
+          <TabsTrigger
             value="services"
             className="group gap-2 rounded-lg px-3.5 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
@@ -156,6 +166,12 @@ export function MonitoringPage() {
             (les filtres/pagination/sélection survivent aux changements d'onglet). */}
         <TabsContent value="evenements" forceMount className="data-[state=inactive]:hidden">
           <EventsTab autoRefresh={autoRefresh} userEmail={userEmail} />
+        </TabsContent>
+
+        {/* SECT-INFRA-MONITOR-1 : état de l'infrastructure hybride (réplique,
+            backups, VM, Neon control plane, DR voie D) — mesures locales 0 CU. */}
+        <TabsContent value="infrastructure" forceMount className="data-[state=inactive]:hidden">
+          <InfraTab autoRefresh={autoRefresh} />
         </TabsContent>
 
         <TabsContent value="services" forceMount className="data-[state=inactive]:hidden">

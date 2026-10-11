@@ -22,6 +22,8 @@ import type {
   EndpointsWindow,
   EventsPage,
   HealthReport,
+  InfraData,
+  InfraPrimaryProbe,
   MonitoringEvent,
   OverviewData,
   RulesData,
@@ -135,10 +137,37 @@ export function useInvalidateMonitoring() {
     await queryClient.invalidateQueries({ queryKey: ['monitoring-rules'] })
     await queryClient.invalidateQueries({ queryKey: ['monitoring-health'] })
     await queryClient.invalidateQueries({ queryKey: ['monitoring-endpoints'] })
+    await queryClient.invalidateQueries({ queryKey: ['monitoring-infra'] })
   }, [queryClient])
 }
 
 /** Tri stable de la file d'alertes actives (CRITICAL > ERROR > WARNING). */
 export function sortAlertsByPriority(events: MonitoringEvent[], priority: Record<string, number>) {
   return [...events].sort((a, b) => priority[a.severite] - priority[b.severite])
+}
+
+// ── SECT-INFRA-MONITOR-1 : infrastructure hybride (onglet dédié) ──
+// 60 s (et non 30) : la fraîcheur réplique évolue au rythme de la
+// grille M1 (:02/:32) — un polling plus serré n'apporte rien et
+// l'endpoint touche la réplique locale (0 CU), pas Neon.
+export function useInfraStatus(autoRefresh: boolean) {
+  return useQuery<InfraData>({
+    queryKey: ['monitoring-infra'],
+    queryFn: () => fetchJSON<InfraData>('/api/monitoring/infra'),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: autoRefresh ? 60_000 : false,
+    refetchIntervalInBackground: false,
+  })
+}
+
+/** Sonde volontaire du primaire Neon (?probe=primary) — UN ping data
+ *  par clic, par décision de l'admin : jamais automatique (discipline
+ *  CU §13.3 — réveiller le compute au nom du monitoring déferait la
+ *  grille M1 par construction). */
+export async function probePrimaryNeon(): Promise<InfraPrimaryProbe> {
+  const res = await fetch('/api/monitoring/infra?probe=primary')
+  if (!res.ok) throw new Error(`Échec sonde primaire (${res.status})`)
+  const data = (await res.json()) as InfraData
+  return data.primary!
 }

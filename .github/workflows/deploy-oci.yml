@@ -111,6 +111,20 @@ jobs:
     runs-on: ubuntu-latest
     environment: oci-production
     steps:
+      # SECT-INFRA-MONITOR-1 : le compose évolue dans le dépôt (montage ro du
+      # staging backup /var/lib/sect-backup → /state/backup) — il est
+      # synchronisé AVANT le up -d (le compose VM dérivait sinon au fil des
+      # déploiements, comme la grille fixe 172.28.0.0/24 de la phase 3).
+      - name: Checkout (compose à synchroniser)
+        uses: actions/checkout@v4
+      - name: Sync docker-compose.yml vers la VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          source: "deploy/oci/docker-compose.yml"
+          target: "/tmp/sect-compose-sync"
       - name: Deploy sur la VM (pull + up)
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -118,9 +132,16 @@ jobs:
           username: ${{ secrets.OCI_SSH_USER }}
           key: ${{ secrets.OCI_SSH_KEY }}
           script_stop: true
+          # SECT-INFRA-MONITOR-1 : la clé Neon passe par envs (jamais
+          # interpolée dans le corps du script — pattern secrets).
+          envs: NEON_API_KEY_SECRET
           script: |
             set -euo pipefail
             cd /opt/sect
+            # SECT-INFRA-MONITOR-1 : compose synchronisé depuis le dépôt
+            # (scp ci-dessus) — remplacé AVANT le up -d.
+            mv -f /tmp/sect-compose-sync/deploy/oci/docker-compose.yml /opt/sect/docker-compose.yml
+            rm -rf /tmp/sect-compose-sync
             # L'image par digest exact (immutabilité du déploiement)
             sed -i "s|^API_IMAGE=.*|API_IMAGE=${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}|" .env 2>/dev/null || true
             # ADR-0013 §13 — plancher jour 15 min (décision exploitant, 10/10/2026).
@@ -128,6 +149,13 @@ jobs:
             # une valeur posée/modifiée à la main sur la VM n'est JAMAIS écrasée.
             grep -q '^WORKER_DAY_MIN_INTERVAL=' .env || \
               printf '# ADR-0013 §13 : plancher jour 15 min (décision exploitant 10/10/2026)\nWORKER_DAY_MIN_INTERVAL=15m\n' >> .env
+            # SECT-INFRA-MONITOR-1 : control plane Neon (onglet Infrastructure
+            # de /monitoring) — SEED-ONCE, et UNIQUEMENT si le secret GitHub
+            # NEON_API_KEY est posé non vide (vide = section « non configurée »
+            # côté console, jamais un seed vide qui verrouillerait la valeur).
+            if [ -n "${NEON_API_KEY_SECRET:-}" ] && ! grep -q '^NEON_API_KEY=' .env; then
+              printf '# SECT-INFRA-MONITOR-1 : monitoring infra (control plane — ne réveille pas le compute)\nNEON_API_KEY=%s\nNEON_PROJECT_ID=autumn-rain-10233998\n' "$NEON_API_KEY_SECRET" >> .env
+            fi
             docker compose pull api
             docker compose up -d --remove-orphans
             docker image prune -f
@@ -142,6 +170,8 @@ jobs:
             echo "ERREUR — api pas healthy après 30s"
             docker compose logs --tail 50 api
             exit 1
+        env:
+          NEON_API_KEY_SECRET: ${{ secrets.NEON_API_KEY }}
 
       - name: Smoke test public (/health)
         run: |

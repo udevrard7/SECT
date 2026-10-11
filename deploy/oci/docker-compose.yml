@@ -34,6 +34,12 @@ services:
       # Localhost uniquement : seul le caddy système (mikcloud) parle à
       # l'API ; rien n'est exposé directement sur Internet.
       - "127.0.0.1:8090:8080"
+    volumes:
+      # SECT-INFRA-MONITOR-1 : staging du pipeline backup (last_success +
+      # markers restore-ok-*) exposé en LECTURE SEULE à l'API — onglet
+      # Infrastructure de /monitoring + métriques backup_age_h (règle
+      # système 000136). Le watchdog 12:32 reste LE canal Discord.
+      - /var/lib/sect-backup:/state/backup:ro
     # ADR-0013 §6 Phase 3 : réseau fixe 172.28.0.0/24 (passerelle
     # 172.28.0.1) — le seul chemin conteneur → cluster sect 5433.
     networks:
