@@ -144,7 +144,12 @@ fi
 
 # ── 5. Timers : installés toujours, activés si env configuré ──
 systemctl daemon-reload
-if grep -q '^AGE_RECIPIENT=age1' /opt/sect/backup.env 2>/dev/null \
+# « Configuré » = valeurs réelles ET AUCUN marqueur de l'exemple
+# (VOTRE_/LA_CSK/xxx/… : le seed-once copie l'exemple — ses
+# placeholders matchaient les anciens greps et armaient les timers
+# prématurément, runbook §2-2 violé — corrigé run #38101701353).
+if ! grep -qE 'VOTRE_|LA_CSK|xxx|\.\.\.|…' /opt/sect/backup.env 2>/dev/null \
+   && grep -q '^AGE_RECIPIENT=age1[a-z0-9]' /opt/sect/backup.env 2>/dev/null \
    && grep -q '^NEON_DIRECT_URL=postgres' /opt/sect/backup.env 2>/dev/null; then
     systemctl enable --now sect-backup.timer sect-backup-watchdog.timer >/dev/null 2>&1 || true
     log "backup.env configuré → timers ACTIVÉS (backup 03:32 UTC, watchdog 12:32 UTC)"
