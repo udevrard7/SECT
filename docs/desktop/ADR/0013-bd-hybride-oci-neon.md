@@ -1342,3 +1342,111 @@ exécutées de bout en bout, avec les arbitrages indiqués ci-dessous.
 19. Pas de conversion PAYG de la tenancy sans décision explicite de
     l'exploitant (moyen de paiement + vigilance quota) — l'option est
     documentée dans le playbook comme parade de dernier recours.
+
+## 19. Décision de reconduction de l'option C — trois variantes examinées et écartées (SECT-ARCH-1, 11 octobre 2026)
+
+### 19.1 Contexte et décision
+
+À la veille d'embarquer les 5 établissements, l'exploitant a
+stress-testé l'architecture avec trois variantes successives. Après
+expertise contradictoire (mesures à l'appui, §19.2), la décision est
+rendue le 11/10 : **« super, on garde le plan de l'option C »** —
+l'option C est reconduite sans modification pour l'embarquement.
+
+### 19.2 Mesures effectuées pendant l'examen (11/10, API control plane — ne réveille pas le compute)
+
+- **Le plan Free est attaché à l'ORGANISATION** (`org-gentle-pond-54934166`,
+  `plan: "free"` — `GET /users/me/organizations`), pas au projet : un
+  second projet Neon **puiserait dans le même réservoir de 100 CU-h/mois**.
+- Consommation du cycle : **85 508 s de compute = 23,75 CU-h** au 11/10
+  13:00 UTC (`GET /projects/{id}/consumption`), soit ~2,3 CU/j —
+  trajectoire ~70/100 en fin de cycle.
+- État live : base 47 Mo / 1 024 Mo ; CU/j M1 = 3,42 (sous le seuil 3,5).
+- Politique Supabase free vérifiée (recherche web 11/10) : **pause du
+  projet après ~7 jours sans activité base suffisante** ; Supabase
+  documente la réplication **sortante** (publisher), l'abonnement
+  **entrant** (subscriber) est « plus délicat » ; limites free : 500 Mo
+  de base, 5 Go d'egress/mois, 2 projets.
+
+### 19.3 Les trois variantes et leurs verdicts
+
+**Variante (a) — « Neon 2 » comme base de sauvegarde + PG primaire sur
+VM + Neon 1 pour le backend** : ÉCARTÉE. Trois défauts rédhibitoires :
+(1) un secours chez le même fournisseur que le primaire est corrélé
+(incident Neon ou souci de compte = secours et original perdus
+ensemble — viole l'esprit D1) ; (2) le second projet partage le même
+pool de CU (mesuré §19.2) — ce n'est pas de la redondance, c'est un
+troisième consommateur ; (3) « Neon 1 pour le backend » + primaire sur
+VM = deux sources de vérité = réplication bidirectionnelle = pertes
+silencieuses (anti-décision 1, §4.1).
+
+**Variante (b) — N3 (inversion, PG primaire sur la VM)** : ÉCARTÉE à ce
+stade, examinée sérieusement. L'analyse a produit un argument décisif
+nouveau : **la chaîne P2 Render devient inopérante pour la DB** — Render
+ne peut plus servir que si la VM vit (ou en exposant 5433 publiquement,
+anti-décision 3) ; la reprise devient OCI-only (WAL-G, restauration
+ARM→ARM uniquement — un backup physique ne se restaure pas de aarch64
+vers x86_64, donc pas de retour rapide vers Neon) ; et une éventuelle
+réplique de sortie vers Neon exigerait un endpoint éveillé 24 h/24
+(~183 CU-h/mois > 100 gratuits). Aucun déclencheur §14.7 n'est atteint :
+rester sur l'option C. N3 reste l'option souveraineté, exécutable le
+jour d'un déclencheur via la voie D (`dr_promote.sh`, déjà déployé).
+
+**Variante (c) — « P3 » : réplique Supabase + Render secondaire branché
+dessus** : la v1 de l'exploitant (souscription entrante VM→Supabase +
+VM→Neon) a été restructurée en v2 viable (§19.4), puis **ARCHIVÉE sans
+construction** : elle couvre le double décès de fournisseurs
+(probabilité quasi nulle — Neon et la VM n'ont aucun défaut commun) au
+prix d'un RPO filet 12-24 h, d'un mur à 500 Mo et d'une gouvernance
+supplémentaire. Le coût permanent dépasse le bénéfice marginal tant
+qu'aucun déclencheur n'est atteint.
+
+### 19.4 Design « P3 v2 » archivé (pour ne pas le perdre)
+
+Si un jour la contrainte « 0 € absolu + établissements embarqués » le
+justifie, la recette validée par expertise est la suivante :
+
+1. **Aucune souscription entrante** : le flux reste sortant uniquement.
+   Un workflow `p3-refresh` (GitHub Actions) réutilise le **moteur de
+   restore du pipeline de backup existant** (download → déchiffrement
+   age → pg_restore vers le DSN Supabase) — jamais de connexion
+   entrante vers `VM:5433` (anti-décision 21).
+2. Le refresh quotidien **est lui-même l'activité** qui empêche la pause
+   à 7 jours — le risque de standby silencieux disparaît par
+   construction. Vérification counts vs manifest + Discord (échec = LOUD).
+   Chaque refresh = un test de restauration vivant (la devise « un
+   backup non testé n'existe pas » passe du mensuel au quotidien).
+3. **Activation humaine uniquement** (jamais automatique) : bascule du
+   `DATABASE_URL` de Render vers Supabase + resync des séquences
+   (`resync_sequences.sql` existant).
+4. **Règle d'or anti-fork** : dès que P3 prend UNE écriture, P3 DEVIENT
+   la source de vérité ; tout primaire qui ressuscite passe en lecture
+   seule jusqu'à réconciliation documentée (dump/restore). Pas deux
+   primaires, même en DR.
+5. Limites à assumer : 500 Mo (mur plus bas que le GiB Neon — même
+   déclencheur §14.7) ; RPO du filet 12-24 h (raffraissable 4×/jour en
+   session d'examens) ; **Supabase n'est PAS une sauvegarde** — le
+   bucket OCI chiffré reste LA référence ; retour arrière ~1 h par
+   dump/restore.
+6. Conditions de réexamen : déclencheur §14.7 atteint + contrainte 0 €
+   maintenue + besoin réel d'un filet sous le double décès. Préalables
+   de vérification (30 min) : comportement réel de la pause par activité
+   de restore, privilèges du rôle postgres Supabase (publications
+   entrantes), extensions du schéma, latence Render→Supabase.
+
+### 19.5 Anti-décisions — ajout
+
+20. Pas de second projet Neon comme secours du premier : même réservoir
+    de CU (plan attaché à l'organisation, mesuré 11/10 §19.2) et même
+    fournisseur que le primaire — un secours doit être décorrélié (D1).
+    Le seul usage légitime d'un second projet Neon serait un
+    environnement dev/staging, déjà couvert par le PG local de la VM à
+    0 CU.
+21. Aucun flux entrant vers la base de la VM : « l'architecture ne
+    réceptionne jamais de connexion base » est un invariant de sécurité
+    (exposer 5433 à des IP egress tierces non garanties = régression de
+    surface d'attaque sur le maillon le plus scruté).
+22. Le filet P3 ne se construit pas sans décision explicite de
+    l'exploitant sur un déclencheur §14.7 ; s'il est construit, le
+    moteur est le pipeline de backup (restore sortant), jamais une
+    souscription entrante (§19.4-1).
