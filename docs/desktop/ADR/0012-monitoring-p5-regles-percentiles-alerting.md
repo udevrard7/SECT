@@ -345,3 +345,106 @@ démo répond en 2-5 s sans même solliciter le cooldown.
 10. Un context expiré tue aussi les écritures d'audit « best-effort » :
     tout log d'erreur conditionné par l'échec qu'on diagnostique DOIT
     utiliser un ctx détaché (`WithoutCancel` + timeout court).
+
+---
+
+## Addendum SECT-LATENCY-4 — cooldown juste, budgets redressés, modèle benchmarké (11/10 soir)
+
+**Déclencheur** (rapport exploitant) : le panneau monitoring montre
+`POST /api/landing-demo 30 002 ms, 100% erreur, réponse VIDE` — les statistiques
+fenêtre 7j/24h contenaient l'historique pré-LATENCY-3, MAIS la vérification live
+a confirmé un échec RÉEL persistant : 503 en 20,7 s (la livraison du 503 était
+elle-même la preuve que le fix WriteTimeout tenait).
+
+### Diagnostic (run 38168775851 + live, 19:36-19:58)
+
+Trace serveur de l'échec à 20 446 ms :
+
+| t | provider | résultat |
+|---|----------|----------|
+| +0,2 s | Mistral p1 | 403 tier (mort permanent) |
+| +0,4 s | Groq p3 | 404 modèle (mort permanent) |
+| +12,4 s | MuleRouter p4 | deadline de SA part fixe — TTFB 4,7 s / 20 tokens ≈ 230 ms/token : un QCM complet demande ~2 min, il ne peut JAMAIS finir en 12 s mais les brûle à CHAQUE appel |
+| +19,8 s | OpenRouter p5 | « lire réponse: deadline » — seul chat fonctionnel, affamé à 7,4 s alors que kimi-k2.6 demande 6-16 s (variabilité :free) |
+| +19,9→20,4 s | DeepSeek/Cerebras/ZAI | deadline du parent avec 0,1-0,3 s de budget — leurs ERREURS RÉELLES sont 402/404 en < 1 s : événements d'audit trompeurs |
+
+Trois défauts de conception du cooldown SECT-LATENCY-3 révélés par la trace :
+1. **Innocence** : un provider coupé par le budget PARENT épuisé était mis en
+   cooldown 5 min — le sauveteur puni pour la faute du retardataire ; l'essai
+   suivant partait avec 0 provider (503 en 0,4 s mesuré).
+2. **Hard-fail** : Mistral 403 et Groq 404 (erreurs client PERMANENTES) étaient
+   retentés à chaque appel (0,4 s + événement d'audit à chaque fois) ; la règle
+   « provider de tête toujours essayé » aggravait le cas (403 en p1 permanent).
+3. **Nature de l'échec** : lenteur (deadline de SA part) et panne (réseau/5xx)
+   recevaient le même cooldown 5 min — contre-productif pour la congestion des
+   modèles gratuits qui oscille à la minute.
+
+### Fixes (commits 7b3b996e → cc32db24)
+
+1. **`ProviderHTTPError`** : erreur typée (statut HTTP du provider) construite
+   dans les 2 chemins (stream + non-stream).
+2. **`isHardFail`** : 4xx hors 408/429 = permanent (clé/modèle/crédits) →
+   cooldown étendu **30 min** (`hardFailCooldown`) ; la tête hard-failed perd
+   son exemption ; garde-fou : si TOUT est en cooldown, le provider de tête est
+   tenté en dernier recours (tentative réelle + erreur parlante).
+3. **Innocence** : échec deadline/cancel avec tentative *capped* (part fixe
+   non perçue) ou parent mort → AUCUN cooldown.
+4. **Lenteur** : échec par deadline de SA PROPRE part fixe → cooldown court
+   **60 s** (`slowCooldown`) — la congestion :free oscille à la minute.
+5. **Break budget parent** (< 500 ms restants) : ne plus torturer les
+   providers de fin de chaîne avec des miettes.
+6. **Budgets redressés** : part fixe 12 → **15 s** (kimi-k2.6 coupait sa
+   génération EN COURS à 12 s : ~46 tok/s × 400 tokens + TTFB ≈ 10-14 s) ;
+   budget landing-demo 20 → **25 s**.
+7. **ChatCompletionStream** : même discipline de cooldown (skip hard-failed
+   récents + innocence).
+8. **Réordonnancement data** (run 38169907083, réversible) : OpenRouter p5→p4
+   AVANT MuleRouter p4→p5 — le seul chat fonctionnel cesse de subir les 12 s
+   de MuleRouter en tête ; MuleRouter reste filet pour les workers (budget
+   5 min où ses ~2 min passent).
+
+### Benchmark modèles (run 38171451395, prompt QCM réel, 2 essais/modèle)
+
+| modèle | essais | verdict |
+|--------|--------|---------|
+| moonshotai/kimi-k2.6 (alors actif) | 13,9 s / 16,1 s | JSON OK mais trop lent, variable |
+| meta-llama/llama-3.3-70b-instruct | 8,3 s / 6,0 s | bon |
+| qwen/qwen3.8-omni-flash | 6,4 s / 5,9 s | bon |
+| **qwen/qwen3.8-27b** | **3,2 s / 4,2 s** | **JSON OK ×2, marge ×4** |
+| qwen3.8-max*/2.4t (premium) | 402 | pas de crédit sur la clé |
+
+**Changement appliqué** (run 38172138132, garde-fou /models + rollback
+documenté) : `openrouter-provider-001.model` : kimi-k2.6 → **qwen/qwen3.8-27b**.
+
+### Vérifié en prod (20:25-20:29, live + audit 38172371756)
+
+7 requêtes landing-demo consécutives : **7 × 200 en 4,2-7,8 s** (essai frais
+chaîne complète, essais cooldown armé, burst ×3 : 4,2/4,8/4,4 s) — QCM de
+qualité universitaire constante (cytochrome b6f, PFK-1, anaphase A,
+α-cétoglutarate DH, Krebs, génétique). AVANT : 0 % de succès en 20-30 s.
+`/api/monitoring/overview` : 222-323 ms (×5). Chemin utilisateur :
+0,12-0,27 s (Vercel) / 0,016-0,022 s (direct). Le panneau endpoints
+(1h/24h/7d) se dilue naturellement des échecs historiques.
+
+### Pièges documentés (complément)
+
+11. **Heredoc indenté dans un script YAML `script: |`** : le délimiteur de fin
+    DOIT être en début de ligne — drone-ssh préserve l'indentation, un
+    délimiteur indenté ne termine JAMAIS le heredoc (tout le reste du script
+    devient du SQL). Un `-c` multi-instructions psql est atomique et sûr.
+12. **`$q$` dollar-quoting psql dans des doubles quotes bash** : bash étend
+    `$q` comme variable → `unbound variable` sous `set -u`. Échapper
+    (`\$q\$`) ou rester en simples quotes.
+13. **Base64 de scripts embarqués** : générer par OUTIL (fichier de référence
+    + round-trip AST + diff), jamais par copier-coller — un `\'` perdu dans
+    un heredoc a produit une SyntaxError silencieuse jusqu'à l'exécution VM
+    (2 runs rouges). `python -c` multi-lignes via drone-ssh : fragile —
+    préférer base64 ou grep.
+
+### Décision modèle — retour arrière
+
+Rollback : relancer le workflow `ai-providers-set-model.yml` avec
+`model=moonshotai/kimi-k2.6` (ou tout autre slug validé par
+`openrouter-model-bench.yml`). La qualité kimi-k2.6 (QCM « ferredoxine »,
+Rubisco) était supérieure — si un jour un plan payant le justifie, le
+réordonnancement et les budgets actuels le supporteront sans changement.

@@ -5706,3 +5706,43 @@ Décision de l'exploitant (11/10, chat) : « mettre à jour le système de monit
 ### Reste pour l'exploitant (données, pas code)
 
 Corriger les providers IA (5/8 renvoient des erreurs immédiates) : plan/clé Mistral (mistral-large-latest interdit au tier), modèle Groq inexistant, crédits DeepSeek, modèles Cerebras/ZAI invalides. Avec un provider rapide en tête, la démo répond en 2-5 s sans solliciter le cooldown.
+
+---
+
+## SECT-LATENCY-4 — retour exploitant « landing-demo 30 002 ms / 100 % erreur / réponse VIDE » (11/10 soir)
+
+Le rapport monitoring mêlait historique pré-LATENCY-3 (fenêtres 7j/24h) et un
+échec RÉEL persistant : 503 en 20,7 s live (preuve au passage que la livraison
+du 503 tenait — le fix WriteTimeout fonctionne). Diagnostic par trace serveur
+(38168775851 + live 19:36-19:58) : MuleRouter p4 (230 ms/token — QCM ≈ 2 min,
+jamais finissable en 12 s) brûlait sa part fixe à CHAQUE appel, affamant
+OpenRouter p5 (seul chat fonctionnel) à 7,4 s ; 3 défauts de conception du
+cooldown : l'innocent (coupé par le budget parent) était puni 5 min, les 403/404
+permanents étaient retentés à chaque appel, lenteur et panne confondues.
+
+Corrections (7b3b996e → cc32db24, tous déployés verts) :
+- ProviderHTTPError typé + isHardFail (4xx hors 408/429) → cooldown 30 min,
+  tête hard-failed perd son exemption, garde-fou « tous en cooldown → tenter
+  la tête » ;
+- innocence : capped ou parent mort → pas de cooldown ; lenteur (deadline de
+  SA part) → cooldown 60 s ; break budget parent < 500 ms (fini la torture
+  des fin de chaîne à 0,1-0,3 s) ;
+- budgets : part fixe 15 s (kimi-k2.6 coupait sa génération EN COURS à 12 s),
+  landing 25 s ; ChatCompletionStream même discipline ;
+- data : OpenRouter p4 avant MuleRouter p5 (réversible, run 38169907083) ;
+- benchmark (38171451395, prompt QCM réel) : kimi-k2.6 13,9-16,1 s ;
+  llama-3.3-70b 6,0-8,3 s ; **qwen/qwen3.8-27b 3,2-4,2 s** → modèle changé
+  (38172138132, garde-fou /models, rollback = relancer avec kimi-k2.6).
+
+Vérifié en prod : **7 × 200 landing-demo consécutifs en 4,2-7,8 s** (chaîne
+complète, cooldowns armés, burst ×3 : 4,2/4,8/4,4 s) — QCM universitaires
+constants (b6f, PFK-1, anaphase A, Krebs). overview 222-323 ms. Chemin
+utilisateur 0,12-0,27 s. Panneau endpoints : dilution naturelle des échecs
+historiques (sélecteur 1h/24h/7d).
+
+Pièges 11-13 documentés (ADR-0012 addendum) : heredoc indenté ne se termine
+jamais ; $q$ étendu par bash en doubles quotes (unbound sous set -u) ; base64
+de scripts = générer par outil + round-trip AST (un \ perdu = SyntaxError VM).
+
+Workflows ajoutés : ai-providers-reorder.yml, openrouter-model-bench.yml,
+ai-providers-set-model.yml (tous dispatch, clés jamais affichées).
