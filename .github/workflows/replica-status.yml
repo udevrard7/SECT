@@ -55,3 +55,7 @@ jobs:
             echo "── sect-api docker ──"
             docker ps --filter name=sect-api --format '{{.Names}} | {{.Status}}' || true
             docker stats --no-stream --format '{{.Name}} | CPU {{.CPUPerc}} | RAM {{.MemUsage}}' 2>/dev/null | head -8 || true
+            echo "── sect-replica-sync (service + journal) ──"
+            systemctl status sect-replica-sync.service --no-pager 2>&1 | head -12 || true
+            journalctl -u sect-replica-sync --no-pager -n 25 2>&1 || true
+            systemctl list-timers 'sect-replica-sync' --no-pager || true
