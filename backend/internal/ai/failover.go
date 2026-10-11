@@ -66,13 +66,15 @@ func auditCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 // attemptCtx borne UNE tentative provider quand le budget total est court
-// (endpoint interactif). SECT-LATENCY-3 : avant, un provider qui pendent
+// (endpoint interactif). SECT-LATENCY-3 : avant, un provider qui pendait
 // (connexion ouverte, jamais de réponse) consommait TOUT le budget — la
 // chaîne de failover n'avait plus rien à distribuer aux suivants (3×30s
 // constatés en prod : un seul essai effectif, 0 événement loggable).
-// Politique : budget parent < 60s → chaque tentative plafonnée à la moitié
-// du restant (max 15s, min 3s). Budget long (workers questions-ia, 5 min) :
-// inchangé, pas de plafond.
+// Politique v2 (run 38165377283) : part FIXE de 12s par tentative (dans la
+// limite du restant) — la v1 « moitié du restant » affamait les providers
+// de fin de chaîne (OpenRouter coupé à 4,7s alors qu'un QCM complet
+// demande ~6s : providers lents en tête + part décroissante = les
+// meilleurs jamais à l'aise). Budget long (workers, 5 min) : inchangé.
 func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	dl, ok := ctx.Deadline()
 	if !ok {
@@ -82,12 +84,9 @@ func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	if remaining >= 60*time.Second {
 		return ctx, func() {}
 	}
-	perAttempt := remaining / 2
-	if perAttempt > 15*time.Second {
-		perAttempt = 15 * time.Second
-	}
-	if perAttempt < 3*time.Second {
-		perAttempt = 3 * time.Second
+	perAttempt := 12 * time.Second
+	if remaining < perAttempt {
+		perAttempt = remaining
 	}
 	return context.WithTimeout(ctx, perAttempt)
 }
