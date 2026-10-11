@@ -1,0 +1,15 @@
+[Unit]
+Description=SECT replica sync — :02/:32 UTC (chevauche les ticks grille M1, ADR-0013 §16)
+# :02 et :32 = 1-2 min APRÈS un tick (:00/:30) déjà payé par les workers —
+# la fenêtre de réplication vit DANS l'éveil existant (arithmétique §13.4).
+# La nuit, la grille est plus clairsemée : le passage :32 peut être un
+# éveil isolé (~0,8 CU/mois — mesuré/estimé §16, à surveiller).
+
+[Timer]
+OnCalendar=*-*-* *:02/30:00
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

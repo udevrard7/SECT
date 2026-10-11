@@ -1,0 +1,17 @@
+[Unit]
+Description=SECT replica sync — fenêtre de réplication logique calée grille M1 (ADR-0013 §16)
+Documentation=file:///opt/sect/replica/sect_replica_sync.sh
+After=postgresql@18-sect.service
+Wants=postgresql@18-sect.service
+# une souscription 24/7 empêche l'autosuspend Neon (mesuré 11/10/2026) :
+# ce service n'ouvre qu'une FENÊTRE (ENABLE→convergence→DISABLE)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sect/replica/sect_replica_sync.sh
+# durci comme sect-backup.service (ops/backup/systemd/)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sect-backup
+ProtectHome=true

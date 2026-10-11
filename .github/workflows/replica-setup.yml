@@ -112,6 +112,17 @@ jobs:
               echo "souscription sect_poc déjà présente"
             fi
 
+            echo "MARK 7 : outillage sync programmée (ops/replica/, ADR §16)"
+            sudo mkdir -p /opt/sect/replica
+            sudo cp -r "$TMP/ops/replica/." /opt/sect/replica/
+            sudo install -m 0755 /opt/sect/replica/sect_replica_sync.sh /opt/sect/replica/sect_replica_sync.sh
+            sudo install -m 0644 /opt/sect/replica/systemd/sect-replica-sync.service /etc/systemd/system/sect-replica-sync.service
+            sudo install -m 0644 /opt/sect/replica/systemd/sect-replica-sync.timer /etc/systemd/system/sect-replica-sync.timer
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now sect-replica-sync.timer
+            systemctl list-timers 'sect-replica-sync' --no-pager || true
+            echo "(le timer :02/:32 fermera la souscription en cours à la prochaine fenêtre)"
+
             echo "MARK 8 : attente copie initiale (30 s) puis état"
             sleep 30
             echo "── pg_subscription ──"
