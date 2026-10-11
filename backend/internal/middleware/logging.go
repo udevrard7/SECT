@@ -20,6 +20,14 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap expose le writer sous-jacent à http.ResponseController (SECT-LATENCY-3).
+// Sans cette méthode, le wrapper masque le *http.response du serveur qui seul
+// sait réarmer le write deadline — les handlers SSE et landing-demo avaient
+// leurs écrits tués silencieusement par WriteTimeout=30s (cf. writedeadline.go).
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // GetClientIP extrait l'IP RÉELLE du client depuis les headers de proxy.
 //
 // Ordre de priorité (sécurisé contre l'usurpation):

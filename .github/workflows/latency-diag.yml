@@ -67,7 +67,7 @@ jobs:
 
             echo
             echo "── 3b. AIFailoverEvent (réplique, 10 derniers) + connectivity providers ──"
-            sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc 'SELECT "createdAt"::timestamp(0), "eventType", "providerId", left("errorMessage", 120) FROM "AIFailoverEvent" ORDER BY "createdAt" DESC LIMIT 10' 2>/dev/null || echo "(table absente ou vide côté réplique)"
+            sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -tAc 'SELECT "createdAt"::timestamp(0), "eventType", "providerName", left("errorDetails", 120) FROM "AIFailoverEvent" ORDER BY "createdAt" DESC LIMIT 10' 2>/dev/null || echo "(table absente ou vide côté réplique)"
             for HOSTURL in https://api.mistral.ai/v1/models https://api.groq.com/openai/v1/models https://openrouter.ai/api/v1/models https://api.deepseek.com/v1/models https://api.cerebras.ai/v1/models https://z.ai/api/v1/models; do
               curl -s -o /dev/null -w "  $HOSTURL → http=%{http_code} connect_s=%{time_connect} tls_s=%{time_appconnect} total_s=%{time_total}\n" --max-time 8 "$HOSTURL" || echo "  $HOSTURL → INJOIGNABLE (timeout 8s)"
             done

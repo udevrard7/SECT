@@ -952,6 +952,9 @@ func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, _ := w.(http.Flusher)
 	flushIfNeeded := func() {
+		// SECT-LATENCY-3 : réarmé avant le flush — flux SSE au-delà de WriteTimeout=30s
+		// sinon coupé silencieusement (cf. writedeadline.go).
+		rearmWriteDeadline(w, 2*time.Minute)
 		if flusher != nil {
 			flusher.Flush()
 		}

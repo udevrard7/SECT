@@ -36,6 +36,9 @@ func (s *Server) notificationsStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, _ := w.(http.Flusher)
 	flushIfNeeded := func() {
+		// SECT-LATENCY-3 : réarmé avant le flush — flux SSE au-delà de WriteTimeout=30s
+		// sinon coupé silencieusement (cf. writedeadline.go).
+		rearmWriteDeadline(w, 2*time.Minute)
 		if flusher != nil {
 			flusher.Flush()
 		}
@@ -141,9 +144,9 @@ func (s *Server) fetchUnreadCountSSE(r *http.Request, claims appdb.SessionClaims
 		}
 
 		query := fmt.Sprintf(`
-			SELECT count(*) FROM "NotificationUnified"
-			WHERE ("lue" = false) AND (%s) AND %s
-		`, strings.Join(rbacConds, " OR "), notifNotExpiredCond)
+                        SELECT count(*) FROM "NotificationUnified"
+                        WHERE ("lue" = false) AND (%s) AND %s
+                `, strings.Join(rbacConds, " OR "), notifNotExpiredCond)
 
 		return tx.QueryRow(r.Context(), query, args...).Scan(&count)
 	})
@@ -248,17 +251,17 @@ func (s *Server) notificationsUnifiedList(w http.ResponseWriter, r *http.Request
 		// (le badge de la cloche était plafonné à la fenêtre de 20 fetchée —
 		// sous-comptage au-delà).
 		query := fmt.Sprintf(`
-			SELECT "id", "source", "titre", "description", "severity", "type", "lue",
-			       "destinataireId", "destinataireRole",
-			       "destinataireSegment", "destinataireEtablissementId",
-			       "actionUrl", "actionLabel",
-			       "categorie", "filiereId", "epreuveId", "expireLe", "createdAt",
-			       count(*) OVER() AS "total_count"
-			FROM "NotificationUnified"
-			%s
-			ORDER BY "createdAt" DESC
-			LIMIT $%d
-		`, whereClause, len(args)+1)
+                        SELECT "id", "source", "titre", "description", "severity", "type", "lue",
+                               "destinataireId", "destinataireRole",
+                               "destinataireSegment", "destinataireEtablissementId",
+                               "actionUrl", "actionLabel",
+                               "categorie", "filiereId", "epreuveId", "expireLe", "createdAt",
+                               count(*) OVER() AS "total_count"
+                        FROM "NotificationUnified"
+                        %s
+                        ORDER BY "createdAt" DESC
+                        LIMIT $%d
+                `, whereClause, len(args)+1)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)

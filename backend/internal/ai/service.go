@@ -115,7 +115,10 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
 
 	// Bug #3 : failover automatique. Si le provider principal échoue,
 	// bascule vers les suivants dans l'ordre de priorité.
-	result, err := s.ChatWithFailover(ctx, messages, nil)
+	// SECT-LATENCY-3 : logger réel (avant : nil → les échecs de bascule
+	// étaient INVISIBLES dans les logs serveur — on ne voyait ni le
+	// provider en cause ni l'erreur, cf. diagnostic landing-demo).
+	result, err := s.ChatWithFailover(ctx, messages, slog.Default())
 	if err != nil {
 		return nil, err
 	}

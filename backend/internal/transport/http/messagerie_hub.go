@@ -262,6 +262,10 @@ func (h *MessagerieHub) HandleSSE(w http.ResponseWriter, r *http.Request) {
 
 	flusher, _ := w.(http.Flusher)
 	flushIfNeeded := func() {
+		// SECT-LATENCY-3 : réarmé AVANT le flush — le write TCP suit le flush.
+		// Sans ça, WriteTimeout=30s (serveur) coupe le flux au bout de 30s de
+		// connexion : heartbeats et événements perdus, EOF client (cf. writedeadline.go).
+		rearmWriteDeadline(w, 2*time.Minute)
 		if flusher != nil {
 			flusher.Flush()
 		}

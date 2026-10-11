@@ -31,6 +31,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -49,7 +50,14 @@ const (
 	landingDemoWindow      = 10 * time.Minute // taille de la fenêtre
 	landingDemoTopicMax    = 200              // longueur max du topic
 	landingDemoTopicMin    = 3                // longueur min du topic
-	landingDemoTimeout     = 30 * time.Second // timeout de l'appel IA
+	// SECT-LATENCY-3 : 30s → 20s. Avant, ce budget ÉGALAIT le WriteTimeout
+	// serveur (30s, deadline posée à la lecture des headers) : le 503 était
+	// journalisé mais la connexion tuée AVANT l'écriture — le visiteur du
+	// landing recevait une connexion morte (curl exit 52, http=000) au
+	// lieu du JSON d'erreur. 20s laisse 10s de marge pour livrer la
+	// réponse ET l'écriture est sous-write-deadline garanti par le
+	// ResponseController ci-dessous.
+	landingDemoTimeout = 20 * time.Second // timeout de l'appel IA
 )
 
 type landingDemoEntry struct {
@@ -89,6 +97,12 @@ func landingDemoAllow(ip string) bool {
 // provider IA actif en base. Utilisé par la section "Démo interactive" du
 // landing page pour montrer la valeur produit aux visiteurs non connectés.
 func (s *Server) landingDemo(w http.ResponseWriter, r *http.Request) {
+	// SECT-LATENCY-3 : garantir la LIVRAISON de la réponse. Le WriteTimeout
+	// serveur (30s) démarre à la lecture des headers ; sans ce réarmement,
+	// toute erreur survenant tard (budget IA épuisé) était écrite dans une
+	// connexion déjà morte — le client ne voyait JAMAIS le JSON d'erreur.
+	rearmWriteDeadline(w, landingDemoTimeout+15*time.Second)
+
 	// Rate-limit par IP (defense-in-depth : endpoint public + appel IA coûteux).
 	ip := middleware.GetClientIP(r)
 	if !landingDemoAllow(ip) {
@@ -153,7 +167,9 @@ Réponds UNIQUEMENT avec le JSON demandé.`, topic)
 	}
 
 	// Timeout : la démo landing doit rester réactive. Le AIService a 180s mais
-	// on coupe à 30s pour ne pas faire attendre un visiteur non authentifié.
+	// on coupe à 20s (SECT-LATENCY-3 : cf. const) pour ne pas faire attendre
+	// un visiteur non authentifié.
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), landingDemoTimeout)
 	defer cancel()
 
@@ -161,8 +177,15 @@ Réponds UNIQUEMENT avec le JSON demandé.`, topic)
 	if err != nil {
 		// Erreur attendue courante : aucun provider IA actif en base.
 		// On renvoie 503 (Service Unavailable) avec un message actionnable.
+		// SECT-LATENCY-3 : log serveur de la cause exacte — avant, elle
+		// n'était visible NULLE PART (réponse tuée + AIFailoverEvent
+		// écrit avec un ctx déjà mort → perdu en silence).
+		slog.Warn("landing-demo : échec appel IA",
+			"error", err.Error(),
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
 		writeJSONError(w, http.StatusServiceUnavailable,
-			fmt.Sprintf("Service IA indisponible: %v", err))
+			"Service IA momentanément indisponible — réessayez dans un instant.")
 		return
 	}
 

@@ -31,6 +31,12 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap expose le writer sous-jacent à http.ResponseController (SECT-LATENCY-3).
+// Cf. middleware/logging.go — même raison : ne pas masquer SetWriteDeadline.
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.status = 200

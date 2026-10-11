@@ -53,6 +53,45 @@ type FailoverResult struct {
 	FailoverUsed bool // true si un provider de secours a été utilisé
 }
 
+// auditCtx construit un contexte DÉTACHÉ pour les écritures d'audit de
+// failover (AIFailoverEvent). SECT-LATENCY-3 : avant, logFailoverEvent
+// utilisait le ctx de la requête — quand l'appel IA échouait PARCE QUE ce
+// ctx expirait (deadline 20-30s), l'INSERT échouait instantanément lui
+// aussi → la table restait VIDE, exactement au moment où on avait besoin
+// d'elle pour diagnostiquer. context.WithoutCancel garde les valeurs du
+// ctx (trace) mais survit à l'annulation parent ; timeout court pour ne
+// pas retarder la réponse.
+func auditCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+}
+
+// attemptCtx borne UNE tentative provider quand le budget total est court
+// (endpoint interactif). SECT-LATENCY-3 : avant, un provider qui pendent
+// (connexion ouverte, jamais de réponse) consommait TOUT le budget — la
+// chaîne de failover n'avait plus rien à distribuer aux suivants (3×30s
+// constatés en prod : un seul essai effectif, 0 événement loggable).
+// Politique : budget parent < 60s → chaque tentative plafonnée à la moitié
+// du restant (max 15s, min 3s). Budget long (workers questions-ia, 5 min) :
+// inchangé, pas de plafond.
+func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return ctx, func() {}
+	}
+	remaining := time.Until(dl)
+	if remaining >= 60*time.Second {
+		return ctx, func() {}
+	}
+	perAttempt := remaining / 2
+	if perAttempt > 15*time.Second {
+		perAttempt = 15 * time.Second
+	}
+	if perAttempt < 3*time.Second {
+		perAttempt = 3 * time.Second
+	}
+	return context.WithTimeout(ctx, perAttempt)
+}
+
 // ChatWithFailover tente l'appel LLM avec failover automatique.
 //
 // Comportement :
@@ -94,8 +133,11 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 	var lastErr error
 	var prevProvider *ActiveProvider // BUG #10 fix: pour tracer fromProvider→toProvider
 	for i, p := range providers {
-		// Tenter l'appel avec ce provider.
-		result, err := s.chatWithProvider(ctx, p, messages)
+		// Tenter l'appel avec ce provider — borné par tentative si le
+		// budget global est court (SECT-LATENCY-3, cf. attemptCtx).
+		attCtx, cancelAttempt := attemptCtx(ctx)
+		result, err := s.chatWithProvider(attCtx, p, messages)
+		cancelAttempt()
 		if err == nil {
 			// Succès !
 			if i > 0 && logger != nil {
@@ -262,6 +304,10 @@ func (s *AIService) getFailoverConfig(ctx context.Context) FailoverConfig {
 // BUG #9 fix: utilise FAIL_OVER au lieu de PROVIDER_FAILURE quand un fallback existe.
 // BUG #10 fix: remplit fromProvider et toProvider pour tracer la chaîne de bascule.
 func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *ActiveProvider, nextProvider *ActiveProvider, callErr error, hasFallback bool) {
+	// SECT-LATENCY-3 : ctx détaché (survit à l'annulation de la requête).
+	ctx, cancel := auditCtx(ctx)
+	defer cancel()
+
 	tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return
@@ -308,6 +354,10 @@ func (s *AIService) logFailoverEvent(ctx context.Context, failedProvider *Active
 // logFailoverSuccessEvent insère un événement RECOVERY quand le failover réussit
 // (BUG #9 fix: tracer les bascules réussies, pas seulement les échecs).
 func (s *AIService) logFailoverSuccessEvent(ctx context.Context, fromProvider *ActiveProvider, toProvider *ActiveProvider) {
+	// SECT-LATENCY-3 : ctx détaché (cf. auditCtx).
+	ctx, cancel := auditCtx(ctx)
+	defer cancel()
+
 	tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return

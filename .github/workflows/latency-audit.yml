@@ -131,20 +131,15 @@ jobs:
               E=$(date +%s%N)
               echo "    tcp_connect_ms=$(( (E-S)/1000000 ))"
             done
-            REPLLINE=$(grep '^REPLICA_DATABASE_URL=' /opt/sect/.env | head -1 || true)
-            if [ -n "$REPLLINE" ]; then
-              echo "  connexion complète + SELECT 1 ×3 (rôle applicatif, DSN de l'API)"
-              RDSN=$(printf '%s' "$REPLLINE" | cut -d= -f2-)
-              for i in 1 2 3; do
-                TIMEFORMAT='    connect_query_s=%R'
-                { time "$PGB/psql" "$RDSN" -Atq -c 'SELECT 1' >/dev/null; } 2>&1
-              done
-              echo "  requêtes tenues (\\timing) ×3"
-              printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | "$PGB/psql" "$RDSN" -At 2>&1 | grep -E 'Time:' | head -3
-            fi
-            if [ -z "$REPLLINE" ]; then
-              echo "  (REPLICA_DATABASE_URL absent — réplique OFF, section sautée)"
-            fi
+            echo "  requêtes tenues via SOCKET unix (sudo -u postgres) — l'hôte est"
+            echo "  refusé en TCP par pg_hba (10.0.0.159) : seul le conteneur passe"
+            echo "  (réseau docker 172.28.0.0/24) — run 38164210172 l'a prouvé."
+            printf '\\timing on\nSELECT 1;\nSELECT 1;\nSELECT 1;\n' | sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -At 2>&1 | grep -E 'Time:' | head -3 || true
+            echo "  connexion complète + SELECT 1 ×3 (socket)"
+            for i in 1 2 3; do
+              TIMEFORMAT='    connect_query_s=%R'
+              { time sudo -n -u postgres "$PGB/psql" -p 5433 -d sect_replica -Atq -c 'SELECT 1' >/dev/null; } 2>&1 || true
+            done
 
             echo
             echo "══ E. CHEMIN UTILISATEUR COMPLET (depuis Marseille) ══"
