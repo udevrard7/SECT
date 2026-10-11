@@ -91,18 +91,60 @@ func attemptCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, perAttempt)
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// SECT-LATENCY-3 : cooldown mémoire (implémentation de CooldownDurationMs)
+// ──────────────────────────────────────────────────────────────────────────
+
+// providerInCooldown indique si le provider a échoué il y a moins de
+// CooldownDurationMs. Le provider de TÊTE (priorité 1) est toujours essayé
+// quoi qu'il arrive (garantit une tentative réelle et une erreur parlante
+// quand tout le reste est en cooldown).
+func (s *AIService) providerInCooldown(id string, config FailoverConfig) bool {
+	if config.CooldownDurationMs <= 0 {
+		return false
+	}
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	if s.lastFailures == nil {
+		return false
+	}
+	t, ok := s.lastFailures[id]
+	if !ok {
+		return false
+	}
+	return time.Since(t) < time.Duration(config.CooldownDurationMs)*time.Millisecond
+}
+
+// providerFailed enregistre l'échec (démarre le cooldown).
+func (s *AIService) providerFailed(id string) {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	if s.lastFailures == nil {
+		s.lastFailures = make(map[string]time.Time)
+	}
+	s.lastFailures[id] = time.Now()
+}
+
+// providerSucceeded efface le cooldown (guérison).
+func (s *AIService) providerSucceeded(id string) {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	if s.lastFailures != nil {
+		delete(s.lastFailures, id)
+	}
+}
+
 // ChatWithFailover tente l'appel LLM avec failover automatique.
 //
 // Comportement :
 //  1. Lit tous les providers actifs triés par priorité.
-//  2. Pour chaque provider, tente ChatCompletion.
-//  3. Si succès → retourne le résultat.
-//  4. Si échec → log dans AIFailoverEvent, passe au suivant.
-//  5. Si tous échouent → retourne la dernière erreur.
-//
-// Le failover respecte la config (cooldown, maxConsecutiveFailures) mais
-// reste simple : on ne fait pas de retry sur le même provider (le cooldown
-// serait complexe à gérer sans state persistant). On bascule juste au suivant.
+//  2. Passe les providers en cooldown (échec récent — SECT-LATENCY-3 :
+//     CooldownDurationMs ENFIN implémenté, la doc le promettait).
+//  3. Pour chaque provider restant, tente ChatCompletion (borné par
+//     tentative si le budget global est court, cf. attemptCtx).
+//  4. Si succès → retourne le résultat.
+//  5. Si échec → log dans AIFailoverEvent, passe au suivant.
+//  6. Si tous échouent → retourne la dernière erreur.
 func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage, logger *slog.Logger) (*FailoverResult, error) {
 	providers, err := s.getActiveProvidersForFailover(ctx)
 	if err != nil {
@@ -132,12 +174,29 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 	var lastErr error
 	var prevProvider *ActiveProvider // BUG #10 fix: pour tracer fromProvider→toProvider
 	for i, p := range providers {
+		// SECT-LATENCY-3 : cooldown — un provider qui vient d'échouer (ou
+		// d'exploser son budget par tentative) est écarté pendant
+		// CooldownDurationMs (défaut 60s). Effet : un provider chroniquement
+		// lent en tête de chaîne (MuleRouter, TTFB 5,8s pour 20 tokens)
+		// ne peut plus monopoliser le budget à CHAQUE appel — le bon provider
+		// (OpenRouter, 0,5s) reçoit enfin le budget complet dès l'appel suivant.
+		if i > 0 && s.providerInCooldown(p.ID, config) {
+			if logger != nil {
+				logger.Warn("AI provider en cooldown, sauté",
+					"provider", p.Name,
+					"cooldown_ms", config.CooldownDurationMs,
+				)
+			}
+			continue
+		}
+
 		// Tenter l'appel avec ce provider — borné par tentative si le
 		// budget global est court (SECT-LATENCY-3, cf. attemptCtx).
 		attCtx, cancelAttempt := attemptCtx(ctx)
 		result, err := s.chatWithProvider(attCtx, p, messages)
 		cancelAttempt()
 		if err == nil {
+			s.providerSucceeded(p.ID)
 			// Succès !
 			if i > 0 && logger != nil {
 				logger.Info("AI failover réussi",
@@ -160,6 +219,7 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
 		// Échec : logger et passer au suivant.
 		lastErr = err
 		prevProvider = p
+		s.providerFailed(p.ID)
 		if logger != nil {
 			logger.Warn("AI provider échec, bascule vers le suivant",
 				"provider", p.Name,

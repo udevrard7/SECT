@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -78,6 +79,15 @@ type ActiveProvider struct {
 type AIService struct {
 	dbPool *pgxpool.Pool
 	client *http.Client
+
+	// SECT-LATENCY-3 : cooldown en mémoire des providers récemment en échec
+	// (implémentation enfin réelle de FailoverConfig.CooldownDurationMs).
+	// Un provider qui vient d'échouer (4xx/5xx/réseau/budget explosé) est
+	// écarté pendant le cooldown — il ne reprend sa place dans la chaîne
+	// qu'après guérison du symptôme ou expiration. Map limitée par le nombre
+	// de providers configurés (quelques unités) — pas de fuite réaliste.
+	failMu       sync.Mutex
+	lastFailures map[string]time.Time
 }
 
 // NewAIService construit un AIService à partir du pool Neon.
@@ -89,7 +99,8 @@ func NewAIService(dbPool *pgxpool.Pool) *AIService {
 		// 180s alors que l'IA répondait à 200s (l'utilisateur réessayait →
 		// double coût). Maintenant les 2 paths ont le même timeout 5min,
 		// cohérent avec le frontend (AbortController 120-360s).
-		client: &http.Client{Timeout: 5 * time.Minute},
+		client:       &http.Client{Timeout: 5 * time.Minute},
+		lastFailures: make(map[string]time.Time),
 	}
 }
 
