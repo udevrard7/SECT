@@ -59,3 +59,7 @@ jobs:
             systemctl status sect-replica-sync.service --no-pager 2>&1 | head -12 || true
             journalctl -u sect-replica-sync --no-pager -n 25 2>&1 || true
             systemctl list-timers 'sect-replica-sync' --no-pager || true
+            echo "── sect-backup (service + journal du passage 03:32) ──"
+            systemctl status sect-backup.service --no-pager 2>&1 | head -12 || true
+            journalctl -u sect-backup.service --no-pager -n 40 2>&1 || true
+            systemctl list-timers 'sect-backup*' --no-pager || true
