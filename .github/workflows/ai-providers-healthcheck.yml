@@ -10,18 +10,23 @@
 #
 # MESURE (lecture seule + 1 mini-chat par provider) :
 #   1. Providers chat lus en base (NEON_DIRECT) — jamais affichés ;
-#   2. GET {baseUrl}/models → code HTTP (validité clé + endpoint) ;
-#   3. POST {baseUrl}/chat/completions "ping" (max_tokens 10) →
-#      code HTTP + latence + extrait d'erreur éventuel (120 chars) ;
-#   4. Tableau récapitulatif + verdict global.
+#   2. GET {baseUrl}/models puis POST {baseUrl}/chat/completions
+#      "ping" (max_tokens 10) : code HTTP + latence + extrait
+#      d'erreur éventuel (110 chars) ;
+#   3. Tableau récapitulatif + verdict global.
+#
+# IMPLEMENTATION : le moteur de test est un script Python transmis
+# en base64 (pattern maison — boucle while/read + substitutions
+# imbriquées fragiles via drone-ssh, cf. SECT-LATENCY-4). Bash ne
+# fait que la lecture psql + l'appel python3.
 #
 # Réutilisable par l'exploitant (workflow_dispatch) après chaque
 # rotation de clé ou changement de modèle.
 #
 # Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
-# (piège n°7) ; if…then…fi seuls ; dollar-quoting psql pour les
-# littéraux ; DSN lu sur la VM, jamais affiché ; clés dans des
-# variables, jamais echo (longueur uniquement).
+# (piège n°7) ; if…then…fi seuls ; dollar-quoting psql ; DSN lu sur
+# la VM, jamais affiché ; clés en variables/fichiers perms 600,
+# jamais echo (le TSV est rm à la fin).
 # ============================================================
 name: Healthcheck providers IA
 
@@ -33,7 +38,7 @@ permissions:
 
 jobs:
   healthcheck:
-    name: "🩺 9 providers × (models + mini-chat) depuis egress OCI"
+    name: "9 providers x (models + mini-chat) depuis egress OCI"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -56,6 +61,7 @@ jobs:
 
             echo "── 1. Providers chat en base (Neon direct, BYPASSRLS) ──"
             "$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT "id" || $q$|$q$ || "name" || $q$|$q$ || COALESCE("baseUrl", $q$$q$) || $q$|$q$ || COALESCE("apiKey", $q$$q$) || $q$|$q$ || COALESCE("model", $q$$q$) FROM "AIProviderConfig" WHERE COALESCE("capability", $q$chat$q$) = $q$chat$q$ ORDER BY "priority"' > /tmp/hc_providers.tsv
+            chmod 600 /tmp/hc_providers.tsv
             N=$(wc -l < /tmp/hc_providers.tsv)
             echo "Providers chat trouvés : $N"
             if [ "$N" = "0" ]; then
@@ -65,40 +71,8 @@ jobs:
 
             echo ""
             echo "── 2. Tests /models + mini-chat (max_tokens 10, timeout 45 s) ──"
-            : > /tmp/hc_results.txt
-            while IFS='|' read -r PID PNAME PPROV PBASE PKEY PMODEL; do
-              [ -z "$PID" ] && continue
-              echo "   • $PNAME [$PPROV] model=$PMODEL"
-
-              MHTTP=$(curl -s -o /tmp/hc_models.json -w '%{http_code}' --max-time 20 -H "Authorization: Bearer $PKEY" "$PBASE/models" 2>/dev/null || echo NET)
-              BODY=$(printf '{"model":"%s","messages":[{"role":"user","content":"ping"}],"max_tokens":10}' "$PMODEL")
-              CRES=$(curl -s -o /tmp/hc_chat.json -w '%{http_code} %{time_total}' --max-time 45 -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $PKEY" -d "$BODY" "$PBASE/chat/completions" 2>/dev/null || echo "NET 45.000")
-              CHTTP=$(echo "$CRES" | cut -d' ' -f1)
-              CTIME=$(echo "$CRES" | cut -d' ' -f2)
-
-              if [ "$CHTTP" = "200" ] || [ "$CHTTP" = "201" ]; then
-                VERDICT="SAIN"
-                DETAIL=""
-              else
-                VERDICT="ERREUR"
-                DETAIL=$(head -c 120 /tmp/hc_chat.json | tr '\n' ' ' | tr -d '\r')
-                if [ "$CHTTP" = "NET" ]; then
-                  DETAIL="erreur réseau / timeout 45 s"
-                fi
-              fi
-              printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$PID" "$PNAME" "$PMODEL" "$MHTTP" "$CHTTP" "$CTIME" "$VERDICT" "$DETAIL" >> /tmp/hc_results.txt
-              echo "     models=$MHTTP chat=$CHTTP (${CTIME}s) → $VERDICT $DETAIL"
-              sleep 1
-            done < /tmp/hc_providers.tsv
-
-            echo ""
-            echo "── 3. Récapitulatif ──"
-            printf '%-24s %-28s %-8s %-8s %-9s %s\n' "PROVIDER" "MODEL" "MODELS" "CHAT" "LATENCE" "VERDICT"
-            sort -t'|' -k5,5 /tmp/hc_results.txt | while IFS='|' read -r RID RNAME RMODEL RMHTTP RCHTTP RCTIME RVERDICT RDETAIL; do
-              printf '%-24s %-28s %-8s %-8s %-9s %s\n' "$RNAME" "$RMODEL" "$RMHTTP" "$RCHTTP" "${RCTIME}s" "$RVERDICT"
-            done
-
-            SAINS=$(grep -c '|SAIN|' /tmp/hc_results.txt || true)
-            TOTAL=$(wc -l < /tmp/hc_results.txt)
-            echo ""
-            echo "═══ VERDICT : $SAINS/$TOTAL providers sains (depuis egress OCI) ═══"
+            echo 'IyBTRUNULUFJLVJFUEFJUi0xIOKAlCBtb3RldXIgaGVhbHRoY2hlY2sgcHJvdmlkZXJzIChwYXR0ZXJuIG1haXNvbiBiYXNlNjQgdmlhIGRyb25lLXNzaCkKIyBMaXQgL3RtcC9oY19wcm92aWRlcnMudHN2IChpZHxuYW1lfHByb3ZpZGVyfGJhc2VVcmx8YXBpS2V5fG1vZGVsKSwKIyB0ZXN0ZSBHRVQgL21vZGVscyArIG1pbmktY2hhdCwgYWZmaWNoZSBsZSB0YWJsZWF1ICsgdmVyZGljdC4KaW1wb3J0IGpzb24KaW1wb3J0IHRpbWUKaW1wb3J0IHVybGxpYi5yZXF1ZXN0CmltcG9ydCB1cmxsaWIuZXJyb3IKCgpkZWYgaHR0cCh1cmwsIGtleSwgZGF0YT1Ob25lLCB0aW1lb3V0PTIwKToKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsKQogICAgIyBVQSBjdXJsLWxpa2UgOiBjZXJ0YWlucyBXQUYgKENsb3VkZmxhcmUgMTAxMCwgTXVsZVJvdXRlcikgYmFubmlzc2VudAogICAgIyBsYSBzaWduYXR1cmUgUHl0aG9uLXVybGxpYiBhbG9ycyBxdWUgY3VybCBwYXNzZS4KICAgIHJlcS5hZGRfaGVhZGVyKCdVc2VyLUFnZW50JywgJ2N1cmwvOC41LjAnKQogICAgcmVxLmFkZF9oZWFkZXIoJ0F1dGhvcml6YXRpb24nLCAnQmVhcmVyICcgKyBrZXkpCiAgICBpZiBkYXRhIGlzIG5vdCBOb25lOgogICAgICAgIHJlcS5kYXRhID0ganNvbi5kdW1wcyhkYXRhKS5lbmNvZGUoKQogICAgICAgIHJlcS5hZGRfaGVhZGVyKCdDb250ZW50LVR5cGUnLCAnYXBwbGljYXRpb24vanNvbicpCiAgICB0MCA9IHRpbWUudGltZSgpCiAgICB0cnk6CiAgICAgICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSwgdGltZW91dD10aW1lb3V0KSBhcyByOgogICAgICAgICAgICByZXR1cm4gci5zdGF0dXMsIHRpbWUudGltZSgpIC0gdDAsIHIucmVhZCg1MDAwMDApLmRlY29kZSgndXRmLTgnLCAncmVwbGFjZScpCiAgICBleGNlcHQgdXJsbGliLmVycm9yLkhUVFBFcnJvciBhcyBlOgogICAgICAgIGJvZHkgPSAnJwogICAgICAgIHRyeToKICAgICAgICAgICAgYm9keSA9IGUucmVhZCg1MDAwMDApLmRlY29kZSgndXRmLTgnLCAncmVwbGFjZScpCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgcGFzcwogICAgICAgIHJldHVybiBlLmNvZGUsIHRpbWUudGltZSgpIC0gdDAsIGJvZHkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICByZXR1cm4gMCwgdGltZS50aW1lKCkgLSB0MCwgc3RyKGUpCgoKcm93cyA9IFtdCmZvciBsaW5lIGluIG9wZW4oJy90bXAvaGNfcHJvdmlkZXJzLnRzdicsIGVuY29kaW5nPSd1dGYtOCcpOgogICAgcGFydHMgPSBsaW5lLnJzdHJpcCgnXG4nKS5zcGxpdCgnfCcpCiAgICBpZiBsZW4ocGFydHMpIDwgNiBvciBub3QgcGFydHNbMF06CiAgICAgICAgY29udGludWUKICAgIHBpZCwgbmFtZSwgcHJvdiwgYmFzZSwga2V5LCBtb2RlbCA9IHBhcnRzWzo2XQogICAgbWNvZGUsIF8sIF8gPSBodHRwKGJhc2UucnN0cmlwKCcvJykgKyAnL21vZGVscycsIGtleSwgdGltZW91dD0yMCkKICAgIGJvZHkgPSB7J21vZGVsJzogbW9kZWwsICdtZXNzYWdlcyc6IFt7J3JvbGUnOiAndXNlcicsICdjb250ZW50JzogJ3BpbmcnfV0sICdtYXhfdG9rZW5zJzogMTB9CiAgICBjY29kZSwgZHQsIHJlc3AgPSBodHRwKGJhc2UucnN0cmlwKCcvJykgKyAnL2NoYXQvY29tcGxldGlvbnMnLCBrZXksIGRhdGE9Ym9keSwgdGltZW91dD00NSkKICAgIHNhaW4gPSBjY29kZSBpbiAoMjAwLCAyMDEpCiAgICBkZXRhaWwgPSAnJyBpZiBzYWluIGVsc2UgJyAnLmpvaW4ocmVzcC5zcGxpdCgpKVs6MTEwXQogICAgcm93cy5hcHBlbmQoKG5hbWUsIG1vZGVsLCBtY29kZSwgY2NvZGUsIGR0LCAnU0FJTicgaWYgc2FpbiBlbHNlICdFUlJFVVInLCBkZXRhaWwpKQogICAgcHJpbnQoJyAgICogJXMgWyVzXSBtb2RlbD0lcycgJSAobmFtZSwgcHJvdiwgbW9kZWwpKQogICAgcHJpbnQoJyAgICAgbW9kZWxzPSVzIGNoYXQ9JXMgKCUuMmZzKSAtPiAlcyAlcycgJSAobWNvZGUsIGNjb2RlLCBkdCwgJ1NBSU4nIGlmIHNhaW4gZWxzZSAnRVJSRVVSJywgZGV0YWlsKSkKICAgIHRpbWUuc2xlZXAoMSkKCnByaW50KCkKcHJpbnQoJy0tIDMuIFJlY2FwaXR1bGF0aWYgLS0nKQpwcmludCgnJS0yNnMgJS0zMHMgJS03cyAlLTVzICUtOHMgJXMnICUgKCdQUk9WSURFUicsICdNT0RFTCcsICdNT0RFTFMnLCAnQ0hBVCcsICdMQVRFTkNFJywgJ1ZFUkRJQ1QnKSkKZm9yIG5hbWUsIG1vZGVsLCBtY29kZSwgY2NvZGUsIGR0LCB2ZXJkaWN0LCBkZXRhaWwgaW4gc29ydGVkKHJvd3MsIGtleT1sYW1iZGEgcjogKDAgaWYgcls1XSA9PSAnU0FJTicgZWxzZSAxLCByWzRdKSk6CiAgICBwcmludCgnJS0yNnMgJS0zMHMgJS03cyAlLTVzICUtOC4yZiAlcycgJSAobmFtZSwgbW9kZWwsIG1jb2RlLCBjY29kZSwgZHQsIHZlcmRpY3QpKQpzYWlucyA9IHN1bSgxIGZvciByIGluIHJvd3MgaWYgcls1XSA9PSAnU0FJTicpCnByaW50KCkKcHJpbnQoJz09PSBWRVJESUNUIDogJWQvJWQgcHJvdmlkZXJzIHNhaW5zIChkZXB1aXMgZWdyZXNzIE9DSSkgPT09JyAlIChzYWlucywgbGVuKHJvd3MpKSkKaWYgc2FpbnMgPT0gMDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoMSkK' | base64 -d > /tmp/hc_test.py
+            python3 /tmp/hc_test.py
+            RC=$?
+            rm -f /tmp/hc_providers.tsv /tmp/hc_test.py
+            exit $RC
