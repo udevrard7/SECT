@@ -5944,3 +5944,33 @@ VALIDE référentiel — 4 alignements) :
 - Cloisonnement intact : claims ETUDIANT → 0 ligne ; RESPONSABLE d'un
   autre étab → 0 ligne. ROLLBACK vérifié : Ouvrage=0,
   AlignementOuvrage=0 en base après test (prod vierge conservée).
+
+---
+
+## SECT-BIBLIO-6 — Analyse IA bibliothèque : E2E, bug 502 corrigé, providers réordonnés (12 octobre 2026)
+
+**Demande** : « l'analyse IA du formulaire de la bibliothèque semble ne pas fonctionner : effectue un test E2E et règle tous les bugs et améliore ».
+
+### E2E & reproduction (PDF de test 6 pages, métadonnées réalistes, login ADMIN)
+
+- **Local** (backend Go 8080 + Neon) : POST /api/ouvrages/analyze → 200 en 12,9 s, 9 champs extraits à 100 % avec preuves (modèle qwen/qwen3.8-27b via OpenRouter). La chaîne FONCTIONNE quand les providers répondent.
+- **Prod** (Render direct, instance CHAUDE) : **502 vide à 46,9 s et 64,4 s** — bug reproduit 2/2.
+- **Cause racine** : le handler /analyze n'avait AUCUN des deux garde-fous de SECT-LATENCY-3 : (1) pas de deadline sur le ctx → `attemptCtx` no-op → un provider qui pend consomme jusqu'à 5 min ; (2) pas de réarmement du WriteTimeout 30 s (main.go) → la réponse calculée est TUÉE EN SILENCE, le client reçoit 502/erreur réseau.
+
+### Corrections code
+
+- `backend/internal/transport/http/ouvrage_handlers.go` : budget `analyzeBudget = 75 s` (≥ 60 s → attemptCtx NON-cappé : chaque provider a le temps qu'il faut, le total reste le garde-fou — la part fixe 15 s coupait la réponse EN COURS du seul provider sain, mesuré 12,9 s sain → >15 s congestionné) + `rearmWriteDeadline(100 s)` AVANT l'appel IA + `ParseMultipartForm` 100→8 Mo en RAM (le surplus va en fichiers temporaires — OOM-safe Render free).
+- `backend/internal/usecase/ouvrage.go` : `analyseMaxPages` 8→5, `analyseMaxRunes` 12 000→6 000 (les métadonnées vivent sur les 3 premières pages ; prompt 2× plus court = LLM ~2× plus rapide).
+- `frontend/src/components/bibliotheque/bibliotheque-page.tsx` : anti-course (AbortController + numéro de génération — le PDF B n'est plus pré-rempli par les métadonnées du PDF A), timeout client 110 s, message d'erreur persistant avec bouton **« Relancer l'analyse »** (échec transport OU indisponible) sans re-choisir le fichier, annulation au démontage.
+
+### Correctif de données (API admin, réversible)
+
+- `/api/ai-providers/priority` : OpenRouter 4→**1**, MuleRouter 5→**2**, Groq 1→3, Mistral 3→4 (DeepSeek 5, Cerebras 6, Z-AI 7, Voxtral TTS 8).
+- Motif : test de santé via /api/ai-providers/{id}/test — **2/7 providers chat sains seulement** : OpenRouter ✅, MuleRouter ✅ ; Groq ❌ 403 Forbidden, Mistral ❌ 429 (rate-limit intermittent), DeepSeek ❌ 402 Insufficient Balance, Cerebras ❌ 403 (Cloudflare), Z-AI ❌ 404 (endpoint bigmodel.cn). Les 3 cassés en tête brûlaient le budget avant d'atteindre les sains.
+- **Reste pour l'exploitant (clés, pas code)** : renouveler la clé Groq (403), recharger DeepSeek (402), corriger clé/endpoint Cerebras (403) et Z-AI (404 — baseUrl/model invalides). Avec 2-3 providers sains en tête, l'analyse répondra en 2-15 s.
+
+### Validation E2E post-fix (local)
+
+- 200 TOUJOURS (plus jamais de réponse vide/502) : essais 76 s → {disponible:false} honnête ; 52,7 s → ✅ métadonnées complètes (titre/auteurs/éditeur/édition/année/ISBN/langue/thèmes/description, 5 pages analysées).
+- go vet + go build + gofmt 0 erreur ; tsc --noEmit + ESLint 0 erreur.
+- Déploiement auto Render/Vercel via push ; E2E prod à confirmer après deploy.

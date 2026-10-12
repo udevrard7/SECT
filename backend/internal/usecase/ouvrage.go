@@ -479,10 +479,13 @@ func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionCl
 // ──────────────────────────────────────────────────────────────────────
 
 // constantes d'analyse : pages extraites (couverture + page de titre +
-// copyright suffisent) et budget de texte envoyé au LLM.
+// copyright suffisent — SECT-BIBLIO-6 : 8→5 pages et 12k→6k runes :
+// les métadonnées vivent sur les 3 premières pages ; un prompt deux fois
+// plus court divise le temps de traitement LLM par ~2 — décisif pour
+// tenir dans la part fixe de 15 s par provider (failover.go attemptCtx)).
 const (
-	analyseMaxPages = 8
-	analyseMaxRunes = 12_000
+	analyseMaxPages = 5
+	analyseMaxRunes = 6_000
 )
 
 // extractPDFText — extrait le texte des premières pages (lib pure Go,

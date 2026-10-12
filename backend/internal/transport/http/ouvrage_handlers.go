@@ -8,6 +8,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -439,6 +440,28 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 // Réponse TOUJOURS 200 {disponible:false, raison} si l'analyse est
 // impossible (PDF scanné, IA en échec) : la saisie manuelle reste
 // possible, l'aide ne doit jamais bloquer le dépôt.
+//
+// SECT-BIBLIO-6 (E2E prod 12/10) : deux garde-fous de latence —
+//  1. BUDGET 75 s sur l'appel IA : sans deadline, attemptCtx no-op → un
+//     provider qui pend consomme jusqu'à 5 min (timeout client http IA)
+//     et le failover n'a plus de budget pour les suivants. À ≥ 60 s,
+//     attemptCtx passe en mode NON-CAPPÉ (politique workers) : chaque
+//     provider a le temps QU'IL LUI FAUT, le budget total reste le
+//     garde-fou (75 s). Pourquoi pas 40 s ? E2E local : l'extraction de
+//     métadonnées sur qwen3.8-27b/OpenRouter prend 12,9 s (instance
+//     saine) à >15 s (congestion free-tier variable à la minute) — la
+//     part fixe de 15 s coupait la réponse EN COURS du seul provider
+//     sain. 75 s tolère la congestion tout en tuant les providers
+//     réellement pendus ; les échecs instantanés (402/403, ~0,5 s) ne
+//     consomment rien.
+//  2. REARM du WriteDeadline (+25 s de marge) : le WriteTimeout global
+//     30 s (main.go) est posé à la lecture des headers — sans réarmement,
+//     une réponse calculée en 25-30 s est TUÉE EN SILENCE (0 octet écrit,
+//     le client reçoit 502 vide — reproduit en prod : 502 à 46 s et 64 s,
+//     instance chaude, PDF texte extrait OK). Le réarmement garantit que
+//     le handler peut TOUJOURS livrer son {disponible:false, raison}.
+const analyzeBudget = 75 * time.Second
+
 func (s *Server) analyzeOuvrage(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
@@ -447,7 +470,9 @@ func (s *Server) analyzeOuvrage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 100<<20)
-	if err := r.ParseMultipartForm(100 << 20); err != nil {
+	// SECT-BIBLIO-6 : 8 Mo en RAM max (le surplus va en fichiers temporaires
+	// — avant : 100 Mo de RAM Render free pour un seul PDF volumineux).
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "fichier trop volumineux ou formulaire invalide (max 100 Mo)")
 		return
 	}
@@ -464,7 +489,12 @@ func (s *Server) analyzeOuvrage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.ouvrageUC.Analyze(r.Context(), claims, content, header.Filename)
+	// SECT-BIBLIO-6 : budget + réarmement AVANT l'appel IA (voir doc ci-dessus).
+	ctx, cancel := context.WithTimeout(r.Context(), analyzeBudget)
+	defer cancel()
+	rearmWriteDeadline(w, analyzeBudget+25*time.Second)
+
+	result, err := s.ouvrageUC.Analyze(ctx, claims, content, header.Filename)
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return

@@ -76,6 +76,8 @@ import {
   GraduationCap,
   Sparkles,
   BadgeCheck,
+  // SECT-BIBLIO-6 : relance de l'analyse IA.
+  RefreshCw,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -765,6 +767,16 @@ export function BibliothequePage() {
   // exigent les champs requis complétés par l'humain.
   const [analyseEnCours, setAnalyseEnCours] = useState(false)
   const [analyse, setAnalyse] = useState<AnalyseOuvrageResult | null>(null)
+  // SECT-BIBLIO-6 : message d'erreur réseau/timeout (bouton « Relancer »).
+  // Distinct de `analyse` (réponse backend {disponible:false, raison}) —
+  // ici c'est un échec transport (502, timeout, réseau) : l'utilisateur
+  // doit pouvoir relancer SANS re-choisir le fichier.
+  const [analyseErreur, setAnalyseErreur] = useState<string | null>(null)
+  // SECT-BIBLIO-6 : anti-course — changer de fichier annule l'analyse du
+  // précédent (sinon la réponse lente du 1er PDF pré-remplit le formulaire
+  // du 2e : métadonnées FAUSSES). AbortController + génération par requête.
+  const analyseAbortRef = useRef<AbortController | null>(null)
+  const analyseGenRef = useRef(0)
   // SECT-BIBLIO-5 (000137) : classes destinatrices sélectionnées
   // (ENSEIGNANT — intersection scellée serveur avec EnseignantFiliere).
   const [classesSelectionnees, setClassesSelectionnees] = useState<
@@ -809,6 +821,9 @@ export function BibliothequePage() {
     setDepotProposition(null)
     setAnalyse(null)
     setAnalyseEnCours(false)
+    setAnalyseErreur(null)
+    analyseAbortRef.current?.abort()
+    analyseAbortRef.current = null
     setClassesSelectionnees([])
   }
 
@@ -816,9 +831,23 @@ export function BibliothequePage() {
   // au choix du fichier. PRÉ-REMPLIT le formulaire (valeur + confiance +
   // preuve), JAMAIS bloquante : indisponible → toast d'information et
   // saisie manuelle (le principe reste human-in-the-loop).
+  // SECT-BIBLIO-6 : annulation de la requête précédente (anti-course
+  // multi-fichiers), timeout client 110 s (le budget backend est 75 s —
+  // cf. analyzeBudget, ouvrage_handlers.go) et message d'erreur avec
+  // bouton « Relancer » (analyseErreur) au lieu d'un toast muet.
   const lancerAnalyse = async (f: File) => {
+    // 1. Annule toute analyse en cours (nouveau fichier choisi).
+    analyseAbortRef.current?.abort()
+    const controller = new AbortController()
+    analyseAbortRef.current = controller
+    const gen = ++analyseGenRef.current
+
     setAnalyse(null)
+    setAnalyseErreur(null)
     setAnalyseEnCours(true)
+    // Filet de sécurité : le backend répond toujours en ≤ 75 s (budget
+    // analyzeBudget) — 55 s couvre la latence CDN + marge.
+    const timeout = setTimeout(() => controller.abort(), 110_000)
     try {
       const fd = new FormData()
       fd.append('file', f)
@@ -826,12 +855,17 @@ export function BibliothequePage() {
         method: 'POST',
         body: fd,
         credentials: 'include',
+        signal: controller.signal,
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.error || `Erreur ${res.status}`)
       }
       const result = (await res.json()) as AnalyseOuvrageResult
+      // Génération obsolète (un autre fichier a été choisi entre-temps) :
+      // on ignore silencieusement — ne JAMAIS pré-remplir avec les
+      // métadonnées d'un autre PDF.
+      if (analyseGenRef.current !== gen) return
       setAnalyse(result)
       if (result.disponible) {
         // Pré-remplissage HUMAIN-ÉDITABLE (les champs restent modifiables).
@@ -861,11 +895,21 @@ export function BibliothequePage() {
       }
     } catch (err) {
       // Erreur honnête : l'aide ne bloque JAMAIS le dépôt.
+      if (analyseGenRef.current !== gen) return
+      const msg =
+        err instanceof DOMException && err.name === 'AbortError'
+          ? 'L’analyse a pris trop de temps (providers IA congestionnés ou indisponibles).'
+          : err instanceof Error
+            ? err.message
+            : 'Erreur inconnue'
+      setAnalyseErreur(msg)
       toast.info('Analyse IA impossible', {
-        description: err instanceof Error ? err.message : 'Erreur inconnue',
+        description: `${msg} — remplissez le formulaire manuellement ou relancez l’analyse.`,
       })
     } finally {
-      setAnalyseEnCours(false)
+      clearTimeout(timeout)
+      // Ne PAS remettre à false si une NOUVELLE analyse a déjà démarré.
+      if (analyseGenRef.current === gen) setAnalyseEnCours(false)
     }
   }
 
@@ -888,6 +932,23 @@ export function BibliothequePage() {
     // assisté pendant que l'utilisateur regarde le formulaire).
     lancerAnalyse(f)
   }
+
+  // SECT-BIBLIO-6 : relance sans re-choisir le fichier (échec transport
+  // ou analyse indisponible — providers congestionnés, cooldown passager).
+  const relancerAnalyse = () => {
+    if (!fichier || analyseEnCours) return
+    lancerAnalyse(fichier)
+  }
+
+  // SECT-BIBLIO-6 : annule la requête d'analyse au démontage (évite un
+  // setState sur composant démonté si l'utilisateur quitte le formulaire
+  // pendant l'analyse).
+  useEffect(() => {
+    return () => {
+      analyseAbortRef.current?.abort()
+      analyseAbortRef.current = null
+    }
+  }, [])
 
   const soumettreDepot = async () => {
     if (!fTitre.trim()) {
@@ -2134,11 +2195,57 @@ export function BibliothequePage() {
               {analyse && !analyse.disponible && (
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3.5 py-2.5 text-sm text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>
-                    Analyse IA indisponible — {analyse.raison ?? 'raison inconnue'}.{' '}
-                    Remplissez le formulaire manuellement : le dépôt reste
-                    entièrement possible.
-                  </span>
+                  <div className="flex-1 space-y-2">
+                    <span>
+                      Analyse IA indisponible — {analyse.raison ?? 'raison inconnue'}.{' '}
+                      Remplissez le formulaire manuellement : le dépôt reste
+                      entièrement possible.
+                    </span>
+                    {/* SECT-BIBLIO-6 : relance sans re-choisir le fichier —
+                        le cooldown passager d'un provider ne doit pas
+                        condamner l'utilisateur à reparcourir son disque. */}
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                        onClick={relancerAnalyse}
+                        disabled={analyseEnCours}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                        Relancer l'analyse
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* SECT-BIBLIO-6 : échec transport (502, timeout 35 s, réseau) —
+                  message persistant + relance, au lieu d'un toast muet qui
+                  laissait l'utilisateur sans explication ni action. */}
+              {analyseErreur && !analyseEnCours && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3.5 py-2.5 text-sm text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <span>
+                      Analyse IA impossible — {analyseErreur} Remplissez le
+                      formulaire manuellement : le dépôt reste entièrement
+                      possible.
+                    </span>
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                        onClick={relancerAnalyse}
+                        disabled={analyseEnCours}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                        Relancer l'analyse
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
 
