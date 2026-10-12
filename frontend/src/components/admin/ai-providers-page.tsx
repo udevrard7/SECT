@@ -255,14 +255,22 @@ const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
     'claude-3-opus-20240229', 'claude-3-haiku-20240307',
   ],
   // ─── Google Gemini ───
+  // SECT-AI-REPAIR-1 : slugs stables 2.5 ajoutés (les preview 05-20
+  // sont obsolètes ; le merge dynamique /models reste la source
+  // primaire, cette liste n'est que le fallback).
   GOOGLE: [
+    'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro',
     'gemini-2.5-pro-preview-06-05', 'gemini-2.5-flash-preview-05-20',
     'gemini-2.0-flash', 'gemini-2.0-flash-lite',
     'gemini-1.5-pro', 'gemini-1.5-flash',
   ],
   // ─── Mistral AI ───
+  // SECT-AI-REPAIR-1 : ministral-8b-latest ajouté (le seul modèle du
+  // free tier qui répond — mistral-small-latest est 429 immédiat sur
+  // le compte actuel ; mesuré 200 OK en 1,06 s, ~77 tok/s).
   MISTRAL: [
     'mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest',
+    'ministral-8b-latest', 'ministral-3b-latest',
     'codestral-latest', 'open-mistral-nemo',
     'open-mixtral-8x22b', 'open-mixtral-8x7b', 'open-mistral-7b',
   ],

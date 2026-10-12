@@ -1,0 +1,104 @@
+# ============================================================
+# SECT-AI-REPAIR-1 — Healthcheck providers IA (9 providers)
+#
+# CONTEXTE (12 octobre 2026) : 4 providers cassés en prod (Groq 403,
+# DeepSeek 402, Cerebras 403, Z-AI 404) + clés renouvelées par
+# l'exploitant. Les tests depuis la sandbox locale sont INDÉCIDABLES
+# pour Groq/Cerebras (403 WAF sur l'IP) et Gemini (400 géo-blocage)
+# — la vérité est celle vue depuis l'egress de la VM OCI (celle du
+# backend primaire qui fait les appels IA réels).
+#
+# MESURE (lecture seule + 1 mini-chat par provider) :
+#   1. Providers chat lus en base (NEON_DIRECT) — jamais affichés ;
+#   2. GET {baseUrl}/models → code HTTP (validité clé + endpoint) ;
+#   3. POST {baseUrl}/chat/completions "ping" (max_tokens 10) →
+#      code HTTP + latence + extrait d'erreur éventuel (120 chars) ;
+#   4. Tableau récapitulatif + verdict global.
+#
+# Réutilisable par l'exploitant (workflow_dispatch) après chaque
+# rotation de clé ou changement de modèle.
+#
+# Pièges respectés (ADR §18.5) : PAS de else/elif sous script_stop
+# (piège n°7) ; if…then…fi seuls ; dollar-quoting psql pour les
+# littéraux ; DSN lu sur la VM, jamais affiché ; clés dans des
+# variables, jamais echo (longueur uniquement).
+# ============================================================
+name: Healthcheck providers IA
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck:
+    name: "🩺 9 providers × (models + mini-chat) depuis egress OCI"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: SSH OCI — healthcheck providers (egress VM = vue prod)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 9m
+          script: |
+            set -euo pipefail
+            PGB=/usr/lib/postgresql/18/bin
+            NEON_DIRECT=$(grep '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            if [ -z "$NEON_DIRECT" ]; then
+              echo "ÉCHEC : NEON_DIRECT_URL absent de /opt/sect/.env"
+              exit 1
+            fi
+
+            echo "── 1. Providers chat en base (Neon direct, BYPASSRLS) ──"
+            "$PGB/psql" "$NEON_DIRECT" -tAc 'SELECT "id" || $q$|$q$ || "name" || $q$|$q$ || COALESCE("baseUrl", $q$$q$) || $q$|$q$ || COALESCE("apiKey", $q$$q$) || $q$|$q$ || COALESCE("model", $q$$q$) FROM "AIProviderConfig" WHERE COALESCE("capability", $q$chat$q$) = $q$chat$q$ ORDER BY "priority"' > /tmp/hc_providers.tsv
+            N=$(wc -l < /tmp/hc_providers.tsv)
+            echo "Providers chat trouvés : $N"
+            if [ "$N" = "0" ]; then
+              echo "ÉCHEC : aucun provider chat en base"
+              exit 1
+            fi
+
+            echo ""
+            echo "── 2. Tests /models + mini-chat (max_tokens 10, timeout 45 s) ──"
+            : > /tmp/hc_results.txt
+            while IFS='|' read -r PID PNAME PPROV PBASE PKEY PMODEL; do
+              [ -z "$PID" ] && continue
+              echo "   • $PNAME [$PPROV] model=$PMODEL"
+
+              MHTTP=$(curl -s -o /tmp/hc_models.json -w '%{http_code}' --max-time 20 -H "Authorization: Bearer $PKEY" "$PBASE/models" 2>/dev/null || echo NET)
+              BODY=$(printf '{"model":"%s","messages":[{"role":"user","content":"ping"}],"max_tokens":10}' "$PMODEL")
+              CRES=$(curl -s -o /tmp/hc_chat.json -w '%{http_code} %{time_total}' --max-time 45 -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $PKEY" -d "$BODY" "$PBASE/chat/completions" 2>/dev/null || echo "NET 45.000")
+              CHTTP=$(echo "$CRES" | cut -d' ' -f1)
+              CTIME=$(echo "$CRES" | cut -d' ' -f2)
+
+              if [ "$CHTTP" = "200" ] || [ "$CHTTP" = "201" ]; then
+                VERDICT="SAIN"
+                DETAIL=""
+              else
+                VERDICT="ERREUR"
+                DETAIL=$(head -c 120 /tmp/hc_chat.json | tr '\n' ' ' | tr -d '\r')
+                if [ "$CHTTP" = "NET" ]; then
+                  DETAIL="erreur réseau / timeout 45 s"
+                fi
+              fi
+              printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$PID" "$PNAME" "$PMODEL" "$MHTTP" "$CHTTP" "$CTIME" "$VERDICT" "$DETAIL" >> /tmp/hc_results.txt
+              echo "     models=$MHTTP chat=$CHTTP (${CTIME}s) → $VERDICT $DETAIL"
+              sleep 1
+            done < /tmp/hc_providers.tsv
+
+            echo ""
+            echo "── 3. Récapitulatif ──"
+            printf '%-24s %-28s %-8s %-8s %-9s %s\n' "PROVIDER" "MODEL" "MODELS" "CHAT" "LATENCE" "VERDICT"
+            sort -t'|' -k5,5 /tmp/hc_results.txt | while IFS='|' read -r RID RNAME RMODEL RMHTTP RCHTTP RCTIME RVERDICT RDETAIL; do
+              printf '%-24s %-28s %-8s %-8s %-9s %s\n' "$RNAME" "$RMODEL" "$RMHTTP" "$RCHTTP" "${RCTIME}s" "$RVERDICT"
+            done
+
+            SAINS=$(grep -c '|SAIN|' /tmp/hc_results.txt || true)
+            TOTAL=$(wc -l < /tmp/hc_results.txt)
+            echo ""
+            echo "═══ VERDICT : $SAINS/$TOTAL providers sains (depuis egress OCI) ═══"

@@ -5979,3 +5979,65 @@ VALIDE référentiel — 4 alignements) :
 
 - Vercel CDN (sect.ftci.fr) → Render, auth cookies httpOnly (shim go-auth) : POST /api/ouvrages/analyze → **200 en 55,1 s, métadonnées complètes** (titre/ISBN/langue…).
 - **E2E navigateur complet** : login ADMIN → bibliothèque → dépôt → upload PDF → « Analyse du document par lIA en cours » → **« Formulaire pré-rempli par lIA »** → 9/9 champs vérifiés dans le DOM (titre, auteurs, éditeur, édition, année, ISBN, langue, thèmes, description). Aucune écriture en base (formulaire abandonné sans soumission).
+
+## SECT-AI-REPAIR-1 — Providers IA : clés renouvelées, Z-AI réparé (baseUrl), modèles free tier, Gemini + HuggingFace ajoutés, workflow healthcheck (12 octobre 2026)
+
+**Demande** : « le problème [4 providers cassés] semble être plus sérieux, je te transmets les API, utilise ton expertise pour réparer, implémenter et améliorer le système https://sect.ftci.fr/ai-providers. Certaines IA nécessitent un rechargement de compte (en attente) — priorise les offres free tier et gratuites ».
+
+### Audit complet des 9 clés (tests directs + catalogue /models)
+
+Les clés renouvelées étaient DÉJÀ en base (mises à jour via la page admin) —
+le problème restait les CONFIGS (baseUrl/modèles obsolètes) et les SOLDES :
+
+| Provider | Diagnostic mesuré | Décision |
+|----------|-------------------|----------|
+| MuleRouter | qwen3.7-plus répond mais 6,9 s ; **qwen-flash testé 0,68 s / ~80 tok/s** | model → qwen-flash, priorité 1 |
+| Mistral | mistral-small-latest = 429 immédiat (code 1300) ; **ministral-8b-latest 200 en 1,06 s / ~77 tok/s** | model → ministral-8b-latest, priorité 2 |
+| OpenRouter | 200 mais **crédit total = 0 $** (usage 0,169 $) + TTFB 10,5 s ; modèles :free = 429 upstream | garde qwen/qwen3.8-27b, priorité 3 (cooldown 402 le sortira proprement) |
+| Groq | **403 WAF même SANS clé depuis la sandbox** (IP bloquée) — indécidable en local | priorité 4, à trancher par le healthcheck OCI |
+| Gemini | **400 « User location is not supported » depuis la sandbox** (géo-blocage IP) ; endpoint OpenAI-compat fonctionnel par conception | **NOUVEAU provider** GOOGLE (gemini-2.5-flash), priorité 5 |
+| Cerebras | 403 Cloudflare depuis la sandbox ; modèle qwen3.7-max non vérifiable en local | priorité 6, à trancher par le healthcheck OCI |
+| Z-AI | **baseUrl FAUX : https://z.ai/api/v1 → 404** (le bug historique) ; la clé marche sur open.bigmodel.cn/api/paas/v4 MAIS solde vide (erreur 1113) | baseUrl corrigé + model glm-4.6, priorité 7 (en attente recharge) |
+| DeepSeek | clé valide (200 /models) ; **402 solde épuisé** ; deepseek-chat n'existe plus (catalogue : deepseek-flash, deepseek-v4-pro) | model → deepseek-flash, priorité 8 (en attente recharge) |
+| HuggingFace | token valide (whoami udevrard7) ; 127 modèles router **MAIS 402 « no remaining credits »** | **NOUVEAU provider** OPENAI_COMPATIBLE (zai-org/GLM-5.3-Flash), priorité 9 (en attente crédits/PRO) |
+
+### Corrections appliquées (data-only, réversible, transaction + assertions)
+
+Transaction sur NEON_DIRECT_URL (rôle BYPASSRLS, pattern workflows) :
+4 UPDATE (Mistral, MuleRouter, Z-AI, DeepSeek) + 2 INSERT (Gemini
+gemini-provider-001 type GOOGLE, HuggingFace huggingface-provider-001 type
+OPENAI_COMPATIBLE) + 1 UPDATE priorités (9 lignes). Assertions pré-commit :
+modèles exacts, baseUrl bigmodel, 9 providers chat actifs. La config est
+relue à chaque appel par getActiveProvidersForFailover (pas de cache) →
+effet immédiat en prod, modulo les cooldowns mémoire ≤ 30 min des providers
+récemment en échec (SECT-LATENCY-4).
+
+### Code (même commit)
+
+- `.github/workflows/ai-providers-healthcheck.yml` : healthcheck
+  réutilisable (workflow_dispatch) — SSH OCI (egress = vue réelle du backend
+  primaire), lit les providers+clés en Neon (jamais affichés), teste
+  GET /models + mini-chat par provider, tableau récapitulatif + verdict
+  N/9 sains. Tranche les cas indécidables depuis une IP bloquée (Groq WAF,
+  Gemini géo, Cerebras Cloudflare).
+- `frontend/src/components/admin/ai-providers-page.tsx` : listes statiques
+  fallback enrichies — GOOGLE : slugs stables gemini-2.5-flash/-lite/pro
+  (les preview 05-20 sont obsolètes) ; MISTRAL : ministral-8b-latest +
+  ministral-3b-latest (le free tier répondant ; small = 429).
+
+### Vérifications
+
+tsc --noEmit EXIT 0 ; eslint (ai-providers-page.tsx) EXIT 0 ; YAML workflow
+validé ; transaction SQL commitée avec assertions 9/9 ; pas de secret
+committé (clés uniquement en DB + /tmp perms 600, jamais dans le diff).
+
+### Reste pour l'exploitant (clés/comptes, pas code)
+
+- Rechargements en attente : Z-AI (erreur 1113), DeepSeek (402),
+  HuggingFace (crédits Inference Providers ou PRO), OpenRouter (0 $ —
+  recharge conseillée pour débloquer les modèles payants et le quota
+  :free 1000 req/j).
+- Après chaque rotation : relancer « Healthcheck providers IA »
+  (workflow_dispatch) puis ajuster les priorités si un provider sain
+  mérite de monter (les free tiers généreux — Groq, Gemini, Cerebras —
+  sont actifs et prendront leur place dès que leurs clés répondront).
