@@ -73,6 +73,37 @@ type landingDemoEntry struct {
 	windowSt time.Time
 }
 
+// landingDemoQCM — forme du QCM attendue du LLM (JSON strict, cf. system
+// prompt). Hoisté en type nommé pour la boucle de retry SECT-AI-REPAIR-1.
+type landingDemoQCM struct {
+	Question     string   `json:"question"`
+	Options      []string `json:"options"`
+	CorrectIndex int      `json:"correctIndex"`
+	Difficulty   string   `json:"difficulty"`
+	Explanation  string   `json:"explanation"`
+}
+
+// parseLandingDemoQCM — extraction tolérante (premier '{' → dernier '}') +
+// unmarshal + validation structurelle. Retourne false si la réponse du LLM
+// est illisible ou malformée (cas mesuré ~1/3 des essais avec gpt-oss-20b :
+// JSON tronqué ou texte autour malgré la consigne).
+func parseLandingDemoQCM(raw string) (landingDemoQCM, bool) {
+	var qcm landingDemoQCM
+	jsonStr := raw
+	if idx := strings.Index(raw, "{"); idx >= 0 {
+		if endIdx := strings.LastIndex(raw, "}"); endIdx > idx {
+			jsonStr = raw[idx : endIdx+1]
+		}
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &qcm); err != nil {
+		return qcm, false
+	}
+	if len(qcm.Options) != 4 || qcm.Question == "" {
+		return qcm, false
+	}
+	return qcm, true
+}
+
 var (
 	landingDemoMu      sync.Mutex
 	landingDemoBuckets = make(map[string]*landingDemoEntry)
@@ -181,7 +212,34 @@ Réponds UNIQUEMENT avec le JSON demandé.`, topic)
 	ctx, cancel := context.WithTimeout(r.Context(), landingDemoTimeout)
 	defer cancel()
 
-	result, err := s.aiService.ChatCompletion(ctx, messages)
+	// SECT-AI-REPAIR-1 — retry parse : un LLM léger en tête de chaîne
+	// (Groq gpt-oss-20b, mesuré 0,23-1,7 s par essai) peut occasionnellement
+	// wrapper le JSON ou le tronquer (422 « Réponse IA illisible » sur ~1/3
+	// des essais). On retente UNE fois — le budget 25 s le permet largement,
+	// le 2e essai passe par le failover qui écartera un provider défaillant.
+	// Une erreur IA (réseau/4xx) ne consomme PAS de retry : elle sort
+	// immédiatement en 503 comme avant (comportement inchangé).
+	var (
+		result *ai.ChatResult
+		qcm    landingDemoQCM
+		ok     bool
+		err    error
+	)
+	for attempt := 1; attempt <= 2; attempt++ {
+		result, err = s.aiService.ChatCompletion(ctx, messages)
+		if err != nil {
+			break
+		}
+		if qcm, ok = parseLandingDemoQCM(result.Content); ok {
+			break
+		}
+		slog.Info("landing-demo : réponse IA non JSON, retry",
+			"attempt", attempt,
+			"model", result.Model,
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
+	}
+
 	if err != nil {
 		// Erreur attendue courante : aucun provider IA actif en base.
 		// On renvoie 503 (Service Unavailable) avec un message actionnable.
@@ -197,44 +255,17 @@ Réponds UNIQUEMENT avec le JSON demandé.`, topic)
 		return
 	}
 
-	// Extraction tolérante du JSON (l'IA peut wrapper dans des ```json ou
-	// ajouter du texte malgré la consigne). On prend du premier '{' au
-	// dernier '}'.
-	raw := result.Content
-	jsonStr := raw
-	if idx := strings.Index(raw, "{"); idx >= 0 {
-		if endIdx := strings.LastIndex(raw, "}"); endIdx > idx {
-			jsonStr = raw[idx : endIdx+1]
-		}
-	}
-
-	var qcm struct {
-		Question     string   `json:"question"`
-		Options      []string `json:"options"`
-		CorrectIndex int      `json:"correctIndex"`
-		Difficulty   string   `json:"difficulty"`
-		Explanation  string   `json:"explanation"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &qcm); err != nil {
+	if !ok {
 		writeJSONError(w, http.StatusUnprocessableEntity,
 			"Réponse IA illisible — réessayez avec un autre sujet.")
 		return
 	}
 
 	// Validation stricte de la structure (defense-in-depth : ne jamais renvoyer
-	// au frontend un QCM malformé qui casserait l'UI).
-	if len(qcm.Options) != 4 {
-		writeJSONError(w, http.StatusUnprocessableEntity,
-			"Le QCM généré n'a pas 4 options — réessayez.")
-		return
-	}
+	// au frontend un QCM malformé qui casserait l'UI). parseLandingDemoQCM a
+	// déjà validé options=4 + question non vide ; reste le fallback d'index.
 	if qcm.CorrectIndex < 0 || qcm.CorrectIndex > 3 {
 		qcm.CorrectIndex = 0 // fallback sûr plutôt que 502
-	}
-	if qcm.Question == "" {
-		writeJSONError(w, http.StatusUnprocessableEntity,
-			"Question vide — réessayez.")
-		return
 	}
 	// Normaliser la difficulté (l'IA peut envoyer "facile" ou "FACILE").
 	diff := strings.TrimSpace(qcm.Difficulty)

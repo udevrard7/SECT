@@ -6041,3 +6041,64 @@ committé (clés uniquement en DB + /tmp perms 600, jamais dans le diff).
   (workflow_dispatch) puis ajuster les priorités si un provider sain
   mérite de monter (les free tiers généreux — Groq, Gemini, Cerebras —
   sont actifs et prendront leur place dès que leurs clés répondront).
+
+---
+
+## SECT-AI-REPAIR-1 — Addendum : healthcheck OCI 5/9 sains, priorités finales, retry parsing landing-demo (12 octobre 2026, suite)
+
+### Healthcheck OCI (runs 38322610861 → 38323081730)
+
+Trois itérations de debug du workflow (moteur bash fragile via drone-ssh →
+moteur Python base64 pattern maison ; SELECT à 6 champs avec provider ;
+User-Agent curl/8.5.0 — Cloudflare 1010 bannit la signature Python-urllib
+sur MuleRouter). Verdict mesuré depuis l'egress OCI (vue réelle du backend
+primaire) :
+
+- **SAINS (5)** : Groq openai/gpt-oss-20b **0,23 s** ; Mistral
+  ministral-8b-latest 0,53 s ; MuleRouter qwen-flash 0,87 s ; OpenRouter
+  qwen/qwen3.8-27b 0,98 s (crédit 0 $ — fragile) ; **Gemini
+  gemini-3-flash-preview 2,44 s (NOUVEAU, free tier)**.
+- **EN ATTENTE RECHARGEMENT (4)** : Cerebras gpt-oss-120b 402 "Payment
+  required" ; Z-AI glm-4.6 429/1113 (baseUrl bigmodel corrigé et validé
+  par /models 200) ; DeepSeek deepseek-flash 402 ; HuggingFace
+  zai-org/GLM-5.3-Flash 402 "no remaining credits".
+- Les 403 Groq/Cerebras et 400 Gemini vus depuis la sandbox locale étaient
+  des **faux négatifs IP** (WAF/géo-blocage) — les clés sont toutes valides
+  (GET /models 200 partout depuis l'OCI). Le catalogue 404 du healthcheck
+  a identifié les slugs de remplacement : llama-3.1-8b-instant retiré chez
+  Groq ; gemini-2.5-flash fermé aux nouveaux comptes (→ 3-flash-preview) ;
+  qwen3.7-max inexistant chez Cerebras (catalogue réel : gpt-oss-120b,
+  qwen-3.8-27b).
+
+### Priorités finales appliquées (UPDATE, 9 lignes)
+
+P1 Groq (free tier 14k req/j, 0,23 s) > P2 Mistral (free tier) > P3 Gemini
+(free tier généreux) > P4 MuleRouter (compte OK) > P5 OpenRouter (crédit 0)
+> P6 Cerebras > P7 Z-AI > P8 DeepSeek > P9 HuggingFace (les 4 derniers en
+attente de rechargement, hard-fail → cooldown 30 min propre).
+
+### E2E prod validé (avant même le déploiement du retry)
+
+- POST https://api.sect.ftci.fr/api/landing-demo → **200 en 1,68 s**,
+  model=openai/gpt-oss-20b (Groq P1 : le réordonnancement est effectif
+  immédiatement, config relue à chaque appel) — QCM cycle de Calvin.
+- Via Vercel CDN (sect.ftci.fr) : 200 en 1,4-1,6 s (2/3 essais), 1 essai
+  422 « Réponse IA illisible » → d'où le retry ci-dessous.
+- Avant (SECT-BIBLIO-6, même jour) : analyse IA 55 s via OpenRouter en
+  queue de chaîne. Le chemin rapide est désormais ~15× plus véloce.
+
+### Code : retry parsing landing-demo (même commit)
+
+`landing_demo_handlers.go` : type `landingDemoQCM` hoisté + fonction
+`parseLandingDemoQCM` (extraction tolérante inchangée) + boucle 2 essais —
+un LLM léger en tête (gpt-oss-20b) wrappe/tronque le JSON ~1 essai sur 3 ;
+le 2e essai passe par le failover (provider défaillant écarté). Erreur IA
+(réseau/4xx) : sortie immédiate en 503, comportement inchangé. Vérifs :
+go build/vet/gofmt EXIT 0.
+
+### Reste pour l'exploitant
+
+Mêmes rechargements que ci-dessus (Cerebras/Z-AI/DeepSeek/HuggingFace,
+OpenRouter conseillé). Après chaque rotation : relancer « Healthcheck
+providers IA » (dispatch) — le catalogue 404 donne les slugs valides, puis
+ajuster les priorités si un provider sain mérite de monter.
