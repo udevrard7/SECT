@@ -5877,10 +5877,70 @@ EXIT 0 ; migration up appliquée prod (v137) puis vérifs SQL : 7 policies
 Ouvrage+OuvrageClasse, 4 fonctions DEFINER, ouvrage_visible()=false sans
 claims, 0 ouvrage non-PLATEFORME sans étab.
 
-Reste en piste : conforme_referentiels_etablissement() pourrait inclure
-les ouvrages PLATEFORME alignés (fonction 000126 inchangée — impact mineur
-: seuls les ouvrages de l'étab comptent dans l'audit de couverture) ;
+Reste en piste : ~~conforme_referentiels_etablissement() pourrait inclure
+les ouvrages PLATEFORME alignés~~ (TRAITÉ en SECT-BIBLIO-6 / 000138) ;
 annotations P4 sur ouvrages plateforme : policy déléguée mais l'UI
 d'annotation reste scopée par ouvrage consulté ; aucune donnée sensible
 créée pendant l'implémentation (table Ouvrage vide en prod au moment du
 déploiement).
+
+## SECT-BIBLIO-6 — Conformité : les ouvrages PLATEFORME alignés comptent dans l'audit d'établissement (000138)
+
+Retour exploitant sur SECT-BIBLIO-5 : « l'audit de conformité
+conformite_referentiels_etablissement() pourrait inclure les ouvrages
+PLATEFORME alignés — impact mineur, à traiter dans un prochain passage ».
+La démo sandbox reste au Preview Panel pour comparaison avec la prod.
+
+Diagnostic (vérifié sur la fonction live en prod, état 000130 repris de
+000126) : les deux requêtes de comptage (thèmes référentiels +
+nb_alignements) ne filtraient NI le périmètre NI le statut. Pré-000137
+cela était sans effet observable (les policies AlignementOuvrage_insert
+restreignaient de fait les déclarations aux ouvrages du MÊME étab) ;
+post-000137 la fonction comptait TOUT — y compris un BROUILLON ou un
+ouvrage d'un autre étab (déclarables par des chemins admin), et surtout
+le référentiel national PLATEFORME n'était JAMAIS proposé aux enseignants
+par le retrieval (MateriauPourSuggestions : WHERE etablissementId = $1
+seulement) : inalignable en pratique, donc absent de l'audit.
+
+Migration 000138_conformite_plateforme (APPLIQUÉE prod Neon, v138,
+1,9 s, CREATE OR REPLACE zéro-rupture, signature/colonnes inchangées) :
+- Périmètre compté = ouvrages PUBLIÉS (statut = 'VALIDE') disponibles
+  pour l'étab sondé : les siens (ETABLISSEMENT + CLASSE, via
+  etablissementId) OU visibility = 'PLATEFORME' — exactement la règle
+  de bibliotheque_activite_etablissement (000137 §8). Exclus : BROUILLON
+  (un dépôt non validé n'est pas un référentiel opposable pour l'audit
+  de direction — l'auteur le voit toujours via ListByDocument),
+  ouvrages d'un autre étab (défense en profondeur), corbeille/droits
+  expirés (inchangé).
+- Affecte : nb_alignements, nb_alignements_referentiel, taux_couverture,
+  epreuves[*].tauxConformite (via v_themes_ref), dernier_alignement.
+- ASSERTs post-migration (pattern 000130) : SECURITY DEFINER préservé +
+  présence des branches '''PLATEFORME'''/'''VALIDE'''/perimetre OR dans
+  pg_get_functiondef. Down : restore verbatim l'état 000130.
+
+Backend Go (companion, même commit) :
+- repository/alignement.go MateriauPourSuggestions : le retrieval propose
+  désormais les ouvrages de l'étab de l'owner + les PLATEFORME publiés
+  (WHERE (etablissementId = $1 OR visibility = 'PLATEFORME') AND statut =
+  'VALIDE') — cohérent avec le périmètre compté par 000138 (on ne suggère
+  que ce que l'audit comptera). RLS inchangée : Ouvrage_select →
+  ouvrage_visible garde le contrôle par appelant. Bonus : un owner sans
+  étab (etabID NULL) reçoit au moins les ouvrages PLATEFORME (avant :
+  zéro proposition, = NULL absorbé).
+- gofmt : le fichier mélangeait tabs (édit) et espaces (historique) —
+  normalisé intégralement en tabs.
+
+Vérifications : go build ./... EXIT 0 ; go vet ./... EXIT 0 ; gofmt -l
+vide. Test synthétique en transaction ROLLBACKée sur la prod Neon
+(chaîne : 2 étab, 1 ens, 1 support ANALYSE 2 thèmes, 4 ouvrages —
+PLATEFORME VALIDE référentiel / ETABLISSEMENT son-étab VALIDE
+référentiel / CLASSE son-étab BROUILLON / ETABLISSEMENT autre-étab
+VALIDE référentiel — 4 alignements) :
+- AVANT : nb_alignements=4, nb_alignements_referentiel=3 (tout compté,
+  sans scoping) — confirme le diagnostic.
+- APRÈS : nb_alignements=2 (PLATEFORME + son étab), référentiel=2,
+  taux_couverture=100, dernier non NULL — l'ouvrage PLATEFORME aligné
+  COMPTE, le BROUILLON et l'autre étab sont exclus.
+- Cloisonnement intact : claims ETUDIANT → 0 ligne ; RESPONSABLE d'un
+  autre étab → 0 ligne. ROLLBACK vérifié : Ouvrage=0,
+  AlignementOuvrage=0 en base après test (prod vierge conservée).

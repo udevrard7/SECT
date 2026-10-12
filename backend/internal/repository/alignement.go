@@ -110,16 +110,16 @@ func (r *AlignementRepository) ListByDocument(ctx context.Context, documentID st
 	var result []*domain.AlignementOuvrage
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, fmt.Sprintf(`
-			SELECT a."id", a."documentId", a."ouvrageId", a."ouvrageSectionId", a."declareParId",
-			       a."note", a."createdAt", a."updatedAt",
-			       %s,
-			       %s
-			FROM "AlignementOuvrage" a
-			LEFT JOIN "Ouvrage" o ON o."id" = a."ouvrageId"
-			LEFT JOIN "OuvrageSection" s ON s."id" = a."ouvrageSectionId"
-			WHERE a."documentId" = $1
-			ORDER BY a."createdAt" ASC
-		`, columnsOuvrage, columnsOuvrageSection), documentID)
+                        SELECT a."id", a."documentId", a."ouvrageId", a."ouvrageSectionId", a."declareParId",
+                               a."note", a."createdAt", a."updatedAt",
+                               %s,
+                               %s
+                        FROM "AlignementOuvrage" a
+                        LEFT JOIN "Ouvrage" o ON o."id" = a."ouvrageId"
+                        LEFT JOIN "OuvrageSection" s ON s."id" = a."ouvrageSectionId"
+                        WHERE a."documentId" = $1
+                        ORDER BY a."createdAt" ASC
+                `, columnsOuvrage, columnsOuvrageSection), documentID)
 		if err != nil {
 			return fmt.Errorf("query alignements: %w", err)
 		}
@@ -173,17 +173,17 @@ func (r *AlignementRepository) Create(ctx context.Context, documentID string, in
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		id := uuid.NewString()
 		_, err := tx.Exec(ctx, `
-			INSERT INTO "AlignementOuvrage" ("id", "documentId", "ouvrageId", "ouvrageSectionId", "declareParId", "note", "createdAt", "updatedAt")
-			VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		`, id, documentID, input.OuvrageID, nullableStrPtr(input.OuvrageSectionID), declareParID, nullableStrPtr(input.Note))
+                        INSERT INTO "AlignementOuvrage" ("id", "documentId", "ouvrageId", "ouvrageSectionId", "declareParId", "note", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                `, id, documentID, input.OuvrageID, nullableStrPtr(input.OuvrageSectionID), declareParID, nullableStrPtr(input.Note))
 		if err != nil {
 			return mapAlignementWriteError(fmt.Errorf("create alignement: %w", err))
 		}
 		row := tx.QueryRow(ctx, `
-			SELECT a."id", a."documentId", a."ouvrageId", a."ouvrageSectionId", a."declareParId",
-			       a."note", a."createdAt", a."updatedAt"
-			FROM "AlignementOuvrage" a WHERE a."id" = $1
-		`, id)
+                        SELECT a."id", a."documentId", a."ouvrageId", a."ouvrageSectionId", a."declareParId",
+                               a."note", a."createdAt", a."updatedAt"
+                        FROM "AlignementOuvrage" a WHERE a."id" = $1
+                `, id)
 		a := &domain.AlignementOuvrage{}
 		if err := row.Scan(&a.ID, &a.DocumentID, &a.OuvrageID, &a.OuvrageSectionID, &a.DeclareParID, &a.Note, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return fmt.Errorf("re-read alignement: %w", err)
@@ -219,8 +219,10 @@ func (r *AlignementRepository) Delete(ctx context.Context, documentID, alignemen
 
 // MateriauPourSuggestions — collecte des matières premières du retrieval :
 // thèmes du support (Document.themesDetectes), sujets de ses chapitres
-// (Chapter.sujets), ouvrages visibles de l'étab du propriétaire, et les
-// ouvrageId déjà déclarés pour ce support. Le scoring est côté usecase.
+// (Chapter.sujets), ouvrages proposables pour l'étab du propriétaire (les
+// siens + les PLATEFORME publiés, SECT-BIBLIO-6 — alignés avec le périmètre
+// compté par 000138), et les ouvrageId déjà déclarés pour ce support. Le
+// scoring est côté usecase.
 //
 // RLS : sous claims de l'appelant — l'owner ENS voit SES chapitres et les
 // ouvrages de SON etab. Pour un ADMIN sur le support d'autrui, les
@@ -242,10 +244,10 @@ func (r *AlignementRepository) MateriauPourSuggestions(ctx context.Context, docu
 		var themesJSON, etabID *string
 		var nomFichier, ownerID string
 		err := tx.QueryRow(ctx, `
-			SELECT d."themesDetectes", user_etab_id(d."ownerId"), d."nomFichier", d."ownerId"
-			FROM "Document" d
-			WHERE d."id" = $1 AND d."deletedAt" IS NULL
-		`, documentID).Scan(&themesJSON, &etabID, &nomFichier, &ownerID)
+                        SELECT d."themesDetectes", user_etab_id(d."ownerId"), d."nomFichier", d."ownerId"
+                        FROM "Document" d
+                        WHERE d."id" = $1 AND d."deletedAt" IS NULL
+                `, documentID).Scan(&themesJSON, &etabID, &nomFichier, &ownerID)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return &domain.NotFoundError{Entity: "Document", ID: documentID}
@@ -261,8 +263,8 @@ func (r *AlignementRepository) MateriauPourSuggestions(ctx context.Context, docu
 
 		// 2. Sujets des chapitres (mots-clés plus fins que les titres).
 		rows, err := tx.Query(ctx, `
-			SELECT c."sujets" FROM "Chapter" c WHERE c."documentId" = $1
-		`, documentID)
+                        SELECT c."sujets" FROM "Chapter" c WHERE c."documentId" = $1
+                `, documentID)
 		if err != nil {
 			return fmt.Errorf("query chapters sujets: %w", err)
 		}
@@ -275,16 +277,24 @@ func (r *AlignementRepository) MateriauPourSuggestions(ctx context.Context, docu
 			mat.SujetsSupport = append(mat.SujetsSupport, parseJSONArrayText(sujets)...)
 		}
 
-		// 3. Ouvrages visibles de l'étab (les MÊMES conditions que
-		// Ouvrage_select — le retrieval ne propose que du visible).
+		// 3. Ouvrages proposables au retrieval : ceux de l'étab de
+		// l'owner + les ouvrages PLATEFORME publiés (SECT-BIBLIO-6 :
+		// sans cela, un référentiel national déposé par l'admin
+		// plateforme n'était JAMAIS proposé aux enseignants — donc
+		// rarement aligné, donc absent de l'audit de conformité que
+		// 000138 sait pourtant compter). RLS garde le contrôle par
+		// appelant (Ouvrage_select → ouvrage_visible) ; le statut
+		// VALIDE exclut les BROUILLON (cohérent avec 000138 : on ne
+		// suggère que ce que l'audit comptera).
 		rows2, err := tx.Query(ctx, fmt.Sprintf(`
-			SELECT %s
-			FROM "Ouvrage" o
-			WHERE o."etablissementId" = $1
-			  AND o."deletedAt" IS NULL
-			  AND (o."dateExpirationDroits" IS NULL OR o."dateExpirationDroits" > now())
-			ORDER BY o."titre" ASC
-		`, columnsOuvrage), etabID)
+                        SELECT %s
+                        FROM "Ouvrage" o
+                        WHERE (o."etablissementId" = $1 OR o."visibility" = 'PLATEFORME')
+                          AND o."statut" = 'VALIDE'
+                          AND o."deletedAt" IS NULL
+                          AND (o."dateExpirationDroits" IS NULL OR o."dateExpirationDroits" > now())
+                        ORDER BY o."titre" ASC
+                `, columnsOuvrage), etabID)
 		if err != nil {
 			return fmt.Errorf("query ouvrages materiau: %w", err)
 		}
@@ -299,8 +309,8 @@ func (r *AlignementRepository) MateriauPourSuggestions(ctx context.Context, docu
 
 		// 4. Déjà déclarés (pour marquer DejaAligne côté UI).
 		rows3, err := tx.Query(ctx, `
-			SELECT a."ouvrageId" FROM "AlignementOuvrage" a WHERE a."documentId" = $1
-		`, documentID)
+                        SELECT a."ouvrageId" FROM "AlignementOuvrage" a WHERE a."documentId" = $1
+                `, documentID)
 		if err != nil {
 			return fmt.Errorf("query deja aligne: %w", err)
 		}
@@ -333,13 +343,13 @@ func (r *AlignementRepository) ConformiteEtablissement(ctx context.Context, etab
 	var result []*domain.ConformiteSupport
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT document_id, nom_fichier, enseignant, ue_code,
-			       nb_chapitres, nb_questions, nb_questions_alignees,
-			       nb_alignements, nb_alignements_referentiel,
-			       taux_couverture, dernier_alignement, epreuves
-			FROM conformite_referentiels_etablissement($1)
-			ORDER BY enseignant ASC, nom_fichier ASC
-		`, etablissementID)
+                        SELECT document_id, nom_fichier, enseignant, ue_code,
+                               nb_chapitres, nb_questions, nb_questions_alignees,
+                               nb_alignements, nb_alignements_referentiel,
+                               taux_couverture, dernier_alignement, epreuves
+                        FROM conformite_referentiels_etablissement($1)
+                        ORDER BY enseignant ASC, nom_fichier ASC
+                `, etablissementID)
 		if err != nil {
 			return fmt.Errorf("query conformite: %w", err)
 		}
