@@ -5973,4 +5973,9 @@ VALIDE référentiel — 4 alignements) :
 
 - 200 TOUJOURS (plus jamais de réponse vide/502) : essais 76 s → {disponible:false} honnête ; 52,7 s → ✅ métadonnées complètes (titre/auteurs/éditeur/édition/année/ISBN/langue/thèmes/description, 5 pages analysées).
 - go vet + go build + gofmt 0 erreur ; tsc --noEmit + ESLint 0 erreur.
-- Déploiement auto Render/Vercel via push ; E2E prod à confirmer après deploy.
+- Déploiement auto Render/Vercel via push : CI 6/6 verts, Render live.
+
+### Validation E2E prod (post-deploy, chemin utilisateur réel)
+
+- Vercel CDN (sect.ftci.fr) → Render, auth cookies httpOnly (shim go-auth) : POST /api/ouvrages/analyze → **200 en 55,1 s, métadonnées complètes** (titre/ISBN/langue…).
+- **E2E navigateur complet** : login ADMIN → bibliothèque → dépôt → upload PDF → « Analyse du document par lIA en cours » → **« Formulaire pré-rempli par lIA »** → 9/9 champs vérifiés dans le DOM (titre, auteurs, éditeur, édition, année, ISBN, langue, thèmes, description). Aucune écriture en base (formulaire abandonné sans soumission).
