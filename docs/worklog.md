@@ -6549,3 +6549,121 @@ du healthcheck est basé sur le mini-chat). Chaîne à **6/9 sains**
 MuleRouter 0,81 s · OpenRouter 0,91 s · Gemini 10,60 s ; Z-AI 429
 transitoire (congestion horaire glm-4.7-flash, connue) ; DeepSeek +
 HuggingFace 402 (rechargements exploitant en attente).
+
+## SECT-BIBLIO-10 — Dépôt de livre refusé « RLS 000137 » : le piège INSERT…RETURNING × policy à re-scan + modération CLASSE réparée (13 octobre 2026)
+
+### Demande exploitant
+
+« Lorsque j'essaie d'ajouter un livre à la bibliothèque, voici le
+message que je reçois : "dépôt refusé : le périmètre est dérivé de
+votre rôle (RLS 000137)" » — au PREMIER dépôt réel depuis la mise en
+prod de 000137 (SECT-BIBLIO-5).
+
+### Diagnostic (reproduction locale complète, cause racine PROUVÉE)
+
+L'environnement ayant été réinitialisé, le repo a été re-cloné puis un
+PostgreSQL 17 local (binaires /home/z/pg, port 5433) a été monté avec
+les 138 migrations réelles + les rôles prod (sect_app NOBYPASSRLS,
+neondb_owner, pattern 000020) — la reproduction est FIDÈLE au schéma
+et aux policies, sans toucher Neon :
+
+1. **Rejouer l'INSERT exact du repository** (INSERT … RETURNING
+   colonnes, claims GUC posés par SET LOCAL comme db.WithTx) en tant
+   que sect_app → **42501 « new row violates row-level security
+   policy » pour ADMIN, RESPONSABLE et ENSEIGNANT** — bug reproduit.
+2. **INSERT sans RETURNING** → passe ; **SELECT de la ligne juste
+   après, même tx** → visible. Le fautif est donc l'évaluation de la
+   **policy SELECT imposée par RETURNING**.
+3. **Reproduction minimale** (tables t1/t2) : une policy SELECT qui
+   délègue à une FONCTION re-scannant LA MÊME table casse le
+   RETURNING de l'INSERT (42501) ; une policy SELECT inline (colonnes
+   de la ligne) le laisse passer. Mécanisme : `Ouvrage_select` délègue
+   à `ouvrage_visible(p_id)` qui fait `SELECT … FROM "Ouvrage" WHERE
+   id = p_id` — lors du RETURNING, ce scan s'exécute avec le SNAPSHOT
+   PRIS AU DÉBUT de la commande, qui ne contient PAS la ligne en cours
+   d'insertion → EXISTS = false → policy rejetée. Piège GÉNÉRAL
+   PostgreSQL : toute policy SELECT à re-scan de la même table via une
+   fonction = RETURNING cassé.
+4. Pourquoi il est resté invisible : table « Ouvrage » VIDE au
+   déploiement 000137 et tous les E2E depuis (BIBLIO-5→9) n'ont
+   exercé que /api/ouvrages/analyze — jamais POST /api/ouvrages.
+   NB : `insertOuvrageClasses` (RETURNING) est SAIN : sa policy
+   re-scanne « Ouvrage » mais le PARENT vient du statement précédent
+   (snapshot par-statement READ COMMITTED → présent).
+
+### Découverte en diagnostiquant : la modération CLASSE était triple-bloquée
+
+`ouvrage_visible()` exige, pour un ouvrage CLASSE, l'intersection avec
+les classes de l'utilisateur — or un RESPONSABLE n'a PAS de classes
+(il n'enseigne pas) : il ne VOYAIT aucun brouillon CLASSE de son
+établissement (List vide → file « À valider » vide ; FindByID 404 ;
+UPDATE 0 ligne — la sélection des lignes d'un UPDATE passe AUSSI par
+la policy SELECT). Et même visible, `Ouvrage_update` WITH CHECK figeait
+`visibility='ETABLISSEMENT'` pour le resp → 42501. Le cycle
+human-in-the-loop (dépôt ENSEIGNANT → BROUILLON → validation RESP)
+était bloqué aux TROIS niveaux.
+
+### Correctifs
+
+1. **Application** (repository/ouvrage.go, Create) : l'INSERT est émis
+   **SANS RETURNING**, la ligne est **relue dans la même tx APRÈS le
+   ciblage classes** (statement suivant = snapshot neuf → ligne
+   visible ; l'ordre couvre l'ENSEIGNANT dont le brouillon n'est
+   visible via CLASSE∩classes qu'une fois le ciblage posé). Mapping
+   d'erreurs conservé (23503 → 400 FK ; 42501 → 403 périmètre) ;
+   relecture invisible → erreur honnête (jamais un 404).
+2. **Migration 000139** (up + down) :
+   a. `ouvrage_visible` : deux branches BROUILLON dans le groupe de
+      visibilité — DÉPOSANT (createdById) et RESPONSABLE de
+      l'établissement — toujours SOUS les gardes deletedAt IS NULL +
+      droits non expirés, et toujours ET-ées avec le garde de statut
+      existant : **l'ÉTUDIANT ne voit JAMAIS un brouillon, fût-il de
+      sa classe** (vérifié) ;
+   b. `Ouvrage_update` WITH CHECK resp : `visibility IN
+      ('ETABLISSEMENT','CLASSE')` — le resp gère AUSSI les dépôts
+      CLASSE de son étab (PLATEFORME reste ADMIN seul, ENSEIGNANT
+      figé CLASSE+BROUILLON) ;
+   c. ASSERTs post-migration (pattern 000122) + down intégral.
+   LA MIGRATION DOIT ÊTRE APPLIQUÉE À NEON (migrate up) — le correctif
+   application, lui, déployé seul répare DÉJÀ le dépôt de tous les
+   rôles (il ne dépend pas de 000139).
+
+### Vérifications (Postgres local fidèle + backend réel)
+
+- Matrice SQL pré/post-fix : dépôt ADMIN/RESP/ENS OK ; resp VOIT le
+  brouillon CLASSE (0→1) puis le VALIDE (UPDATE…RETURNING OK) ;
+  étudiant : brouillon 0, validé 1 ; resp d'un autre étab : 0 ; ens
+  édite son brouillon : OK. Down→up idempotent, 139/139 migrations
+  EXIT 0 (ASSERTs inclus).
+- **E2E backend réel** (go run ./cmd/api sur le Postgres local en tant
+  que sect_app, workers off, JWT HMAC ADMIN/RESP/ENS/ETU forgés) :
+  POST /api/ouvrages → **201** admin (PLATEFORME/VALIDE — le cas exact
+  de l'exploitant), **201** resp (ETABLISSEMENT/VALIDE), **201** ens
+  (CLASSE/BROUILLON + classes [fil-1/L3] renvoyées) ; file
+  statut=BROUILLON du resp : 2 brouillons visibles ; POST
+  /api/ouvrages/{id}/valider par le resp → **200 VALIDE** ; List
+  étudiant : uniquement les VALIDE. Zéro ERROR dans les logs.
+- Gates : go build ./... EXIT 0 · go vet ./... EXIT 0 · gofmt propre
+  (reformatage espaces→tabs après édition, leçon connue) · aucun
+  changement frontend (tsc/eslint non impactés).
+
+### Leçons
+
+- **PIÈGE PostgreSQL à connaître** : `INSERT … RETURNING` évalue la
+  policy SELECT sur la nouvelle ligne — une policy qui délègue à une
+  fonction RE-SCANNANT la même table échoue TOUJOURS (snapshot de
+  commande). Deux issues : policy SELECT inline (colonnes de la ligne)
+  ou INSERT sans RETURNING + relecture. Les INSERT…RETURNING sur des
+  tables à policy « fonction-scan » (OuvrageLecture, OuvrageSection,
+  AlignementOuvrage, OuvrageAnnotation) sont sains : leurs policies
+  re-scannent « Ouvrage » (parent COMMITTÉ), pas la table insérée.
+- La sélection de lignes d'un UPDATE/DELETE passe AUSSI par la policy
+  SELECT : une ligne invisible = 0 ligne silencieuse (pas d'erreur) —
+  trompeur en diagnostic.
+- Un flux « vert en CI » n'est pas un flux éprouvé : les E2E
+  BIBLIO-5→9 ne couvraient que /analyze ; le PREMIER dépôt réel a
+  cassé. Ajouter au réflexe : toute nouvelle écriture métier = E2E du
+  POST réel, pas seulement de la lecture assistée.
+- Postgres local portable (binaires extraits dans $HOME, initdb non
+  root) : reproduction FIDÈLE des policies sans exposer Neon — pattern
+  à réutiliser pour les diagnostics RLS.

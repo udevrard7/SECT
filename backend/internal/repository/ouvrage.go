@@ -348,8 +348,23 @@ func insertOuvrageClasses(ctx context.Context, tx pgx.Tx, ouvrageID string, clas
 	return refs, nil
 }
 
-// Create — INSERT + RETURNING + ciblage classes (000137 : dépôt
+// Create — INSERT + ciblage classes + relecture (000137 : dépôt
 // ADMIN/RESPONSABLE/ENSEIGNANT, périmètre dérivé du rôle par le usecase).
+// SECT-BIBLIO-10 : l'INSERT est émis SANS RETURNING, puis la ligne est
+// relue dans la MÊME transaction APRÈS le ciblage classes. Pourquoi :
+// Ouvrage_select délègue à ouvrage_visible(), qui RE-SCANNÉ la table
+// « Ouvrage » — or l'évaluation de la policy SELECT imposée par un
+// RETURNING s'exécute avec le snapshot pris au DÉBUT de la commande,
+// qui ne contient PAS la ligne en cours d'insertion → 42501 « new row
+// violates row-level security policy » pour TOUS les rôles (premier
+// dépôt réel de l'exploitant, reproduction minimale en worklog : une
+// policy SELECT à re-scan de la MÊME table via une fonction casse le
+// RETURNING ; une policy inline le laisse passer). INSERT seul
+// n'évalue que la policy INSERT (WITH CHECK inline par rôle) → passe ;
+// le statement suivant (relecture) prend un snapshot neuf qui CONTIENT
+// la ligne (READ COMMITTED). L'ordre classes-avant-relecture couvre
+// l'ENSEIGNANT : son brouillon n'est visible via la branche CLASSE∩classes
+// qu'une fois le ciblage posé (et 000139 ajoute la branche déposant).
 func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvrageInput) (*domain.Ouvrage, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok || claims.UserID == "" {
@@ -368,7 +383,10 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
 		if input.EtablissementID != "" {
 			etabID = input.EtablissementID
 		}
-		row := tx.QueryRow(ctx, fmt.Sprintf(`
+		// SECT-BIBLIO-10 : PAS de RETURNING (piège snapshot × policy SELECT
+		// à re-scan — cf. doc-comment de la fonction). Erreurs honnêtes :
+		// FK invalide → 400 ; 42501 = WITH CHECK par rôle (périmètre).
+		_, err := tx.Exec(ctx, `
                         INSERT INTO "Ouvrage" ("id", "etablissementId", "titre", "auteurs", "categorie",
                                 "editeur", "edition", "anneePublication", "isbn", "langue",
                                 "filiereId", "niveau", "themes", "description", "licenceOrigine",
@@ -380,9 +398,7 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
                                 $11, $12, $13, $14, $15,
                                 $16, $17, $18, $19,
                                 $20, $21, $22, $23, $24,
-                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        RETURNING %s`,
-			columnsOuvrageBare),
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 			id, etabID, input.Titre, nullableStrPtr(input.Auteurs), string(input.Categorie),
 			nullableStrPtr(input.Editeur), nullableStrPtr(input.Edition), nullableIntPtr(input.AnneePublication),
 			nullableStrPtr(input.ISBN), nullableStrPtr(input.Langue),
@@ -391,8 +407,6 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
 			nullableTimePtr(input.DateExpirationDroits), input.NomFichier, nullableStrPtr(input.CheminStockage),
 			input.TailleFichier, input.TypeMime, input.TelechargementAutorise,
 			string(input.Visibility), string(input.Statut), input.CreatedByID)
-
-		o, err := scanOuvrage(row)
 		if err != nil {
 			// FK invalide (filière/établissement inexistant) → 400 pour le
 			// client, pas de 500 (leçon SECT-PRODUIT-1 : erreurs honnêtes).
@@ -405,17 +419,41 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
 			}
 			return fmt.Errorf("create ouvrage: %w", err)
 		}
-		out = o
 
 		// Ciblage CLASSE (même tx : RLS évaluée avant contraintes —
-		// une classe usurpée produit 42501, pas de ligne zombie).
+		// une classe usurpée produit 42501, pas de ligne zombie). Le
+		// RETURNING de OuvrageClasse est SÛR ici : sa policy délègue à
+		// ouvrage_parent_gestionnable, qui re-scanne « Ouvrage » — le
+		// parent vient du statement PRÉCÉDENT, donc présent dans le
+		// snapshot de CE statement (READ COMMITTED, par-statement).
+		var classeRefs []domain.OuvrageClasseRef
 		if len(input.Classes) > 0 {
-			refs, err := insertOuvrageClasses(ctx, tx, out.ID, input.Classes)
+			refs, err := insertOuvrageClasses(ctx, tx, id, input.Classes)
 			if err != nil {
 				return err
 			}
-			out.Classes = refs
+			classeRefs = refs
 		}
+
+		// Relecture (statement suivant = snapshot neuf → la ligne y
+		// figure ; les classes aussi pour l'intersection CLASSE).
+		row := tx.QueryRow(ctx, fmt.Sprintf(`
+                        SELECT %s
+                        FROM "Ouvrage" o
+                        WHERE o."id" = $1`, columnsOuvrage), id)
+		o, err := scanOuvrage(row)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// Ne devrait jamais se produire (ligne insérée invisible =
+				// policy SELECT incohérente) — erreur honnête plutôt que 404.
+				return fmt.Errorf("create ouvrage: ligne insérée invisible en relecture (policy SELECT) — id %s", id)
+			}
+			return fmt.Errorf("create ouvrage (relecture): %w", err)
+		}
+		if classeRefs != nil {
+			o.Classes = classeRefs
+		}
+		out = o
 		return nil
 	})
 	if err != nil {
