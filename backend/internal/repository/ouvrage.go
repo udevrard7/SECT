@@ -39,7 +39,8 @@ const columnsOuvrage = `o."id", o."etablissementId", o."titre", o."auteurs", o."
         o."filiereId", o."niveau", o."themes", o."description", o."licenceOrigine",
         o."dateExpirationDroits", o."nomFichier", o."cheminStockage", o."tailleFichier",
         o."typeMime", o."telechargementAutorise", o."visibility", o."statut", o."createdById",
-        o."createdAt", o."updatedAt", o."deletedAt"`
+        o."createdAt", o."updatedAt", o."deletedAt",
+        o."cheminCouverture", o."couvertureEchecAt"`
 
 // columnsOuvrageBare — les mêmes colonnes SANS préfixe d'alias, pour les
 // RETURNING des INSERT/UPDATE sans alias (le préfixe o. y serait une erreur
@@ -59,6 +60,7 @@ func scanOuvrage(s scanner) (*domain.Ouvrage, error) {
 		&o.DateExpirationDroits, &o.NomFichier, &o.CheminStockage, &o.TailleFichier,
 		&o.TypeMime, &o.TelechargementAutorise, &o.Visibility, &o.Statut, &o.CreatedByID,
 		&o.CreatedAt, &o.UpdatedAt, &o.DeletedAt,
+		&o.CheminCouverture, &o.CouvertureEchecAt,
 	)
 	if err != nil {
 		return nil, err
@@ -82,6 +84,7 @@ func scanOuvrageRow(s scanner) (*domain.Ouvrage, error) {
 		&o.DateExpirationDroits, &o.NomFichier, &o.CheminStockage, &o.TailleFichier,
 		&o.TypeMime, &o.TelechargementAutorise, &o.Visibility, &o.Statut, &o.CreatedByID,
 		&o.CreatedAt, &o.UpdatedAt, &o.DeletedAt,
+		&o.CheminCouverture, &o.CouvertureEchecAt,
 		&filID, &filCode, &filNom,
 	)
 	if err != nil {
@@ -392,13 +395,13 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
                                 "filiereId", "niveau", "themes", "description", "licenceOrigine",
                                 "dateExpirationDroits", "nomFichier", "cheminStockage", "tailleFichier",
                                 "typeMime", "telechargementAutorise", "visibility", "statut", "createdById",
-                                "createdAt", "updatedAt")
+                                "createdAt", "updatedAt", "cheminCouverture", "couvertureEchecAt")
                         VALUES ($1, $2, $3, $4, $5,
                                 $6, $7, $8, $9, $10,
                                 $11, $12, $13, $14, $15,
                                 $16, $17, $18, $19,
                                 $20, $21, $22, $23, $24,
-                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $25, $26)`,
 			id, etabID, input.Titre, nullableStrPtr(input.Auteurs), string(input.Categorie),
 			nullableStrPtr(input.Editeur), nullableStrPtr(input.Edition), nullableIntPtr(input.AnneePublication),
 			nullableStrPtr(input.ISBN), nullableStrPtr(input.Langue),
@@ -406,7 +409,8 @@ func (r *OuvrageRepository) Create(ctx context.Context, input domain.CreateOuvra
 			nullableStrPtr(input.Description), input.LicenceOrigine,
 			nullableTimePtr(input.DateExpirationDroits), input.NomFichier, nullableStrPtr(input.CheminStockage),
 			input.TailleFichier, input.TypeMime, input.TelechargementAutorise,
-			string(input.Visibility), string(input.Statut), input.CreatedByID)
+			string(input.Visibility), string(input.Statut), input.CreatedByID,
+			nullableStrPtr(input.CheminCouverture), nullableTimePtr(input.CouvertureEchecAt))
 		if err != nil {
 			// FK invalide (filière/établissement inexistant) → 400 pour le
 			// client, pas de 500 (leçon SECT-PRODUIT-1 : erreurs honnêtes).
@@ -652,6 +656,41 @@ func (r *OuvrageRepository) Restore(ctx context.Context, id string) (*domain.Ouv
 		return nil, err
 	}
 	return out, nil
+}
+
+// UpdateCouverture — SECT-BIBLIO-12 : enregistre le résultat de la
+// génération de couverture (chemin R2 du PNG, ou marqueur d'échec).
+// Ne touQUE ces deux colonnes + updatedAt : la régénération est une
+// action technique du gestionnaire (ADMIN/RESP/ENS selon périmètre),
+// distincte du PATCH métier. RLS Ouvrage_update s'applique (WITH CHECK
+// par rôle — la sélection passe par Ouvrage_select : hors périmètre =
+// 0 ligne = NotFoundError, jamais de fuite d'existence).
+func (r *OuvrageRepository) UpdateCouverture(ctx context.Context, id string, chemin *string, echecAt *time.Time) error {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return fmt.Errorf("UpdateCouverture: claims manquants dans le context")
+	}
+
+	return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+                        UPDATE "Ouvrage"
+                        SET "cheminCouverture" = $1,
+                            "couvertureEchecAt" = $2,
+                            "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $3`,
+			nullableStrPtr(chemin), nullableTimePtr(echecAt), id)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "42501" {
+				return &domain.UnauthorizedError{Message: "régénération refusée : hors de votre périmètre (RLS 000137)"}
+			}
+			return fmt.Errorf("update ouvrage couverture: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return &domain.NotFoundError{Entity: "Ouvrage", ID: id}
+		}
+		return nil
+	})
 }
 
 // SumTaillesByEtablissement — quota stockage bibliothèque : cumul

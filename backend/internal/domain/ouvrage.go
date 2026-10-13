@@ -195,26 +195,32 @@ type AnalyseOuvrageResult struct {
 //	FiliereID / Niveau = recommandation (filtrage UI) — NULL =
 //	  « pertinent pour tous », PAS « caché ».
 type Ouvrage struct {
-	ID                     string            `json:"id"`
-	EtablissementID        string            `json:"etablissementId"` // "" = ouvrage PLATEFORME sans établissement
-	Titre                  string            `json:"titre"`
-	Auteurs                *string           `json:"auteurs,omitempty"` // JSON array
-	Categorie              CategorieOuvrage  `json:"categorie"`
-	Editeur                *string           `json:"editeur,omitempty"`
-	Edition                *string           `json:"edition,omitempty"`
-	AnneePublication       *int              `json:"anneePublication,omitempty"`
-	ISBN                   *string           `json:"isbn,omitempty"`
-	Langue                 *string           `json:"langue,omitempty"`
-	FiliereID              *string           `json:"filiereId,omitempty"`
-	Niveau                 *string           `json:"niveau,omitempty"` // enum NiveauEtude en DB
-	Themes                 *string           `json:"themes,omitempty"` // JSON array
-	Description            *string           `json:"description,omitempty"`
-	LicenceOrigine         string            `json:"licenceOrigine"`
-	DateExpirationDroits   *time.Time        `json:"dateExpirationDroits,omitempty"`
-	NomFichier             string            `json:"nomFichier"`
-	CheminStockage         *string           `json:"cheminStockage,omitempty"` // clé R2
-	TailleFichier          int               `json:"tailleFichier"`
-	TypeMime               string            `json:"typeMime"`
+	ID                   string           `json:"id"`
+	EtablissementID      string           `json:"etablissementId"` // "" = ouvrage PLATEFORME sans établissement
+	Titre                string           `json:"titre"`
+	Auteurs              *string          `json:"auteurs,omitempty"` // JSON array
+	Categorie            CategorieOuvrage `json:"categorie"`
+	Editeur              *string          `json:"editeur,omitempty"`
+	Edition              *string          `json:"edition,omitempty"`
+	AnneePublication     *int             `json:"anneePublication,omitempty"`
+	ISBN                 *string          `json:"isbn,omitempty"`
+	Langue               *string          `json:"langue,omitempty"`
+	FiliereID            *string          `json:"filiereId,omitempty"`
+	Niveau               *string          `json:"niveau,omitempty"` // enum NiveauEtude en DB
+	Themes               *string          `json:"themes,omitempty"` // JSON array
+	Description          *string          `json:"description,omitempty"`
+	LicenceOrigine       string           `json:"licenceOrigine"`
+	DateExpirationDroits *time.Time       `json:"dateExpirationDroits,omitempty"`
+	NomFichier           string           `json:"nomFichier"`
+	CheminStockage       *string          `json:"cheminStockage,omitempty"` // clé R2
+	TailleFichier        int              `json:"tailleFichier"`
+	TypeMime             string           `json:"typeMime"`
+	// SECT-BIBLIO-12 : couverture du catalogue — PNG (page 1 rastérisée
+	// par pdftoppm au dépôt), clé R2 dédiée. CouvertureEchecAt marque un
+	// échec PERSISTÉ (pas de re-rastérisation en boucle ; une
+	// régénération explicite du gestionnaire le reset).
+	CheminCouverture       *string           `json:"cheminCouverture,omitempty"`
+	CouvertureEchecAt      *time.Time        `json:"couvertureEchecAt,omitempty"`
 	TelechargementAutorise bool              `json:"telechargementAutorise"`
 	Visibility             VisibiliteOuvrage `json:"visibility"`
 	Statut                 StatutOuvrage     `json:"statut"`
@@ -266,26 +272,29 @@ type CreateOuvrageInput struct {
 	// ID — généré par le usecase pour construire la clé R2
 	// ouvrages/{id}/… AVANT l'INSERT (ADR-0007 §stockage) ; vide = le
 	// repository en génère un.
-	ID                     string
-	EtablissementID        string // "" → NULL (dépôt PLATEFORME de l'ADMIN global)
-	Titre                  string
-	Auteurs                *string
-	Categorie              CategorieOuvrage
-	Editeur                *string
-	Edition                *string
-	AnneePublication       *int
-	ISBN                   *string
-	Langue                 *string
-	FiliereID              *string
-	Niveau                 *string
-	Themes                 *string
-	Description            *string
-	LicenceOrigine         string
-	DateExpirationDroits   *time.Time
-	NomFichier             string
-	CheminStockage         *string
-	TailleFichier          int
-	TypeMime               string
+	ID                   string
+	EtablissementID      string // "" → NULL (dépôt PLATEFORME de l'ADMIN global)
+	Titre                string
+	Auteurs              *string
+	Categorie            CategorieOuvrage
+	Editeur              *string
+	Edition              *string
+	AnneePublication     *int
+	ISBN                 *string
+	Langue               *string
+	FiliereID            *string
+	Niveau               *string
+	Themes               *string
+	Description          *string
+	LicenceOrigine       string
+	DateExpirationDroits *time.Time
+	NomFichier           string
+	CheminStockage       *string
+	TailleFichier        int
+	TypeMime             string
+	// SECT-BIBLIO-12 : couverture générée au dépôt (best-effort).
+	CheminCouverture       *string
+	CouvertureEchecAt      *time.Time
 	TelechargementAutorise bool
 	Visibility             VisibiliteOuvrage
 	Statut                 StatutOuvrage
@@ -371,6 +380,9 @@ type OuvrageRepository interface {
 	MesClassesEnseignant(ctx context.Context) ([]OuvrageClasseRef, error)
 	// AuditLecture — journalise un accès fichier (ouvrage.lecture).
 	AuditLecture(ctx context.Context, entry OuvrageAuditEntry) error
+	// UpdateCouverture — SECT-BIBLIO-12 : enregistre chemin R2 du PNG
+	// de couverture ou le marqueur d'échec (régénération gestionnaire).
+	UpdateCouverture(ctx context.Context, id string, chemin *string, echecAt *time.Time) error
 }
 
 // Constantes fichiers ouvrage — P1 : PDF uniquement (cohérent avec le

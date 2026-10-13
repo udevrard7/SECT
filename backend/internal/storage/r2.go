@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -108,6 +109,35 @@ func (c *R2Client) Download(ctx context.Context, key string) ([]byte, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	return io.ReadAll(resp.Body)
+}
+
+// DownloadToFile SECT-BIBLIO-12 : télécharge un objet en STREAMANT vers
+// un fichier disque (jamais en RAM) — pensé pour les gros PDFs (100 Mo)
+// destinés à des outils externes (pdftoppm). Crée/tronque destPath.
+func (c *R2Client) DownloadToFile(ctx context.Context, key, destPath string) error {
+	resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("download from R2: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create dest file: %w", err)
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		_ = f.Close()
+		_ = os.Remove(destPath)
+		return fmt.Errorf("stream body to disk: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("close dest file: %w", err)
+	}
+	return nil
 }
 
 // Delete supprime un objet de R2.

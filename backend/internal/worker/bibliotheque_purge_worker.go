@@ -94,11 +94,12 @@ func (w *BibliothequePurgeWorker) Start(ctx context.Context) {
 
 // purgeCandidate — un ouvrage éligible à la purge.
 type purgeCandidate struct {
-	ID              string
-	Titre           string
-	CheminStockage  *string
-	TailleFichier   int
-	EtablissementID string
+	ID               string
+	Titre            string
+	CheminStockage   *string
+	CheminCouverture *string // SECT-BIBLIO-12 : PNG/JPEG de couverture (même préfixe R2)
+	TailleFichier    int
+	EtablissementID  string
 }
 
 // checkAndPurge : fetch des candidats → pour chacun, audit AVANT le
@@ -139,7 +140,7 @@ func (w *BibliothequePurgeWorker) fetchCandidates(ctx context.Context) ([]purgeC
 	var candidates []purgeCandidate
 	err := db.WithSystemTx(ctx, w.dbPool, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT "id", "titre", "cheminStockage", "tailleFichier", "etablissementId"
+			SELECT "id", "titre", "cheminStockage", "cheminCouverture", "tailleFichier", "etablissementId"
 			FROM "Ouvrage"
 			WHERE "deletedAt" IS NOT NULL
 			  AND "deletedAt" < now() - make_interval(days => $1::int)
@@ -151,7 +152,7 @@ func (w *BibliothequePurgeWorker) fetchCandidates(ctx context.Context) ([]purgeC
 		defer rows.Close()
 		for rows.Next() {
 			var c purgeCandidate
-			if err := rows.Scan(&c.ID, &c.Titre, &c.CheminStockage, &c.TailleFichier, &c.EtablissementID); err != nil {
+			if err := rows.Scan(&c.ID, &c.Titre, &c.CheminStockage, &c.CheminCouverture, &c.TailleFichier, &c.EtablissementID); err != nil {
 				return fmt.Errorf("scan candidat purge: %w", err)
 			}
 			candidates = append(candidates, c)
@@ -213,14 +214,22 @@ func (w *BibliothequePurgeWorker) purgeOne(ctx context.Context, c purgeCandidate
 	// purgée ; un échec R2 laisse un orphelin (journalisé) qui sera
 	// nettoyable manuellement — jamais l'inverse (une ligne fantôme
 	// pointant des octets supprimés casserait le lecteur).
-	if c.CheminStockage != nil && *c.CheminStockage != "" {
+	supprimerObjet := func(key string) {
 		if w.storage == nil {
 			w.logger.Warn("BibliothequePurgeWorker: storage nil — objet R2 orphelin (mode DB-only)",
-				"ouvrageId", c.ID, "key", *c.CheminStockage)
-		} else if err := w.storage.Delete(ctx, *c.CheminStockage); err != nil {
+				"ouvrageId", c.ID, "key", key)
+		} else if err := w.storage.Delete(ctx, key); err != nil {
 			w.logger.Warn("BibliothequePurgeWorker: suppression R2 échouée (orphelin à nettoyer)",
-				"ouvrageId", c.ID, "key", *c.CheminStockage, "error", err.Error())
+				"ouvrageId", c.ID, "key", key, "error", err.Error())
 		}
+	}
+	// SECT-BIBLIO-12 : le PDF ET la couverture (ouvrages/{oid}/…) vivent
+	// sous le même préfixe — la purge ramasse les deux.
+	if c.CheminStockage != nil && *c.CheminStockage != "" {
+		supprimerObjet(*c.CheminStockage)
+	}
+	if c.CheminCouverture != nil && *c.CheminCouverture != "" {
+		supprimerObjet(*c.CheminCouverture)
 	}
 	return nil
 }

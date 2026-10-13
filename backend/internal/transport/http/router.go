@@ -988,6 +988,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/", s.listOuvrages)
 			r.Get("/{id}", s.getOuvrage)
 			r.Get("/{id}/fichier", s.getOuvrageFichier)
+			// SECT-BIBLIO-12 : couverture du catalogue (page 1 rastérisée) —
+			// même chaîne RLS/presign que le fichier, tous rôles lecteurs.
+			r.Get("/{id}/couverture", s.getOuvrageCouverture)
+			// Régénération explicite par le gestionnaire du dépôt.
+			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/{id}/couverture/regenerer", s.regenererOuvrageCouverture)
 			r.Get("/{id}/lecture", s.getOuvrageLecture)
 			r.Put("/{id}/lecture", s.putOuvrageLecture)
 			// 000137 : dépôt élargi ADMIN/RESPONSABLE/ENSEIGNANT (G1

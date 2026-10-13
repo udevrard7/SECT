@@ -45,6 +45,7 @@ export type PageId =
   | 'annee-academique'
   | 'diffusions'
   | 'bibliotheque'
+  | 'bibliotheque-lecture'
   | 'conformite'
   | 'profil'
   | 'parametres'
@@ -96,6 +97,10 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — une seule page
   // pour tous les rôles ; l'ADMIN y dépose (G1), les autres lisent.
   bibliotheque: '/bibliotheque',
+  // SECT-BIBLIO-11 : lecteur plein écran — route DÉTAIL (l'id de l'ouvrage
+  // est résolu par préfixe dans getPageIdFromSlug ; PAGE_ROUTES ne porte
+  // que le segment de base pour le libellé/fil d'Ariane).
+  'bibliotheque-lecture': '/bibliotheque/lecture',
   conformite: '/conformite',
   profil: '/profil',
   parametres: '/parametres',
@@ -226,6 +231,18 @@ export function getPageContext(
     }
   }
 
+  // 2ter. SECT-BIBLIO-11 : lecteur plein écran — route DÉTAIL dynamique
+  // (/bibliotheque/lecture/{id}) : jamais dans ROUTE_TO_PAGE (segment de
+  // base seulement) → résolution par PRÉFIXE, avec la catégorie parente
+  // « Bibliothèque » pour un fil d'Ariane cohérent dans le header.
+  if (pathname.startsWith('/bibliotheque/lecture/')) {
+    return {
+      pageId: 'bibliotheque-lecture',
+      pageTitle: PAGE_LABELS['bibliotheque-lecture'],
+      parentCategory: 'Bibliothèque',
+    }
+  }
+
   // 3. Fallback : dashboard (route inconnue ou non autorisée pour le rôle)
   return {
     pageId: 'dashboard',
@@ -301,6 +318,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   diffusions: 'Diffusions',
   // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
   bibliotheque: 'Bibliothèque',
+  'bibliotheque-lecture': 'Lecture',
   conformite: 'Conformité référentiels',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
@@ -355,6 +373,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   // SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de direction.
   conformite: "Audit de direction : alignement des supports et épreuves sur les référentiels officiels de la bibliothèque",
   bibliotheque: "Explorer les ouvrages de référence de votre établissement (référentiels officiels, ouvrages, recherche, pratique professionnelle)",
+  'bibliotheque-lecture': "Lecture plein écran d'un ouvrage de la bibliothèque — lien sécurisé, reprise au dernier marque-page, annotations",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -745,6 +764,12 @@ export function getPageIdFromSlug(slug: string[]): PageId | null {
   const path = '/' + slug.join('/')
   // Direct match
   if (ROUTE_TO_PAGE[path]) return ROUTE_TO_PAGE[path]
+  // SECT-BIBLIO-11 : lecteur plein écran — route DÉTAIL dynamique
+  // (/bibliotheque/lecture/{ouvrageId}) : résolution par PRÉFIXE, AVANT
+  // les redirects (sinon /bibliotheque/lecture/x ne matche rien →
+  // dashboard). L'id de l'ouvrage est extrait par la page elle-même
+  // (usePathname) — aucune valeur dynamique ici.
+  if (path.startsWith('/bibliotheque/lecture/')) return 'bibliotheque-lecture'
   // Handle legacy redirects
   if (path === '/banque-questions') return 'epreuves'
   return null

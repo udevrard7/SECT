@@ -433,6 +433,55 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
 
+// getOuvrageCouverture — GET /api/ouvrages/{id}/couverture (SECT-BIBLIO-12)
+// URL présignée courte durée du JPEG de couverture (page 1 rastérisée au
+// dépôt). Même chaîne de contrôle que le fichier : FindByID sous RLS →
+// ouvrage invisible = 404 (jamais de fuite d'existence). 404 aussi si
+// l'ouvrage n'a pas de couverture (déposé avant 000140, échec de
+// rastérisation, ou déploiement sans poppler) : le client retombe sur
+// l'icône catégorie. PAS d'AuditLog : dérivé visuel, pas une lecture
+// (sinon N lignes de bruit par affichage de catalogue).
+func (s *Server) getOuvrageCouverture(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	expiresIn := 900
+	if v := r.URL.Query().Get("expiresIn"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 900 {
+			expiresIn = n
+		}
+	}
+	url, err := s.ouvrageUC.GetCouvertureURL(r.Context(), claims, chi.URLParam(r, "id"), expiresIn)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+// regenererOuvrageCouverture — POST /api/ouvrages/{id}/couverture/regenerer
+// (SECT-BIBLIO-12 — ADMIN/RESPONSABLE/ENSEIGNANT dans leur périmètre).
+// Rastérise la page 1 du PDF stocké en R2 (stream disque, jamais en RAM)
+// et met à jour les colonnes couverture. Utile pour les ouvrages déposés
+// AVANT 000140 et les échecs transitoires. Réponse : { ouvrage } à jour.
+func (s *Server) regenererOuvrageCouverture(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	o, err := s.ouvrageUC.RegenererCouverture(r.Context(), claims, chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ouvrage": o})
+}
+
 // analyzeOuvrage — POST /api/ouvrages/analyze (multipart/form-data ;
 // ADMIN/RESPONSABLE/ENSEIGNANT — SECT-BIBLIO-5, tâche 2).
 // Reçoit le PDF du futur ouvrage, extrait le texte des premières

@@ -60,6 +60,8 @@ import { DiffusionsPage } from '@/components/responsable/diffusions-page'
 // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique — une seule page pour
 // tous les rôles (l'ADMIN y dépose, G1 ; le RLS Ouvrage_* 000123 scope).
 import { BibliothequePage } from '@/components/bibliotheque/bibliotheque-page'
+// SECT-BIBLIO-11 : lecteur plein écran (route /bibliotheque/lecture/{id}).
+import { LecteurOuvragePage } from '@/components/bibliotheque/lecteur-ouvrage-page'
 import { ConformitePage } from '@/components/bibliotheque/conformite-page'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -121,6 +123,7 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
   diffusions: DiffusionsPage,
   // SECT-BIBLIO-P1 (ADR-0007) : bibliothèque numérique.
   bibliotheque: BibliothequePage,
+  'bibliotheque-lecture': LecteurOuvragePage,
   // SECT-BIBLIO-P3 (ADR-0007 §P3) : audit de direction (RESP/ADMIN).
   conformite: ConformitePage,
 }

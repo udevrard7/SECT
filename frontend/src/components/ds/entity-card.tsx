@@ -15,6 +15,17 @@ export interface EntityCardProps {
   /** Thumbnail : URL image ou icône Lucide fallback */
   thumbnailUrl?: string
   thumbnailIcon?: LucideIcon
+  /** SECT-BIBLIO-12 : ratio du cadre vignette — 'video' (16:9, défaut,
+   *  toutes les cartes existantes) ou 'portrait' (3:4 — couvertures de
+   *  livres de la bibliothèque, effet rayonnage). Un A4 (0,707) dans du
+   *  3:4 (0,75) ne recadre que ~6 % de hauteur : la couverture reste
+   *  quasi intégralement visible. */
+  thumbnailRatio?: 'video' | 'portrait'
+  /** SECT-BIBLIO-12 : image NON optimisée (next/image unoptimized) —
+   *  pour les URLs présignées R2 (domaine dynamique, TTL court) : pas
+   *  de transformation serveur, le navigateur charge l'image telle
+   *  quelle. Fallback <img> gracieux en cas d'erreur de chargement. */
+  thumbnailUnoptimized?: boolean
   /** Progression 0-100 (affiche une barre animée) */
   progress?: number
   /** Niveau de difficulté / tier (badge coloré) */
@@ -67,6 +78,8 @@ export function EntityCard({
   subtitle,
   thumbnailUrl,
   thumbnailIcon: ThumbnailIcon,
+  thumbnailRatio = 'video',
+  thumbnailUnoptimized = false,
   progress,
   tier,
   badge,
@@ -92,7 +105,12 @@ export function EntityCard({
       {/* Bande kente tricolore en haut de la card (signature africaine) */}
       <div className="ds-kente-strip" aria-hidden="true" />
       {/* Thumbnail */}
-      <div className="relative aspect-video bg-muted overflow-hidden">
+      <div
+        className={cn(
+          'relative bg-muted overflow-hidden',
+          thumbnailRatio === 'portrait' ? 'aspect-[3/4]' : 'aspect-video',
+        )}
+      >
         {loading ? (
           <PulseSkeleton className="h-full w-full" variant="card" />
         ) : thumbnailUrl ? (
@@ -101,7 +119,14 @@ export function EntityCard({
             alt={title}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            unoptimized={thumbnailUnoptimized}
+            className={cn(
+              'object-cover transition-transform duration-300 group-hover:scale-105',
+              // SECT-BIBLIO-12 : couverture de livre — léger effet « dos de
+              // livre » (ombre interne gauche) pour le rendu rayonnage.
+              thumbnailRatio === 'portrait' &&
+                'shadow-[inset_6px_0_12px_-6px_rgba(0,0,0,0.35)]',
+            )}
           />
         ) : ThumbnailIcon ? (
           <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-secondary/10">

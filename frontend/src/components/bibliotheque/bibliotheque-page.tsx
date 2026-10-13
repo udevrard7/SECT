@@ -39,8 +39,9 @@
 //                                     agrégats SECURITY DEFINER cloisonnés
 // ════════════════════════════════════════════════════════════════════
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Library,
   Plus,
@@ -50,7 +51,6 @@ import {
   RotateCcw,
   BookOpen,
   FileText,
-  ExternalLink,
   Loader2,
   X,
   AlertTriangle,
@@ -61,7 +61,6 @@ import {
   CalendarClock,
   Gavel,
   Activity,
-  Bookmark,
   Users,
   Timer,
   Eye,
@@ -69,7 +68,6 @@ import {
   BellPlus,
   BellRing,
   Inbox,
-  MessageSquareText,
   // SECT-BIBLIO-5 (000137) : visibilité 3 niveaux + analyse IA.
   Globe,
   Building2,
@@ -78,6 +76,9 @@ import {
   BadgeCheck,
   // SECT-BIBLIO-6 : relance de l'analyse IA.
   RefreshCw,
+  // SECT-BIBLIO-12 : régénération de couverture (icône lucide `Image`,
+  // aliasée — `Image` collisionnerait visuellement avec next/image).
+  Image as ImageIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -141,9 +142,8 @@ import { StatCard, EntityCard, PulseSkeleton } from '@/components/ds'
 // l'IA propose (retrieval thèmes), l'enseignant décide.
 import { AlignementsView } from './alignements-view'
 // SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — file de
-// propositions G1 (RESPONSABLE→ADMIN) + annotations du lecteur.
+// propositions G1 (RESPONSABLE→ADMIN).
 import { PropositionsView } from './propositions-view'
-import { AnnotationsPanel } from './annotations-panel'
 // SECT-RBAC-AUDITS (ADR-0009) : carte d'orientation mode assistance
 // pour l'ADMIN global sur les audits par établissement.
 import { AssistancePrompt } from './assistance-prompt'
@@ -152,8 +152,6 @@ import {
   type Ouvrage,
   type CategorieOuvrage,
   type OuvrageListResult,
-  type OuvrageLecture,
-  type RecordLecturePayload,
   type OuvrageActivite,
   type BibliothequeActiviteResult,
   type OuvrageVeille,
@@ -176,21 +174,6 @@ interface FiliereOption {
   id: string
   nom: string
   code?: string | null
-}
-
-interface LecteurState {
-  ouvrage: Ouvrage
-  /** URL présignée SANS fragment (base, jamais altérée). */
-  baseUrl: string | null
-  /** URL effective de l'iframe (base + #page=N — le fragment n'est JAMAIS
-   *  signé : l'ajouter ne casse pas la signature R2). */
-  url: string | null
-  loading: boolean
-  error: string | null
-  /** Progression chargée en parallèle du fichier (null = 1re lecture). */
-  lecture: OuvrageLecture | null
-  /** Page de reprise appliquée au fragment (null = ouverture page 1). */
-  reprisePage: number | null
 }
 
 // Variant de badge par catégorie (poids normatif — cf. ADR §Taxonomie).
@@ -237,6 +220,8 @@ function LigneIA({
 export function BibliothequePage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
+  // SECT-BIBLIO-11 : navigation vers le lecteur plein écran dédié.
+  const router = useRouter()
 
   const isAdmin = user?.role === 'ADMIN'
   const estResponsable = user?.role === 'RESPONSABLE'
@@ -426,6 +411,38 @@ export function BibliothequePage() {
   const pageCourante = ouvragesQuery.data?.page ?? 1
   const limit = ouvragesQuery.data?.limit ?? 12
 
+  // ─── SECT-BIBLIO-12 : couvertures du catalogue — la PAGE 1 réelle de
+  // chaque PDF (rastérisée côté backend au dépôt, servie en URL
+  // présignée courte durée comme le fichier). Une requête par carte :
+  // la réponse est un minuscule JSON {url}, l'image elle-même vient
+  // directement de R2 (le navigateur la met en cache). 404 = pas de
+  // couverture (déposé avant 000140 / échec / poppler absent) → la
+  // carte retombe sur l'icône catégorie — JAMAIS d'erreur visible. ───
+  const couverturesQuery = useQueries({
+    queries: ouvrages.map((o) => ({
+      queryKey: ['ouvrage-couverture', o.id],
+      queryFn: async (): Promise<string | null> => {
+        const res = await fetch(`/api/ouvrages/${o.id}/couverture`, {
+          credentials: 'include',
+        })
+        if (!res.ok) return null
+        const data = await res.json().catch(() => null)
+        return (data?.url as string) ?? null
+      },
+      // Presign 15 min : l'URL est re-résolue avant expiration.
+      staleTime: 10 * 60_000,
+      retry: false,
+    })),
+  })
+  const couvertures = useMemo(() => {
+    const map: Record<string, string> = {}
+    couverturesQuery.forEach((q, i) => {
+      const url = q.data
+      if (typeof url === 'string' && ouvrages[i]) map[ouvrages[i].id] = url
+    })
+    return map
+  }, [couverturesQuery, ouvrages])
+
   // ─── Query filières (options select — visible selon RLS Filiere_select ;
   // un échec renvoie simplement une liste vide, le filtre est optionnel) ───
   const filieresQuery = useQuery<FiliereOption[]>({
@@ -518,204 +535,38 @@ export function BibliothequePage() {
     return { referentiels, ouvragesRef, recherche }
   }, [ouvrages])
 
-  // ─── Lecteur in-browser (URL présignée courte durée) ───
-  const [lecteur, setLecteur] = useState<LecteurState | null>(null)
-  // Numéro saisi dans le marque-page déclaratif (prérempli à l'ouverture).
-  const [marquePageInput, setMarquePageInput] = useState('1')
+  // ─── SECT-BIBLIO-11 : lecteur PLEIN ÉCRAN — navigation vers la route
+  // dédiée /bibliotheque/lecture/{id} (plus de Dialog modal : le focus
+  // était piégé, la zone amputée, aucun plein écran possible). La logique
+  // reprise/télémétrie/marque-page/annotations vit désormais dans
+  // lecteur-ouvrage-page.tsx. ───
 
-  // Ouverture : fichier ET progression en PARALLÈLE (P2) — la reprise à la
-  // page exacte est appliquée via le fragment #page=N (le fragment n'est
-  // jamais signé : l'ajouter ne casse pas la présignature R2).
-  const ouvrirLecteur = async (o: Ouvrage) => {
-    setLecteur({
-      ouvrage: o,
-      baseUrl: null,
-      url: null,
-      loading: true,
-      error: null,
-      lecture: null,
-      reprisePage: null,
-    })
+  // SECT-BIBLIO-12 : régénérer la couverture — action explicite du
+  // gestionnaire (menu « Gérer »). Le backend streame le PDF depuis R2,
+  // rastérise la page 1 (pdftoppm) et met à jour les colonnes couverture.
+  const regenererCouverture = async (o: Ouvrage) => {
     try {
-      const [fichierRes, lectureRes] = await Promise.all([
-        fetch(`/api/ouvrages/${o.id}/fichier`, { credentials: 'include' }),
-        fetch(`/api/ouvrages/${o.id}/lecture`, { credentials: 'include' }),
-      ])
-      if (!fichierRes.ok) {
-        const body = await fichierRes.json().catch(() => ({}))
-        throw new Error(body?.error || `Erreur ${fichierRes.status}`)
+      const res = await fetch(`/api/ouvrages/${o.id}/couverture/regenerer`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${res.status}`)
       }
-      const fichierData = await fichierRes.json()
-      // Progression : non bloquante (404/erreur → première lecture). Seule
-      // l'URL du fichier peut faire échouer l'ouverture du lecteur.
-      let lecture: OuvrageLecture | null = null
-      if (lectureRes.ok) {
-        const ld = await lectureRes.json().catch(() => null)
-        lecture = ld?.lecture ?? null
-      }
-      const reprise = lecture && lecture.dernierePage > 1 ? lecture.dernierePage : null
-      const url = reprise ? `${fichierData.url}#page=${reprise}` : (fichierData.url as string)
-      setMarquePageInput(String(lecture?.dernierePage ?? 1))
-      setLecteur({
-        ouvrage: o,
-        baseUrl: fichierData.url,
-        url,
-        loading: false,
-        error: null,
-        lecture,
-        reprisePage: reprise,
+      // La carte doit immédiatement refléter la nouvelle couverture.
+      await queryClient.invalidateQueries({
+        queryKey: ['ouvrage-couverture', o.id],
+      })
+      toast.success(`Couverture de « ${o.titre} » régénérée`, {
+        description: 'La page 1 du PDF a été rastérisée et remplace la vignette.',
       })
     } catch (err) {
-      setLecteur({
-        ouvrage: o,
-        baseUrl: null,
-        url: null,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Erreur inconnue',
-        lecture: null,
-        reprisePage: null,
+      toast.error('Régénération impossible', {
+        description:
+          err instanceof Error ? err.message : 'Erreur inconnue',
       })
     }
-  }
-
-  const fermerLecteur = () => {
-    // Le dernier battement de cœur part en keepalive (survit à la fermeture
-    // du dialog) ; le cleanup de l'effet de télémétrie fait un 2e flush
-    // no-op de sécurité.
-    flushTelemetrie(true)
-    setLecteur(null)
-  }
-
-  // Saute à une page donnée (recharge l'iframe — le fragment change).
-  const allerPage = (page: number) => {
-    setLecteur((prev) =>
-      prev && prev.baseUrl
-        ? {
-            ...prev,
-            url: `${prev.baseUrl}#page=${page}`,
-            reprisePage: page,
-          }
-        : prev,
-    )
-  }
-
-  // ─── Télémétrie de lecture (P2) — useRef + visibilitychange + 30 s ───
-  // Le temps ne compte QUE si le document est visible (onglet actif) ET le
-  // lecteur ouvert ; les heartbeats partent toutes les 30 s, le flush final
-  // en fetch keepalive survit à la fermeture. Best-effort : une erreur
-  // réseau n'interrompt JAMAIS la lecture.
-  interface TelemetrieAccum {
-    visibleMs: number
-    pagesVues: Record<string, number>
-    dernierePage: number | null
-    lastTick: number
-    visible: boolean
-  }
-  const TELEMETRIE_INTERVAL_MS = 30_000
-  const telemetrieRef = useRef<TelemetrieAccum | null>(null)
-  const lecteurOuvrageIdRef = useRef<string | null>(null)
-
-  const tickVisible = (acc: TelemetrieAccum) => {
-    const now = Date.now()
-    if (acc.visible) acc.visibleMs += now - acc.lastTick
-    acc.lastTick = now
-  }
-
-  const flushTelemetrie = useCallback((keepalive: boolean) => {
-    const acc = telemetrieRef.current
-    const ouvrageId = lecteurOuvrageIdRef.current
-    if (!acc || !ouvrageId) return
-    tickVisible(acc)
-    const tempsDeltaSec = Math.floor(acc.visibleMs / 1000)
-    acc.visibleMs -= tempsDeltaSec * 1000 // conserve la fraction < 1 s
-    const hasPages = Object.keys(acc.pagesVues).length > 0
-    const page = acc.dernierePage
-    if (tempsDeltaSec === 0 && !hasPages && page === null) return
-    const body: RecordLecturePayload = { tempsDeltaSec }
-    if (hasPages) body.pagesVues = acc.pagesVues
-    if (page !== null) body.dernierePage = page
-    acc.pagesVues = {}
-    acc.dernierePage = null
-    fetch(`/api/ouvrages/${ouvrageId}/lecture`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(body),
-      keepalive,
-    }).catch(() => {
-      // best-effort : la télémétrie ne doit jamais casser la lecture
-    })
-  }, [])
-
-  // Cycle de vie de la télémétrie : démarrage à l'ouverture de l'URL,
-  // arrêt + flush final à la fermeture/changement.
-  useEffect(() => {
-    if (!lecteur?.url) return
-    lecteurOuvrageIdRef.current = lecteur.ouvrage.id
-    const acc: TelemetrieAccum = {
-      visibleMs: 0,
-      pagesVues: {},
-      dernierePage: null,
-      lastTick: Date.now(),
-      visible: document.visibilityState === 'visible',
-    }
-    telemetrieRef.current = acc
-
-    const onVisibility = () => {
-      tickVisible(acc)
-      acc.visible = document.visibilityState === 'visible'
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    const interval = window.setInterval(
-      () => flushTelemetrie(false),
-      TELEMETRIE_INTERVAL_MS,
-    )
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      window.clearInterval(interval)
-      flushTelemetrie(true)
-      lecteurOuvrageIdRef.current = null
-      telemetrieRef.current = null
-    }
-  }, [lecteur?.url, lecteur?.ouvrage.id, flushTelemetrie])
-
-  // SECT-BIBLIO-P4 : panneau d'annotations du lecteur (aside droite).
-  const [panneauAnnotations, setPanneauAnnotations] = useState(false)
-
-  // Marque-page DÉCLARATIF : l'iframe cross-origin ne permet pas de lire la
-  // page courante du lecteur PDF natif — c'est le lecteur qui déclare où il
-  // en est (bouton « Marquer »). Envoie immédiat (pas d'attente du heartbeat).
-  const marquerPage = () => {
-    const acc = telemetrieRef.current
-    if (!acc) return
-    const page = parseInt(marquePageInput, 10)
-    if (Number.isNaN(page) || page < 1) {
-      toast.error('Numéro de page invalide', {
-        description: 'Entrez le numéro de la page que vous êtes en train de lire.',
-      })
-      return
-    }
-    const key = String(page)
-    acc.pagesVues[key] = (acc.pagesVues[key] ?? 0) + 1
-    acc.dernierePage = page
-    flushTelemetrie(false)
-    // Mise à jour locale immédiate (chip) — le serveur fait foi à la
-    // prochaine ouverture.
-    setLecteur((prev) =>
-      prev
-        ? {
-            ...prev,
-            reprisePage: page,
-            lecture: prev.lecture
-              ? { ...prev.lecture, dernierePage: page }
-              : prev.lecture,
-          }
-        : prev,
-    )
-    toast.success(`Marque-page enregistré — page ${page}`, {
-      description: 'Vous reprendrez à cette page à la prochaine ouverture.',
-    })
   }
 
   const telecharger = async (o: Ouvrage) => {
@@ -1320,7 +1171,14 @@ export function BibliothequePage() {
               (auteurs.length > 2 ? ' et al.' : '')
             : (o.editeur ?? '—')
         }
+        // SECT-BIBLIO-12 : couverture RÉELLE du livre (page 1 du PDF,
+        // rastérisée au dépôt) en cadre portrait — effet rayonnage de
+        // bibliothèque. Fallback automatique : icône catégorie si pas de
+        // couverture (déposé avant 000140, échec, poppler absent).
+        thumbnailUrl={couvertures[o.id]}
         thumbnailIcon={o.categorie === 'REFERENTIEL_OFFICIEL' ? Gavel : BookOpen}
+        thumbnailRatio="portrait"
+        thumbnailUnoptimized
         badge={{
           label: categorieLabel(o.categorie),
           variant: BADGE_VARIANTS[o.categorie],
@@ -1391,7 +1249,7 @@ export function BibliothequePage() {
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2 mt-auto pt-2">
-          <Button size="sm" onClick={() => ouvrirLecteur(o)} className="gap-1.5">
+          <Button size="sm" onClick={() => router.push(`/bibliotheque/lecture/${o.id}`)} className="gap-1.5">
             <BookOpen className="h-3.5 w-3.5" />
             Lire
           </Button>
@@ -1436,6 +1294,11 @@ export function BibliothequePage() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => ouvrirEdition(o)}>
                   <Edit3 className="h-4 w-4 mr-2" /> Modifier
+                </DropdownMenuItem>
+                {/* SECT-BIBLIO-12 : régénérer la couverture (ouvrages déposés
+                    avant 000140, échec transitoire) — stream R2 → pdftoppm. */}
+                <DropdownMenuItem onClick={() => regenererCouverture(o)}>
+                  <ImageIcon className="h-4 w-4 mr-2" /> Régénérer la couverture
                 </DropdownMenuItem>
                 {enCorbeille ? (
                   <DropdownMenuItem onClick={() => restaurer(o)}>
@@ -2811,181 +2674,6 @@ export function BibliothequePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ─── Lecteur in-browser (présigné 15 min, iframe + lecture mesurée P2) ─── */}
-      <Dialog open={!!lecteur} onOpenChange={(v) => !v && fermerLecteur()}>
-        <DialogContent className="max-w-7xl h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-5 pb-3 border-b border-border shrink-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1 min-w-0">
-                <DialogTitle className="font-display truncate">
-                  {lecteur?.ouvrage.titre}
-                </DialogTitle>
-                <DialogDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="inline-flex items-center gap-1">
-                    <Badge variant="outline">
-                      {categorieLabel(
-                        lecteur?.ouvrage.categorie ?? 'OUVRAGE_REFERENCE',
-                      )}
-                    </Badge>
-                  </span>
-                  <span>
-                    {lecteur?.ouvrage.filiere?.nom ?? 'Toutes filières'} ·{' '}
-                    {lecteur?.ouvrage.niveau ?? 'Tous niveaux'}
-                  </span>
-                </DialogDescription>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {lecteur?.url && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => window.open(lecteur.url!, '_blank')}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Nouvel onglet
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => fermerLecteur()}
-                  aria-label="Fermer le lecteur"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </DialogHeader>
-
-          {/* SECT-BIBLIO-P2 : barre de lecture mesurée — chip de reprise,
-              marque-page DÉCLARATIF (l'iframe cross-origin ne permet pas de
-              lire la page courante du lecteur natif) et reprise au début. */}
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground shrink-0">
-            <div className="flex items-center gap-2">
-              <Filter className="h-3 w-3" />
-              Lecture réservée — consultation éducative, lien sécurisé de 15
-              minutes, journalisée.
-            </div>
-            {lecteur?.url && (
-              <div className="flex flex-wrap items-center gap-2">
-                {lecteur.reprisePage !== null && lecteur.reprisePage > 1 && (
-                  <>
-                    <Badge variant="secondary" className="gap-1">
-                      <Bookmark className="h-3 w-3" />
-                      Reprise page {lecteur.reprisePage}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => allerPage(1)}
-                    >
-                      Reprendre au début
-                    </Button>
-                  </>
-                )}
-                <div className="flex items-center gap-1.5">
-                  <Label htmlFor="biblio-marque-page" className="sr-only">
-                    Page actuelle
-                  </Label>
-                  <Input
-                    id="biblio-marque-page"
-                    type="number"
-                    min={1}
-                    value={marquePageInput}
-                    onChange={(e) => setMarquePageInput(e.target.value)}
-                    className="h-7 w-[74px] text-xs"
-                    aria-label="Numéro de la page que vous lisez"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1 px-2 text-xs"
-                    onClick={marquerPage}
-                  >
-                    <Bookmark className="h-3 w-3" />
-                    Marquer
-                  </Button>
-                </div>
-              </div>
-            )}
-            {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1) —
-                indépendant du fichier (les annotations vivent sur
-                l'ouvrage, utiles même en erreur honnête DB-only). */}
-            <Button
-              variant={panneauAnnotations ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={() => setPanneauAnnotations((v) => !v)}
-              aria-pressed={panneauAnnotations}
-            >
-              <MessageSquareText className="h-3 w-3" />
-              Annotations
-            </Button>
-          </div>
-
-          <div className="flex-1 min-h-0 bg-muted/30 flex">
-            <div className="flex-1 min-w-0 relative">
-              {lecteur?.loading ? (
-                <div className="h-full flex flex-col items-center justify-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">
-                    Génération du lien sécurisé…
-                  </p>
-                </div>
-              ) : lecteur?.error ? (
-                <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
-                  <ShieldAlert className="h-10 w-10 text-destructive" />
-                  <p className="font-medium">Lecture impossible</p>
-                  <p className="text-sm text-muted-foreground max-w-md">
-                    {lecteur.error}
-                  </p>
-                </div>
-              ) : lecteur?.url ? (
-                <>
-                  <iframe
-                    src={lecteur.url}
-                    title={`Lecteur — ${lecteur.ouvrage.titre}`}
-                    className="w-full h-full border-0"
-                  />
-                  {/* SECT-BIBLIO-P4 (ADR-0008 §6) : watermark UI — email
-                      + date, répété, pointer-events-none (la navigation
-                      du lecteur natif reste utilisable) + select-none. */}
-                  <div
-                    className="absolute inset-0 pointer-events-none select-none overflow-hidden"
-                    aria-hidden="true"
-                  >
-                    <div className="h-full w-full flex flex-col justify-around items-center">
-                      {Array.from({ length: 8 }).map((_, i) => (
-                        <p
-                          key={i}
-                          className="text-[10px] font-medium text-foreground/10 -rotate-[18deg] whitespace-nowrap"
-                        >
-                          {user?.email ?? 'lecteur'} ·{' '}
-                          {new Date().toLocaleDateString('fr-FR')} · lecture
-                          réservée
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : null}
-            </div>
-            {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1) —
-                visibilité PRIVEE/FILIERE/ETABLISSEMENT scopée RLS. */}
-            {panneauAnnotations && lecteur && (
-              <aside className="w-[320px] shrink-0 border-l border-border bg-card overflow-hidden">
-                <AnnotationsPanel
-                  ouvrageId={lecteur.ouvrage.id}
-                  pageCourante={lecteur.reprisePage}
-                  userId={user?.id}
-                />
-              </aside>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

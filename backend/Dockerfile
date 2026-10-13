@@ -56,7 +56,11 @@ FROM alpine:3.20
 # SECT-BIBLIO-7 : qpdf — déchiffre les PDFs « sécurité standard Acrobat » à
 # mot de passe utilisateur vide (ex. PDFWriter 4.x) que la lib Go pure ne
 # sait pas lire (analyse IA bibliothèque : decryptPDF dans ouvrage.go).
-RUN apk --no-cache add ca-certificates tzdata qpdf
+# SECT-BIBLIO-12 : poppler-utils — pdftoppm rastérise la PAGE 1 du PDF
+# en JPEG pour la couverture des cartes du catalogue (~600 px de large ;
+# rasteriserCouverture dans ouvrage.go). Même pattern que qpdf : outil
+# CLI du runtime Alpine, best-effort côté Go (absent = silence).
+RUN apk --no-cache add ca-certificates tzdata qpdf poppler-utils
 
 # HARDENING (audit DevOps 2026-09) : utilisateur non-root + healthcheck
 # intégré (l'image est utilisable telle quelle hors Render).

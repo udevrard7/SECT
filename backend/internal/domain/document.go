@@ -116,6 +116,12 @@ type StorageClient interface {
 	// Download récupère un objet depuis R2 par sa clé.
 	Download(ctx context.Context, key string) ([]byte, error)
 
+	// DownloadToFile SECT-BIBLIO-12 : télécharge un objet en STREAMANT vers
+	// un fichier disque (jamais en RAM) — pensé pour les gros PDFs (100 Mo)
+	// destinés à des outils externes (pdftoppm). Le chemin de destination
+	// appartient à l'appelant (cleanup inclus).
+	DownloadToFile(ctx context.Context, key, destPath string) error
+
 	// Delete supprime un objet de R2.
 	Delete(ctx context.Context, key string) error
 

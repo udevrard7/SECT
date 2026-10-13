@@ -26,8 +26,10 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -250,14 +252,231 @@ func (uc *OuvrageUseCase) Upload(ctx context.Context, claims db.SessionClaims, i
 		}
 	}
 
+	// SECT-BIBLIO-12 : couverture du catalogue — la PAGE 1 du PDF
+	// rastérisée en JPEG (~600 px de large) au moment du dépôt, quand le
+	// fichier est DÉJÀ en mémoire : zéro re-téléchargement R2. Best-effort
+	// PARFAITEMENT toléré : un échec ne bloque JAMAIS le dépôt (la carte
+	// retombe sur l'icône catégorie) ; l'échec n'est marqué en DB que si
+	// pdftoppm est présent et échoue (PDF corrompu) — sinon silence
+	// (outil absent = environnement, pas le document).
+	couvertureKey, couvertureEchec := uc.genererCouverture(ctx, oid, content)
+	input.CheminCouverture = couvertureKey
+	input.CouvertureEchecAt = couvertureEchec
+
 	created, err := uc.ouvrageRepo.Create(ctx, input)
 	if err != nil {
 		if uc.storage != nil {
 			_ = uc.storage.Delete(ctx, objectKey) // best-effort (pattern document)
+			if couvertureKey != nil && *couvertureKey != "" {
+				_ = uc.storage.Delete(ctx, *couvertureKey)
+			}
 		}
 		return nil, err
 	}
 	return created, nil
+}
+
+// ── SECT-BIBLIO-12 : couvertures du catalogue ──
+
+// couvertureLargeurPx — largeur cible du JPEG de couverture. Les cartes
+// affichent ~200-300 px (600 px couvre le 2x DPR des écrans denses).
+const couvertureLargeurPx = 600
+
+// couvertureBudget — budget de rastérisation pdftoppm (page 1) : au-delà,
+// la commande est tuée et la couverture est marquée en échec. Une page 1
+// se rend en < 1 s même sur un PDF lourd — 20 s = garde-fou large.
+// NB time.Duration : TOUJOURS avec unité (leçon E2E : 20_000 nu = 20 µs →
+// pdftoppm tué instantanément, « signal: killed »).
+const couvertureBudget = 20 * time.Second
+
+// couvertureObjectKey — clé R2 du JPEG de couverture. Vit sous le MÊME
+// préfixe que le PDF (ouvrages/{oid}/…) : la purge d'un ouvrage ramasse
+// les deux objets (bibliotheque_purge_worker).
+func couvertureObjectKey(ouvrageID string) string {
+	return fmt.Sprintf("ouvrages/%s/couverture.jpg", ouvrageID)
+}
+
+// rasteriserCouverture — page 1 du PDF → JPEG (~600 px de large) via
+// pdftoppm (paquet Alpine poppler-utils du Dockerfile, même pattern que
+// qpdf pour les PDFs chiffrés). Retourne (nil, err) si l'outil manque
+// (LookPath) — l'appelant distingue « outil absent » (silence, pas de
+// marqueur DB) de « outil présent + échec » (marqueur couvertureEchecAt).
+// decryptPDF d'abord : les PDFs « sécurité standard Acrobat » à mot de
+// passe utilisateur vide (SECT-BIBLIO-7) rendraient une page noire.
+func rasteriserCouverture(ctx context.Context, content []byte) ([]byte, error) {
+	pdftoppm, err := exec.LookPath("pdftoppm")
+	if err != nil {
+		return nil, fmt.Errorf("pdftoppm absent: %w", err)
+	}
+	if dec := decryptPDF(ctx, content); dec != nil {
+		content = dec
+	}
+
+	in, err := os.CreateTemp("", "sect-couv-*.pdf")
+	if err != nil {
+		return nil, fmt.Errorf("temp in: %w", err)
+	}
+	inName := in.Name()
+	defer func() { _ = os.Remove(inName) }()
+	if _, err := in.Write(content); err != nil {
+		_ = in.Close()
+		return nil, fmt.Errorf("write in: %w", err)
+	}
+	if err := in.Close(); err != nil {
+		return nil, fmt.Errorf("close in: %w", err)
+	}
+
+	outPrefix, err := os.MkdirTemp("", "sect-couv-*")
+	if err != nil {
+		return nil, fmt.Errorf("temp out: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(outPrefix) }()
+	// -singlefile : pas de suffixe de numéro de page (couverture.jpg).
+	jpg := filepath.Join(outPrefix, "couverture.jpg")
+
+	ctxRaster, cancel := context.WithTimeout(ctx, couvertureBudget)
+	defer cancel()
+	cmd := exec.CommandContext(ctxRaster, pdftoppm,
+		"-jpeg", "-jpegopt", "quality=82",
+		"-f", "1", "-l", "1",
+		"-scale-to", strconv.Itoa(couvertureLargeurPx),
+		"-singlefile",
+		inName, filepath.Join(outPrefix, "couverture"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("pdftoppm: %w (sortie: %.200s)", err, string(out))
+	}
+	return os.ReadFile(jpg)
+}
+
+// genererCouverture — rastérise + stocke la couverture dans R2. Retourne
+// les valeurs prêtes pour CreateOuvrageInput : (chemin, nil) si réussi ;
+// (nil, &now) si pdftoppm est présent mais échoue (marqueur persisté —
+// pas de retry automatique en boucle) ; (nil, nil) si l'outil manque
+// (environnement sans poppler — la carte retombe sur l'icône catégorie).
+// Jamais d'erreur remontante : la couverture ne doit JAMAIS bloquer un
+// dépôt (garde-fou ADR-0007 — l'exploitant redépose du contenu, pas
+// des images).
+func (uc *OuvrageUseCase) genererCouverture(ctx context.Context, ouvrageID string, pdfContent []byte) (*string, *time.Time) {
+	if uc.storage == nil {
+		return nil, nil // mode DB-only (dev) : pas de couverture
+	}
+	jpg, err := rasteriserCouverture(ctx, pdfContent)
+	if err != nil {
+		if strings.Contains(err.Error(), "pdftoppm absent") {
+			return nil, nil
+		}
+		now := time.Now()
+		slog.Warn("SECT-BIBLIO-12: rastérisation couverture échouée (marqueur posé)",
+			"ouvrageId", ouvrageID, "error", err.Error())
+		return nil, &now
+	}
+	key := couvertureObjectKey(ouvrageID)
+	if _, err := uc.storage.Upload(ctx, domain.StorageObject{
+		Key:         key,
+		Content:     jpg,
+		ContentType: "image/jpeg",
+	}); err != nil {
+		// Échec R2 ≠ échec PDF : pas de marqueur (le PDF est sain, une
+		// régénération explicite réussira probablement).
+		slog.Warn("SECT-BIBLIO-12: upload couverture R2 échoué",
+			"ouvrageId", ouvrageID, "error", err.Error())
+		return nil, nil
+	}
+	return &key, nil
+}
+
+// GetCouvertureURL — SECT-BIBLIO-12 : URL présignée courte durée du JPEG
+// de couverture (même TTL et même chaîne de contrôle que le fichier :
+// FindByID sous RLS → ouvrage invisible = 404, jamais de fuite
+// d'existence). Pas d'AuditLog : la couverture est un DÉRIVÉ VISUEL de
+// la page 1, pas une lecture — en journaliser chaque affichage de
+// catalogue noierait le journal (la lecture mesurée P2 reste LE journal
+// de consultation, déclenchée par le lecteur plein écran).
+func (uc *OuvrageUseCase) GetCouvertureURL(ctx context.Context, claims db.SessionClaims, id string, expiresIn int) (string, error) {
+	o, err := uc.ouvrageRepo.FindByID(ctx, id)
+	if err != nil {
+		return "", err // NotFoundError (RLS) tel quel
+	}
+	if o.CheminCouverture == nil || *o.CheminCouverture == "" {
+		return "", &domain.NotFoundError{Entity: "OuvrageCouverture", ID: id}
+	}
+	if uc.storage == nil {
+		return "", fmt.Errorf("stockage non configuré")
+	}
+	url, err := uc.storage.PresignURL(ctx, *o.CheminCouverture, expiresIn)
+	if err != nil {
+		return "", fmt.Errorf("presign couverture: %w", err)
+	}
+	return url, nil
+}
+
+// RegenererCouverture — SECT-BIBLIO-12 : régénération EXPLICITE par le
+// gestionnaire (ADMIN/RESP/ENS dans son périmètre — canManageOuvrage ;
+// utile pour les ouvrages déposés AVANT la migration 000140 et les
+// échecs transitoires R2). Le PDF est STREAMÉ vers un fichier temp
+// (jamais en RAM — jusqu'à 100 Mo), rastérisé, uploadé, puis les
+// colonnes couverture sont mises à jour (le marqueur d'échec est
+// RESET en cas de succès).
+func (uc *OuvrageUseCase) RegenererCouverture(ctx context.Context, claims db.SessionClaims, id string) (*domain.Ouvrage, error) {
+	if claims.Role != string(domain.RoleAdmin) &&
+		claims.Role != string(domain.RoleResponsable) &&
+		claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "régénération réservée à l'ADMIN, au RESPONSABLE et à l'ENSEIGNANT (son dépôt)"}
+	}
+	o, err := uc.ouvrageRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canManageOuvrage(claims, o) {
+		return nil, &domain.UnauthorizedError{Message: "régénération refusée : ouvrage hors de votre périmètre"}
+	}
+	if uc.storage == nil {
+		return nil, fmt.Errorf("stockage non configuré (mode DB-only)")
+	}
+	if o.CheminStockage == nil || *o.CheminStockage == "" {
+		return nil, &domain.ValidationError{Field: "file", Message: "ouvrage sans fichier stocké (mode DB-only)"}
+	}
+
+	// Stream R2 → disque (jamais en RAM).
+	tmpDir, err := os.MkdirTemp("", "sect-regen-*")
+	if err != nil {
+		return nil, fmt.Errorf("temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	pdfPath := filepath.Join(tmpDir, "source.pdf")
+	if err := uc.storage.DownloadToFile(ctx, *o.CheminStockage, pdfPath); err != nil {
+		return nil, fmt.Errorf("téléchargement du PDF: %w", err)
+	}
+	pdfContent, err := os.ReadFile(pdfPath)
+	if err != nil {
+		return nil, fmt.Errorf("lecture du PDF: %w", err)
+	}
+
+	// Rastérisation + upload : ici une erreur est RÉELLE (l'action est
+	// explicite) — remontée au client avec contexte.
+	jpg, err := rasteriserCouverture(ctx, pdfContent)
+	if err != nil {
+		if strings.Contains(err.Error(), "pdftoppm absent") {
+			return nil, fmt.Errorf("outil de rastérisation indisponible sur ce déploiement (pdftoppm/poppler-utils)")
+		}
+		now := time.Now()
+		if errUpd := uc.ouvrageRepo.UpdateCouverture(ctx, id, nil, &now); errUpd != nil {
+			slog.Warn("SECT-BIBLIO-12: marqueur échec non posé", "ouvrageId", id, "error", errUpd.Error())
+		}
+		return nil, fmt.Errorf("rastérisation impossible (PDF illisible ?): %w", err)
+	}
+	key := couvertureObjectKey(id)
+	if _, err := uc.storage.Upload(ctx, domain.StorageObject{
+		Key:         key,
+		Content:     jpg,
+		ContentType: "image/jpeg",
+	}); err != nil {
+		return nil, fmt.Errorf("upload couverture R2: %w", err)
+	}
+	if err := uc.ouvrageRepo.UpdateCouverture(ctx, id, &key, nil); err != nil {
+		return nil, err
+	}
+	return uc.ouvrageRepo.FindByID(ctx, id)
 }
 
 // canManageOuvrage — droit de gestion d'un ouvrage existant (000137) :
