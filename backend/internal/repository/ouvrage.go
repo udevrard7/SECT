@@ -792,10 +792,25 @@ func (r *OuvrageRepository) MesClassesEnseignant(ctx context.Context) ([]domain.
 	return out, nil
 }
 
-// AuditLecture — journalise un accès fichier (garde-fou ADR-0007 : audit
-// des accès). Policy AuditLog_insert_system : TO neondb_owner (rôle de
+// AuditLecture — journalise un accès fichier (garde-fou ADR-0007 :
+// audit des accès). Policy AuditLog_insert_system : TO neondb_owner (rôle de
 // l'app) → l'INSERT passe en contexte user comme en contexte system.
 func (r *OuvrageRepository) AuditLecture(ctx context.Context, entry domain.OuvrageAuditEntry) error {
+	return r.auditAcces(ctx, entry, "OUVRAGE_LECTURE", "lecture")
+}
+
+// AuditTelechargement SECT-BIBLIO-13 : le téléchargement est un acte PLUS
+// FORT que la lecture (le fichier quitte le périmètre in-browser) — il a sa
+// propre trace d'audit, distincte de OUVRAGE_LECTURE, pour que l'établisse-
+// ment puisse répondre « qui a posé quoi sur son disque » sans bruit de
+// lecture (N lignes d'affichage catalogue/lecteur).
+func (r *OuvrageRepository) AuditTelechargement(ctx context.Context, entry domain.OuvrageAuditEntry) error {
+	return r.auditAcces(ctx, entry, "OUVRAGE_TELECHARGEMENT", "telechargement")
+}
+
+// auditAcces — INSERT AuditLog partagé lecture/téléchargement (même
+// policy RLS, même forme de détails ; seule l'action diffère).
+func (r *OuvrageRepository) auditAcces(ctx context.Context, entry domain.OuvrageAuditEntry, action, actionMetier string) error {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("no RLS claims in context")
@@ -806,7 +821,7 @@ func (r *OuvrageRepository) AuditLecture(ctx context.Context, entry domain.Ouvra
 		"categorie":          string(entry.Categorie),
 		"expiresIn":          entry.ExpiresIn,
 		"ouvrageId":          entry.OuvrageID,
-		"action_metier":      "lecture",
+		"action_metier":      actionMetier,
 		"garde_droits_adr_7": "audit des acces",
 	})
 
@@ -818,14 +833,14 @@ func (r *OuvrageRepository) AuditLecture(ctx context.Context, entry domain.Ouvra
 			uuid.NewString(),
 			nullableStrPtr(&entry.ActorUserID),
 			nullableStrPtr(&entry.ActorEmail),
-			"OUVRAGE_LECTURE",
+			action,
 			"Ouvrage",
 			entry.OuvrageID,
 			string(details),
 			entry.ActorIP,
 			nullableStrPtr(&entry.EtablissementID))
 		if err != nil {
-			return fmt.Errorf("insert audit ouvrage.lecture: %w", err)
+			return fmt.Errorf("insert audit ouvrage.%s: %w", actionMetier, err)
 		}
 		return nil
 	})

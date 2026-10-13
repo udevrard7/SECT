@@ -29,6 +29,11 @@
 // Backend matché :
 //   GET /api/ouvrages/{id}          → { ouvrage } (404 si invisible — RLS)
 //   GET /api/ouvrages/{id}/fichier  → { url } (présignée 15 min)
+//                                    SECT-BIBLIO-13 : disposition SIGNÉE
+//                                    « inline » — le lecteur/onglet AFFICHE,
+//                                    ne télécharge pas. L'acte téléchargement
+//                                    vit sur /{id}/telechargement (403 si
+//                                    telechargementAutorise=false) — pas ici.
 //   GET/PUT /api/ouvrages/{id}/lecture → télémétrie P2
 // ════════════════════════════════════════════════════════════════════
 
@@ -405,7 +410,7 @@ export function LecteurOuvragePage() {
                 variant="ghost"
                 className="gap-1.5"
                 onClick={() => window.open(data.url!, '_blank')}
-                title="Ouvrir le PDF dans un nouvel onglet du navigateur"
+                title="Ouvrir le PDF dans un nouvel onglet du navigateur (affichage — SECT-BIBLIO-13 : URL de lecture en disposition inline)"
               >
                 <ExternalLink className="h-4 w-4" />
                 <span className="hidden lg:inline">Nouvel onglet</span>

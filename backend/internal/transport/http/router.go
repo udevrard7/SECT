@@ -988,6 +988,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/", s.listOuvrages)
 			r.Get("/{id}", s.getOuvrage)
 			r.Get("/{id}/fichier", s.getOuvrageFichier)
+			// SECT-BIBLIO-13 : téléchargement = acte distinct de la
+			// lecture. SEULE route émettant une URL en disposition
+			// attachment ; 403 si telechargementAutorise = false
+			// (enforcement serveur — le masquage UI ne suffisait pas),
+			// audit OUVRAGE_TELECHARGEMENT. Tous rôles authentifiés :
+			// l'autorisation est le flag de l'ouvrage, pas le rôle.
+			r.Get("/{id}/telechargement", s.getOuvrageTelechargement)
 			// SECT-BIBLIO-12 : couverture du catalogue (page 1 rastérisée) —
 			// même chaîne RLS/presign que le fichier, tous rôles lecteurs.
 			r.Get("/{id}/couverture", s.getOuvrageCouverture)

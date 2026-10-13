@@ -128,6 +128,18 @@ type StorageClient interface {
 	// PresignURL génère une URL présignée pour télécharger un objet (validité en secondes).
 	PresignURL(ctx context.Context, key string, expiresIn int) (string, error)
 
+	// PresignURLAvecDisposition SECT-BIBLIO-13 : présignature GET avec
+	// Content-Disposition IMPOSÉ (paramètre signé — R2 le sert tel quel).
+	// Deux usages antagonistes de la même URL présignée :
+	//   - "inline"                     → lecture in-browser (lecteur, iframe) ;
+	//   - attachment; filename=…(.pdf) → téléchargement (API dédiée, flag
+	//     telechargementAutorise vérifié AVANT la présignature).
+	// Séparer les sémantiques côté stockage rend le flag réellement
+	// opposable : l'URL de lecture affiche, l'URL de téléchargement pose
+	// le fichier sur disque — et cette dernière n'est JAMAIS émise sans
+	// autorisation (403 en amont).
+	PresignURLAvecDisposition(ctx context.Context, key string, expiresIn int, disposition string) (string, error)
+
 	// PresignUpload génère une URL présignée pour uploader un objet directement
 	// depuis le navigateur (PUT). P3-DEVOIRS-3 : upload direct-to-R2 des soumissions.
 	PresignUpload(ctx context.Context, key, contentType string, expiresIn int) (string, error)

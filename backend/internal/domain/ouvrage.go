@@ -380,6 +380,9 @@ type OuvrageRepository interface {
 	MesClassesEnseignant(ctx context.Context) ([]OuvrageClasseRef, error)
 	// AuditLecture — journalise un accès fichier (ouvrage.lecture).
 	AuditLecture(ctx context.Context, entry OuvrageAuditEntry) error
+	// AuditTelechargement SECT-BIBLIO-13 : trace distincte du téléchargement
+	// (acte plus fort que la lecture — le fichier quitte le navigateur).
+	AuditTelechargement(ctx context.Context, entry OuvrageAuditEntry) error
 	// UpdateCouverture — SECT-BIBLIO-12 : enregistre chemin R2 du PNG
 	// de couverture ou le marqueur d'échec (régénération gestionnaire).
 	UpdateCouverture(ctx context.Context, id string, chemin *string, echecAt *time.Time) error

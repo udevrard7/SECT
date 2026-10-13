@@ -169,6 +169,30 @@ func (c *R2Client) PresignURL(ctx context.Context, key string, expiresIn int) (s
 	return req.URL, nil
 }
 
+// PresignURLAvecDisposition SECT-BIBLIO-13 : présignature GET dont le
+// Content-Disposition fait partie des paramètres SIGNÉS (Response* de
+// GetObjectInput) — R2 sert l'en-tête exact, le navigateur ne peut pas le
+// retirer. "inline" → affichage ; "attachment; filename=…" → téléchargement.
+func (c *R2Client) PresignURLAvecDisposition(ctx context.Context, key string, expiresIn int, disposition string) (string, error) {
+	if expiresIn <= 0 {
+		expiresIn = 3600
+	}
+	if disposition == "" {
+		disposition = "inline"
+	}
+
+	req, err := c.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket:                     aws.String(c.bucket),
+		Key:                        aws.String(key),
+		ResponseContentDisposition: aws.String(disposition),
+	}, s3.WithPresignExpires(time.Duration(expiresIn)*time.Second))
+	if err != nil {
+		return "", fmt.Errorf("presign URL (disposition %q): %w", disposition, err)
+	}
+
+	return req.URL, nil
+}
+
 // PresignUpload génère une URL présignée pour uploader un objet directement
 // depuis le navigateur (méthode PUT). P3-DEVOIRS-3 : upload direct-to-R2.
 //

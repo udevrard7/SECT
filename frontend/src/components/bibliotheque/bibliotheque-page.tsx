@@ -79,6 +79,9 @@ import {
   // SECT-BIBLIO-12 : régénération de couverture (icône lucide `Image`,
   // aliasée — `Image` collisionnerait visuellement avec next/image).
   Image as ImageIcon,
+  // SECT-BIBLIO-13 : téléchargement opposable — verrou visible sur les
+  // cartes « lecture en ligne uniquement ».
+  Lock,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -569,18 +572,50 @@ export function BibliothequePage() {
     }
   }
 
+  // SECT-BIBLIO-13 : téléchargement via l'API DÉDIÉE (attachment) — plus
+  // l'URL de lecture. Côté serveur : 403 si telechargementAutorise=false
+  // (l'URL n'est jamais émise), 404 si ouvrage invisible (RLS), audit
+  // OUVRAGE_TELECHARGEMENT. Le garde-fou UI (retour anticipé) reste pour
+  // l'UX — le VRAI contrôle est serveur.
   const telecharger = async (o: Ouvrage) => {
     if (!o.telechargementAutorise) return
     try {
-      const res = await fetch(`/api/ouvrages/${o.id}/fichier`, {
+      const res = await fetch(`/api/ouvrages/${o.id}/telechargement`, {
         credentials: 'include',
       })
-      if (!res.ok) throw new Error(`Erreur ${res.status}`)
+      if (res.status === 403) {
+        // Serveur cohérent avec l'UI : droit retiré entre-temps (édition
+        // par un gestionnaire) — message explicite, pas un échec muet.
+        toast.error('Téléchargement non autorisé', {
+          description: `« ${o.titre} » est en lecture en ligne uniquement. Un gestionnaire peut autoriser le téléchargement dans l'édition de l'ouvrage.`,
+        })
+        return
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Erreur ${res.status}`)
+      }
       const data = await res.json()
-      if (data.url) window.open(data.url, '_blank')
-    } catch {
+      if (data.url) {
+        // Ancre sans target=_blank : Content-Disposition attachment
+        // (signé R2) impose le téléchargement avec le nom de fichier — la
+        // page ne navigue pas, aucun onglet fantôme.
+        const a = document.createElement('a')
+        a.href = data.url as string
+        a.rel = 'noopener'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        toast.success(`Téléchargement de « ${o.titre} » lancé`, {
+          description: 'Le PDF est enregistré par votre navigateur.',
+        })
+      }
+    } catch (err) {
       toast.error('Téléchargement impossible', {
-        description: 'La génération du lien sécurisé a échoué.',
+        description:
+          err instanceof Error
+            ? err.message
+            : 'La génération du lien sécurisé a échoué.',
       })
     }
   }
@@ -633,6 +668,10 @@ export function BibliothequePage() {
   const [fThemes, setFThemes] = useState('')
   const [fDescription, setFDescription] = useState('')
   const [fExpiration, setFExpiration] = useState('')
+  // SECT-BIBLIO-13 : le téléchargement se décide AU DÉPÔT (et reste
+  // modifiable à l'édition) — avant : toujours false au dépôt, il fallait
+  // rééditer pour l'autoriser.
+  const [fTelechargement, setFTelechargement] = useState(false)
 
   const resetDepot = () => {
     setFichier(null)
@@ -650,6 +689,7 @@ export function BibliothequePage() {
     setFThemes('')
     setFDescription('')
     setFExpiration('')
+    setFTelechargement(false)
     setDepotProposition(null)
     setAnalyse(null)
     setAnalyseEnCours(false)
@@ -898,9 +938,11 @@ export function BibliothequePage() {
         )
       if (fDescription.trim()) fd.append('description', fDescription.trim())
       if (fExpiration) fd.append('dateExpirationDroits', fExpiration)
-      // P1 : lecture in-browser par défaut — le téléchargement est un
-      // opt-in par ouvrage (PATCH telechargementAutorise).
-      fd.append('telechargementAutorise', 'false')
+      // SECT-BIBLIO-13 : opt-in téléchargement AU DÉPÔT (switch du
+      // formulaire). Enforcement SERVEUR sur GET /{id}/telechargement
+      // (403 si non autorisé) — ce champ n'est plus qu'une donnée, la
+      // décision est appliquée par l'API, pas par le masquage du bouton.
+      fd.append('telechargementAutorise', fTelechargement ? 'true' : 'false')
       // SECT-BIBLIO-5 (000137) : ciblage classes de l'ENSEIGNANT.
       if (estEnseignant && classesSelectionnees.length > 0) {
         fd.append('classes', JSON.stringify(classesSelectionnees))
@@ -1266,7 +1308,7 @@ export function BibliothequePage() {
               Valider
             </Button>
           )}
-          {o.telechargementAutorise && (
+          {o.telechargementAutorise ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1281,6 +1323,28 @@ export function BibliothequePage() {
               </TooltipTrigger>
               <TooltipContent>
                 Téléchargement autorisé pour cet ouvrage
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            /* SECT-BIBLIO-13 : la politique devient VISIBLE — un bouton
+               absent se lit « oublie » ; un verrou se lit « décidé ».
+               Tooltip : la décision appartient au gestionnaire. */
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled
+                  className="gap-1.5 text-muted-foreground"
+                  aria-label="Téléchargement non autorisé — lecture en ligne uniquement"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  Lecture en ligne
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Téléchargement non autorisé — lecture en ligne uniquement
+                (décision du déposant, modifiable à l'édition)
               </TooltipContent>
             </Tooltip>
           )}
@@ -2387,6 +2451,31 @@ export function BibliothequePage() {
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <CalendarClock className="h-3 w-3" />
                     Après cette date : invisible des lecteurs (badge ADMIN).
+                  </p>
+                </div>
+                {/* SECT-BIBLIO-13 : le téléchargement se décide AU DÉPÔT —
+                    même switch que l'édition, cohérence des deux
+                    formulaires. Par défaut NON autorisé (lecture en ligne
+                    seule), la conformité droits d'abord. */}
+                <div className="space-y-1.5">
+                  <Label>Téléchargement autorisé</Label>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Switch
+                      id="depot-telechargement"
+                      checked={fTelechargement}
+                      onCheckedChange={setFTelechargement}
+                    />
+                    <Label
+                      htmlFor="depot-telechargement"
+                      className="text-sm font-normal"
+                    >
+                      Autoriser le téléchargement du PDF
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Scale className="h-3 w-3" />
+                    Lecture en ligne toujours disponible ; le téléchargement
+                    n'est servi que si vous l'autorisez (modifiable après).
                   </p>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">

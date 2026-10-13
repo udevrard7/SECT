@@ -433,6 +433,37 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
 
+// getOuvrageTelechargement — GET /api/ouvrages/{id}/telechargement
+// (SECT-BIBLIO-13) : URL présignée en disposition ATTACHMENT — le
+// navigateur pose le fichier sur disque (nom de fichier dérivé du titre,
+// sanitizé) au lieu de l'afficher. C'est la SEULE voie de téléchargement :
+// elle vérifie telechargementAutorise côté serveur (403 sinon — l'URL
+// n'est jamais émise) et journalise OUVRAGE_TELECHARGEMENT (trace distincte
+// de la lecture). Tous rôles authentifiés : l'AUTORISATION est le flag de
+// l'ouvrage, pas le rôle de l'appelant (un ADMIN ne « détourne » pas plus
+// qu'un étudiant — la politique est par ouvrage, décision du déposant).
+func (s *Server) getOuvrageTelechargement(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	expiresIn := 900
+	if v := r.URL.Query().Get("expiresIn"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 900 {
+			expiresIn = n
+		}
+	}
+	ip := middleware.GetClientIP(r)
+	url, err := s.ouvrageUC.GetTelechargementURL(r.Context(), claims, chi.URLParam(r, "id"), ip, expiresIn)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
 // getOuvrageCouverture — GET /api/ouvrages/{id}/couverture (SECT-BIBLIO-12)
 // URL présignée courte durée du JPEG de couverture (page 1 rastérisée au
 // dépôt). Même chaîne de contrôle que le fichier : FindByID sous RLS →

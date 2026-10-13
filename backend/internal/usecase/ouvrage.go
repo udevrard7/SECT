@@ -652,6 +652,10 @@ func (uc *OuvrageUseCase) MesClasses(ctx context.Context, claims db.SessionClaim
 // presigned courte durée, défaut 15 min). Journalise l'accès
 // (AuditLog OUVRAGE_LECTURE, best-effort : une panne d'audit ne bloque pas
 // la lecture — le garde-fou reste l'URL courte durée).
+// SECT-BIBLIO-13 : disposition SIGNÉE "inline" — l'URL de lecture AFFICHE
+// le PDF (lecteur, iframe, nouvel onglet) au lieu de le poser sur disque.
+// L'acte « téléchargement » a sa propre route (GetTelechargementURL) qui,
+// seul, impose attachment ET vérifie telechargementAutorise.
 func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionClaims, id string, ip string, expiresIn int) (string, error) {
 	if expiresIn <= 0 || expiresIn > 900 {
 		expiresIn = 900
@@ -672,7 +676,7 @@ func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionCl
 		}
 	}
 
-	url, err := uc.storage.PresignURL(ctx, *o.CheminStockage, expiresIn)
+	url, err := uc.storage.PresignURLAvecDisposition(ctx, *o.CheminStockage, expiresIn, "inline")
 	if err != nil {
 		return "", fmt.Errorf("presign: %w", err)
 	}
@@ -692,6 +696,127 @@ func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionCl
 		slog.Warn("bibliothèque: audit de lecture échoué (accès servi quand-même)", "ouvrageId", o.ID, "error", auditErr)
 	}
 	return url, nil
+}
+
+// GetTelechargementURL — SECT-BIBLIO-13 : URL présignée de TÉLÉCHARGEMENT
+// (attachment), réservée aux ouvrages dont telechargementAutorise = true.
+//
+// Enforcement SERVEUR du flag (avant : seul le frontend masquait le bouton
+// — un appel direct à /fichier donnait le fichier brut à n'importe qui
+// voyait l'ouvrage) :
+//   - ouvrage invisible (RLS)            → 404 (FindByID, pas de fuite) ;
+//   - telechargementAutorise = false     → 403, message actionnable —
+//     l'URL de téléchargement n'est JAMAIS émise, R2 ne sert jamais
+//     l'octet en disposition attachment ;
+//   - autorisé                           → présignature attachment (nom de
+//     fichier sanitizé) + AuditLog OUVRAGE_TELECHARGEMENT (trace distincte
+//     de la lecture — le fichier quitte le périmètre in-browser).
+//
+// Limite documentée (pas de DRM) : la lecture in-browser reste possible
+// (droit par défaut, ADR-0007) et un utilisateur déterminé peut sauvegarder
+// depuis le lecteur — l'API, elle, garantit que l'ACTE téléchargement est
+// refusé, journalisé, et que rien n'est émis en disposition attachment
+// sans autorisation.
+func (uc *OuvrageUseCase) GetTelechargementURL(ctx context.Context, claims db.SessionClaims, id string, ip string, expiresIn int) (string, error) {
+	if expiresIn <= 0 || expiresIn > 900 {
+		expiresIn = 900
+	}
+	o, err := uc.ouvrageRepo.FindByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if !o.TelechargementAutorise {
+		return "", &domain.UnauthorizedError{
+			Message: "téléchargement non autorisé pour cet ouvrage (lecture en ligne uniquement)",
+		}
+	}
+	if o.CheminStockage == nil || *o.CheminStockage == "" {
+		return "", &domain.ValidationError{Field: "fichier", Message: "fichier non stocké pour cet ouvrage (mode DB-only)"}
+	}
+	if uc.storage == nil {
+		return "", &domain.ValidationError{
+			Field:   "fichier",
+			Message: "stockage non configuré (mode DB-only) — le téléchargement nécessite la configuration R2 (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)",
+		}
+	}
+
+	url, err := uc.storage.PresignURLAvecDisposition(ctx, *o.CheminStockage, expiresIn, dispositionTelechargement(o.Titre))
+	if err != nil {
+		return "", fmt.Errorf("presign téléchargement: %w", err)
+	}
+
+	// Audit du téléchargement — best-effort (le refus, lui, ne passe
+	// jamais ici : 403 AVANT toute émission d'URL, rien à journaliser
+	// côté succès manqué).
+	auditErr := uc.ouvrageRepo.AuditTelechargement(ctx, domain.OuvrageAuditEntry{
+		OuvrageID:       o.ID,
+		Titre:           o.Titre,
+		Categorie:       o.Categorie,
+		ActorUserID:     claims.UserID,
+		ActorEmail:      claims.Email,
+		ActorIP:         ip,
+		EtablissementID: o.EtablissementID,
+		ExpiresIn:       expiresIn,
+	})
+	if auditErr != nil {
+		slog.Warn("bibliothèque: audit de téléchargement échoué (téléchargement servi quand-même)", "ouvrageId", o.ID, "error", auditErr)
+	}
+	return url, nil
+}
+
+// dispositionTelechargement — en-tête Content-Disposition RFC 6266 :
+// filename ASCII-sanitisé (fallback sûr) + filename* UTF-8 (accents
+// français préservés — « École.pdf » reste lisible, pas « cole.pdf »).
+// L'extension .pdf est imposée (P1 : PDF uniquement — jamais un .exe
+// même si le titre est piégé).
+func dispositionTelechargement(titre string) string {
+	const maxRunes = 80
+
+	base := strings.TrimSpace(titre)
+	if base == "" {
+		base = "ouvrage"
+	}
+	// Neutralise l'injection d'en-tête et les séparateurs de chemin.
+	base = strings.Map(func(r rune) rune {
+		switch r {
+		case '"', '\\', '\r', '\n', ';', '/', '<', '>', '?', '*', ':', '|':
+			return '-'
+		}
+		return r
+	}, base)
+	runes := []rune(base)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes]
+	}
+	nomUTF8 := string(runes) + domain.OuvrageExtension
+
+	// Fallback ASCII : chaque rune non-ASCII devient '-' (contrôle,
+	// sens interdit) ; filename* porte le nom réel.
+	nomASCII := strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e {
+			return '-'
+		}
+		return r
+	}, nomUTF8)
+
+	return fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", nomASCII, encodeRFC5987(nomUTF8))
+}
+
+// encodeRFC5987 — percent-encoding des attr-chars RFC 5987 (clé
+// filename*) : tout octet hors du jeu sûr devient %XX hexadécimal majuscule.
+func encodeRFC5987(s string) string {
+	var sb strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') ||
+			strings.IndexByte("!#$&+-.^_`|~*'()", c) >= 0 {
+			sb.WriteByte(c)
+		} else {
+			fmt.Fprintf(&sb, "%%%02X", c)
+		}
+	}
+	return sb.String()
 }
 
 // ──────────────────────────────────────────────────────────────────────
