@@ -6811,3 +6811,137 @@ locale 600 du bac à sable.
   ici, Runtime=sect_app (intouché), Migrations/DR=neondb_owner (3
   endroits : Render env, VM .env, dev local) — tous mis à jour avant
   de déclarer fini.
+
+## SECT-BIBLIO-11 — Lecteur plein écran in-app (13 octobre 2026)
+
+Contexte (retour exploitant) : « la fenêtre s'ouvre dans une fenêtre
+contextuelle — impossible de lire et d'utiliser les outils du lecteur
+et SECT ». Diagnostic : le lecteur était un `Dialog` Radix (max-w-7xl,
+92vh) — la modale PIÈGE LE FOCUS (les raccourcis clavier du lecteur
+PDF natif sont avalés par le trap), Escape FERME la fenêtre au lieu de
+quitter le zoom, la zone de lecture est amputée (overlay + padding),
+et aucun plein écran réel n'est possible. L'exploitant proposait une
+ouverture in-app avec retour au catalogue — adopté et étendu.
+
+### Réalisation
+
+- **Route dédiée `/bibliotheque/lecture/{ouvrageId}`** : nouveau
+  PageId `bibliotheque-lecture` (routes.ts — union, PAGE_ROUTES
+  segment de base, labels/descriptions exhaustifs, résolution par
+  PRÉFIXE dans getPageIdFromSlug AVANT les legacy redirects, cas 2ter
+  dans getPageContext → fil d'Ariane « Bibliothèque › Lecture ») ;
+  dispatch dans page-content.tsx. Accessible à tous les rôles
+  authentifiés (comme /bibliotheque — aucune entrée PAGE_ALLOWED_ROLES
+  nécessaire) ; la défense réelle reste la RLS (FindByID → 404 si
+  invisible).
+- **lecteur-ouvrage-page.tsx** (nouveau composant) : barre d'outils
+  slim persistante (jamais overlay) — retour bibliothèque, titre +
+  badges, nouvel onglet, **PLEIN ÉCRAN NATIF** (Fullscreen API sur le
+  conteneur racine : toute la place pour le PDF, barre d'outils
+  comprise — marque-page et annotations restent actifs ; state via
+  fullscreenchange, hauteur 100dvh en mode plein écran). Repris À
+  L'IDENTIQUE du Dialog : ouverture fichier+progression en parallèle,
+  reprise #page=N (fragment jamais signé), télémétrie P2 (30 s,
+  visibilitychange, flush keepalive au démontage — survit à la
+  navigation interne ET au F5), marque-page déclaratif, watermark
+  ADR-0008 §6, panneau annotations repliable.
+- **Catalogue** : le bouton « Lire » navigue (router.push) ; le Dialog
+  modal ET toute sa mécanique d'état sont retirés de
+  bibliotheque-page.tsx (2991 → 2607 lignes) — le focus est LIBRE,
+  l'URL est deep-linkable (bookmark, F5, partage), F11/plein écran
+  navigateur fonctionne aussi.
+
+### Leçons
+
+- Une modale (focus trap Radix) est le MAUVAIS patron pour un lecteur
+  de document : les raccourcis de l'iframe sont avalés, Escape ferme,
+  pas de plein écran. Toute vue « plein contenu » = route dédiée.
+- Déplacer une mécanique d'état (télémétrie) vers une route : le flush
+  keepalive au démontage survit AUSSI au F5/fermeture d'onglet —
+  meilleur que le Dialog (dont la fermeture programmatique arrivait
+  APRÈS le démontage de l'iframe).
+
+## SECT-BIBLIO-12 — Couvertures réelles sur les cartes du catalogue (13 octobre 2026)
+
+Contexte (demande exploitant) : cartes affichant la page de couverture
+du livre, « plus professionnelle, captivante ». Réalisation : la PAGE 1
+du PDF, rastérisée en JPEG au dépôt — pas une image générique.
+
+### Chaîne complète (backend → cartes)
+
+- **Rastérisation** : `pdftoppm -jpeg -jpegopt quality=82 -f 1 -l 1
+  -scale-to 600 -singlefile` (poppler-utils rejoint qpdf au Dockerfile
+  runtime — même pattern d'outil CLI Alpine best-effort). decryptPDF
+  D'ABORD (SECT-BIBLIO-7 : les PDFs « sécurité standard Acrobat » à
+  mot de passe vide rendraient une page noire). Budget 20 s
+  (CommandContext).
+- **Au dépôt** (Upload) : le PDF est DÉJÀ en mémoire → zéro
+  re-téléchargement ; best-effort parfait (un échec ne bloque JAMAIS
+  le dépôt — la carte retombe sur l'icône catégorie). Trois issues :
+  succès → chemin R2 ; outil présent + échec (PDF corrompu) → marqueur
+  `couvertureEchecAt` PERSISTÉ (pas de retry en boucle) ; outil absent
+  (dev sans poppler) → silence (NULL NULL — problème d'environnement,
+  pas du document).
+- **Stockage** : `ouvrages/{oid}/couverture.jpg` — MÊME préfixe que le
+  PDF : le purge worker (étendu à cheminCouverture) ramasse les deux à
+  la purge ; l'INSERT échoué nettoie aussi la couverture.
+- **GET /api/ouvrages/{id}/couverture** → {url} présignée 15 min,
+  MÊME chaîne que le fichier : FindByID sous RLS → ouvrage invisible =
+  404 (jamais de fuite d'existence). 404 aussi sans couverture.
+  **Pas d'AuditLog** : dérivé visuel de la page 1, pas une lecture —
+  en journaliser chaque affichage de catalogue noierait le journal
+  (la lecture mesurée P2 reste LE journal de consultation).
+- **POST /{id}/couverture/regenerer** (ADMIN/RESP/ENS dans son
+  périmètre) : PDF STREAMÉ R2→disque (nouvelle méthode
+  `DownloadToFile` — jamais 100 Mo en RAM), rastérisé, uploadé,
+  colonnes mises à jour (marqueur d'échec RESET au succès). Pour les
+  ouvrages déposés avant 000140 et les échecs transitoires.
+- **Migration 000140** : `cheminCouverture` TEXT NULL +
+  `couvertureEchecAt` TIMESTAMPTZ NULL, NULLables sans défaut (zéro
+  impact INSERT/seed existants), ASSERTs pattern 000122 (dont « aucune
+  policy ne référence les colonnes »), down intégral.
+- **Cartes** : EntityCard gagne `thumbnailRatio` ('video' par défaut —
+  zéro changement pour les autres pages — ou 'portrait' 3:4) et
+  `thumbnailUnoptimized` (next/image sans transformation : les URLs
+  présignées R2 à domaine dynamique ne passeraient pas l'optimizer).
+  Cadre portrait 3:4 = effet rayonnage : un A4 (0,707) n'y recadre que
+  ~6 % de hauteur ; légère ombre « dos de livre » (inset gauche).
+  Couvertures chargées par useQueries (une mini-requête JSON par
+  carte, staleTime 10 min < presign 15 min ; l'image vient de R2 en
+  cache navigateur) ; menu « Gérer » → « Régénérer la couverture ».
+
+### E2E backend réel (Neon prod + R2 prod, workers off, JWT ADMIN/ENS/ETU)
+
+- Dépôt ADMIN (PDF synthétique) → **201 avec couverture générée au
+  dépôt** ; régénération sur l'ouvrage précédent (échec marqué) →
+  **200, marqueur reset** ; presign → **200**, image chargée depuis
+  R2 : JPEG réel 424×600 (9,7 Ko).
+- Dépôt ENSEIGNANT (classes réelles) → **201 BROUILLON/CLASSE avec
+  couverture** ; ÉTUDIANT → couverture 404 ET ouvrage 404 (aucune
+  fuite) ; déposant → 200.
+- **La couverture du livre réel de l'exploitant (« Glossaire des
+  termes Informatiques », déposé après BIBLIO-10) a été générée** —
+  l'effet sera visible dès le déploiement.
+- **Bug attrapé par l'E2E** : `const couvertureBudgetMs = 20_000` →
+  20 MICROSECONDES (time.Duration est en nanosecondes — pdftoppm tué
+  instantanément, « signal: killed », marqueur posé à tort). Corrigé
+  en `20 * time.Second`. Piège Go classique, attrapé parce que l'E2E
+  a testé le VRAI flux de bout en bout.
+- Migration 000140 appliquée à Neon (transaction atomique dirty→DDL→
+  clean, méthode BIBLIO-10) puis vérifiée (140 clean, colonnes
+  présentes). Données de test supprimées (DB + objets R2 via outil Go
+  ponctuel).
+
+### Leçons
+
+- **time.Duration SANS unité = nanosecondes** : un « budget 20_000 »
+  est un kill instantané. Toujours écrire l'unité (`20 * time.Second`).
+- Rastériser au DÉPÔT (fichier déjà en mémoire) plutôt qu'à la volée :
+  zéro coût supplémentaire, et la génération ne peut pas être exigée
+  d'un lecteur (un ÉTUDIANT n'a pas le droit UPDATE — la RLS rendrait
+  la lazy-generation impossible : bon réflexe de l'avoir réalisée AVANT).
+- La couverture passe par la MÊME chaîne RLS/presign que le fichier :
+  un dérivé visuel reste une donnée de l'ouvrage — pas de raccourci.
+- `<img>`/next-image vers une URL présignée : `unoptimized` (sinon
+  l'optimizer Next refuse les domaines non déclarés) + staleTime
+  inférieur au TTL de présignature.
