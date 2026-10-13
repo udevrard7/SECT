@@ -6945,3 +6945,80 @@ du PDF, rastérisée en JPEG au dépôt — pas une image générique.
 - `<img>`/next-image vers une URL présignée : `unoptimized` (sinon
   l'optimizer Next refuse les domaines non déclarés) + staleTime
   inférieur au TTL de présignature.
+
+## SECT-BIBLIO-13 — Téléchargement opposable : le flag telechargementAutorise enfin appliqué par le SERVEUR (13 octobre 2026)
+
+### Contexte
+
+Demande de l'exploitant : « revoir la gestion des téléchargements — si
+pas autorisé, impossible de télécharger ; si autorisé, possible ».
+Le flag `telechargementAutorise` existait depuis 000123 (colonne,
+défault FALSE, opt-in par ouvrage), le formulaire d'édition avait son
+switch, la carte masquait le bouton — mais **rien n'était appliqué côté
+serveur** : le bouton « Télécharger » appelait la route de LECTURE
+(`GET /{id}/fichier`), qui ne vérifie jamais le flag. N'importe quel
+utilisateur authentifié voyant l'ouvrage (RLS) obtenait l'URL présignée
+brute en appelant l'API directement — le masquage UI était cosmétique.
+
+### Réalisation — deux actes distincts, défense en profondeur
+
+- **Lecture** `GET /{id}/fichier` : présignature désormais en
+  Content-Disposition SIGNÉE **« inline »** (`PresignURLAvecDisposition`
+  sur `StorageClient`/`R2Client` — le paramètre Response* de
+  GetObjectInput entre dans la signature, R2 sert l'en-tête exact).
+  Lecteur, iframe, « Nouvel onglet » : le PDF s'AFFICHE.
+- **Téléchargement** `GET /{id}/telechargement` (NOUVEAU, tous rôles
+  authentifiés — l'autorisation est le FLAG de l'ouvrage, pas le rôle) :
+  - ouvrage invisible → 404 (FindByID sous RLS, pas de fuite) ;
+  - `telechargementAutorise=false` → **403 AVANT toute émission d'URL**
+    (`UnauthorizedError` : « téléchargement non autorisé pour cet
+    ouvrage (lecture en ligne uniquement) ») ;
+  - autorisé → présignature **attachment** avec nom de fichier dérivé
+    du titre, sanitizé (RFC 6266 : `filename` ASCII-safe + `filename*`
+    UTF-8 pour les accents, injection d'en-tête neutralisée, extension
+    `.pdf` imposée — P1) ;
+  - **AuditLog OUVRAGE_TELECHARGEMENT**, trace DISTINCTE de
+    OUVRAGE_LECTURE (le fichier quitte le périmètre in-browser —
+    l'établissement peut répondre « qui a posé quoi sur disque » sans
+    le bruit des N lignes de lecture). Refactor `auditAcces` partagé.
+- **Frontend catalogue** : `telecharger()` → API dédiée (403 → toast
+  explicite « lecture en ligne uniquement », garde-fou UI conservé pour
+  l'UX), téléchargement par `<a>` SANS target (attachment impose le nom,
+  zéro onglet fantôme, zéro navigation). Cartes : le bouton absent
+  devient un **verrou lisible « Lecture en ligne »** (tooltip : décision
+  du déposant, modifiable) — la politique est VISIBLE.
+- **Frontend dépôt** : switch « Autoriser le téléchargement du PDF » AU
+  DÉPÔT (avant : toujours false, réédition obligatoire pour autoriser).
+- Limite documentée (pas de DRM) : la lecture in-browser reste le droit
+  par défaut (ADR-0007) — un utilisateur déterminé peut sauvegarder
+  depuis le lecteur ; l'API garantit que l'ACTE téléchargement est
+  refusé, journalisé, et qu'aucune URL attachment n'est émise sans
+  autorisation.
+
+### Vérification
+
+- Gates : `go build`/`go vet`/`gofmt` EXIT 0 · `tsc --noEmit` EXIT 0 ·
+  `eslint .` EXIT 0.
+- Commit `7c3b7c38` (udevrard7) poussé sur main. CI : Frontend ✓,
+  Backend ✓, Deploy OCI ✓ → santé prod vérifiée après déploiement
+  (voir worklog session).
+- E2E authentifié (403 sur un ouvrage non autorisé, 200 + attachment
+  sur un ouvrage autorisé) : vérifiable par l'exploitant depuis le
+  catalogue (cartes verrouillées vs bouton Télécharger) — l'environnement
+  de session ne disposait plus des identifiants Neon/R2 pour rejouer le
+  protocole E2E complet local.
+
+### Leçons
+
+- **Une autorisation qui n'existe que dans l'UI n'existe pas** : le
+  flag datait de 000123, personne n'avait remarqué que la route serveur
+  ne le lisait jamais — le bouton masqué donnait l'ILLUSION du contrôle.
+- Séparer les sémantiques de la même URL présignée via le
+  Content-Disposition SIGNÉ : peu de code, opposable, et le navigateur
+  fait respecter la sémantique (inline affiche, attachment pose).
+- Un acte renforcé mérite sa PROPRE trace d'audit : mélanger
+  lecture et téléchargement dans OUVRAGE_LECTURE aurait rendu la
+  question « qui a téléchargé » sans réponse exploitable.
+- Le switch du DÉPÔT évite le piège « opt-in invisible » : une option
+  modifiable uniquement a posteriori est une option que personne ne
+  trouve.
