@@ -6448,3 +6448,89 @@ EXIT 0 · eslint EXIT 0. Neon : aucune migration (colonnes
 licenceOrigine/niveau/filiereId existantes, suggestions transitoires
 jamais persistées sans relecture) → synchro = no-op. Artifacts de
 test (PDFs + JWT éphémère) supprimés.
+
+## SECT-AI-CLOUDFLARE-1 — Provider Cloudflare Workers AI ajouté à la chaîne (P6, free tier 10 000 neurons/jour) (13 octobre 2026)
+
+### Demande exploitant
+
+« Ajouter ai-providers Cloudflare Workers AI » avec un jeton API (cfat_…)
+et l'ID de compte — mise en œuvre de la recommandation SECT-AI-FREETIER-1
+(« Cloudflare Workers AI = 10 000 Neurons/jour gratuits reset 00:00 UTC,
+l'exploitant a déjà un compte CF (R2) »).
+
+### Diagnostic live du compte (jeton + catalogue, source de vérité = API)
+
+- Jeton cfat_… VALIDE mais SCOPÉ : GET /accounts 200 (compte
+  d660691a… visible) ; /user/tokens/verify 401 (comportement d'un token
+  dédié Workers AI, pas un token user générique) ; GET /ai/models 404
+  « Unable to authenticate » → le catalogue réel passe par
+  **/ai/models/search** (200 — 70 modèles listés).
+- Endpoint **OpenAI-compatible POST /ai/v1/chat/completions** : réponse au
+  format OpenAI NATIF (choices[0].message.content, sans wrapper « result »)
+  → le chemin d'appel SECT (chatWithProvider/tryStreamProvider génériques
+  POST {baseUrl}/chat/completions + Bearer) fonctionne TEL QUEL, zéro
+  changement. Le run natif /ai/run/{model} marche aussi mais renvoie le
+  wrapper Cloudflare — /ai/v1 est donc le bon choix d'intégration.
+- Pièges catalogue 2026 relevés : `@cf/meta/llama-3.1-8b-instruct`
+  DÉPRÉCIÉ le 2026-05-30 (410 sur /ai/v1 ; routé vers
+  llama-3.1-8b-fast-v2 sur /ai/run seulement) ; GET /ai/v1/models = 405
+  (cette route n'existe pas — d'où fetchCloudflareModels côté backend).
+- Benchmark live (JSON strict + latence + neurons/appel) :
+  **llama-3.3-70b-instruct-fp8-fast 0,80 s · JSON OK · 14 neurons ←
+  choisi** (≈ 700 appels/j gratuits) ; mistral-small-3.1-24b-instruct
+  1,09 s · 6,6 n ; llama-3.1-8b-fast-v2 0,74 s · 2,4 n (rapide mais slug
+  non catalogué — routage du déprécié) ; llama-4-scout 2,63 s · 7,2 n ;
+  llama-3.1-8b-instruct-fp8 3,12 s · 3,0 n ; gpt-oss-20b 2,74 s · JSON KO
+  (wrappe ~1/3, défaut connu géré par le retry parsing) ; glm-4.7-flash
+  6,21 s · JSON KO ; clef-flash 400 (rejette le format messages — exclu).
+
+### Correctifs
+
+1. **Backend** (usecase/ai_provider.go) : type `CLOUDFLARE` dans
+   ValidateProviderInput (enum + message d'erreur) ; branche TestConnection
+   (mini chat OpenAI-compat — testChatCompletion tel quel, commenté) ;
+   fetchProviderModels route CLOUDFLARE vers **fetchCloudflareModels**
+   (GET {racine}/models/search?per_page=100 — le baseUrl …/ai/v1 est
+   amputé de son suffixe /v1 ; seuls les modèles « Text Generation » sont
+   retenus ; échec ⇒ liste vide ⇒ fallback statique frontend, dégradation
+   douce existante). Le chemin d'appel réel (failover, streaming) est
+   générique OpenAI-compat : aucun changement nécessaire.
+2. **Frontend** : type 'CLOUDFLARE' dans AIProviderType (types.ts) +
+   PROVIDER_TYPES (label, icône Cloud, defaultBaseUrl avec accountId,
+   15 modèles) ; page admin : PROVIDER_META (icône Cloud, palette orange
+   CF), PROVIDER_MODELS.CLOUDFLARE (benchmark documenté en commentaire),
+   PROVIDER_DEFAULT_URLS (URL complète …/accounts/{accountId}/ai/v1) —
+   le select des types itère PROVIDER_META donc l'entrée apparaît
+   d'office.
+3. **DB Neon** (transaction + assertions) : INSERT `cloudflare-provider-001`
+   « Cloudflare Workers AI » — provider CLOUDFLARE, baseUrl
+   https://api.cloudflare.com/client/v4/accounts/d66069…/ai/v1, apiKey =
+   jeton cfat_ (53 car.), model @cf/meta/llama-3.3-70b-instruct-fp8-fast,
+   temperature 0.7, maxTokens 4096, **priority 6** (le trou laissé par
+   Cerebras — devant Z-AI P7 congestionné, derrière OpenRouter P5),
+   capability 'chat', actif. 8 → 9 providers chat. AUCUNE migration
+   (colonne « provider » = TEXT libre) — l'enum vit côté usecase.
+
+### Preuve E2E locale (backend réel + Neon, workers off, JWT ADMIN forgé HMAC)
+
+- POST /api/ai-providers/cloudflare-provider-001/test → **200 en 4,2 s** :
+  « Cloudflare Workers AI : chat completion de test réussi (model=@cf/meta/
+  llama-3.3-70b-instruct-fp8-fast) ». Prouve AUSSI que le binaire testé
+  était bien le frais (un binaire périmé serait tombé sur le 405 /models
+  du fallback générique) — leçon BIBLIO-9 réappliquée : kill par PID du
+  binaire exe/api AVANT relance (un résiduel tenait le port 8080).
+- GET /api/ai-providers/models?providerId=cloudflare-provider-001 →
+  **200 en 2,6 s : 36 modèles Text Generation** (fetchCloudflareModels
+  via /models/search) — alimente le merge dynamique AI-PROVIDERS-MODELS-V2
+  de la console.
+
+### Vérifs
+
+go build ./... EXIT 0 · go vet ./... EXIT 0 · gofmt propre · tsc --noEmit
+EXIT 0 · eslint EXIT 0. Incident attrapé par go vet avant commit :
+l'éditeur avait perdu les () d'appel du `defer func(){…}()` de
+fetchCloudflareModels (« expression in defer must be function call ») —
+corrigé. Neon : INSERT transactionnel avec assertions (8→9 chat, P6
+libre, pas de doublon). Jeton cfat_ présent UNIQUEMENT en DB (colonne
+apiKey, comme les 9 autres) + variables d'environnement éphémères des
+tests — jamais dans un fichier committé.

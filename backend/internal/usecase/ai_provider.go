@@ -409,7 +409,11 @@ func (uc *AIProviderUseCase) TestConnection(ctx context.Context, claims appdb.Se
 	} else if apiKey == "" {
 		success = false
 		message = "apiKey non configurée (vérifiez extraConfig pour ZAI)"
-	} else if providerType == "ZAI" || providerType == "OPENAI" || providerType == "OPENAI_COMPATIBLE" {
+	} else if providerType == "ZAI" || providerType == "OPENAI" || providerType == "OPENAI_COMPATIBLE" || providerType == "CLOUDFLARE" {
+		// CLOUDFLARE (SECT-AI-CLOUDFLARE-1) : Workers AI expose un endpoint
+		// OpenAI-compatible {baseUrl}/chat/completions (baseUrl = …/client/v4/
+		// accounts/{accountId}/ai/v1, Authorization Bearer cfat_…) — le mini
+		// chat de testChatCompletion valide apiKey + baseUrl + model tel quel.
 		if testErr := testChatCompletion(baseURL, apiKey, model); testErr != nil {
 			success = false
 			message = "Échec : " + testErr.Error()
@@ -704,7 +708,7 @@ func (uc *AIProviderUseCase) ResetHealth(ctx context.Context, claims appdb.Sessi
 //
 // Rules:
 //   - name: non-empty after trim
-//   - provider: one of {ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS}
+//   - provider: one of {ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS, CLOUDFLARE}
 //   - baseURL: if non-empty, must start with http:// or https://
 //   - apiKey: required for non-ZAI providers (ZAI can store apiKey in extraConfig)
 //   - model: required
@@ -714,10 +718,10 @@ func ValidateProviderInput(name, provider, baseURL, apiKey, model string) error 
 	}
 	upper := strings.ToUpper(strings.TrimSpace(provider))
 	switch upper {
-	case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL", "DASHSCOPE", "DEEPSEEK", "CEREBRAS", "MISTRAL":
+	case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL", "DASHSCOPE", "DEEPSEEK", "CEREBRAS", "MISTRAL", "CLOUDFLARE":
 		// OK
 	default:
-		return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, MISTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS)", provider)
+		return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL, MISTRAL, DASHSCOPE, DEEPSEEK, CEREBRAS, CLOUDFLARE)", provider)
 	}
 	if baseURL != "" {
 		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
@@ -859,6 +863,13 @@ func fetchProviderModels(provider, baseURL, apiKey string) ([]string, error) {
 	if provider == "ZAI" || baseURL == "" {
 		return nil, nil
 	}
+	// CLOUDFLARE (SECT-AI-CLOUDFLARE-1) : l'endpoint OpenAI-compatible
+	// GET {baseUrl}/models n'existe pas chez Cloudflare (405 Method Not
+	// Allowed) — le catalogue natif est /models/search sur la racine « …/ai »
+	// (notre baseUrl pointe sur « …/ai/v1 » pour /chat/completions).
+	if provider == "CLOUDFLARE" {
+		return fetchCloudflareModels(baseURL, apiKey)
+	}
 	url := strings.TrimRight(baseURL, "/") + "/models"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -890,6 +901,57 @@ func fetchProviderModels(provider, baseURL, apiKey string) ([]string, error) {
 	for _, m := range parsed.Data {
 		if m.ID != "" {
 			models = append(models, m.ID)
+		}
+	}
+	return models, nil
+}
+
+// fetchCloudflareModels interroge le catalogue natif Workers AI :
+// GET {racine}/models/search?per_page=100 (racine = baseUrl sans le suffixe
+// « /v1 » de l'endpoint OpenAI-compatible). Réponse Cloudflare :
+//
+//	{"result": [{"name": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+//	             "task": {"name": "Text Generation"}}, …], "success": true}
+//
+// Seuls les modèles « Text Generation » sont retenus : les autres tâches
+// (embeddings, images, TTS…) ne servent pas un provider capability 'chat'.
+// En cas d'échec, l'appelant (ListModels) dégrade en liste vide et le
+// frontend retombe sur sa liste statique PROVIDER_MODELS.CLOUDFLARE.
+func fetchCloudflareModels(baseURL, apiKey string) ([]string, error) {
+	root := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
+	url := root + "/models/search?per_page=100"
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpTimeoutClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4 MiB max (70+ modèles)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("provider returned HTTP %d", resp.StatusCode)
+	}
+	var parsed struct {
+		Result []struct {
+			Name string `json:"name"`
+			Task struct {
+				Name string `json:"name"`
+			} `json:"task"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid models response: %w", err)
+	}
+	models := make([]string, 0, len(parsed.Result))
+	for _, m := range parsed.Result {
+		if m.Name != "" && m.Task.Name == "Text Generation" {
+			models = append(models, m.Name)
 		}
 	}
 	return models, nil

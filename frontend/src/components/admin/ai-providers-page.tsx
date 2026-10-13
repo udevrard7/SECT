@@ -51,6 +51,7 @@ import {
   Mic,        // icône audio (DashScope)
   HelpCircle, // statut UNKNOWN
   Cpu,        // icône diagnostics
+  Cloud,      // SECT-AI-CLOUDFLARE-1 : icône Cloudflare Workers AI
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -226,6 +227,20 @@ const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
     gradientClass: 'from-gold via-amber-500 to-gold',
     defaultCapability: 'chat',
   },
+  // ─── Cloudflare Workers AI (SECT-AI-CLOUDFLARE-1) ───
+  // Endpoint OpenAI-compatible …/accounts/{accountId}/ai/v1 (Bearer cfat_…).
+  // Free tier : 10 000 neurons/jour (reset 00:00 UTC) — P6 de secours.
+  CLOUDFLARE: {
+    label: 'Cloudflare Workers AI',
+    description: 'Llama, Mistral, gpt-oss sur le edge CF — 10k neurons/jour',
+    icon: Cloud,
+    color: '#F6821F',
+    bgClass: 'bg-orange-500/10',
+    textClass: 'text-orange-600 dark:text-orange-400',
+    borderClass: 'border-orange-500/30',
+    gradientClass: 'from-orange-500 via-orange-400 to-amber-500',
+    defaultCapability: 'chat',
+  },
 }
 
 // AI-PROVIDERS-MODELS-V2 : modèles actualisés (juillet 2025).
@@ -301,6 +316,40 @@ const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
   // a été supprimé de la config ce jour (offre 2026 = crédit promo 5 $
   // unique, épuisé) ; liste maintenue au cas d'une recréation future.
   CEREBRAS: ['gpt-oss-120b', 'qwen-3.8-27b'],
+  // ─── Cloudflare Workers AI ───
+  // SECT-AI-CLOUDFLARE-1 : benchmark live du 2026-10-13 (JSON strict,
+  // latence, neurons/appel — free tier 10k neurons/jour, reset 00:00 UTC) :
+  //   llama-3.3-70b-instruct-fp8-fast  0,80 s · JSON OK · 14 neurons  ← DÉFAUT
+  //   mistral-small-3.1-24b-instruct   1,09 s · JSON OK ·  6,6 neurons
+  //   llama-3.1-8b-fast-v2              0,74 s · JSON OK ·  2,4 neurons (slug
+  //      vivant mais non catalogué — routage du llama-3.1-8b-instruct déprécié
+  //      2026-05-30, préférer les slugs catalogués)
+  //   llama-4-scout-17b-16e-instruct    2,63 s · JSON OK ·  7,2 neurons
+  //   llama-3.1-8b-instruct-fp8         3,12 s · JSON OK ·  3,0 neurons
+  //   gpt-oss-20b                       2,74 s · JSON KO (wrappe ~1/3 — le
+  //      retry parsing landing-demo gère ce défaut)
+  //   glm-4.7-flash                     6,21 s · JSON KO (congestion usuelle)
+  //   clef-flash                        400 — rejette le format messages,
+  //      volontairement absent de cette liste.
+  // Les 3 derniers (kimi-k2.6, glm-5.3-flash, deepseek-v4-pro) consomment
+  // nettement plus de neurons (premium) — en fin de liste volontairement.
+  CLOUDFLARE: [
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    '@cf/mistralai/mistral-small-3.1-24b-instruct',
+    '@cf/meta/llama-3.1-8b-fast-v2',
+    '@cf/meta/llama-4-scout-17b-16e-instruct',
+    '@cf/meta/llama-3.1-8b-instruct-fp8',
+    '@cf/openai/gpt-oss-120b',
+    '@cf/openai/gpt-oss-20b',
+    '@cf/zai-org/glm-4.7-flash',
+    '@cf/qwen/qwen3.8-27b',
+    '@cf/nvidia/nemotron-3-120b-a12b',
+    '@cf/deepseek-ai/deepseek-v4-flash-0731',
+    '@cf/google/gemma-4-26b-a4b-it',
+    '@cf/moonshotai/kimi-k2.6',
+    '@cf/zai-org/glm-5.3-flash',
+    '@cf/deepseek-ai/deepseek-v4-pro-0813',
+  ],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
@@ -317,6 +366,11 @@ const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
   DASHSCOPE: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   DEEPSEEK: 'https://api.deepseek.com/v1',
   CEREBRAS: 'https://api.cerebras.ai/v1',
+  // SECT-AI-CLOUDFLARE-1 : l'URL porte l'accountId (l'API Workers AI est
+  // comptée) et se termine par /ai/v1 (endpoint OpenAI-compatible
+  // /chat/completions). Le catalogue natif /models/search vit sur la racine
+  // …/ai SANS le /v1 — le backend fait la conversion (fetchCloudflareModels).
+  CLOUDFLARE: 'https://api.cloudflare.com/client/v4/accounts/d660691a2e73198bf41951c45f92e86b/ai/v1',
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

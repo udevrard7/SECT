@@ -3,7 +3,7 @@
  * All AI providers must implement the AIProvider interface.
  */
 
-export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'MISTRAL' | 'VOXTRAL' | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS'
+export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'MISTRAL' | 'VOXTRAL' | 'DASHSCOPE' | 'DEEPSEEK' | 'CEREBRAS' | 'CLOUDFLARE'
 
 // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1 : capacité d'un provider IA.
 // - 'chat' : LLM textuel (génération de script, Q&A, etc.) — providers Mistral, ZAI, etc.
@@ -231,5 +231,36 @@ export const PROVIDER_TYPES: Record<AIProviderType, {
     defaultBaseUrl: 'https://api.cerebras.ai/v1',
     defaultModel: 'llama-4-scout-17b-16e-instruct',
     models: ['llama-4-scout-17b-16e-instruct', 'llama-3.3-70b', 'llama3.1-8b', 'llama3.1-70b'],
+  },
+  // SECT-AI-CLOUDFLARE-1 : Cloudflare Workers AI — endpoint OpenAI-compatible
+  // {baseUrl}/chat/completions avec baseUrl = …/client/v4/accounts/{accountId}/ai/v1
+  // (Bearer cfat_…). Free tier : 10 000 neurons/jour (reset 00:00 UTC).
+  // NB : GET {baseUrl}/models renvoie 405 chez Cloudflare — le catalogue réel
+  // passe par /models/search (géré côté backend, fetchCloudflareModels).
+  CLOUDFLARE: {
+    label: 'Cloudflare Workers AI',
+    description: 'Llama, Mistral, gpt-oss sur le edge Cloudflare — 10k neurons/jour gratuits',
+    icon: 'Cloud',
+    requiresBaseUrl: true,
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.cloudflare.com/client/v4/accounts/d660691a2e73198bf41951c45f92e86b/ai/v1',
+    defaultModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    models: [
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/mistralai/mistral-small-3.1-24b-instruct',
+      '@cf/meta/llama-3.1-8b-fast-v2',
+      '@cf/meta/llama-4-scout-17b-16e-instruct',
+      '@cf/meta/llama-3.1-8b-instruct-fp8',
+      '@cf/openai/gpt-oss-120b',
+      '@cf/openai/gpt-oss-20b',
+      '@cf/zai-org/glm-4.7-flash',
+      '@cf/qwen/qwen3.8-27b',
+      '@cf/nvidia/nemotron-3-120b-a12b',
+      '@cf/deepseek-ai/deepseek-v4-flash-0731',
+      '@cf/google/gemma-4-26b-a4b-it',
+      '@cf/moonshotai/kimi-k2.6',
+      '@cf/zai-org/glm-5.3-flash',
+      '@cf/deepseek-ai/deepseek-v4-pro-0813',
+    ],
   },
 }
