@@ -6667,3 +6667,30 @@ human-in-the-loop (dépôt ENSEIGNANT → BROUILLON → validation RESP)
 - Postgres local portable (binaires extraits dans $HOME, initdb non
   root) : reproduction FIDÈLE des policies sans exposer Neon — pattern
   à réutiliser pour les diagnostics RLS.
+
+### Mise en production (13 octobre 2026, clôture)
+
+- Jeton GitHub fourni par l'exploitant (bac à sable réinitialisé) →
+  push de `d10e71a8` sur origin/main (identité udevrard7,
+  c8185102..d10e71a8).
+- CI GitHub : **Backend CI ✓ · Deploy backend to OCI ✓** (aucun
+  changement frontend → Frontend CI non déclenché).
+- **Neon : migration 000139 APPLIQUÉE** — connexion DIRECTE (hors
+  pooler, conformément au Makefile NEON_DIRECT_URL) en neondb_owner,
+  URL de rollback archivée dans ce worklog ; état préalable vérifié
+  (version=138, clean) ; application en UNE transaction atomique
+  (marquage dirty 139 → DDL + ASSERTs → marquage clean 139) ;
+  post-état vérifié : version=139 dirty=f · Ouvrage_update WITH CHECK
+  resp couvre ETABLISSEMENT+CLASSE · branches BROUILLON présentes dans
+  ouvrage_visible · Ouvrage_insert intact.
+- Production : api.sect.ftci.fr/api/health → **200 « sect-api ok »**.
+  Render secondaire : auto-déploiement sur push attendu (jeton Render
+  perdu à la réinitialisation du bac à sable — vérification API
+  impossible cette session, à refaire au prochain jeton fourni).
+- ⚠️ **SÉCURITÉ à traiter par l'exploitant** : le mot de passe
+  neondb_owner (préfixe npg_) est imprimé en clair plus haut dans ce
+  worklog (archive du basculement RLS) et le repo est PUBLIC, git
+  historique compris. Recommandation : rotation du mot de passe
+  neondb_owner dans la console Neon + mise à jour des variables
+  d'environnement du backend (Render/OCI) ; supprimer la ligne du
+  fichier actuel ne retirerait PAS l'historique.
