@@ -583,6 +583,8 @@ func decryptPDF(ctx context.Context, content []byte) []byte {
 }
 
 // analyseLLMResponse — miroir du JSON strict attendu du LLM.
+// categorie (SECT-BIBLIO-8) : l'un des 4 codes de la taxonomie
+// ADR-0007 ou "" si indécidable — normalisé + validé après parse.
 type analyseLLMResponse struct {
 	Titre            domain.AnalyseOuvrageField `json:"titre"`
 	Auteurs          domain.AnalyseOuvrageField `json:"auteurs"`
@@ -590,6 +592,7 @@ type analyseLLMResponse struct {
 	Edition          domain.AnalyseOuvrageField `json:"edition"`
 	AnneePublication domain.AnalyseOuvrageField `json:"anneePublication"`
 	ISBN             domain.AnalyseOuvrageField `json:"isbn"`
+	Categorie        domain.AnalyseOuvrageField `json:"categorie"`
 	Langue           domain.AnalyseOuvrageField `json:"langue"`
 	Themes           domain.AnalyseOuvrageField `json:"themes"`
 	Description      domain.AnalyseOuvrageField `json:"description"`
@@ -682,13 +685,19 @@ func (uc *OuvrageUseCase) Analyze(ctx context.Context, claims db.SessionClaims, 
 
 	systemPrompt := `Tu es un assistant documentaire d'une bibliothèque universitaire numérique ouest-africaine (SECT). On te fournit le texte extrait des premières pages d'un PDF (souvent couverture, page de titre et page de copyright). Extrais les métadonnées bibliographiques.
 Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte autour, au format exact :
-{"titre":{"valeur":"...","confiance":0,"preuve":"..."},"auteurs":{"valeur":"Nom Prénom; Nom Prénom","confiance":0,"preuve":"..."},"editeur":{"valeur":"...","confiance":0,"preuve":"..."},"edition":{"valeur":"...","confiance":0,"preuve":"..."},"anneePublication":{"valeur":"2024","confiance":0,"preuve":"..."},"isbn":{"valeur":"...","confiance":0,"preuve":"..."},"langue":{"valeur":"Français","confiance":0,"preuve":"..."},"themes":{"valeur":"thème 1; thème 2","confiance":0,"preuve":"..."},"description":{"valeur":"résumé en 2 phrases maximum","confiance":0,"preuve":"..."}}
+{"titre":{"valeur":"...","confiance":0,"preuve":"..."},"auteurs":{"valeur":"Nom Prénom; Nom Prénom","confiance":0,"preuve":"..."},"editeur":{"valeur":"...","confiance":0,"preuve":"..."},"edition":{"valeur":"...","confiance":0,"preuve":"..."},"anneePublication":{"valeur":"2024","confiance":0,"preuve":"..."},"isbn":{"valeur":"...","confiance":0,"preuve":"..."},"categorie":{"valeur":"REFERENTIEL_OFFICIEL","confiance":0,"preuve":"..."},"langue":{"valeur":"Français","confiance":0,"preuve":"..."},"themes":{"valeur":"thème 1; thème 2","confiance":0,"preuve":"..."},"description":{"valeur":"résumé en 2 phrases maximum","confiance":0,"preuve":"..."}}
 Règles strictes :
 - confiance = entier 0 à 100 (100 = explicitement imprimé sur la page de titre ou le copyright ; 0 = absent).
 - preuve = court extrait VERBATIM du document source, 120 caractères maximum ("" si absent).
 - Si une information est absente du texte, mets valeur="" et confiance=0. N'INVENTE JAMAIS : un champ vide vaut mieux qu'une invention.
 - auteurs et themes : plusieurs valeurs séparées par « ; ».
 - anneePublication : uniquement une année plausible (1400-2100) vue dans le document.
+- categorie : classe l'ouvrage dans la taxonomie documentaire SECT — utilise EXACTEMENT l'un de ces quatre codes :
+  · REFERENTIEL_OFFICIEL : programme, référentiel, maquette ou standard émanant d'une AUTORITÉ (ministère, commission des programmes/d'examen, organisme de normalisation, texte réglementaire).
+  · OUVRAGE_REFERENCE : manuel, traité ou dictionnaire CANONIQUE du domaine (référence citée en cours, encyclopédie spécialisée).
+  · RECHERCHE_ACADEMIQUE : thèse, mémoire, article ou publication scientifique (revue, actes de colloque, rapport de recherche).
+  · PRATIQUE_PROFESSIONNELLE : guide pratique, manuel orienté métier, cas concrets, ouvrage de mise en pratique professionnelle.
+  La preuve de categorie = l'extrait qui justifie le classement. En cas de doute sérieux : valeur="" et confiance=0 (l'humain tranchera).
 - Les noms propres africains sont courants (Diop, Traoré, Koné, Bamba, Kouassi…) : ne les « corrige » pas.`
 
 	userPrompt := fmt.Sprintf("Nom du fichier : %s\n\nTexte extrait (pages 1-%d) :\n%s", nomFichier, pages, texte)
@@ -743,6 +752,23 @@ Règles strictes :
 			parsed.AnneePublication.Valeur = strconv.Itoa(n)
 		}
 	}
+	// Categorie (SECT-BIBLIO-8) : normalisation tolérante (trim,
+	// majuscules, espaces/tirets → underscore) puis validation contre
+	// l'enum — un code inventé par le LLM devient une absence de
+	// suggestion (garde-fou anti-hallucination, cohérent avec l'année).
+	// La suggestion reste HUMAN-IN-THE-LOOP : l'Upload re-valide l'enum.
+	if c := parsed.Categorie.Valeur; c != "" {
+		norm := strings.ToUpper(strings.TrimSpace(c))
+		norm = strings.ReplaceAll(norm, " ", "_")
+		norm = strings.ReplaceAll(norm, "-", "_")
+		if domain.IsValidOuvrageCategorie(domain.CategorieOuvrage(norm)) {
+			parsed.Categorie.Valeur = norm
+		} else {
+			slog.Warn("bibliothèque: catégorie IA hors enum, suggestion ignorée",
+				"valeur", c, "fichier", nomFichier)
+			parsed.Categorie = domain.AnalyseOuvrageField{}
+		}
+	}
 	// Clamp des confiances.
 	clampField := func(f *domain.AnalyseOuvrageField) {
 		if f.Confiance < 0 {
@@ -761,6 +787,7 @@ Règles strictes :
 	clampField(&parsed.Edition)
 	clampField(&parsed.AnneePublication)
 	clampField(&parsed.ISBN)
+	clampField(&parsed.Categorie)
 	clampField(&parsed.Langue)
 	clampField(&parsed.Themes)
 	clampField(&parsed.Description)
@@ -773,6 +800,7 @@ Règles strictes :
 		Edition:          parsed.Edition,
 		AnneePublication: parsed.AnneePublication,
 		ISBN:             parsed.ISBN,
+		Categorie:        parsed.Categorie,
 		Langue:           parsed.Langue,
 		Themes:           parsed.Themes,
 		Description:      parsed.Description,

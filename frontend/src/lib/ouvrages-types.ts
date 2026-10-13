@@ -108,6 +108,11 @@ export interface AnalyseOuvrageResult {
   edition: AnalyseOuvrageField
   anneePublication: AnalyseOuvrageField
   isbn: AnalyseOuvrageField
+  /**
+   * SECT-BIBLIO-8 : suggestion de classification (code parmi
+   * CATEGORIES_OUVRAGE, ou vide si indécidable) — l'humain tranche.
+   */
+  categorie: AnalyseOuvrageField
   langue: AnalyseOuvrageField
   themes: AnalyseOuvrageField
   description: AnalyseOuvrageField

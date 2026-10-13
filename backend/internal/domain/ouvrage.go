@@ -153,11 +153,16 @@ type AnalyseOuvrageResult struct {
 	Edition          AnalyseOuvrageField `json:"edition"`
 	AnneePublication AnalyseOuvrageField `json:"anneePublication"`
 	ISBN             AnalyseOuvrageField `json:"isbn"`
-	Langue           AnalyseOuvrageField `json:"langue"`
-	Themes           AnalyseOuvrageField `json:"themes"`
-	Description      AnalyseOuvrageField `json:"description"`
-	Modele           string              `json:"modele,omitempty"`
-	PagesAnalysees   int                 `json:"pagesAnalysees"`
+	// Categorie — suggestion de classification (SECT-BIBLIO-8) :
+	// Valeur = l'un des 4 codes de OuvrageCategories (ou "" si
+	// indécidable). Toujours une PROPOSITION human-in-the-loop —
+	// l'enum final est validé à l'Upload.
+	Categorie      AnalyseOuvrageField `json:"categorie"`
+	Langue         AnalyseOuvrageField `json:"langue"`
+	Themes         AnalyseOuvrageField `json:"themes"`
+	Description    AnalyseOuvrageField `json:"description"`
+	Modele         string              `json:"modele,omitempty"`
+	PagesAnalysees int                 `json:"pagesAnalysees"`
 }
 
 // Ouvrage — un livre de la bibliothèque (000137 : périmètre 3 niveaux).

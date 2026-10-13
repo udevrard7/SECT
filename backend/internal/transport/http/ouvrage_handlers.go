@@ -94,8 +94,12 @@ func (s *Server) getOuvrage(w http.ResponseWriter, r *http.Request) {
 
 // uploadOuvrage — POST /api/ouvrages (multipart/form-data ;
 // ADMIN/RESPONSABLE/ENSEIGNANT — 000137, le périmètre est DÉRIVÉ DU
-// RÔLE côté serveur : le champ etablissementId du formulaire n'est
-// plus qu'une information ignorée hors mode assistance ADMIN).
+// RÔLE côté serveur : le champ etablissementId du formulaire est
+// IGNORÉ pour tous les rôles (deriveScope écrase : claims pour
+// l'ADMIN en assistance, "" pour l'ADMIN global — catalogue commun
+// PLATEFORME). SECT-BIBLIO-8 : le frontend ne l'exige plus du super
+// admin et ne l'envoie plus (le champ restait bloquant côté UI alors
+// que le serveur l'écrasait — incohérence signalée par l'exploitant).
 // Champs : file (PDF, requis) ; titre, categorie, licenceOrigine ;
 // auteurs, editeur, edition, anneePublication, isbn, langue, filiereId,
 // niveau, themes, description, dateExpirationDroits (RFC3339 ou
@@ -437,6 +441,9 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 // preuve par champ. Le formulaire est PRÉ-REMPLI côté client, puis
 // l'HUMAIN valide, complète ou corrige (human-in-the-loop) — aucune
 // de ces valeurs n'est persistée sans relecture.
+// SECT-BIBLIO-8 : la réponse inclut désormais « categorie » (code de
+// la taxonomie ADR-0007, suggestion IA validée contre l'enum — code
+// inventé ⇒ absence de suggestion, l'humain tranche).
 // Réponse TOUJOURS 200 {disponible:false, raison} si l'analyse est
 // impossible (PDF scanné, IA en échec) : la saisie manuelle reste
 // possible, l'aide ne doit jamais bloquer le dépôt.

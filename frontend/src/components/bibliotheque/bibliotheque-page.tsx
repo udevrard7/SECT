@@ -178,11 +178,6 @@ interface FiliereOption {
   code?: string | null
 }
 
-interface EtablissementOption {
-  id: string
-  nom: string
-}
-
 interface LecteurState {
   ouvrage: Ouvrage
   /** URL présignée SANS fragment (base, jamais altérée). */
@@ -444,20 +439,10 @@ export function BibliothequePage() {
     staleTime: 5 * 60_000,
   })
 
-  // ─── Query établissements (ADMIN global uniquement — form dépôt) ───
-  const etablissementsQuery = useQuery<EtablissementOption[]>({
-    queryKey: ['etablissements-bibliotheque'],
-    queryFn: async () => {
-      const res = await fetch('/api/etablissements', { credentials: 'include' })
-      if (!res.ok) return []
-      const data = await res.json()
-      if (Array.isArray(data?.etablissements)) return data.etablissements
-      if (Array.isArray(data)) return data
-      return []
-    },
-    enabled: isAdmin && !adminAssistance,
-    staleTime: 5 * 60_000,
-  })
+  // ─── Query établissements : SUPPRIMÉ (SECT-BIBLIO-8) — ne servait
+  // qu'au select établissement du form dépôt (ADMIN global), champ que
+  // le serveur ignore de toute façon (deriveScope écrase
+  // etablissementId) — plus de requête /api/etablissements au montage. ───
 
   // ─── SECT-BIBLIO-5 (000137) : classes de l'enseignant — sélecteur
   // « classes destinatrices » du formulaire de dépôt (le serveur
@@ -786,9 +771,6 @@ export function BibliothequePage() {
   const [fTitre, setFTitre] = useState('')
   const [fCategorie, setFCategorie] = useState<string>('')
   const [fLicence, setFLicence] = useState('')
-  const [fEtablissement, setFEtablissement] = useState<string>(
-    adminAssistance ? (user?.etablissementId ?? '') : '',
-  )
   const [fFiliere, setFFiliere] = useState<string>('toutes')
   const [fNiveau, setFNiveau] = useState<string>('tous')
   const [fAuteurs, setFAuteurs] = useState('')
@@ -806,7 +788,6 @@ export function BibliothequePage() {
     setFTitre('')
     setFCategorie('')
     setFLicence('')
-    setFEtablissement(adminAssistance ? (user?.etablissementId ?? '') : '')
     setFFiliere('toutes')
     setFNiveau('tous')
     setFAuteurs('')
@@ -871,6 +852,17 @@ export function BibliothequePage() {
         // Pré-remplissage HUMAIN-ÉDITABLE (les champs restent modifiables).
         if (result.titre.valeur) setFTitre(result.titre.valeur)
         if (result.auteurs.valeur) setFAuteurs(result.auteurs.valeur)
+        // SECT-BIBLIO-8 : la catégorie est PROPOSÉE par l'IA (suggestion
+        // human-in-the-loop). Double garde : le backend valide déjà contre
+        // l'enum, on re-vérifie côté client — une valeur inconnue n'est
+        // simplement pas appliquée (l'humain garde le select sur « Choisir… »).
+        const catIA = result.categorie?.valeur
+        if (
+          catIA &&
+          CATEGORIES_OUVRAGE.some((c) => c.value === catIA)
+        ) {
+          setFCategorie(catIA)
+        }
         if (result.editeur.valeur) setFEditeur(result.editeur.valeur)
         if (result.edition.valeur) setFEdition(result.edition.valeur)
         if (result.anneePublication.valeur) setFAnnee(result.anneePublication.valeur)
@@ -966,15 +958,10 @@ export function BibliothequePage() {
       })
       return
     }
-    // SECT-BIBLIO-5 (000137) : l'établissement n'est requis que pour
-    // l'ADMIN global (mode assistance : dérivé des claims ; RESP/ENS :
-    // dérivé du rôle serveur — plus de select, plus d'erreur possible).
-    if (isAdmin && !adminAssistance && !fEtablissement) {
-      toast.error('Établissement manquant', {
-        description: 'Choisissez l’établissement d’origine du document.',
-      })
-      return
-    }
+    // SECT-BIBLIO-8 (000137) : plus d'établissement requis pour le
+    // super admin — le serveur DÉRIVE le périmètre du rôle (ADMIN
+    // global ⇒ catalogue commun PLATEFORME, etablissementId écrasé
+    // à "" dans deriveScope). RESP/ENS : dérivé du rôle serveur.
     // ENSEIGNANT : au moins une classe destinataire (le serveur
     // ré-verifie l’intersection — usurpation impossible).
     if (estEnseignant && classesSelectionnees.length === 0) {
@@ -996,7 +983,9 @@ export function BibliothequePage() {
       fd.append('titre', fTitre.trim())
       fd.append('categorie', fCategorie)
       fd.append('licenceOrigine', fLicence.trim())
-      fd.append('etablissementId', fEtablissement)
+      // etablissementId n'est PAS envoyé (SECT-BIBLIO-8) : le serveur
+      // l'écrase systématiquement dans deriveScope (claims en mode
+      // assistance, "" pour l'ADMIN global) — champ décoratif supprimé.
       if (fFiliere !== 'toutes') fd.append('filiereId', fFiliere)
       if (fNiveau !== 'tous') fd.append('niveau', fNiveau)
       if (fAuteurs.trim())
@@ -2345,30 +2334,21 @@ export function BibliothequePage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* SECT-BIBLIO-8 : preuve IA sous le champ (la
+                      catégorie est PROPOSÉE par l'IA — human-in-the-loop,
+                      l'humain valide ou corrige). */}
+                  <LigneIA
+                    champ={analyse?.disponible ? analyse.categorie : undefined}
+                  />
                 </div>
-                {/* SECT-BIBLIO-5 (000137) : le select établissement ne
-                    concerne plus que l'ADMIN global (étab d'origine
-                    informatif) ; RESP/ENS voient le bandeau de portée. */}
-                {isAdmin && !adminAssistance && (
-                  <div className="space-y-1.5">
-                    <Label>Établissement *</Label>
-                    <Select
-                      value={fEtablissement}
-                      onValueChange={setFEtablissement}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choisir…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(etablissementsQuery.data ?? []).map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
-                            {e.nom}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                {/* SECT-BIBLIO-8 (000137) : plus de select établissement
+                    pour l'ADMIN global — le serveur IGNORE ce champ
+                    (deriveScope : ADMIN global ⇒ catalogue commun
+                    PLATEFORME, etablissementId écrasé à ""). Le bandeau
+                    de portée ci-dessus documente déjà la publication
+                    « tous les établissements clients SECT » ; le champ
+                    restait bloquant côté UI alors qu'il ne servait à
+                    rien — incohérence signalée par l'exploitant. */}
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="biblio-licence">
                     Licence / origine des droits *

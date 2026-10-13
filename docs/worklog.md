@@ -6284,3 +6284,89 @@ l'anti-invention du prompt fonctionne). Modèle : ministral-8b-latest
 (P2 — Groq P1 est WAF-bloqué depuis la sandbox IP, faux négatif
 connu ; en prod OCI, Groq répondra en ~2 s). Vérifs : go build/vet
 EXIT 0, gofmt propre, tsc/eslint non impactés (frontend inchangé).
+
+## SECT-BIBLIO-8 — Formulaire dépôt : l'IA PROPOSE la catégorie + plus d'établissement exigé du super admin (13 octobre 2026)
+
+### Signalements exploitant (2)
+
+1. « Pourquoi l'IA ne détermine pas la catégorie automatiquement ? » —
+   l'analyse pré-remplit 9 champs mais laisse « Catégorie * » vide.
+2. « Le champ établissement ne devrait plus être obligatoire pour le
+   super admin puisque l'ajout de livre est structuré en 3 catégories
+   d'autorisation. »
+
+### Cause racine (analyse du code)
+
+1. **La catégorie n'était jamais demandée au LLM** : le systemPrompt
+   de `Analyze` (ouvrage.go) n'extrait que titre/auteurs/éditeur/
+   édition/année/ISBN/langue/thèmes/description — `categorie`
+   (taxonomie ADR-0007 : REFERENTIEL_OFFICIEL / OUVRAGE_REFERENCE /
+   RECHERCHE_ACADEMIQUE / PRATIQUE_PROFESSIONNELLE) était absente du
+   schéma JSON du prompt, de `analyseLLMResponse`, de
+   `domain.AnalyseOuvrageResult` ET du pré-remplissage frontend. Ce
+   n'était pas un échec de l'IA : la mission ne le couvrait pas.
+2. **Incohérence frontend pure sur l'établissement** :
+   `deriveScope` (côté serveur) IGNORE le champ `etablissementId`
+   du formulaire pour TOUS les rôles — ADMIN global ⇒
+   `Visibility=PLATEFORME` + `EtablissementID=""` (écrasé), ADMIN
+   assistance/RESP/ENS ⇒ écrasé par les claims/rôle. Le blocage
+   « Établissement manquant » dans `soumettreDepot` contredisait
+   l'architecture 000137 (périmètre DÉRIVÉ DU RÔLE, jamais choisi) :
+   un champ exigé à l'utilisateur que le serveur jetait ensuite.
+
+### Correctifs
+
+1. **Backend (prompt + garde)** : champ `categorie` ajouté au schéma
+   JSON du prompt avec les 4 codes et leurs critères de
+   classification (autorité officielle / manuel canonique / thèse-
+   mémoire-article / guide métier), règle « doute sérieux ⇒
+   valeur="" » (l'humain tranche). Après parse : normalisation
+   tolérante (trim, majuscules, espaces/tirets→underscore) puis
+   validation `IsValidOuvrageCategorie` — un code inventé devient
+   une ABSENCE de suggestion (garde anti-hallucination, même
+   philosophie que la plausibilité de l'année). Clamp confiance/preuve
+   inchangé. Miroirs : `analyseLLMResponse`,
+   `domain.AnalyseOuvrageResult` (json:"categorie"), doc-comment du
+   handler analyze.
+2. **Frontend (pré-remplissage + preuve)** : `categorie` dans
+   `AnalyseOuvrageResult` (ouvrages-types.ts) ; `lancerAnalyse`
+   applique la suggestion SI elle figure dans `CATEGORIES_OUVRAGE`
+   (double garde client en plus de la validation serveur) ;
+   `LigneIA` (confiance + preuve verbatim) sous le select catégorie.
+   La suggestion reste HUMAN-IN-THE-LOOP : select éditable, l'Upload
+   re-valide l'enum — l'IA propose, l'humain tranche.
+3. **Frontend (établissement super admin)** : suppression du blocage
+   « Établissement manquant », du select (ADMIN global), du state
+   `fEtablissement`, de l'append `etablissementId` (champ décoratif
+   jamais lu — deriveScope écrase) et de la requête
+   `etablissementsQuery`/`EtablissementOption` désormais mortes (une
+   requête /api/etablissements économisée). Le bandeau de portée
+   existant documente déjà « Publication : tous les établissements
+   clients SECT » (icône Globe) ; le flux propositions G1 et le
+   message de succès par rôle sont inchangés.
+
+### Preuve E2E locale (backend réel + Neon, workers off, JWT ADMIN forgé HMAC local)
+
+- PDF thèse de doctorat synthétique → 200, disponible=true,
+  **categorie RECHERCHE_ACADEMIQUE (confiance 100, preuve « THÈSE DE
+  DOCTORAT présentée pour l'obtention du grade de Docteur »)**, titre
+  et description corrects, éditeur « Éditions universitaires —
+  Abidjan » (100), année 2024 (100).
+- PDF guide pratique comptable → **categorie PRATIQUE_PROFESSIONNELLE
+  (confiance 100, preuve « Guide métier à l'usage des praticiens…
+  Cas pratiques et exercices corrigés »)**.
+- Modèle : ministral-8b-latest (P2 — Groq P1 WAF-bloqué depuis
+  l'IP sandbox, faux négatif connu ; en prod OCI, Groq répondra en
+  ~2 s). Deux classes distinctes correctement discriminées → le
+  prompt de classification fonctionne.
+
+### Vérifs
+
+go build ./... EXIT 0 · go vet EXIT 0 · gofmt propre (3 fichiers
+reformatés après l'incident d'éditeur espaces→tabs connu, diff final
+= 5 fichiers, 89 insertions / 64 suppressions) · tsc --noEmit EXIT 0
+· eslint (2 fichiers modifiés) EXIT 0. **Neon : aucune migration** —
+`categorie` est une colonne existante de « Ouvrage », la suggestion
+IA est transitoire (jamais persistée sans relecture humaine) →
+synchronisation Neon = no-op. Tokens de session révoqués/nettoyés
+(JWT de test éphémère supprimé).
