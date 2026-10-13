@@ -6180,3 +6180,15 @@ d'autres fournisseurs free tier pour SECT. Audit mené en live (API directes
   gratuit temporaire nouveaux comptes (type déjà supporté par SECT).
 - Déjà en place et gratuits : Groq (P1, ~14k req/j), Mistral Experiment
   (P2), Gemini AI Studio (P3), OpenRouter `:free` (P5), Z-AI flash (P7).
+
+### Addendum : healthcheck OCI 6/9 (run 38326457969, commit c57a0bb9)
+
+Relancé après la bascule Z-AI — verdict depuis l'egress OCI :
+Groq 0,21 s · Mistral 0,34 s · MuleRouter 0,80 s · OpenRouter 0,84 s ·
+Gemini 2,24 s · **Z-AI glm-4.7-flash 16,62 s (200/200, gratuit, sans
+solde)**. Les 3 en attente restent en 402 : Cerebras (« Payment required…
+billing tab »), DeepSeek (« Insufficient Balance »), HuggingFace (« no
+remaining credits »). E2E prod inchangé : POST /api/landing-demo → 200 en
+1,77 s via Groq P1. En cas de rechargement Z-AI, glm-4.6/5.3 redevient
+pertinent (set-model, SECT-LATENCY-4) — sinon glm-4.7-flash tient le rôle
+de fallback profond gratuit.
