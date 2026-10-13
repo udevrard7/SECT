@@ -232,7 +232,18 @@ const PROVIDER_META: Record<LocalProviderType, ProviderMeta> = {
 // Chaque fournisseur a SES propres modèles — pas de mélange.
 // Les modèles OPENAI_COMPATIBLE sont ceux accessibles via l'API Groq.
 const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
-  ZAI: ['default'],
+  // SECT-AI-FREETIER-1 : ZAI enrichi depuis le catalogue live open.bigmodel.cn
+  // (11 modèles + les flash gratuits). glm-4.7-flash et glm-4.5-flash sont
+  // GRATUITS à vie (docs Z.ai : Free/Free/Free/Free — vérifié en live :
+  // 200 sans aucun solde, glm-4.6 payant renvoie 1113 à côté). Le premier
+  // élément est le défaut des nouveaux providers → le modèle gratuit.
+  // Les autres slugs paient par token (attendent un rechargement éventuel).
+  ZAI: [
+    'glm-4.7-flash', 'glm-4.5-flash',
+    'glm-4.6', 'glm-4.5', 'glm-4.5-air', 'glm-4.7',
+    'glm-5', 'glm-5-turbo', 'glm-5.1', 'glm-5.2',
+    'glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx',
+  ],
   // ─── OpenAI (API directe) ───
   OPENAI: [
     'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
@@ -292,7 +303,10 @@ const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
 }
 
 const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {
-  ZAI: 'https://z.ai/api/v1',
+  // SECT-AI-FREETIER-1 : le défaut ZAI 'https://z.ai/api/v1' était le bug
+  // historique 404 (corrigé en DB lors de SECT-AI-REPAIR-1 mais le défaut
+  // frontend propageait encore l'URL fausse aux nouveaux providers).
+  ZAI: 'https://open.bigmodel.cn/api/paas/v4',
   OPENAI: 'https://api.openai.com/v1',
   OPENAI_COMPATIBLE: 'https://api.groq.com/openai/v1',
   ANTHROPIC: 'https://api.anthropic.com/v1',

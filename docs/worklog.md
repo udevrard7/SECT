@@ -6102,3 +6102,81 @@ Mêmes rechargements que ci-dessus (Cerebras/Z-AI/DeepSeek/HuggingFace,
 OpenRouter conseillé). Après chaque rotation : relancer « Healthcheck
 providers IA » (dispatch) — le catalogue 404 donne les slugs valides, puis
 ajuster les priorités si un provider sain mérite de monter.
+
+---
+
+## SECT-AI-FREETIER-1 — Audit offres gratuites : Z-AI basculé sur glm-4.7-flash (gratuit à vie), défaut frontend ZAI corrigé (13 octobre 2026)
+
+### Contexte
+
+L'exploitant signale que « OpenRouter, Cerebras, Z.Ai offrent des modèles
+toujours gratuits même sans crédit » et demande de vérifier + d'identifier
+d'autres fournisseurs free tier pour SECT. Audit mené en live (API directes
++ catalogues + docs officielles) depuis la sandbox.
+
+### Vérifications (preuves mesurées)
+
+- **OpenRouter ✅ EXACT** : 19 modèles **toujours gratuits** au catalogue
+  (`GET /v1/models`, pricing prompt=0 ET completion=0). Test live avec le
+  solde à 0 $ : `nvidia/nemotron-3-super-120b-a12b:free` → 200 (servi par
+  Nvidia) et `inclusionai/ling-3.1-flash` → 200. Les `:free` passent
+  l'auth même sans crédit ; le 429 observé (gemma-4-31b-it:free) est la
+  limitation du **pool partagé amont**, pas un refus de facturation.
+  NB : la clé dispose désormais d'un budget workspace 5 $/mois (dépensé
+  0 $, reset 2026-11-01) — les modèles payants restent donc aussi
+  utilisables avec parcimonie.
+- **Z-AI ✅ EXACT (deux modèles)** : docs officielles Z.ai (pricing) :
+  **GLM-4.5-Flash et GLM-4.7-Flash = Free/Free/Free/Free** (input, cached,
+  storage, output) + GLM-4.6V-Flash (vision) gratuit. Vérifié en live sur
+  open.bigmodel.cn avec solde 0 : glm-4.5-flash 200, glm-4.7-flash 200
+  (les deux raisonnent par défaut). En revanche glm-5.3-flash/flashx et
+  glm-4.5-air renvoient 1113 solde insuffisant — les « flash » récents ne
+  sont PAS gratuits ; seuls les 4.5/4.7-flash le sont.
+- **Cerebras ❌ OBSOLÈTE** : le pricing 2026 = **Free Trial via crédit
+  promotionnel unique de 5 $** (ajouter un moyen de paiement pour le
+  recevoir ; expire à 30 j ; API en pause une fois épuisé sinon PayGo).
+  Le 402 mesuré correspond au crédit épuisé. Le catalogue Shared Inference
+  n'a que 2 modèles (gpt-oss-120b ~3000 tok/s, qwen-3.8-27b ~1850 tok/s).
+  L'ancien free tier illimité (14k req/j) n'existe plus.
+- Benchmark QCM réel (prompt landing-demo) : glm-4.5-flash 60 s (tronque à
+  max_tokens) ; **glm-4.7-flash 19,2 s, JSON valide** (après fence ```json,
+  déjà toléré par parseLandingDemoQCM). `thinking:{"type":"disabled"}` fait
+  chuter les tokens de complétion 1415 → 164 mais la latence reste ~34 s
+  ce jour (congestion free tier + 429 répétés) → pas de code spécifique
+  retenu (amélioration possible future : fusionner un `extraBody` dans le
+  body générique de service.go).
+
+### Décisions appliquées
+
+1. **DB (UPDATE transactionnel + assertions)** : Z-AI (P7) `glm-4.6`
+   (1113 solde) → **`glm-4.7-flash`** (gratuit à vie). Z-AI redevient
+   appelable SANS rechargement — c'est le 6ᵉ provider chat sain attendu.
+   Le rechargement éventuel du compte permettra de revenir à glm-4.6
+   (ou 5.3) via le workflow set-model (SECT-LATENCY-4).
+2. **Frontend `ai-providers-page.tsx`** :
+   - `PROVIDER_DEFAULT_URLS.ZAI` : `https://z.ai/api/v1` (le bug 404
+     historique, racine de SECT-AI-REPAIR-1) → `https://open.bigmodel.cn/api/paas/v4`
+     — le défaut propageait encore l'URL fausse aux nouveaux providers ;
+   - `PROVIDER_MODELS.ZAI` : `['default']` → les 13 slugs réels du
+     catalogue live, gratuits en tête (le 1ᵉʲ élément est le défaut des
+     nouveaux providers → glm-4.7-flash).
+   Vérifs : `tsc --noEmit` EXIT 0 ; eslint EXIT 0.
+
+### Autres fournisseurs free tier identifiés (non intégrés — clés absentes)
+
+- **NVIDIA NIM (build.nvidia.com)** — le plus généreux : tous les modèles
+  prototypables **gratuitement, 40 req/min, sans facturation par token**
+  (FAQ officielle). Endpoint OpenAI-compatible `integrate.api.nvidia.com/v1`
+  (nemotron-3, llama, qwen…). → Créer un compte + clé NVAPI, type
+  OPENAI_COMPATIBLE. **Recommandé en P2-P4.**
+- **Cloudflare Workers AI** — 10 000 Neurons/jour **gratuits, reset
+  quotidien 00:00 UTC** (≈ 400 QCM/jour avec llama-3.1-8b-fp8-fast à
+  ~4119/34868 neurons par M tokens). Endpoint OpenAI-compatible
+  `/accounts/{id}/ai/v1`. L'exploitant a déjà un compte CF (R2). Certains
+  modèles frontière (glm-5.3, kimi, deepseek-v4) exigent le plan payant.
+- **SambaNova** — 5 $ de crédit unique (pas un free tier récurrent).
+- **GitHub Models** — **RETRAIT total le 30 juillet 2026** (ne pas
+  utiliser). Cohere : clés d'essai ~1k appels/mois. DashScope : quota
+  gratuit temporaire nouveaux comptes (type déjà supporté par SECT).
+- Déjà en place et gratuits : Groq (P1, ~14k req/j), Mistral Experiment
+  (P2), Gemini AI Studio (P3), OpenRouter `:free` (P5), Z-AI flash (P7).
