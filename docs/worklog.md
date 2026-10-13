@@ -6226,3 +6226,61 @@ surchargé, réessayer plus tard).
   Gemini 18,44 s (variable ce run) ; Z-AI 429/1305 transitoire ;
   DeepSeek + HuggingFace 402 (rechargements toujours en attente côté
   exploitant).
+
+---
+
+## SECT-BIBLIO-7 — Analyse IA : PDFs chiffrés « sécurité standard Acrobat » déchiffrés (qpdf) + retry parse LLM (13 octobre 2026)
+
+### Symptôme (signalement exploitant)
+
+L'analyse IA du formulaire d'ajout de livre échoue sur
+« Glossaire des termes informatiques (Didier Fourt).pdf ». Réponse :
+texte « inextractible » → saisie manuelle imposée.
+
+### Cause racine (mesurée)
+
+Le PDF (PDF 1.3, Acrobat PDFWriter 4.05, an 2000) porte `/Filter
+/Standard /R 2 /V 1` : **sécurité standard Acrobat RC4 40-bit avec mot
+de passe propriétaire et mot de passe utilisateur VIDE**. poppler
+(pdftotext) et qpdf le lisent couramment, mais `ledongthuc/pdf` (lib
+pure Go, zéro dépendance — choix SECT-BIBLIO-5) n'implémente PAS le
+déchiffrement : chaque flux de page RC4 se lit comme « zlib: invalid
+header » (reproduit : 12 pages/12 en erreur, texte vide) →
+« PDF inextractible » mensonger pour un PDF que l'utilisateur ouvre
+parfaitement dans son lecteur.
+
+### Correctifs
+
+1. **decryptPDF (ouvrage.go)** : si l'extraction échoue, déchiffrement
+   via `qpdf --decrypt --password=` (fichiers temporaires /tmp, budget
+   analyze tué par CommandContext 75 s, aucun mot de passe deviné —
+   vide = ce que l'utilisateur a pu ouvrir lui-même) puis RÉEXTRACTION.
+   Dégradation douce totale : qpdf absent (dev local) / vrai mot de
+   passe requis / échec → comportement d'avant, avec un message
+   désormais honnête (« PDF chiffré (mot de passe requis)… » si
+   /Encrypt détecté).
+2. **Dockerfile Alpine** : `apk add qpdf` — couvre OCI (primaire) et
+   Render (secondaire) qui buildent le même backend/Dockerfile
+   (render.yaml rootDir=backend ; deploy-oci.yml context=backend,
+   multi-arch arm64/amd64).
+3. **parseAnalyseOuvrageJSON + retry 2 essais** (pattern
+   parseLandingDemoQCM / SECT-AI-REPAIR-1) : parse strict → réparation
+   ciblée du défaut mesuré sur qwen-flash (champs en objets séparés
+   `{"a":{…}},{"b":{…}}` → fusion « },{ » → « , », no-op sur JSON
+   strict, schéma sans tableaux d'objets) → si échec, RETRY LLM une
+   fois (le 2ᵉ essai passe par le failover ; erreur IA ne consomme pas
+   de retry — sortie immédiate inchangée). Raison : gpt-oss-20b (P1)
+   wrappe/tronque ~1/3 des essais (mesuré SECT-AI-REPAIR-1).
+
+### Preuve E2E locale (backend réel + PDF original chiffré)
+
+POST /api/ouvrages/analyze (JWT ADMIN local, workers off) → **200 en
+8,5 s, disponible=true, 9/9 champs** : titre « Glossaire des termes
+informatiques » (confiance 100), auteurs « Didier FOURT » (100),
+édition « Version 8.18 » (100), année 2000 (100), langue Français
+(100), thèmes informatique/terminologie/glossaire (100), description
+(100) ; éditeur/ISBN honnêtement vides (absents du document —
+l'anti-invention du prompt fonctionne). Modèle : ministral-8b-latest
+(P2 — Groq P1 est WAF-bloqué depuis la sandbox IP, faux négatif
+connu ; en prod OCI, Groq répondra en ~2 s). Vérifs : go build/vet
+EXIT 0, gofmt propre, tsc/eslint non impactés (frontend inchangé).

@@ -53,7 +53,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
 FROM alpine:3.20
 
 # Installer ca-certificates (nécessaire pour HTTPS vers Neon/R2)
-RUN apk --no-cache add ca-certificates tzdata
+# SECT-BIBLIO-7 : qpdf — déchiffre les PDFs « sécurité standard Acrobat » à
+# mot de passe utilisateur vide (ex. PDFWriter 4.x) que la lib Go pure ne
+# sait pas lire (analyse IA bibliothèque : decryptPDF dans ouvrage.go).
+RUN apk --no-cache add ca-certificates tzdata qpdf
 
 # HARDENING (audit DevOps 2026-09) : utilisateur non-root + healthcheck
 # intégré (l'image est utilisable telle quelle hors Render).

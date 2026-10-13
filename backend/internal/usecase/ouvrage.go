@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -525,6 +526,62 @@ func extractPDFText(content []byte, maxPages, maxRunes int) (string, int) {
 	return s, n
 }
 
+// decryptPDF — déchiffre un PDF protégé par la « sécurité standard
+// Acrobat » avec mot de passe utilisateur VIDE (SECT-BIBLIO-7) via
+// qpdf (paquet Alpine du Dockerfile, disponible sur OCI et Render).
+// CAS RÉEL mesuré : PDFWriter 4.05 (an 2000) → /Filter /Standard /R 2
+// /V 1 (RC4 40-bit, mot de passe propriétaire seul) — ledongthuc/pdf ne
+// déchiffre pas (chaque flux RC4 se lit comme « zlib: invalid header »,
+// texte vide → « PDF inextractible » alors que poppler/qpdf lisent tout).
+// Retourne nil si qpdf est absent (dev local), si le PDF exige un VRAI
+// mot de passe utilisateur, ou en tout échec — l'appelant retombe alors
+// sur la dégradation douce existante. Aucun mot de passe deviné :
+// --password= (vide) = exactement ce que l'utilisateur a pu ouvrir
+// lui-même dans son lecteur.
+func decryptPDF(ctx context.Context, content []byte) []byte {
+	qpdf, err := exec.LookPath("qpdf")
+	if err != nil {
+		return nil
+	}
+	in, err := os.CreateTemp("", "sect-ouvrage-*.pdf")
+	if err != nil {
+		return nil
+	}
+	inName := in.Name()
+	defer func() { _ = os.Remove(inName) }()
+
+	out, err := os.CreateTemp("", "sect-ouvrage-dec-*.pdf")
+	if err != nil {
+		_ = in.Close()
+		return nil
+	}
+	outName := out.Name()
+	// qpdf écrase la sortie existante (vérifié) : on garde le nom, on
+	// ferme le descripteur pour laisser qpdf réécrire le fichier.
+	if err := out.Close(); err != nil {
+		_ = in.Close()
+		return nil
+	}
+
+	if _, err := in.Write(content); err != nil {
+		_ = in.Close()
+		return nil
+	}
+	if err := in.Close(); err != nil {
+		return nil
+	}
+	// CommandContext : le budget analyze (75 s) tue un qpdf qui pend.
+	cmd := exec.CommandContext(ctx, qpdf, "--decrypt", "--password=", inName, outName)
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	dec, err := os.ReadFile(outName)
+	if err != nil {
+		return nil
+	}
+	return dec
+}
+
 // analyseLLMResponse — miroir du JSON strict attendu du LLM.
 type analyseLLMResponse struct {
 	Titre            domain.AnalyseOuvrageField `json:"titre"`
@@ -551,6 +608,27 @@ func stripJSONFences(s string) string {
 		}
 	}
 	return strings.TrimSpace(s)
+}
+
+// parseAnalyseOuvrageJSON — parse tolérant de la réponse LLM (miroir du
+// pattern parseLandingDemoQCM, SECT-AI-REPAIR-1) : essai strict sur le
+// texte défencé ; si échec, réparation ciblée du défaut mesuré sur
+// qwen-flash (champs émis en objets top-level séparés :
+// {"titre":{…}},{"auteurs":{…}} → {"titre":{…},"auteurs":{…}}) puis
+// second essai strict. La réparation est un no-op sur un JSON strict ;
+// le schéma cible n'a pas de tableaux d'objets (aucun « },{ » légitime).
+// Une réponse tronquée retourne false — le retry de Analyze décide.
+func parseAnalyseOuvrageJSON(raw string) (analyseLLMResponse, bool) {
+	var parsed analyseLLMResponse
+	s := stripJSONFences(raw)
+	if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+		return parsed, true
+	}
+	repaired := strings.ReplaceAll(s, "},{", ",")
+	if err := json.Unmarshal([]byte(repaired), &parsed); err == nil {
+		return parsed, true
+	}
+	return parsed, false
 }
 
 // Analyze — analyse IA du PDF d'ouvrage : extraction locale du texte des
@@ -583,7 +661,23 @@ func (uc *OuvrageUseCase) Analyze(ctx context.Context, claims db.SessionClaims, 
 
 	texte, pages := extractPDFText(content, analyseMaxPages, analyseMaxRunes)
 	if strings.TrimSpace(texte) == "" {
-		return indisponible("texte du PDF inextractible (document scanné ou protégé) — remplissez le formulaire manuellement"), nil
+		// SECT-BIBLIO-7 : PDFs chiffrés « sécurité standard Acrobat » à
+		// mot de passe utilisateur VIDE (ex. PDFWriter 4.x avec mot de
+		// passe propriétaire seul) — ledongthuc/pdf ne sait pas
+		// déchiffrer, qpdf oui : on déchiffre en mémoire de travail
+		// (fichiers temporaires) et on réextrait. L'utilisateur a pu
+		// ouvrir ce PDF dans son lecteur : l'analyse doit aussi pouvoir
+		// le lire. Dégradation douce si qpdf échoue/est absent.
+		if dec := decryptPDF(ctx, content); dec != nil {
+			texte, pages = extractPDFText(dec, analyseMaxPages, analyseMaxRunes)
+		}
+	}
+	if strings.TrimSpace(texte) == "" {
+		raison := "texte du PDF inextractible (document scanné ou protégé) — remplissez le formulaire manuellement"
+		if bytes.Contains(content, []byte("/Encrypt")) {
+			raison = "PDF chiffré (mot de passe requis) — déposez une version non protégée ou remplissez le formulaire manuellement"
+		}
+		return indisponible(raison), nil
 	}
 
 	systemPrompt := `Tu es un assistant documentaire d'une bibliothèque universitaire numérique ouest-africaine (SECT). On te fournit le texte extrait des premières pages d'un PDF (souvent couverture, page de titre et page de copyright). Extrais les métadonnées bibliographiques.
@@ -599,19 +693,46 @@ Règles strictes :
 
 	userPrompt := fmt.Sprintf("Nom du fichier : %s\n\nTexte extrait (pages 1-%d) :\n%s", nomFichier, pages, texte)
 
-	result, err := uc.aiService.ChatCompletion(ctx, []ai.ChatMessage{
+	messages := []ai.ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},
-	})
-	if err != nil {
-		slog.Warn("bibliothèque: analyse IA échouée (saisie manuelle)", "fichier", nomFichier, "error", err)
-		return indisponible("analyse IA momentanément indisponible (provider en échec) — remplissez le formulaire manuellement ou réessayez"), nil
 	}
 
-	var parsed analyseLLMResponse
-	if err := json.Unmarshal([]byte(stripJSONFences(result.Content)), &parsed); err != nil {
-		slog.Warn("bibliothèque: réponse IA illisible (saisie manuelle)", "error", err)
-		return indisponible("réponse de l'analyse illisible — remplissez le formulaire manuellement"), nil
+	// SECT-BIBLIO-7 — retry parse (pattern landing-demo SECT-AI-REPAIR-1) :
+	// un LLM léger en tête de chaîne peut wrapper/tronquer le JSON (mesuré
+	// ~1/3 des essais sur gpt-oss-20b) ou émettre les champs en objets
+	// séparés (mesuré sur qwen-flash — réparé par parseAnalyseOuvrageJSON).
+	// On retente UNE fois — le budget 75 s le permet ; une erreur IA
+	// (réseau/4xx) ne consomme PAS de retry : elle sort immédiatement,
+	// comportement inchangé. Le 2e essai passe par le failover qui
+	// écarte un provider en échec.
+	var (
+		result *ai.ChatResult
+		parsed analyseLLMResponse
+		ok     bool
+		llmErr error
+	)
+	for attempt := 1; attempt <= 2; attempt++ {
+		result, llmErr = uc.aiService.ChatCompletion(ctx, messages)
+		if llmErr != nil {
+			break
+		}
+		if parsed, ok = parseAnalyseOuvrageJSON(result.Content); ok {
+			break
+		}
+		slog.Info("bibliothèque : réponse IA non JSON, retry",
+			"attempt", attempt,
+			"model", result.Model,
+			"fichier", nomFichier,
+		)
+	}
+	if llmErr != nil {
+		slog.Warn("bibliothèque: analyse IA échouée (saisie manuelle)", "fichier", nomFichier, "error", llmErr)
+		return indisponible("analyse IA momentanément indisponible (provider en échec) — remplissez le formulaire manuellement ou réessayez"), nil
+	}
+	if !ok {
+		slog.Warn("bibliothèque: réponse IA illisible après retry (saisie manuelle)", "fichier", nomFichier)
+		return indisponible("réponse de l'analyse illisible — remplissez le formulaire manuellement ou réessayez"), nil
 	}
 
 	// Plausibilité de l'année (garde stupide anti-hallucination).
