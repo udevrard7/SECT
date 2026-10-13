@@ -6534,3 +6534,18 @@ corrigé. Neon : INSERT transactionnel avec assertions (8→9 chat, P6
 libre, pas de doublon). Jeton cfat_ présent UNIQUEMENT en DB (colonne
 apiKey, comme les 9 autres) + variables d'environnement éphémères des
 tests — jamais dans un fichier committé.
+
+### Addendum — healthcheck OCI post-déploiement (run 38336464833)
+
+Pipeline complet vert sur 7af0f75c (Backend CI ✓ · Frontend CI ✓ ·
+Deploy OCI ✓ · Vercel sect-app READY · Render secondaire live 02:18 UTC ·
+api.sect.ftci.fr healthy v0.2.0). Healthcheck depuis l'egress OCI (vue
+prod réelle) : **Cloudflare Workers AI [CLOUDFLARE]
+@cf/meta/llama-3.3-70b-instruct-fp8-fast chat 200 en 0,17 s → SAIN en
+P6** — ex aequo avec Groq P1, le plus rapide de la chaîne. Le GET
+{baseUrl}/models renvoie 405 comme documenté (sans impact : le verdict
+du healthcheck est basé sur le mini-chat). Chaîne à **6/9 sains**
+(record égalé) : Groq 0,17 s · Cloudflare 0,17 s · Mistral 0,25 s ·
+MuleRouter 0,81 s · OpenRouter 0,91 s · Gemini 10,60 s ; Z-AI 429
+transitoire (congestion horaire glm-4.7-flash, connue) ; DeepSeek +
+HuggingFace 402 (rechargements exploitant en attente).
