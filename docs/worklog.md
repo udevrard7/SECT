@@ -7002,11 +7002,27 @@ brute en appelant l'API directement — le masquage UI était cosmétique.
 - Commit `7c3b7c38` (udevrard7) poussé sur main. CI : Frontend ✓,
   Backend ✓, Deploy OCI ✓ → santé prod vérifiée après déploiement
   (voir worklog session).
-- E2E authentifié (403 sur un ouvrage non autorisé, 200 + attachment
-  sur un ouvrage autorisé) : vérifiable par l'exploitant depuis le
-  catalogue (cartes verrouillées vs bouton Télécharger) — l'environnement
-  de session ne disposait plus des identifiants Neon/R2 pour rejouer le
-  protocole E2E complet local.
+- **E2E RÉEL exécuté en local** (Postgres 17 portable + les 140
+  migrations + seed de 2 ouvrages PLATEFORME/VALIDE — l'un
+  telechargementAutorise=false, l'autre=true — et JWT forgé avec le
+  secret local, l'environnement de session n'ayant plus les identifiants
+  Neon/R2) :
+  - étudiant → téléchargement NON autorisé : **403** « téléchargement non
+    autorisé pour cet ouvrage (lecture en ligne uniquement) » — AUCUNE
+    URL émise ;
+  - étudiant → téléchargement autorisé : **200**, URL présignée avec
+    disposition SIGNÉE `attachment; filename="…-cole & accents.pdf";
+    filename*=UTF-8''Manuel AVEC téléchargement — École & accents.pdf`
+    (RFC 6266/5987 : fallback ASCII + nom réel accentué), X-Amz-Expires
+    900 s ;
+  - étudiant → lecture `/fichier` : **200** avec disposition `inline`
+    EXACTEMENT (la lecture n'est jamais bloquée par le flag) ;
+  - ADMIN → téléchargement non autorisé : **403 AUSSI** (l'autorisation
+    est le FLAG de l'ouvrage, pas le rôle — voulu : le déposant décide) ;
+  - ouvrage inexistant : **404** « Ouvrage introuvable » (pas de fuite) ;
+  - **AuditLog OUVRAGE_TELECHARGEMENT** écrit avec acteur + ouvrage
+    (l'échec initial venait du seed sans établissement réel — FK
+    AuditLog_etablissementId — pas du code).
 
 ### Leçons
 
@@ -7022,3 +7038,17 @@ brute en appelant l'API directement — le masquage UI était cosmétique.
 - Le switch du DÉPÔT évite le piège « opt-in invisible » : une option
   modifiable uniquement a posteriori est une option que personne ne
   trouve.
+- **Monter un E2E local du backend SECT sans identifiants cloud** :
+  Postgres 17 portable (binaires zonky), golang-migrate **en superuser
+  `postgres`** (les DDL de validation FK sous FORCE RLS déclenchent
+  « infinite recursion detected in policy » en tant que
+  neondb_owner — le superuser bypass), puis sweep `ALTER … OWNER TO
+  neondb_owner` (avec signatures `pg_get_functiondef` pour les
+  surcharges). Le login échoue en local (fonctions SECURITY DEFINER
+  `SET row_security=off` × policies FORCE — fonctionne sur Neon,
+  pas reproduit localement) → **forger le JWT directement avec
+  JWT_SECRET local** (HMAC HS256, claims sub/role/etablissement_id/
+  typ=access) : plus rapide que de reproduire toute la chaîne RLS
+  d'auth. La présignature R2 est un calcul LOCAL → de fausses
+  identités R2 suffisent pour vérifier signature + disposition des
+  URLs (jamais de requête réseau).
