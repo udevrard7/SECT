@@ -1,0 +1,41 @@
+# ============================================================
+# SECT-SEC-ROTATE-1 (one-shot) — rotation du mot de passe
+# neondb_owner : mise à jour de NEON_DIRECT_URL dans /opt/sect/.env
+# sur la VM OCI (DR/restore + seed). NEON_DATABASE_URL (sect_app,
+# runtime) n'est PAS touché — aucun redémarrage nécessaire.
+# Branche jetable : supprimée après exécution + secret GitHub
+# NEON_OWNER_DIRECT_URL supprimé (voir worklog SECT-SEC-ROTATE-1).
+# ============================================================
+name: OCI env rotate (one-shot)
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mise à jour NEON_DIRECT_URL dans /opt/sect/.env
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          envs: NEON_OWNER_DIRECT_URL_SECRET
+          script: |
+            set -euo pipefail
+            cd /opt/sect
+            # Sauvegarde horodatée (perms 600, l'ancien mot de passe est mort)
+            cp .env ".env.pre-rotation.$(date +%Y%m%d%H%M%S)"
+            chmod 600 .env.pre-rotation.* 2>/dev/null || true
+            # Remplacement sans interpolation sed (le DSN contient / et &)
+            sed -i '/^NEON_DIRECT_URL=/d' .env
+            printf '\n# SECT-SEC-ROTATE-1 (13/10/2026) : rotation mot de passe neondb_owner — URL directe (migrations/DR)\nNEON_DIRECT_URL=%s\n' "$NEON_OWNER_DIRECT_URL_SECRET" >> .env
+            chmod 600 .env
+            echo "=== NEON_DIRECT_URL (masquée) ==="
+            grep '^NEON_DIRECT_URL=' .env | sed 's|://[^:]*:[^@]*@|://***:***@|'
+            echo "=== API toujours en ligne (aucun redémarrage) ==="
+            docker compose ps api | head -2
+            docker compose ps api | grep -q "healthy" && echo "OK — api healthy sur la VM"
+        env:
+          NEON_OWNER_DIRECT_URL_SECRET: ${{ secrets.NEON_OWNER_DIRECT_URL }}
