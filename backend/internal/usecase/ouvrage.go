@@ -585,6 +585,8 @@ func decryptPDF(ctx context.Context, content []byte) []byte {
 // analyseLLMResponse — miroir du JSON strict attendu du LLM.
 // categorie (SECT-BIBLIO-8) : l'un des 4 codes de la taxonomie
 // ADR-0007 ou "" si indécidable — normalisé + validé après parse.
+// licenceOrigine/filiere/niveau (SECT-BIBLIO-9) : piste copyright /
+// discipline texte libre / code NiveauxEtude — validés après parse.
 type analyseLLMResponse struct {
 	Titre            domain.AnalyseOuvrageField `json:"titre"`
 	Auteurs          domain.AnalyseOuvrageField `json:"auteurs"`
@@ -593,6 +595,9 @@ type analyseLLMResponse struct {
 	AnneePublication domain.AnalyseOuvrageField `json:"anneePublication"`
 	ISBN             domain.AnalyseOuvrageField `json:"isbn"`
 	Categorie        domain.AnalyseOuvrageField `json:"categorie"`
+	LicenceOrigine   domain.AnalyseOuvrageField `json:"licenceOrigine"`
+	Filiere          domain.AnalyseOuvrageField `json:"filiere"`
+	Niveau           domain.AnalyseOuvrageField `json:"niveau"`
 	Langue           domain.AnalyseOuvrageField `json:"langue"`
 	Themes           domain.AnalyseOuvrageField `json:"themes"`
 	Description      domain.AnalyseOuvrageField `json:"description"`
@@ -685,7 +690,7 @@ func (uc *OuvrageUseCase) Analyze(ctx context.Context, claims db.SessionClaims, 
 
 	systemPrompt := `Tu es un assistant documentaire d'une bibliothèque universitaire numérique ouest-africaine (SECT). On te fournit le texte extrait des premières pages d'un PDF (souvent couverture, page de titre et page de copyright). Extrais les métadonnées bibliographiques.
 Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte autour, au format exact :
-{"titre":{"valeur":"...","confiance":0,"preuve":"..."},"auteurs":{"valeur":"Nom Prénom; Nom Prénom","confiance":0,"preuve":"..."},"editeur":{"valeur":"...","confiance":0,"preuve":"..."},"edition":{"valeur":"...","confiance":0,"preuve":"..."},"anneePublication":{"valeur":"2024","confiance":0,"preuve":"..."},"isbn":{"valeur":"...","confiance":0,"preuve":"..."},"categorie":{"valeur":"REFERENTIEL_OFFICIEL","confiance":0,"preuve":"..."},"langue":{"valeur":"Français","confiance":0,"preuve":"..."},"themes":{"valeur":"thème 1; thème 2","confiance":0,"preuve":"..."},"description":{"valeur":"résumé en 2 phrases maximum","confiance":0,"preuve":"..."}}
+{"titre":{"valeur":"...","confiance":0,"preuve":"..."},"auteurs":{"valeur":"Nom Prénom; Nom Prénom","confiance":0,"preuve":"..."},"editeur":{"valeur":"...","confiance":0,"preuve":"..."},"edition":{"valeur":"...","confiance":0,"preuve":"..."},"anneePublication":{"valeur":"2024","confiance":0,"preuve":"..."},"isbn":{"valeur":"...","confiance":0,"preuve":"..."},"categorie":{"valeur":"REFERENTIEL_OFFICIEL","confiance":0,"preuve":"..."},"licenceOrigine":{"valeur":"...","confiance":0,"preuve":"..."},"filiere":{"valeur":"...","confiance":0,"preuve":"..."},"niveau":{"valeur":"DOCTORAT","confiance":0,"preuve":"..."},"langue":{"valeur":"Français","confiance":0,"preuve":"..."},"themes":{"valeur":"thème 1; thème 2","confiance":0,"preuve":"..."},"description":{"valeur":"résumé en 2 phrases maximum","confiance":0,"preuve":"..."}}
 Règles strictes :
 - confiance = entier 0 à 100 (100 = explicitement imprimé sur la page de titre ou le copyright ; 0 = absent).
 - preuve = court extrait VERBATIM du document source, 120 caractères maximum ("" si absent).
@@ -698,6 +703,9 @@ Règles strictes :
   · RECHERCHE_ACADEMIQUE : thèse, mémoire, article ou publication scientifique (revue, actes de colloque, rapport de recherche).
   · PRATIQUE_PROFESSIONNELLE : guide pratique, manuel orienté métier, cas concrets, ouvrage de mise en pratique professionnelle.
   La preuve de categorie = l'extrait qui justifie le classement. En cas de doute sérieux : valeur="" et confiance=0 (l'humain tranchera).
+- licenceOrigine : recopie la MENTION DE COPYRIGHT ou de licence imprimée dans le document (ex : « © Éditions X, 2024 — Tous droits réservés », « Licence Creative Commons BY-NC-SA », « Document libre de droits », « Dépôt légal n°… »). C'est une PISTE documentaire pour la déclaration de l'opérateur, PAS une validation juridique — recopie fidèlement, n'interprète pas. Aucune mention imprimée ⇒ valeur="" et confiance=0 (l'opérateur déclarera l'origine réelle des droits lui-même).
+- filiere : la DISCIPLINE dominante du document, en texte libre court (ex : « informatique », « sciences de l'éducation », « droit des affaires », « comptabilité »). JAMAIS un identifiant technique — juste la discipline, telle qu'un enseignant la nommerait. Indice type : intitulé de la filière/école sur la couverture, sujet dominant du document. Ambiguïté ou absence d'indice ⇒ valeur="" et confiance=0.
+- niveau : le PUBLIC visé par le document, EXACTEMENT l'un de ces codes : L1, L2, L3 (licence), M1, M2 (master), DOCTORAT (thèse de doctorat). Base-toi UNIQUEMENT sur des indices imprimés (« manuel de Licence 3 », « cours de Master 1 », « THÈSE DE DOCTORAT », « École doctorale », « préparation au Doctorat »). Aucun indice fiable ⇒ valeur="" et confiance=0.
 - Les noms propres africains sont courants (Diop, Traoré, Koné, Bamba, Kouassi…) : ne les « corrige » pas.`
 
 	userPrompt := fmt.Sprintf("Nom du fichier : %s\n\nTexte extrait (pages 1-%d) :\n%s", nomFichier, pages, texte)
@@ -769,6 +777,29 @@ Règles strictes :
 			parsed.Categorie = domain.AnalyseOuvrageField{}
 		}
 	}
+	// Niveau (SECT-BIBLIO-9) : normalisation (trim, majuscules) puis
+	// validation contre NiveauxEtude — même garde que la catégorie.
+	// "doctorat"/"Doctorat" ⇒ "DOCTORAT" ; code inventé ⇒ absence.
+	if n := parsed.Niveau.Valeur; n != "" {
+		norm := strings.ToUpper(strings.TrimSpace(n))
+		if domain.IsValidNiveauEtude(norm) {
+			parsed.Niveau.Valeur = norm
+		} else {
+			slog.Warn("bibliothèque: niveau IA hors enum, suggestion ignorée",
+				"valeur", n, "fichier", nomFichier)
+			parsed.Niveau = domain.AnalyseOuvrageField{}
+		}
+	}
+	// LicenceOrigine (SECT-BIBLIO-9) : texte libre recopié — clamp de
+	// longueur cohérent avec l'UI (l'Input accepte la même longueur) ;
+	// la DÉCLARATION reste humaine, on ne « valide » jamais juridiquement.
+	if l := parsed.LicenceOrigine.Valeur; len(l) > 300 {
+		parsed.LicenceOrigine.Valeur = strings.TrimSpace(l[:300]) + "…"
+	}
+	// Filiere (SECT-BIBLIO-9) : discipline texte libre — trim seul, le
+	// rapprochement CUID (accents/casse) est fait côté CLIENT sur les
+	// options réelles de l'établissement (l'IA ne voit pas les CUID).
+	parsed.Filiere.Valeur = strings.TrimSpace(parsed.Filiere.Valeur)
 	// Clamp des confiances.
 	clampField := func(f *domain.AnalyseOuvrageField) {
 		if f.Confiance < 0 {
@@ -788,6 +819,9 @@ Règles strictes :
 	clampField(&parsed.AnneePublication)
 	clampField(&parsed.ISBN)
 	clampField(&parsed.Categorie)
+	clampField(&parsed.LicenceOrigine)
+	clampField(&parsed.Filiere)
+	clampField(&parsed.Niveau)
 	clampField(&parsed.Langue)
 	clampField(&parsed.Themes)
 	clampField(&parsed.Description)
@@ -801,6 +835,9 @@ Règles strictes :
 		AnneePublication: parsed.AnneePublication,
 		ISBN:             parsed.ISBN,
 		Categorie:        parsed.Categorie,
+		LicenceOrigine:   parsed.LicenceOrigine,
+		Filiere:          parsed.Filiere,
+		Niveau:           parsed.Niveau,
 		Langue:           parsed.Langue,
 		Themes:           parsed.Themes,
 		Description:      parsed.Description,

@@ -113,6 +113,21 @@ export interface AnalyseOuvrageResult {
    * CATEGORIES_OUVRAGE, ou vide si indécidable) — l'humain tranche.
    */
   categorie: AnalyseOuvrageField
+  /**
+   * SECT-BIBLIO-9 : PISTE recopiée de la mention © imprimée — la
+   * déclaration d'origine des droits reste un acte humain (ADR-0007).
+   */
+  licenceOrigine: AnalyseOuvrageField
+  /**
+   * SECT-BIBLIO-9 : discipline dominante en texte libre (l'IA ne voit
+   * pas les CUID) — le client la rapproche des filières de l'étab.
+   */
+  filiere: AnalyseOuvrageField
+  /**
+   * SECT-BIBLIO-9 : public visé (code NIVEAUX_ETUDE validé côté
+   * serveur — code inventé ⇒ absence de suggestion).
+   */
+  niveau: AnalyseOuvrageField
   langue: AnalyseOuvrageField
   themes: AnalyseOuvrageField
   description: AnalyseOuvrageField

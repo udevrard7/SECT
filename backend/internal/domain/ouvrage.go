@@ -157,7 +157,24 @@ type AnalyseOuvrageResult struct {
 	// Valeur = l'un des 4 codes de OuvrageCategories (ou "" si
 	// indécidable). Toujours une PROPOSITION human-in-the-loop —
 	// l'enum final est validé à l'Upload.
-	Categorie      AnalyseOuvrageField `json:"categorie"`
+	Categorie AnalyseOuvrageField `json:"categorie"`
+	// LicenceOrigine — PISTE extraite de la mention de copyright
+	// imprimée (©, « Tous droits réservés », licence CC…). La
+	// DÉCLARATION d'origine des droits reste un acte HUMAIN
+	// (garde-fou ADR-0007) : la suggestion pré-remplit le champ,
+	// l'opérateur la relit et la confirme — jamais persistée sans
+	// validation du formulaire.
+	LicenceOrigine AnalyseOuvrageField `json:"licenceOrigine"`
+	// Filiere — discipline dominante en TEXTE LIBRE (ex « sciences
+	// de l'éducation »). L'IA ne voit pas les CUID des filières de
+	// l'établissement : le CLIENT rapproche cette discipline des
+	// options du select (normalisation accents/casse, match unique
+	// uniquement — ambiguïté ⇒ l'humain tranche).
+	Filiere AnalyseOuvrageField `json:"filiere"`
+	// Niveau — public visé, EXACTEMENT l'un des codes NiveauxEtude
+	// (L1/L2/L3/M1/M2/DOCTORAT), validé après parse — code invalide
+	// ⇒ absence de suggestion (garde anti-hallucination).
+	Niveau         AnalyseOuvrageField `json:"niveau"`
 	Langue         AnalyseOuvrageField `json:"langue"`
 	Themes         AnalyseOuvrageField `json:"themes"`
 	Description    AnalyseOuvrageField `json:"description"`

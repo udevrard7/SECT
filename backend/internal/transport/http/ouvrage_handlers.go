@@ -444,6 +444,11 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 // SECT-BIBLIO-8 : la réponse inclut désormais « categorie » (code de
 // la taxonomie ADR-0007, suggestion IA validée contre l'enum — code
 // inventé ⇒ absence de suggestion, l'humain tranche).
+// SECT-BIBLIO-9 : la réponse inclut aussi « licenceOrigine » (PISTE
+// recopiée de la mention © imprimée — la déclaration de droits reste
+// un acte humain, garde-fou ADR-0007), « filiere » (discipline en
+// texte libre — le CLIENT la rapproche des CUID des filières réelles)
+// et « niveau » (code NiveauxEtude validé contre l'enum).
 // Réponse TOUJOURS 200 {disponible:false, raison} si l'analyse est
 // impossible (PDF scanné, IA en échec) : la saisie manuelle reste
 // possible, l'aide ne doit jamais bloquer le dépôt.

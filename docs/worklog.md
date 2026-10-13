@@ -6370,3 +6370,81 @@ reformatés après l'incident d'éditeur espaces→tabs connu, diff final
 IA est transitoire (jamais persistée sans relecture humaine) →
 synchronisation Neon = no-op. Tokens de session révoqués/nettoyés
 (JWT de test éphémère supprimé).
+
+## SECT-BIBLIO-9 — Formulaire dépôt : l'IA propose AUSSI licence/origine des droits, filière et niveau (13 octobre 2026)
+
+### Demande exploitant
+
+Suite directe de SECT-BIBLIO-8 : « je souhaite aussi que les champs
+"Licence origine des droits", "Filière" et "Niveau" soient pris en
+compte par l'IA » — étendre l'analyse IA du PDF à ces 3 champs du
+formulaire d'ajout de livre.
+
+### Sémantique des 3 champs (le code impose 3 mécaniques DIFFÉRENTES)
+
+1. **licenceOrigine** : c'est une DÉCLARATION JURIDIQUE humaine
+   (garde-fou ADR-0007 §risques). L'IA ne peut et ne doit que recopier
+   la PISTE imprimée — la mention de copyright du document (© X, «
+   Tous droits réservés », licence CC, dépôt légal). Pré-remplissage
+   éditable + preuve verbatim dessous : l'opérateur relit, corrige et
+   confirme. Le champ reste REQUIS au dépôt (garde intact).
+2. **filiere** : le select attache un CUID de la table Filiere —
+   invisible pour le LLM. L'IA propose donc la DISCIPLINE dominante en
+   texte libre (« sciences de l'éducation ») ; le CLIENT rapproche
+   cette discipline des options réelles (normalisation accents/casse,
+   égalité ou inclusion, match UNIQUE requis — ambiguïté ⇒ le select
+   reste sur « Toutes filières » et la LigneIA montre la discipline
+   brute, l'humain tranche).
+3. **niveau** : enum NiveauEtude (L1/L2/L3/M1/M2/DOCTORAT). Même
+   mécanique que la catégorie : le prompt exige EXACTEMENT un code,
+   inféré uniquement d'indices imprimés (« THÈSE DE DOCTORAT », «
+   École doctorale », « manuel de Licence 3 ») ; normalisation
+   (trim/majuscules) + IsValidNiveauEtude après parse — code inventé ⇒
+   absence de suggestion.
+
+### Correctifs
+
+Backend (ouvrage.go usecase + domain + handlers) : 3 champs dans le
+schéma JSON du prompt avec règles dédiées (licenceOrigine = « PISTE
+documentaire, PAS une validation juridique — recopie fidèle, aucune
+mention ⇒ vide » ; filiere = « discipline, JAMAIS d'identifiant
+technique » ; niveau = « indices imprimés uniquement ») ;
+analyseLLMResponse + AnalyseOuvrageResult + clamp (licence plafonnée
+à 300 car., cohérent avec l'Input UI) + validation enum niveau +
+doc-comment du handler. Frontend : 3 champs dans AnalyseOuvrageResult
+(ouvrages-types.ts) ; lancerAnalyse pré-remplit fLicence (piste),
+fNiveau (double garde NIVEAUX_ETUDE) et fFiliere (rapprochement
+match unique) ; LigneIA (confiance + preuve verbatim) sous les 3
+champs. AUCUNE logique d'Upload changée : les validations serveur
+(enum niveau, licence requise, FK filiereId) restent inchangées.
+
+### Preuve E2E locale (backend réel + Neon + failover IA, workers off, JWT ADMIN forgé HMAC)
+
+- PDF thèse avec mention © : **licenceOrigine « (c) Éditions
+  universitaires, 2024 — Tous droits réservés » (confiance 100, preuve
+  verbatim)** · **filiere « Sciences de l'Éducation » (100, preuve «
+  École doctorale Sciences de l'Éducation »)** · **niveau DOCTORAT
+  (100, preuve « THÈSE DE DOCTORAT… »)** · categorie
+  RECHERCHE_ACADEMIQUE (100). Modèle ministral-8b-latest via failover
+  (Groq P1 WAF-bloqué sandbox, faux négatif connu).
+- PDF guide pratique SANS © ni indice de niveau (anti-invention) :
+  licenceOrigine **vide** (confiance 0), niveau **vide** (0) — l'IA
+  n'invente pas ; filiere « comptabilité et gestion » (discipline
+  réelle du document), categorie PRATIQUE_PROFESSIONNELLE (100).
+
+### Piège d'E2E documenté (leçon)
+
+Le premier test revenait sans les nouveaux champs : le serveur qui
+répondait était l'ANCIEN binaire (PID /tmp/go-build*/exe/api démarré
+en SECT-BIBLIO-8) — `pkill -f "cmd/api"` ne matche PAS ce chemin.
+Symptôme distinctif : les clés JSON nouvelles sont ABSENTES de la
+réponse (vs présentes-et-vides = LLM silencieux). Correctif : tuer
+l'exe par PID/chemin `exe/api` avant tout relancement de test local.
+
+### Vérifs
+
+go build ./... EXIT 0 · go vet EXIT 0 · gofmt propre · tsc --noEmit
+EXIT 0 · eslint EXIT 0. Neon : aucune migration (colonnes
+licenceOrigine/niveau/filiereId existantes, suggestions transitoires
+jamais persistées sans relecture) → synchro = no-op. Artifacts de
+test (PDFs + JWT éphémère) supprimés.

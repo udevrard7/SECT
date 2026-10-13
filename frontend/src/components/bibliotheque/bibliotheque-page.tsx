@@ -863,6 +863,44 @@ export function BibliothequePage() {
         ) {
           setFCategorie(catIA)
         }
+        // SECT-BIBLIO-9 : licence/origine des droits — l'IA ne fait que
+        // recopier la PISTE imprimée (mention ©, « Tous droits réservés »,
+        // licence CC). La DÉCLARATION reste humaine : le champ est
+        // pré-rempli éditable, la preuve s'affiche dessous, l'opérateur
+        // relit et confirme (garde-fou ADR-0007 intact).
+        if (result.licenceOrigine?.valeur) {
+          setFLicence(result.licenceOrigine.valeur)
+        }
+        // SECT-BIBLIO-9 : niveau — code enum (le serveur a déjà validé
+        // contre NiveauxEtude ; double garde client idem catégorie).
+        const nivIA = result.niveau?.valeur
+        if (nivIA && NIVEAUX_ETUDE.includes(nivIA)) {
+          setFNiveau(nivIA)
+        }
+        // SECT-BIBLIO-9 : filière — l'IA propose une DISCIPLINE texte
+        // libre (« sciences de l'éducation ») : on la rapproche des
+        // options RÉELLES de l'établissement (l'IA ne voit pas les
+        // CUID). Normalisation accents/casse ; match UNIQUE requis
+        // (égalité ou inclusion) — ambiguïté ou zéro match ⇒ on ne
+        // touche pas au select, la LigneIA sous le champ montre la
+        // discipline brute et l'humain tranche.
+        const filIA = result.filiere?.valeur?.trim()
+        if (filIA) {
+          const norm = (s: string) =>
+            s
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim()
+          const nFil = norm(filIA)
+          const matches = (filieresQuery.data ?? []).filter((f) => {
+            const n = norm(f.nom)
+            return n === nFil || n.includes(nFil) || nFil.includes(n)
+          })
+          if (matches.length === 1) {
+            setFFiliere(matches[0].id)
+          }
+        }
         if (result.editeur.valeur) setFEditeur(result.editeur.valeur)
         if (result.edition.valeur) setFEdition(result.edition.valeur)
         if (result.anneePublication.valeur) setFAnnee(result.anneePublication.valeur)
@@ -2362,6 +2400,13 @@ export function BibliothequePage() {
                   <p className="text-xs text-muted-foreground">
                     Garde-fou ADR-0007 — obligatoire pour tout dépôt.
                   </p>
+                  {/* SECT-BIBLIO-9 : PISTE recopiée de la mention © — la
+                      déclaration reste humaine (pré-rempli éditable). */}
+                  <LigneIA
+                    champ={
+                      analyse?.disponible ? analyse.licenceOrigine : undefined
+                    }
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Filière (recommandation)</Label>
@@ -2378,6 +2423,13 @@ export function BibliothequePage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* SECT-BIBLIO-9 : discipline proposée par l'IA (texte
+                      libre — le select ne se pré-sélectionne que si le
+                      rapprochement est UNIQUE ; sinon la LigneIA montre
+                      la discipline et l'humain choisit). */}
+                  <LigneIA
+                    champ={analyse?.disponible ? analyse.filiere : undefined}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Niveau (recommandation)</Label>
@@ -2394,6 +2446,11 @@ export function BibliothequePage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* SECT-BIBLIO-9 : public visé proposé par l'IA
+                      (enum validé serveur) — preuve sous le champ. */}
+                  <LigneIA
+                    champ={analyse?.disponible ? analyse.niveau : undefined}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="biblio-auteurs">Auteurs (séparés par ;)</Label>
