@@ -6694,3 +6694,120 @@ human-in-the-loop (dépôt ENSEIGNANT → BROUILLON → validation RESP)
   neondb_owner dans la console Neon + mise à jour des variables
   d'environnement du backend (Render/OCI) ; supprimer la ligne du
   fichier actuel ne retirerait PAS l'historique.
+
+## SECT-SEC-ROTATE-1 — Rotation du mot de passe neondb_owner (secret exposé dans l'historique public) + mise à jour de toutes les variables (13 octobre 2026)
+
+Contexte : suite à la recommandation de sécurité de SECT-BIBLIO-10 (le
+mot de passe neondb_owner imprimé en clair dans ce worklog + repo
+public, historique git compris), l'exploitant a fourni les jetons
+(Neon API, Vercel, Render) et demandé d'exécuter la rotation. Cette
+fois, le nouveau mot de passe n'est ÉCRIT NULLE PART dans le dépôt —
+uniquement en variables d'environnement/dashboards et dans l'archive
+locale 600 du bac à sable.
+
+### Enquête préalable (qui utilise neondb_owner ?)
+
+- Render (srv sect-api) : `NEON_DATABASE_URL` = rôle **sect_app**
+  (pooler) — le RUNTIME ne touche jamais neondb_owner → rotation sans
+  downtime. `NEON_DIRECT_URL` = neondb_owner direct → À mettre à jour.
+- Code backend : `DirectURL` (config) n'a AUCUN consommateur runtime
+  (cmd/seed + migrations seulement) — confirmé par grep.
+- VM OCI : runbook §3.3 règle d'or — `NEON_DATABASE_URL` = sect_app ;
+  `.env.example` inclut `NEON_DIRECT_URL` (DR/restore + seed) → à
+  mettre à jour sur /opt/sect/.env.
+- sect_app : son mot de passe n'apparaît JAMAIS en clair dans le dépôt
+  (toujours masqué) — pas de rotation requise.
+
+### Découverte : l'API Neon a déménagé (2026)
+
+- `api.neon.tech` n'a plus d'enregistrement DNS A/AAAA/CNAME (NODATA,
+  vérifié via Google DoH — pas un blocage bac à sable). L'API officielle
+  est désormais **`https://console.neon.tech/api/v2`** — prouvé en
+  extrayant `DEFAULT_API_HOST` du SDK officiel npm `@neon/sdk@7.2.0`
+  (registry npmjs, source de vérité maintenue par Neon).
+- La surface v2 sur console.neon.tech exige le contexte d'org pour
+  lister les projets (`?org_id=…`, erreur 400 sinon) : org trouvée via
+  `GET /users/me/organizations`. Project = `autumn-rain-10233998`
+  (SECT), branche primaire = production.
+- Route de rotation (générée par le SDK) : `POST /projects/{pid}/
+  branches/{bid}/roles/{role}/reset_password` — renvoie le NOUVEAU mot
+  de passe généré par Neon (16 car.). Le SQL direct (`ALTER ROLE`) a
+  été ÉCARTÉ : sur Neon, le control plane peut ré-appliquer les mots
+  de passe des rôles qu'il gère au redémarrage du compute (suspend/
+  resume du free plan) — une rotation SQL serait une bombe à retardement.
+
+### Rotation exécutée (ordre pensé pour zéro downtime)
+
+1. `POST reset_password` (org/projet/branche/role identifiés avant) →
+   200, nouveau mot de passe capturé en mémoire + fichier temporaire
+   600 (jamais affiché, jamais committé).
+2. Vérifications Postgres immédiates : connexion DIRECTE OK, POOLER
+   OK, et l'ANCIEN mot de passe → « password authentication failed » —
+   le secret de l'historique git est officiellement MORT.
+3. Render : `PUT /v1/services/{id}/env-vars/NEON_DIRECT_URL` (le PATCH
+   n'existe pas — 405 — le verbe juste est PUT sur la clé unique ;
+   ATTENTION au PUT groupé qui REMPLACERAIT toutes les vars) → 200.
+   Pas de redeploy déclenché : zéro consommateur runtime, la valeur
+   sera ingérée au prochain déploiement backend (autoDeploy Render).
+4. VM OCI : secret GitHub `NEON_OWNER_DIRECT_URL` posé par API
+   (chiffrage sealed-box PyNaCl, clé publique du repo) → workflow
+   one-shot `oci-env-rotate.yml` (dispatch-only, sur branche jetable
+   d'abord — MAIS GitHub n'enregistre les workflows QUE depuis la
+   branche par défaut → poussé sur main, dispatché, puis retiré) :
+   SSH → sauvegarde .env horodatée → remplacement de la ligne
+   NEON_DIRECT_URL (sed en suppression + printf : le DSN contient `/`
+   et `&`, l'interpolation sed classique l'aurait corrompu) → chmod 600.
+   Run 38366382962 : **success** — logs montrent la ligne masquée
+   correcte et « api healthy » (aucun redémarrage nécessaire).
+   Cleanup immédiat : workflow retiré de main, branche jetable
+   supprimée, secret GitHub supprimé (204) — le secret n'a vécu que
+   ~15 minutes.
+5. Dev local : backend/.env (gitignored) re-pointé sur Neon (sect_app
+   pooler + nouvelle URL directe rotée).
+
+### Vérifications post-rotation (toutes vertes)
+
+- api.sect.ftci.fr/api/health → **200 « sect-api ok »** (0,60 s) — le
+  primaire n'a jamais bougé (sect_app).
+- Frontend sect.ftci.fr → 200 ; sect-app.vercel.app → 308 (redirige,
+  normal).
+- **Vercel** (dette de vérification soldée) : dernier déploiement
+  production READY = `7af0f75c` (SECT-AI-CLOUDFLARE-1, 02:17 UTC) —
+  tous les commits suivants sont correctement CANCELED par le
+  `commandForIgnoringBuildStep` (git diff backend/docs → pas de build
+  frontend). Rien à déployer côté front.
+- **Render** (dette soldée) : le standby est **LIVE sur `d10e71a8`**
+  (auto-déploiement post-push du fix BIBLIO-10 a fonctionné — dep
+  `dep-db6tqg8ae00c73bgalig`) ; deploys antérieurs deactivated en
+  cascade, cohérent.
+- Commits poussés (identité udevrard7) : `fda4f14e` (ajout workflow
+  one-shot) + `d2b9226d` (retrait) — main reste propre, aucun secret
+  dans aucun fichier committé (vérifié : le workflow lisait le secret
+  GitHub, jamais l'URL en dur).
+
+### Leçons
+
+- **API Neon 2026** : api.neon.tech est MORT (NODATA) — la base est
+  `https://console.neon.tech/api/v2` avec contexte org obligatoire
+  (`?org_id=`, sinon 400 « org_id is required »). Source de vérité
+  fiable pour la surface de routes : le paquet npm `@neon/sdk`
+  (sdk.gen.js liste les URLs exactes), pas les vieux tutoriels.
+- **Rotation de mot de passe sur un PaaS DB** : ne JAMAIS passer par
+  SQL si le control plane gère les rôles (ré-application possible au
+  restart du compute) ; toujours l'API du control plane.
+- **Secrets GitHub via API** : PUT /actions/secrets/{name} avec valeur
+  chiffrée sealed-box PyNaCl (clé publique du repo) — fonctionne avec
+  un PAT admin ; ne pas oublier le DELETE après usage (204).
+- **workflow_dispatch ne voit QUE les workflows de la branche par
+  défaut** (404 sinon) : un workflow one-shot doit transiter par main
+  (aucun CI ne se déclenche si les filtres de chemins ne matchent pas)
+  puis être retiré aussitôt.
+- **Render API** : le PUT groupé /env-vars REMPLACE tout l'inventaire —
+  toujours viser la clé unique (`PUT …/env-vars/{key}`) ; PATCH = 405.
+- **sed et DSN** : un DSN contient `/` et `&` — le remplacement sed
+  classique casse sur le `&` (signifie « le match entier ») ; pattern
+  sûr : `sed -i '/^CLÉ=/d'` + `printf '%s\n' "$VAR" >> fichier`.
+- Rotation = demi-mesure sans inventaire PRÉALABLE des consommateurs :
+  ici, Runtime=sect_app (intouché), Migrations/DR=neondb_owner (3
+  endroits : Render env, VM .env, dev local) — tous mis à jour avant
+  de déclarer fini.
