@@ -296,10 +296,11 @@ const PROVIDER_MODELS: Record<LocalProviderType, string[]> = {
   // ─── DeepSeek ───
   DEEPSEEK: ['deepseek-chat', 'deepseek-reasoner'],
   // ─── Cerebras ───
-  CEREBRAS: [
-    'llama-4-scout-17b-16e-instruct',
-    'llama-3.3-70b', 'llama3.1-8b', 'llama3.1-70b',
-  ],
+  // SECT-AI-FREETIER-1 : catalogue Shared Inference réel (2 modèles —
+  // docs officielles ; llama-3.3-70b et llama3.1-* retirés). Le provider
+  // a été supprimé de la config ce jour (offre 2026 = crédit promo 5 $
+  // unique, épuisé) ; liste maintenue au cas d'une recréation future.
+  CEREBRAS: ['gpt-oss-120b', 'qwen-3.8-27b'],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<LocalProviderType, string> = {

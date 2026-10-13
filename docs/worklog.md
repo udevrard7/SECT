@@ -6192,3 +6192,37 @@ remaining credits »). E2E prod inchangé : POST /api/landing-demo → 200 en
 1,77 s via Groq P1. En cas de rechargement Z-AI, glm-4.6/5.3 redevient
 pertinent (set-model, SECT-LATENCY-4) — sinon glm-4.7-flash tient le rôle
 de fallback profond gratuit.
+
+### Addendum 2 : suppression Cerebras + diagnostic erreur 1305 Z-AI (13 octobre 2026, suite)
+
+Demande exploitant : « supprime Cerebras » + signalement d'un échec console
+Z-AI « HTTP 429, code 1305 该模型当前访问量过大 » (le modèle est
+surchargé, réessayer plus tard).
+
+- **Cerebras supprimé** de `AIProviderConfig` en suivant le chemin officiel
+  du bug #20 (désactivation puis DELETE, transaction + assertions ; 6
+  références texte dans AIFailoverEvent, sans FK — non bloquant). Chaîne
+  résultante : 9 configs = 8 chat + 1 TTS (trou P6 sans impact, seul
+  l'ordre compte). Motivation : offre 2026 = crédit promo 5 $ unique
+  épuisé (402), plus de free tier permanent — recréation éventuelle
+  possible via la console si un compte PayGo est ouvert un jour.
+- **Frontend** : `PROVIDER_MODELS.CEREBRAS` actualisé vers le catalogue
+  Shared Inference réel (gpt-oss-120b, qwen-3.8-27b — llama-3.3-70b et
+  llama3.1-* retirés) au cas d'une recréation future.
+- **Diagnostic 1305** : congestion horaire du free tier glm-4.7-flash,
+  PAS un problème de clé/config. Mesures : run OCI 00:17 UTC → 200 en
+  16,6 s ; run OCI 00:30 UTC (= 08:30 heure de pointe Chine) → 429
+  1305 en 0,4 s ; depuis la sandbox : 2/4 essais 429 puis 2× 200 en
+  7-8 s ; glm-4.5-flash (l'autre gratuit) timeout > 75 s — pas une
+  alternative. Le backend classe 429 en transitoire (failover.go :
+  cooldown général 60 s, PAS le hard-fail 30 min des 4xx permanents) →
+  Z-AI est écarté 1 min puis retenté, exactement le comportement voulu
+  pour de la congestion. Le bouton « Tester » de la console ne fait
+  qu'UN essai → il échoue souvent aux heures de pointe chinoises
+  (~00:00-14:00 UTC) et passe hors pointe. Z-AI reste P7 : il n'est
+  appelé que si P1-P6 tombent tous (Groq P1 a mesuré 0,07 s ce run).
+- Healthcheck post-suppression (run 38327559654) : **5/8 sains** —
+  Groq 0,07 s · Mistral 0,35 s · MuleRouter 0,83 s · OpenRouter 1,03 s ·
+  Gemini 18,44 s (variable ce run) ; Z-AI 429/1305 transitoire ;
+  DeepSeek + HuggingFace 402 (rechargements toujours en attente côté
+  exploitant).
