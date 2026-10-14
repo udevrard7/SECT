@@ -108,6 +108,14 @@ jobs:
 
       # ── Firebase Config ──
       - name: 🔑 Déployer google-services.json
+        # GARDE : si le secret est absent (cas des PR Dependabot — « Secret
+        # source: Dependabot », aucun secret accessible), on écrit un
+        # google-services.json FACTICE valide pour le plugin Gradle : sans
+        # fichier, la tâche processDebugGoogleServices échoue (« File
+        # google-services.json is missing ») et le build Android de PR est
+        # KO. Le dummy laisse le build COMPILER (vérification Dependabot) ;
+        # l'APK CI n'a pas de FCM fonctionnel et n'est jamais distribué.
+        # Les builds push/tag (avec secrets) déploient le fichier réel.
         env:
           GS_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
@@ -115,7 +123,38 @@ jobs:
             echo "$GS_JSON_B64" | base64 -d > androidApp/google-services.json
             echo "✅ google-services.json déployé"
           else
-            echo "⚠️ GOOGLE_SERVICES_JSON_B64 secret not set — build FCM will fail"
+            cat > androidApp/google-services.json <<'EOF'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "sect-ci-dummy",
+              "storage_bucket": "sect-ci-dummy.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.ftci.sect"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyDUMMYKEYDUMMYKEYDUMMYKEYDUMMYKEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+            echo "⚠️ GOOGLE_SERVICES_JSON_B64 absent — google-services.json FACTICE écrit (build de vérification, FCM non fonctionnel)"
           fi
 
       # ── Keystore (release signing) ──
