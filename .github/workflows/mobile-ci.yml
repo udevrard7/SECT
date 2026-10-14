@@ -133,6 +133,13 @@ jobs:
       - name: 📝 Créer keystore.properties
         # GARDE : n'écrit le fichier QUE si les secrets sont posés — sinon un
         # keystore.properties avec valeurs vides cassait le build release push.
+        # NOTE : ne JAMAIS créer de fichier vide en fallback — les PR Dependabot
+        # n'ont pas accès aux secrets (« Secret source: Dependabot ») et un
+        # keystore.properties vide contournait le garde exists() de
+        # build.gradle.kts (null cast String, ligne 28) → build Android KO
+        # sur TOUS les PR Dependabot mobile depuis le commit 9b654f42.
+        # L'ABSENCE du fichier est le fallback correct : le garde
+        # if (keystorePropertiesFile.exists()) de build.gradle.kts la gère.
         env:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -147,9 +154,7 @@ jobs:
           EOF
             echo "✅ keystore.properties créé"
           else
-            echo "⚠️ Secrets keystore absents — keystore.properties non écrit (APK non signé)"
-            # Fichier vide factice pour éviter un échec de lecture Gradle
-            touch keystore.properties
+            echo "⚠️ Secrets keystore absents — keystore.properties NON écrit (build debug OK, APK release non signé)"
           fi
 
       # ── Build ──
