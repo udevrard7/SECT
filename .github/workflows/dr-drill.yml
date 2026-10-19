@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Exercice DR (restore + promotion rehearsal + boot réel)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           SECT_AGE_IDENTITY: ${{ secrets.SECT_AGE_IDENTITY }}
         with:

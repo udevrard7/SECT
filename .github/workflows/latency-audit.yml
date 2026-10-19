@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: SSH OCI — batterie de mesures latence
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}
