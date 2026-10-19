@@ -84,7 +84,7 @@ jobs:
 
       - name: Build & push (linux/arm64 + linux/amd64)
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           file: backend/Dockerfile
