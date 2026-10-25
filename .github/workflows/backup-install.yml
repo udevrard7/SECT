@@ -107,12 +107,21 @@ jobs:
             TMP=$(mktemp -d /tmp/sect-backup-src.XXXXXX)
             # Clone éphémère du dépôt (token à durée de vie courte,
             # scope repo — retiré du disque en fin de script).
+            # FIX (25/10/2026) : fetch EXACT du SHA poussé — l'ancien
+            # schéma « clone --depth 1 (tip) + checkout <sha> » échouait
+            # en « fatal: unable to read tree » dès que main avançait
+            # entre le push et l'exécution du job (fusions rapprochées,
+            # run 40228911740) : le tip cloné ne contenait plus l'arbre
+            # du SHA visé. init + fetch --depth 1 du SHA précis = toujours
+            # cohérent avec le commit qui a déclenché le workflow.
             command -v git >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq git; }
-            git clone --depth 1 --quiet \
-              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
-              "$TMP" || { echo "ÉCHEC clone (token/permissions)"; exit 1; }
+            git init -q "$TMP"
             cd "$TMP"
-            git checkout -q "${{ github.sha }}"
+            git remote add origin \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+            git fetch --depth 1 --quiet origin "${{ github.sha }}" \
+              || { echo "ÉCHEC fetch (token/permissions)"; exit 1; }
+            git checkout -q FETCH_HEAD
             # Copie de l'outillage (scripts + units + exemple env)
             sudo mkdir -p /opt/sect/backup
             sudo cp -r ops/backup/. /opt/sect/backup/

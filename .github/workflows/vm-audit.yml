@@ -45,11 +45,16 @@ jobs:
             set -euo pipefail
             TMP=$(mktemp -d /tmp/sect-audit-src.XXXXXX)
             command -v git >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq git; }
-            git clone --depth 1 --quiet \
-              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
-              "$TMP" || { echo "ÉCHEC clone"; exit 1; }
+            # FIX (25/10/2026) : fetch EXACT du SHA (cf. backup-install.yml)
+            # — « clone --depth 1 (tip) + checkout <sha> » casse dès que
+            # main avance entre push et exécution (unable to read tree).
+            git init -q "$TMP"
             cd "$TMP"
-            git checkout -q "${{ github.sha }}"
+            git remote add origin \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+            git fetch --depth 1 --quiet origin "${{ github.sha }}" \
+              || { echo "ÉCHEC fetch"; exit 1; }
+            git checkout -q FETCH_HEAD
             bash ops/backup/vm_audit.sh || true   # l'audit ne fail jamais (collecte)
             sudo rm -rf "$TMP"
             echo "— fin de l'audit (rapport à conserver : ADR-0013 §15) —"
