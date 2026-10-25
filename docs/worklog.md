@@ -7052,3 +7052,75 @@ brute en appelant l'API directement — le masquage UI était cosmétique.
   d'auth. La présignature R2 est un calcul LOCAL → de fausses
   identités R2 suffisent pour vérifier signature + disposition des
   URLs (jamais de requête réseau).
+
+## SECT-DEPS-2 — Flux PR Dependabot : rattrapage complet, 3 bugs CI réels trouvés et corrigés (25 octobre 2026)
+
+### Contexte
+
+Demande exploitant : « vérifie dans le dépôt les PR et le pull request
+en attente ». Audit du 14/10 : 15 PR ouvertes (toutes Dependabot),
+10 vertes, 5 mobiles bloquées sur un échec Android. Plan exécuté le
+14/10 puis achevé le 25/10 (entre-temps, Dependabot avait fermé les PR
+2.4.20 en superseded et rouvert les 2.4.21 — +6 nouvelles PR).
+
+### Réalisation — trois bugs CI distincts corrigés au passage
+
+- **14/10 — 10 fusions** (CI verte) : #36 x/crypto 0.58.0 (perche
+  sécurité), #37 aws-sdk config (→ #38 fermé par Dependabot, déjà
+  satisfait transitivement), #39 aws-sdk s3 1.114.3, #32 go-chi/cors
+  1.2.2, #25-#29 bumps actions CI. Déploiements OCI ✓ (santé prod
+  vérifiée après chaque vague).
+- **Bug 1 — keystore.properties vide** (fix `c80a8d17`) : le fallback
+  `touch keystore.properties` (durcissement 9b654f42) créait un fichier
+  VIDE pour les PR Dependabot — qui n'ont accès à AUCUN secret (« Secret
+  source: Dependabot ») — contournant le garde `exists()` de
+  build.gradle.kts : cast null → crash ligne 28. Fix : ne PAS créer le
+  fichier (l'absence est le bon fallback).
+- **Bug 2 — google-services.json absent** (fix `2f13c793`) : après le
+  fix keystore, la tâche processDebugGoogleServices échouait (même cause
+  racine : secret inaccessible en PR). Fix : google-services.json FACTICE
+  (package com.ftci.sect, ids dummy) — le build de PR compile, l'APK CI
+  n'est jamais distribué ; les builds push/tag déploient le fichier réel.
+- **Bug 3 — Go 1.27.2 casse le build wails** (fix `49563a06`) : setup-go
+  '1.27' résolvait vers 1.27.2 → « internal error: package "fmt" without
+  types » sur les 3 OS desktop (backend-ci passe, seul wails est touché).
+  Épinglage 1.27.1 sur build-desktop.yml + release-desktop.yml.
+- **25/10 — 6 fusions + 1 fix** : #40 go-chi/chi v5.5.0 (déploiement ✓),
+  #41-#45 actions CI, #47 firebase-bom, #49/#50/#46 Kotlin 2.4.21
+  (successeurs re-testés GRÂCE aux fixes 1+2 — le build mobile Dependabot
+  est désormais VÉRIFIABLE), **fix `780b9f37`** : backup-install.yml et
+  vm-audit.yml clonaient le TIP (`clone --depth 1`) puis checkotaient le
+  SHA poussé — « fatal: unable to read tree » dès que main avance entre
+  push et exécution (exposé par les fusions rapprochées). Fix :
+  `git init` + `fetch --depth 1 origin <sha>` + `checkout FETCH_HEAD`.
+- **Fermés sans fusion (bloqueur structurel commun)** : #24
+  navigation-compose 2.10.x, #34 compose-bom 2026.09.00, #48 okhttp 5.5.0
+  — tous exigent **compileSdk 37 + AGP 9.1.0+** (projet en 36/8.11),
+  commentés avec le run CI à l'appui. Migration AGP 9 à planifier.
+
+### Vérification
+
+- 17 PR fusionnées au total, **0 PR ouverte restante**.
+- CI main après la dernière fusion (5fce9883bf) : Mobile CI ✓ ; Backup
+  tooling ✓ sur 780b9f37 (le fix fetch-SHA validé END-TO-END sur la VM) ;
+  Desktop ✓ (Go 1.27.1) ; prod `api.sect.ftci.fr/api/health` → 200
+  `{"status":"ok","version":"0.2.0"}` à chaque vague de déploiement.
+- Transitoires compris et corrigés à la racine : deploy mv /tmp race
+  (4 runs parallèles, dernier green → OK), backup « unable to read tree »
+  (bug 3 ci-dessus).
+
+### Leçons
+
+- **Un workflow « à secrets » doit être testé SANS secrets** : les PR
+  Dependabot sont le seul cas d'usage régulier d'un runner sans secrets —
+  deux bugs dormaient depuis le 28/09 derrière le même
+  « Secret source: Dependabot ».
+- **`clone --depth 1` + `checkout <sha>` est toujours faux** en CI : le
+  tip bouge pendant que le job attend. Fetcher EXACTEMENT le SHA de
+  l'événement (`init` + `fetch --depth 1 origin <sha>`).
+- Une version « résolue » (ex. Go '1.27') est un moved goalpost : le pin
+  exact est le seul état reproductible — documenter la raison et la
+  condition de ré-évaluation dans un commentaire.
+- Trois bumps refusés (#24, #34, #48) = le même prérequis AGP 9 +
+  compileSdk 37 : regrouper ces demandes en UNE migration planifiée
+  plutôt que trois closes.
