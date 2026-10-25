@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Test de restauration (sect_restore_test.sh)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           SECT_AGE_IDENTITY: ${{ secrets.SECT_AGE_IDENTITY }}
         with:

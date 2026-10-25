@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Installation idempotente (clone + install.sh)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}

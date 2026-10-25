@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Vérification /api/monitoring/infra (JWT ADMIN réel)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}

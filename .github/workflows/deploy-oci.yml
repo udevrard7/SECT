@@ -126,7 +126,7 @@ jobs:
           source: "deploy/oci/docker-compose.yml"
           target: "/tmp/sect-compose-sync"
       - name: Deploy sur la VM (pull + up)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}

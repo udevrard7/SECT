@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Écriture backup.env + activation des timers
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           SECT_OS_ENDPOINT: ${{ secrets.SECT_OS_ENDPOINT }}
           SECT_OCI_CSK_ACCESS_KEY: ${{ secrets.SECT_OCI_CSK_ACCESS_KEY }}

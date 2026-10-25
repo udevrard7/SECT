@@ -93,7 +93,7 @@ jobs:
       - name: 🖥️ SSH OCI (GATE du retour — la VM doit être atteignable)
         id: ssh-oci
         continue-on-error: true
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}
@@ -172,7 +172,7 @@ jobs:
         run: python3 ops/render_env_check.py
 
       - name: 🖥️ OCI — bring-up STANDBY API-only (workers OFF avant tout)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}
@@ -252,7 +252,7 @@ jobs:
         run: ops/render_workers.sh off
 
       - name: ⚙️ OCI — WORKERS_ENABLED=true (OCI redevient primaire)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}

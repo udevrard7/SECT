@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Activation lectures analytiques locales + preuve
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
           username: ${{ secrets.OCI_SSH_USER }}
