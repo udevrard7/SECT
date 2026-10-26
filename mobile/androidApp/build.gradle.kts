@@ -112,8 +112,8 @@ dependencies {
     implementation("io.insert-koin:koin-androidx-compose:4.1.1")
 
     // Coil pour images (Compose)
-    implementation("io.coil-kt.coil3:coil-compose:3.2.0")
-    implementation("io.coil-kt.coil3:coil-network-ktor3:3.2.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-ktor3:3.6.3")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.7")
