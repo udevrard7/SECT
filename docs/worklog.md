@@ -7231,3 +7231,80 @@ Trois causes racines anciennes, masquées en démo par le seed :
   le champ est optionnel : COALESCE + flag explicite Clear*.
 - Un worker qui SKIP silencieusement est un mensonge d'état : chaque skip
   doit soit normaliser le statut, soit écrire la raison.
+
+## SECT-DEPS-3 — Vague #51-#64 : audit et rattrapage des 14 PR Dependabot (27 octobre 2026)
+
+### Contexte
+
+Demande exploitant : « oui audite et fusionne <<14 nouvelles PR Dependabot
+sont réapparues depuis le rattrapage (#51–#64)>> ». Audit au 04:25 UTC :
+14 PR ouvertes, toutes Dependabot, toutes mergeable=True au moment de
+l'audit.
+
+### Audit (check-runs des têtes, API commits/{sha}/check-runs)
+
+- **13 vertes** : backend Go #61-#64 (Build & Test Go ✓, Migrations ✓) ;
+  workflows CI #51/#55/#57/#58/#60 (seul check Vercel — les workflows
+  modifiés ne tournent qu'en push/tag, vérification REPORTÉE sur main
+  après fusion) ; mobile #52/#54/#56/#59 (Android+iOS+Shared KMP ✓).
+- **1 rouge — #53** (coil-network-ktor3 3.2.0 → 3.6.3) :
+  checkDebugAarMetadata FAILED — « requires libraries and applications
+  that depend on it to compile against version 37 or later of the
+  Android APIs » (coil-compose/core/network-core 3.6.3 idem). Même
+  famille de bloqueur que #24/#34/#48 : **fermée avec commentaire**
+  (run 40293535488 à l'appui), à reprendre dans la migration groupée
+  AGP 9.1 + compileSdk 37.
+
+### Réalisation — 12 fusions + 1 satisfaite transitivement + 1 fermée
+
+- **Vague backend** : #61 aws-sdk-go-v2 1.47.4 (5fc091cf) → #62 s3
+  1.114.5 (e89e77c2, après rebase) → #63 config 1.33.10 (baf15ada, après
+  rebase). **#64 credentials 1.20.10 fermée par Dependabot** (« up-to-date
+  now ») : la fusion de #63 a tiré transitivement credentials 1.20.10
+  dans go.mod (vérifié) — même pattern que #38 en SECT-DEPS-2.
+- **Vague workflows CI** : #51 docker/login-action 4 (8d268506), #55
+  docker/setup-qemu-action 4 (227e745e), #57 actions/upload-artifact
+  7.0.2 (a9faf11b), #58 appleboy/scp-action 1.0.0 (f1a3d3e9), #60
+  actions/setup-node 7.1.0 (00497519).
+- **Vague mobile** : #52 kotlinx-datetime 0.8.0 (e21fa9a9), #54
+  koin-android 4.2.2 (504f3b12), #59 org.jetbrains.compose 1.12.2
+  (92dfd956), #56 kotlinx-serialization-json 1.12.0 (6a4bfea4, après
+  rebase — conflit go.sum-like sur shared/build.gradle.kts avec #52
+  résolu par @dependabot rebase).
+- **Gestion des conflits go.mod/build.gradle.kts** : 3 cycles
+  « merge → conflit → @dependabot rebase → CI verte → merge » (rebases
+  ~2-4 min chacun). Aucun conflit résolu à la main — Discipline
+  Dependabot-native conservée.
+
+### Vérification
+
+- Main CI après la dernière fusion de chaque vague : Backend CI ✓ +
+  Deploy OCI ✓ (baf15ada) ; Mobile CI ✓ (6a4bfea47) ; Build Desktop ✓
+  (00497519, setup-node 7.1.0 + upload-artifact 7.0.2 validés en
+  conditions réelles).
+- **Transitoire compris** : un deploy-oci rouge sur 8d268506
+  (`mv: cannot stat '/tmp/sect-compose-sync/…'`) — la race /tmp déjà
+  documentée (SECT-DEPS-2) : 3 fusions rapprochées ont déclenché 3
+  deploys concurrents ; les deploys suivants (227e745e, f1a3d3e9,
+  baf15ada) sont VERTS et le dernier a déployé l'état final complet.
+- Production : `api.sect.ftci.fr/api/health` → 200
+  `{"status":"ok","version":"0.2.0"}` ; `sect.ftci.fr` → 200 ; Render
+  **live sur baf15ada** (dep-dbg2pujrjlhs73cnk3bg, 04:47 UTC, les
+  intermédiaires 5fc091cf/e89e77c2 tracking chaque fusion backend).
+- État final : **0 PR ouverte**.
+
+### Leçons
+
+- La vague aws-sdk (#61-#64) illustre le comportement Dependabot
+  transitive-satisfaction : merger le CORE d'abord (#61) puis les
+  modules — les versions transitives satisfaites se ferment seules
+  (#64). Moins de merges manuels, moins de rebases.
+- Les bumps d'actions CI ne sont PAS vérifiables en PR quand les
+  workflows ne tournent qu'en push/tag : la validation REPORTÉE sur
+  main (ici Desktop ✓ + deploys ✓) est le contrat — chaque fusion doit
+  être suivie de son check main.
+- Trois merges rapprochés = trois deploys concurrents = une race /tmp
+  garantie. Options futures : `concurrency: group: deploy` avec
+  cancel-in-progress déjà en place (les runs intermédiaires sont
+  annulés au niveau CI, mais les scripts VM restent concurrents) —
+  envisager un verrou VM (flock) dans le script deploy.
