@@ -7876,3 +7876,142 @@ exam-prepa ». Commit fix **`c7b03e4d`** (4 fichiers, +155/−5).
   lecteur exam-prep → bouton PDF → le fichier original se pose sur
   disque (attachment) ; bouton TXT → export texte local. Les enseignants
   conservent leur route historique (leurs propres documents).
+
+## SECT-BIBLIO-14 — Verrouillage réel du téléchargement des ouvrages : le lecteur sécurisé canvas pdf.js (27 octobre 2026)
+
+### Contexte
+
+Demande de l'exploitant : « les étudiants et enseignants autres arrivent
+à télécharger les livres même quand l'autorisation n'est pas accordée
+(activé) ». Le flag `telechargementAutorise` était bien appliqué par
+l'API depuis SECT-BIBLIO-13 (`/telechargement` → 403, attachment jamais
+émis) — mais le lecteur in-app (SECT-BIBLIO-11) affichait le PDF dans
+une **iframe pointant l'URL présignée R2** : le lecteur PDF **natif du
+navigateur** rendait alors sa propre barre d'outils — bouton
+« Télécharger », « Imprimer », clic-droit « Enregistrer sous » — qui
+ignorent royalement le flag. Le bouton « Nouvel onglet » exposait en
+plus l'URL présignée brute au lecteur natif plein écran. Tout
+utilisateur (étudiant OU enseignant — tout rôle) voyant l'ouvrage
+pouvait sauver le PDF en un clic : c'était exactement le constat.
+
+### Réalisation — trois couches, fail-closed
+
+- **Backend `GET /{id}/flux` (NOUVEAU)** : STREAM des octets du PDF,
+  même-origine, pour le lecteur sécurisé. `StorageClient.DownloadStream`
+  (GetObject sans lecture RAM, io.Copy vers le client — PDFs jusqu'à
+  100 Mo). Sémantique LECTURE (droit par défaut, ADR-0007) : RLS via
+  FindByID (404 si invisible), audit OUVRAGE_LECTURE. **Garde
+  anti-navigation** : `Sec-Fetch-Dest: document` → 403 — ouvrir /flux
+  comme un document (onglet, window.open, `<a target>`) redonnerait le
+  lecteur natif et son bouton « Télécharger » ; fetch()/XHR passent
+  (l'en-tête absent des navigateurs anciens est toléré).
+- **Frontend `LecteurSecurise` (NOUVEAU)** : rendu **canvas pdf.js**
+  (pdfjs-dist 6.4.299, assets statiques commités `public/pdfjs/`,
+  postinstall `copy-pdfjs-assets.mjs` — worker `pdf.worker.min.mjs`,
+  standard_fonts, cmaps). Le navigateur ne reçoit JAMAIS une vue
+  « document PDF » : pas d'iframe, pas de barre d'outils native, pas
+  d'URL navigable, pas de Ctrl+S vers le PDF. Navigation pages
+  (boutons, saisie, ←/→, swipe tactile), zoom (ajusté largeur, 50-300 %,
+  plafond canvas 8192 px, dpr net), **télémétrie RÉELLE** de la page
+  courante (le canvas sait où il en est — le marque-page déclaratif
+  devient prérempli), clic-droit neutralisé, sélection désactivée,
+  **impression bloquée** (@media print + avertissement beforeprint).
+  Chargement avec progression (Content-Length), erreurs actionnables,
+  retry. `lecteur-ouvrage-page` : mode conditionnel —
+  `telechargementAutorise=true` → lecteur natif inchangé (iframe +
+  presign inline + nouvel onglet : le téléchargement est autorisé, le
+  confort natif est légitime) ; `false`/manquant → **mode sécurisé
+  (fail-closed)**, « Nouvel onglet » retiré. Watermark conservé sur les
+  deux modes. pdf.js en chunk lazy (424 Ko — le bundle principal ne
+  grossit que du composant).
+- **Durcissement `/fichier`** : 403 si `telechargementAutorise=false` —
+  le lecteur in-app n'utilise plus cette route pour un ouvrage
+  verrouillé (aucun consommateur restant : lecteur natif uniquement,
+  vérifié frontend/desktop/mobile), et une URL présignée collée en barre
+  d'adresse redonne le lecteur natif et son bouton « Télécharger » :
+  plus AUCUNE URL présignée n'est émise pour un ouvrage verrouillé, la
+  fuite est fermée aux deux bouts.
+- **Middleware** : `/pdfjs/*` et `.mjs` exclus du proxy de session — le
+  worker pdf.js passait par le garde 307 `/login` (extension .mjs
+  absente de la liste statique) et échouait si les cookies manquaient à
+  l'instant précis du chargement (refresh de token en cours). Assets
+  tiers non sensibles.
+- **Audit réparé (bonus constaté en prod)** : `auditAcces` insérait
+  `etablissementId=''` pour les ouvrages PLATEFORME → FK
+  `AuditLog_etablissementId_fkey` violée → **toute la trace d'audit des
+  ouvrages plateforme était silencieusement perdue** (lecture ET
+  téléchargement, y compris le pilier « opposable » de BIBLIO-13 —
+  best-effort = WARN discret). Fix : `nullableStrPtrEmptyNull`
+  (helper existant) — '' → NULL.
+- Limite honnête conservée (pas de DRM, ADR-0007) : un utilisateur
+  OUTILLÉ (devtools/réseau, screenshot page à page) peut extraire ce
+  qu'il voit — toute lecture lisible est copiable. Ce qui est garanti :
+  **plus AUCUN affordance de téléchargement pour l'utilisateur
+  ordinaire** (plus de bouton natif, plus d'URL présignée, plus
+  d'impression), l'ACTE téléchargement reste impossible par l'API (403
+  + attachment jamais émis), et chaque accès de lecture est journalisé.
+
+### Vérification
+
+- Gates : `gofmt`/`go build`/`go vet`/`go test` EXIT 0 · `tsc
+  --noEmit` EXIT 0 · `eslint .` EXIT 0 (public/pdfjs/** ignoré — assets
+  minifiés tiers) · `vitest` 11 ✓ · `next build` EXIT 0 (pdf.js en
+  chunk lazy vérifié).
+- Commits `ca0d3605` + `0bcbc868` + `246b8a3b` (udevrard7) poussés sur
+  main. CI Backend ✓ / Frontend ✓ ×2, Deploy OCI ✓ ×3, Vercel
+  « Deployment has completed » ×2 (statut GitHub).
+- **E2E RÉEL en production, DEUX exécutions** (workflow temporaire SSH
+  OCI, JWT forgés avec le secret de la VM — ids réels, lecture seule) :
+  - étudiant → `/flux` (ouvrage verrouillé réel « Hacking et
+    contre-hacking », PLATEFORME) : **200**, `Content-Type:
+    application/pdf`, `Content-Disposition: inline; filename="Hacking
+    et contre-hacking.pdf"` (sanitization OK), `Content-Length`
+    5 310 658, magic `%PDF-` — 5,3 Mo reçus ;
+  - garde anti-navigation : `Sec-Fetch-Dest: document` → **403**
+    « le flux de lecture n'est pas adressable en navigation directe » ;
+  - sans auth : **401** ;
+  - non-régression BIBLIO-13 : `/telechargement` (verrouillé) → **403**
+    « téléchargement non autorisé pour cet ouvrage (lecture en ligne
+    uniquement) » — pour l'étudiant ET pour l'enseignant (le verrou est
+    par OUVRAGE, pas par rôle — « les enseignants autres » ne
+    téléchargent pas non plus) ;
+  - durcissement BIBLIO-14 : `/fichier` (verrouillé) → **403** « lecture
+    par URL présignée réservée aux ouvrages autorisés au
+    téléchargement » ;
+  - enseignant → `/flux` (verrouillé) : **200** — la LECTURE reste
+    ouverte à tous (le verrou ne bloque que l'ACTE téléchargement) ;
+  - frontend Vercel : bundle production contient `/flux`,
+    `lecteur-securise-zone`, `pdf.worker.min.mjs`,
+    `lecteur-verrouille-print` ; `/pdfjs/pdf.worker.min.mjs` et
+    `standard_fonts/LiberationSans-Regular.ttf` → **200** (plus de 307
+    /login — middleware corrigé) ;
+  - 2e exécution (image `246b8a3b`) : le WARN
+    « audit de lecture (flux) échoué » a DISPARU — la trace d'audit des
+    ouvrages PLATEFORME est désormais écrite ; aucun panic/fatal.
+  - Non testé : le mode natif sur un ouvrage AUTORISÉ (aucun ouvrage
+    `telechargementAutorise=true` visible d'un étudiant en prod au
+    moment du test — le code est inchangé sur cette branche et couvert
+    par l'E2E local BIBLIO-13/11 précédent).
+- Workflow `biblio-verrou-verify.yml` supprimé après usage.
+
+### Leçons
+
+- **Le navigateur est un parti pris de l'attaquant** : interdire un
+  acte côté API ne suffit pas si l'UI sert le contenu dans un
+  conteneur qui propose l'acte (iframe → lecteur natif → bouton
+  télécharger). L'enforcement doit descendre jusqu'au CANVAS : ce que
+  le navigateur ne voit pas comme « document », il ne peut pas le
+  proposer à l'enregistrement.
+- **Sec-Fetch-Dest comme garde de sémantique** : peu de code (un
+  en-tête), et la route devient non-navigable — fetch/XHR uniquement.
+  Tolérance aux navigateurs anciens par absence (jamais bloquant).
+- **Fail-closed côté client** : `telechargementAutorise` manquant →
+  mode sécurisé — une réponse partielle (cache, API vieillissante)
+  ne rouvre jamais la fuite.
+- **Best-effort qui échoue en silence = garde-fou qui n'existe pas** :
+  l'audit des ouvrages PLATEFORME se perdait depuis l'origine (FK sur
+  '') derrière un WARN discret. Un garde-fou doit être surveillé — ou
+  ne pas échouer.
+- Les assets pdf.js versionnés dans `public/` + postinstall de
+  resynchronisation : déterministe en CI et sur Vercel, et le worker
+  hors bundle (424 Ko lazy) n'alourdit pas la page.
