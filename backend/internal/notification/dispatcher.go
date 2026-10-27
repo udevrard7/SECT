@@ -126,6 +126,13 @@ type Dispatcher struct {
 	// remplace l'InstagramSender retiré avec le canal Instagram).
 	telegramSender *TelegramSender
 
+	// appBaseURL (SECT-NOTIF-DEVOIR-1) : base absolue du frontend (ex :
+	// https://sect.ftci.fr) pour absolutiser les ActionURL relatives des
+	// messages Telegram — un chemin nu « /mes-devoirs » n'est pas cliquable
+	// depuis un chat externe au navigateur. Vide = les URL restent telles
+	// quelles. Injecté via WithAppBaseURL (pattern WithTelegramSender).
+	appBaseURL string
+
 	// broadcastSSE est une fonction injectée (pour éviter une dépendance
 	// circulaire avec transport/http). Elle est wirée dans main.go après
 	// création du hub. nil = pas de SSE (tests unitaires).
@@ -170,6 +177,21 @@ func (d *Dispatcher) WithTelegramSender(sender *TelegramSender) *Dispatcher {
 		return d
 	}
 	d.telegramSender = sender
+	return d
+}
+
+// WithAppBaseURL injecte la base URL absolue du frontend (ex :
+// https://sect.ftci.fr), utilisée par sendTelegram UNIQUEMENT pour
+// absolutiser les ActionURL relatives (ex : /mes-devoirs →
+// https://sect.ftci.fr/mes-devoirs). Les canaux in-app/SSE/push consomment
+// des URL RELATIVES — résolues par le navigateur ; seul Telegram est
+// externe et a besoin d'un lien absolu cliquable. Nil-safe (pattern
+// WithTelegramSender).
+func (d *Dispatcher) WithAppBaseURL(baseURL string) *Dispatcher {
+	if d == nil {
+		return d
+	}
+	d.appBaseURL = baseURL
 	return d
 }
 
@@ -473,9 +495,17 @@ func (d *Dispatcher) sendTelegram(ctx context.Context, event Event, payload map[
 	}
 
 	// Construire le texte du message (court, avec lien d'action si présent).
+	// SECT-NOTIF-DEVOIR-1 : le lien d'action est ABSOLU — un chemin relatif
+	// nu (ex : /mes-devoirs) n'est pas cliquable depuis un chat Telegram,
+	// externe au navigateur. Les autres canaux (in-app/SSE/push) restent
+	// relatifs : le frontend les résout lui-même.
+	actionURL := event.ActionURL
+	if actionURL != "" && strings.HasPrefix(actionURL, "/") && d.appBaseURL != "" {
+		actionURL = strings.TrimSuffix(d.appBaseURL, "/") + actionURL
+	}
 	text := "🔔 " + event.Titre + "\n" + event.Message
-	if event.ActionURL != "" {
-		text += "\n\n👉 " + event.ActionURL
+	if actionURL != "" {
+		text += "\n\n👉 " + actionURL
 	}
 	text += "\n\n— SECT"
 

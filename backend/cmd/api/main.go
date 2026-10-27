@@ -475,6 +475,10 @@ func main() {
 	// du serveur (webhook sécurisé par secret, clé HMAC des codes de liaison
 	// dérivée du JWT_SECRET — même durée de vie que les tokens).
 	notifDispatcher.WithTelegramSender(telegramSender)
+	// SECT-NOTIF-DEVOIR-1 : base URL absolue pour les liens d'action des
+	// messages Telegram (les canaux in-app/SSE/push restent relatifs —
+	// résolus par le frontend).
+	notifDispatcher.WithAppBaseURL(cfg.AppBaseURL)
 	server.WithTelegramDeps(telegramSender, cfg.TelegramWebhookSecret, cfg.JWTSecret)
 	// Enregistrement automatique du webhook Telegram (idempotent) — uniquement
 	// si les 3 vars sont posées (l'instance OCI primaire porte TELEGRAM_WEBHOOK_URL ;

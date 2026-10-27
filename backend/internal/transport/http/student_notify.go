@@ -1,6 +1,6 @@
 // Package http — SECT-NOTIF-STUDENT-1 : notifications étudiantes multi-canaux.
 //
-// Trois annonces pédagogiques fanoutées vers les ÉTUDIANTS concernés via le
+// Quatre annonces pédagogiques fanoutées vers les ÉTUDIANTS concernés via le
 // dispatcher central (in-app + SSE + web push + email + FCM + Telegram) :
 //
 //  1. EPREUVE_DISPONIBLE — une évaluation est disponible : publication
@@ -17,6 +17,14 @@
 //     BROUILLON→VALIDE, pas au dépôt enseignant — un brouillon est
 //     invisible des étudiants). Cible : les étudiants actifs de la
 //     filière recommandée de l'ouvrage (fallback : établissement).
+//
+//  4. DEVOIR_PUBLIE — un nouveau devoir est publié (SECT-NOTIF-DEVOIR-1 :
+//     action « publish », transition BROUILLON → PUBLIE uniquement, avec
+//     datePublication atteinte — NULL ou passée). Cible : les étudiants
+//     actifs de la filière ET du niveau de l'UE du devoir (miroir exact de
+//     la visibilité RLS Devoir_select — 000115 ; PAS de fallback
+//     établissement : une annonce hors périmètre filière+niveau
+//     annoncerait un devoir invisible).
 //
 // Design (pattern fanoutSegmentNotification / promotion UC) :
 //   - fire-and-forget : goroutine + context.Background() — la mutation
@@ -100,6 +108,65 @@ func (s *Server) notifyStudentsOfFiliere(filiereID *string, etablissementID stri
 	}
 	slog.Info("student announcement fanout completed",
 		"filiereId", derefStr(filiereID), "etablissementId", etablissementID, "recipients", count)
+}
+
+// notifyStudentsOfUE — fanout d'une annonce vers les étudiants actifs qui
+// « voient » l'UE au sens de la visibilité RLS des devoirs (000115) :
+// filière identique ET niveau identique (ou niveau listé dans le champ
+// JSON-ish "niveaux" de l'UE). Miroir Go du helper SECURITY DEFINER
+// devoir_ue_matches_my_filiere_niveau — les destinataires sont exactement
+// ceux pour qui le devoir apparaîtra dans « Mes devoirs ».
+//
+// SECT-NOTIF-DEVOIR-1 : PAS de fallback établissement (contrairement aux
+// 3 autres annonces) — un devoir hors périmètre filière+niveau est
+// INVISIBLE de l'étudiant (RLS) : l'annoncer serait une fausse annonce.
+// Mêmes garanties que notifyStudentsOfFiliere : lecture via claims système
+// (bypass RLS, service), Dispatch par étudiant, fire-and-forget.
+func (s *Server) notifyStudentsOfUE(ueID string, buildEvent func(name string) notification.Event) {
+	if s.notifDispatcher == nil || ueID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	query := `SELECT u."id", u."name"
+	          FROM "User" u
+	          JOIN "UniteEnseignement" ue ON ue."id" = $1
+	          WHERE u."role" = 'ETUDIANT' AND u."actif" = true AND u."deletedAt" IS NULL
+	            AND ue."filiereId" = u."filiereId"
+	            AND (ue."niveau" = u."niveau" OR ue."niveaux" LIKE '%"' || u."niveau" || '"%')`
+
+	type rcpt struct{ userID, name string }
+	var recipients []rcpt
+	err := appdb.WithSystemTx(ctx, s.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, ueID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var r rcpt
+			if err := rows.Scan(&r.userID, &r.name); err != nil {
+				continue
+			}
+			recipients = append(recipients, r)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		slog.Warn("notifyStudentsOfUE: query failed", "error", err)
+		return
+	}
+
+	count := 0
+	for _, r := range recipients {
+		event := buildEvent(r.name)
+		event.UserID = r.userID
+		s.notifDispatcher.Dispatch(ctx, event)
+		count++
+	}
+	slog.Info("student announcement fanout completed",
+		"ueId", ueID, "recipients", count)
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -305,6 +372,100 @@ func suffixAuteurs(auteurs string) string {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// 4. DEVOIR_PUBLIE — publication d'un devoir (action publish).
+// ──────────────────────────────────────────────────────────────────────
+
+// devoirAnnonce est l'instantané du devoir nécessaire à l'annonce, lu par
+// le handler AVANT la transition BROUILLON → PUBLIE (le fanout doit
+// refléter le contenu du devoir publié, pas un état intermédiaire).
+type devoirAnnonce struct {
+	ID                  string
+	Titre               string
+	UniteEnseignementID string
+	TypeSeance          string
+	DateLimite          time.Time
+	NoteMax             float64
+}
+
+// notifyDevoirPublished fanoute l'annonce « un nouveau devoir est
+// disponible » aux étudiants de la filière ET du niveau de l'UE du devoir
+// (miroir exact de la visibilité RLS Devoir_select — 000115, via
+// notifyStudentsOfUE). Appelé par le handler updateDevoir UNIQUEMENT sur
+// la première publication effective : transition BROUILLON → PUBLIE
+// (action « publish ») avec datePublication atteinte (NULL ou passée) —
+// un devoir programmé est invisible des étudiants jusqu'à son échéance
+// (RLS), l'annoncer avant serait une fausse annonce ; il apparaîtra
+// silencieusement dans « Mes devoirs ». Fire-and-forget.
+func (s *Server) notifyDevoirPublished(claims appdb.SessionClaims, d *devoirAnnonce) {
+	if d == nil || d.UniteEnseignementID == "" {
+		return
+	}
+	// Résoudre l'UE (code, nom, filière, niveau) — lecture système, une
+	// seule fois par annonce (pas par destinataire), comme les autres.
+	var ueCode, ueNom, filiereID, filiereNom, ueNiveau string
+	_ = appdb.WithSystemTx(context.Background(), s.dbPool, func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `
+				SELECT ue."code", COALESCE(ue."nom", ''), COALESCE(ue."filiereId", ''),
+				       COALESCE(f."nom", ''), COALESCE(ue."niveau"::text, '')
+				FROM "UniteEnseignement" ue
+				LEFT JOIN "Filiere" f ON f."id" = ue."filiereId"
+				WHERE ue."id" = $1`, d.UniteEnseignementID).
+			Scan(&ueCode, &ueNom, &filiereID, &filiereNom, &ueNiveau)
+	})
+
+	titre := strings.TrimSpace(d.Titre)
+	if titre == "" {
+		titre = "Devoir sans titre"
+	}
+	ueLabel := ueCode
+	if ueNom != "" {
+		ueLabel = ueCode + " — " + ueNom
+	}
+	echeance := formatDateFR(d.DateLimite)
+
+	go s.notifyStudentsOfUE(d.UniteEnseignementID, func(name string) notification.Event {
+		data := emailtpl.StudentAnnouncementData{
+			EmailData:   emailtpl.DefaultData(name, s.appBaseURL),
+			Titre:       "Un nouveau devoir est disponible",
+			Intro:       "un nouveau devoir vient d'être publié sur SECT et vous êtes concerné(e).",
+			ActionLabel: "Voir mes devoirs",
+			ActionPath:  "/mes-devoirs",
+		}
+		data.Details = [][2]string{
+			{"Devoir", titre},
+			{"Type de séance", d.TypeSeance},
+			{"Échéance", echeance},
+			{"Barème", fmt.Sprintf("noté sur %.0f", d.NoteMax)},
+		}
+		if ueLabel != "" {
+			data.Details = append(data.Details, [2]string{"Unité d'enseignement", ueLabel})
+		}
+		if filiereNom != "" {
+			data.Details = append(data.Details, [2]string{"Filière", filiereNom})
+		}
+		if ueNiveau != "" {
+			data.Details = append(data.Details, [2]string{"Niveau", ueNiveau})
+		}
+
+		return notification.Event{
+			Type:      "DEVOIR_PUBLIE",
+			Titre:     "Un nouveau devoir est disponible",
+			Message:   fmt.Sprintf("« %s » — à rendre le %s", titre, echeance) + suffixUE(ueLabel),
+			Categorie: "pedagogique",
+			Priorite:  "info",
+			ActionURL: "/mes-devoirs",
+			Icone:     "ClipboardList",
+			FiliereID: filiereID,
+			Email: &notification.EmailContent{
+				Subject: emailtpl.StudentAnnouncementSubject(data),
+				Body:    emailtpl.StudentAnnouncementText(data),
+				HTML:    emailtpl.StudentAnnouncementHTML(data),
+			},
+		}
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Helpers communs
 // ──────────────────────────────────────────────────────────────────────
 
@@ -335,6 +496,15 @@ func formatFenetreFR(debut, fin time.Time) string {
 		return "jusqu'au " + fin.Format(layout)
 	}
 	return debut.Format(layout) + " → " + fin.Format(layout)
+}
+
+// formatDateFR formate une date/échéance en français compact.
+// SECT-NOTIF-DEVOIR-1 (échéance des devoirs — miroir de formatFenetreFR).
+func formatDateFR(t time.Time) string {
+	if t.IsZero() {
+		return "à planifier"
+	}
+	return t.Format("02/01/2006 15h04")
 }
 
 // firstNonEmpty retourne le premier string non vide.

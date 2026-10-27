@@ -583,6 +583,57 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// SECT-NOTIF-DEVOIR-1 : instantané du devoir AVANT la transition,
+		// pour ne fanouter l'annonce « un nouveau devoir est disponible »
+		// (étudiants filière+niveau de l'UE, tous canaux) QUE sur la première
+		// publication effective :
+		//   - action=publish ;
+		//   - statut pré-transition BROUILLON uniquement (anti double-annonce :
+		//     un publish sur un devoir déjà PUBLIE/ARCHIVE ne re-annonce pas ;
+		//     après reopen, la transition redevient BROUILLON→PUBLIE) ;
+		//   - datePublication atteinte (NULL ou passée) — un devoir programmé
+		//     est invisible des étudiants jusqu'à son échéance (RLS 000115) :
+		//     l'annoncer avant serait une fausse annonce, il apparaîtra
+		//     silencieusement dans « Mes devoirs » le moment venu.
+		// Lecture non bloquante : introuvable → l'UPDATE ci-dessous répondra
+		// 404 ; erreur → l'annonce est simplement sautée (fire-and-forget — la
+		// publication métier n'est jamais impactée par une notification).
+		var annonce *devoirAnnonce
+		if input.Action == "publish" {
+			var (
+				preStatut       string
+				titre           string
+				ueID            string
+				typeSeance      string
+				dateLimite      time.Time
+				datePublication *time.Time
+				noteMax         float64
+			)
+			_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+				if errR := tx.QueryRow(r.Context(), `
+					SELECT "statut"::text, "titre", "uniteEnseignementId", "typeSeance"::text,
+					       "dateLimite", "datePublication", "noteMax"
+					FROM "Devoir"
+					WHERE "id" = $1 AND "deletedAt" IS NULL AND "enseignantId" = $2
+				`, devoirID, claims.UserID).Scan(&preStatut, &titre, &ueID, &typeSeance,
+					&dateLimite, &datePublication, &noteMax); errR != nil {
+					return nil // introuvable → 404 par l'UPDATE ; autre erreur → pas d'annonce
+				}
+				if preStatut == "BROUILLON" &&
+					(datePublication == nil || !datePublication.After(time.Now())) {
+					annonce = &devoirAnnonce{
+						ID:                  devoirID,
+						Titre:               titre,
+						UniteEnseignementID: ueID,
+						TypeSeance:          typeSeance,
+						DateLimite:          dateLimite,
+						NoteMax:             noteMax,
+					}
+				}
+				return nil
+			})
+		}
+
 		var updatedStatut string
 		// SECT-PRODUIT-1 : erreur SQL capturée — ErrNoRows → 404 (via
 		// updatedStatut vide), autres erreurs → 500 (avant : tout avalé).
@@ -603,6 +654,15 @@ func (s *Server) updateDevoir(w http.ResponseWriter, r *http.Request) {
 		if updatedStatut == "" {
 			writeJSONError(w, http.StatusNotFound, "devoir introuvable ou accès refusé")
 			return
+		}
+
+		// SECT-NOTIF-DEVOIR-1 : annonce « un nouveau devoir est disponible »
+		// (in-app + SSE + web push + email + FCM + Telegram) aux étudiants
+		// de la filière et du niveau de l'UE — déclenchée uniquement si les
+		// gardes de première publication effective sont passées (lecture
+		// pré-transition ci-dessus). Fire-and-forget : goroutine interne.
+		if updatedStatut == "PUBLIE" && annonce != nil {
+			s.notifyDevoirPublished(claims, annonce)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
