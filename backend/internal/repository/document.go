@@ -23,10 +23,32 @@ func NewDocumentRepository(pool *pgxpool.Pool) *DocumentRepository {
 	return &DocumentRepository{pool: pool}
 }
 
+// columnsDocument — colonnes QUALIFIÉES de l'alias d (SELECT avec jointure :
+// FindByID / ListByOwner joignent UniteEnseignement — le préfixe lève
+// l'ambiguïté, fix D2 82d8e5b9).
+// ⚠️ NE JAMAIS utiliser dans un RETURNING d'INSERT/UPDATE : l'alias d
+// n'existe pas hors FROM → PostgreSQL 42P01 « missing FROM-clause entry
+// for table d » → 500 « erreur interne » (leçon P1, cf. columnsOuvrageVeilleBare).
+// Pour le RETURNING : columnsDocumentBare ci-dessous.
 const columnsDocument = `d."id", d."ownerId", d."nomFichier", d."cheminStockage", d."tailleFichier",
         d."typeMime", d."statutAnalyse", d."themesDetectes", d."conceptsCles", d."volumeEstime",
         d."contenuTexte", d."dateUpload", d."createdAt", d."updatedAt", d."deletedAt",
         d."erreurAnalyse", d."resumeAnalyse", d."uniteEnseignementId"`
+
+// columnsDocumentBare — SANS préfixe d'alias, pour le RETURNING des INSERT
+// (leçon P1 / SECT-BIBLIO : un préfixe d'alias dans un RETURNING sans FROM
+// = 42P01 → 500). PANNE SECT-DOC-INSERT-1 : le D2 fix 82d8e5b9 (29/06) a
+// qualifié la constante partagée avec d. pour les SELECT à jointure — le
+// RETURNING du Create est devenu invalide : AUCUN upload de document
+// n'a abouti en production du 29/06 au 27/10 (POST /api/documents → 500
+// « erreur interne », erreur exacte « create document: ERROR: missing
+// FROM-clause entry for table "d" (SQLSTATE 42P01) » capturée par le
+// logging d'observabilité SECT-DOC-DIAG). Même pattern que
+// columnsOuvrageVeilleBare / columnsOuvrageSectionBare / columnsOuvrageLectureBare.
+const columnsDocumentBare = `"id", "ownerId", "nomFichier", "cheminStockage", "tailleFichier",
+        "typeMime", "statutAnalyse", "themesDetectes", "conceptsCles", "volumeEstime",
+        "contenuTexte", "dateUpload", "createdAt", "updatedAt", "deletedAt",
+        "erreurAnalyse", "resumeAnalyse", "uniteEnseignementId"`
 
 func scanDocument(s scanner) (*domain.Document, error) {
 	d := &domain.Document{}
@@ -175,7 +197,7 @@ func (r *DocumentRepository) Create(ctx context.Context, input domain.CreateDocu
                                 "erreurAnalyse", "resumeAnalyse", "uniteEnseignementId")
                         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, $8,
                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, $9, NULL, $10)
-                        RETURNING `+columnsDocument,
+                        RETURNING `+columnsDocumentBare,
 			id, input.OwnerID, input.NomFichier, input.CheminStockage,
 			nullableIntPtr(input.TailleFichier), nullableStrPtr(input.TypeMime),
 			statut, nullableStrPtr(input.ContenuTexte),
