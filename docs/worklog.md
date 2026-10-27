@@ -7811,3 +7811,68 @@ Commit feat **`171f2e13`** (4 fichiers, +267/−3, auteur udevrard7).
   minimal ; bash -n local avant de pousser un workflow à heredocs
   (terminateur en colonne 0).
 
+
+## SECT-EXAM-PREP-DOWNLOAD-1 — /exam-prep : la panne « impossible de télécharger les supports PDF » — route étudiante + présignature attachment (27 octobre 2026)
+
+**Contexte** : signalement exploitant « il est actuellement impossible
+pour les étudiants de télécharger les supports de cours PDF depuis
+exam-prepa ». Commit fix **`c7b03e4d`** (4 fichiers, +155/−5).
+
+### Réalisation
+
+- **Cause racine** : le lecteur exam-prep appelait
+  `GET /api/documents/{id}/download`, dont le usecase
+  (`DocumentUseCase.GetDownloadURL`) n'autorise que ENSEIGNANT/ADMIN →
+  **403 « rôle non autorisé » pour TOUT étudiant**. Aucune route de
+  téléchargement n'existait sous `/api/exam-prep` — la RLS
+  `Document_select` (branche `is_etudiant`, 000034) autorisait bien la
+  *lecture* (liste + lecteur), mais jamais l'octet du fichier.
+- **Backend** : `ExamPrepUseCase.GetDocumentDownloadURL` — présignature
+  R2 GET **900 s** avec disposition **SIGNÉE attachment** + nom de
+  fichier sanitizé (`dispositionTelechargement`, pattern SECT-BIBLIO-13 /
+  AUDIO-LEARNING-1). Garde-fou identique au lecteur
+  (EXAM-PREP-READER-SECURITY-FIX-1) : rôles ETUDIANT/ENSEIGNANT ;
+  l'étudiant passe `CheckDocumentAccess` (filière + niveau) **avant**
+  toute émission d'URL, puis SELECT scoping RLS (défense en profondeur).
+  Handler `downloadExamPrepDocument` + route
+  `GET /api/exam-prep/documents/{id}/download` (contrat `{"url":…}`
+  inchangé, `MapDomainError` pour 401/403/404). L'ancienne route
+  enseignant-only reste intacte (zéro modification de son code).
+- **Frontend** (`document-reader.tsx`) : le bouton PDF appelle la
+  nouvelle route (l'étudiant n'a plus le 403) ; déclenchement via
+  `<a>` au lieu de `window.open` (le bloqueur de popups avale
+  `window.open` après un `await fetch`) ; le bouton TXT exporte
+  `contenuTexte` en Blob local (fonctionne même sans octet original).
+
+### Vérification (E2E lecture seule, workflow temporaire jetable)
+
+- CI commit c7b03e4d : Backend CI ✓ (40574177694) + Deploy OCI ✓
+  (40574177697) — image prod `sha256:b965679d…` = build du commit
+  (croisé avec les logs du run deploy).
+- **Reproduction du bug avant-fix** : JWT étudiant réel (forgé sur la
+  VM, secret jamais affiché) sur l'ancienne route → **403**
+  `{"error":"rôle non autorisé"}` — cause racine confirmée en prod.
+- **Fix vérifié** : même JWT sur la nouvelle route → **200** +
+  URL présignée réellement servissable (HEAD → `HTTP/1.1 200 OK`,
+  `Content-Type: application/pdf`, `Content-Disposition: attachment`
+  signé, `X-Amz-Expires=900`) sur un vrai support
+  (« Polycopié _ Génie Logiciel - S1A.pdf »).
+- Sécurité : **401 sans token** ; hors-filière non testable (tous les
+  documents de prod sont dans la filière du seul couple
+  étudiant×document disponible — le scoping est le même code que le
+  lecteur, éprouvé en prod). Non-régression : lecteur `/read` → 200.
+- **Frontend déployé vérifié depuis l'extérieur** : le bundle JS
+  production (chunk 86a12eaa4ff13146.js servi par sect.ftci.fr)
+  contient `api/exam-prep/documents/${e}/download` et **l'ancien
+  pattern `api/documents/…/download` a disparu** du bundle.
+- Workflow `exam-prep-download-verify.yml` supprimé après usage ; aucun
+  secret dans les logs (JWT_SECRET/DSN jamais affichés, UUID seuls).
+- Note : incident tabs→espaces de l'éditeur reproduit → `gofmt -w`
+  (même leçon que SECT-NOTIF-DEVOIR-1).
+
+### État final
+
+- **Le téléchargement des supports PDF est LIVE pour les étudiants** :
+  lecteur exam-prep → bouton PDF → le fichier original se pose sur
+  disque (attachment) ; bouton TXT → export texte local. Les enseignants
+  conservent leur route historique (leurs propres documents).
