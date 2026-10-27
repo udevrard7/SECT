@@ -7556,3 +7556,118 @@ mobile, et le NOUVEAU canal 7 Instagram DM :
 - **Notifier à la validation, pas au dépôt** : un ouvrage BROUILLON est
   invisible des étudiants (modération 000137) — la garde de transition
   évite les fausses annonces ET les doubles notifications idempotentes.
+
+---
+
+## SECT-NOTIF-TELEGRAM-1 — Le canal Instagram remplacé par un bot Telegram partagé (27 octobre 2026)
+
+**Contexte** : le canal 7 des notifications étudiantes (000141) devait passer
+par l'API Instagram Messaging — compte BUSINESS relié à une page Facebook,
+token Meta longue durée, app review probable. Décision exploitant : **c'est
+une erreur, supprimer Instagram et remplacer par Telegram**. Analyse de
+faisabilité tranchée : le Bot API Telegram est **gratuit, sans revue
+d'application**, et UN SEUL bot partagé sert tous les étudiants — là où
+Meta monétise la messagerie business. Note d'architecture : un bot Telegram
+ne peut écrire qu'aux chats qui l'ont **démarré** — le modèle s'inverse par
+rapport au handle Instagram : l'étudiant ne « déclare » plus son pseudo, il
+clique un deep-link et appuie Démarrer.
+
+### Réalisations
+
+- **Purge complète du canal Instagram** : `instagram_sender.go` et
+  `me_handlers.go` (PATCH /api/users/me) supprimés ; champ
+  `User.instagram` retiré du domaine/repo/scanUser (7 requêtes SQL) ;
+  colonne **DROPpée** en production (le canal n'avait JAMAIS été actif —
+  aucun token INSTAGRAM_* posé — perte nulle) ; carte profil et auth-store
+  nettoyées côté frontend.
+- **`telegram_sender.go`** (canal 7 du dispatcher) : Bot API
+  (getMe/sendMessage/setWebhook), limiteur process-wide **25 msg/s** (token
+  bucket maison — pas de golang.org/x/time dans go.mod) + **retry 429 avec
+  retry_after**, texte brut sans parse_mode (aucune injection Markdown via
+  les noms d'étudiants), aperçu de liens désactivé.
+- **`telegram_handlers.go`** — 3 routes :
+  - `POST /api/telegram/webhook` (PUBLIC — c'est Telegram qui appelle) :
+    secret `X-Telegram-Bot-Api-Secret-Token` comparé en **temps constant**
+    (401 si faux, 503 si canal non configuré) ; `/start <code>` → HMAC
+    (clé dérivée du JWT_SECRET, code 49 chars ≤ limite t.me) → UPDATE
+    `User.telegramChatId` sous claims système → **confirmation envoyée
+    dans le chat** ; `/stop` → déconnexion symétrique du bouton profil ;
+    texte d'aide sinon. Toujours 200 après traitement (Telegram rejoue
+    les non-2xx) ;
+  - `GET /api/telegram/link` (auth, tous rôles) : état + deep-link
+    `https://t.me/<bot>?start=<code>` ;
+  - `DELETE /api/telegram/link` (auth) : déconnexion self-service.
+- **Dispatcher canal 7** : `sendTelegram` **asynchrone** (goroutine, comme
+  l'email — un fanout de 200 étudiants se déroule à 25 msg/s en
+  arrière-plan) + **auto-guérison** : « bot was blocked » / « chat not
+  found » / « user is deactivated » → le chat_id périmé est retiré
+  (best-effort) pour ne pas re-échouer à chaque annonce.
+- **Migration 000142** (Appliquée à Neon, workflow temporaire
+  BIBLIO-10 : dirty 141→DDL+ASSERTs→clean 142, **une seule transaction**) :
+  DROP `User.instagram` + `NotificationPreference.instagramEnabled` ;
+  ADD `telegramChatId`/`telegramUsername` (index unique partiel : **1
+  Telegram = 1 compte SECT**, message actionnable sur 23505) ;
+  `telegramEnabled` BOOLEAN DEFAULT true ; policy `User_update_system`
+  (is_system — User_select/delete l'avaient déjà, pas UPDATE : le webhook
+  en avait besoin). Down intégral (restaure l'état 000141).
+- **Frontend** : carte « Notifications Telegram » sur /profil — bouton
+  « Connecter Telegram » ouvre le deep-link, **polling 4 s (3 min max)**
+  détecte la liaison dès que l'étudiant appuie Démarrer ; état Connecté +
+  @username + Déconnecter ; carte « non configuré » tant que l'exploitant
+  n'a pas posé le token.
+
+### Vérifications (production, run 40476769866)
+
+- Gates locaux : go build/vet/gofmt ✓, tsc ✓, eslint ✓ ; Backend CI ✓ +
+  Frontend CI ✓ + Deploy OCI ✓ (38515c5c).
+- Migration appliquée APRÈS déploiement du code (ordre documenté dans le
+  header 000142 — l'ANCIEN code cassait sans `User.instagram`, le nouveau
+  tolère l'absence des colonnes Telegram) : version 142 clean, ASSERTs ✓,
+  colonnes/index/policy ✓, instagram+instagramEnabled absents ✓.
+- E2E sur la VM (JWT forgé d'un étudiant réel, secret jamais affiché) :
+  `/api/me` → 200 **sans champ instagram** ; `/api/telegram/link` →
+  `{"enabled":false,"connected":false,...}` (comportement exact attendu
+  sans bot) ; webhook sans secret → 503 ; link sans auth → 401 ;
+  PATCH /api/users/me → 401 (route retirée) ; **aucune erreur SQL** dans
+  les logs post-migration.
+
+### Activation par l'exploitant (2 minutes, gratuites)
+
+1. Dans Telegram, ouvrir une conversation avec **@BotFather** → `/newbot`
+   → nom (« SECT Annonces » par ex.) + username (doit finir par `bot`)
+   → BotFather retourne le **token** (`123456:ABC-...`).
+2. Dans `/opt/sect/.env` (VM OCI) ajouter :
+   - `TELEGRAM_BOT_TOKEN=<le token>`
+   - `TELEGRAM_WEBHOOK_SECRET=<sortie de openssl rand -hex 32>`
+   - `TELEGRAM_WEBHOOK_URL=https://api.sect.ftci.fr/api/telegram/webhook`
+     (⚠ uniquement sur l'instance OCI primaire — Render standby ne doit
+     PAS la porter : le setWebhook est global au bot, un flip-flop entre
+     instances perdrait les updates).
+3. `cd /opt/sect && docker compose up -d` — le log de démarrage affiche
+   `telegramEnabled:true` et `Telegram bot configured @<username>` (getMe)
+   puis `Telegram webhook registered` (setWebhook automatique, idempotent).
+   Sans ces variables : canal désactivé (nil-safe), les étudiants voient
+   « canal non activé » sur /profil, rien ne casse.
+4. Les étudiants cliquent « Connecter Telegram » sur /profil → Démarrer.
+   Test exploitant : lier son propre compte, publier une épreuve BROUILLON
+   → PLANIFIÉE (ou déposer un document) → le message arrive dans Telegram.
+
+### Leçons
+
+- **Choisir le canal par son coût total, pas sa popularité** : Instagram
+  exige un silo Meta (business + page + review) pour un usage scolaire ;
+  Telegram offre la même UX DM gratuitement, en 3 appels API.
+- **Deep-link > saisie de handle** : la liaison par `?start=<code HMAC>`
+  prouve le contrôle du compte (plus de handle erroné/typo), et le
+  chat_id obtenu est directement la cible d'envoi — une seule source de
+  vérité.
+- **L'asynchrone du canal n'était pas optionnel** : sendInstagram était
+  synchrone (15 s de pire cas DANS la requête HTTP) ; un fanout Telegram
+  à 25 msg/s sur 200 étudiants = 8 s — devenu goroutine fire-and-forget
+  comme l'email.
+- **Les réponses du webhook sont un contrat** : 200 systématique après
+  traitement (sinon Telegram rejoue), 401 uniquement sur secret faux, et
+  la vraie erreur part **dans le chat** (message actionnable).
+- **Policy système par commande** : User_select/delete avaient is_system()
+  mais pas User_update — le besoin du webhook a révélé le trou ; la
+  policy ajoutée est bornée à UPDATE (pattern 000117 respecté).
