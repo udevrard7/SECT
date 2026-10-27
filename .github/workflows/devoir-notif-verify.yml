@@ -1,0 +1,61 @@
+name: Temporary — SECT-NOTIF-DEVOIR-1 E2E verify (read-only)
+
+# Workflow TEMPORAIRE de vérification (lecture seule, aucun effet de bord) :
+#   1. logs de boot du conteneur sect-api redéployé (Telegram configuré,
+#      aucun panic/fatal) ;
+#   2. requête EXACTE du fanout notifyStudentsOfUE (SECT-NOTIF-DEVOIR-1)
+#      exécutée en lecture seule contre le schéma réel Neon ;
+#   3. absence de contrainte CHECK sur NotificationAdmin.type.
+# Ce workflow est SUPPRIMÉ après usage (pattern telegram-activate).
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH verify (read-only)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            set -e
+            MASK='s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<UUID>/g'
+
+            echo "=== 1. Boot logs sect-api (depuis 30 min) ==="
+            docker logs --since 30m sect-api 2>&1 \
+              | grep -iE 'telegram|panic|fatal|configured' \
+              | sed -E "$MASK" | head -10 \
+              || echo "(aucune ligne telegram/panic/fatal — container silencieux)"
+
+            echo ""
+            echo "=== 2. Fanout notifyStudentsOfUE — SQL exact, lecture seule ==="
+            DSN=$(grep -E '^NEON_DIRECT_URL=' /opt/sect/.env | head -1 | cut -d= -f2-)
+            if [ -z "$DSN" ]; then echo "ERREUR: NEON_DIRECT_URL absent"; exit 1; fi
+
+            UE=$(psql "$DSN" -tA -c \
+              'SELECT ue."id" FROM "UniteEnseignement" ue WHERE EXISTS (SELECT 1 FROM "Devoir" d WHERE d."uniteEnseignementId" = ue."id" AND d."deletedAt" IS NULL) ORDER BY ue."id" LIMIT 1')
+            if [ -z "$UE" ]; then echo "(aucune UE avec devoirs — skip fanout count)"; else
+              echo "UE testée : $(echo "$UE" | sed -E "$MASK")"
+              echo -n "Destinataires (miroir RLS 000115) : "
+              psql "$DSN" -v ue="$UE" -tA -c \
+                'SELECT count(*) FROM "User" u
+                 JOIN "UniteEnseignement" ue ON ue."id" = :'"'"'ue'"'"'
+                 WHERE u."role" = '"'"'ETUDIANT'"'"' AND u."actif" = true AND u."deletedAt" IS NULL
+                   AND ue."filiereId" = u."filiereId"
+                   AND (ue."niveau" = u."niveau" OR ue."niveaux" LIKE '"'"'%"' || u."niveau" || '"'"'"%'')'
+            fi
+
+            echo ""
+            echo "=== 3. Contraintes CHECK sur NotificationAdmin (attendu 0) ==="
+            psql "$DSN" -tA -c \
+              "SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid WHERE t.relname = 'NotificationAdmin' AND c.contype = 'c'"
+
+            echo ""
+            echo "=== 4. Santé locale du conteneur ==="
+            curl -s -m 10 http://localhost:8090/api/health || echo "(health KO)"
+            echo ""
+            echo "VERIFY DONE (read-only, aucun effet de bord)"
