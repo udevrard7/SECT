@@ -111,6 +111,25 @@ func (c *R2Client) Download(ctx context.Context, key string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+// DownloadStream SECT-BIBLIO-14 : GetObject SANS lire le body — l'appelant
+// STREAM les octets (io.Copy vers ResponseWriter, jamais de buffer RAM
+// complet côté API — PDFs jusqu'à 100 Mo). Le Content-Type/Length viennent
+// de R2 (Upload les pose à la pose de l'objet).
+func (c *R2Client) DownloadStream(ctx context.Context, key string) (io.ReadCloser, int64, string, error) {
+	resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("download stream from R2: %w", err)
+	}
+	contentType := ""
+	if resp.ContentType != nil {
+		contentType = *resp.ContentType
+	}
+	return resp.Body, aws.ToInt64(resp.ContentLength), contentType, nil
+}
+
 // DownloadToFile SECT-BIBLIO-12 : télécharge un objet en STREAMANT vers
 // un fichier disque (jamais en RAM) — pensé pour les gros PDFs (100 Mo)
 // destinés à des outils externes (pdftoppm). Crée/tronque destPath.

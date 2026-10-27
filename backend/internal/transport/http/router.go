@@ -1020,6 +1020,14 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/", s.listOuvrages)
 			r.Get("/{id}", s.getOuvrage)
 			r.Get("/{id}/fichier", s.getOuvrageFichier)
+			// SECT-BIBLIO-14 : flux de LECTURE streamé, même-origine,
+			// pour le lecteur sécurisé (canvas pdf.js — ouvrages dont
+			// telechargementAutorise=false : l'iframe/lecteur natif et
+			// son bouton « Télécharger » était la fuite). Sémantique
+			// lecture : RLS + audit OUVRAGE_LECTURE ; garde
+			// anti-navigation (Sec-Fetch-Dest: document → 403) —
+			// l'acte téléchargement reste sur /telechargement.
+			r.Get("/{id}/flux", s.getOuvrageFlux)
 			// SECT-BIBLIO-13 : téléchargement = acte distinct de la
 			// lecture. SEULE route émettant une URL en disposition
 			// attachment ; 403 si telechargementAutorise = false

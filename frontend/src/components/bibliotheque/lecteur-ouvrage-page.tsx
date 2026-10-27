@@ -28,12 +28,21 @@
 //
 // Backend matché :
 //   GET /api/ouvrages/{id}          → { ouvrage } (404 si invisible — RLS)
+//
+//   telechargementAutorise = true — MODE NATIF (inchangé, SECT-BIBLIO-11) :
 //   GET /api/ouvrages/{id}/fichier  → { url } (présignée 15 min)
 //                                    SECT-BIBLIO-13 : disposition SIGNÉE
 //                                    « inline » — le lecteur/onglet AFFICHE,
 //                                    ne télécharge pas. L'acte téléchargement
-//                                    vit sur /{id}/telechargement (403 si
-//                                    telechargementAutorise=false) — pas ici.
+//                                    vit sur /{id}/telechargement — pas ici.
+//
+//   telechargementAutorise = false — MODE SÉCURISÉ (SECT-BIBLIO-14) :
+//   GET /api/ouvrages/{id}/flux     → STREAM des octets, même-origine,
+//                                    rendu CANVAS pdf.js (LecteurSecurise) :
+//                                    JAMAIS d'URL présignée exposée au
+//                                    navigateur, JAMAIS de lecteur PDF natif
+//                                    (son bouton « Télécharger » était
+//                                    précisément la fuite constatée).
 //   GET/PUT /api/ouvrages/{id}/lecture → télémétrie P2
 // ════════════════════════════════════════════════════════════════════
 
@@ -58,6 +67,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { AnnotationsPanel } from './annotations-panel'
+import { LecteurSecurise } from './lecteur-securise'
 import {
   type Ouvrage,
   type OuvrageLecture,
@@ -69,6 +79,11 @@ import {
 
 interface LecteurData {
   ouvrage: Ouvrage
+  // SECT-BIBLIO-14 : 'iframe' (téléchargement autorisé — lecteur natif
+  // inchangé) ou 'securise' (canvas pdf.js — octets par /flux, zéro URL
+  // présignée exposée). Décidé par telechargementAutorise de l'ouvrage :
+  // faux/manquant → sécurisé (fermeture par défaut, fail-closed).
+  mode: 'iframe' | 'securise'
   baseUrl: string | null
   url: string | null
   error: string | null
@@ -96,15 +111,22 @@ export function LecteurOuvragePage() {
   const [panneauAnnotations, setPanneauAnnotations] = useState(false)
   // Plein écran natif (Fullscreen API) sur le conteneur racine.
   const [pleinEcran, setPleinEcran] = useState(false)
+  // SECT-BIBLIO-14 : page courante du lecteur SÉCURISÉ (mode canvas) —
+  // la source de vérité vit ici pour que « Reprendre au début » et le
+  // composant LecteurSecurise restent synchrones. En mode natif (iframe)
+  // la page reste gérée par le fragment #page=N, inchangé.
+  const [pageSecurisee, setPageSecurisee] = useState(1)
 
   const racineRef = useRef<HTMLDivElement>(null)
 
-  // ─── Chargement : ouvrage + fichier ET progression en PARALLÈLE (P2) ───
-  // La reprise à la page exacte est appliquée via le fragment #page=N
-  // (le fragment n'est jamais signé : l'ajouter ne casse pas la
-  // présignature R2). Seule l'URL du fichier peut faire échouer
-  // l'ouverture ; la progression est non bloquante (404 → première
-  // lecture).
+  // ─── Chargement : ouvrage + progression, PUIS la ressource selon le ───
+  // ─── mode (SECT-BIBLIO-14) — le flag n'est connu qu'après la     ───
+  // ─── métadonnée. Mode natif : fichier présigné. Mode sécurisé :   ───
+  // ─── rien ici — LecteurSecurise tire les octets par /flux.        ───
+  // La reprise à la page exacte : natif → fragment #page=N (jamais
+  // signé — R2 intact) ; sécurisé → état pageSecurisee (canvas).
+  // Seule la ressource de lecture peut faire échouer l'ouverture ; la
+  // progression est non bloquante (404 → première lecture).
   useEffect(() => {
     let annule = false
     setLoadingMeta(true)
@@ -113,11 +135,8 @@ export function LecteurOuvragePage() {
 
     ;(async () => {
       try {
-        const [ouvrageRes, fichierRes, lectureRes] = await Promise.all([
+        const [ouvrageRes, lectureRes] = await Promise.all([
           fetch(`/api/ouvrages/${ouvrageId}`, { credentials: 'include' }),
-          fetch(`/api/ouvrages/${ouvrageId}/fichier`, {
-            credentials: 'include',
-          }),
           fetch(`/api/ouvrages/${ouvrageId}/lecture`, {
             credentials: 'include',
           }),
@@ -133,12 +152,6 @@ export function LecteurOuvragePage() {
         const ouvrageData = await ouvrageRes.json()
         const ouvrage: Ouvrage = ouvrageData.ouvrage ?? ouvrageData
 
-        if (!fichierRes.ok) {
-          const body = await fichierRes.json().catch(() => ({}))
-          throw new Error(body?.error || `Erreur ${fichierRes.status}`)
-        }
-        const fichierData = await fichierRes.json()
-
         let lecture: OuvrageLecture | null = null
         if (lectureRes.ok) {
           const ld = await lectureRes.json().catch(() => null)
@@ -146,19 +159,55 @@ export function LecteurOuvragePage() {
         }
         const reprise =
           lecture && lecture.dernierePage > 1 ? lecture.dernierePage : null
-        const url = reprise
-          ? `${fichierData.url}#page=${reprise}`
-          : (fichierData.url as string)
-        if (annule) return
-        setMarquePageInput(String(lecture?.dernierePage ?? 1))
-        setData({
-          ouvrage,
-          baseUrl: fichierData.url,
-          url,
-          error: null,
-          lecture,
-          reprisePage: reprise,
-        })
+
+        if (ouvrage.telechargementAutorise) {
+          // MODE NATIF — inchangé (SECT-BIBLIO-11/13) : l'acte
+          // téléchargement est possible pour cet ouvrage (via
+          // /telechargement, attachment signée) ; le lecteur natif et
+          // son confort (recherche, vignettes) restent légitimes.
+          const fichierRes = await fetch(
+            `/api/ouvrages/${ouvrageId}/fichier`,
+            { credentials: 'include' },
+          )
+          if (annule) return
+          if (!fichierRes.ok) {
+            const body = await fichierRes.json().catch(() => ({}))
+            throw new Error(body?.error || `Erreur ${fichierRes.status}`)
+          }
+          const fichierData = await fichierRes.json()
+          const url = reprise
+            ? `${fichierData.url}#page=${reprise}`
+            : (fichierData.url as string)
+          if (annule) return
+          setMarquePageInput(String(lecture?.dernierePage ?? 1))
+          setPageSecurisee(1)
+          setData({
+            ouvrage,
+            mode: 'iframe',
+            baseUrl: fichierData.url,
+            url,
+            error: null,
+            lecture,
+            reprisePage: reprise,
+          })
+        } else {
+          // MODE SÉCURISÉ (SECT-BIBLIO-14) : AUCUNE URL présignée — le
+          // bouton « Télécharger » du lecteur natif était la fuite.
+          // LecteurSecurise charge les octets par /flux (même-origine,
+          // RLS + garde anti-navigation côté API) et rend en canvas.
+          if (annule) return
+          setMarquePageInput(String(lecture?.dernierePage ?? 1))
+          setPageSecurisee(reprise ?? 1)
+          setData({
+            ouvrage,
+            mode: 'securise',
+            baseUrl: null,
+            url: null,
+            error: null,
+            lecture,
+            reprisePage: reprise,
+          })
+        }
       } catch (err) {
         if (annule) return
         setMetaError(
@@ -201,7 +250,8 @@ export function LecteurOuvragePage() {
       document.removeEventListener('fullscreenchange', onChange)
   }, [])
 
-  // Saute à une page donnée (recharge l'iframe — le fragment change).
+  // Saute à une page donnée (mode natif : recharge l'iframe — le
+  // fragment change ; mode sécurisé : géré par changerPageSecurisee).
   const allerPage = (page: number) => {
     setData((prev) =>
       prev && prev.baseUrl
@@ -258,11 +308,28 @@ export function LecteurOuvragePage() {
     })
   }, [])
 
-  // Cycle de vie : démarrage à l'obtention de l'URL, arrêt + flush final
-  // au démontage (navigation retour, F5, fermeture d'onglet — le keepalive
-  // survit quelques secondes à la page).
+  // SECT-BIBLIO-14 : changement de page du lecteur SÉCURISÉ — télémétrie
+  // RÉELLE (le canvas sait où il en est — plus seulement déclaratif) +
+  // synchro du champ marque-page et de la reprise affichée.
+  const changerPageSecurisee = useCallback((n: number) => {
+    setPageSecurisee(n)
+    setMarquePageInput(String(n))
+    const acc = telemetrieRef.current
+    if (acc) {
+      const key = String(n)
+      acc.pagesVues[key] = (acc.pagesVues[key] ?? 0) + 1
+      acc.dernierePage = n
+    }
+    setData((prev) => (prev ? { ...prev, reprisePage: n } : prev))
+  }, [])
+
+  // Cycle de vie : démarrage dès l'ouverture effective, arrêt + flush
+  // final au démontage (navigation retour, F5, fermeture d'onglet — le
+  // keepalive survit quelques secondes à la page).
+  // SECT-BIBLIO-14 : démarre dans les DEUX modes — en mode sécurisé la
+  // télémétrie des pages est alimentée en RÉEL par changerPageSecurisee.
   useEffect(() => {
-    if (!data?.url) return
+    if (!data || (data.mode === 'iframe' && !data.url)) return
     telemetrieOuvrageIdRef.current = data.ouvrage.id
     const acc: TelemetrieAccum = {
       visibleMs: 0,
@@ -290,11 +357,12 @@ export function LecteurOuvragePage() {
       telemetrieOuvrageIdRef.current = null
       telemetrieRef.current = null
     }
-  }, [data?.url, data?.ouvrage.id, flushTelemetrie])
+  }, [data?.mode, data?.url, data?.ouvrage.id, flushTelemetrie])
 
   // Marque-page DÉCLARATIF : l'iframe cross-origin ne permet pas de lire
   // la page courante du lecteur PDF natif — c'est le lecteur qui déclare
-  // où il en est (bouton « Marquer »). Envoi immédiat.
+  // où il en est (bouton « Marquer »). Envoi immédiat. (Mode sécurisé :
+  // le canvas suit la page réelle et préremplit ce champ.)
   const marquerPage = () => {
     const acc = telemetrieRef.current
     if (!acc) return
@@ -364,6 +432,20 @@ export function LecteurOuvragePage() {
   }
 
   const o = data.ouvrage
+  // SECT-BIBLIO-14 : impression bloquée en mode sécurisé — la zone de
+  // lecture ne s’imprime pas (LecteurSecurise masque AUSSI son canvas) ;
+  // l’impression de la page ne laisse rien fuire du contenu.
+  const verrouille = data.mode === 'securise'
+
+  // « Reprendre au début » : mode natif → fragment #page=1 (recharge
+  // l’iframe) ; mode sécurisé → simple changement de page canvas.
+  const reprendreAuDebut = () => {
+    if (data.mode === 'securise') {
+      changerPageSecurisee(1)
+    } else {
+      allerPage(1)
+    }
+  }
 
   return (
     <div
@@ -374,6 +456,9 @@ export function LecteurOuvragePage() {
           : 'h-[calc(100dvh-7rem)] md:h-[calc(100dvh-8rem)] min-h-[480px] w-full flex flex-col rounded-lg border border-border bg-card shadow-sm overflow-hidden'
       }
     >
+      {verrouille && (
+        <style>{`@media print { .lecteur-verrouille-print { display: none !important; } }`}</style>
+      )}
       {/* Barre d'outils principale — slim, persistante, jamais overlay :
           le PDF garde TOUTE la hauteur restante. */}
       <div className="px-4 md:px-5 pt-3 pb-2.5 border-b border-border shrink-0 bg-card">
@@ -404,6 +489,11 @@ export function LecteurOuvragePage() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* SECT-BIBLIO-14 : « Nouvel onglet » = MODE NATIF uniquement —
+                ouvrir l’URL présignée dans un onglet donnerait au lecteur
+                natif (et à son bouton « Télécharger ») le PDF d’un ouvrage
+                NON autorisé au téléchargement. En mode sécurisé (data.url
+                null) le bouton disparaît de fait. */}
             {data.url && (
               <Button
                 size="sm"
@@ -442,31 +532,32 @@ export function LecteurOuvragePage() {
       </div>
 
       {/* SECT-BIBLIO-P2 : barre de lecture mesurée — chip de reprise,
-          marque-page DÉCLARATIF et reprise au début. */}
+          marque-page (déclaratif en mode natif, RÉEL en mode sécurisé)
+          et reprise au début. Visible dans les DEUX modes. */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 md:px-5 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground shrink-0">
         <div className="flex items-center gap-2">
           <Filter className="h-3 w-3" />
-          Lecture réservée — consultation éducative, lien sécurisé de 15
-          minutes, journalisée.
+          {verrouille
+            ? 'Lecture réservée — consultation éducative, affichage sécurisé, journalisée.'
+            : 'Lecture réservée — consultation éducative, lien sécurisé de 15 minutes, journalisée.'}
         </div>
-        {data.url && (
-          <div className="flex flex-wrap items-center gap-2">
-            {data.reprisePage !== null && data.reprisePage > 1 && (
-              <>
-                <Badge variant="secondary" className="gap-1">
-                  <Bookmark className="h-3 w-3" />
-                  Reprise page {data.reprisePage}
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => allerPage(1)}
-                >
-                  Reprendre au début
-                </Button>
-              </>
-            )}
+        <div className="flex flex-wrap items-center gap-2">
+          {data.reprisePage !== null && data.reprisePage > 1 && (
+            <>
+              <Badge variant="secondary" className="gap-1">
+                <Bookmark className="h-3 w-3" />
+                Reprise page {data.reprisePage}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={reprendreAuDebut}
+              >
+                Reprendre au début
+              </Button>
+            </>
+          )}
             <div className="flex items-center gap-1.5">
               <Label htmlFor="lecteur-marque-page" className="sr-only">
                 Page actuelle
@@ -500,15 +591,19 @@ export function LecteurOuvragePage() {
               <MessageSquareText className="h-3 w-3" />
               Annotations
             </Button>
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* Zone de lecture : TOUTE la place restante. L'iframe cross-origin
-          charge l'URL présignée R2 (lecteur PDF natif du navigateur —
-          ses outils de zoom/navigation sont PLEINEMENT utilisables, le
-          focus n'est plus piégé par une modale). */}
-      <div className="flex-1 min-h-0 bg-muted/30 flex">
+      {/* Zone de lecture : TOUTE la place restante.
+          SECT-BIBLIO-14 — DEUX modes :
+          - NATIF (téléchargement autorisé) : iframe cross-origin sur l'URL
+            présignée R2 (lecteur PDF natif — ses outils restent légitimes
+            puisque le téléchargement est autorisé pour cet ouvrage) ;
+          - SÉCURISÉ (téléchargement NON autorisé) : LecteurSecurise rend
+            le PDF en CANVAS pdf.js (octets /flux même-origine) — jamais
+            d'iframe, jamais de lecteur natif, jamais d'URL présignée
+            exposée : le bouton « Télécharger » natif était la fuite. */}
+      <div className="flex-1 min-h-0 bg-muted/30 flex lecteur-verrouille-print">
         <div className="flex-1 min-w-0 relative">
           {data.error ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -518,35 +613,40 @@ export function LecteurOuvragePage() {
                 {data.error}
               </p>
             </div>
+          ) : data.mode === 'securise' ? (
+            <LecteurSecurise
+              ouvrageId={o.id}
+              page={pageSecurisee}
+              onPageChange={changerPageSecurisee}
+            />
           ) : data.url ? (
-            <>
-              <iframe
-                src={data.url}
-                title={`Lecteur — ${o.titre}`}
-                className="w-full h-full border-0"
-              />
-              {/* SECT-BIBLIO-P4 (ADR-0008 §6) : watermark UI — email
-                  + date, répété, pointer-events-none (la navigation du
-                  lecteur natif reste utilisable) + select-none. */}
-              <div
-                className="absolute inset-0 pointer-events-none select-none overflow-hidden"
-                aria-hidden="true"
-              >
-                <div className="h-full w-full flex flex-col justify-around items-center">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <p
-                      key={i}
-                      className="text-[10px] font-medium text-foreground/10 -rotate-[18deg] whitespace-nowrap"
-                    >
-                      {user?.email ?? 'lecteur'} ·{' '}
-                      {new Date().toLocaleDateString('fr-FR')} · lecture
-                      réservée
-                    </p>
-                  ))}
-                </div>
-              </div>
-            </>
+            <iframe
+              src={data.url}
+              title={`Lecteur — ${o.titre}`}
+              className="w-full h-full border-0"
+            />
           ) : null}
+          {/* SECT-BIBLIO-P4 (ADR-0008 §6) : watermark UI — email + date,
+              répété, pointer-events-none (la navigation du lecteur natif
+              reste utilisable) + select-none. SECT-BIBLIO-14 : couvre AUSSI
+              le canvas du lecteur sécurisé (rastérisé page à page). */}
+          <div
+            className="absolute inset-0 pointer-events-none select-none overflow-hidden"
+            aria-hidden="true"
+          >
+            <div className="h-full w-full flex flex-col justify-around items-center">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <p
+                  key={i}
+                  className="text-[10px] font-medium text-foreground/10 -rotate-[18deg] whitespace-nowrap"
+                >
+                  {user?.email ?? 'lecteur'} ·{' '}
+                  {new Date().toLocaleDateString('fr-FR')} · lecture
+                  réservée
+                </p>
+              ))}
+            </div>
+          </div>
         </div>
         {/* SECT-BIBLIO-P4 : panneau d'annotations (ADR-0008 §1) —
             visibilité PRIVEE/FILIERE/ETABLISSEMENT scopée RLS. En plein

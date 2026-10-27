@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -448,6 +449,56 @@ func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+// getOuvrageFlux — GET /api/ouvrages/{id}/flux (SECT-BIBLIO-14)
+// STREAM du PDF, même-origine, pour le lecteur SÉCURISÉ (rendu canvas
+// pdf.js côté frontend — ouvrages dont telechargementAutorise=false).
+// Sémantique LECTURE : RLS via FindByID (404 si invisible) + audit
+// OUVRAGE_LECTURE. Le flag ne bloque PAS ici (ADR-0007 : la consultation
+// en ligne est le droit par défaut) — l'ACTE téléchargement vit sur
+// /telechargement (403 + attachment jamais émis).
+//
+// Garde anti-navigation (Sec-Fetch-Dest: document → 403) : ouvrir /flux
+// comme un DOCUMENT (onglet, window.open, <a target>) donnerait le
+// lecteur PDF NATIF du navigateur et son bouton « Télécharger » — la
+// fuite exacte constatée par l'exploitant. fetch()/XHR (Sec-Fetch-Dest:
+// empty) passent. L'en-tête est absent des navigateurs anciens → toléré
+// (pas de rupture, l'en-tête n'est vérifié que s'il est présent).
+func (s *Server) getOuvrageFlux(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Sec-Fetch-Dest") == "document" {
+		writeJSONError(w, http.StatusForbidden, "le flux de lecture n'est pas adressable en navigation directe (lecture dans l'application)")
+		return
+	}
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	ip := middleware.GetClientIP(r)
+	flux, err := s.ouvrageUC.GetFluxLecture(r.Context(), claims, chi.URLParam(r, "id"), ip)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	defer func() { _ = flux.Body.Close() }()
+
+	// Inline JAMAIS attachment (l'acte téléchargement est /telechargement).
+	// Le nom sanitizé est un repère visuel d'audit si la réponse est
+	// observée ; le client fetch() n'utilise pas la disposition.
+	w.Header().Set("Content-Type", flux.ContentType)
+	w.Header().Set("Content-Disposition", `inline; filename="`+flux.Filename+`"`)
+	w.Header().Set("Cache-Control", "no-store, private")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if flux.ContentLength > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(flux.ContentLength, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+	if _, err := io.Copy(w, flux.Body); err != nil {
+		// Erreur en cours de stream : les en-têtes sont partis —
+		// on ne peut que couper la connexion et tracer.
+		slog.Warn("bibliothèque: interruption du flux de lecture", "error", err)
+	}
 }
 
 // getOuvrageTelechargement — GET /api/ouvrages/{id}/telechargement

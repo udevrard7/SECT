@@ -764,12 +764,91 @@ func (uc *OuvrageUseCase) GetTelechargementURL(ctx context.Context, claims db.Se
 	return url, nil
 }
 
+// GetFluxLecture — SECT-BIBLIO-14 : flux d'octets du PDF, MÊME-ORIGINE,
+// pour le lecteur SÉCURISÉ (rendu canvas pdf.js — ouvrages dont
+// telechargementAutorise=false : le lecteur iframe/native est précisément
+// la fuite que l'exploitant constatait, son bouton « Télécharger »
+// natif ignorant le flag).
+//
+// Sémantique LECTURE — le droit par défaut (ADR-0007) : visibilité RLS
+// via FindByID (404 si invisible), audit OUVRAGE_LECTURE (même trace que
+// /fichier — c'est UN accès de lecture). Le flag telechargementAutorise
+// ne s'applique PAS ici : il régit l'ACTE téléchargement (/telechargement
+// → 403 + attachment JAMAIS émis) ; ce flux rend la lecture possible SANS
+// exposer d'URL navigable au lecteur PDF natif du navigateur.
+func (uc *OuvrageUseCase) GetFluxLecture(ctx context.Context, claims db.SessionClaims, id string, ip string) (*domain.OuvrageFluxLecture, error) {
+	o, err := uc.ouvrageRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if o.CheminStockage == nil || *o.CheminStockage == "" {
+		return nil, &domain.ValidationError{Field: "fichier", Message: "fichier non stocké pour cet ouvrage (mode DB-only)"}
+	}
+	if uc.storage == nil {
+		return nil, &domain.ValidationError{
+			Field:   "fichier",
+			Message: "stockage non configuré (mode DB-only) — la lecture de fichier nécessite la configuration R2 (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)",
+		}
+	}
+
+	body, size, ct, err := uc.storage.DownloadStream(ctx, *o.CheminStockage)
+	if err != nil {
+		return nil, err
+	}
+	if ct == "" {
+		ct = "application/pdf"
+	}
+
+	// Audit de l'accès (garde-fou ADR-0007) — best-effort, même trace
+	// que /fichier : c'est une lecture, pas un téléchargement.
+	auditErr := uc.ouvrageRepo.AuditLecture(ctx, domain.OuvrageAuditEntry{
+		OuvrageID:       o.ID,
+		Titre:           o.Titre,
+		Categorie:       o.Categorie,
+		ActorUserID:     claims.UserID,
+		ActorEmail:      claims.Email,
+		ActorIP:         ip,
+		EtablissementID: o.EtablissementID,
+		ExpiresIn:       0, // flux direct, pas de présignature : pas de TTL
+	})
+	if auditErr != nil {
+		slog.Warn("bibliothèque: audit de lecture (flux) échoué (accès servi quand-même)", "ouvrageId", o.ID, "error", auditErr)
+	}
+
+	return &domain.OuvrageFluxLecture{
+		Body:          body,
+		ContentLength: size,
+		ContentType:   ct,
+		Filename:      nomFichierSanitize(o.Titre),
+	}, nil
+}
+
 // dispositionTelechargement — en-tête Content-Disposition RFC 6266 :
 // filename ASCII-sanitisé (fallback sûr) + filename* UTF-8 (accents
 // français préservés — « École.pdf » reste lisible, pas « cole.pdf »).
 // L'extension .pdf est imposée (P1 : PDF uniquement — jamais un .exe
 // même si le titre est piégé).
 func dispositionTelechargement(titre string) string {
+	nomUTF8 := nomFichierSanitize(titre)
+
+	// Fallback ASCII : chaque rune non-ASCII devient '-' (contrôle,
+	// sens interdit) ; filename* porte le nom réel.
+	nomASCII := strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e {
+			return '-'
+		}
+		return r
+	}, nomUTF8)
+
+	return fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", nomASCII, encodeRFC5987(nomUTF8))
+}
+
+// nomFichierSanitize — nom de fichier dérivé du titre (SECT-BIBLIO-14,
+// extrait de dispositionTelechargement) : trim, neutralisation de
+// l'injection d'en-tête et des séparateurs de chemin, 80 runes max,
+// extension .pdf IMPOSÉE. Utilisé par l'attachment (/telechargement) ET
+// par l'inline du flux de lecture (/flux — nom d'audit visuel seulement).
+func nomFichierSanitize(titre string) string {
 	const maxRunes = 80
 
 	base := strings.TrimSpace(titre)
@@ -788,18 +867,7 @@ func dispositionTelechargement(titre string) string {
 	if len(runes) > maxRunes {
 		runes = runes[:maxRunes]
 	}
-	nomUTF8 := string(runes) + domain.OuvrageExtension
-
-	// Fallback ASCII : chaque rune non-ASCII devient '-' (contrôle,
-	// sens interdit) ; filename* porte le nom réel.
-	nomASCII := strings.Map(func(r rune) rune {
-		if r < 0x20 || r > 0x7e {
-			return '-'
-		}
-		return r
-	}, nomUTF8)
-
-	return fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", nomASCII, encodeRFC5987(nomUTF8))
+	return string(runes) + domain.OuvrageExtension
 }
 
 // encodeRFC5987 — percent-encoding des attr-chars RFC 5987 (clé

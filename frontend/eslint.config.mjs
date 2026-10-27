@@ -44,7 +44,11 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "e2e/.auth/**", "playwright-report/**", "test-results/**"]
+  // SECT-BIBLIO-14 : public/pdfjs/** = assets pdfjs-dist MINIFIÉS commités
+  // (worker, cmaps, standard_fonts — copiés par scripts/copy-pdfjs-assets.mjs).
+  // Du code tiers généré : ne pas le linter (no-this-alias etc. explosent
+  // sur les lignes de 500 k caractères).
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "e2e/.auth/**", "playwright-report/**", "test-results/**", "public/pdfjs/**"]
 }];
 
 export default eslintConfig;

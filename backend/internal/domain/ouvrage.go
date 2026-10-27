@@ -9,6 +9,7 @@ package domain
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -263,6 +264,17 @@ type OuvrageListResult struct {
 	Total    int        `json:"total"`
 	Page     int        `json:"page"`
 	Limit    int        `json:"limit"`
+}
+
+// OuvrageFluxLecture — SECT-BIBLIO-14 : handle de lecture STREAMÉE du PDF
+// d'un ouvrage (route /flux, même-origine). Le lecteur sécurisé (canvas
+// pdf.js) charge les octets par cette voie — jamais par une URL présignée
+// exposée au navigateur. Body DOIT être fermé par l'appelant (handler).
+type OuvrageFluxLecture struct {
+	Body          io.ReadCloser
+	ContentLength int64  // octets annoncés par R2 (0 = inconnu)
+	ContentType   string // défaut application/pdf (P1 — ouvrages PDF uniquement)
+	Filename      string // nom sanitizé pour l'en-tête inline (audit visuel)
 }
 
 // CreateOuvrageInput — création (upload ADMIN/RESPONSABLE/ENSEIGNANT,

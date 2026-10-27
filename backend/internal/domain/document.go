@@ -3,6 +3,7 @@ package domain
 
 import (
 	"context"
+	"io"
 	"strings"
 	"time"
 )
@@ -128,6 +129,16 @@ type StorageClient interface {
 
 	// Download récupère un objet depuis R2 par sa clé.
 	Download(ctx context.Context, key string) ([]byte, error)
+
+	// DownloadStream SECT-BIBLIO-14 : ouvre un objet SANS le lire en
+	// RAM — l'appelant stream les octets (io.Copy vers le client).
+	// Pensé pour /api/ouvrages/{id}/flux : le lecteur sécurisé charge
+	// les octets du PDF via l'API même-origine (le bucket R2 n'a pas
+	// de CORS, et une URL présignée exposée au navigateur redonne le
+	// lecteur PDF NATIF et son bouton « Télécharger » — exactement la
+	// fuite que l'exploitant constatait). Retourne le body, la taille
+	// et le Content-Type annoncés par R2.
+	DownloadStream(ctx context.Context, key string) (body io.ReadCloser, contentLength int64, contentType string, err error)
 
 	// DownloadToFile SECT-BIBLIO-12 : télécharge un objet en STREAMANT vers
 	// un fichier disque (jamais en RAM) — pensé pour les gros PDFs (100 Mo)
