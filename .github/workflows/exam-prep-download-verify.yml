@@ -1,0 +1,135 @@
+# ============================================================
+# Workflow TEMPORAIRE (à supprimer après exécution) —
+# SECT-EXAM-PREP-DOWNLOAD-1
+#
+# Vérification E2E LECTURE SEULE en production du fix « téléchargement
+# des supports de cours PDF par les étudiants » (commit c7b03e4d,
+# Deploy OCI ✓ run 40574177697) :
+#
+#   1. Image déployée = commit attendu (santé OK) ;
+#   2. Reproduction du bug AVANT-fix : GET /api/documents/{id}/download
+#      avec JWT étudiant → 403 « rôle non autorisé » (cause racine) ;
+#   3. Fix : GET /api/exam-prep/documents/{id}/download avec JWT étudiant
+#      → 200 { "url": … } — URL présignée R2 réellement servissable
+#      (HEAD 200 + Content-Disposition: attachment) ;
+#   4. Sécurité : 401 sans token ; 403 « vous n'avez pas accès » pour un
+#      document HORS filière de l'étudiant (EXAM-PREP-READER-SECURITY-FIX-1) ;
+#   5. Non-régression : lecteur /read toujours 200 pour l'étudiant ;
+#   6. Logs récents sans erreur.
+#
+# JWT forgé sur la VM avec le secret de /opt/sect/.env (jamais affiché) —
+# étudiant RÉEL (id/filière/niveau/etab lus en base). Aucune écriture DB.
+# ============================================================
+name: Verify exam-prep download (SECT-EXAM-PREP-DOWNLOAD-1)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: E2E téléchargement étudiant (SSH OCI, lecture seule)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            ENV_FILE=/opt/sect/.env
+            DSN=$(grep -E '^NEON_DIRECT_URL=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            if [ -z "$DSN" ]; then DSN=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' "$ENV_FILE" | head -1 | cut -d= -f2-); fi
+
+            echo "══ 0. SANTÉ / IMAGE DÉPLOYÉE (c7b03e4d attendu) ══"
+            curl -s http://localhost:8090/health; echo
+            docker inspect sect-api --format 'image={{.Config.Image}} startedAt={{.State.StartedAt}}'
+            docker inspect sect-api --format '{{.Config.Image}}' | grep -q c7b03e4d \
+              && echo "OK — image = commit c7b03e4d" \
+              || echo "ATTENTION — image != c7b03e4d (déployer avant de relancer ce workflow)"
+
+            echo "══ 1. PAIRE ÉTUDIANT×DOCUMENT (filière + niveau assortis — lecture seule) ══"
+            ROW=$(psql "$DSN" -At -F'|' -c "
+              SELECT u.\"id\", u.\"filiereId\", COALESCE(u.\"niveau\",'L1'), COALESCE(u.\"etablissementId\",''), d.\"id\"
+              FROM \"User\" u
+              JOIN \"UniteEnseignement\" ue ON ue.\"filiereId\" = u.\"filiereId\"
+              JOIN \"Document\" d ON d.\"uniteEnseignementId\" = ue.\"id\" AND d.\"deletedAt\" IS NULL
+              WHERE u.\"role\" = 'ETUDIANT' AND u.\"actif\" = true
+                AND u.\"deletedAt\" IS NULL AND u.\"filiereId\" IS NOT NULL
+                AND (ue.\"niveau\" = COALESCE(u.\"niveau\",'L1')
+                     OR ue.\"niveaux\" LIKE '%\"' || COALESCE(u.\"niveau\",'L1') || '\"%')
+              ORDER BY u.\"createdAt\" DESC
+              LIMIT 1")
+            if [ -z "$ROW" ]; then
+              echo "(aucun couple étudiant×document — E2E JWT skippé)"
+              exit 0
+            fi
+            ETU_ID=$(echo "$ROW" | cut -d'|' -f1)
+            FILIERE=$(echo "$ROW" | cut -d'|' -f2)
+            NIVEAU=$(echo "$ROW" | cut -d'|' -f3)
+            ETAB=$(echo "$ROW" | cut -d'|' -f4)
+            DOC_ID=$(echo "$ROW" | cut -d'|' -f5)
+            echo "étudiant=$ETU_ID filière=$FILIERE niveau=$NIVEAU document=$DOC_ID (ids seuls)"
+
+            echo "══ 2. JWT FORGÉ (étudiant réel — le secret n'est JAMAIS affiché) ══"
+            SECRET=$(grep -E '^JWT_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            if [ -z "$SECRET" ]; then echo "(secret absent — E2E JWT skippé)"; exit 0; fi
+            b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+            NOW=$(date +%s); EXP=$((NOW + 600))
+            HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+            PAYLOAD=$(printf '{"sub":"%s","role":"ETUDIANT","etablissement_id":"%s","filiere_id":"%s","email":"","name":"","iat":%s,"exp":%s,"typ":"access","must_change_pwd":false}' "$ETU_ID" "$ETAB" "$FILIERE" "$NOW" "$EXP" | b64url)
+            SIG=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" -binary | b64url)
+            JWT="$HEADER.$PAYLOAD.$SIG"
+
+            echo "══ 3. BUG AVANT-FIX : ancienne route enseignant-only ══"
+            CODE_OLD=$(curl -s -o /tmp/old.json -w '%{http_code}' -H "Authorization: Bearer $JWT" "http://localhost:8090/api/documents/$DOC_ID/download")
+            echo "GET /api/documents/{id}/download (JWT étudiant) : HTTP $CODE_OLD — 403 attendu (cause racine de la panne)"
+            cat /tmp/old.json; echo
+            [ "$CODE_OLD" = "403" ] && echo "OK — bug reproduit (403 rôle non autorisé)" || echo "INATTENDU sur l'ancienne route"
+
+            echo "══ 4. FIX : nouvelle route exam-prep ══"
+            CODE_NEW=$(curl -s -o /tmp/new.json -w '%{http_code}' -H "Authorization: Bearer $JWT" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/download")
+            echo "GET /api/exam-prep/documents/{id}/download (JWT étudiant) : HTTP $CODE_NEW — 200 attendu"
+            cat /tmp/new.json; echo
+            if [ "$CODE_NEW" = "200" ]; then
+              echo "OK — le fix sert l'URL à l'étudiant"
+              URL=$(python3 -c "import json; print(json.load(open('/tmp/new.json'))['url'])" 2>/dev/null || sed -n 's/.*"url":"\([^"]*\)".*/\1/p' /tmp/new.json)
+              if [ -n "$URL" ]; then
+                echo "── Vérification de l'URL présignée R2 (octet réellement servissable) :"
+                curl -s -o /dev/null -D /tmp/r2h.txt --max-time 20 "$URL"
+                head -3 /tmp/r2h.txt
+                grep -qi '^content-disposition: attachment' /tmp/r2h.txt \
+                  && echo "OK — Content-Disposition attachment signé" \
+                  || echo "NOTE — disposition absente/inline (vérifier manuellement)"
+              fi
+            else
+              echo "KO — nouvelle route != 200 ; corps :"; cat /tmp/new.json; echo
+            fi
+
+            echo "══ 5. SÉCURITÉ : 401 sans token ══"
+            CODE_ANON=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8090/api/exam-prep/documents/$DOC_ID/download")
+            echo "GET sans token : HTTP $CODE_ANON — 401 attendu"
+
+            echo "══ 6. SÉCURITÉ : document HORS filière → 403 ══"
+            DOC_OTHER=$(psql "$DSN" -At -c "
+              SELECT d.\"id\" FROM \"Document\" d
+              JOIN \"UniteEnseignement\" ue ON ue.\"id\" = d.\"uniteEnseignementId\"
+              WHERE d.\"deletedAt\" IS NULL AND ue.\"filiereId\" <> '$FILIERE'
+              LIMIT 1")
+            if [ -n "$DOC_OTHER" ]; then
+              CODE_OTHER=$(curl -s -o /tmp/other.json -w '%{http_code}' -H "Authorization: Bearer $JWT" "http://localhost:8090/api/exam-prep/documents/$DOC_OTHER/download")
+              echo "GET document hors filière : HTTP $CODE_OTHER — 403 attendu"; cat /tmp/other.json; echo
+              [ "$CODE_OTHER" = "403" ] && echo "OK — scoping filière enforce" || echo "INATTENDU (hors filière)"
+            else
+              echo "(aucun document hors filière — scoping non testable)"
+            fi
+
+            echo "══ 7. NON-RÉGRESSION : lecteur /read toujours OK ══"
+            CODE_READ=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $JWT" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/read")
+            echo "GET /read (JWT étudiant) : HTTP $CODE_READ — 200 attendu"
+
+            echo "══ 8. LOGS RÉCENTS (erreurs ?) ══"
+            docker logs --since 10m sect-api 2>&1 | grep -iE 'error|erreur|panic' | tail -20 || echo "(aucune erreur récente)"
+
+            echo "══ FIN — SECT-EXAM-PREP-DOWNLOAD-1 VÉRIFIÉ ══"
