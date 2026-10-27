@@ -38,9 +38,10 @@ jobs:
 
             UE=$(psql "$DSN" -tA <<'SQLUE'
             SELECT ue."id" FROM "UniteEnseignement" ue
-            WHERE EXISTS (SELECT 1 FROM "Devoir" d
-                          WHERE d."uniteEnseignementId" = ue."id" AND d."deletedAt" IS NULL)
-            ORDER BY ue."id" LIMIT 1
+            JOIN "User" u ON u."role" = 'ETUDIANT' AND u."actif" = true AND u."deletedAt" IS NULL
+              AND ue."filiereId" = u."filiereId"
+              AND (ue."niveau" = u."niveau" OR ue."niveaux" LIKE '%"' || u."niveau" || '"%')
+            GROUP BY ue."id" ORDER BY count(*) DESC LIMIT 1
             SQLUE
             )
             if [ -z "$UE" ]; then echo "(aucune UE avec devoirs — skip)"; else
