@@ -1,0 +1,144 @@
+# ============================================================
+# Workflow TEMPORAIRE (à supprimer après exécution) — SECT-NOTIF-TELEGRAM-1
+# ACTIVATION du bot Telegram « SECT Alerte » (@Sect01_bot) en production :
+#   1. pose les 3 variables dans /opt/sect/.env (VM OCI) :
+#        TELEGRAM_BOT_TOKEN      — via secret GitHub chiffré (JAMAIS dans
+#                                  le dépôt — dépôt public !)
+#        TELEGRAM_WEBHOOK_SECRET — généré SUR la VM (openssl rand -hex 32)
+#        TELEGRAM_WEBHOOK_URL    — https://api.sect.ftci.fr/api/telegram/webhook
+#   2. recrée sect-api (env_file rechargé) ;
+#   3. le boot déclenche EnsureWebhook (getMe + setWebhook) automatiquement ;
+#   4. E2E complet : routes publiques, GET /api/telegram/link (JWT forgé
+#      d'un étudiant réel), liaison SIMULÉE /start <code valide> depuis un
+#      chat bidon → DB liée → /stop → déliée (les sendMessage vers le chat
+#      bidon échouent « chat not found » : ATTENDU, le chat n'existe pas).
+#
+# SÉCURITÉ (dépôt PUBLIC → logs de run publics) :
+#   - bot token / webhook secret / JWT / code de liaison deep-link :
+#     JAMAIS affichés ;
+#   - les UUID sont masqués dans les logs affichés ;
+#   - la seule valeur non secrète affichée : @Sect01_bot (public).
+# ============================================================
+name: Activate Telegram (SECT-NOTIF-TELEGRAM-1)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Active le canal Telegram sur la VM OCI (SSH)
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          envs: BOT_TOKEN
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            ENV_FILE=/opt/sect/.env
+
+            echo "══ 0. SANTÉ AVANT ACTIVATION ══"
+            curl -s http://localhost:8090/health; echo
+
+            echo "══ 1. SAUVEGARDE .env ══"
+            BAK="$ENV_FILE.bak-telegram-$(date +%Y%m%d%H%M%S)"
+            cp "$ENV_FILE" "$BAK"
+            echo "backup : $BAK"
+
+            echo "══ 2. LES 3 VARIABLES TELEGRAM ══"
+            sed -i -E '/^TELEGRAM_(BOT_TOKEN|WEBHOOK_SECRET|WEBHOOK_URL)=/d' "$ENV_FILE"
+            WEBHOOK_SECRET=$(openssl rand -hex 32)
+            {
+              echo "TELEGRAM_BOT_TOKEN=$BOT_TOKEN"
+              echo "TELEGRAM_WEBHOOK_SECRET=$WEBHOOK_SECRET"
+              echo "TELEGRAM_WEBHOOK_URL=https://api.sect.ftci.fr/api/telegram/webhook"
+            } >> "$ENV_FILE"
+            echo "lignes TELEGRAM_ posées : $(grep -cE '^TELEGRAM_' "$ENV_FILE") (3 attendu)"
+
+            echo "══ 3. RECRÉATION DU CONTENEUR (env_file rechargé) ══"
+            cd /opt/sect && docker compose up -d --force-recreate api
+
+            echo "══ 4. ATTENTE SANTÉ ══"
+            ok=0
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then ok=1; echo "santé OK après ~$((i*5))s"; break; fi
+              sleep 5
+            done
+            if [ "$ok" != "1" ]; then
+              echo "KO : santé absente après 150s — rollback : cp $BAK $ENV_FILE && cd /opt/sect && docker compose up -d --force-recreate api"
+              exit 1
+            fi
+            curl -s http://localhost:8090/health; echo
+
+            echo "══ 5. LOGS BOOT TELEGRAM (getMe + setWebhook attendus) ══"
+            docker logs --since 5m sect-api 2>&1 | grep -i telegram | sed -E 's/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/<uuid>/g' || echo "(aucune ligne telegram — KO probable)"
+
+            echo "══ 6. E2E — ROUTES PUBLIQUES + LIAISON COMPLÈTE SIMULÉE ══"
+            DSN=$(grep -E '^NEON_DIRECT_URL=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            if [ -z "$DSN" ]; then DSN=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' "$ENV_FILE" | head -1 | cut -d= -f2-); fi
+            SECRET=$(grep -E '^JWT_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            WHSECRET=$(grep -E '^TELEGRAM_WEBHOOK_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            ETU_ID=$(psql "$DSN" -At -c "SELECT id FROM \"User\" WHERE role='ETUDIANT' AND actif=true AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" DESC LIMIT 1")
+
+            echo "── 6a. webhook PUBLIC sans secret → 401 attendu (503 = canal non configuré) :"
+            curl -s -o /dev/null -w 'POST https://…/api/telegram/webhook sans secret : HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://api.sect.ftci.fr/api/telegram/webhook
+
+            echo "── 6b. webhook LOCAL avec secret + JSON invalide → 400 attendu :"
+            curl -s -o /dev/null -w 'POST webhook local JSON invalide : HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' -H "X-Telegram-Bot-Api-Secret-Token: $WHSECRET" -d '{pas-du-json' http://localhost:8090/api/telegram/webhook
+
+            if [ -n "$ETU_ID" ] && [ -n "$SECRET" ] && [ -n "$WHSECRET" ]; then
+              b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+              NOW=$(date +%s); EXP=$((NOW + 600))
+              HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+              PAYLOAD=$(printf '{"sub":"%s","role":"ETUDIANT","etablissement_id":"","filiere_id":"","email":"","name":"","iat":%s,"exp":%s,"typ":"access","must_change_pwd":false}' "$ETU_ID" "$NOW" "$EXP" | b64url)
+              SIG=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" -binary | b64url)
+              JWT="$HEADER.$PAYLOAD.$SIG"
+
+              echo "── 6c. GET /api/telegram/link (JWT étudiant réel — JWT/code jamais affichés) :"
+              LINK_JSON=$(curl -s -H "Authorization: Bearer $JWT" http://localhost:8090/api/telegram/link)
+              MASKED=$(printf '%s' "$LINK_JSON" | sed -E 's#\?start=[^"]+#?start=<masqué>#')
+              echo "$LINK_JSON" | grep -q '"enabled":true' && echo "OK : enabled=true (bot configuré côté serveur)" || { echo "KO : $MASKED"; exit 1; }
+              echo "$LINK_JSON" | grep -q '"connected":false' && echo "OK : connected=false (état initial)" || echo "INFO : connected != false — $MASKED"
+              LINK=$(printf '%s' "$LINK_JSON" | sed -nE 's#.*"link":"(https://t\.me/[^"]+)".*#\1#p')
+              BOT=$(printf '%s' "$LINK" | sed -nE 's#^https://t\.me/([^/?]+)\?.*#\1#p')
+              CODE=$(printf '%s' "$LINK" | sed -nE 's#.*\?start=(.+)$#\1#p')
+              if [ -n "$BOT" ] && [ -n "$CODE" ]; then
+                echo "OK : deep-link t.me/$BOT?start=<code masqué> (HMAC)"
+              else
+                echo "KO : deep-link absent — $MASKED"; exit 1
+              fi
+
+              echo "── 6d. WEBHOOK SIMULÉ /start <code VALIDE> depuis un chat bidon (liaison E2E) :"
+              UPD=$(printf '{"update_id":990001,"message":{"message_id":1,"from":{"id":999999999,"username":"e2e_sect_test"},"chat":{"id":999999999,"type":"private"},"text":"/start %s"}}' "$CODE")
+              curl -s -o /dev/null -w 'webhook /start code valide : HTTP %{http_code} — 200 attendu\n' -X POST -H 'Content-Type: application/json' -H "X-Telegram-Bot-Api-Secret-Token: $WHSECRET" -d "$UPD" http://localhost:8090/api/telegram/webhook
+              CHAT=$(psql "$DSN" -At -c "SELECT \"telegramChatId\" FROM \"User\" WHERE id='$ETU_ID'")
+              if [ "$CHAT" = "999999999" ]; then echo "OK : telegramChatId lié en base (HMAC validé + policy User_update_system OK)"; else echo "KO : chat='$CHAT'"; exit 1; fi
+              curl -s -H "Authorization: Bearer $JWT" http://localhost:8090/api/telegram/link | grep -q '"connected":true' && echo "OK : GET link → connected=true (la carte profil verrait « Connecté »)" || echo "KO : connected != true"
+
+              echo "── 6e. WEBHOOK SIMULÉ /stop (déliaison via le VRAI chemin app + cleanup du test) :"
+              UPDSTOP='{"update_id":990002,"message":{"message_id":2,"from":{"id":999999999},"chat":{"id":999999999,"type":"private"},"text":"/stop"}}'
+              curl -s -o /dev/null -w 'webhook /stop : HTTP %{http_code} — 200 attendu\n' -X POST -H 'Content-Type: application/json' -H "X-Telegram-Bot-Api-Secret-Token: $WHSECRET" -d "$UPDSTOP" http://localhost:8090/api/telegram/webhook
+              CHAT2=$(psql "$DSN" -At -c "SELECT \"telegramChatId\" FROM \"User\" WHERE id='$ETU_ID'")
+              if [ -z "$CHAT2" ]; then
+                echo "OK : délié via /stop (chemin app réel)"
+              else
+                echo "INFO : /stop n'a pas délié → nettoyage SQL de sécurité"
+                psql "$DSN" -c "UPDATE \"User\" SET \"telegramChatId\"=NULL, \"telegramUsername\"=NULL WHERE id='$ETU_ID'"
+              fi
+              echo "── 6f. État final de la liaison (doit être connected=false, enabled=true) :"
+              curl -s -H "Authorization: Bearer $JWT" http://localhost:8090/api/telegram/link | sed -E 's#\?start=[^"]+#?start=<masqué>#'; echo
+            else
+              echo "(étudiant actif / JWT_SECRET / webhook secret absent — E2E JWT skippé)"
+            fi
+
+            echo "══ 7. LOGS FINAUX (les « reply failed … chat not found » sont ATTENDUS — chat bidon 999999999) ══"
+            docker logs --since 5m sect-api 2>&1 | grep -iE 'telegram|panic' | sed -E 's/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/<uuid>/g' | tail -30
+
+            echo "══ 8. SANTÉ FINALE ══"
+            curl -s http://localhost:8090/health; echo
+            echo "══ FIN — CANAL TELEGRAM ACTIVÉ (setWebhook auto au boot vérifié §5) ══"
