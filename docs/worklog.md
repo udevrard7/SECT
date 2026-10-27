@@ -7748,3 +7748,66 @@ temporaire `telegram-activate.yml` (commit 20f782d2, run **40485741135**,
   avec code HMAC valide persiste le `chat_id` par la vraie policy système
   (`User_update_system`) — pas besoin d'un vrai client Telegram pour
   valider la liaison de bout en bout.
+
+## SECT-NOTIF-DEVOIR-1 — 4e annonce étudiante « un nouveau devoir est disponible » (27 octobre 2026)
+
+**Contexte** : demande exploitant « ajouter les notification pour les
+devoir » — la 4e annonce pédagogique multi-canaux, sur le pattern exact
+des 3 existantes (épreuve/document/ouvrage, SECT-NOTIF-STUDENT-1).
+Commit feat **`171f2e13`** (4 fichiers, +267/−3, auteur udevrard7).
+
+### Réalisation
+
+- **`student_notify.go`** : `notifyDevoirPublished` (4e annonce, template
+  `StudentAnnouncement` — Devoir/UE/type de séance/échéance/barème/
+  filière/niveau, ActionURL **`/mes-devoirs`**, icône `ClipboardList`,
+  type `DEVOIR_PUBLIE`, catégorie `pedagogique`) + **`notifyStudentsOfUE`**
+  (fanout miroir EXACT du helper RLS 000115 : JOIN User×UE, filière +
+  niveau OU niveaux JSON-ish, **PAS de fallback établissement** — une
+  annonce hors périmètre annoncerait un devoir invisible) + `formatDateFR`.
+- **`devoir_handlers.go`** (updateDevoir, action=publish) : lecture
+  pré-transition AVANT l'UPDATE puis 3 gardes — statut pré-transition
+  **BROUILLON uniquement** (anti double-annonce : re-publish après reopen
+  re-annonce, publish sur PUBLIE/ARCHIVE non), **datePublication atteinte**
+  (NULL/passée : un devoir programmé est invisible jusqu'à son échéance
+  RLS — il apparaîtra silencieusement), fire-and-forget.
+- **`dispatcher.go`** : `WithAppBaseURL` (pattern WithTelegramSender) —
+  `sendTelegram` **absolutise les ActionURL relatives** (lien cliquable
+  dans un chat externe ; bénéficie aux 4 annonces ; in-app/SSE/push
+  restent relatifs). `main.go` : wiring `cfg.AppBaseURL`.
+- **Aucune migration requise** : `NotificationAdmin.type` est libre
+  (vérifié en prod : 0 contrainte CHECK) et le dispatcher est 100 %
+  générique. Pas de fichier frontend modifié (`/mes-devoirs` existe déjà).
+
+### Vérification (E2E lecture seule, workflow temporaire jetable)
+
+- CI commit 171f2e13 : Backend CI ✓ (40532850918) + Deploy OCI ✓
+  (40532850921, multi-arch, smoke `/health` public success) — les commits
+  workflow-only sont filtrés par `paths:` (0 run CI, aucun redeploiement
+  parasite).
+- Boot du conteneur redéployé : « Notification dispatcher configured
+  telegramEnabled:true » + « Telegram bot configured @Sect01_bot » +
+  webhook enregistré — aucun panic/fatal.
+- **Requête fanout EXACTE exécutée en lecture seule contre Neon prod** :
+  UE réelle → **8 destinataires** (miroir RLS 000115) — la syntaxe
+  (casts enum niveau, LIKE niveaux, JOIN) est validée contre le schéma
+  réel. Aucun devoir non supprimé n'existe en prod à date (skip du test
+  sur UE-de-devoir, requête indépendante de Devoir).
+- Santé prod : `{"status":"ok","version":"0.2.0"}` + front HTTP 200.
+- Workflow `devoir-notif-verify.yml` + ses 3 runs **supprimés** après
+  usage (commit 8dd5c7f0) ; aucun secret dans les logs (DSN jamais affiché,
+  UUID masqués, aucun nom d'étudiant).
+
+### État final
+
+- **La 4e annonce est LIVE en production** : dès qu'un enseignant publie
+  un devoir (BROUILLON→PUBLIE, échéance de publication atteinte), les
+  étudiants filière+niveau de l'UE reçoivent « Un nouveau devoir est
+  disponible » sur les canaux actifs (in-app + SSE + email + Telegram ;
+  web push/FCM suivent la config VAPID/Firebase de l'exploitant — non
+  posée à date : pushEnabled:false, fcmEnabled:false constatés au boot).
+- Note : incident tabs→espaces de l'éditeur reproduit → `gofmt -w` +
+  restauration des littéraux SQL bruts (octets originaux) pour un diff
+  minimal ; bash -n local avant de pousser un workflow à heredocs
+  (terminateur en colonne 0).
+
