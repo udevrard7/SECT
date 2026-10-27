@@ -1019,6 +1019,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 			r.Get("/", s.listOuvrages)
 			r.Get("/{id}", s.getOuvrage)
+			// SECT-BIBLIO-14 : /fichier réservé aux ouvrages
+			// autorisés au téléchargement (lecteur NATIF —
+			// l'URL présignée redonnerait le bouton
+			// « Télécharger » du navigateur sinon) ; les ouvrages
+			// verrouillés passent par /flux (canvas sécurisé).
 			r.Get("/{id}/fichier", s.getOuvrageFichier)
 			// SECT-BIBLIO-14 : flux de LECTURE streamé, même-origine,
 			// pour le lecteur sécurisé (canvas pdf.js — ouvrages dont

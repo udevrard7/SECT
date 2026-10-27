@@ -656,6 +656,13 @@ func (uc *OuvrageUseCase) MesClasses(ctx context.Context, claims db.SessionClaim
 // le PDF (lecteur, iframe, nouvel onglet) au lieu de le poser sur disque.
 // L'acte « téléchargement » a sa propre route (GetTelechargementURL) qui,
 // seul, impose attachment ET vérifie telechargementAutorise.
+//
+// SECT-BIBLIO-14 : réservé aux ouvrages telechargementAutorise=true.
+// Le lecteur in-app n'appelle plus cette route pour un ouvrage verrouillé
+// (rendu canvas via /flux, jamais d'URL présignée) — or une URL présignée
+// collée dans la barre d'adresse redonne le lecteur PDF NATIF et son
+// bouton « Télécharger » : c'était la fuite. 403 sinon : un ouvrage non
+// autorisé au téléchargement ne se lit QUE par le lecteur sécurisé.
 func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionClaims, id string, ip string, expiresIn int) (string, error) {
 	if expiresIn <= 0 || expiresIn > 900 {
 		expiresIn = 900
@@ -663,6 +670,11 @@ func (uc *OuvrageUseCase) GetFichierURL(ctx context.Context, claims db.SessionCl
 	o, err := uc.ouvrageRepo.FindByID(ctx, id)
 	if err != nil {
 		return "", err
+	}
+	if !o.TelechargementAutorise {
+		return "", &domain.UnauthorizedError{
+			Message: "lecture par URL présignée réservée aux ouvrages autorisés au téléchargement — cet ouvrage se lit dans l’application (lecteur sécurisé)",
+		}
 	}
 	if o.CheminStockage == nil || *o.CheminStockage == "" {
 		return "", &domain.ValidationError{Field: "fichier", Message: "fichier non stocké pour cet ouvrage (mode DB-only)"}

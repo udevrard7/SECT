@@ -428,7 +428,13 @@ func (s *Server) restoreOuvrage(w http.ResponseWriter, r *http.Request) {
 
 // getOuvrageFichier — GET /api/ouvrages/{id}/fichier
 // URL présignée courte durée (défaut 15 min, max 900 s) pour la lecture
-// in-browser. Chaque accès est journalisé (AuditLog OUVRAGE_LECTURE).
+// in-browser du lecteur NATIF. Chaque accès est journalisé (AuditLog
+// OUVRAGE_LECTURE).
+// SECT-BIBLIO-14 : réservé aux ouvrages telechargementAutorise=true
+// (le lecteur natif n'est légitime que si le téléchargement est autorisé) ;
+// un ouvrage verrouillé se lit par /flux (rendu canvas sécurisé) — une URL
+// présignée collée en barre d'adresse redonnerait le lecteur natif et son
+// bouton « Télécharger » : 403 ici, la fuite est fermée aux deux bouts.
 func (s *Server) getOuvrageFichier(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {

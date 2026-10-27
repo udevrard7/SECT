@@ -52,8 +52,15 @@ export const config = {
   // page vers /login?error=SessionExpired (bug images landing + sw.js +
   // manifest.json + robots.txt). On exclut donc les extensions statiques.
   //
+  // SECT-BIBLIO-14 : /pdfjs/* ajouté (worker .mjs, standard_fonts .pfb,
+  // cmaps .bcmap — extensions absentes de la liste). Assets tiers NON
+  // sensibles commités dans public/pdfjs/ : sans cette exclusion, le worker
+  // pdf.js passait par le garde de session (307 /login si les cookies
+  // manquent à l'instant précis du chargement — refresh de token en cours,
+  // par exemple) et le lecteur sécurisé échouait silencieusement.
+  //
   // /api/* est routé par vercel.json (rewrites CDN) → 0 Function Invocation.
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|fonts|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|bmp|avif|css|js|woff|woff2|ttf|otf|eot|txt|xml|json|map|webmanifest|manifest)).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|fonts|pdfjs|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|bmp|avif|css|js|mjs|woff|woff2|ttf|otf|eot|txt|xml|json|map|webmanifest|manifest)).*)',
   ],
 }
