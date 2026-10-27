@@ -7671,3 +7671,80 @@ clique un deep-link et appuie Démarrer.
 - **Policy système par commande** : User_select/delete avaient is_system()
   mais pas User_update — le besoin du webhook a révélé le trou ; la
   policy ajoutée est bornée à UPDATE (pattern 000117 respecté).
+
+---
+
+## SECT-NOTIF-TELEGRAM-2 — Activation du bot Telegram en production (@Sect01_bot) (27 octobre 2026)
+
+**Contexte** : le canal 7 Telegram était livré, déployé et migré
+(SECT-NOTIF-TELEGRAM-1, migration 000142) — il ne restait que l'activation.
+L'exploitant a créé le bot via **@BotFather** et fourni le token (bot
+« SECT Alerte », **@Sect01_bot**) : activation en production par workflow
+temporaire `telegram-activate.yml` (commit 20f782d2, run **40485741135**,
+17 s, success).
+
+### Réalisation (activation par workflow temporaire)
+
+- **Secret GitHub chiffré `TELEGRAM_BOT_TOKEN`** créé via API libsodium
+  (sealed box) : le token transite vers la VM sans figurer NULLE PART dans
+  le dépôt public — secret **supprimé après usage**.
+- `TELEGRAM_WEBHOOK_SECRET` généré **sur la VM** (`openssl rand -hex 32`,
+  jamais sorti de la VM) ; `TELEGRAM_WEBHOOK_URL=https://api.sect.ftci.fr/api/telegram/webhook`.
+- Backup préalable `/opt/sect/.env.bak-telegram-20261027100518`, pose des
+  3 vars dans `/opt/sect/.env`, conteneur `sect-api` recréé (`env_file`
+  rechargé) — santé 200 après ~10 s.
+- **Boot automatique** : logs `Telegram bot configured bot=@Sect01_bot` +
+  `Telegram webhook registered url=https://api.sect.ftci.fr/api/telegram/webhook`
+  ; dispatcher `telegramEnabled=true`.
+
+### Vérification E2E en production (run 40485741135 — 100 % PASS)
+
+- Webhook public sans secret → **401** (503 avant activation) ; JSON
+  invalide avec secret → **400**.
+- `GET /api/telegram/link` (JWT forgé d'un étudiant réel) → `enabled=true,
+  connected=false` + deep-link `t.me/Sect01_bot?start=<code HMAC>`.
+- Webhook SIMULÉ `/start <code valide>` depuis un chat bidon → **200** +
+  `telegramChatId` persisté en base (HMAC validé + policy
+  `User_update_system`) + `GET link` → `connected=true` ; `/stop` simulé →
+  **200** + déliaison via le vrai chemin applicatif ; état final
+  `{enabled:true, connected:false}`. Les WARN « reply failed … chat not
+  found » sur le chat bidon sont ATTENDUS.
+- **getWebhookInfo** côté Telegram : url correcte, `pending_update_count=0`,
+  aucune erreur, `ip_address=84.235.228.160` (VM OCI),
+  `allowed_updates=["message"]`.
+- Santé : `api.sect.ftci.fr/api/health` → **200 ok** ; `sect.ftci.fr` →
+  **200**.
+
+### Sécurité (dépôt public)
+
+- Token / JWT / code de liaison / webhook secret **jamais affichés**
+  (masqués dans les logs de run), UUID masqués.
+- Secret GitHub `TELEGRAM_BOT_TOKEN` supprimé après usage ; run
+  40485741135 supprimé a posteriori (un nom d'étudiant apparaissait dans
+  les logs publics).
+
+### État final
+
+- **Canal 7 Telegram OPÉRATIONNEL** — les 3 annonces pédagogiques
+  (évaluation disponible /mes-epreuves, nouveau document /exam-prep, nouvel
+  ouvrage /bibliotheque) arrivent sur in-app + SSE + web push + email + FCM
+  + Telegram.
+- Parcours étudiant : /profil → carte « Notifications Telegram » →
+  « Connecter Telegram » → `t.me/Sect01_bot?start=<code personnel>` →
+  Démarrer → message de confirmation + annonces.
+- Reste exploitant : **rien d'obligatoire** (optionnel cosmétique :
+  `/setuserpic` + description du bot chez BotFather).
+
+### Leçons
+
+- **Un token de bot ne transite jamais par un dépôt public** : secret
+  GitHub chiffré via API (sealed box libsodium), pose directe dans
+  `/opt/sect/.env` sur la VM, suppression immédiate du secret — les logs de
+  run GitHub étant publics, c'est le seul chemin sûr.
+- **Un workflow temporaire est jetable par nature** : fichier, secret ET
+  run supprimés après usage — le run 40485741135 contenait un nom d'étudiant
+  dans ses logs publics, purgé a posteriori.
+- **Simuler le webhook suffit à prouver la chaîne complète** : un `/start`
+  avec code HMAC valide persiste le `chat_id` par la vraie policy système
+  (`User_update_system`) — pas besoin d'un vrai client Telegram pour
+  valider la liaison de bout en bout.
