@@ -130,6 +130,14 @@ type Server struct {
 	notifDispatcher *notification.Dispatcher
 	// SECT-NOTIF-VAPID-1 : clé publique VAPID pour l'endpoint /api/push/vapid-public-key.
 	vapidPublicKey string
+	// SECT-NOTIF-TELEGRAM-1 : canal 7 — bot Telegram partagé (remplace le canal
+	// Instagram retiré). sender nil = canal désactivé (dev mode). webhookSecret :
+	// valeur attendue dans le header X-Telegram-Bot-Api-Secret-Token du POST
+	// /api/telegram/webhook (vide = webhook 503). linkKey : clé HMAC des codes de
+	// liaison t.me/<bot>?start=<code> (dérivée du JWT_SECRET côté main.go).
+	telegramSender        *notification.TelegramSender
+	telegramWebhookSecret string
+	telegramLinkKey       string
 	// ADR-0013 §13 (mode « à la demande ») : réveille le worker promotion
 	// après le COMMIT d'un batch PENDING (POST /cloture-annee) — pickup
 	// < 1 s au lieu d'attendre le filet ticker (plancher 15 min). Closure
@@ -166,6 +174,17 @@ func (s *Server) WithNotificationDispatcher(d *notification.Dispatcher) *Server 
 // WithVapidPublicKey injecte la clé publique VAPID (SECT-NOTIF-VAPID-1).
 func (s *Server) WithVapidPublicKey(key string) *Server {
 	s.vapidPublicKey = key
+	return s
+}
+
+// WithTelegramDeps injecte le canal Telegram (SECT-NOTIF-TELEGRAM-1) :
+// sender (nil = canal désactivé), secret du webhook (header
+// X-Telegram-Bot-Api-Secret-Token) et clé HMAC des codes de liaison
+// deep-link. Pattern setter (évite d'étendre la signature NewServer).
+func (s *Server) WithTelegramDeps(sender *notification.TelegramSender, webhookSecret, linkKey string) *Server {
+	s.telegramSender = sender
+	s.telegramWebhookSecret = webhookSecret
+	s.telegramLinkKey = linkKey
 	return s
 }
 
@@ -493,6 +512,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	// frontend doit pouvoir le requêter avant l'auth (page /login, /maintenance).
 	r.Get("/api/maintenance-status", s.maintenanceStatus)
 
+	// SECT-NOTIF-TELEGRAM-1 : webhook Telegram (PUBLIC — c'est Telegram qui
+	// appelle, pas de JWT possible). Sécurisé par le header
+	// X-Telegram-Bot-Api-Secret-Token (comparaison temps constant, secret posé
+	// à l'enregistrement setWebhook — voir telegram_handlers.go). 401 si le
+	// secret ne correspond pas, 503 si le canal n'est pas configuré.
+	r.Post("/api/telegram/webhook", s.telegramWebhook)
+
 	// Routes authentifiées
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware)
@@ -500,6 +526,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		// /api/me
 		r.With(middleware.RequireAuth).Get("/api/me", s.me)
 		r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
+
+		// SECT-NOTIF-TELEGRAM-1 : liaison du compte Telegram (profil —
+		// tous rôles ; les annonces pédagogiques ciblent les étudiants mais
+		// rien n'interdit à un enseignant de vouloir les recevoir aussi).
+		r.With(middleware.RequireAuth).Get("/api/telegram/link", s.telegramLinkGet)
+		r.With(middleware.RequireAuth).Delete("/api/telegram/link", s.telegramLinkDelete)
 
 		// /api/users
 		// ETUDIANTS-FIX-E2 : route /import déclarée AVANT /{id} pour éviter
@@ -513,12 +545,6 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/users", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listUsers)
-
-			// SECT-NOTIF-STUDENT-1 : self-service du profil courant (tous
-			// rôles — champs innocuous uniquement, ex: handle Instagram des
-			// notifications). Déclarée AVANT /{id} : chi matcherait sinon
-			// "me" comme un paramètre id (même leçon que /import, E2).
-			r.Patch("/me", s.updateMeInstagram)
 
 			// SECT-USER-CLEANUP-INFRA-1 : routes admin pour la gestion des orphelins.
 			// Déclarées AVANT /{id} pour éviter le conflit de routing chi.

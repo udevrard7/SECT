@@ -15,9 +15,6 @@ export interface AuthUser {
   image?: string | null
   actif?: boolean
   matricule?: string | null
-  // SECT-NOTIF-STUDENT-1 : handle Instagram (canal DM des notifications
-  // pédagogiques) — renseigné en self-service (PATCH /api/users/me).
-  instagram?: string | null
   mustChangePwd?: boolean
   derniereConnexion?: string | null
 }
@@ -107,7 +104,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           image: data.user.image ?? null,
           actif: data.user.actif,
           matricule: data.user.matricule ?? null,
-          instagram: data.user.instagram ?? null,
           mustChangePwd: data.user.mustChangePwd,
           derniereConnexion: data.user.derniereConnexion ?? null,
         }
@@ -177,7 +173,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         image: session.user.image ?? null,
         actif: session.user.actif,
         matricule: session.user.matricule ?? null,
-        instagram: session.user.instagram ?? null,
         mustChangePwd: session.user.mustChangePwd,
         derniereConnexion: session.user.derniereConnexion ?? null,
       }

@@ -7,8 +7,8 @@
 //   - Nouvel ouvrage en bibliothèque (lié à la filière).
 //
 // Ces emails transitent par le dispatcher (canal email, préférence
-// emailEnabled) ; les mêmes contenus alimentent le DM Instagram (canal 7,
-// version courte construite par Dispatcher.sendInstagram) et la notification
+// emailEnabled) ; les mêmes contenus alimentent le message Telegram
+// (canal 7, version courte construite par Dispatcher.sendTelegram) et la notification
 // in-app (titre + message courts). Un seul template générique suffit : la
 // structure (titre + intro + carte contexte + bouton d'action) est commune.
 package emailtpl

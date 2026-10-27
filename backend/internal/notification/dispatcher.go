@@ -16,11 +16,11 @@
 //     catégorie ET un mailer configuré. Non bloquant.
 //  5. FCM mobile push : si FCMSender configuré (Android + iOS).
 //  6. (Canal historiquement réservé — cf. SkipInApp pour le fanout diffusion.)
-//  7. Instagram DM (SECT-NOTIF-STUDENT-1) : si la préférence
-//     instagramEnabled=true pour la catégorie, un handle User.instagram
-//     renseigné ET un InstagramSender configuré (INSTAGRAM_USER_ID +
-//     INSTAGRAM_ACCESS_TOKEN sur le compte business de l'établissement).
-//     Non bloquant, non configurable en échec : une erreur Meta est
+//  7. Telegram (SECT-NOTIF-TELEGRAM-1) : si la préférence telegramEnabled=true
+//     pour la catégorie, un chat_id User.telegramChatId lié (deep-link
+//     t.me/<bot>?start=<code> → webhook) ET un TelegramSender configuré
+//     (TELEGRAM_BOT_TOKEN — bot partagé de l'établissement, gratuit).
+//     Non bloquant, non configurable en échec : une erreur Bot API est
 //     journalisée et les autres canaux continuent.
 //
 // L'API est volontairement simple : `dispatcher.Dispatch(ctx, event)`. Les
@@ -38,6 +38,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -119,10 +120,11 @@ type Dispatcher struct {
 	// FCM mobile push (canal 5). nil = FCM désactivé (dev mode).
 	fcmSender *FCMSender
 
-	// instagramSender (canal 7 — SECT-NOTIF-STUDENT-1) : DM Instagram via
-	// l'API Messaging. nil = Instagram désactivé (dev mode). Injecté via
-	// WithInstagramSender (évite de casser la signature New historique).
-	instagramSender *InstagramSender
+	// telegramSender (canal 7 — SECT-NOTIF-TELEGRAM-1) : bot Telegram partagé
+	// via la Bot API. nil = Telegram désactivé (dev mode). Injecté via
+	// WithTelegramSender (évite de casser la signature New historique —
+	// remplace l'InstagramSender retiré avec le canal Instagram).
+	telegramSender *TelegramSender
 
 	// broadcastSSE est une fonction injectée (pour éviter une dépendance
 	// circulaire avec transport/http). Elle est wirée dans main.go après
@@ -160,13 +162,14 @@ func New(pool *pgxpool.Pool, m mailer.Mailer, logger *slog.Logger, broadcastSSE 
 	}
 }
 
-// WithInstagramSender injecte le canal 7 (DM Instagram) dans le dispatcher.
-// nil-safe : un sender nil désactive le canal. Pattern WithGeniusPay.
-func (d *Dispatcher) WithInstagramSender(sender *InstagramSender) *Dispatcher {
+// WithTelegramSender injecte le canal 7 (bot Telegram partagé) dans le
+// dispatcher. nil-safe : un sender nil désactive le canal. Pattern
+// WithGeniusPay.
+func (d *Dispatcher) WithTelegramSender(sender *TelegramSender) *Dispatcher {
 	if d == nil {
 		return d
 	}
-	d.instagramSender = sender
+	d.telegramSender = sender
 	return d
 }
 
@@ -289,39 +292,41 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 		d.fcmSender.SendToUser(ctx, event.UserID, ssePayload)
 	}
 
-	// 7. Instagram DM (SECT-NOTIF-STUDENT-1) — handle User.instagram requis
-	// + préférence instagramEnabled (défaut true) + sender configuré.
-	if pref.instagramEnabled && d.instagramSender != nil {
-		d.sendInstagram(ctx, event, ssePayload)
+	// 7. Telegram (SECT-NOTIF-TELEGRAM-1) — chat_id User.telegramChatId requis
+	// (liaison deep-link depuis /profil) + préférence telegramEnabled
+	// (défaut true) + sender configuré.
+	if pref.telegramEnabled && d.telegramSender != nil {
+		d.sendTelegram(ctx, event, ssePayload)
 	}
 }
 
 // preferenceResult contient les préférences pour une catégorie.
 type preferenceResult struct {
-	pushEnabled      bool
-	emailEnabled     bool
-	instagramEnabled bool
+	pushEnabled     bool
+	emailEnabled    bool
+	telegramEnabled bool
 }
 
 // fetchPreferences lit NotificationPreference pour (userId, categorie).
 // Si aucune ligne n'existe, retourne les défauts (push=true, email=true,
-// instagram=true — SECT-NOTIF-STUDENT-1 : COALESCE instagramEnabled, la
-// migration 000141 pose la colonne avec DEFAULT true).
-// Non bloquant : si la lecture échoue, retourne les défauts.
+// telegram=true — SECT-NOTIF-TELEGRAM-1 : COALESCE telegramEnabled, la
+// migration 000142 pose la colonne avec DEFAULT true).
+// Non bloquant : si la lecture échoue (y compris colonne absente pendant
+// la fenêtre déploiement→migration), retourne les défauts.
 func (d *Dispatcher) fetchPreferences(ctx context.Context, userID, categorie string) preferenceResult {
-	def := preferenceResult{pushEnabled: true, emailEnabled: true, instagramEnabled: true}
-	var push, email, instagram bool
+	def := preferenceResult{pushEnabled: true, emailEnabled: true, telegramEnabled: true}
+	var push, email, telegram bool
 	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-                SELECT "pushEnabled", "emailEnabled", COALESCE("instagramEnabled", true)
+                SELECT "pushEnabled", "emailEnabled", COALESCE("telegramEnabled", true)
                 FROM "NotificationPreference"
-                WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email, &instagram)
+                WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email, &telegram)
 	})
 	if err != nil {
 		// Pas de ligne (ou erreur) → défauts
 		return def
 	}
-	return preferenceResult{pushEnabled: push, emailEnabled: email, instagramEnabled: instagram}
+	return preferenceResult{pushEnabled: push, emailEnabled: email, telegramEnabled: telegram}
 }
 
 // sendPush envoie une notification web push à l'utilisateur via les
@@ -435,46 +440,96 @@ func (d *Dispatcher) sendEmail(userID string, email EmailContent) {
 	}()
 }
 
-// sendInstagram envoie un DM Instagram à l'utilisateur (canal 7 —
-// SECT-NOTIF-STUDENT-1) via l'API Instagram Messaging, si l'utilisateur a
-// renseigné son handle (User.instagram) et que le sender est configuré.
-// Non bloquant : erreur Meta → log + skip (les autres canaux continuent).
+// sendTelegram envoie un message Telegram à l'utilisateur (canal 7 —
+// SECT-NOTIF-TELEGRAM-1) via le bot partagé de l'établissement, si
+// l'utilisateur a lié son compte (User.telegramChatId, deep-link /profil)
+// et que le sender est configuré.
 //
-// Le texte du DM est construit à partir de l'Event (titre + message + lien
-// d'action si fourni) — format court adapté à la messagerie Instagram.
-func (d *Dispatcher) sendInstagram(ctx context.Context, event Event, payload map[string]any) {
-	// Récupérer le handle Instagram du user (claims système — service).
-	var handle string
+// Asynchrone (goroutine, comme l'email) : le message ne doit JAMAIS
+// retarder la réponse HTTP — un fanout de 200 étudiants se déroule à
+// 25 msg/s (~8 s) en arrière-plan. Non bloquant : erreur Bot API → log +
+// skip (les autres canaux continuent).
+//
+// Auto-guérison : si Telegram répond « bot was blocked by the user » /
+// « chat not found » / « user is deactivated », le chat_id est périmé — on
+// le retire (best-effort) pour ne pas re-échouer à chaque annonce.
+//
+// Le texte est construit à partir de l'Event (titre + message + lien
+// d'action si fourni) — format court adapté à la messagerie Telegram.
+func (d *Dispatcher) sendTelegram(ctx context.Context, event Event, payload map[string]any) {
+	// Récupérer le chat_id Telegram du user (claims système — service).
+	var chatID string
 	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
-			`SELECT COALESCE("instagram", '') FROM "User" WHERE "id" = $1`, event.UserID).Scan(&handle)
+			`SELECT COALESCE("telegramChatId", '') FROM "User" WHERE "id" = $1`, event.UserID).Scan(&chatID)
 	})
 	if err != nil {
-		d.logger.Warn("notification.sendInstagram: user handle lookup failed",
+		d.logger.Warn("notification.sendTelegram: chat id lookup failed (colonne absente ? migration 000142)",
 			"userId", event.UserID, "error", err)
 		return
 	}
-	if handle == "" {
-		return // pas de handle renseigné → canal skip (normal)
+	if chatID == "" {
+		return // compte non lié → canal skip (normal)
 	}
 
-	// Construire le texte du DM (court, avec lien d'action si présent).
+	// Construire le texte du message (court, avec lien d'action si présent).
 	text := "🔔 " + event.Titre + "\n" + event.Message
 	if event.ActionURL != "" {
 		text += "\n\n👉 " + event.ActionURL
 	}
 	text += "\n\n— SECT"
 
-	// Timeout court : le DM ne doit jamais retarder la réponse HTTP.
-	dmCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	if err := d.instagramSender.SendDM(dmCtx, handle, text); err != nil {
-		d.logger.Warn("notification.sendInstagram: DM send failed",
-			"userId", event.UserID, "handle", handle, "type", event.Type, "error", err)
+	go func() {
+		// Context détaché de la requête HTTP : l'envoi vit sa propre
+		// vie (fire-and-forget), plafond couvrant un backoff 429.
+		sendCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := d.telegramSender.SendMessage(sendCtx, chatID, text); err != nil {
+			d.logger.Warn("notification.sendTelegram: send failed",
+				"userId", event.UserID, "chatId", chatID, "type", event.Type, "error", err)
+			d.clearStaleTelegramChatID(event.UserID, err)
+			return
+		}
+		d.logger.Info("Telegram message sent",
+			"userId", event.UserID, "chatId", chatID, "type", event.Type)
+	}()
+}
+
+// clearStaleTelegramChatID retire un chat_id périmé (utilisateur a bloqué/
+// supprimé le bot) — best-effort, jamais bloquant. Indicateurs d'erreur de
+// la Bot API : "bot was blocked by the user", "chat not found",
+// "user is deactivated".
+func (d *Dispatcher) clearStaleTelegramChatID(userID string, sendErr error) {
+	if sendErr == nil {
 		return
 	}
-	d.logger.Info("Instagram DM sent",
-		"userId", event.UserID, "handle", handle, "type", event.Type)
+	msg := sendErr.Error()
+	if !strings.Contains(msg, "blocked") &&
+		!strings.Contains(msg, "chat not found") &&
+		!strings.Contains(msg, "deactivated") {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
+		ct, err := tx.Exec(ctx, `
+                        UPDATE "User" SET "telegramChatId" = NULL, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1`, userID)
+		if err != nil {
+			return err
+		}
+		if ct.RowsAffected() == 0 {
+			return fmt.Errorf("user %s introuvable", userID)
+		}
+		return nil
+	})
+	if err != nil {
+		d.logger.Warn("notification.sendTelegram: clear stale chat id failed",
+			"userId", userID, "error", err)
+		return
+	}
+	d.logger.Info("Telegram chat id cleared (utilisateur a bloqué/supprimé le bot)",
+		"userId", userID)
 }
 
 // FormatRFC3339 helper pour les timestamps (utilisé par les callers).

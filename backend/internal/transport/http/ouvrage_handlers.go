@@ -658,7 +658,7 @@ func (s *Server) validerOuvrage(w http.ResponseWriter, r *http.Request) {
 
 	// SECT-NOTIF-STUDENT-1 : annonce « nouvel ouvrage en bibliothèque » aux
 	// étudiants de la filière recommandée (in-app + SSE + push + email +
-	// Instagram DM, fire-and-forget). Uniquement sur la validation réelle —
+	// Telegram, fire-and-forget). Uniquement sur la validation réelle —
 	// un BROUILLON est invisible des étudiants (modération 000137).
 	if wasBrouillon && o != nil && o.Statut == domain.StatutOuvrageValide {
 		s.notifyOuvragePublished(claims, o)

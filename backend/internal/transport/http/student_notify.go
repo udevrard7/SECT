@@ -1,7 +1,7 @@
 // Package http — SECT-NOTIF-STUDENT-1 : notifications étudiantes multi-canaux.
 //
 // Trois annonces pédagogiques fanoutées vers les ÉTUDIANTS concernés via le
-// dispatcher central (in-app + SSE + web push + email + FCM + Instagram DM) :
+// dispatcher central (in-app + SSE + web push + email + FCM + Telegram) :
 //
 //  1. EPREUVE_DISPONIBLE — une évaluation est disponible : publication
 //     d'une épreuve (action « publier », BROUILLON → PLANIFIEE). Cible :
@@ -23,8 +23,8 @@
 //     métier ne doit JAMAIS échouer ni être retardée par une notification ;
 //   - lecture des destinataires via claims système (bypass RLS, service) ;
 //   - Dispatch par étudiant : le dispatcher décide des canaux selon les
-//     préférences (pushEnabled / emailEnabled / instagramEnabled) et la
-//     disponibilité (handle Instagram renseigné, VAPID, FCM, mailer).
+//     préférences (pushEnabled / emailEnabled / telegramEnabled) et la
+//     disponibilité (compte Telegram lié, VAPID, FCM, mailer).
 package http
 
 import (

@@ -114,7 +114,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	// SECT-NOTIF-STUDENT-1 : annonce « nouveau document de cours » aux
 	// étudiants de la filière de l'UE rattachée (in-app + SSE + push +
-	// email + Instagram DM, fire-and-forget). Best-effort : jamais bloquant.
+	// email + Telegram, fire-and-forget). Best-effort : jamais bloquant.
 	if result != nil && result.Document != nil {
 		s.notifyDocumentPublished(claims, result.Document)
 	}

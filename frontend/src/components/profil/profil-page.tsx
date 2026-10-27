@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   User,
   Mail,
-  Instagram,
+  Send,
   Lock,
   Shield,
   Building2,
@@ -54,6 +54,14 @@ import { RewardCenter, type Reward, type GamificationTier } from '@/components/d
 import { NotificationPreferences } from './notification-preferences'
 import type { BadgeWithProgress, NiveauBadge } from '@/lib/badges-engine'
 import { toast } from 'sonner'
+
+// SECT-NOTIF-TELEGRAM-1 : état du canal Telegram (GET /api/telegram/link).
+type TelegramLinkState = {
+  enabled: boolean
+  connected: boolean
+  username: string
+  link: string
+}
 
 // ─────────────────────────────────────────────────────────────
 // Mapping BadgeWithProgress → Reward (pour le RewardCenter DS)
@@ -199,9 +207,66 @@ export function ProfilPage() {
   // Profile edit state
   const [editName, setEditName] = useState(user?.name ?? '')
   const [editEmail] = useState(user?.email ?? '') // Email is read-only
-  // SECT-NOTIF-STUDENT-1 : handle Instagram (canal DM des notifications
-  // pédagogiques — évaluations disponibles, nouveaux documents, ouvrages).
-  const [editInstagram, setEditInstagram] = useState(user?.instagram ?? '')
+  // SECT-NOTIF-TELEGRAM-1 : canal Telegram (remplace le canal Instagram
+  // retiré). L'état vient de GET /api/telegram/link : la liaison se fait par
+  // deep-link (t.me/<bot>?start=<code> → l'étudiant appuie Démarrer dans
+  // Telegram, le webhook stocke le chat_id) — plus de saisie de handle.
+  const [telegram, setTelegram] = useState<TelegramLinkState | null>(null)
+  const [telegramLoading, setTelegramLoading] = useState(true)
+  const [telegramPolling, setTelegramPolling] = useState(false)
+  const telegramPollTicks = useRef(0)
+
+  // Chargement initial de l'état du canal (silencieux — la carte affiche
+  // « non configuré » si l'exploitant n'a pas encore posé TELEGRAM_BOT_TOKEN).
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    fetch('/api/telegram/link')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: TelegramLinkState | null) => {
+        if (!cancelled) setTelegram(data)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTelegramLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  // Polling post-clic : dès que l'étudiant appuie Démarrer dans Telegram,
+  // le webhook lie son compte → le prochain GET détecte connected=true.
+  // 4 s pendant 3 minutes max, puis on s'arrête (l'utilisateur peut re-cliquer).
+  useEffect(() => {
+    if (!telegramPolling || telegram?.connected) {
+      setTelegramPolling(false)
+      return
+    }
+    telegramPollTicks.current = 0
+    const id = setInterval(async () => {
+      telegramPollTicks.current += 1
+      if (telegramPollTicks.current > 45) {
+        setTelegramPolling(false)
+        return
+      }
+      try {
+        const res = await fetch('/api/telegram/link')
+        if (!res.ok) return
+        const data: TelegramLinkState = await res.json()
+        setTelegram(data)
+        if (data.connected) {
+          setTelegramPolling(false)
+          toast.success('Telegram connecté', {
+            description: 'Vous recevrez les annonces pédagogiques (évaluations, documents, ouvrages) dans Telegram.',
+          })
+        }
+      } catch {
+        // réseau passager — on continue de poller
+      }
+    }, 4000)
+    return () => clearInterval(id)
+  }, [telegramPolling, telegram?.connected])
 
   // ─── Badges / récompenses ───
   // Le hook useBadges est appelé inconditionnellement (règle des hooks).
@@ -255,37 +320,33 @@ export function ProfilPage() {
     }
   }
 
-  // SECT-NOTIF-STUDENT-1 : sauvegarde du handle Instagram en self-service.
-  // PATCH /api/users/me { instagram } — route réservée aux champs innocuous
-  // (le backend normalise : trim + strip @, "" = retrait du handle).
-  const handleSaveInstagram = async () => {
-    const handle = editInstagram.trim().replace(/^@+/, '')
-    if (handle && !/^[A-Za-z0-9._]{1,64}$/.test(handle)) {
-      toast.error('Handle Instagram invalide', {
-        description: 'Lettres, chiffres, point et underscore uniquement.',
-      })
-      return
-    }
+  // SECT-NOTIF-TELEGRAM-1 : connexion par deep-link — le lien ouvert porte
+  // le code personnel signé ; l'étudiant appuie Démarrer dans Telegram, le
+  // webhook lie le compte, le polling détecte la confirmation.
+  const handleConnectTelegram = () => {
+    if (!telegram?.link) return
+    window.open(telegram.link, '_blank', 'noopener,noreferrer')
+    setTelegramPolling(true)
+    toast.info('Finalisez dans Telegram', {
+      description: "Appuyez sur « Démarrer » (START) dans la conversation qui vient de s'ouvrir — la liaison sera détectée ici automatiquement.",
+    })
+  }
+
+  // Déconnexion du canal (DELETE /api/telegram/link — self-service).
+  const handleDisconnectTelegram = async () => {
     setIsSubmitting(true)
     try {
-      const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagram: handle }),
-      })
+      const res = await fetch('/api/telegram/link', { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.error || 'Erreur lors de la mise à jour')
+        throw new Error(data?.error || 'Erreur lors de la déconnexion')
       }
-      const data = await res.json()
-      useAuthStore.getState().setUser({ ...user, instagram: data.instagram ?? null })
-      toast.success('Instagram enregistré', {
-        description: handle
-          ? 'Vous recevrez les annonces pédagogiques par DM Instagram.'
-          : 'Le canal Instagram a été retiré.',
+      setTelegram((prev) => (prev ? { ...prev, connected: false, username: '' } : prev))
+      toast.success('Telegram déconnecté', {
+        description: 'Vous ne recevrez plus les annonces par Telegram (email et application restent actifs).',
       })
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Impossible de mettre à jour'
+      const message = err instanceof Error ? err.message : 'Impossible de déconnecter'
       toast.error(message)
     } finally {
       setIsSubmitting(false)
@@ -440,59 +501,92 @@ export function ProfilPage() {
             </CardContent>
           </Card>
 
-          {/* ─── SECT-NOTIF-STUDENT-1 : canal Instagram ─── */}
+          {/* ─── SECT-NOTIF-TELEGRAM-1 : canal Telegram (bot partagé) ─── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg font-display tracking-tight flex items-center gap-2">
-                <Instagram className="h-5 w-5 text-[#E1306C]" />
-                Notifications Instagram
+                <Send className="h-5 w-5 text-[#229ED9]" />
+                Notifications Telegram
               </CardTitle>
               <CardDescription>
                 Recevez les annonces pédagogiques (évaluations disponibles,
                 nouveaux documents de cours, nouveaux ouvrages) par message
-                direct Instagram.
+                Telegram — un simple bouton, sans saisie de pseudo.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="instagram">Votre handle Instagram</Label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">@</span>
-                  <Input
-                    id="instagram"
-                    value={editInstagram}
-                    onChange={(e) => setEditInstagram(e.target.value)}
-                    placeholder="votre.pseudo"
-                    className="pl-8"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Sans le @. Laissez vide pour désactiver ce canal — vous
-                  recevrez toujours les notifications par email et dans
-                  l&apos;application.
+              {telegramLoading ? (
+                <p className="text-sm text-muted-foreground">Vérification du canal…</p>
+              ) : !telegram?.enabled ? (
+                <p className="text-sm text-muted-foreground">
+                  Ce canal n&apos;est pas encore activé par l&apos;administration
+                  de votre établissement — les notifications restent actives par
+                  email et dans l&apos;application.
                 </p>
-              </div>
-              <Button
-                onClick={handleSaveInstagram}
-                disabled={isSubmitting || editInstagram.trim().replace(/^@+/, '') === (user?.instagram ?? '')}
-                className="w-full"
-                variant="outline"
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    Enregistrement...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <Instagram className="h-4 w-4" />
-                    Enregistrer mon handle
-                  </span>
-                )}
-              </Button>
+              ) : telegram.connected ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      Connecté
+                    </Badge>
+                    {telegram.username ? (
+                      <span className="text-sm font-medium">@{telegram.username}</span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">votre compte Telegram</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Les annonces arrivent dans votre conversation avec le bot SECT.
+                    Pour arrêter depuis Telegram : envoyez <code className="rounded bg-muted px-1 py-0.5 text-[11px]">/stop</code> au bot.
+                  </p>
+                  <Button
+                    onClick={handleDisconnectTelegram}
+                    disabled={isSubmitting}
+                    className="w-full"
+                    variant="outline"
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        Déconnexion...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Send className="h-4 w-4" />
+                        Déconnecter Telegram
+                      </span>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Le bouton ouvre Telegram avec votre code de liaison personnel :
+                    appuyez sur « Démarrer », la confirmation revient ici toute seule.
+                  </p>
+                  <Button
+                    onClick={handleConnectTelegram}
+                    className="w-full"
+                    variant="outline"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Send className="h-4 w-4" />
+                      Connecter Telegram
+                    </span>
+                  </Button>
+                  {telegramPolling && (
+                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      En attente de votre « Démarrer » dans Telegram…
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Vous recevrez toujours les notifications par email et dans
+                    l&apos;application — Telegram est un canal en plus.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -518,9 +612,9 @@ export function ProfilPage() {
               />
               <Separator />
               <InfoRow
-                icon={Instagram}
-                label="Instagram"
-                value={user.instagram ? `@${user.instagram}` : 'Non renseigné'}
+                icon={Send}
+                label="Telegram"
+                value={telegram?.connected ? (telegram.username ? `@${telegram.username}` : 'Connecté') : 'Non connecté'}
               />
               <Separator />
               <InfoRow

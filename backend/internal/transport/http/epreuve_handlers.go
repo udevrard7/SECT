@@ -252,7 +252,7 @@ func (s *Server) updateEpreuve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// SECT-NOTIF-STUDENT-1 : annonce « une évaluation est disponible » aux
-	// étudiants de la filière (in-app + SSE + push + email + Instagram DM,
+	// étudiants de la filière (in-app + SSE + push + email + Telegram,
 	// fire-and-forget). Déclenchée sur la transition BROUILLON → PLANIFIEE
 	// (action « publier ») — l'épreuve devient visible des étudiants.
 	if input.Action != nil && *input.Action == "publier" && e != nil && e.Statut == domain.StatutPlanifiee {

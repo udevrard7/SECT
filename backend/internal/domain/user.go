@@ -33,22 +33,17 @@ const (
 
 // User est l'entité utilisateur centrale.
 type User struct {
-	ID              string  `json:"id"`
-	Email           string  `json:"email"`
-	Name            string  `json:"name"`
-	Role            Role    `json:"role"`
-	EtablissementID *string `json:"etablissementId,omitempty"`
-	FiliereID       *string `json:"filiereId,omitempty"`
-	Image           *string `json:"image,omitempty"`
-	Actif           bool    `json:"actif"`
-	MustChangePwd   bool    `json:"mustChangePwd"`
-	Matricule       *string `json:"matricule,omitempty"`
-	Niveau          *string `json:"niveau,omitempty"`
-	// SECT-NOTIF-STUDENT-1 : handle Instagram (sans @) renseigné en
-	// self-service (PATCH /api/users/me) pour recevoir les notifications
-	// pédagogiques (évaluation disponible, nouveau document, nouvel ouvrage)
-	// via l'API Instagram Messaging. Vide/NULL = canal Instagram skip.
-	Instagram         *string    `json:"instagram,omitempty"`
+	ID                string     `json:"id"`
+	Email             string     `json:"email"`
+	Name              string     `json:"name"`
+	Role              Role       `json:"role"`
+	EtablissementID   *string    `json:"etablissementId,omitempty"`
+	FiliereID         *string    `json:"filiereId,omitempty"`
+	Image             *string    `json:"image,omitempty"`
+	Actif             bool       `json:"actif"`
+	MustChangePwd     bool       `json:"mustChangePwd"`
+	Matricule         *string    `json:"matricule,omitempty"`
+	Niveau            *string    `json:"niveau,omitempty"`
 	DerniereConnexion *time.Time `json:"derniereConnexion,omitempty"`
 	CreatedAt         time.Time  `json:"createdAt"`
 	UpdatedAt         time.Time  `json:"updatedAt"`
@@ -135,8 +130,6 @@ type UpdateUserInput struct {
 	Password        *string `json:"password,omitempty"`
 	Matricule       *string `json:"matricule,omitempty"`
 	Niveau          *string `json:"niveau,omitempty"`
-	// SECT-NOTIF-STUDENT-1 : handle Instagram (self-service ou admin).
-	Instagram *string `json:"instagram,omitempty"`
 }
 
 // UserRepository définit l'interface pour accéder aux utilisateurs.

@@ -455,10 +455,10 @@ func main() {
 	// FCM mobile push (canal 5). nil = FCM désactivé (dev mode).
 	fcmSender := notification.NewFCMSender(pool, logger, cfg.FirebaseProjectID, cfg.FirebaseServiceAccountKey)
 
-	// SECT-NOTIF-STUDENT-1 : canal 7 — DM Instagram (API Instagram Messaging).
-	// nil si INSTAGRAM_USER_ID / INSTAGRAM_ACCESS_TOKEN absents (dev mode).
-	instagramSender := notification.NewInstagramSender(
-		cfg.InstagramUserID, cfg.InstagramAccessToken, cfg.InstagramAPIVersion, logger)
+	// SECT-NOTIF-TELEGRAM-1 : canal 7 — bot Telegram partagé (Bot API, gratuit).
+	// nil si TELEGRAM_BOT_TOKEN absent (dev mode). Remplace l'InstagramSender
+	// retiré avec le canal Instagram (compte business Meta trop coûteux).
+	telegramSender := notification.NewTelegramSender(cfg.TelegramBotToken, logger)
 
 	notifDispatcher := notification.New(pool, mailSvc, logger, func(userID string, event notification.SSEEvent) {
 		// Adaptateur : le hub SSE attend transport/http.SSEEventAdapter,
@@ -471,8 +471,25 @@ func main() {
 		})
 	}, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, fcmSender)
 	server.WithNotificationDispatcher(notifDispatcher)
-	// SECT-NOTIF-STUDENT-1 : injection du canal Instagram (nil-safe).
-	notifDispatcher.WithInstagramSender(instagramSender)
+	// SECT-NOTIF-TELEGRAM-1 : injection du canal Telegram (nil-safe) + deps
+	// du serveur (webhook sécurisé par secret, clé HMAC des codes de liaison
+	// dérivée du JWT_SECRET — même durée de vie que les tokens).
+	notifDispatcher.WithTelegramSender(telegramSender)
+	server.WithTelegramDeps(telegramSender, cfg.TelegramWebhookSecret, cfg.JWTSecret)
+	// Enregistrement automatique du webhook Telegram (idempotent) — uniquement
+	// si les 3 vars sont posées (l'instance OCI primaire porte TELEGRAM_WEBHOOK_URL ;
+	// le standby Render ne la pose pas → pas de flip-flop setWebhook). Asynchrone :
+	// le boot n'attend jamais l'API Telegram.
+	if telegramSender != nil && cfg.TelegramWebhookURL != "" && cfg.TelegramWebhookSecret != "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := telegramSender.EnsureWebhook(ctx, cfg.TelegramWebhookURL, cfg.TelegramWebhookSecret); err != nil {
+				logger.Warn("Telegram webhook registration failed (le canal fonctionne une fois corrigé)",
+					"url", cfg.TelegramWebhookURL, "error", err)
+			}
+		}()
+	}
 	// ADR-0011 §6 — plus de « CRITICAL muet » : chaque événement CRITICAL
 	// inséré (panic, escalade) notifie les ADMIN actifs via le dispatcher
 	// (in-app + SSE + push + email selon préférences). Throttle 15 min pour
@@ -531,7 +548,8 @@ func main() {
 	logger.Info("Notification dispatcher configured",
 		"pushEnabled", cfg.VAPIDPublicKey != "",
 		"fcmEnabled", fcmSender != nil,
-		"instagramEnabled", instagramSender != nil)
+		"telegramEnabled", telegramSender != nil,
+		"telegramWebhook", cfg.TelegramWebhookURL != "")
 
 	// SECT-NOTIF-CLOTURE-1 : injecte le dispatcher dans PromotionUseCase
 	// pour que la clôture notifie chaque étudiant (promu/redoublant/diplômé).
