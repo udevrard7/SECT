@@ -40,7 +40,8 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 		row := tx.QueryRow(ctx, `
                         SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
                                u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
-                               u."derniereConnexion", u."createdAt", u."updatedAt", u."deletedAt"
+                               u."derniereConnexion", u."createdAt", u."updatedAt", u."deletedAt",
+                               u."instagram"
                         FROM "User" u
                         WHERE u."id" = $1
                 `, id)
@@ -83,7 +84,8 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain
 		row := tx.QueryRow(ctx, `
                         SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
                                "image", "actif", "mustChangePwd", "matricule", "niveau",
-                               "derniereConnexion", "createdAt", "updatedAt", "deletedAt"
+                               "derniereConnexion", "createdAt", "updatedAt", "deletedAt",
+                               "instagram"
                         FROM "User"
                         WHERE "email" = $1 AND "actif" = true
                 `, email)
@@ -198,6 +200,7 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
                         SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
                                u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
                                u."derniereConnexion", u."createdAt", u."updatedAt", u."deletedAt",
+                               u."instagram",
                                e."id", e."nom",
                                f."id", f."nom", f."code"
                         FROM "User" u
@@ -224,6 +227,7 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
 				&user.EtablissementID, &user.FiliereID, &user.Image,
 				&user.Actif, &user.MustChangePwd, &user.Matricule, &user.Niveau,
 				&user.DerniereConnexion, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt,
+				&user.Instagram,
 				&etabID, &etabNom,
 				&filID, &filNom, &filCode,
 			)
@@ -301,7 +305,8 @@ func (r *UserRepository) Create(ctx context.Context, input domain.CreateUserInpu
                         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9, $10, $11, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
                                   "image", "actif", "mustChangePwd", "matricule", "niveau",
-                                  "derniereConnexion", "createdAt", "updatedAt", "deletedAt"
+                                  "derniereConnexion", "createdAt", "updatedAt", "deletedAt",
+                                  "instagram"
                 `, userID, input.Email, input.Name, passwordHash, input.Role,
 			nullableStrPtr(input.EtablissementID), nullableStrPtr(input.FiliereID),
 			actif, mustChangePwd, nullableStrPtr(input.Matricule), niveau)
@@ -368,6 +373,9 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
 		if input.Niveau != nil {
 			addSet("niveau", nullableStrPtrEmptyNull(input.Niveau))
 		}
+		if input.Instagram != nil {
+			addSet("instagram", nullableStrPtrEmptyNull(input.Instagram))
+		}
 		if passwordHash != nil {
 			addSet("password", *passwordHash)
 			addSet("mustChangePwd", false)
@@ -378,7 +386,8 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
 			row := tx.QueryRow(ctx, `
                                 SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
                                        "image", "actif", "mustChangePwd", "matricule", "niveau",
-                                       "derniereConnexion", "createdAt", "updatedAt", "deletedAt"
+                                       "derniereConnexion", "createdAt", "updatedAt", "deletedAt",
+                                       "instagram"
                                 FROM "User" WHERE "id" = $1
                         `, id)
 			currentUser, err := scanUser(row)
@@ -399,7 +408,8 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
                         UPDATE "User" SET %s WHERE "id" = $%d
                         RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
                                   "image", "actif", "mustChangePwd", "matricule", "niveau",
-                                  "derniereConnexion", "createdAt", "updatedAt", "deletedAt"
+                                  "derniereConnexion", "createdAt", "updatedAt", "deletedAt",
+                                  "instagram"
                 `, strings.Join(setClauses, ", "), argIdx)
 
 		row := tx.QueryRow(ctx, updateSQL, args...)
@@ -700,7 +710,8 @@ func (r *UserRepository) ListOrphanUsers(ctx context.Context) ([]*domain.User, e
 		rows, err := tx.Query(ctx, `
                         SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
                                u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
-                               u."derniereConnexion", u."createdAt", u."updatedAt", u."deletedAt"
+                               u."derniereConnexion", u."createdAt", u."updatedAt", u."deletedAt",
+                               u."instagram"
                         FROM "User" u
                         WHERE u."actif" = false
                           AND (u."etablissementId" IS NULL OR u."etablissementId" = '')
@@ -736,6 +747,7 @@ func scanUser(s scanner) (*domain.User, error) {
 		&u.EtablissementID, &u.FiliereID, &u.Image,
 		&u.Actif, &u.MustChangePwd, &u.Matricule, &u.Niveau,
 		&u.DerniereConnexion, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
+		&u.Instagram,
 	)
 	if err != nil {
 		return nil, err

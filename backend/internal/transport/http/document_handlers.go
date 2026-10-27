@@ -112,6 +112,13 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECT-NOTIF-STUDENT-1 : annonce « nouveau document de cours » aux
+	// étudiants de la filière de l'UE rattachée (in-app + SSE + push +
+	// email + Instagram DM, fire-and-forget). Best-effort : jamais bloquant.
+	if result != nil && result.Document != nil {
+		s.notifyDocumentPublished(claims, result.Document)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(result)

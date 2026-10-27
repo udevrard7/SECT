@@ -514,6 +514,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listUsers)
 
+			// SECT-NOTIF-STUDENT-1 : self-service du profil courant (tous
+			// rôles — champs innocuous uniquement, ex: handle Instagram des
+			// notifications). Déclarée AVANT /{id} : chi matcherait sinon
+			// "me" comme un paramètre id (même leçon que /import, E2).
+			r.Patch("/me", s.updateMeInstagram)
+
 			// SECT-USER-CLEANUP-INFRA-1 : routes admin pour la gestion des orphelins.
 			// Déclarées AVANT /{id} pour éviter le conflit de routing chi.
 			// - GET /orphans : liste les users orphelins (actif=false, sans étab)

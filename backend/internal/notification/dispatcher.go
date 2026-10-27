@@ -14,6 +14,14 @@
 //     (SECT-NOTIF-VAPID-1). Non bloquant si VAPID absent.
 //  4. Email transactionnel : si la préférence emailEnabled=true pour la
 //     catégorie ET un mailer configuré. Non bloquant.
+//  5. FCM mobile push : si FCMSender configuré (Android + iOS).
+//  6. (Canal historiquement réservé — cf. SkipInApp pour le fanout diffusion.)
+//  7. Instagram DM (SECT-NOTIF-STUDENT-1) : si la préférence
+//     instagramEnabled=true pour la catégorie, un handle User.instagram
+//     renseigné ET un InstagramSender configuré (INSTAGRAM_USER_ID +
+//     INSTAGRAM_ACCESS_TOKEN sur le compte business de l'établissement).
+//     Non bloquant, non configurable en échec : une erreur Meta est
+//     journalisée et les autres canaux continuent.
 //
 // L'API est volontairement simple : `dispatcher.Dispatch(ctx, event)`. Les
 // modules métier n'ont pas à connaître les canaux — le dispatcher lit les
@@ -111,6 +119,11 @@ type Dispatcher struct {
 	// FCM mobile push (canal 5). nil = FCM désactivé (dev mode).
 	fcmSender *FCMSender
 
+	// instagramSender (canal 7 — SECT-NOTIF-STUDENT-1) : DM Instagram via
+	// l'API Messaging. nil = Instagram désactivé (dev mode). Injecté via
+	// WithInstagramSender (évite de casser la signature New historique).
+	instagramSender *InstagramSender
+
 	// broadcastSSE est une fonction injectée (pour éviter une dépendance
 	// circulaire avec transport/http). Elle est wirée dans main.go après
 	// création du hub. nil = pas de SSE (tests unitaires).
@@ -145,6 +158,16 @@ func New(pool *pgxpool.Pool, m mailer.Mailer, logger *slog.Logger, broadcastSSE 
 		vapidSubject:    vapidSubject,
 		fcmSender:       fcmSender,
 	}
+}
+
+// WithInstagramSender injecte le canal 7 (DM Instagram) dans le dispatcher.
+// nil-safe : un sender nil désactive le canal. Pattern WithGeniusPay.
+func (d *Dispatcher) WithInstagramSender(sender *InstagramSender) *Dispatcher {
+	if d == nil {
+		return d
+	}
+	d.instagramSender = sender
+	return d
 }
 
 // Dispatch envoie un Event via les canaux appropriés (in-app + SSE + push +
@@ -222,11 +245,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 		insertCtx := context.Background()
 		insertErr = db.WithTx(insertCtx, d.pool, db.SystemClaims(), func(tx pgx.Tx) error {
 			_, err := tx.Exec(insertCtx, `
-	                        INSERT INTO "NotificationAdmin"
-	                                ("id", "type", "titre", "message", "destinataireId", "destinataireRole",
-	                                 "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
-	                                 "expireLe", "createdAt")
-	                        VALUES ($1, $2, $3, $4, $5, NULL, false, $6, $7, $8, $9, $10, $11, NOW())`,
+                                INSERT INTO "NotificationAdmin"
+                                        ("id", "type", "titre", "message", "destinataireId", "destinataireRole",
+                                         "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
+                                         "expireLe", "createdAt")
+                                VALUES ($1, $2, $3, $4, $5, NULL, false, $6, $7, $8, $9, $10, $11, NOW())`,
 				notifID, event.Type, event.Titre, event.Message, event.UserID,
 				actionURL, actionLabel, event.Priorite, event.Categorie, icone, expiresAt)
 			return err
@@ -265,31 +288,40 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 	if d.fcmSender != nil {
 		d.fcmSender.SendToUser(ctx, event.UserID, ssePayload)
 	}
+
+	// 7. Instagram DM (SECT-NOTIF-STUDENT-1) — handle User.instagram requis
+	// + préférence instagramEnabled (défaut true) + sender configuré.
+	if pref.instagramEnabled && d.instagramSender != nil {
+		d.sendInstagram(ctx, event, ssePayload)
+	}
 }
 
 // preferenceResult contient les préférences pour une catégorie.
 type preferenceResult struct {
-	pushEnabled  bool
-	emailEnabled bool
+	pushEnabled      bool
+	emailEnabled     bool
+	instagramEnabled bool
 }
 
 // fetchPreferences lit NotificationPreference pour (userId, categorie).
-// Si aucune ligne n'existe, retourne les défauts (push=true, email=true).
+// Si aucune ligne n'existe, retourne les défauts (push=true, email=true,
+// instagram=true — SECT-NOTIF-STUDENT-1 : COALESCE instagramEnabled, la
+// migration 000141 pose la colonne avec DEFAULT true).
 // Non bloquant : si la lecture échoue, retourne les défauts.
 func (d *Dispatcher) fetchPreferences(ctx context.Context, userID, categorie string) preferenceResult {
-	def := preferenceResult{pushEnabled: true, emailEnabled: true}
-	var push, email bool
+	def := preferenceResult{pushEnabled: true, emailEnabled: true, instagramEnabled: true}
+	var push, email, instagram bool
 	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-                SELECT "pushEnabled", "emailEnabled"
+                SELECT "pushEnabled", "emailEnabled", COALESCE("instagramEnabled", true)
                 FROM "NotificationPreference"
-                WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email)
+                WHERE "userId" = $1 AND "categorie" = $2`, userID, categorie).Scan(&push, &email, &instagram)
 	})
 	if err != nil {
 		// Pas de ligne (ou erreur) → défauts
 		return def
 	}
-	return preferenceResult{pushEnabled: push, emailEnabled: email}
+	return preferenceResult{pushEnabled: push, emailEnabled: email, instagramEnabled: instagram}
 }
 
 // sendPush envoie une notification web push à l'utilisateur via les
@@ -401,6 +433,48 @@ func (d *Dispatcher) sendEmail(userID string, email EmailContent) {
 				"userId", userID, "to", to, "subject", email.Subject, "error", err)
 		}
 	}()
+}
+
+// sendInstagram envoie un DM Instagram à l'utilisateur (canal 7 —
+// SECT-NOTIF-STUDENT-1) via l'API Instagram Messaging, si l'utilisateur a
+// renseigné son handle (User.instagram) et que le sender est configuré.
+// Non bloquant : erreur Meta → log + skip (les autres canaux continuent).
+//
+// Le texte du DM est construit à partir de l'Event (titre + message + lien
+// d'action si fourni) — format court adapté à la messagerie Instagram.
+func (d *Dispatcher) sendInstagram(ctx context.Context, event Event, payload map[string]any) {
+	// Récupérer le handle Instagram du user (claims système — service).
+	var handle string
+	err := db.WithSystemTx(ctx, d.pool, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT COALESCE("instagram", '') FROM "User" WHERE "id" = $1`, event.UserID).Scan(&handle)
+	})
+	if err != nil {
+		d.logger.Warn("notification.sendInstagram: user handle lookup failed",
+			"userId", event.UserID, "error", err)
+		return
+	}
+	if handle == "" {
+		return // pas de handle renseigné → canal skip (normal)
+	}
+
+	// Construire le texte du DM (court, avec lien d'action si présent).
+	text := "🔔 " + event.Titre + "\n" + event.Message
+	if event.ActionURL != "" {
+		text += "\n\n👉 " + event.ActionURL
+	}
+	text += "\n\n— SECT"
+
+	// Timeout court : le DM ne doit jamais retarder la réponse HTTP.
+	dmCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := d.instagramSender.SendDM(dmCtx, handle, text); err != nil {
+		d.logger.Warn("notification.sendInstagram: DM send failed",
+			"userId", event.UserID, "handle", handle, "type", event.Type, "error", err)
+		return
+	}
+	d.logger.Info("Instagram DM sent",
+		"userId", event.UserID, "handle", handle, "type", event.Type)
 }
 
 // FormatRFC3339 helper pour les timestamps (utilisé par les callers).

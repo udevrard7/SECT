@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mail,
+  User,
   Lock,
   Eye,
   EyeOff,
@@ -44,13 +45,25 @@ import {
 
 type LoginMode = 'personnel' | 'etudiant'
 
+// SECT-LOGIN-MATRICULE-1 : le backend (find_user_for_auth) accepte email OU
+// matricule pour TOUS les rôles — la validation cliente ne doit jamais être
+// plus stricte que le serveur. Avant : z.string().email() strict sur le mode
+// personnel (défaut) → un étudiant qui tapait son matricule sans cliquer
+// l'onglet « Étudiant » était bloqué côté client par « adresse email
+// invalide » alors que le backend SAIT résoudre le matricule. Désormais les
+// deux modes acceptent les deux identifiants (le serveur décide).
+const identifierSchema = z
+  .string()
+  .trim()
+  .min(2, 'Veuillez entrer votre matricule ou votre email')
+
 const personnelSchema = z.object({
-  identifier: z.string().email('Veuillez entrer une adresse email valide'),
+  identifier: identifierSchema,
   password: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
 })
 
 const etudiantSchema = z.object({
-  identifier: z.string().min(3, 'Veuillez entrer votre matricule ou email'),
+  identifier: identifierSchema,
   password: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
 })
 
@@ -127,7 +140,10 @@ function AnimatedCounter({ value, suffix = '', duration = 1.5 }: { value: number
 // ═══════════════════════════════════════════════════════════════
 
 export function LoginForm() {
-  const [loginMode, setLoginMode] = useState<LoginMode>('personnel')
+  // SECT-LOGIN-MATRICULE-1 : défaut ÉTUDIANT (audience majoritaire). Le mode
+  // ne conditionne plus la validation (les deux acceptent email OU matricule)
+  // — il ne reste qu'une présélection cosmétique d'onglet.
+  const [loginMode, setLoginMode] = useState<LoginMode>('etudiant')
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   // SESSION-TIMEOUT-1 : bannière informative quand on arrive de /login?error=SessionExpired
@@ -199,13 +215,17 @@ export function LoginForm() {
 
   const onSubmit = useCallback(async (data: PersonnelFormValues | EtudiantFormValues) => {
     setLoginError(null)
-    setLastCredentials({ identifier: data.identifier, password: data.password })
+    // SECT-LOGIN-MATRICULE-1 : trim systématique (copier-coller avec espace
+    // final = 1re cause d'échec). Le backend matche aussi en insensible
+    // casse (migration 000141), on envoie la valeur nettoyée.
+    const identifier = data.identifier.trim()
+    setLastCredentials({ identifier, password: data.password })
     try {
       let success = false
       if (loginMode === 'etudiant') {
-        success = await loginStudent(data.identifier, data.password)
+        success = await loginStudent(identifier, data.password)
       } else {
-        success = await login(data.identifier, data.password)
+        success = await login(identifier, data.password)
       }
       // SECT-B2C-MULTI-ETAB : si multiAccounts est présent, le store a reçu
       // la liste des établissements. On les affiche pour choix.
@@ -282,7 +302,9 @@ export function LoginForm() {
   }, [resetEmail])
 
   const isPersonnel = loginMode === 'personnel'
-  const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule ou Email'
+  // SECT-LOGIN-MATRICULE-1 : libellé unifié — les deux modes acceptent
+  // email OU matricule (validation identique, le backend décide).
+  const identifierLabel = 'Matricule ou Email'
 
   // Données pour les stats animées
   const stats = [
@@ -715,11 +737,14 @@ export function LoginForm() {
                 </motion.div>
               </AnimatePresence>
               <div className="relative group">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
                 <Input
                   id="identifier"
-                  type={isPersonnel ? 'email' : 'text'}
-                  placeholder={isPersonnel ? 'votre.email@universite.fr' : 'ETU-XXXXXX ou email'}
+                  type="text"
+                  placeholder="Votre matricule ou votre email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   autoComplete="username"
                   className="pl-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/60 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
                   {...form.register('identifier')}

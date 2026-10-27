@@ -368,11 +368,28 @@ func (s *Server) updateOuvrage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECT-NOTIF-STUDENT-1 : PATCH statut=VALIDE — même garde que
+	// validerOuvrage : ne notifier que la transition BROUILLON→VALIDE
+	// (pas les re-PATCH idempotents sur un ouvrage déjà validé).
+	wasBrouillon := false
+	if input.Statut != nil && *input.Statut == domain.StatutOuvrageValide {
+		if before, errB := s.ouvrageUC.GetByID(r.Context(), claims, chi.URLParam(r, "id")); errB == nil {
+			wasBrouillon = before.Statut == domain.StatutOuvrageBrouillon
+		}
+	}
+
 	updated, err := s.ouvrageUC.Update(r.Context(), claims, chi.URLParam(r, "id"), input)
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return
 	}
+
+	// SECT-NOTIF-STUDENT-1 : annonce « nouvel ouvrage en bibliothèque »
+	// (fire-and-forget — cf. student_notify.go).
+	if wasBrouillon && updated != nil && updated.Statut == domain.StatutOuvrageValide {
+		s.notifyOuvragePublished(claims, updated)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ouvrage": updated})
 }
@@ -625,11 +642,28 @@ func (s *Server) validerOuvrage(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
+	// SECT-NOTIF-STUDENT-1 : lire le statut AVANT validation pour ne
+	// notifier la transition BROUILLON→VALIDE qu'une seule fois (l'appel
+	// idempotent sur un ouvrage déjà VALIDE ne re-notifie pas).
+	wasBrouillon := false
+	if before, errB := s.ouvrageUC.GetByID(r.Context(), claims, chi.URLParam(r, "id")); errB == nil {
+		wasBrouillon = before.Statut == domain.StatutOuvrageBrouillon
+	}
+
 	o, err := s.ouvrageUC.ValiderOuvrage(r.Context(), claims, chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return
 	}
+
+	// SECT-NOTIF-STUDENT-1 : annonce « nouvel ouvrage en bibliothèque » aux
+	// étudiants de la filière recommandée (in-app + SSE + push + email +
+	// Instagram DM, fire-and-forget). Uniquement sur la validation réelle —
+	// un BROUILLON est invisible des étudiants (modération 000137).
+	if wasBrouillon && o != nil && o.Statut == domain.StatutOuvrageValide {
+		s.notifyOuvragePublished(claims, o)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ouvrage": o})
 }

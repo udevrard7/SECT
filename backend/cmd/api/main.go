@@ -455,6 +455,11 @@ func main() {
 	// FCM mobile push (canal 5). nil = FCM désactivé (dev mode).
 	fcmSender := notification.NewFCMSender(pool, logger, cfg.FirebaseProjectID, cfg.FirebaseServiceAccountKey)
 
+	// SECT-NOTIF-STUDENT-1 : canal 7 — DM Instagram (API Instagram Messaging).
+	// nil si INSTAGRAM_USER_ID / INSTAGRAM_ACCESS_TOKEN absents (dev mode).
+	instagramSender := notification.NewInstagramSender(
+		cfg.InstagramUserID, cfg.InstagramAccessToken, cfg.InstagramAPIVersion, logger)
+
 	notifDispatcher := notification.New(pool, mailSvc, logger, func(userID string, event notification.SSEEvent) {
 		// Adaptateur : le hub SSE attend transport/http.SSEEventAdapter,
 		// le dispatcher utilise notification.SSEEvent (pas de dépendance
@@ -466,6 +471,8 @@ func main() {
 		})
 	}, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, fcmSender)
 	server.WithNotificationDispatcher(notifDispatcher)
+	// SECT-NOTIF-STUDENT-1 : injection du canal Instagram (nil-safe).
+	notifDispatcher.WithInstagramSender(instagramSender)
 	// ADR-0011 §6 — plus de « CRITICAL muet » : chaque événement CRITICAL
 	// inséré (panic, escalade) notifie les ADMIN actifs via le dispatcher
 	// (in-app + SSE + push + email selon préférences). Throttle 15 min pour
@@ -521,7 +528,10 @@ func main() {
 	// SECT-OCI-HYBRID-1 : expose à /overview si les workers tournent ici.
 	server.WithWorkersEnabled(cfg.WorkersEnabled)
 	server.WithVapidPublicKey(cfg.VAPIDPublicKey)
-	logger.Info("Notification dispatcher configured", "pushEnabled", cfg.VAPIDPublicKey != "", "fcmEnabled", fcmSender != nil)
+	logger.Info("Notification dispatcher configured",
+		"pushEnabled", cfg.VAPIDPublicKey != "",
+		"fcmEnabled", fcmSender != nil,
+		"instagramEnabled", instagramSender != nil)
 
 	// SECT-NOTIF-CLOTURE-1 : injecte le dispatcher dans PromotionUseCase
 	// pour que la clôture notifie chaque étudiant (promu/redoublant/diplômé).

@@ -90,6 +90,14 @@ type Config struct {
 	FirebaseProjectID         string
 	FirebaseServiceAccountKey string // JSON string of service account key (base64 encoded)
 
+	// SECT-NOTIF-STUDENT-1 : Instagram DM (canal 7 du dispatcher).
+	// Compte Instagram BUSINESS/CRÉATEUR de l'établissement relié à une page
+	// Facebook + token d'accès longue durée. Si INSTAGRAM_USER_ID ou
+	// INSTAGRAM_ACCESS_TOKEN est vide, le canal est désactivé (dev mode).
+	InstagramUserID      string
+	InstagramAccessToken string
+	InstagramAPIVersion  string // optionnel, défaut v23.0
+
 	// ADR-0012 (monitoring P5) — alerting externe. Les deux sont optionnels :
 	// non configurés, les canaux sont journalisés + l'UI indique quoi configurer
 	// (jamais de silence feint — cf. channels de GET /api/monitoring/rules).
@@ -183,6 +191,11 @@ func Load() (*Config, error) {
 		// Firebase Cloud Messaging (FCM) for mobile push.
 		FirebaseProjectID:         getEnv("FIREBASE_PROJECT_ID", ""),
 		FirebaseServiceAccountKey: getEnv("FIREBASE_SERVICE_ACCOUNT_KEY", ""),
+
+		// SECT-NOTIF-STUDENT-1 : Instagram DM (canal 7).
+		InstagramUserID:      getEnv("INSTAGRAM_USER_ID", ""),
+		InstagramAccessToken: getEnv("INSTAGRAM_ACCESS_TOKEN", ""),
+		InstagramAPIVersion:  getEnv("INSTAGRAM_API_VERSION", "v23.0"),
 
 		// ADR-0012 (monitoring P5) — alerting externe.
 		SlackWebhookURL: getEnv("SLACK_WEBHOOK_URL", ""),

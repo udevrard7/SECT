@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import {
   User,
   Mail,
+  Instagram,
   Lock,
   Shield,
   Building2,
@@ -198,6 +199,9 @@ export function ProfilPage() {
   // Profile edit state
   const [editName, setEditName] = useState(user?.name ?? '')
   const [editEmail] = useState(user?.email ?? '') // Email is read-only
+  // SECT-NOTIF-STUDENT-1 : handle Instagram (canal DM des notifications
+  // pédagogiques — évaluations disponibles, nouveaux documents, ouvrages).
+  const [editInstagram, setEditInstagram] = useState(user?.instagram ?? '')
 
   // ─── Badges / récompenses ───
   // Le hook useBadges est appelé inconditionnellement (règle des hooks).
@@ -246,6 +250,43 @@ export function ProfilPage() {
       toast.success('Profil mis à jour avec succès')
     } catch {
       toast.error('Impossible de mettre à jour le profil')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // SECT-NOTIF-STUDENT-1 : sauvegarde du handle Instagram en self-service.
+  // PATCH /api/users/me { instagram } — route réservée aux champs innocuous
+  // (le backend normalise : trim + strip @, "" = retrait du handle).
+  const handleSaveInstagram = async () => {
+    const handle = editInstagram.trim().replace(/^@+/, '')
+    if (handle && !/^[A-Za-z0-9._]{1,64}$/.test(handle)) {
+      toast.error('Handle Instagram invalide', {
+        description: 'Lettres, chiffres, point et underscore uniquement.',
+      })
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instagram: handle }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Erreur lors de la mise à jour')
+      }
+      const data = await res.json()
+      useAuthStore.getState().setUser({ ...user, instagram: data.instagram ?? null })
+      toast.success('Instagram enregistré', {
+        description: handle
+          ? 'Vous recevrez les annonces pédagogiques par DM Instagram.'
+          : 'Le canal Instagram a été retiré.',
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Impossible de mettre à jour'
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -399,6 +440,62 @@ export function ProfilPage() {
             </CardContent>
           </Card>
 
+          {/* ─── SECT-NOTIF-STUDENT-1 : canal Instagram ─── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-display tracking-tight flex items-center gap-2">
+                <Instagram className="h-5 w-5 text-[#E1306C]" />
+                Notifications Instagram
+              </CardTitle>
+              <CardDescription>
+                Recevez les annonces pédagogiques (évaluations disponibles,
+                nouveaux documents de cours, nouveaux ouvrages) par message
+                direct Instagram.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="instagram">Votre handle Instagram</Label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">@</span>
+                  <Input
+                    id="instagram"
+                    value={editInstagram}
+                    onChange={(e) => setEditInstagram(e.target.value)}
+                    placeholder="votre.pseudo"
+                    className="pl-8"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Sans le @. Laissez vide pour désactiver ce canal — vous
+                  recevrez toujours les notifications par email et dans
+                  l&apos;application.
+                </p>
+              </div>
+              <Button
+                onClick={handleSaveInstagram}
+                disabled={isSubmitting || editInstagram.trim().replace(/^@+/, '') === (user?.instagram ?? '')}
+                className="w-full"
+                variant="outline"
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Enregistrement...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Instagram className="h-4 w-4" />
+                    Enregistrer mon handle
+                  </span>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Info summary */}
           <Card>
             <CardHeader>
@@ -418,6 +515,12 @@ export function ProfilPage() {
                 icon={Mail}
                 label="Adresse email"
                 value={user.email}
+              />
+              <Separator />
+              <InfoRow
+                icon={Instagram}
+                label="Instagram"
+                value={user.instagram ? `@${user.instagram}` : 'Non renseigné'}
               />
               <Separator />
               <InfoRow
