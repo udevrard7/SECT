@@ -7413,3 +7413,146 @@ document.go n'avait jamais reçu le traitement.
   réparé : **plusieurs bugs indépendants peuvent composer une même
   panne visible** — chaque maillon doit être vérifié E2E, pas seulement
   analysé.
+
+## SECT-NOTIF-STUDENT-1 + SECT-LOGIN-MATRICULE-1 — Notifications étudiantes email+Instagram et login matricule OU email (27 octobre 2026)
+
+**Date** : 2026-10-27 · **Commits** : bc3ecd01 (feature), 0e902cb5→449ef189 (workflow temporaire migration, créé puis supprimé) · **Migration** : 000141 (appliquée à Neon, schema_migrations=141)
+
+### Contexte
+
+Deux demandes de l'exploitant :
+1. « Notifier aux étudiants via Instagram et email lorsqu'une évaluation
+   est disponible, un nouveau document, un nouveau livre lié à la filière
+   dans la bibliothèque » ;
+2. « Normalement l'étudiant peut se connecter soit avec son matricule +
+   mot de passe soit avec email + mot de passe, mais actuellement seule
+   la connexion par email est valable — corriger ».
+
+### Diagnostic login (la cause racine était FRONTEND, pas backend)
+
+- Le backend a TOUJOURS su résoudre email OU matricule :
+  `find_user_for_auth` (000022) route par la présence de `@`, et
+  `LoginRequest{Identifier}` traverse intact jusqu'au SQL.
+- Le formulaire web (`login-form.tsx`) avait DEUX schémas Zod : le mode
+  **personnel** (MODE PAR DÉFAUT) avec `z.string().email()` strict. Un
+  étudiant qui saisissait son matricule sans cliquer l'onglet « Étudiant »
+  était bloqué CÔTÉ CLIENT par « Veuillez entrer une adresse email
+  valide » — la requête n'atteignait jamais le serveur. Pour
+  l'utilisateur : « seule la connexion par email marche ».
+- Second facteur silencieux : le SQL matchait `"matricule" =
+  p_identifier` en sensible à la casse et sans trim — un matricule
+  copié-collé avec espace final échouait même dans l'onglet Étudiant.
+
+### Réalisation login (SECT-LOGIN-MATRICULE-1)
+
+- Frontend : validation unifiée (email OU matricule, `.trim()`,
+  min 2) pour les DEUX modes — la validation cliente ne doit jamais être
+  plus stricte que le serveur ; défaut d'onglet sur ÉTUDIANT
+  (audience majoritaire) ; `type="text"` + autoCapitalize/autoCorrect off
+  (le `type="email"` force validation navigateur + clavier email) ;
+  libellé unique « Matricule ou Email » ; icône User au lieu de Mail ;
+  trim à la soumission (y compris replay multi-comptes).
+- Migration 000141 (partie A) : `find_user_for_auth` /
+  `find_users_for_auth` v2 — matching `lower(btrim(...))` insensible
+  casse + espaces (email ET matricule) ; index d'expression
+  `User_matricule_lower_btrim_idx` / `User_email_lower_btrim_idx`
+  (les lookups de login ne seq-scan plus `User`).
+
+### Réalisation notifications (SECT-NOTIF-STUDENT-1)
+
+Trois annonces pédagogiques fanoutées via le dispatcher central — chaque
+étudiant reçoit selon ses préférences : in-app (cloche + historique),
+SSE temps réel, web push (VAPID), email transactionnel (Resend), FCM
+mobile, et le NOUVEAU canal 7 Instagram DM :
+
+1. **EPREUVE_DISPONIBLE** — publication d'épreuve (action « publier »,
+   BROUILLON→PLANIFIEE, handler updateEpreuve) → étudiants actifs de la
+   filière de l'épreuve (fallback : établissement du publicateur) ;
+   action `/mes-epreuves`.
+2. **DOCUMENT_PUBLIE** — dépôt de document (handler uploadDocument,
+   après 201) → étudiants de la filière de l'UE rattachée (résolution
+   UE→filière en SQL système) ; action `/exam-prep` (c'est là que
+   l'étudiant révise ses supports, policy étudiant-filière 000034).
+3. **OUVRAGE_PUBLIE** — validation d'ouvrage BROUILLON→VALIDE
+   (validerOuvrage ET PATCH statut=VALIDE, garde anti-double-notification
+   sur transition réelle — un BROUILLON est invisible des étudiants,
+   modération 000137) → étudiants de la filière recommandée de l'ouvrage
+   (fallback : établissement) ; action `/bibliotheque`.
+
+- Canal 7 Instagram : `InstagramSender` (API Instagram Messaging,
+  POST /{ig-user-id}/messages, recipient par username — handle
+  normalisé trim+strip@), configurable via `INSTAGRAM_USER_ID` +
+  `INSTAGRAM_ACCESS_TOKEN` (+ `INSTAGRAM_API_VERSION`, défaut v23.0) ;
+  nil-safe comme VAPID/FCM (jamais bloquant, erreur Meta = log + skip).
+- Colonnes 000141 (partie B) : `User.instagram` (handle, self-service)
+  + `NotificationPreference.instagramEnabled` (défaut true, opt-out par
+  catégorie, COALESCE défensif côté dispatcher).
+- Templates email `StudentAnnouncement` (baseTemplate DS commun : carte
+  crème contexte + bouton lime d'action) — texte + HTML.
+- `PATCH /api/users/me` (tous rôles, RLS self-update `id =
+  current_user_id()`) : champ instagram uniquement (regex handle
+  `[A-Za-z0-9._]{1,64}`, "" = retrait) — pourquoi une route dédiée :
+  PATCH /api/users/{id} est réservé ADMIN/RESP/ENS-B2C, un ÉTUDIANT ne
+  peut pas y éditer son profil.
+- Frontend : carte « Notifications Instagram » sur /profil (handle avec
+  préfixe @, sauvegarde /api/users/me, mise à jour du store) + InfoRow
+  résumé ; champ `instagram` exposé par /api/me (scanUser étendu) et
+  mappé dans auth-store (login + syncFromSession).
+- Fire-and-forget partout (goroutine + context.Background, pattern
+  fanoutSegmentNotification) : la mutation métier ne peut jamais
+  échouer ni être retardée par une notification.
+
+### Vérification E2E en production
+
+- CI : Backend CI ✓, Frontend CI ✓, Deploy OCI ✓ sur bc3ecd01.
+- Migration 000141 appliquée à Neon par workflow temporaire
+  (méthode BIBLIO-10 : transaction atomique dirty 141 → DDL + ASSERTs →
+  clean 141) : état préalable 140 clean ; post : **141 clean**,
+  User.instagram text + NotificationPreference.instagramEnabled boolean
+  présents, 2 index créés, fonctions v2 confirmées.
+- **Login matricule prouvé sur données réelles** : `find_user_for_auth(
+  lower(matricule_réel))` → MATCH=1 ; avec espaces parasites →
+  MATCH_SPACES=1.
+- Routes live (VM, localhost:8090) : PATCH /api/users/me sans auth →
+  **401** ; POST /api/auth/login mauvais identifiant → **401** (pas
+  500) ; zéro erreur SQL dans les logs docker.
+- **Navigateur réel sur sect.ftci.fr/login** : soumission d'un matricule
+  (« ETU-TEST-123 », onglet Étudiant par défaut) → « Matricule/email ou
+  mot de passe incorrect. » (message SERVEUR 401 — preuve que la
+  validation cliente laisse passer le matricule) ; mode Personnel +
+  matricule minuscule avec espaces finals → même comportement (401
+  serveur, plus aucun blocage « adresse email invalide ») ; 0 erreur
+  console ; capture login-final.png.
+
+### Activation du canal Instagram (à faire par l'exploitant)
+
+1. Passer le compte Instagram de l'établissement en BUSINESS/CRÉATEUR
+   et le relier à une page Facebook (prérequis Meta).
+2. Créer une app Meta for Developers avec l'autorisation
+   `instagram_business_basic` ou `instagram_business_manage_messages`.
+3. Récupérer l'IG user ID du compte + un token d'accès PAGE longue
+   durée.
+4. Poser `INSTAGRAM_USER_ID` et `INSTAGRAM_ACCESS_TOKEN` dans
+   `/opt/sect/.env` (VM OCI) puis `docker compose up -d` — le log de
+   démarrage affiche `instagramEnabled:true`.
+   Sans ces variables : le canal est désactivé (nil-safe) et les
+   étudiants reçoivent les annonces par les autres canaux — rien ne
+   casse. L'email (Resend) est déjà actif en production.
+
+### Leçons
+
+- **« Seul email fonctionne » peut être 100 % frontend** : le serveur
+  savait déjà tout faire — valider la chaîne complète (schéma Zod →
+  payload → SQL) avant de soupçonner le backend.
+- **Une validation cliente plus stricte que le serveur est une
+  régression d'UX déguisée** : l'onglet par défaut + `.email()` strict
+  bloquaient silencieusement le matricule depuis la première version.
+- **Le déploiement ne déclenche PAS les migrations** : le nouveau code
+  SELECTe `User."instagram"` dès bc3ecd01 — sans application immédiate
+  de 000141 (workflow temporaire, méthode BIBLIO-10), /api/me aurait
+  cassé pour tous les utilisateurs connectés (piège 42703 identique à
+  SECT-DOC-INSERT-1). Le reflex : migration appliquée AVANT/AVEC le
+  déploiement, jamais après.
+- **Notifier à la validation, pas au dépôt** : un ouvrage BROUILLON est
+  invisible des étudiants (modération 000137) — la garde de transition
+  évite les fausses annonces ET les doubles notifications idempotentes.
