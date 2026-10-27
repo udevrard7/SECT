@@ -649,9 +649,15 @@ export function DocumentsPage() {
           toast.warning(`${entry.file.name} — Avertissement`, {
             description: data.message || 'L\'extraction du texte a échoué.',
           })
+        } else if (data.document?.statutAnalyse === 'EN_ATTENTE') {
+          toast.warning(`${entry.file.name} importé sans analyse`, {
+            description: data.message || 'Le texte n\'a pas pu être extrait — le fichier est conservé, l\'analyse pourra être relancée.',
+            duration: 8000,
+          })
         } else {
           toast.success(`${entry.file.name} importé`, {
-            description: 'Le document a été importé avec succès.',
+            description: data.message || 'Le document a été importé avec succès — analyse IA en cours.',
+            duration: 8000,
           })
         }
       } catch (err) {
@@ -814,8 +820,12 @@ export function DocumentsPage() {
         throw new Error(errData.error || 'Erreur lors de l\'analyse')
       }
       const data = await res.json()
-      toast.success('Analyse terminée', {
-        description: data.analysis?.resumeCourt || 'Le document a été analysé avec succès.',
+      // SECT-DOC-IA-1 : l'analyse est ASYNCHRONE (202 + worker) — on affiche
+      // le message serveur tel quel au lieu d'un « Analyse terminée » mensonger
+      // qui laissait croire à un résultat déjà disponible.
+      toast.success('Analyse IA lancée', {
+        description: data.message || 'Le document est en cours d\'analyse — le statut sera mis à jour automatiquement.',
+        duration: 8000,
       })
       await refreshDocuments()
       const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
@@ -1223,6 +1233,15 @@ export function DocumentsPage() {
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     PDF, DOCX, PPTX, TXT, MD — Max 50 Mo — Jusqu&apos;à {MAX_UPLOAD_FILES} fichiers
+                  </p>
+                  {/* SECT-DOC-IA-1 : pedagogical expectation setting — l'analyse
+                      IA (chapitres, thèmes, concepts) est AUTOMATIQUE sur les
+                      formats texte-extractibles ; les scans PDF sans couche
+                      texte et les .doc/.ppt binaires restent stockés sans analyse. */}
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/80">
+                    Analyse IA automatique après import : chapitres, thèmes, concepts clés et volume de
+                    questions estimé. Les PDF scannés (images) et les .doc/.ppt binaires ne sont pas
+                    analysables — convertissez-les en PDF textuel, DOCX ou PPTX.
                   </p>
                   <input
                     ref={fileInputRef}
@@ -1694,6 +1713,25 @@ export function DocumentsPage() {
                 </div>
               )}
 
+              {/* SECT-DOC-IA-1 : bannière EN_ATTENTE actionnable — avant, le
+                  document restait muet (badge gris) sans expliquer QUE FAIRE.
+                  Le bouton « Analyser » re-tente l'extraction (R2 + pdftotext)
+                  côté serveur avant de lancer l'IA. */}
+              {selectedDocument.statutAnalyse === 'EN_ATTENTE' && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      Analyse IA non encore exécutée
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-800/90 dark:text-amber-200/90">
+                      {selectedDocument.erreurAnalyse || 'Le texte de ce document n’a pas encore été extrait.'}{' '}
+                      Lancez l’analyse ci-dessous — le texte est re-extrait automatiquement depuis le fichier stocké.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ─── Actions IA ─── */}
               <section className="space-y-3">
                 <h3 className="flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
@@ -1712,7 +1750,9 @@ export function DocumentsPage() {
                     ) : (
                       <Sparkles className="h-4 w-4 text-emerald-600" />
                     )}
-                    Résumer avec l&apos;IA
+                    {selectedDocument.statutAnalyse === 'ANALYSE'
+                      ? 'Ré-analyser avec l’IA'
+                      : 'Analyser avec l’IA'}
                   </Button>
                   <Button
                     variant="outline"
@@ -1726,7 +1766,8 @@ export function DocumentsPage() {
                 </div>
                 {selectedDocument.statutAnalyse !== 'ANALYSE' && selectedDocument.statutAnalyse !== 'ERREUR' && (
                   <p className="text-xs text-muted-foreground">
-                    L&apos;analyse doit être terminée pour générer des questions.
+                    L&apos;analyse produit les chapitres, thèmes, concepts clés et le volume de questions estimé —
+                    elle doit être terminée pour générer des questions.
                   </p>
                 )}
               </section>

@@ -334,7 +334,7 @@ func main() {
 		correctionWorker.RecoverInterruptedCorrections(context.Background())
 		correctionWorker.Start(context.Background())
 
-		docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger, aiService)
+		docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger, aiService, documentRepo)
 		docAnalyzer.RecoverInterruptedAnalyses(context.Background())
 		docAnalyzer.Start(context.Background())
 

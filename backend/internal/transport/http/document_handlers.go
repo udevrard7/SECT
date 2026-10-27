@@ -199,10 +199,14 @@ func (s *Server) downloadDocument(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
 
-// analyzeDocument — POST /api/documents/{id}/analyze (P1-D3)
-// Re-déclenche l'analyse IA d'un document (manuellement).
-// Le handler vérifie l'ownership, met statutAnalyse=EN_COURS, et envoie
-// un job dans worker.DocumentAnalysisQueue. Retourne 202 Accepted.
+// analyzeDocument — POST /api/documents/{id}/analyze (P1-D3, SECT-DOC-IA-1)
+// Déclenche (ou re-déclenche) l'analyse IA d'un document.
+//
+// SECT-DOC-IA-1 : le handler vérifie l'ownership, garantit un contenuTexte
+// (re-télécharge le fichier depuis R2 et re-extrait le texte si besoin —
+// les documents déposés avant la v2 d'extraction restaient inanalysables
+// à jamais), pose statutAnalyse=EN_COURS, et envoie un job FORCÉ au worker
+// (purge des anciens chapitres + régénération complète). Retourne 202.
 func (s *Server) analyzeDocument(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -220,27 +224,37 @@ func (s *Server) analyzeDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Vérifier ownership + récupérer le document
-	doc, err := s.documentUC.GetByID(r.Context(), claims, docID)
+	// Vérifier ownership + récupérer le document (avec re-extraction si le
+	// texte manque : PDF d'avant la v2, extraction échouée au dépôt…).
+	doc, err := s.documentUC.EnsureContenuTexte(r.Context(), claims, docID)
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return
 	}
 
-	// Vérifier qu'il y a du contenu à analyser
+	// Vérifier qu'il y a du contenu à analyser APRÈS la tentative de
+	// re-extraction (message actionnable si toujours rien).
 	if doc.ContenuTexte == nil || *doc.ContenuTexte == "" {
-		writeJSONError(w, http.StatusBadRequest, "ce document n'a pas de contenu texte à analyser")
+		detail := "ce document n'a pas de contenu texte à analyser"
+		if doc.ErreurAnalyse != nil && *doc.ErreurAnalyse != "" {
+			detail = *doc.ErreurAnalyse
+		}
+		writeJSONError(w, http.StatusBadRequest, detail)
 		return
 	}
 
-	// Mettre à jour le statut à EN_COURS
+	// Mettre à jour le statut à EN_COURS (sans toucher à l'analyse courante
+	// — sémantique COALESCE : l'ancienne carte pédagogique reste visible
+	// jusqu'au résultat de la nouvelle).
+	enCours := domain.StatutAnalyseEnCours
 	_ = s.documentUC.UpdateAnalysis(r.Context(), claims, docID, domain.UpdateAnalysisInput{
-		StatutAnalyse: domain.StatutAnalyseEnCours,
-		ErreurAnalyse: nil,
+		StatutAnalyse:      &enCours,
+		ClearErreurAnalyse: true,
 	})
 
-	// Enqueue le job d'analyse
-	job := worker.DocumentAnalysisJob{DocumentID: docID}
+	// Enqueue le job d'analyse — FORCÉ : une re-analyse remplace la carte
+	// pédagogique existante (purge des chapitres côté worker).
+	job := worker.DocumentAnalysisJob{DocumentID: docID, Force: true}
 	select {
 	case worker.DocumentAnalysisQueue <- job:
 		// OK
@@ -254,6 +268,6 @@ func (s *Server) analyzeDocument(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":     "EN_COURS",
 		"documentId": docID,
-		"message":    "Analyse IA lancée. Le statut sera mis à jour automatiquement.",
+		"message":    "Analyse IA lancée. Chapitres, thèmes, concepts clés et résumé pédagogique seront mis à jour dans un instant.",
 	})
 }

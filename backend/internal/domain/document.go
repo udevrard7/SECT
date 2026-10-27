@@ -2,98 +2,111 @@
 package domain
 
 import (
-	"context"
-	"time"
+        "context"
+        "strings"
+        "time"
 )
 
 // StatutAnalyse — statut d'analyse IA d'un document.
 type StatutAnalyse string
 
 const (
-	StatutAnalyseEnAttente StatutAnalyse = "EN_ATTENTE"
-	StatutAnalyseEnCours   StatutAnalyse = "EN_COURS"
-	StatutAnalyseAnalyse   StatutAnalyse = "ANALYSE"
-	StatutAnalyseErreur    StatutAnalyse = "ERREUR"
+        StatutAnalyseEnAttente StatutAnalyse = "EN_ATTENTE"
+        StatutAnalyseEnCours   StatutAnalyse = "EN_COURS"
+        StatutAnalyseAnalyse   StatutAnalyse = "ANALYSE"
+        StatutAnalyseErreur    StatutAnalyse = "ERREUR"
 )
 
 // DocumentRef est une référence légère à un document (ENS-AUDIT-3).
 // Utilisé pour inclure le nom du fichier dans les listes de HelpThread sans
 // alourdir la réponse avec toute l'entité Document.
 type DocumentRef struct {
-	ID         string `json:"id"`
-	NomFichier string `json:"nomFichier"`
+        ID         string `json:"id"`
+        NomFichier string `json:"nomFichier"`
 }
 
 // Document représente un fichier uploadé (PDF, DOCX, TXT, etc.).
 type Document struct {
-	ID                  string        `json:"id"`
-	OwnerID             string        `json:"ownerId"`
-	NomFichier          string        `json:"nomFichier"`
-	CheminStockage      string        `json:"cheminStockage"` // R2 object key
-	TailleFichier       *int          `json:"tailleFichier,omitempty"`
-	TypeMime            *string       `json:"typeMime,omitempty"`
-	StatutAnalyse       StatutAnalyse `json:"statutAnalyse"`
-	ThemesDetectes      *string       `json:"themesDetectes,omitempty"` // JSON
-	ConceptsCles        *string       `json:"conceptsCles,omitempty"`   // JSON
-	VolumeEstime        *string       `json:"volumeEstime,omitempty"`   // JSON
-	ContenuTexte        *string       `json:"contenuTexte,omitempty"`
-	DateUpload          time.Time     `json:"dateUpload"`
-	CreatedAt           time.Time     `json:"createdAt"`
-	UpdatedAt           time.Time     `json:"updatedAt"`
-	DeletedAt           *time.Time    `json:"deletedAt,omitempty"`
-	ErreurAnalyse       *string       `json:"erreurAnalyse,omitempty"`
-	ResumeAnalyse       *string       `json:"resumeAnalyse,omitempty"`
-	UniteEnseignementID *string       `json:"uniteEnseignementId,omitempty"`
-	// P1-D2 : UE nested pour le frontend (peuplé par LEFT JOIN)
-	UniteEnseignement *DocumentUERef `json:"uniteEnseignement,omitempty"`
-	Chapters          []*Chapter     `json:"chapters"`
+        ID                  string        `json:"id"`
+        OwnerID             string        `json:"ownerId"`
+        NomFichier          string        `json:"nomFichier"`
+        CheminStockage      string        `json:"cheminStockage"` // R2 object key
+        TailleFichier       *int          `json:"tailleFichier,omitempty"`
+        TypeMime            *string       `json:"typeMime,omitempty"`
+        StatutAnalyse       StatutAnalyse `json:"statutAnalyse"`
+        ThemesDetectes      *string       `json:"themesDetectes,omitempty"` // JSON
+        ConceptsCles        *string       `json:"conceptsCles,omitempty"`   // JSON
+        VolumeEstime        *string       `json:"volumeEstime,omitempty"`   // JSON
+        ContenuTexte        *string       `json:"contenuTexte,omitempty"`
+        DateUpload          time.Time     `json:"dateUpload"`
+        CreatedAt           time.Time     `json:"createdAt"`
+        UpdatedAt           time.Time     `json:"updatedAt"`
+        DeletedAt           *time.Time    `json:"deletedAt,omitempty"`
+        ErreurAnalyse       *string       `json:"erreurAnalyse,omitempty"`
+        ResumeAnalyse       *string       `json:"resumeAnalyse,omitempty"`
+        UniteEnseignementID *string       `json:"uniteEnseignementId,omitempty"`
+        // P1-D2 : UE nested pour le frontend (peuplé par LEFT JOIN)
+        UniteEnseignement *DocumentUERef `json:"uniteEnseignement,omitempty"`
+        Chapters          []*Chapter     `json:"chapters"`
 }
 
 // CreateDocumentInput pour créer un document.
 type CreateDocumentInput struct {
-	OwnerID             string
-	NomFichier          string
-	CheminStockage      string // R2 object key
-	TailleFichier       *int
-	TypeMime            *string
-	StatutAnalyse       StatutAnalyse
-	ContenuTexte        *string
-	ErreurAnalyse       *string
-	UniteEnseignementID *string
+        OwnerID             string
+        NomFichier          string
+        CheminStockage      string // R2 object key
+        TailleFichier       *int
+        TypeMime            *string
+        StatutAnalyse       StatutAnalyse
+        ContenuTexte        *string
+        ErreurAnalyse       *string
+        UniteEnseignementID *string
 }
 
 // DocumentRepository interface.
 type DocumentRepository interface {
-	FindByID(ctx context.Context, id string) (*Document, error)
-	ListByOwner(ctx context.Context, ownerID string) ([]*Document, error)
-	Create(ctx context.Context, input CreateDocumentInput) (*Document, error)
-	SoftDelete(ctx context.Context, id string) error
-	// P1-D1 : Update statut analyse + champs IA après traitement worker
-	UpdateAnalysis(ctx context.Context, id string, params UpdateAnalysisInput) error
-	// SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : chapitres d'un support (découpage
-	// IA du worker) — alimente le sélecteur « support, chap. X » côté
-	// enseignant. RLS Chapter_select = document_owned_by_me OU
-	// étudiant-filière (000034) : l'enseignant voit SES chapitres.
-	ListChapters(ctx context.Context, documentID string) ([]*Chapter, error)
+        FindByID(ctx context.Context, id string) (*Document, error)
+        ListByOwner(ctx context.Context, ownerID string) ([]*Document, error)
+        Create(ctx context.Context, input CreateDocumentInput) (*Document, error)
+        SoftDelete(ctx context.Context, id string) error
+        // P1-D1 : Update statut analyse + champs IA après traitement worker
+        UpdateAnalysis(ctx context.Context, id string, params UpdateAnalysisInput) error
+        // SECT-DOC-IA-1 : purge des chapitres avant re-analyse forcée (worker —
+        // claims system).
+        DeleteChapters(ctx context.Context, documentID string) error
+        // SECT-BIBLIO-P2.5 (ADR-0007 §P2.5) : chapitres d'un support (découpage
+        // IA du worker) — alimente le sélecteur « support, chap. X » côté
+        // enseignant. RLS Chapter_select = document_owned_by_me OU
+        // étudiant-filière (000034) : l'enseignant voit SES chapitres.
+        ListChapters(ctx context.Context, documentID string) ([]*Chapter, error)
 }
 
 // UpdateAnalysisInput pour mettre à jour les champs d'analyse d'un document.
+// SECT-DOC-IA-1 : sémantique COALESCE — un champ nil laisse la valeur DB
+// inchangée (avant, nil écrasait à NULL : le handler « analyse lancée »
+// annihilait l'analyse précédente dès le clic, avant même le passage du
+// worker). StatutAnalyse est un pointeur pour la même raison. ContenuTexte
+// permet la re-extraction a posteriori (documents EN_ATTENTE d'avant la v2
+// d'extraction). ClearErreurAnalyse vide erreurAnalyse (les *string ne
+// pouvant pas distinguer « ne pas toucher » de « mettre NULL »).
 type UpdateAnalysisInput struct {
-	StatutAnalyse  StatutAnalyse
-	ThemesDetectes *string
-	ConceptsCles   *string
-	VolumeEstime   *string
-	ResumeAnalyse  *string
-	ErreurAnalyse  *string
+        StatutAnalyse      *StatutAnalyse
+        ThemesDetectes     *string
+        ConceptsCles       *string
+        VolumeEstime       *string
+        ResumeAnalyse      *string
+        ContenuTexte       *string
+        ErreurAnalyse      *string
+        ClearErreurAnalyse bool
 }
 
 // DocumentUERef est un résumé d'UE pour le DTO Document (P1-D2).
 type DocumentUERef struct {
-	ID      string  `json:"id"`
-	Code    string  `json:"code"`
-	Nom     string  `json:"nom"`
-	Niveau  string  `json:"niveau,omitempty"`
-	Niveaux *string `json:"niveaux,omitempty"`
+        ID      string  `json:"id"`
+        Code    string  `json:"code"`
+        Nom     string  `json:"nom"`
+        Niveau  string  `json:"niveau,omitempty"`
+        Niveaux *string `json:"niveaux,omitempty"`
 }
 
 // ============================================================
@@ -102,68 +115,78 @@ type DocumentUERef struct {
 
 // StorageObject représente un objet stocké dans R2.
 type StorageObject struct {
-	Key           string
-	Content       []byte
-	ContentType   string
-	ContentLength int64
+        Key           string
+        Content       []byte
+        ContentType   string
+        ContentLength int64
 }
 
 // StorageClient interface pour le stockage de fichiers (R2, S3, etc.).
 type StorageClient interface {
-	// Upload stocke un objet dans R2. Retourne l'URL publique ou la clé.
-	Upload(ctx context.Context, obj StorageObject) (key string, err error)
+        // Upload stocke un objet dans R2. Retourne l'URL publique ou la clé.
+        Upload(ctx context.Context, obj StorageObject) (key string, err error)
 
-	// Download récupère un objet depuis R2 par sa clé.
-	Download(ctx context.Context, key string) ([]byte, error)
+        // Download récupère un objet depuis R2 par sa clé.
+        Download(ctx context.Context, key string) ([]byte, error)
 
-	// DownloadToFile SECT-BIBLIO-12 : télécharge un objet en STREAMANT vers
-	// un fichier disque (jamais en RAM) — pensé pour les gros PDFs (100 Mo)
-	// destinés à des outils externes (pdftoppm). Le chemin de destination
-	// appartient à l'appelant (cleanup inclus).
-	DownloadToFile(ctx context.Context, key, destPath string) error
+        // DownloadToFile SECT-BIBLIO-12 : télécharge un objet en STREAMANT vers
+        // un fichier disque (jamais en RAM) — pensé pour les gros PDFs (100 Mo)
+        // destinés à des outils externes (pdftoppm). Le chemin de destination
+        // appartient à l'appelant (cleanup inclus).
+        DownloadToFile(ctx context.Context, key, destPath string) error
 
-	// Delete supprime un objet de R2.
-	Delete(ctx context.Context, key string) error
+        // Delete supprime un objet de R2.
+        Delete(ctx context.Context, key string) error
 
-	// PresignURL génère une URL présignée pour télécharger un objet (validité en secondes).
-	PresignURL(ctx context.Context, key string, expiresIn int) (string, error)
+        // PresignURL génère une URL présignée pour télécharger un objet (validité en secondes).
+        PresignURL(ctx context.Context, key string, expiresIn int) (string, error)
 
-	// PresignURLAvecDisposition SECT-BIBLIO-13 : présignature GET avec
-	// Content-Disposition IMPOSÉ (paramètre signé — R2 le sert tel quel).
-	// Deux usages antagonistes de la même URL présignée :
-	//   - "inline"                     → lecture in-browser (lecteur, iframe) ;
-	//   - attachment; filename=…(.pdf) → téléchargement (API dédiée, flag
-	//     telechargementAutorise vérifié AVANT la présignature).
-	// Séparer les sémantiques côté stockage rend le flag réellement
-	// opposable : l'URL de lecture affiche, l'URL de téléchargement pose
-	// le fichier sur disque — et cette dernière n'est JAMAIS émise sans
-	// autorisation (403 en amont).
-	PresignURLAvecDisposition(ctx context.Context, key string, expiresIn int, disposition string) (string, error)
+        // PresignURLAvecDisposition SECT-BIBLIO-13 : présignature GET avec
+        // Content-Disposition IMPOSÉ (paramètre signé — R2 le sert tel quel).
+        // Deux usages antagonistes de la même URL présignée :
+        //   - "inline"                     → lecture in-browser (lecteur, iframe) ;
+        //   - attachment; filename=…(.pdf) → téléchargement (API dédiée, flag
+        //     telechargementAutorise vérifié AVANT la présignature).
+        // Séparer les sémantiques côté stockage rend le flag réellement
+        // opposable : l'URL de lecture affiche, l'URL de téléchargement pose
+        // le fichier sur disque — et cette dernière n'est JAMAIS émise sans
+        // autorisation (403 en amont).
+        PresignURLAvecDisposition(ctx context.Context, key string, expiresIn int, disposition string) (string, error)
 
-	// PresignUpload génère une URL présignée pour uploader un objet directement
-	// depuis le navigateur (PUT). P3-DEVOIRS-3 : upload direct-to-R2 des soumissions.
-	PresignUpload(ctx context.Context, key, contentType string, expiresIn int) (string, error)
+        // PresignUpload génère une URL présignée pour uploader un objet directement
+        // depuis le navigateur (PUT). P3-DEVOIRS-3 : upload direct-to-R2 des soumissions.
+        PresignUpload(ctx context.Context, key, contentType string, expiresIn int) (string, error)
 }
 
 // SupportedFileTypes — types de fichiers supportés pour l'upload.
+// SECT-DOC-IA-1 : .ppt et .markdown alignés sur la validation frontend
+// (ALLOWED_EXTENSIONS documents-page.tsx) — avant, le frontend acceptait
+// .ppt/.markdown que le backend rejetait ensuite (« format non supporté »
+// après l'upload complet : frustration inutile).
 var SupportedFileTypes = map[string]string{
-	".pdf":  "application/pdf",
-	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-	".doc":  "application/msword",
-	".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-	".txt":  "text/plain",
-	".md":   "text/markdown",
+        ".pdf":      "application/pdf",
+        ".docx":     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc":      "application/msword",
+        ".pptx":     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".ppt":      "application/vnd.ms-powerpoint",
+        ".txt":      "text/plain",
+        ".md":       "text/markdown",
+        ".markdown": "text/markdown",
 }
 
 // MaxFileSize — taille maximale des fichiers (50 MB).
 const MaxFileSize = 50 * 1024 * 1024
 
 // IsSupportedFileType vérifie si l'extension du fichier est supportée.
+// SECT-DOC-IA-1 : insensible à la casse — « COURS.PDF » passait la
+// validation frontend puis était rejeté par le backend (« format non
+// supporté » après l'upload complet).
 func IsSupportedFileType(filename string) (string, bool) {
-	for ext, mime := range SupportedFileTypes {
-		if len(filename) >= len(ext) && filename[len(filename)-len(ext):] == ext {
-			return mime, true
-		}
-	}
-	return "", false
+        lower := strings.ToLower(filename)
+        for ext, mime := range SupportedFileTypes {
+                if strings.HasSuffix(lower, ext) {
+                        return mime, true
+                }
+        }
+        return "", false
 }

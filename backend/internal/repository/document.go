@@ -232,27 +232,57 @@ var _ = strings.TrimSpace
 // Fix : db.WithTx avec db.SystemClaims() — le worker n'a pas de JWT user, on
 // utilise les claims system-worker qui débloquent la policy Document_all_system
 // (is_system() = true).
+//
+// SECT-DOC-IA-1 : sémantique COALESCE — nil = inchangé (cf. domaine).
+// ErreurAnalyse : NULLIF-like via ClearErreurAnalyse, car un *string nil doit
+// pouvoir signifier « ne pas toucher » ET le worker doit pouvoir VIDER
+// l'erreur au succès (avant : nil → NULL direct, l'appelant ne pouvait pas
+// exprimer « garder »).
 func (r *DocumentRepository) UpdateAnalysis(ctx context.Context, id string, params domain.UpdateAnalysisInput) error {
 	return db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
                         UPDATE "Document"
-                        SET "statutAnalyse" = $1,
-                            "themesDetectes" = $2,
-                            "conceptsCles" = $3,
-                            "volumeEstime" = $4,
-                            "resumeAnalyse" = $5,
-                            "erreurAnalyse" = $6,
+                        SET "statutAnalyse" = COALESCE($1, "statutAnalyse"),
+                            "themesDetectes" = COALESCE($2, "themesDetectes"),
+                            "conceptsCles" = COALESCE($3, "conceptsCles"),
+                            "volumeEstime" = COALESCE($4, "volumeEstime"),
+                            "resumeAnalyse" = COALESCE($5, "resumeAnalyse"),
+                            "contenuTexte" = COALESCE($6, "contenuTexte"),
+                            "erreurAnalyse" = CASE WHEN $7 THEN NULL ELSE COALESCE($8, "erreurAnalyse") END,
                             "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $7
-                `, params.StatutAnalyse,
+                        WHERE "id" = $9
+                `, nullableStatut(params.StatutAnalyse),
 			nullableStrPtr(params.ThemesDetectes),
 			nullableStrPtr(params.ConceptsCles),
 			nullableStrPtr(params.VolumeEstime),
 			nullableStrPtr(params.ResumeAnalyse),
+			nullableStrPtr(params.ContenuTexte),
+			params.ClearErreurAnalyse,
 			nullableStrPtr(params.ErreurAnalyse),
 			id)
 		if err != nil {
 			return fmt.Errorf("update document analysis: %w", err)
+		}
+		return nil
+	})
+}
+
+// nullableStatut — *StatutAnalyse → interface{} nil-able pour pgx.
+func nullableStatut(s *domain.StatutAnalyse) any {
+	if s == nil {
+		return nil
+	}
+	return string(*s)
+}
+
+// DeleteChapters — SECT-DOC-IA-1 : purge des chapitres d'un document avant
+// une re-analyse forcée (worker, claims system). Les anciennes lignes sont
+// remplacées atomiquement par la régénération qui suit immédiatement.
+func (r *DocumentRepository) DeleteChapters(ctx context.Context, documentID string) error {
+	return db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `DELETE FROM "Chapter" WHERE "documentId" = $1`, documentID)
+		if err != nil {
+			return fmt.Errorf("delete chapters: %w", err)
 		}
 		return nil
 	})
@@ -271,11 +301,11 @@ func (r *DocumentRepository) ListChapters(ctx context.Context, documentID string
 	var result []*domain.Chapter
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT c."id", c."documentId", c."titre", c."ordre", c."sujets", c."createdAt"
-			FROM "Chapter" c
-			WHERE c."documentId" = $1
-			ORDER BY c."ordre" ASC
-		`, documentID)
+                        SELECT c."id", c."documentId", c."titre", c."ordre", c."sujets", c."createdAt"
+                        FROM "Chapter" c
+                        WHERE c."documentId" = $1
+                        ORDER BY c."ordre" ASC
+                `, documentID)
 		if err != nil {
 			return fmt.Errorf("query chapters: %w", err)
 		}
