@@ -103,7 +103,11 @@ jobs:
           script: |
             set -euo pipefail
             ENV_FILE=/opt/sect/.env
-            DSN=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            # NEON_DIRECT_URL = DSN owner (bypass RLS) — nécessaire pour lire
+            # les vraies lignes (le DSN runtime est RLS-scopé : sans claims,
+            # les SELECT retournent 0 ligne — artefact constaté au 1er passage).
+            DSN=$(grep -E '^NEON_DIRECT_URL=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+            if [ -z "$DSN" ]; then DSN=$(grep -E '^(NEON_DATABASE_URL|DATABASE_URL)=' "$ENV_FILE" | head -1 | cut -d= -f2-); fi
             SECRET=$(grep -E '^JWT_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2-)
 
             echo "══ 0. SANTÉ / VERSION DÉPLOYÉE ══"
@@ -112,15 +116,22 @@ jobs:
 
             echo "══ 1. ENSEIGNANT RÉEL (pour la fidélité du repro) ══"
             ROW=$(psql "$DSN" -At -F $'\t' -c "SELECT id, email, name FROM \"User\" WHERE role='ENSEIGNANT' AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" LIMIT 1")
+            if [ -z "$ROW" ]; then
+              echo "aucun ENSEIGNANT — fallback ADMIN"
+              ROW=$(psql "$DSN" -At -F $'\t' -c "SELECT id, email, name FROM \"User\" WHERE role='ADMIN' AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" LIMIT 1")
+            fi
             UID_=$(printf '%s' "$ROW" | cut -f1)
             EMAIL_=$(printf '%s' "$ROW" | cut -f2)
             NAME_=$(printf '%s' "$ROW" | cut -f3 | tr -d '"')
-            echo "user=$EMAIL_ id=$UID_"
+            ROLE_=$(psql "$DSN" -At -c "SELECT role FROM \"User\" WHERE id='$UID_'")
+            echo "user=$EMAIL_ id=$UID_ role=$ROLE_"
+            echo "— documents existants (tous propriétaires, via DSN owner) —"
+            psql "$DSN" -c 'SELECT "id", "ownerId", "nomFichier", "statutAnalyse", left(coalesce("erreurAnalyse", chr(45)),130) AS err, ("contenuTexte" IS NOT NULL) AS has_text, "deletedAt" IS NOT NULL AS deleted, "createdAt" FROM "Document" ORDER BY "createdAt" DESC LIMIT 12;'
 
             echo "══ 2. JWT forgé localement (secret jamais affiché) ══"
             NOW=$(date +%s)
             HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-            PAYLOAD=$(printf '{"sub":"%s","role":"ENSEIGNANT","etablissement_id":"","email":"%s","name":"%s","iat":%d,"exp":%d,"typ":"access","must_change_pwd":false}' "$UID_" "$EMAIL_" "$NAME_" "$NOW" "$((NOW + 900))" | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+            PAYLOAD=$(printf '{"sub":"%s","role":"%s","etablissement_id":"","email":"%s","name":"%s","iat":%d,"exp":%d,"typ":"access","must_change_pwd":false}' "$UID_" "$ROLE_" "$EMAIL_" "$NAME_" "$NOW" "$((NOW + 900))" | openssl base64 -A | tr '+/' '-_' | tr -d '=')
             SIG=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
             TOKEN="$HEADER.$PAYLOAD.$SIG"
 
