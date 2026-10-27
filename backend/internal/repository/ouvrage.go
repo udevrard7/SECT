@@ -838,7 +838,13 @@ func (r *OuvrageRepository) auditAcces(ctx context.Context, entry domain.Ouvrage
 			entry.OuvrageID,
 			string(details),
 			entry.ActorIP,
-			nullableStrPtr(&entry.EtablissementID))
+			// SECT-BIBLIO-14 : un ouvrage PLATEFORME a etablissementId=''
+			// (convention « sans établissement ») — insérer '' viole la FK
+			// AuditLog_etablissementId_fkey et perd TOUTE la trace d'audit
+			// des ouvrages plateforme (lecture ET téléchargement, best-effort
+			// → simple WARN en prod). '' → NULL : la FK nullable passe, la
+			// trace vit (constaté en prod : « Hacking et contre-hacking »).
+			nullableStrPtrEmptyNull(&entry.EtablissementID))
 		if err != nil {
 			return fmt.Errorf("insert audit ouvrage.%s: %w", actionMetier, err)
 		}
