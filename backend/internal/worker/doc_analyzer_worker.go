@@ -405,6 +405,9 @@ func (w *DocumentAnalyzerWorker) parseAnalysis(raw string) (*analysisLLM, error)
 
 // extractJSON isole le JSON de la réponse (tolère les balises ```json```
 // et le texte parasite avant/après — réalité de terrain des LLM).
+// Le PREMIER délimiteur ouvrant (tableau OU objet) l'emporte : pour
+// l'ancien format [{...},{...}] il ne faut PAS retomber sur la paire
+// accolades (deux objets concaténés = JSON invalide).
 func extractJSON(raw string) string {
 	s := strings.TrimSpace(raw)
 	// Balises markdown.
@@ -417,16 +420,29 @@ func extractJSON(raw string) string {
 		}
 		s = strings.TrimSpace(s)
 	}
-	// Objet complet prioritaire.
-	if idx := strings.Index(s, "{"); idx >= 0 {
-		if end := strings.LastIndex(s, "}"); end > idx {
-			return s[idx : end+1]
+	// Format explicite en tête : tableau.
+	if strings.HasPrefix(s, "[") {
+		if end := strings.LastIndex(s, "]"); end > 0 {
+			return s[:end+1]
 		}
 	}
-	// Sinon tableau (ancien format).
-	if idx := strings.Index(s, "["); idx >= 0 {
-		if end := strings.LastIndex(s, "]"); end > idx {
-			return s[idx : end+1]
+	// Format explicite en tête : objet.
+	if strings.HasPrefix(s, "{") {
+		if end := strings.LastIndex(s, "}"); end > 0 {
+			return s[:end+1]
+		}
+	}
+	// Texte parasite : le premier crochet OUvrant (le plus précoce) décide.
+	arrIdx := strings.Index(s, "[")
+	objIdx := strings.Index(s, "{")
+	if arrIdx >= 0 && (objIdx < 0 || arrIdx < objIdx) {
+		if end := strings.LastIndex(s, "]"); end > arrIdx {
+			return s[arrIdx : end+1]
+		}
+	}
+	if objIdx >= 0 {
+		if end := strings.LastIndex(s, "}"); end > objIdx {
+			return s[objIdx : end+1]
 		}
 	}
 	return s
