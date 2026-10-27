@@ -7308,3 +7308,108 @@ l'audit.
   cancel-in-progress déjà en place (les runs intermédiaires sont
   annulés au niveau CI, mais les scripts VM restent concurrents) —
   envisager un verrou VM (flock) dans le script deploy.
+
+## SECT-DOC-INSERT-1 — /documents : la panne racine de l'upload — INSERT…RETURNING cassé depuis le 29/06 (27 octobre 2026)
+
+### Contexte
+
+Retour exploitant après SECT-DOC-IA-1 : « il semble que le problème avec
+ajout de document et l'analyse IA demeure, ta résolution n'a pas
+fonctionné — analyse profondeur ». Capture d'écran : deux PDF
+(« polycopie Pweb seance 1/2.pdf ») en statut **« erreur interne »**
+dans la modale d'import.
+
+### Méthode — diagnostic de production réel (plus de devinette)
+
+Le message « erreur interne » = cas default de MapDomainError, qui ne
+journalisait RIEN : la requête 500 était visible dans les logs de
+requêtes, la cause sous-jacente nulle part. Deux workflows temporaires
+(workflow_dispatch, SSH VM OCI via appleboy/ssh-action — même mécanique
+que vm-audit.yml) ont permis de diagnostiquer sur la production :
+
+1. **doc-diag (lecture seule)** : POST /api/documents → 500 en
+   production (04:58:51, 1,3 s) ; pdftotext + qpdf présents dans le
+   conteneur ; R2 activé ; workers ON ; **aucun log d'erreur**.
+   Piège découvert au passage : le DSN runtime (NEON_DATABASE_URL) est
+   RLS-scopé — les SELECT psql sans claims retournent 0 ligne (faux
+   « 0 documents en DB ») → toujours interroger via NEON_DIRECT_URL
+   (owner) pour le diagnostic.
+2. **fix d'observabilité (3f2c4042)** : MapDomainError journalise
+   désormais les 500 non mappés (errorType + message sous-jacent) —
+   les fmt.Errorf des usecases portent le préfixe de l'étape qui
+   échoue. Déployé, puis repro :
+3. **doc-repro (JWT forgé sur la VM)** : access token enseignant réel
+   (secret lu dans /opt/sect/.env, jamais affiché), upload TXT + PDF
+   contre localhost:8090 → 500 sur les DEUX, et enfin l'erreur exacte :
+
+   `create document: ERROR: missing FROM-clause entry for table "d"
+   (SQLSTATE 42P01)`
+
+### Cause racine
+
+Le « D2 fix » **82d8e5b9 (29/06, 01h07)** a qualifié la constante
+partagée `columnsDocument` avec l'alias `d.` pour lever l'ambiguïté des
+SELECT à jointure (FindByID / ListByOwner joignent
+UniteEnseignement) — mais le `RETURNING` du `Create` partageait la même
+constante : `INSERT INTO "Document" (…) RETURNING d."id", …` → l'alias
+`d` n'existe pas hors FROM → 42P01 → 500 « erreur interne » sur TOUT
+upload.
+
+**Conséquence mesurée : aucun document déposé en production du 29/06 au
+27/10** (fichier parti en R2 puis purgé par le best-effort de rollback,
+zéro ligne en DB). Les 10 documents existants datent tous du 06-08/06
+(vérifié via DSN owner) — c'était LA panne « ne fonctionne PLUS ».
+SECT-DOC-IA-1 a réparé les autres maillons (extraction v2, worker,
+COALESCE) mais l'INSERT restait cassé : invisible sans E2E authentifié
+(pas de DB locale, pas d'identifiants prod dans la sandbox).
+
+Ironie documentée : la leçon existait DÉJÀ dans le code —
+`columnsOuvrageVeilleBare` / `columnsOuvrageSectionBare` /
+`columnsOuvrageLectureBare` (« leçon P1 » SECT-BIBLIO : « v. dans un
+RETURNING sans FROM = 42P01 → 500 ; attrapé par l'E2E ») — le dépôt
+document.go n'avait jamais reçu le traitement.
+
+### Réalisation
+
+- **9011b23a** — `columnsDocumentBare` (sans préfixe) pour le RETURNING
+  du Create ; garde documentée sur `columnsDocument` (⚠️ jamais dans un
+  RETURNING) pour empêcher la récidive du requalify D2-style. gofmt +
+  build + vet ✓, Backend CI ✓, Deploy OCI ✓.
+- **3f2c4042** (conservé, amélioration durable) — MapDomainError
+  journalise les 500 non mappés : plus jamais d'erreur silencieuse.
+- Workflows temporaires doc-diag/doc-repro créés puis SUPPRIMÉS
+  (b9bc381a) après usage.
+
+### Vérification E2E en production (doc-repro, post-fix)
+
+- POST /api/documents (TXT, enseignant réel) → **201** ; texte extrait
+  (37 mots), R2 stocké, statut EN_COURS.
+- POST /api/documents (PDF 2 pages généré, texte extractible) → **201** ;
+  pdftotext a extrait le contenu exact (67 mots).
+- Worker : « Analyzing document » → « Document analyzed successfully »
+  pour les deux — **3 chapitres (TXT) et 5 chapitres (PDF)** insérés.
+- DB : statutAnalyse = **ANALYSE** pour les deux documents, chapters
+  3/5 (requêtes via DSN owner).
+- Nettoyage : soft-delete HTTP 200 (parcours utilisateur normal,
+  purge corbeille standard).
+- Santé prod : api.sect.ftci.fr → 200 `{"status":"ok","version":"0.2.0"}`.
+
+### Leçons
+
+- **Une constante SQL partagée entre SELECT-à-jointure et
+  INSERT-RETURNING est une bombe** : qualifier pour l'un casse l'autre.
+  Pattern Bare systématique (déjà appliqué aux ouvrages, maintenant aux
+  documents) + garde en commentaire.
+- **500 silencieux = cause invisible** : logger l'erreur sous-jacente au
+  point de mapping (errorType + message) transforme un diagnostic de
+  plusieurs heures en une ligne de log. Le coût est nul, la valeur
+  immense.
+- **Diagnostiquer en production plutôt que deviner** : repro avec JWT
+  forgé sur la VM (localhost:8090, secret jamais affiché) + lecture DB
+  via DSN owner = boucle courte et honnête sur le VRAI système. Les
+  401 initiaux (claims vides via DSN RLS-scopé) rappellent que le DSN
+  runtime filtre tout sans claims — piège de diagnostic identifié.
+- SECT-DOC-IA-1 restait incomplet tant que l'INSERT n'était pas
+  réparé : **plusieurs bugs indépendants peuvent composer une même
+  panne visible** — chaque maillon doit être vérifié E2E, pas seulement
+  analysé.
