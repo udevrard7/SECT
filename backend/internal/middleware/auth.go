@@ -4,6 +4,8 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -187,6 +189,16 @@ func MapDomainError(w http.ResponseWriter, err error) {
 		// 429 Too Many Requests — quota dépassé. Le message est clair et actionable.
 		writeJSONErrorMsg(w, http.StatusTooManyRequests, e.Error())
 	default:
+		// SECT-DOC-DIAG (observabilité) : AVANT, les erreurs non-mappées
+		// partaient en 500 « erreur interne » SANS AUCUN log serveur — la
+		// panne /documents (upload R2 vs INSERT DB) était invisible dans les
+		// logs de production (requête 500, aucune trace). On journalise
+		// désormais l'erreur sous-jacente : les fmt.Errorf des usecases
+		// portent le préfixe de l'étape qui échoue (« upload to R2: … »,
+		// « create document: … »), ce qui identifie la cause racine.
+		slog.Error("internal error (unmapped)",
+			"errorType", fmt.Sprintf("%T", err),
+			"error", err.Error())
 		writeJSONErrorMsg(w, http.StatusInternalServerError, "erreur interne")
 	}
 }
