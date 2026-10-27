@@ -7124,3 +7124,110 @@ en attente ». Audit du 14/10 : 15 PR ouvertes (toutes Dependabot),
 - Trois bumps refusés (#24, #34, #48) = le même prérequis AGP 9 +
   compileSdk 37 : regrouper ces demandes en UNE migration planifiée
   plutôt que trois closes.
+
+## SECT-DOC-IA-1 — /documents : panne « ajout + analyse IA ne fonctionne plus » — extraction v2 + carte pédagogique complète (27 octobre 2026)
+
+### Contexte
+
+Demande exploitant : « /documents l'ajout et l'analyse de document par IA
+ne fonctionne plus et pour corrigé et apporté des améliorations d'expert
+Edtech si possible ».
+
+### Diagnostic — une panne structurelle, pas une régression
+
+Soupçon initial (dépendances fusionnées en vagues SECT-DEPS-2 : aws s3,
+cors…) ÉVACUÉ : le code n'a jamais utilisé ces chemins différemment.
+Trois causes racines anciennes, masquées en démo par le seed :
+
+1. **extractText() v1 ne gérait que TXT/MD** → tout PDF uploadé partait
+   dans R2 mais restait EN_ATTENTE à vie (« extraction de texte non
+   disponible pour ce format en Go ») : l'analyse IA ne pouvait JAMAIS se
+   déclencher sur un upload réel. Les PDF « ANALYSE » vus en démo venaient
+   du seed (contenuTexte injecté directement).
+2. **Bouton « Analyser » → statut EN_COURS posé, worker SKIP silencieux**
+   (déjà analysé / contenu trop court) sans jamais raboter le statut →
+   « Analyse en cours… » à VIE.
+3. **UpdateAnalysis écrasait à NULL tous les champs non fournis** : le
+   clic « analyse lancée » annihilait l'analyse précédente (thèmes,
+   résumé) avant même le passage du worker.
+
+### Réalisation
+
+- **Extraction v2** (`backend/internal/usecase/document_extraction.go`,
+  nouveau) : PDF via pdftotext (poppler-utils DÉJÀ présent dans le
+  Dockerfile — même pattern que SECT-BIBLIO-7/12 ; `-layout`, budget 45 s,
+  déchiffrement qpdf préalable pour les PDF « sécurité standard Acrobat »
+  à mot de passe vide), DOCX/PPTX en Go pur (archive/zip + parsing XML,
+  diapositives en ordre NUMÉRIQUE — slide10 sinon passait après slide2),
+  TXT/MD/MARKDOWN direct. Best-effort global : un échec d'extraction ne
+  bloque JAMAIS le dépôt. Plafond 400k caractères, normalisation
+  (espaces, contrôle, retours à la ligne multiples).
+- **Upload** : extraction AVANT l'upload R2, messages actionnables
+  (« Document importé — texte extrait (N mots), analyse IA en cours »),
+  extensions .ppt/.markdown alignées sur le frontend, validation
+  insensible à la casse (COURS.PDF n'était plus rejeté après upload).
+- **POST /analyze** : `EnsureContenuTexte` re-télécharge le fichier
+  depuis R2 et re-extrait le texte — les documents déposés AVANT la v2
+  sont enfin analysables ; job FORCÉ (purge des chapitres +
+  régénération complète).
+- **Worker** : prompt d'expert ingénierie pédagogique produisant la carte
+  pédagogique COMPLÈTE en un seul appel IA — chapitres, thèmes
+  transversaux, concepts clés, volume d'entraînement estimé par type
+  (QCU/QCM/QRC/TRS, aligné sur le générateur d'épreuves), niveau CECI
+  (L1→M2/Doctorat), temps de lecture, résumé orienté apprentissage.
+  conceptsCles/volumeEstime — affichés par le frontend depuis P1 —
+  n'étaient JAMAIS remplis. Parsing tolérant (balises ```json, texte
+  parasite, fallback ancien format tableau). Marque ERREUR + message
+  actionnable au lieu des skips silencieux. RecoverInterruptedAnalyses
+  normalise au démarrage les statuts coincés (EN_COURS+chapitres →
+  ANALYSE ; EN_COURS sans texte → EN_ATTENTE actionnable, note périmée
+  purgée).
+- **Repo/domaine** : UpdateAnalysis en sémantique COALESCE (nil = ne pas
+  toucher, ClearErreurAnalyse pour vider — un *string nil ne peut pas
+  distinguer « garder » de « mettre NULL »), DeleteChapters (claims
+  system, policy Chapter_all_system existante).
+- **Frontend** : toasts fidèles au flux asynchrone (202 + worker — plus de
+  « Analyse terminée » mensonger), bannière EN_ATTENTE actionnable
+  (explique QUE FAIRE : relancer l'analyse re-extrait le texte),
+  libellé « Ré-analyser », attentes pédagogiques sous la zone de dépôt
+  (formats analysables vs stockés-sans-analyse).
+- **Fix secondaire** (`c0cc66e2`) : extractJSON privilégiait la paire
+  d'accolades la plus large — sur l'ancien format [{...},{...}] il
+  retournait deux objets concaténés (JSON invalide) → « réponse IA
+  illisible » à tort. Le premier délimiteur ouvrant l'emporte désormais.
+
+### Vérification
+
+- Builds locaux : `go build ./...` + `go vet ./...` ✓ (Go 1.27.1 installé
+  en sandbox), `tsc --noEmit` ✓, eslint ✓. gofmt relevé par la CI
+  (f11288e1 rouge lint) → corrigé en c45cd303 (leçon : TOUJOURS
+  `gofmt -l` avant push, l'indentation espaces est invisible à la relecture).
+- **Harnais local jetable (créé, exécuté, SUPPRIMÉ — jamais commité)** :
+  extractTextV2 sur TXT/MD-majuscule/DOCX/PPTX (ordre numérique des
+  slides vérifié slide1→slide2→slide10)/PDF-minimal-généré (pdftotext
+  installé en userspace)/PDF-sans-texte (note scan+OCR)/.doc legacy
+  (note conversion)/.zip (note non supporté) — 8/8 conformes ;
+  parseAnalysis sur objet propre/balises markdown/tableau nu (REFAIL
+  avant le fix c0cc66e2)/texte parasite/illisible — 6/6 conformes.
+- CI GitHub : Backend CI ✓, Frontend CI ✓, Deploy backend to OCI ✓
+  (c0cc66e2). Render : deploy `dep-dbg2c1ijnfac739ivjsg` **live** sur
+  c0cc66e2 (04:18 UTC). Vercel : build neuf `vzwg9-…` déployé à 04:15 UTC
+  (en-tête x-vercel-id après le push). Santé prod :
+  `api.sect.ftci.fr/api/health` → 200.
+- NON vérifiable depuis la sandbox : parcours authentifié complet en
+  production (aucun identifiant enseignant de prod disponible ; mot de
+  passe demo du seed refusé — normal, --reset-ns non appliqué en prod ;
+  logs Render non exposés par l'API sur ce plan). Le parcours
+  upload→extraction→analyse reste à confirmer côté exploitant.
+
+### Leçons
+
+- **Une démo verte nourrie au seed peut cacher une panne totale du
+  parcours réel** : les fonctions jamais exercées par le seed (ici
+  l'extraction d'upload) doivent être testées sur des uploads VRAIS.
+- Un statut posé (EN_COURS) DOIT toujours trouver son raboteur, y compris
+  dans les chemins de sortie du worker (skip, panic, contenu trop court).
+- `nil` dans un update ne devrait JAMAIS signifier « mettre NULL » quand
+  le champ est optionnel : COALESCE + flag explicite Clear*.
+- Un worker qui SKIP silencieusement est un mensonge d'état : chaque skip
+  doit soit normaliser le statut, soit écrire la raison.
