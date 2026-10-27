@@ -183,20 +183,53 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
     clearSelection()
   }
 
-  // P1-D4 : câbler le téléchargement au backend GET /api/documents/{id}/download
-  // qui retourne une URL présignée R2. Le navigateur ouvre l'URL directement.
+  // EXAM-PREP-DOWNLOAD-1 : téléchargement via GET /api/exam-prep/documents/{id}/download
+  // (URL présignée R2 15 min, disposition attachment — le fichier se pose sur disque).
+  // Avant : l'appel allait à /api/documents/{id}/download, endpoint réservé
+  // ENSEIGNANT/ADMIN → 403 « rôle non autorisé » pour tout étudiant (cause
+  // racine de la panne « impossible de télécharger les supports PDF »).
+  // - PDF (fichier original) : URL présignée R2, déclenchée via <a> (pas de
+  //   blocage popup après un fetch asynchrone) ;
+  // - TXT : contenu textuel extrait, servi en Blob local (aucun aller-retour).
   const handleDownload = async (format: 'txt' | 'pdf') => {
     try {
-      const res = await fetch(`/api/documents/${documentId}/download`)
+      if (format === 'txt') {
+        if (!doc?.contenuTexte) {
+          throw new Error('Aucun contenu texte disponible pour ce document')
+        }
+        const blob = new Blob([doc.contenuTexte], { type: 'text/plain;charset=utf-8' })
+        const blobUrl = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = (doc.nomFichier || 'document').replace(/\.[^.]+$/, '') + '.txt'
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(blobUrl)
+        toast.success('Téléchargement démarré', {
+          description: 'Contenu texte du support exporté en TXT.',
+        })
+        return
+      }
+
+      const res = await fetch(`/api/exam-prep/documents/${documentId}/download`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur de téléchargement')
       }
       const data = await res.json()
       if (data.url) {
-        window.open(data.url, '_blank')
+        // Disposition attachment signée dans l'URL → le navigateur télécharge
+        // directement ; l'ancre évite le bloqueur de popups (window.open
+        // après un await est souvent bloqué).
+        const link = document.createElement('a')
+        link.href = data.url
+        link.rel = 'noopener'
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
         toast.success('Téléchargement démarré', {
-          description: 'Le fichier s\'ouvre dans un nouvel onglet.',
+          description: 'Le support de cours est en cours de téléchargement.',
         })
       }
     } catch (err) {

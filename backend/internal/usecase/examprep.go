@@ -225,6 +225,78 @@ func (uc *ExamPrepUseCase) GetDocumentForReader(ctx context.Context, claims db.S
 	return uc.repo.GetDocumentForReader(ctx, documentID)
 }
 
+// GetDocumentDownloadURL génère une URL présignée R2 de TÉLÉCHARGEMENT
+// (attachment) pour le fichier ORIGINAL d'un support de cours (PDF, DOCX…).
+// EXAM-PREP-DOWNLOAD-1 : corrige la panne « impossible pour les étudiants de
+// télécharger les supports de cours PDF ».
+//
+// Cause racine : le lecteur exam-prep appelait GET /api/documents/{id}/download,
+// dont le usecase (DocumentUseCase.GetDownloadURL) refuse le rôle ETUDIANT
+// (403 « rôle non autorisé ») — les enseignants uniquement y avaient droit.
+// Aucune route de téléchargement n'existait sous /api/exam-prep.
+//
+// Le téléchargement étudiant passe désormais par CETTE méthode, avec le MÊME
+// garde-fou d'accès que le lecteur (EXAM-PREP-READER-SECURITY-FIX-1) :
+//   - rôle ETUDIANT ou ENSEIGNANT uniquement ;
+//   - étudiant : document dans une UE de sa filière + son niveau
+//     (CheckDocumentAccess) — sinon 403 AVANT toute émission d'URL ;
+//   - défense en profondeur : le SELECT du document reste scoping RLS
+//     (Document_select, branche is_etudiant de la migration 000034) ;
+//   - durée de vie 15 min (900s — cohérent avec les podcasts AUDIO-LEARNING-1
+//     et la bibliothèque SECT-BIBLIO-13) ;
+//   - disposition SIGNÉE attachment + nom de fichier sanitizé
+//     (dispositionTelechargement) : le navigateur pose le fichier sur disque.
+func (uc *ExamPrepUseCase) GetDocumentDownloadURL(ctx context.Context, claims db.SessionClaims, documentID string) (string, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return "", &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return "", &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+
+	// EXAM-PREP-READER-SECURITY-FIX-1 (même garde que le lecteur) : un étudiant
+	// ne peut télécharger que les documents de sa filière + niveau (uploadés
+	// par ses enseignants). L'enseignant n'est pas restreint (RLS le scope à
+	// ses propres documents côté SELECT).
+	if claims.Role == string(domain.RoleEtudiant) {
+		if claims.FiliereID == "" {
+			return "", &domain.ValidationError{Field: "filiereId", Message: "filière requise"}
+		}
+		niveau, err := uc.repo.GetUserNiveau(ctx, claims.UserID)
+		if err != nil {
+			return "", fmt.Errorf("get user niveau: %w", err)
+		}
+		if niveau == "" {
+			niveau = "L1"
+		}
+		allowed, err := uc.repo.CheckDocumentAccess(ctx, documentID, claims.FiliereID, niveau)
+		if err != nil {
+			return "", fmt.Errorf("check document access: %w", err)
+		}
+		if !allowed {
+			return "", &domain.UnauthorizedError{Message: "vous n'avez pas accès à ce document"}
+		}
+	}
+
+	doc, err := uc.repo.GetDocumentForReader(ctx, documentID)
+	if err != nil {
+		return "", err
+	}
+	if doc.CheminStockage == "" {
+		return "", &domain.ValidationError{Field: "fichier", Message: "fichier non stocké pour ce document"}
+	}
+	if uc.storage == nil {
+		// R2 désactivé (mode DB-only) — erreur honnête et actionnable
+		// (pattern ouvrage SECT-BIBLIO-13), pas un 500 générique.
+		return "", &domain.ValidationError{
+			Field:   "fichier",
+			Message: "stockage non configuré — le téléchargement nécessite la configuration R2",
+		}
+	}
+
+	return uc.storage.PresignURLAvecDisposition(ctx, doc.CheminStockage, 900, dispositionTelechargement(doc.NomFichier))
+}
+
 // ListUEsByIDs expose le batch lookup des UEs (HIGHLIGHT-FLASHCARD-1 — utilisé
 // par readExamPrepDocument pour résoudre l'UE du document).
 func (uc *ExamPrepUseCase) ListUEsByIDs(ctx context.Context, ueIDs []string) (map[string]*domain.UniteEnseignement, error) {

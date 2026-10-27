@@ -1104,6 +1104,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/documents", s.listExamPrepDocuments)
 			// HIGHLIGHT-FLASHCARD-1 — DocumentReader endpoint (contenuTexte + métadonnées).
 			r.Get("/documents/{id}/read", s.readExamPrepDocument)
+			// EXAM-PREP-DOWNLOAD-1 — téléchargement du fichier original
+			// (PDF…) pour étudiant/enseignant. URL présignée R2 15 min
+			// (attachment). Corrige la panne 403 de /api/documents/{id}/download.
+			r.Get("/documents/{id}/download", s.downloadExamPrepDocument)
 			// Review (spaced repetition)
 			r.Get("/review", s.listReviewItems)
 			r.Post("/review", s.markReviewed)

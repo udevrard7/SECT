@@ -828,6 +828,47 @@ func (s *Server) readExamPrepDocument(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"document": dto})
 }
 
+// downloadExamPrepDocument — GET /api/exam-prep/documents/{id}/download
+//
+// EXAM-PREP-DOWNLOAD-1 : corrige la panne « impossible pour les étudiants de
+// télécharger les supports de cours PDF depuis exam-prep ».
+//
+// Avant : le lecteur exam-prep appelait GET /api/documents/{id}/download —
+// endpoint réservé ENSEIGNANT/ADMIN (403 « rôle non autorisé » pour tout
+// étudiant). Cette route étudiante suit le modèle des podcasts audio
+// (AUDIO-LEARNING-1) : vérification d'accès filière + niveau côté étudiant
+// (EXAM-PREP-READER-SECURITY-FIX-1), puis URL présignée R2 courte durée
+// (15 min, disposition attachment).
+//
+// Rôles : ETUDIANT, ENSEIGNANT.
+// Retourne 200 { "url": "https://…" } (même contrat que /api/documents/{id}/download).
+func (s *Server) downloadExamPrepDocument(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	documentID := chi.URLParam(r, "id")
+	if documentID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id document requis")
+		return
+	}
+
+	url, err := s.examPrepUC.GetDocumentDownloadURL(r.Context(), claims, documentID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
 // ============================================================
 // FLASHCARDS (HIGHLIGHT-FLASHCARD-1)
 // ============================================================
