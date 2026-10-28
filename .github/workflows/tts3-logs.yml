@@ -6,7 +6,7 @@ jobs:
   logs:
     runs-on: ubuntu-latest
     steps:
-      - name: Diag edge-tts complet dans le conteneur
+      - name: Diag échec Voxtral premium (logs complets)
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.OCI_SSH_HOST }}
@@ -14,10 +14,9 @@ jobs:
           key: ${{ secrets.OCI_SSH_KEY }}
           script_stop: true
           script: |
-            echo '═══ edge-tts direct (texte court) — traceback COMPLET ═══'
-            docker exec sect-api edge-tts --voice fr-FR-HenriNeural --text "Bonjour, ceci est un test." --write-media /tmp/diag.mp3 2>&1 | tail -30
-            echo "exit=$?"
-            echo '═══ fichier produit ? ═══'
-            docker exec sect-api sh -c 'ls -la /tmp/diag.mp3 2>&1; head -c 4 /tmp/diag.mp3 2>/dev/null | od -An -tx1'
-            echo '═══ logs TTS complets (2h) ═══'
-            docker logs sect-api --since 2h 2>&1 | grep -iE 'TTS|podcast' | tail -40
+            echo '═══ Toutes les lignes Voxtral (15 dernières minutes) ═══'
+            docker logs sect-api --since 15m 2>&1 | grep -iE 'voxtral' | tail -20
+            echo '═══ extraConfig du provider TTS (URLs seules, jamais les clés) ═══'
+            cd /opt/sect
+            NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+            psql "$NEON" -t -A -c "SELECT \"extraConfig\" FROM \"AIProviderConfig\" WHERE \"provider\"='VOXTRAL' AND \"isActive\"=true"
