@@ -1,0 +1,130 @@
+﻿2026-10-28T09:46:49.8355727Z Current runner version: '2.338.0'
+2026-10-28T09:46:49.8399430Z ##[group]Runner Image Provisioner
+2026-10-28T09:46:49.8401469Z Hosted Compute Agent
+2026-10-28T09:46:49.8403503Z Version: 20261021.618
+2026-10-28T09:46:49.8405256Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-28T09:46:49.8407079Z Build Date: 2026-10-21T00:45:21Z
+2026-10-28T09:46:49.8409032Z Worker ID: {2a09991b-3361-43cd-a2bb-cc141b97d28e}
+2026-10-28T09:46:49.8410967Z Region: eastus2
+2026-10-28T09:46:49.8412609Z Cloud: Azure
+2026-10-28T09:46:49.8414364Z ##[endgroup]
+2026-10-28T09:46:49.8417297Z ##[group]Operating System
+2026-10-28T09:46:49.8419126Z Ubuntu
+2026-10-28T09:46:49.8420521Z 24.04.5
+2026-10-28T09:46:49.8422051Z LTS
+2026-10-28T09:46:49.8423975Z ##[endgroup]
+2026-10-28T09:46:49.8425436Z ##[group]Runner Image
+2026-10-28T09:46:49.8427305Z Image: ***-24.04
+2026-10-28T09:46:49.8428994Z Version: 20261025.353.1
+2026-10-28T09:46:49.8432155Z Included Software: https://github.com/actions/runner-images/blob/***24/20261025.353/images/***/Ubuntu2404-Readme.md
+2026-10-28T09:46:49.8436000Z Image Release: https://github.com/actions/runner-images/releases/tag/***24%2F20261025.353
+2026-10-28T09:46:49.8438368Z ##[endgroup]
+2026-10-28T09:46:49.8441400Z ##[group]GITHUB_TOKEN Permissions
+2026-10-28T09:46:49.8445472Z Contents: read
+2026-10-28T09:46:49.8447129Z Metadata: read
+2026-10-28T09:46:49.8448724Z Packages: read
+2026-10-28T09:46:49.8450326Z ##[endgroup]
+2026-10-28T09:46:49.8454429Z Secret source: Actions
+2026-10-28T09:46:49.8456900Z Cache mode: write
+2026-10-28T09:46:49.8458766Z Prepare workflow directory
+2026-10-28T09:46:49.8978221Z Prepare all required actions
+2026-10-28T09:46:49.9054493Z Getting action download info
+2026-10-28T09:46:50.0979969Z Download action repository 'appleboy/ssh-action@v1.2.5' (SHA:0ff4204d59e8e51228ff73bce53f80d53301dee2)
+2026-10-28T09:46:50.4662417Z Complete job name: logs
+2026-10-28T09:46:50.5714200Z ##[warning]Unexpected input(s) 'script_stop', valid inputs are ['host', 'port', 'passphrase', 'username', 'password', 'protocol', 'sync', 'use_insecure_cipher', 'cipher', 'timeout', 'command_timeout', 'key', 'key_path', 'fingerprint', 'proxy_host', 'proxy_port', 'proxy_username', 'proxy_password', 'proxy_protocol', 'proxy_passphrase', 'proxy_timeout', 'proxy_key', 'proxy_key_path', 'proxy_fingerprint', 'proxy_cipher', 'proxy_use_insecure_cipher', 'script', 'script_path', 'envs', 'envs_format', 'debug', 'allenvs', 'request_pty', 'curl_insecure', 'capture_stdout', 'version']
+2026-10-28T09:46:50.5800456Z ##[group]Run appleboy/ssh-action@v1.2.5
+2026-10-28T09:46:50.5801505Z with:
+2026-10-28T09:46:50.5802269Z   host: ***
+2026-10-28T09:46:50.5803154Z   username: ***
+2026-10-28T09:46:50.5815299Z   key: ***
+
+2026-10-28T09:46:50.5815946Z   script_stop: true
+2026-10-28T09:46:50.5818644Z   script: echo '═══ Toutes les lignes Voxtral (15 dernières minutes) ═══'
+docker logs sect-api --since 15m 2>&1 | grep -iE 'voxtral' | tail -20
+echo '═══ extraConfig du provider TTS (URLs seules, jamais les clés) ═══'
+cd /opt/sect
+NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+psql "$NEON" -t -A -c "SELECT \"extraConfig\" FROM \"AIProviderConfig\" WHERE \"provider\"='VOXTRAL' AND \"isActive\"=true"
+
+2026-10-28T09:46:50.5821447Z   port: 22
+2026-10-28T09:46:50.5822092Z   protocol: tcp
+2026-10-28T09:46:50.5822865Z   timeout: 30s
+2026-10-28T09:46:50.5823548Z   command_timeout: 10m
+2026-10-28T09:46:50.5824233Z   proxy_port: 22
+2026-10-28T09:46:50.5824890Z   proxy_protocol: tcp
+2026-10-28T09:46:50.5825572Z   proxy_timeout: 30s
+2026-10-28T09:46:50.5826257Z   curl_insecure: false
+2026-10-28T09:46:50.5826939Z   capture_stdout: false
+2026-10-28T09:46:50.5828074Z ##[endgroup]
+2026-10-28T09:46:50.5908421Z ##[start-action display=Set GitHub Path;id=__appleboy_ssh-action.__run]
+2026-10-28T09:46:50.5966906Z ##[group]Run echo "$GITHUB_ACTION_PATH" >> $GITHUB_PATH
+2026-10-28T09:46:50.5968014Z [36;1mecho "$GITHUB_ACTION_PATH" >> $GITHUB_PATH[0m
+2026-10-28T09:46:50.5996283Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-28T09:46:50.5997588Z env:
+2026-10-28T09:46:50.5998445Z   GITHUB_ACTION_PATH: /home/runner/work/_actions/appleboy/ssh-action/v1.2.5
+2026-10-28T09:46:50.5999419Z ##[endgroup]
+2026-10-28T09:46:50.6191669Z ##[end-action id=__appleboy_ssh-action.__run;outcome=success;conclusion=success;duration_ms=28]
+2026-10-28T09:46:50.6294823Z ##[start-action display=Run entrypoint.sh;id=__appleboy_ssh-action.entrypoint]
+2026-10-28T09:46:50.6331662Z ##[group]Run entrypoint.sh
+2026-10-28T09:46:50.6332434Z [36;1mentrypoint.sh[0m
+2026-10-28T09:46:50.6358469Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-28T09:46:50.6359393Z env:
+2026-10-28T09:46:50.6360247Z   GITHUB_ACTION_PATH: /home/runner/work/_actions/appleboy/ssh-action/v1.2.5
+2026-10-28T09:46:50.6361377Z   INPUT_HOST: ***
+2026-10-28T09:46:50.6362041Z   INPUT_PORT: 22
+2026-10-28T09:46:50.6363261Z   INPUT_PROTOCOL: tcp
+2026-10-28T09:46:50.6364059Z   INPUT_USERNAME: ***
+2026-10-28T09:46:50.6364747Z   INPUT_PASSWORD: 
+2026-10-28T09:46:50.6365414Z   INPUT_PASSPHRASE: 
+2026-10-28T09:46:50.6377668Z   INPUT_KEY: ***
+
+2026-10-28T09:46:50.6378352Z   INPUT_KEY_PATH: 
+2026-10-28T09:46:50.6379023Z   INPUT_FINGERPRINT: 
+2026-10-28T09:46:50.6379701Z   INPUT_PROXY_HOST: 
+2026-10-28T09:46:50.6380373Z   INPUT_PROXY_PORT: 22
+2026-10-28T09:46:50.6381061Z   INPUT_PROXY_USERNAME: 
+2026-10-28T09:46:50.6381764Z   INPUT_PROXY_PASSWORD: 
+2026-10-28T09:46:50.6382460Z   INPUT_PROXY_PASSPHRASE: 
+2026-10-28T09:46:50.6383302Z   INPUT_PROXY_KEY: 
+2026-10-28T09:46:50.6383962Z   INPUT_PROXY_KEY_PATH: 
+2026-10-28T09:46:50.6384658Z   INPUT_PROXY_FINGERPRINT: 
+2026-10-28T09:46:50.6385356Z   INPUT_TIMEOUT: 30s
+2026-10-28T09:46:50.6386022Z   INPUT_PROXY_TIMEOUT: 30s
+2026-10-28T09:46:50.6386731Z   INPUT_COMMAND_TIMEOUT: 10m
+2026-10-28T09:46:50.6389773Z   INPUT_SCRIPT: echo '═══ Toutes les lignes Voxtral (15 dernières minutes) ═══'
+docker logs sect-api --since 15m 2>&1 | grep -iE 'voxtral' | tail -20
+echo '═══ extraConfig du provider TTS (URLs seules, jamais les clés) ═══'
+cd /opt/sect
+NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+psql "$NEON" -t -A -c "SELECT \"extraConfig\" FROM \"AIProviderConfig\" WHERE \"provider\"='VOXTRAL' AND \"isActive\"=true"
+
+2026-10-28T09:46:50.6392517Z   INPUT_SCRIPT_FILE: 
+2026-10-28T09:46:50.6393591Z   INPUT_ENVS: 
+2026-10-28T09:46:50.6394258Z   INPUT_ENVS_FORMAT: 
+2026-10-28T09:46:50.6394923Z   INPUT_DEBUG: 
+2026-10-28T09:46:50.6395566Z   INPUT_ALL_ENVS: 
+2026-10-28T09:46:50.6396214Z   INPUT_REQUEST_PTY: 
+2026-10-28T09:46:50.6396890Z   INPUT_USE_INSECURE_CIPHER: 
+2026-10-28T09:46:50.6397602Z   INPUT_CIPHER: 
+2026-10-28T09:46:50.6398268Z   INPUT_PROXY_USE_INSECURE_CIPHER: 
+2026-10-28T09:46:50.6399026Z   INPUT_PROXY_CIPHER: 
+2026-10-28T09:46:50.6399693Z   INPUT_SYNC: 
+2026-10-28T09:46:50.6400343Z   INPUT_CAPTURE_STDOUT: false
+2026-10-28T09:46:50.6401069Z   INPUT_CURL_INSECURE: false
+2026-10-28T09:46:50.6401792Z   DRONE_SSH_VERSION: 
+2026-10-28T09:46:50.6402450Z ##[endgroup]
+2026-10-28T09:46:50.6553124Z Downloading drone-ssh-1.8.2-linux-amd64 from https://github.com/appleboy/drone-ssh/releases/download/v1.8.2
+2026-10-28T09:46:50.8081611Z ======= CLI Version Information =======
+2026-10-28T09:46:50.8110529Z Drone SSH version 1.8.2
+2026-10-28T09:46:50.8115048Z =======================================
+2026-10-28T09:46:52.1487050Z ═══ Toutes les lignes Voxtral (15 dernières minutes) ═══
+2026-10-28T09:46:52.1567728Z {"time":"2026-10-28T09:43:43.978696656Z","level":"INFO","msg":"Voxtral (podcast premium)","model":"voxtral-mini-tts-latest","refPresenter":true,"refExpert":true}
+2026-10-28T09:46:52.1570826Z {"time":"2026-10-28T09:43:43.978721336Z","level":"INFO","msg":"Voxtral : téléchargement des ref_audios (clonage multi-voix)"}
+2026-10-28T09:46:52.1574043Z {"time":"2026-10-28T09:43:44.271836974Z","level":"WARN","msg":"Voxtral premium échec — bascule chaîne 0 coût","audioId":"051e2ca7-5c82-4c60-a995-4b4f84861279","error":"fetch presenter ref_audio: ref_audio HTTP 403"}
+2026-10-28T09:46:52.1576959Z ═══ extraConfig du provider TTS (URLs seules, jamais les clés) ═══
+2026-10-28T09:46:52.3512388Z {"refAudioPresenter":"https://neuphonic-neutts-nano-multilingual-collection.hf.space/gradio_api/file=/tmp/gradio/6b829891aee71927ff2d61497f782a9726bed4e1fac6b965becda39ac791b766/jo.wav","refAudioExpert":"https://neuphonic-neutts-nano-multilingual-collection.hf.space/gradio_api/file=/tmp/gradio/c959c111c1f58a83177f72c70d3662b9acb0f7cfed95852e0ef155a047a74c39/juliette.wav"}
+2026-10-28T09:46:52.3520208Z ===============================================
+2026-10-28T09:46:52.3522266Z ✅ Successfully executed commands to all hosts.
+2026-10-28T09:46:52.3524279Z ===============================================
+2026-10-28T09:46:52.3546694Z ##[end-action id=__appleboy_ssh-action.entrypoint;outcome=success;conclusion=success;duration_ms=1724]
+2026-10-28T09:46:52.3701336Z Cleaning up orphan processes

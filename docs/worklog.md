@@ -8345,3 +8345,113 @@ lecture seule VM OCI, supprimé après usage — même pattern que SECT-TTS-1) :
   local et HTTP 200 sur sect.ftci.fr. Leçon : un commit docs-only peut
   rester « pending » côté Vercel sans déployer le code — un commit
   frontend (b10cd780) a débloqué le déploiement réel.
+
+## SECT-TTS-3 — Podcasts exam-prep multi-voix 0 coût, lecture vocale des supports de cours, et migration Voxtral 3 (28 octobre 2026)
+
+**Demandes de l'exploitant** : (1) analyse en profondeur de l'offre free
+tier Mistral TTS (Voxtral) et possibilité de l'améliorer ; (2) appliquer
+les meilleures options du système actuel aux podcasts exam-prep pour des
+résumés de cours d'exception, et ajouter le lecteur vocal aux documents
+exam-prep comme pour la bibliothèque.
+
+### 1. Analyse Voxtral (mesurée en réel, pas seulement lue)
+
+Prix affichés (docs.mistral.ai, modèles) : **Voxtral TTS 3 (voxtral-mini-
+tts-3-0, Public Preview) 13 $/M chars ; Voxtral TTS 26.03 (GA, poids
+ouverts CC BY-NC 4.0) 16 $/M chars**. Notre clé API (plan courant) répond
+en **200** avec une limite **12 000 chars d'entrée/min**
+(`x-ratelimit-limit-input-characters-minute`) : le plan gratuit
+« Experiment » rate-limite mais reste facturable au-delà de ses garde-fous
+selon le plan workspace — on ne peut PAS garantir 0 € dessus.
+
+**L'intégration précédente était MORTE de fait** (mesuré) : les voix
+nommées de Voxtral 2 (`voice: "lea"`) → **404 code 1902 « Voice 'lea' not
+found »** ; l'URL de ref_audio par défaut (Space Neuphonic jo.wav) sert
+désormais du JSON → 400. L'API a changé de forme : `voice_id`
+(`voice_592` Marie, `voice_3137` Manon, `voice_589` Lea, `voice_3141`
+Camille — 4 voix FR testées 200), `ref_audio` (clonage zéro-shot,
+inchangé), `response_format` wav/mp3, 34 tags d'émotion inline.
+
+**Verdict** : Voxtral = premium OPT-IN (clonage de voix propre à
+l'exploitant — la seule valeur que Gemini n'offre pas), jamais un défaut.
+Un podcast de ~5 000 chars coûterait ~0,07 $ en Voxtral contre **0 €**
+en chaîne gratuite. « L'améliorer » = le faire échouer PROPREMENT vers la
+chaîne 0 coût (implémenté) au lieu de laisser la ligne DocumentAudio en
+script-seul.
+
+### 2. Podcasts multi-voix 0 coût (SECT-TTS-3)
+
+`internal/tts/podcast.go` (nouveau) : `SynthesePodcast` découpe le script
+par locuteur (7 marqueurs reconnus) et synthétise chaque réplique avec
+SA voix — **duo studio Gemini Puck (animation) + Charon (expert)** en
+primaire (WAV 24 kHz, PCM concaténés avec respiration de 350 ms entre
+répliques), **duo Edge Neural Denise + Henri** en complément (MP3
+concaténés, ID3v2 strippés), **MeloTTS voix unique** en dernier secours.
+Invariant : un échec de segment fait basculer l'ÉPISODE ENTIER (jamais de
+WAV et MP3 mélangés) ; sémaphore acquis réplique par réplique (équité
+avec les lectures live) ; plafond 60 répliques (script dégénéré → voix
+unique). `DureeAudio` (fmt/data WAV exact + bitrate MPEG première frame)
+remplit ENFIN `DocumentAudio.durationSec`.
+
+Prompt worker (« résumé d'exception ») : accroche 30 s → panorama →
+concept/définition/exemple-analogie/piège d'examen → moyen
+mnémotechnique → mini-quiz 2 questions → récap 3 phrases ; phrases ≤ 25
+mots, zéro notation (écrit pour l'oreille) ; **titre du support passé au
+LLM** (`getDocumentContent` lit aussi `nomFichier`).
+
+Anti-spam `GenerateAudio` : **409** si l'utilisateur a déjà un podcast
+EN_COURS pour CE document (la génération multi-voix = ~20-40 appels TTS).
+
+### 3. Lecture vocale des documents exam-prep (comme la bibliothèque)
+
+`GET /api/exam-prep/documents/{id}/lecture-vocale?segment&voice&vitesse`
+— même chaîne 0 coût, contrôle d'accès = **`/read`**
+(`GetDocumentForReader`, source unique : étudiant filière+niveau,
+enseignant libre), texte découpé en **parties ~3 800 runes aux
+frontières de phrases** (cache mémoire, artefacts markdown épurés,
+ponctuation aérée), avance automatique + préchargement côté lecteur,
+zéro égress textuel (seuls des octets audio sortent), rate-limit
+15/min/utilisateur + sémaphore 3 côté service. Le composant
+`lecture-vocale.tsx` est généralisé (`endpoint`/`paramPage`/`unite`,
+rétro-compatible) et intégré dans `DocumentReader` (barre vocale sous
+l'en-tête, « partie 1/9 »).
+
+### 4. Vérification E2E en production (workflow temporaire tts3-verify)
+
+- **Lecture vocale document** : enseignant → **200, 1 326 672 octets MP3,
+  `X-Sect-Tts-Provider: edge`, `X-Sect-Tts-Model: fr-FR-HenriNeural`,
+  9 segments** ; **étudiant réel (filière+niveau vérifiés en SQL) → 200,
+  1 423 152 octets, provider edge** ; sans cookie → **401** ; segment
+  99999 → **400 honnête** (« document de 9 parties ») ;
+- **Podcast multi-voix réel** : POST → 202 ; POST spam → **409**
+  (anti-spam) ; **PRET en ~86 s** : script 6 675 chars par
+  `gemini-3-flash-preview` (31 répliques), Gemini TTS 429 (quota
+  journalier déjà consommé par les lectures) → bascule → **duo Edge
+  Denise+Henri : 2 306 448 octets MP3, 31 répliques, 6 min 24 s
+  (`durationSec` 384)** — `provider=edge,
+  model=fr-FR-DeniseNeural+fr-FR-HenriNeural` ; URL présignée R2
+  téléchargée (magic fff364c4) ; DELETE → 200 (nettoyage, 0 ligne
+  restante) ;
+- **Voxtral premium tenté puis échoué proprement** : l'exploitant a des
+  `refAudioPresenter/Expert` configurés en base (Space Neuphonic —
+  **fichiers temporaires expirés : HTTP 403**) → échec en < 1 s →
+  bascule chaîne 0 coût → l'étudiant reçoit quand même son épisode.
+  Action exploitant si le clonage Voxtral est voulu : héberger ses
+  propres WAV (les fichiers gradio/tmp ne durent pas) ;
+- Couche Edge prouvée directement dans le conteneur (`docker exec …
+  edge-tts` → MP3 valide) — une défaillance Edge TRANSITOIRE (crash CLI
+  09:29, sans doute réseau) met la couche en cooldown 10 min : la chaîne
+  vivante sert alors MeloTTS sans interruption (observé sur un vrai
+  utilisateur à 09:29).
+
+### 5. Leçons
+
+- Tester le CONTRAT (audio valide + provider connu), pas la couche
+  gagnante : les cooldowns font exactement leur travail — une assertion
+  « provider == edge » échoue sur un cooldown légitime.
+- Les fichiers temporaires (gradio tmp, Spaces) ne se mettent JAMAIS en
+  configuration de production : le garde `ressembleAudio` + fail-fast
+  HTTP transforme une panne muette en échec propre en < 1 s.
+- Un quota gratuit partagé (Gemini 429 après les E2E de la veille) est
+  absorbé par la chaîne : c'est la RAISON D'ÊTRE du multi-niveaux, pas
+  un bug.

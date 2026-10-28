@@ -1,0 +1,111 @@
+﻿2026-10-28T09:40:13.2091458Z ##[warning]Unexpected input(s) 'script_stop', valid inputs are ['host', 'port', 'passphrase', 'username', 'password', 'protocol', 'sync', 'use_insecure_cipher', 'cipher', 'timeout', 'command_timeout', 'key', 'key_path', 'fingerprint', 'proxy_host', 'proxy_port', 'proxy_username', 'proxy_password', 'proxy_protocol', 'proxy_passphrase', 'proxy_timeout', 'proxy_key', 'proxy_key_path', 'proxy_fingerprint', 'proxy_cipher', 'proxy_use_insecure_cipher', 'script', 'script_path', 'envs', 'envs_format', 'debug', 'allenvs', 'request_pty', 'curl_insecure', 'capture_stdout', 'version']
+2026-10-28T09:40:13.2163575Z ##[group]Run appleboy/ssh-action@v1.2.5
+2026-10-28T09:40:13.2164670Z with:
+2026-10-28T09:40:13.2165586Z   host: ***
+2026-10-28T09:40:13.2166402Z   username: ***
+2026-10-28T09:40:13.2177939Z   key: ***
+
+2026-10-28T09:40:13.2178946Z   script_stop: true
+2026-10-28T09:40:13.2181893Z   script: echo '═══ edge-tts direct (texte court) — traceback COMPLET ═══'
+docker exec sect-api edge-tts --voice fr-FR-HenriNeural --text "Bonjour, ceci est un test." --write-media /tmp/diag.mp3 2>&1 | tail -30
+echo "exit=$?"
+echo '═══ fichier produit ? ═══'
+docker exec sect-api sh -c 'ls -la /tmp/diag.mp3 2>&1; head -c 4 /tmp/diag.mp3 2>/dev/null | od -An -tx1'
+echo '═══ logs TTS complets (2h) ═══'
+docker logs sect-api --since 2h 2>&1 | grep -iE 'TTS|podcast' | tail -40
+
+2026-10-28T09:40:13.2185149Z   port: 22
+2026-10-28T09:40:13.2185861Z   protocol: tcp
+2026-10-28T09:40:13.2186632Z   timeout: 30s
+2026-10-28T09:40:13.2187439Z   command_timeout: 10m
+2026-10-28T09:40:13.2188747Z   proxy_port: 22
+2026-10-28T09:40:13.2189544Z   proxy_protocol: tcp
+2026-10-28T09:40:13.2190385Z   proxy_timeout: 30s
+2026-10-28T09:40:13.2191129Z   curl_insecure: false
+2026-10-28T09:40:13.2191965Z   capture_stdout: false
+2026-10-28T09:40:13.2193023Z ##[endgroup]
+2026-10-28T09:40:13.2263344Z ##[start-action display=Set GitHub Path;id=__appleboy_ssh-action.__run]
+2026-10-28T09:40:13.2322228Z ##[group]Run echo "$GITHUB_ACTION_PATH" >> $GITHUB_PATH
+2026-10-28T09:40:13.2323526Z [36;1mecho "$GITHUB_ACTION_PATH" >> $GITHUB_PATH[0m
+2026-10-28T09:40:13.2512645Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-28T09:40:13.2514031Z env:
+2026-10-28T09:40:13.2514976Z   GITHUB_ACTION_PATH: /home/runner/work/_actions/appleboy/ssh-action/v1.2.5
+2026-10-28T09:40:13.2516063Z ##[endgroup]
+2026-10-28T09:40:13.2718573Z ##[end-action id=__appleboy_ssh-action.__run;outcome=success;conclusion=success;duration_ms=45]
+2026-10-28T09:40:13.2733764Z ##[start-action display=Run entrypoint.sh;id=__appleboy_ssh-action.entrypoint]
+2026-10-28T09:40:13.2771926Z ##[group]Run entrypoint.sh
+2026-10-28T09:40:13.2772839Z [36;1mentrypoint.sh[0m
+2026-10-28T09:40:13.2816431Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-28T09:40:13.2817524Z env:
+2026-10-28T09:40:13.2818834Z   GITHUB_ACTION_PATH: /home/runner/work/_actions/appleboy/ssh-action/v1.2.5
+2026-10-28T09:40:13.2820315Z   INPUT_HOST: ***
+2026-10-28T09:40:13.2821086Z   INPUT_PORT: 22
+2026-10-28T09:40:13.2821914Z   INPUT_PROTOCOL: tcp
+2026-10-28T09:40:13.2822804Z   INPUT_USERNAME: ***
+2026-10-28T09:40:13.2823581Z   INPUT_PASSWORD: 
+2026-10-28T09:40:13.2824383Z   INPUT_PASSPHRASE: 
+2026-10-28T09:40:13.2836437Z   INPUT_KEY: ***
+
+2026-10-28T09:40:13.2837317Z   INPUT_KEY_PATH: 
+2026-10-28T09:40:13.2838277Z   INPUT_FINGERPRINT: 
+2026-10-28T09:40:13.2839220Z   INPUT_PROXY_HOST: 
+2026-10-28T09:40:13.2840056Z   INPUT_PROXY_PORT: 22
+2026-10-28T09:40:13.2840795Z   INPUT_PROXY_USERNAME: 
+2026-10-28T09:40:13.2841634Z   INPUT_PROXY_PASSWORD: 
+2026-10-28T09:40:13.2842448Z   INPUT_PROXY_PASSPHRASE: 
+2026-10-28T09:40:13.2843207Z   INPUT_PROXY_KEY: 
+2026-10-28T09:40:13.2844014Z   INPUT_PROXY_KEY_PATH: 
+2026-10-28T09:40:13.2845230Z   INPUT_PROXY_FINGERPRINT: 
+2026-10-28T09:40:13.2846090Z   INPUT_TIMEOUT: 30s
+2026-10-28T09:40:13.2846864Z   INPUT_PROXY_TIMEOUT: 30s
+2026-10-28T09:40:13.2847787Z   INPUT_COMMAND_TIMEOUT: 10m
+2026-10-28T09:40:13.2850962Z   INPUT_SCRIPT: echo '═══ edge-tts direct (texte court) — traceback COMPLET ═══'
+docker exec sect-api edge-tts --voice fr-FR-HenriNeural --text "Bonjour, ceci est un test." --write-media /tmp/diag.mp3 2>&1 | tail -30
+echo "exit=$?"
+echo '═══ fichier produit ? ═══'
+docker exec sect-api sh -c 'ls -la /tmp/diag.mp3 2>&1; head -c 4 /tmp/diag.mp3 2>/dev/null | od -An -tx1'
+echo '═══ logs TTS complets (2h) ═══'
+docker logs sect-api --since 2h 2>&1 | grep -iE 'TTS|podcast' | tail -40
+
+2026-10-28T09:40:13.2854350Z   INPUT_SCRIPT_FILE: 
+2026-10-28T09:40:13.2855130Z   INPUT_ENVS: 
+2026-10-28T09:40:13.2855900Z   INPUT_ENVS_FORMAT: 
+2026-10-28T09:40:13.2856647Z   INPUT_DEBUG: 
+2026-10-28T09:40:13.2857427Z   INPUT_ALL_ENVS: 
+2026-10-28T09:40:13.2858294Z   INPUT_REQUEST_PTY: 
+2026-10-28T09:40:13.2859091Z   INPUT_USE_INSECURE_CIPHER: 
+2026-10-28T09:40:13.2859943Z   INPUT_CIPHER: 
+2026-10-28T09:40:13.2860695Z   INPUT_PROXY_USE_INSECURE_CIPHER: 
+2026-10-28T09:40:13.2861597Z   INPUT_PROXY_CIPHER: 
+2026-10-28T09:40:13.2862354Z   INPUT_SYNC: 
+2026-10-28T09:40:13.2863097Z   INPUT_CAPTURE_STDOUT: false
+2026-10-28T09:40:13.2863977Z   INPUT_CURL_INSECURE: false
+2026-10-28T09:40:13.2864767Z   DRONE_SSH_VERSION: 
+2026-10-28T09:40:13.2865562Z ##[endgroup]
+2026-10-28T09:40:13.3007968Z Downloading drone-ssh-1.8.2-linux-amd64 from https://github.com/appleboy/drone-ssh/releases/download/v1.8.2
+2026-10-28T09:40:13.5275853Z ======= CLI Version Information =======
+2026-10-28T09:40:13.5294721Z Drone SSH version 1.8.2
+2026-10-28T09:40:13.5297881Z =======================================
+2026-10-28T09:40:15.0541212Z ═══ edge-tts direct (texte court) — traceback COMPLET ═══
+2026-10-28T09:40:16.2513848Z exit=0
+2026-10-28T09:40:16.2516065Z ═══ fichier produit ? ═══
+2026-10-28T09:40:16.2912032Z -rw-r--r--    1 sect     sect         17280 Oct 28 09:40 /tmp/diag.mp3
+2026-10-28T09:40:16.2923283Z  ff f3 64 c4
+2026-10-28T09:40:16.2956455Z ═══ logs TTS complets (2h) ═══
+2026-10-28T09:40:16.3186898Z {"time":"2026-10-28T09:29:22.452176581Z","level":"WARN","msg":"TTS Edge (voix explicite) échec — bascule sur la chaîne studio","error":"edge-tts échec: exit status 1 — Traceback (most recent call last):\n  File \"/usr/bin/edge-tts\", line 8, in <module>\n    sys.exit(main())\n             ^^^^^^\n  File \"/usr/lib/python3.12/site-packages/edge_tts/util.py\", line 184, in ma…","textLen":636}
+2026-10-28T09:40:16.3195984Z {"time":"2026-10-28T09:29:22.746789481Z","level":"INFO","msg":"TTS Gemini : modèle découvert","model":"gemini-3.8-flash-tts"}
+2026-10-28T09:40:16.3207014Z {"time":"2026-10-28T09:29:22.903048845Z","level":"WARN","msg":"TTS Gemini échec — bascule couche suivante","error":"HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota ex","textLen":636}
+2026-10-28T09:40:16.3216432Z {"time":"2026-10-28T09:29:27.363475762Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3220830Z {"time":"2026-10-28T09:31:19.284337108Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3224691Z {"time":"2026-10-28T09:31:25.429126068Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3234260Z {"time":"2026-10-28T09:33:40.543819217Z","level":"WARN","msg":"TTS Gemini échec — bascule couche suivante","error":"HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota ex","textLen":2406}
+2026-10-28T09:40:16.3243820Z {"time":"2026-10-28T09:33:51.790757035Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3248448Z {"time":"2026-10-28T09:34:49.585211756Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3253037Z {"time":"2026-10-28T09:35:04.816568694Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3257484Z {"time":"2026-10-28T09:35:07.227917066Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3261949Z {"time":"2026-10-28T09:35:12.14680672Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3266141Z {"time":"2026-10-28T09:35:34.450668651Z","level":"INFO","msg":"TTS Gemini en cooldown — essai couche suivante"}
+2026-10-28T09:40:16.3269751Z ===============================================
+2026-10-28T09:40:16.3272390Z ✅ Successfully executed commands to all hosts.
+2026-10-28T09:40:16.3275031Z ===============================================
+2026-10-28T09:40:16.3299597Z ##[end-action id=__appleboy_ssh-action.entrypoint;outcome=success;conclusion=success;duration_ms=3056]
