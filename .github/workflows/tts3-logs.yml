@@ -1,0 +1,17 @@
+name: tts3-logs (temporaire — diagnostic)
+on:
+  workflow_dispatch:
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump logs TTS (40 dernières minutes)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          script: |
+            docker logs sect-api --since 40m 2>&1 | grep -iE 'TTS|podcast|edge' | tail -60
