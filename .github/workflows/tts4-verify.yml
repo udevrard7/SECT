@@ -1,0 +1,95 @@
+name: tts4-verify (temporaire — E2E SECT-TTS-4)
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérification E2E SECT-TTS-4 (VM OCI — retrait Edge, chaîne Gemini→MeloTTS)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 18m
+          script: |
+            set -euo pipefail
+            echo '═══ 0. Santé API (image neuve SECT-TTS-4) ═══'
+            curl -fsS --max-time 10 http://localhost:8090/health && echo
+
+            echo '═══ 0b. edge-tts ABSENT du conteneur (retrait intégral — Python retiré aussi) ═══'
+            if docker exec sect-api sh -c 'command -v edge-tts' >/dev/null 2>&1; then
+              echo 'ECHEC: edge-tts encore présent dans le conteneur (image non régénérée ?)'; exit 1
+            else
+              echo 'OK: edge-tts absent (image 100 % Go — SECT-TTS-4)'
+            fi
+            if docker exec sect-api sh -c 'command -v python3' >/dev/null 2>&1; then
+              echo 'AVERTISSEMENT: python3 encore présent (couche Dockerfile non purgée ?)'
+            else
+              echo 'OK: python3 absent (runtime Python retiré)'
+            fi
+
+            echo '═══ 1. JWT forgé (ADMIN réel — secrets lus sur place, jamais affichés) ═══'
+            cd /opt/sect
+            JWT_SECRET=$(grep '^JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
+            NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+            ADMIN_ID=$(psql "$NEON" -t -A -c "SELECT id FROM \"User\" WHERE role='ADMIN' AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" LIMIT 1")
+            if [ -z "$ADMIN_ID" ]; then echo 'ECHEC: aucun ADMIN actif'; exit 1; fi
+            NOW=$(date +%s)
+            b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+            HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+            PAYLOAD=$(printf '{"sub":"%s","role":"ADMIN","etablissement_id":"","email":"verify@sect.local","name":"verify","iat":%s,"exp":%s,"typ":"access","must_change_pwd":false}' "$ADMIN_ID" "$NOW" "$((NOW+1800))" | b64url)
+            SIG=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
+            TOKEN="$HEADER.$PAYLOAD.$SIG"
+
+            echo '═══ 2. Ouvrage textuel (Metasploit — page 3 prouvée texte en SECT-TTS-1) ═══'
+            OUVRAGE_ID=$(psql "$NEON" -t -A -c "SELECT id FROM \"Ouvrage\" WHERE titre ILIKE '%Metasploit%' ORDER BY \"createdAt\" LIMIT 1")
+            if [ -z "$OUVRAGE_ID" ]; then echo 'ECHEC: ouvrage Metasploit introuvable'; exit 1; fi
+            echo "ouvrage: $OUVRAGE_ID"
+
+            echo '═══ 3. Sans cookie → 401 attendu (posture inchangée) ═══'
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "http://localhost:8090/api/ouvrages/$OUVRAGE_ID/lecture-vocale?page=3")
+            echo "sans auth: HTTP $CODE (attendu 401)"
+            if [ "$CODE" != "401" ]; then echo 'ECHEC: 401 attendu sans cookie'; exit 1; fi
+
+            echo '═══ 4. Régression studio (kore) — gemini attendu, JAMAIS edge ═══'
+            curl -sS --max-time 240 -D /tmp/tts4-g.txt -o /tmp/tts4-g.bin -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/ouvrages/$OUVRAGE_ID/lecture-vocale?page=3&voice=kore"
+            grep -iE '^HTTP/|^x-sect-tts|^content-type' /tmp/tts4-g.txt
+            echo "taille: $(stat -c '%s' /tmp/tts4-g.bin) octets"
+            echo "magic: $(head -c 4 /tmp/tts4-g.bin | od -An -tx1 | tr -d ' \n') (gemini = 52494646 WAV)"
+            PROVIDER_G=$(grep -i '^x-sect-tts-provider:' /tmp/tts4-g.txt | tr -d '\r' | awk '{print $2}')
+            if [ "$PROVIDER_G" = "edge" ]; then echo 'ECHEC: provider=edge — la couche Edge devait être retirée'; exit 1; fi
+            if [ "$PROVIDER_G" != "gemini" ]; then echo "AVERTISSEMENT: provider=$PROVIDER_G (gemini attendu — bascule MeloTTS tolérée si quota/cooldown, edge interdit)"; fi
+            if [ "$(stat -c '%s' /tmp/tts4-g.bin)" -lt 2048 ]; then echo 'ECHEC: audio trop court'; exit 1; fi
+
+            echo '═══ 5. Voix edge:henri HÉRITÉE (ancien localStorage) → blanchie vers Kore, JAMAIS edge ═══'
+            curl -sS --max-time 240 -D /tmp/tts4-h.txt -o /tmp/tts4-h.bin -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/ouvrages/$OUVRAGE_ID/lecture-vocale?page=3&voice=edge:henri"
+            grep -iE '^HTTP/|^x-sect-tts|^content-type' /tmp/tts4-h.txt
+            PROVIDER_H=$(grep -i '^x-sect-tts-provider:' /tmp/tts4-h.txt | tr -d '\r' | awk '{print $2}')
+            MODEL_H=$(grep -i '^x-sect-tts-model:' /tmp/tts4-h.txt | tr -d '\r' | cut -d' ' -f2-)
+            echo "provider=$PROVIDER_H model=$MODEL_H taille=$(stat -c '%s' /tmp/tts4-h.bin)"
+            if [ "$PROVIDER_H" = "edge" ]; then echo 'ECHEC: provider=edge sur voix héritée — routage Edge encore actif'; exit 1; fi
+            if [ "$(stat -c '%s' /tmp/tts4-h.bin)" -lt 2048 ]; then echo 'ECHEC: audio trop court'; exit 1; fi
+
+            echo '═══ 6. Lecture vocale document exam-prep — chaîne identique sans Edge ═══'
+            DOC_ID=$(psql "$NEON" -t -A -c "SELECT d.id FROM \"Document\" d WHERE d.\"contenuTexte\" IS NOT NULL AND length(d.\"contenuTexte\") > 800 AND d.\"deletedAt\" IS NULL ORDER BY d.\"createdAt\" DESC LIMIT 1")
+            if [ -z "$DOC_ID" ]; then echo 'AVERTISSEMENT: aucun document textuel — test document sauté'
+            else
+              CODE=$(curl -s -o /tmp/tts4-d.bin -D /tmp/tts4-d.txt -w '%{http_code}' --max-time 240 -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=1&voice=charon")
+              echo "document: HTTP $CODE — $(stat -c '%s' /tmp/tts4-d.bin) octets — provider=$(grep -i '^x-sect-tts-provider:' /tmp/tts4-d.txt | tr -d '\r' | awk '{print $2}')"
+              if [ "$CODE" != "200" ]; then echo 'ECHEC: 200 attendu (ADMIN)'; exit 1; fi
+              if grep -qi '^x-sect-tts-provider: edge' /tmp/tts4-d.txt; then echo 'ECHEC: provider=edge interdit'; exit 1; fi
+              CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=99999")
+              echo "segment hors bornes: HTTP $CODE (attendu 400)"
+              if [ "$CODE" != "400" ]; then echo 'ECHEC: 400 attendu hors bornes'; exit 1; fi
+            fi
+
+            echo '═══ 7. Logs — plus AUCUNE ligne TTS Edge ═══'
+            EDGE_LOGS=$(docker logs sect-api --since 15m 2>&1 | grep -ci 'TTS Edge' || true)
+            echo "lignes 'TTS Edge' dans les logs récents: $EDGE_LOGS (attendu 0)"
+            docker logs sect-api --since 15m 2>&1 | grep -iE 'TTS (Gemini|MeloTTS)' | tail -4 || true
+
+            echo '═══ SECT-TTS-4 E2E PROD: OK — Edge retiré, chaîne Gemini→MeloTTS vivo ═══'
+            rm -f /tmp/tts4-g.txt /tmp/tts4-g.bin /tmp/tts4-h.txt /tmp/tts4-h.bin /tmp/tts4-d.txt /tmp/tts4-d.bin
