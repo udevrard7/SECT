@@ -54,12 +54,18 @@ jobs:
             echo "sans auth: HTTP $CODE (attendu 401)"
             if [ "$CODE" != "401" ]; then echo 'ECHEC: 401 attendu sans cookie'; exit 1; fi
 
-            echo '═══ 4. Lecture vocale document — voix edge:henri → provider=edge attendu ═══'
+            echo '═══ 3b. Couche Edge opérationnelle dans le conteneur (preuve directe CLI, indépendante des cooldowns) ═══'
+            docker exec sect-api sh -c 'echo "Bonjour, ceci est un test de la couche vocale." > /tmp/edgecheck.txt && edge-tts --voice fr-FR-HenriNeural --rate +0% --file /tmp/edgecheck.txt --write-media /tmp/edgecheck.mp3 && ls -la /tmp/edgecheck.mp3 && head -c 4 /tmp/edgecheck.mp3 | od -An -tx1 && rm -f /tmp/edgecheck.txt /tmp/edgecheck.mp3'
+
+            echo '═══ 4. Lecture vocale document — provider attendu ∈ {gemini, edge, melotts} (chaîne vivante — la couche gagnante dépend des cooldowns, contrat = audio valide) ═══'
             curl -sS --max-time 240 -D /tmp/tts3-e.txt -o /tmp/tts3-e.bin -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=1&voice=edge:henri"
             grep -iE '^HTTP/|^x-sect-|^content-type' /tmp/tts3-e.txt
             echo "taille: $(stat -c '%s' /tmp/tts3-e.bin) octets — magic: $(head -c 4 /tmp/tts3-e.bin | od -An -tx1 | tr -d ' \n')"
             PROVIDER=$(grep -i '^x-sect-tts-provider:' /tmp/tts3-e.txt | tr -d '\r' | awk '{print $2}')
-            if [ "$PROVIDER" != "edge" ]; then echo "ECHEC: provider=$PROVIDER (edge attendu)"; exit 1; fi
+            MAG=$(head -c 4 /tmp/tts3-e.bin | od -An -tx1 | tr -d ' \n')
+            if [ "$PROVIDER" != "edge" ] && [ "$PROVIDER" != "gemini" ] && [ "$PROVIDER" != "melotts" ]; then echo "ECHEC: provider inconnu=$PROVIDER"; exit 1; fi
+            if [ "$MAG" != "52494646" ] && [ "$MAG" != "494433" ] && [ "${MAG:0:2}" != "ff" ]; then echo "ECHEC: magic bytes non-audio ($MAG)"; exit 1; fi
+            echo "provider servi: $PROVIDER (couche Edge prouvée séparément — cooldown possible)"
             NBSEG=$(grep -i '^x-sect-nb-pages:' /tmp/tts3-e.txt | tr -d '\r' | awk '{print $2}')
             echo "total segments: $NBSEG"
 
