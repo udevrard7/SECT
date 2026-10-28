@@ -364,9 +364,10 @@ func extraireTextePage(content []byte, page int) (string, int, error) {
 		if dernierY != yInconnu {
 			if abs64(ch.Y-dernierY) > max64(2, taille*0.5) {
 				// Nouvelle ligne (tolérance : demi-corps de caractère — les
-				// chunks d'une même ligne oscillent légèrement en Y).
+				// chunks d'une même ligne oscillent légèrement en Y). Pas de
+				// saut de valeur : la fin X du PREMIER chunk de la ligne sert
+				// de référence à la suivante (réaffectée après le if).
 				sb.WriteByte('\n')
-				derniereFinX = yInconnu
 			} else if derniereFinX != yInconnu {
 				// Même ligne : espace si écart horizontal significatif.
 				cart := ch.X - derniereFinX

@@ -513,7 +513,7 @@ func (s *Service) syntheseGemini(ctx context.Context, gem providerRow, text, voi
 			}
 		}
 		if b64 == "" {
-			return nil, fmt.Errorf("Gemini n'a retourné aucun audio (mime=%q, candidats=%d)", mime, len(out.Candidates))
+			return nil, fmt.Errorf("aucun audio renvoyé par Gemini (mime=%q, candidats=%d)", mime, len(out.Candidates))
 		}
 
 		pcm, err := base64.StdEncoding.DecodeString(b64)
@@ -619,7 +619,7 @@ func (s *Service) syntheseMeloTTS(ctx context.Context, cf providerRow, text stri
 		return nil, fmt.Errorf("décodage MeloTTS: %w", err)
 	}
 	if !out.Success || out.Result.Audio == "" {
-		return nil, fmt.Errorf("MeloTTS sans audio (success=%v)", out.Success)
+		return nil, fmt.Errorf("melotts sans audio (success=%v)", out.Success)
 	}
 	mp3, err := base64.StdEncoding.DecodeString(out.Result.Audio)
 	if err != nil {
