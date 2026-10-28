@@ -49,11 +49,16 @@ jobs:
             echo
 
             JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | head -1 | cut -d= -f2-)
-            DBURL=$(grep -E '^NEON_DATABASE_URL=' .env | head -1 | cut -d= -f2-)
+            # NEON_DIRECT_URL = rôle propriétaire (bypass RLS — la table User
+            # est invisible pour sect_app sans claims app.*). Lecture seule.
+            DBURL=$(grep -E '^NEON_DIRECT_URL=' .env | head -1 | cut -d= -f2-)
+            [ -n "$DBURL" ] || DBURL=$(grep -E '^NEON_DATABASE_URL=' .env | head -1 | cut -d= -f2-)
 
             echo "══ 2. UTILISATEUR RÉEL (masqué) ══"
+            command -v psql >/dev/null || echo "⚠️ psql absent du PATH"
             USER_ROW=$(psql "$DBURL" -t -A -F'|' -c \
-              "SELECT id, role, COALESCE(\"etablissementId\",''), email, COALESCE(name,'') FROM \"User\" WHERE COALESCE(\"mustChangePwd\", false) = false AND role IN ('ADMIN','RESPONSABLE','ENSEIGNANT','ETUDIANT') ORDER BY (role='ADMIN') DESC, \"createdAt\" ASC LIMIT 1")
+              "SELECT id, role, COALESCE(\"etablissementId\",''), email, COALESCE(name,'') FROM \"User\" WHERE COALESCE(\"mustChangePwd\", false) = false AND role IN ('ADMIN','RESPONSABLE','ENSEIGNANT','ETUDIANT') ORDER BY (role='ADMIN') DESC, \"createdAt\" ASC LIMIT 1" 2>&1) || true
+            case "$USER_ROW" in *'|'*) ;; *) echo "⚠️ psql: $(echo "$USER_ROW" | head -c 250)"; USER_ROW='' ;; esac
             UID_=$(echo "$USER_ROW" | cut -d'|' -f1)
             ROLE=$(echo "$USER_ROW" | cut -d'|' -f2)
             ETAB=$(echo "$USER_ROW" | cut -d'|' -f3)
@@ -108,7 +113,7 @@ jobs:
 
             echo "══ 5. NÉGATIF : SANS AUTHENTIFICATION ══"
             curl -s -o /dev/null -w "sans cookie → HTTP %{http_code}\n" \
-              "http://127.0.0.1:8090/api/ouvrages/${OUV}/lecture-vocale?page=1"
+              "http://127.0.0.1:8090/api/ouvrages/${OUV:-x}/lecture-vocale?page=1"
 
             echo "══ BILAN ══"
             if [ "$SUCCES" = "1" ]; then
