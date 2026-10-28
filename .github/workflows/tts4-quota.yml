@@ -1,0 +1,47 @@
+name: tts4-quota (temporaire — diagnostic quota Gemini TTS)
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnostic quota Gemini TTS (VM OCI — réponse 429 complète, clé jamais affichée)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            cd /opt/sect
+            NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+            # Clé GOOGLE (jamais affichée) — même lecture que internal/tts.
+            GKEY=$(psql "$NEON" -t -A -c "SELECT \"apiKey\" FROM \"AIProviderConfig\" WHERE \"provider\"='GOOGLE' AND \"isActive\"=true ORDER BY \"priority\" ASC LIMIT 1")
+            if [ -z "$GKEY" ]; then echo 'ECHEC: aucun provider GOOGLE actif'; exit 1; fi
+            echo '── Appel TTS minuscule (résultat 429 attendu si quota épuisé — réponse COMPLÈTE) ──'
+            BODY='{"contents":[{"parts":[{"text":"Bonjour"}]}],"generationConfig":{"responseModalities":["AUDIO"],"speechConfig":{"voiceConfig":{"prebuiltVoiceConfig":{"voiceName":"Kore"}}}}}'
+            for MODEL in gemini-3.8-flash-tts gemini-2.5-flash-preview-tts; do
+              echo "── modèle: $MODEL ──"
+              CODE=$(curl -s -o /tmp/quota.json -w '%{http_code}' --max-time 60 \
+                -X POST "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent" \
+                -H 'Content-Type: application/json' \
+                -H "x-goog-api-key: $GKEY" \
+                -d "$BODY")
+              echo "HTTP $CODE"
+              python3 - <<'PY'
+            import json
+            try:
+                d = json.load(open('/tmp/quota.json'))
+                err = d.get('error', {})
+                print('code:', err.get('code'), '— status:', err.get('status'))
+                print('message:', err.get('message', '')[:900])
+            except Exception as e:
+                print('réponse non JSON:', open('/tmp/quota.json').read()[:400])
+            PY
+              if [ "$CODE" = "200" ]; then echo '(appel réussi — quota rétabli)'; break; fi
+            done
+            rm -f /tmp/quota.json
+            echo '── FIN diagnostic ──'
