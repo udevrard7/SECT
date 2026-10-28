@@ -8130,3 +8130,130 @@ nettes — l'effet livre numérique demandé.
   « chaque page qui défile » : debounce de stabilisation, et les arrêts
   interrompus (défilement fluide interrompu par une touche) ne comptent
   pas — c'est la sémantique correcte pour `pagesVues`.
+
+## SECT-TTS-1 — Lecture vocale de la bibliothèque, objectif 0 coût : la perle Gemini 3.8 Flash TTS servie en production (28 octobre 2026)
+
+**Demande de l'exploitant** : ajouter un lecteur vocal « très humain, pas
+machine » à la bibliothèque, en explorant les fournisseurs IA DÉJÀ intégrés
+en base pour « dénicher les perles » offrant un TTS gratuit — objectif
+**0 coût** strict.
+
+**L'exploration** (10 providers actifs en base, clés testées en direct) :
+
+| Fournisseur | TTS ? | Français | Gratuit | Verdict |
+|---|---|---|---|---|
+| Gemini (GOOGLE) | **Flash TTS « studio-grade voice fidelity, expressive acting, long-form stability », 30 voix studio** | natif | niveau gratuit AI Studio | **LA PERLE — primaire** |
+| Cloudflare | @cf/myshell-ai/melotts | lang=fr | neurons/jour gratuits | secours indépendant de Google |
+| Mistral Voxtral | voxtral-mini-tts | natif | **payant au caractère** | exclu de la chaîne (garantie 0 coût) — reste pour les podcasts |
+| Groq | playai-tts | anglais seul | oui | écarté (pas de FR) |
+| OpenRouter/DeepSeek/HF/ZAI/MuleRouter | — | — | — | pas de TTS dans l'offre |
+
+**L'architecture retenue** (83bb76e7 + 4c0717b1) :
+
+1. **internal/tts** (nouveau paquet) — chaîne **Gemini → MeloTTS** :
+   - **zéro nouvelle config** : la clé Gemini est celle du provider chat
+     GOOGLE déjà en base (lue à chaque requête → rotation respectée),
+     la clé MeloTTS celle du provider CLOUDFLARE ; `isActive=false`
+     coupe le fournisseur (levier exploitant) ;
+   - **modèle DÉCOUVERT au premier appel** via `GET /v1beta/models`
+     (flash + version la plus haute, mémoïsé par instance) + file
+     statique de secours — en prod la découverte a résolu
+     **`gemini-3.8-flash-tts`**, le modèle « perle » exact annoncé par
+     l'exploitant, sans qu'aucun nom ne soit codé en dur ;
+   - cooldowns par fournisseur (10 min, 3 min sur 429) — miroir
+     assoupli de SECT-LATENCY-3/4 ; 10 voix studio en liste blanche
+     (Kore par défaut) ; vitesse 0.75–1.25 bornée, traduite en consigne
+     d'interprétation en **langage naturel** (« Lis posément… ») — le
+     « expressive acting » : on dirige l'interprète, on ne déforme pas
+     l'audio ; PCM Gemini encapsulé WAV (RIFF 44 o, rate parsé du mime) ;
+     MeloTTS sniffé par magic bytes (RIFF/WAVE mesuré en réel) ;
+   - anti-abus des quotas gratuits : sémaphore 3 synthèses, rate-limit
+     15 req/min/utilisateur, plafond 4 000 runes/page.
+2. **usecase GetLectureVocale** — sémantique LECTURE (miroir de /flux) :
+   RLS via FindByID (404 si invisible), audit OUVRAGE_LECTURE,
+   `telechargementAutorise` ne s'applique pas (l'audio de synthèse
+   n'est pas le fichier d'origine). Cache disque du PDF (R2 téléchargé
+   UNE fois, purge >400 Mo), cache mémoire du texte nettoyé,
+   déchiffrement qpdf une seule fois (cache remplacé par la version
+   claire), nettoyage prosodique (folios écartés, césures recousues,
+   ponctuation aérée). **LE TEXTE NE SORT JAMAIS DU SERVEUR** — seuls
+   des octets audio partent (posture BIBLIO-14/15 : zéro égress
+   textuel, même authentifié).
+3. **Extraction géométrique nouvelle** — `GetPlainText` (ledongthuc/pdf)
+   colle les mots sur les PDF à Td positionnés (mesuré sur un PDF réel
+   du corpus de test : « Trace-basedJust-in-Time… » inaudible en TTS).
+   Reconstruction depuis les chunks positionnés `p.Content().Text` :
+   saut de Y > demi-corps → nouvelle ligne ; écart X > 20 % du corps →
+   espace manquant. Validé sur un PDF réel (espaces + lignes reconstruits
+   partout) et un PDF synthétique (césure « Exem-/ple » recousue).
+4. **Route** `GET /api/ouvrages/{id}/lecture-vocale?page&voice&vitesse`
+   — audio inline no-store + en-têtes `X-Sect-Tts-Provider/Model/
+   Nb-Pages` (avance automatique côté client) ;
+   `TTSIndisponibleError` → 503 réessayable (les deux gratuits sont
+   transitoirement en échec, ce n'est pas une erreur de requête).
+5. **Frontend** — `lecture-vocale.tsx` (nouveau) : panneau compact
+   (transport Play/Pause/Stop, 10 voix studio libellées FR, 3 vitesses,
+   préférences mémorisées) ; avance AUTOMATIQUE page à page (livre
+   audio), préchargement de la page suivante pendant l'écoute, cache de
+   blobs par page, abort propre, erreurs actionnables + Réessayer —
+   **pas de repli « voix machine »** : l'exploitant a demandé du très
+   humain, un repli robotisé serait une dégradation silencieuse.
+   `lecteur-securise.tsx` : suivi vocal — la page lue devient la page
+   affichée (défilement doux) SANS double comptage télémétrique
+   (`dernierePageNotifiee` aligné, miroir de la reprise initiale).
+   `lecteur-ouvrage-page.tsx` : bouton « Écouter » (casque) dans la
+   barre de lecture mesurée — actif dans les DEUX modes (sécurisé
+   canvas + natif iframe).
+
+**Vérifié en réel avant poussée** (base Neon de prod, depuis la sandbox) :
+lecture des providers avec claims RLS → Gemini géobloqué depuis Hong Kong
+(400 FAILED_PRECONDITION) → **bascule MeloTTS automatique** → 477 Ko
+audio/wav servis (magic bytes RIFF). La chaîne de repli est prouvée,
+pas seulement le chemin nominal.
+
+**Vérification E2E en production** (workflow temporaire tts-verify, SSH
+lecture seule VM OCI, supprimé après usage — pattern biblio-verrou-verify) :
+- JWT forgé sur la VM (secret de /opt/sect/.env, utilisateur ADMIN réel,
+  psql via NEON_DIRECT_URL — le rôle owner passe la RLS de « User » que
+  sect_app sans claims ne voit pas) ;
+- liste via l'API réelle : 8 ouvrages visibles (RLS de l'utilisateur) ;
+- `GET /lecture-vocale?page=3` sur « Hacking, sécurité et tests
+  d'intrusion avec Metasploit » → **HTTP 200, 1 023 760 octets
+  audio/wav, signature RIFF, `X-Sect-Tts-Provider: gemini`,
+  `X-Sect-Tts-Model: gemini-3.8-flash-tts`** — la perle sert en
+  production depuis Marseille (pas de géoblocage) ;
+- pages 1-2 des ouvrages testés → 400 honnête « page sans texte
+  extractible (document probablement scanné) » — la dégradation est
+  docile et documentée, pas un plantage ;
+- sans cookie → **401** ;
+- Frontend : Vercel ✓ (deployment 9kuEFokGsvZsmiLh6GioZHeuZ5S), preuve
+  par égalité de chunk — `35ebdaa985ed3a5d.js` (3,2 Mo) identique octet
+  pour octet au build local du commit 83bb76e7, marqueurs du lecteur
+  vocal inclus.
+
+**Gates** : gofmt 0 diff, go build, go vet, go test ; golangci-lint CI
+(deux retours corrigés : ineffassign + ST1005 — chaînes d'erreur en
+minuscule) ; tsc --noEmit (cache neuf), eslint ., vitest 11/11 ;
+CI Backend ✓ + Deploy OCI ✓ + CI Frontend ✓.
+
+**Leçons de session** :
+- Les noms de modèles « preview » bougent entre les chronologies : la
+  découverte par listing au premier appel (+ mémoïsation sur succès) est
+  plus robuste que n'importe quel nom codé en dur — en prod elle a
+  résolu `gemini-3.8-flash-tts` du premier coup.
+- Heredoc bash dans un bloc YAML `script: |` : le terminateur ET le
+  contenu doivent être indentés au niveau du bloc (YAML les strippe en
+  colonne 0 pour bash) ; les `python3 -c` multilignes passent en une
+  ligne. Valider SYSTÉMATIQUEMENT `bash -n` + parse YAML localement
+  avant de pousser un workflow (leçon devoir-notif-verify réappliquée
+  — run fantôme « push, 0 jobs, failure » = YAML invalide).
+- La table « User » est invisible pour sect_app sans claims RLS : les
+  vérifications SQL en lecture seule sur la VM passent par
+  NEON_DIRECT_URL (rôle owner).
+- `GetPlainText` (ledongthuc/pdf) colle les mots sur les PDF à Td :
+  pour du TTS, reconstruire par géométrie (Y = lignes, écart X =
+  espaces) depuis `p.Content().Text` — sinon la synthèse est inaudible.
+- L'affichage des sorties bash de la sandbox AVALE les séquences `[m`
+  (queues d'échappements ANSI) : « arquePageInput » affiché ≠ fichier
+  corrompu — vérifier par `in`/`count('[')` Python avant de « corriger »
+  un fantôme.
