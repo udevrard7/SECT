@@ -1047,6 +1047,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ADMIN", "RESPONSABLE", "ENSEIGNANT")).Post("/{id}/couverture/regenerer", s.regenererOuvrageCouverture)
 			r.Get("/{id}/lecture", s.getOuvrageLecture)
 			r.Put("/{id}/lecture", s.putOuvrageLecture)
+			// SECT-TTS-1 : lecture ORALE — audio de synthèse d'une page
+			// (chaîne gratuite Gemini TTS studio → MeloTTS). Sémantique
+			// lecture (comme /flux) : tous rôles authentifiés, RLS, audit ;
+			// le texte extrait ne sort jamais du serveur.
+			r.Get("/{id}/lecture-vocale", s.getOuvrageLectureVocale)
 			// 000137 : dépôt élargi ADMIN/RESPONSABLE/ENSEIGNANT (G1
 			// évolue — l'étudiant reste lecteur) ; le périmètre est
 			// DÉRIVÉ DU RÔLE côté serveur (usecase + policies RLS).

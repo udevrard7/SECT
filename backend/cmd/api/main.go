@@ -23,6 +23,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/repository"
 	"github.com/udevrard7/sect/backend/internal/storage"
 	httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
+	"github.com/udevrard7/sect/backend/internal/tts"
 	"github.com/udevrard7/sect/backend/internal/usecase"
 	"github.com/udevrard7/sect/backend/internal/worker"
 
@@ -259,7 +260,11 @@ func main() {
 	// BIBLIOTHEQUE_QUOTA_MO (défaut 2048 Mo) dans le usecase.
 	// SECT-BIBLIO-P2 : le usecase porte aussi la lecture mesurée.
 	// SECT-BIBLIO-5 (000137) : aiService pour l'analyse IA (tâche 2).
-	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient, aiService)
+	// SECT-TTS-1 : service de synthèse vocale (lecture orale
+	// bibliothèque — chaîne 0 coût : Gemini TTS studio → MeloTTS,
+	// clés déjà en base, aucune nouvelle config pour l'exploitant).
+	ttsService := tts.NewService(pool, logger)
+	ouvrageUC := usecase.NewOuvrageUseCase(ouvrageRepo, ouvrageLectureRepo, storageClient, aiService, ttsService)
 	// SECT-BIBLIO-P3 (ADR-0007 §P3) : paquet enseignant.
 	alignementUC := usecase.NewAlignementUseCase(alignementRepo, ouvrageSectionRepo)
 	// SECT-BIBLIO-P4 (ADR-0008) : dimension sociale — annotations,

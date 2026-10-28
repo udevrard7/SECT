@@ -538,6 +538,69 @@ func (s *Server) getOuvrageTelechargement(w http.ResponseWriter, r *http.Request
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
 
+// getOuvrageLectureVocale — GET /api/ouvrages/{id}/lecture-vocale (SECT-TTS-1)
+// Audio de synthèse d'une PAGE d'ouvrage : lecture ORALE, chaîne 0 coût
+// (Gemini TTS studio → MeloTTS en secours — clés déjà en base).
+//
+// Paramètres : page (1-based, défaut 1), voice (voix studio Gemini,
+// liste blanche serveur, défaut kore), vitesse (0.75–1.25, défaut 1).
+//
+// Sémantique LECTURE (comme /flux) : RequireAuth + visibilité RLS
+// (404 si invisible), audit OUVRAGE_LECTURE, le flag
+// telechargementAutorise ne s'applique pas — l'audio de synthèse n'est
+// pas le fichier d'origine. LE TEXTE EXTRAIT NE SORT JAMAIS : seuls des
+// octets audio partent (posture BIBLIO-14/15, zéro égress textuel).
+//
+// En-têtes d'observabilité : X-Sect-Tts-Provider (gemini|melotts),
+// X-Sect-Nb-Pages (total du document — avance automatique du lecteur
+// côté client), X-Sect-Tts-Model.
+func (s *Server) getOuvrageLectureVocale(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100_000 {
+			page = n
+		}
+	}
+	voice := r.URL.Query().Get("voice") // normalisé (liste blanche) côté service
+	vitesse := r.URL.Query().Get("vitesse")
+	ip := middleware.GetClientIP(r)
+
+	result, err := s.ouvrageUC.GetLectureVocale(r.Context(), claims, chi.URLParam(r, "id"), page, voice, vitesse, ip)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	// Audio INLINE (jamais attachment : ce n'est pas l'acte
+	// téléchargement), no-store (l'audio n'est pas cachetable par un
+	// intermédiaire — il est journalisé comme une lecture).
+	ext := ".wav"
+	if result.ContentType == "audio/mpeg" {
+		ext = ".mp3"
+	}
+	w.Header().Set("Content-Type", result.ContentType)
+	w.Header().Set("Content-Disposition", `inline; filename="lecture-page-`+strconv.Itoa(page)+ext+`"`)
+	w.Header().Set("Cache-Control", "no-store, private")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Sect-Tts-Provider", result.Provider)
+	w.Header().Set("X-Sect-Tts-Model", result.Model)
+	if result.NbPages > 0 {
+		w.Header().Set("X-Sect-Nb-Pages", strconv.Itoa(result.NbPages))
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(result.Audio)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(result.Audio); err != nil {
+		// Les en-têtes sont partis — couper proprement et tracer.
+		slog.Warn("bibliothèque: interruption du flux vocal", "error", err)
+	}
+}
+
 // getOuvrageCouverture — GET /api/ouvrages/{id}/couverture (SECT-BIBLIO-12)
 // URL présignée courte durée du JPEG de couverture (page 1 rastérisée au
 // dépôt). Même chaîne de contrôle que le fichier : FindByID sous RLS →

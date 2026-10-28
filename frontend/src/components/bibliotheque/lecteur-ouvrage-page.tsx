@@ -54,6 +54,7 @@ import {
   Bookmark,
   ExternalLink,
   Filter,
+  Headphones,
   Loader2,
   Maximize,
   Minimize,
@@ -67,6 +68,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { AnnotationsPanel } from './annotations-panel'
+import { LectureVocale } from './lecture-vocale'
 import { LecteurSecurise } from './lecteur-securise'
 import {
   type Ouvrage,
@@ -109,6 +111,10 @@ export function LecteurOuvragePage() {
   const [marquePageInput, setMarquePageInput] = useState('1')
   // SECT-BIBLIO-P4 : panneau d'annotations (aside droite, repliable).
   const [panneauAnnotations, setPanneauAnnotations] = useState(false)
+  // SECT-TTS-1 : panneau de lecture vocale (audio de synthèse gratuit —
+  // voix studio Gemini, secours MeloTTS). Repliable, persistant le temps
+  // de la visite de l'ouvrage.
+  const [panneauVocale, setPanneauVocale] = useState(false)
   // Plein écran natif (Fullscreen API) sur le conteneur racine.
   const [pleinEcran, setPleinEcran] = useState(false)
   // SECT-BIBLIO-14 : page courante du lecteur SÉCURISÉ (mode canvas) —
@@ -591,8 +597,40 @@ export function LecteurOuvragePage() {
               <MessageSquareText className="h-3 w-3" />
               Annotations
             </Button>
+            <Button
+              variant={panneauVocale ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setPanneauVocale((v) => !v)}
+              aria-pressed={panneauVocale}
+              title="Lecture vocale — voix de synthèse studio (gratuite), page à page"
+            >
+              <Headphones className="h-3 w-3" />
+              Écouter
+            </Button>
         </div>
       </div>
+
+      {/* SECT-TTS-1 : panneau de lecture vocale — audio de synthèse
+          (voix studio Gemini, chaîne gratuite côté serveur), lecture
+          page à page avec avance automatique. Dans le mode SÉCURISÉ,
+          la page lue devient la page affichée (suivi de défilement via
+          changerPageSecurisee — la télémétrie suit, comme une lecture
+          visuelle). Mode natif : écoute simple (l'iframe garde sa
+          propre navigation). */}
+      {panneauVocale && data && !data.error && (
+        <LectureVocale
+          ouvrageId={data.ouvrage.id}
+          pageDepart={() =>
+            data.mode === 'securise'
+              ? pageSecurisee
+              : (data.reprisePage ?? 1)
+          }
+          onAllerPage={
+            data.mode === 'securise' ? changerPageSecurisee : undefined
+          }
+        />
+      )}
 
       {/* Zone de lecture : TOUTE la place restante.
           SECT-BIBLIO-14 — DEUX modes :

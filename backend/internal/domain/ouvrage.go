@@ -277,6 +277,18 @@ type OuvrageFluxLecture struct {
 	Filename      string // nom sanitizé pour l'en-tête inline (audit visuel)
 }
 
+// LectureVocaleResult — SECT-TTS-1 : audio synthétisé d'une page
+// d'ouvrage (lecture orale, chaîne gratuite Gemini → MeloTTS). Le TEXTE
+// extrait ne quitte JAMAIS le serveur — seuls des octets audio sortent
+// (posture BIBLIO-14/15 : zéro égress textuel).
+type LectureVocaleResult struct {
+	Audio       []byte
+	ContentType string // "audio/wav" | "audio/mpeg"
+	Provider    string // "gemini" | "melotts" (observabilité/headers)
+	Model       string
+	NbPages     int // total de pages du document (suivi de lecture client)
+}
+
 // CreateOuvrageInput — création (upload ADMIN/RESPONSABLE/ENSEIGNANT,
 // 000137 : le périmètre est DÉRIVÉ DU RÔLE par le usecase, jamais pris
 // du client).

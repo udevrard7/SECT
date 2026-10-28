@@ -188,6 +188,10 @@ func MapDomainError(w http.ResponseWriter, err error) {
 	case *domain.QuotaExceededError:
 		// 429 Too Many Requests — quota dépassé. Le message est clair et actionable.
 		writeJSONErrorMsg(w, http.StatusTooManyRequests, e.Error())
+	case *domain.TTSIndisponibleError:
+		// SECT-TTS-1 : chaîne vocale gratuite momentanément en échec
+		// (quota/réseau/cooldown) — transitoire, le client réessaie.
+		writeJSONErrorMsg(w, http.StatusServiceUnavailable, e.Error())
 	default:
 		// SECT-DOC-DIAG (observabilité) : AVANT, les erreurs non-mappées
 		// partaient en 500 « erreur interne » SANS AUCUN log serveur — la

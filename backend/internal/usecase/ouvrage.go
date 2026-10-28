@@ -38,6 +38,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/storage"
+	"github.com/udevrard7/sect/backend/internal/tts"
 )
 
 // defautQuotaBibliothequeMo — quota stockage bibliothèque par établissement
@@ -52,6 +53,10 @@ type OuvrageUseCase struct {
 	storage     domain.StorageClient
 	aiService   *ai.AIService
 	quotaMo     int64
+	// SECT-TTS-1 : service de synthèse vocale (lecture orale — chaîne
+	// gratuite Gemini → MeloTTS). nil = fonctionnalité absente (les
+	// handlers répondent 503 explicite plutôt que de casser la lecture).
+	ttsService *tts.Service
 }
 
 // NewOuvrageUseCase crée un nouveau OuvrageUseCase. Le quota bibliothèque
@@ -59,7 +64,7 @@ type OuvrageUseCase struct {
 // SECT-BIBLIO-P2 : lectureRepo pour la lecture mesurée (OuvrageLecture).
 // SECT-BIBLIO-5 (000137) : aiService pour l'analyse IA du PDF (nil =
 // analyse indisponible, le dépôt manuel reste possible — jamais bloquant).
-func NewOuvrageUseCase(ouvrageRepo domain.OuvrageRepository, lectureRepo domain.OuvrageLectureRepository, storageClient domain.StorageClient, aiSvc *ai.AIService) *OuvrageUseCase {
+func NewOuvrageUseCase(ouvrageRepo domain.OuvrageRepository, lectureRepo domain.OuvrageLectureRepository, storageClient domain.StorageClient, aiSvc *ai.AIService, ttsSvc *tts.Service) *OuvrageUseCase {
 	quota := defautQuotaBibliothequeMo
 	if v := os.Getenv("BIBLIOTHEQUE_QUOTA_MO"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
@@ -68,7 +73,7 @@ func NewOuvrageUseCase(ouvrageRepo domain.OuvrageRepository, lectureRepo domain.
 			slog.Warn("BIBLIOTHEQUE_QUOTA_MO invalide, défaut conservé", "value", v, "défaut", defautQuotaBibliothequeMo)
 		}
 	}
-	return &OuvrageUseCase{ouvrageRepo: ouvrageRepo, lectureRepo: lectureRepo, storage: storageClient, aiService: aiSvc, quotaMo: quota}
+	return &OuvrageUseCase{ouvrageRepo: ouvrageRepo, lectureRepo: lectureRepo, storage: storageClient, aiService: aiSvc, quotaMo: quota, ttsService: ttsSvc}
 }
 
 // List — catalogue (tous rôles authentifiés ; la RLS scope par la

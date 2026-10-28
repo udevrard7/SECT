@@ -565,6 +565,21 @@ export function LecteurSecurise({
     }
   }, [])
 
+  // ─── SECT-TTS-1 : suivi de la lecture vocale (page changée par le
+  // parent SANS que ce soit le lecteur — l'audio avance, le texte suit).
+  // Miroir de la reprise initiale : défiler en douceur vers la page,
+  // SANS la déclarer comme nouvelle page vue — elle est déjà comptée par
+  // l'avancée vocale (onPageChange parental) ; on aligne
+  // dernierePageNotifiee pour que le scroll-spy ne la re-compte pas.
+  // (Quand c'est le LECTEUR qui signale : page === pageLocale → no-op.)
+  useEffect(() => {
+    if (!modeContinu || !sautInitialFait.current) return
+    if (page === pageLocaleRef.current) return
+    const cible = Math.min(Math.max(1, page), nbPages ?? 1)
+    allerPageDefile(cible)
+    dernierePageNotifieeRef.current = cible
+  }, [page, modeContinu, nbPages, allerPageDefile])
+
   // ─── Rendu canvas de la page courante (MODE PAGINÉ — BIBLIO-14) ───
   useEffect(() => {
     if (etat !== 'pret' || !nbPages) return

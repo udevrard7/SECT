@@ -244,3 +244,13 @@ type UnauthorizedError struct {
 }
 
 func (e *UnauthorizedError) Error() string { return e.Message }
+
+// TTSIndisponibleError — SECT-TTS-1 : la chaîne de synthèse vocale
+// gratuite (Gemini → MeloTTS) est momentanément en échec (quota, réseau,
+// cooldown). 503 Service Unavailable : le client sait que c'est
+// transitoire et peut réessayer — ce n'est PAS une erreur de requête.
+type TTSIndisponibleError struct {
+	Message string
+}
+
+func (e *TTSIndisponibleError) Error() string { return e.Message }
