@@ -890,14 +890,14 @@ function ExamPrepShowcase() {
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Résumés Audio & Radar de Lacunes</h3>
                 <p className="text-sm text-zinc-400 leading-relaxed mb-6">
-                  Génération de podcasts de révision pour écouter ses cours en mobilité et détection automatique des chapitres fragiles à retravailler.
+                  Génération de podcasts de révision multi-voix — un présentateur et un expert lu par deux voix studio IA — pour écouter ses cours en mobilité, et détection automatique des chapitres fragiles à retravailler.
                 </p>
               </div>
               <div className="p-4 rounded-xl bg-[#0A1628] border border-white/[0.06] flex items-center gap-3 text-xs">
                 <Headphones className="h-5 w-5 text-amber-400 shrink-0" />
                 <div>
-                  <div className="text-white font-medium">Podcast de révision - Chapitre 4</div>
-                  <div className="text-zinc-500">Audio Synthétisé IA • 4 min 30 s</div>
+                  <div className="text-white font-medium">Podcast multi-voix — Chapitre 4</div>
+                  <div className="text-zinc-500">Deux voix studio IA • 6 min 24 s</div>
                 </div>
               </div>
             </div>
