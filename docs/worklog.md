@@ -8015,3 +8015,118 @@ pouvait sauver le PDF en un clic : c'était exactement le constat.
 - Les assets pdf.js versionnés dans `public/` + postinstall de
   resynchronisation : déterministe en CI et sur Vercel, et le worker
   hors bundle (424 Ko lazy) n'alourdit pas la page.
+
+---
+
+## SECT-BIBLIO-15 — Lecteur sécurisé à défilement continu : le retour au confort de lecture (28 octobre 2026)
+
+**Contexte exploitant** (retour utilisateur après BIBLIO-14) : « la lecture
+avec scroll vertical était mieux que d'afficher les pages une à une —
+véritable effet livre numérique ». Le feuilletage page-à-page du lecteur
+sécurisé cassait le flux de lecture d'un manuel A4 qu'on ÉTUDIE : un geste
+explicite par page, pas de survol, pas de repère spatial.
+
+**Décision** (analysée et argumentée avec l'exploitant) : le défilement
+vertical continu devient le mode PAR DÉFAUT des ouvrages verrouillés.
+L'« effet livre numérique » vient de la présentation — pages empilées avec
+ombre portée, numéros de page discrets, sauts fluides, barre de progression
+de lecture — et non d'une pagination contrainte. Les animations
+« tourne-page 3D » ont été explicitement écartées (gadget pour un support
+d'étude). Le mode page-par-page (BIBLIO-14) reste accessible via une
+bascule mémorisée en localStorage (`sect-lecteur-mode-affichage`).
+
+**Réalisation** (commit `9385052b`, 1 fichier,
+`frontend/src/components/bibliotheque/lecteur-securise.tsx`, +628/−77) :
+
+- **Toutes les pages empilées** dans un conteneur à défilement vertical
+  natif (molette, tactile, barre de défilement honnête dès le premier
+  rendu : les dimensions de toutes les pages sont pré-calculées par lots
+  de 25 via le worker pdf.js — placeholders de hauteur exacte, aucune
+  reprise de mise en page quand une page se rastérise).
+- **Rendu paresseux** par IntersectionObserver (root : le conteneur,
+  rootMargin 75 % 0px) : seules ~4-6 pages vivent en canvas à un instant
+  donné ; celles qui sortent de la zone libèrent leur backing store
+  (`canvas.width = 0`) — mémoire bornée même sur un ouvrage de 400 pages.
+  Chaque page est un sous-composant `memo` (props primitives) : un
+  ouvrage de N pages ne re-rend que les pages dont la visibilité ou la
+  géométrie change.
+- **Scroll-spy** : la page courante est celle qui chevauche la ligne de
+  lecture (40 % de la hauteur du viewport), rafraîchie à chaque frame de
+  défilement (recherche dichotomique dans les offsets cumulés). La
+  remontée télémétrique (`onPageChange` → `pagesVues`/`dernierePage` du
+  parent) n'est engagée qu'après stabilisation (250 ms sans défilement) —
+  les pages survolées sans s'arrêter ne comptent pas comme vues. La
+  reprise à l'ouverture défile jusqu'à la page enregistrée sans la
+  compter (sémantique BIBLIO-14 conservée).
+- **Zoom** ajusté-à-la-largeur ×0,5–3 avec ancrage du haut de la page
+  courante (useLayoutEffect avant paint — aucun saut visuel) ;
+  clavier PageUp/PageDown (page ±1, défilement fluide), Home/End ; ↑↓ et
+  molette natifs (tout l'intérêt du mode). `scrollbar-gutter: stable`
+  (pas de reflow quand la barre apparaît).
+- **Sécurité BIBLIO-14 intégralement conservée** : rendu canvas pdf.js
+  uniquement (jamais d'iframe, jamais d'URL présignée), clic-droit
+  neutralisé, sélection désactivée, glisser impossible, impression
+  bloquée (@media print + avertissement beforeprint), garde
+  anti-navigation /flux côté API inchangée.
+
+**Deux bugs interceptés par le harnais E2E local** (jamais par les gates
+classiques) :
+
+1. `ReferenceError: window is not defined` — l'initialiseur
+   `useState(() => window.devicePixelRatio)` s'exécute AUSSI au rendu
+   serveur ; la route du lecteur est server-rendered → **500 pour tout
+   utilisateur** en production. Corrigé (SSR-safe, dpr=1 par défaut,
+   aucun mismatch d'hydratation : dpr n'affecte que les attributs
+   canvas). `next build` ne l'avait pas attrapé car la route est
+   dynamique (pas de prerender).
+2. Classe `lecteur-securise-zone` manquante sur le conteneur du mode
+   continu → la garde anti-impression DU COMPOSANT ne couvrait plus la
+   zone de lecture (le parent masque déjà sa propre zone en mode
+   verrouillé — défense en profondeur rétablie).
+
+**Méthode de vérification** (nouvelle, reproductible) : harnais E2E local
+en navigateur réel — mock du backend Go (bun :8080, ouvrage verrouillé
+fictif servant un PDF réel de 112 pages) + page temporaire ne rendant QUE
+`LecteurSecurise` (évite de compiler toute l'app authentifiée, létale en
+4 Go RAM) + Playwright pilotant le Chromium local avec cookie factice
+(le middleware proxy n'en vérifie que la présence). **14/14 étapes** :
+ouverture 112 pages empilées, rastérisation nette (dpr), scroll-spy
+(1→2), rendu paresseux (2/112 canvases vivants), aller-à-la-page 10,
+PageDown → 11, zoom 1393→1741 px avec position conservée, bascule
+paginé (canvas BIBLIO-14 inchangé) + navigation, retour continu avec
+position conservée (page 12), préférence mémorisée, télémétrie réelle au
+parent (arrêts 11 et 12 rapportés), sécurité (0 iframe/embed, clic-droit
+bloqué, sélection off). Zéro erreur console. Captures analysées visuellement
+(VLM) : pages blanches à ombre portée empilées sur fond gris, séparations
+nettes — l'effet livre numérique demandé.
+
+**Déploiement et vérification production** :
+- Gates locaux : `tsc --noEmit` ✓, `eslint .` ✓, `vitest` 11/11 ✓,
+  `next build` ✓ (pdf.js toujours en chunk lazy séparé).
+- Push `9385052b` → **SECT Frontend CI ✓** (run 40612265844) ;
+  Backend CI / Deploy OCI non déclenchés (commit frontend-only, filtres
+  `paths:` corrects).
+- **Vercel : success** (statut commit, déploiement 8fL1usdEvg…).
+- Preuve de déploiement par égalité de contenu : le chunk du lecteur en
+  production (`/_next/static/chunks/022ec45af8b631ba.js`, 3 237 214 octets)
+  est identique octet pour octet au build local du même commit et contient
+  les marqueurs `sect-lecteur-mode-affichage`, `IntersectionObserver`,
+  `scrollbar-gutter:stable`, `pdf.worker.min.mjs`. (Leçon BIBLIO-14
+  réappliquée : les chunks de la page de login sont un piège — le chunk
+  du lecteur n'y est pas référencé, il faut viser le chunk par son hash.)
+- Assets `/pdfjs/worker` + cmaps toujours 200 en production.
+
+**Leçons de session** :
+- Un harnais E2E en navigateur réel attrape ce que ni tsc ni le build
+  ne voient (crash SSR d'une route dynamique, classe de sécurité
+  manquante). Pour un composant de lecture, c'est le gate qui compte.
+- Les processus détachés de la sandbox survivent en double-fork avec
+  redirection fd (openSync), PAS avec des pipes à pomper (l'enfant se
+  bloque quand le parent meurt et que le pipe se remplit).
+- `el.oncontextmenu !== null` ne prouve rien avec React (délégation
+  d'événements) — tester le clic-droit par événement dispatché et
+  `defaultPrevented`.
+- La télémétrie de lecture doit être « la page où l'on S'ARRÊTE », pas
+  « chaque page qui défile » : debounce de stabilisation, et les arrêts
+  interrompus (défilement fluide interrompu par une touche) ne comptent
+  pas — c'est la sémantique correcte pour `pagesVues`.
