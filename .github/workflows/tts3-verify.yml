@@ -1,0 +1,122 @@
+name: tts3-verify (temporaire — E2E SECT-TTS-3)
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérification E2E SECT-TTS-3 (VM OCI — lecture vocale documents + podcast multi-voix)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 18m
+          script: |
+            set -euo pipefail
+            echo '═══ 0. Santé API (image neuve SECT-TTS-3) ═══'
+            curl -fsS --max-time 10 http://localhost:8090/health && echo
+            docker exec sect-api edge-tts --version
+
+            echo '═══ 1. JWTs forgés (ENSEIGNANT + ETUDIANT réel — secrets lus sur place) ═══'
+            cd /opt/sect
+            JWT_SECRET=$(grep '^JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
+            NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+            ENS_ID=$(psql "$NEON" -t -A -c "SELECT id FROM \"User\" WHERE role='ENSEIGNANT' AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" LIMIT 1")
+            if [ -z "$ENS_ID" ]; then echo 'ECHEC: aucun ENSEIGNANT actif'; exit 1; fi
+            NOW=$(date +%s)
+            b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+            HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+            forge() { printf '{"sub":"%s","role":"%s","etablissement_id":"","email":"verify@sect.local","name":"verify","filiere_id":"%s","iat":%s,"exp":%s,"typ":"access","must_change_pwd":false}' "$1" "$2" "$3" "$NOW" "$((NOW+3000))" | b64url; }
+            PAYLOAD_ENS=$(forge "$ENS_ID" ENSEIGNANT "")
+            TOKEN_ENS="$HEADER.$PAYLOAD_ENS.$(printf '%s.%s' "$HEADER" "$PAYLOAD_ENS" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)"
+
+            echo '═══ 2. Document textuel + étudiant avec accès réel (filière+niveau) ═══'
+            DOC_ID=$(psql "$NEON" -t -A -c "SELECT d.id FROM \"Document\" d JOIN \"UniteEnseignement\" ue ON ue.\"id\" = d.\"uniteEnseignementId\" WHERE d.\"contenuTexte\" IS NOT NULL AND length(d.\"contenuTexte\") > 800 AND d.\"deletedAt\" IS NULL ORDER BY d.\"createdAt\" DESC LIMIT 1")
+            if [ -z "$DOC_ID" ]; then echo 'ECHEC: aucun document textuel'; exit 1; fi
+            echo "document: $DOC_ID"
+            PAIR=$(psql "$NEON" -t -A -F'|' -c "SELECT u.id, u.\"filiereId\", u.\"niveau\"::text FROM \"Document\" d JOIN \"UniteEnseignement\" ue ON ue.\"id\" = d.\"uniteEnseignementId\" JOIN \"User\" u ON u.\"filiereId\" = ue.\"filiereId\" AND u.role='ETUDIANT' AND u.\"deletedAt\" IS NULL WHERE d.id='$DOC_ID' AND (ue.\"niveau\"::text = u.\"niveau\"::text OR ue.\"niveaux\" LIKE '%\"' || u.\"niveau\"::text || '\"%') LIMIT 1")
+            if [ -n "$PAIR" ]; then
+              ETU_ID=$(echo "$PAIR" | cut -d'|' -f1)
+              ETU_FIL=$(echo "$PAIR" | cut -d'|' -f2)
+              PAYLOAD_ETU=$(forge "$ETU_ID" ETUDIANT "$ETU_FIL")
+              TOKEN_ETU="$HEADER.$PAYLOAD_ETU.$(printf '%s.%s' "$HEADER" "$PAYLOAD_ETU" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)"
+              echo "étudiant trouvé: $ETU_ID (filière ${ETU_FIL:0:12}…)"
+            else
+              echo 'AVERTISSEMENT: aucun étudiant filière+niveau correspondant — test étudiant sauté'
+              TOKEN_ETU=""
+            fi
+
+            echo '═══ 3. Sans cookie → 401 attendu (lecture vocale document) ═══'
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=1")
+            echo "sans auth: HTTP $CODE (attendu 401)"
+            if [ "$CODE" != "401" ]; then echo 'ECHEC: 401 attendu sans cookie'; exit 1; fi
+
+            echo '═══ 4. Lecture vocale document — voix edge:henri → provider=edge attendu ═══'
+            curl -sS --max-time 240 -D /tmp/tts3-e.txt -o /tmp/tts3-e.bin -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=1&voice=edge:henri"
+            grep -iE '^HTTP/|^x-sect-|^content-type' /tmp/tts3-e.txt
+            echo "taille: $(stat -c '%s' /tmp/tts3-e.bin) octets — magic: $(head -c 4 /tmp/tts3-e.bin | od -An -tx1 | tr -d ' \n')"
+            PROVIDER=$(grep -i '^x-sect-tts-provider:' /tmp/tts3-e.txt | tr -d '\r' | awk '{print $2}')
+            if [ "$PROVIDER" != "edge" ]; then echo "ECHEC: provider=$PROVIDER (edge attendu)"; exit 1; fi
+            NBSEG=$(grep -i '^x-sect-nb-pages:' /tmp/tts3-e.txt | tr -d '\r' | awk '{print $2}')
+            echo "total segments: $NBSEG"
+
+            echo '═══ 5. Segment hors bornes → 400 honnête ═══'
+            CODE=$(curl -s -o /tmp/tts3-oob.json -w '%{http_code}' --max-time 30 -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=99999")
+            echo "hors bornes: HTTP $CODE"; cat /tmp/tts3-oob.json; echo
+            if [ "$CODE" != "400" ]; then echo 'ECHEC: 400 attendu hors bornes'; exit 1; fi
+
+            echo '═══ 6. Étudiant réel (filière+niveau) → 200 attendu ═══'
+            if [ -n "$TOKEN_ETU" ]; then
+              CODE=$(curl -s -o /tmp/tts3-etu.bin -D /tmp/tts3-etu.txt -w '%{http_code}' --max-time 240 -H "Cookie: access_token=$TOKEN_ETU" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/lecture-vocale?segment=1&voice=edge:denise")
+              echo "étudiant: HTTP $CODE — $(stat -c '%s' /tmp/tts3-etu.bin) octets — provider=$(grep -i '^x-sect-tts-provider:' /tmp/tts3-etu.txt | tr -d '\r' | awk '{print $2}')"
+              if [ "$CODE" != "200" ]; then echo 'ECHEC: 200 attendu pour étudiant autorisé'; exit 1; fi
+            fi
+
+            echo '═══ 7. PODCAST multi-voix — POST + anti-spam 409 + polling jusqu à PRET ═══'
+            AVANT=$(psql "$NEON" -t -A -c "SELECT count(*) FROM \"DocumentAudio\" WHERE \"documentId\"='$DOC_ID'")
+            CODE=$(curl -s -o /tmp/tts3-post.json -w '%{http_code}' --max-time 30 -X POST -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio")
+            echo "POST: HTTP $CODE (attendu 202)"; if [ "$CODE" != "202" ]; then cat /tmp/tts3-post.json; echo; exit 1; fi
+            AUDIO_ID=$(python3 -c "import json;print(json.load(open('/tmp/tts3-post.json'))['audio']['id'])")
+            echo "audio: $AUDIO_ID"
+            CODE2=$(curl -s -o /tmp/tts3-spam.json -w '%{http_code}' --max-time 30 -X POST -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio")
+            echo "POST spam: HTTP $CODE2 (attendu 409 — anti-spam SECT-TTS-3)"
+            if [ "$CODE2" != "409" ]; then echo 'AVERTISSEMENT: 409 attendu (si job déjà fini, toléré)'; fi
+
+            STATUT="EN_COURS"; ESSAI=0
+            while [ "$STATUT" = "EN_COURS" ] && [ $ESSAI -lt 26 ]; do
+              ESSAI=$((ESSAI+1)); sleep 12
+              STATUT=$(curl -s --max-time 30 -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/audio/$AUDIO_ID" | python3 -c "import json,sys;a=json.load(sys.stdin).get('audio',{});print(a.get('status','?'))" 2>/dev/null || echo "?")
+              echo "poll $ESSAI: $STATUT"
+            done
+            echo "statut final: $STATUT (après $ESSAI×12s)"
+            if [ "$STATUT" != "PRET" ]; then echo 'ECHEC: podcast non PRET'; psql "$NEON" -t -A -c "SELECT \"status\", \"errorMessage\" FROM \"DocumentAudio\" WHERE id='$AUDIO_ID'"; exit 1; fi
+
+            echo '═══ 8. Podcast PRET — script, r2Key, durée, URL présignée jouable ═══'
+            ROW=$(psql "$NEON" -t -A -F'|' -c "SELECT \"r2Key\", COALESCE(\"durationSec\",0), length(\"script\"), (\"script\" LIKE '%Présentateur :%') FROM \"DocumentAudio\" WHERE id='$AUDIO_ID'")
+            echo "r2Key|dureeSec|scriptLen|scriptDialogue: $ROW"
+            R2KEY=$(echo "$ROW" | cut -d'|' -f1); DUREE=$(echo "$ROW" | cut -d'|' -f2)
+            if [ -z "$R2KEY" ] || [ "$R2KEY" = "" ]; then echo 'ECHEC: r2Key vide (script seul — TTS en échec)'; exit 1; fi
+            if [ "$DUREE" -le 0 ]; then echo 'ECHEC: durationSec attendu > 0'; exit 1; fi
+            URL=$(curl -s --max-time 30 -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/audio/$AUDIO_ID" | python3 -c "import json,sys;print(json.load(sys.stdin).get('audio',{}).get('audioUrl') or '')")
+            echo "audioUrl présente: $([ -n "$URL" ] && echo oui || echo NON)"
+            if [ -n "$URL" ]; then
+              HCODE=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' --max-time 30 -I "$URL")
+              echo "HEAD URL: $HCODE"
+              curl -s --max-time 60 -o /tmp/tts3-pod.bin "$URL"
+              echo "podcast téléchargé: $(stat -c '%s' /tmp/tts3-pod.bin) octets — magic: $(head -c 4 /tmp/tts3-pod.bin | od -An -tx1 | tr -d ' \n')"
+            fi
+
+            echo '═══ 9. Logs worker (provider/modèle du duo) ═══'
+            docker logs sect-api --since 12m 2>&1 | grep -iE 'podcast|Audio podcast' | tail -12 || true
+
+            echo '═══ 10. Nettoyage (suppression du podcast de test + fichiers) ═══'
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X DELETE -H "Cookie: access_token=$TOKEN_ENS" "http://localhost:8090/api/exam-prep/audio/$AUDIO_ID")
+            echo "DELETE: HTTP $CODE (attendu 200)"
+            APRES=$(psql "$NEON" -t -A -c "SELECT count(*) FROM \"DocumentAudio\" WHERE \"documentId\"='$DOC_ID'")
+            echo "lignes DocumentAudio avant/après: $AVANT/$APRES"
+            rm -f /tmp/tts3-e.txt /tmp/tts3-e.bin /tmp/tts3-oob.json /tmp/tts3-etu.bin /tmp/tts3-etu.txt /tmp/tts3-post.json /tmp/tts3-spam.json /tmp/tts3-pod.bin
+
+            echo '═══ SECT-TTS-3 E2E PROD: OK ═══'
