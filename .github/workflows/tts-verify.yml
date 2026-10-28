@@ -62,37 +62,25 @@ jobs:
             echo "rôle: $ROLE — email masqué: ${EMAIL:0:2}***"
 
             TOKEN=$(python3 - "$JWT_SECRET" "$UID_" "$ROLE" "$ETAB" "$EMAIL" "$NAME" <<'PYEOF'
-import hmac, hashlib, base64, json, sys, time
-secret, uid, role, etab, email, name = sys.argv[1:7]
-header = {"alg":"HS256","typ":"JWT"}
-now = int(time.time())
-payload = {"sub":uid,"role":role,"etablissement_id":etab,"email":email,"name":name,
-           "iat":now,"exp":now+900,"typ":"access","must_change_pwd":False}
-b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b'=').decode()
-si = b64(json.dumps(header,separators=(',',':')).encode()) + '.' + b64(json.dumps(payload,separators=(',',':')).encode())
-sig = hmac.new(secret.encode(), si.encode(), hashlib.sha256).digest()
-print(si + '.' + b64(sig))
-PYEOF
-)
+            import hmac, hashlib, base64, json, sys, time
+            secret, uid, role, etab, email, name = sys.argv[1:7]
+            header = {"alg":"HS256","typ":"JWT"}
+            now = int(time.time())
+            payload = {"sub":uid,"role":role,"etablissement_id":etab,"email":email,"name":name,
+                       "iat":now,"exp":now+900,"typ":"access","must_change_pwd":False}
+            b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+            si = b64(json.dumps(header,separators=(',',':')).encode()) + '.' + b64(json.dumps(payload,separators=(',',':')).encode())
+            sig = hmac.new(secret.encode(), si.encode(), hashlib.sha256).digest()
+            print(si + '.' + b64(sig))
+            PYEOF
+            )
             echo "JWT forgé (longueur ${#TOKEN})"
 
             echo "══ 3. LISTE D'OUVRAGES (API réelle, RLS de l'utilisateur) ══"
             LISTE=$(curl -s -H "Cookie: access_token=$TOKEN" "http://127.0.0.1:8090/api/ouvrages/?limit=10")
-            echo "$LISTE" | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-items = d.get('ouvrages') or []
-print(f'total: {d.get(\"total\")} — reçus: {len(items)}')
-for o in items[:5]:
-    print('  -', o.get('id'), '|', (o.get('titre') or '')[:50], '| telechargementAutorise:', o.get('telechargementAutorise'))
-" || { echo "réponse brute: $(echo "$LISTE" | head -c 300)"; }
+            echo "$LISTE" | python3 -c "import json,sys; d=json.load(sys.stdin); items=d.get('ouvrages') or []; print('total:', d.get('total'), '— reçus:', len(items)); [print('  -', o.get('id'), '|', (o.get('titre') or '')[:50], '| verrouillé:', not o.get('telechargementAutorise')) for o in items[:5]]" || { echo "réponse brute: $(echo "$LISTE" | head -c 300)"; }
 
-            OUVRAGES=$(echo "$LISTE" | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-items = d.get('ouvrages') or []
-print(' '.join(o.get('id','') for o in items[:3]))
-")
+            OUVRAGES=$(echo "$LISTE" | python3 -c "import json,sys; d=json.load(sys.stdin); items=d.get('ouvrages') or []; print(' '.join(o.get('id','') for o in items[:3]))")
 
             echo "══ 4. LECTURE VOCALE E2E (jusqu'à 3 ouvrages × pages 1-3) ══"
             SUCCES=0
