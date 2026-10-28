@@ -8257,3 +8257,70 @@ CI Backend ✓ + Deploy OCI ✓ + CI Frontend ✓.
   (queues d'échappements ANSI) : « arquePageInput » affiché ≠ fichier
   corrompu — vérifier par `in`/`count('[')` Python avant de « corriger »
   un fantôme.
+
+## SECT-TTS-2 — Options vocales françaises complémentaires : analyse et couche Edge Neural (illimitée, 0 €) (28 octobre 2026)
+
+**Demande de l'exploitant** : analyser trois options TTS françaises
+complémentaires de la perle Gemini (Edge TTS « illimité sans clé »,
+Speechify « 500 k caractères/mois », Kokoro-82M/Piper auto-hébergés) et
+intégrer la meilleure — toujours objectif 0 coût.
+
+**L'analyse comparative** :
+
+| Option | Qualité FR | Coût réel | Risques | Verdict |
+|---|---|---|---|---|
+| **Edge TTS** (Read Aloud) | Azure Neural (Denise/Henri…) — entre Gemini studio et MeloTTS | 0 €, **aucune clé, aucun quota** | API non contractualisée ; DRM Sec-MS-GEC **v2** (SHA-256 custom + CS64) ; ToS grise | **RETENUE en complément** (jamais primaire) |
+| Speechify | modèle Simba, proche ElevenLabs | « 500 k car./mois » | **quota non vérifiable sans inscription** ; SaaS fermé de plus | **écartée** (à surveiller) |
+| Kokoro-82M / Piper | 1 voix FR moyenne (ff_siwis) / robotique | 0 € + ops | ONNX en Go/cgo sur le conteneur, modèles ~300 Mo à embarquer | **rejetée** : ce tier de qualité est DÉJÀ couvert par MeloTTS (Cloudflare, gratuit, zéro ops) |
+
+Preuves empiriques sandbox (avant décision) : `edge-tts` 7.3.1 depuis
+Hong Kong → 13 voix FR listées, synthèse DeniseNeural 72 Ko MP3 valide
+(**pas de géoblocage** — contrairement à Gemini/Groq) ; décompilation du
+DRM v2 (~200 lignes de manipulation de bits) → un port Go natif
+casserait à la prochaine évolution Microsoft : **délégation au CLI
+communautaire** assumée ; Speechify : api injoignable/quota invérifiable.
+
+**L'intégration** (a6dfd7eb, 6 fichiers, +317/-29) :
+
+1. **internal/tts/edge.go** (nouveau) — couche Edge Neural :
+   - liste blanche **5 voix fr-FR** réellement exposées (mesuré
+     `--list-voices`) : Denise, Henri, Éloïse, Vivienne, Rémy ;
+   - routage DIRECT « `edge:xxx` » (choix explicite du lecteur), et
+     secours n°2 **entre Gemini et MeloTTS** ;
+   - **continuité de genre** sur bascule : voix studio masculine
+     (Puck/Charon/Fenrir/Orus/Sadaltager) → Henri, sinon Denise —
+     l'auditeur ne change pas de narrateur en milieu de chapitre ;
+   - sous-processus best-effort : texte par FICHIER (jamais argv),
+     vitesse → SSML rate ±25 % (prosodie du modèle, pas resampling),
+     403 → cooldown 10 min, magic bytes MP3 validées, binaire absent =
+     couche silencieusement inactive (LookPath mémoïsé) ;
+   - **prudence documentée** : Edge n'est JAMAIS primaire (ToS, DRM,
+     pannes Microsoft) — c'est un complément et un choix, pas une
+     dépendance.
+2. **internal/tts/tts.go** — chaîne **Gemini → Edge → MeloTTS**,
+   cooldowns par provider (« edge » inclus), messages de bascule
+   corrigés (« couche suivante »).
+3. **Dockerfile** — `python3 + pip edge-tts` au runtime (build-base
+   retiré dans le même RUN) : le CLI suit le DRM v2 pour nous.
+4. **lecture-vocale.tsx** — sélecteur à DEUX groupes : « Voix studio —
+   expressives » / « Voix Neural — illimitées » ; préférence mémorisée
+   étendue aux voix edge.
+
+**Vérifié en réel avant poussée** (Neon prod + Edge réel, sandbox) :
+routage direct `edge:henri` +15 % → 89 Ko MP3 (magic fff3) ✓ ; bascule
+automatique Gemini géobloqué (400 HK) → **Edge fr-FR-HenriNeural avec
+continuité de genre depuis la voix charon** → 80 Ko MP3 ✓ — la chaîne
+de repli à trois niveaux est prouvée, pas seulement le chemin nominal.
+
+**Leçons de session** :
+- Le DRM Sec-MS-GEC v2 (CS64 + SHA-256 aux constantes modifiées) est
+  une obfuscation activement maintenue PAR LA COMMUNAUTÉ : déléguer au
+  CLI (pip) au lieu de porter en Go est une décision de robustesse,
+  pas de paresse — la couche casse proprement si l'outil manque.
+- Une option « gratuite mais non vérifiable sans inscription »
+  (Speechify) ne se construit pas : la règle reste « prouver en réel
+  avant d'intégrer » (Edge a été prouvé depuis la sandbox AVANT la
+  décision).
+- L'auto-hébergement TTS (Kokoro/Piper) sur un conteneur partagé A1 :
+  le coût d'ops (cgo/ONNX, modèles embarqués) dépasse la valeur quand
+  un tier équivalent est déjà servi gratuitement sans ops (MeloTTS).
