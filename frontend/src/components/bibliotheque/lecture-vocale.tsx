@@ -79,7 +79,9 @@ const VOIX_STUDIO: ReadonlyArray<{ id: string; label: string }> = [
 ]
 
 // ─── Voix Neural Edge (SECT-TTS-2 — illimitées, aucune clé) : le
-// préfixe edge: route côté serveur vers la couche Azure Neural. ───
+// préfixe edge: route côté serveur vers la couche Azure Neural (liste
+// blanche miroir de internal/tts/edge.go — 5 voix fr-FR mesurées avec
+// edge-tts 7.3.1). ───
 
 const VOIX_EDGE: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'edge:denise', label: 'Denise — douce, claire' },
