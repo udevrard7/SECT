@@ -37,6 +37,14 @@
 // l'identique : c'est elle qui avait valu à la lecture son qualificatif
 // « très humaine ».
 //
+// CAPACITÉ (complément SECT-TTS-4, cf cache.go) : le palier gratuit
+// Gemini est de 10 requêtes/jour et PAR MODÈLE (mesuré en production).
+// Deux multiplicateurs 0 coût le rendent viable pour une classe :
+//   - CACHE DISQUE des audios (clé voix|vitesse|texte) : la même page
+//     écoutée par 30 élèves consomme UNE requête au total ;
+//   - bascule inter-modèles sur 429 : la file de candidats Gemini passe
+//     au modèle suivant (quotas séparés) — ~5 modèles ≈ 5×10 req/jour.
+//
 // Le provider VOXTRAL (Mistral, payant au caractère — déjà utilisé pour
 // les podcasts) est VOLONTAIREMENT exclu de cette chaîne : garantir le
 // 0 coût veut dire qu'aucune lecture vocale ne peut déclencher une
@@ -214,6 +222,16 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 
 	v := bornesVitesse(parseVitesse(vitesse))
 
+	// 0. Cache disque (SECT-TTS-4) : la même (voix, vitesse, texte) déjà
+	// synthétisée est resservie telle quelle — zéro requête API, zéro
+	// quota (palier gratuit Gemini : 10 req/jour et PAR MODÈLE, mesuré en
+	// production — le cache est ce qui rend la voix studio viable pour
+	// toute une classe qui écoute les mêmes pages).
+	cle := cleCacheSynthese(text, voice, v)
+	if res := s.lireCacheAudio(cle); res != nil {
+		return res, nil
+	}
+
 	// 1. Gemini (la perle) — si clé présente et pas en cooldown.
 	// NOTE : une voix « edge:… » héritée d'un ancien réglage local du
 	// navigateur n'existe plus — normaliserVoix la blanchit vers Kore
@@ -222,6 +240,7 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 		if !s.enCooldown("gemini") {
 			res, err := s.syntheseGemini(ctx, gem, text, voice, v)
 			if err == nil {
+				s.ecrireCacheAudio(cle, res)
 				return res, nil
 			}
 			s.marquerEchec("gemini", err)
@@ -237,6 +256,7 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 	if melo, ok := s.lireProviderRow(ctx, "CLOUDFLARE"); ok && !s.enCooldown("melotts") {
 		res, err := s.syntheseMeloTTS(ctx, melo, text, v)
 		if err == nil {
+			s.ecrireCacheAudio(cle, res)
 			return res, nil
 		}
 		s.marquerEchec("melotts", err)
@@ -477,8 +497,10 @@ func (s *Service) syntheseGemini(ctx context.Context, gem providerRow, text, voi
 	root := racineGemini(gem.baseURL)
 
 	// Essayer le modèle découvert, puis la file statique (404 = modèle
-	// renommé : on re-découvrira au prochain appel — la mémo n'est posée
-	// que sur SUCCÈS de génération, pas de liste).
+	// renommé ; 429 = quota du modèle épuisé → candidat suivant, les
+	// quotas étant PAR MODÈLE — SECT-TTS-4. On re-découvrira au prochain
+	// appel : la mémo n'est posée que sur SUCCÈS de génération, pas de
+	// liste).
 	candidats := make([]string, 0, len(modelesTTSStatiques)+1)
 	if modele != "" {
 		candidats = append(candidats, modele)
@@ -501,9 +523,14 @@ func (s *Service) syntheseGemini(ctx context.Context, gem providerRow, text, voi
 		}
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 		_ = resp.Body.Close()
-		if resp.StatusCode == 404 {
-			dernierErr = &httpError{status: 404, body: "modèle " + m + " introuvable"}
-			continue // modèle absent → suivant
+		if resp.StatusCode == 404 || resp.StatusCode == 429 {
+			// 404 : modèle renommé/absent → suivant. 429 : quota du
+			// palier gratuit ÉPUISÉ POUR CE MODÈLE → suivant AUSSI : les
+			// limites sont PAR MODÈLE et par jour (mesuré : 10/jour sur
+			// gemini-3.8-flash-tts), donc la file de candidats multiplie
+			// la capacité quotidienne gratuite (5 modèles ≈ 5×10 req/j).
+			dernierErr = &httpError{status: resp.StatusCode, body: strings.TrimSpace(string(raw[:min(len(raw), 300)]))}
+			continue
 		}
 		if resp.StatusCode != 200 {
 			return nil, &httpError{status: resp.StatusCode, body: strings.TrimSpace(string(raw[:min(len(raw), 300)]))}
@@ -556,7 +583,13 @@ func (s *Service) syntheseGemini(ctx context.Context, gem providerRow, text, voi
 
 		return &Result{Audio: wav, ContentType: "audio/wav", Provider: "gemini", Model: m}, nil
 	}
-	return nil, fmt.Errorf("aucun modèle TTS Gemini disponible : %v", dernierErr)
+	if dernierErr != nil {
+		// Préserver le type *httpError : un 429 final (tous les modèles
+		// épuisés) doit rester un 429 pour le COOLDOWN COURT du service
+		// (marquerEchec), pas devenir une erreur générique à 10 minutes.
+		return nil, dernierErr
+	}
+	return nil, fmt.Errorf("aucun modèle TTS Gemini disponible")
 }
 
 // parseRateMime extrait la fréquence d'échantillonnage de
