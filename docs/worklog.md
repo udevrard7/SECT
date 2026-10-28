@@ -8324,3 +8324,24 @@ de repli à trois niveaux est prouvée, pas seulement le chemin nominal.
 - L'auto-hébergement TTS (Kokoro/Piper) sur un conteneur partagé A1 :
   le coût d'ops (cgo/ONNX, modèles embarqués) dépasse la valeur quand
   un tier équivalent est déjà servi gratuitement sans ops (MeloTTS).
+
+**Vérification E2E en production** (workflow temporaire tts2-verify, SSH
+lecture seule VM OCI, supprimé après usage — même pattern que SECT-TTS-1) :
+- `docker exec sect-api edge-tts --version` → **7.3.1** (image neuve, pip
+  install multi-arch arm64+amd64 OK sous QEMU) ;
+- JWT forgé sur la VM (openssl HMAC-SHA256, ADMIN réel via
+  NEON_DIRECT_URL) ;
+- `voice=edge:henri&vitesse=1.15` sur l'ouvrage Metasploit page 3 →
+  **HTTP 200, 208 656 octets MP3 (magic fff364c4),
+  `X-Sect-Tts-Provider: edge`, `X-Sect-Tts-Model: fr-FR-HenriNeural`** —
+  la couche Neural sert en production ;
+- régression studio `voice=kore` → **provider gemini,
+  gemini-3.8-flash-tts, 1 067 920 octets WAV (RIFF)** — la perle est
+  intacte, la chaîne à trois niveaux cohabite ;
+- sans cookie → **401** (posture BIBLIO-14/15 inchangée) ;
+- Frontend : déploiement Vercel du commit validé par **égalité de chunk**
+  — `5a94f415b2dc20d2.js` (marqueurs « Voix Neural — illimitées » +
+  edge:denise/henri/eloise/vivienne/remy) identique octet/octet au build
+  local et HTTP 200 sur sect.ftci.fr. Leçon : un commit docs-only peut
+  rester « pending » côté Vercel sans déployer le code — un commit
+  frontend (b10cd780) a débloqué le déploiement réel.
