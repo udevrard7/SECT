@@ -1128,7 +1128,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/documents/{id}/download", s.downloadExamPrepDocument)
 			// SECT-TTS-3 — lecture ORALE du support (comme la bibliothèque) :
 			// audio de synthèse d'un segment du texte (chaîne 0 coût
-			// Gemini → Edge → MeloTTS, contrôle d'accès = /read).
+			// Gemini → MeloTTS, contrôle d'accès = /read ; Edge retiré
+			// SECT-TTS-4).
 			r.Get("/documents/{id}/lecture-vocale", s.getExamPrepDocumentLectureVocale)
 			// Review (spaced repetition)
 			r.Get("/review", s.listReviewItems)

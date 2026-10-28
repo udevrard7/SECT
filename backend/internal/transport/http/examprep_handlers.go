@@ -874,11 +874,12 @@ func (s *Server) downloadExamPrepDocument(w http.ResponseWriter, r *http.Request
 // (SECT-TTS-3 : lecture ORALE des supports de cours, comme la bibliothèque).
 //
 // Audio de synthèse d'un SEGMENT du texte du document : chaîne 0 coût
-// (Gemini TTS studio → Edge Neural en complément → MeloTTS en dernier
-// secours — clés déjà en base, cf internal/tts).
+// (Gemini TTS studio → MeloTTS en dernier secours — clés déjà en base,
+// cf internal/tts ; SECT-TTS-4 : Edge retiré du système).
 //
-// Paramètres : segment (1-based, défaut 1), voice (voix studio Gemini ou
-// « edge:xxx » — liste blanche serveur, défaut kore), vitesse
+// Paramètres : segment (1-based, défaut 1), voice (voix studio Gemini —
+// liste blanche serveur, défaut kore ; une éventuelle valeur « edge:xxx »
+// héritée d'un ancien réglage est blanchie vers Kore), vitesse
 // (0.75–1.25, défaut 1).
 //
 // SÉCURITÉ : contrôle d'accès identique à /read (étudiant : filière +
@@ -887,7 +888,7 @@ func (s *Server) downloadExamPrepDocument(w http.ResponseWriter, r *http.Request
 // anti-abus côté service TTS (rate-limit 15/min/utilisateur, sémaphore 3,
 // vitesse et segments bornés).
 //
-// En-têtes d'observabilité : X-Sect-Tts-Provider (gemini|edge|melotts),
+// En-têtes d'observabilité : X-Sect-Tts-Provider (gemini|melotts),
 // X-Sect-Nb-Pages (total de segments — avance automatique du lecteur
 // côté client), X-Sect-Tts-Model.
 func (s *Server) getExamPrepDocumentLectureVocale(w http.ResponseWriter, r *http.Request) {

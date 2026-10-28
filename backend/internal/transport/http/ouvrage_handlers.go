@@ -540,12 +540,13 @@ func (s *Server) getOuvrageTelechargement(w http.ResponseWriter, r *http.Request
 
 // getOuvrageLectureVocale — GET /api/ouvrages/{id}/lecture-vocale (SECT-TTS-1)
 // Audio de synthèse d'une PAGE d'ouvrage : lecture ORALE, chaîne 0 coût
-// (Gemini TTS studio → Edge Neural en complément → MeloTTS en dernier
-// secours — clés déjà en base).
+// (Gemini TTS studio → MeloTTS en dernier secours — clés déjà en base ;
+// SECT-TTS-4 : la couche Edge est retirée du système).
 //
-// Paramètres : page (1-based, défaut 1), voice (voix studio Gemini ou
-// « edge:xxx » pour les voix Neural illimitées — liste blanche serveur,
-// défaut kore), vitesse (0.75–1.25, défaut 1).
+// Paramètres : page (1-based, défaut 1), voice (voix studio Gemini —
+// liste blanche serveur, défaut kore ; une éventuelle valeur
+// « edge:xxx » héritée d'un ancien réglage est blanchie vers Kore),
+// vitesse (0.75–1.25, défaut 1).
 //
 // Sémantique LECTURE (comme /flux) : RequireAuth + visibilité RLS
 // (404 si invisible), audit OUVRAGE_LECTURE, le flag
@@ -553,7 +554,7 @@ func (s *Server) getOuvrageTelechargement(w http.ResponseWriter, r *http.Request
 // pas le fichier d'origine. LE TEXTE EXTRAIT NE SORT JAMAIS : seuls des
 // octets audio partent (posture BIBLIO-14/15, zéro égress textuel).
 //
-// En-têtes d'observabilité : X-Sect-Tts-Provider (gemini|edge|melotts),
+// En-têtes d'observabilité : X-Sect-Tts-Provider (gemini|melotts),
 // X-Sect-Nb-Pages (total du document — avance automatique du lecteur
 // côté client), X-Sect-Tts-Model.
 func (s *Server) getOuvrageLectureVocale(w http.ResponseWriter, r *http.Request) {

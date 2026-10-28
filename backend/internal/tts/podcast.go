@@ -8,12 +8,15 @@
 //     Charon (expert posé et précis) : WAV 24 kHz mono 16 bits, PCM
 //     concaténés avec une RESPIRATION de ~350 ms entre deux répliques
 //     (le rythme d'une vraie conversation, pas d'un collage).
-//  2. EDGE NEURAL DUO (complément, illimité) — Denise (animation) +
-//     Henri (expertise) : duo féminin/masculin Azure, MP3 24 kHz,
-//     concaténation de frames (ID3v2 strippés des suivants).
-//  3. MELOTTS VOIX UNIQUE (dernier secours) — le script entier en une
+//  2. MELOTTS VOIX UNIQUE (dernier secours) — le script entier en une
 //     synthèse : on perd le contraste du dialogue, l'épisode existe quand
 //     même (dégradation gracieuse cohérente avec AUDIO-LEARNING-1).
+//
+// SECT-TTS-4 : le duo Edge Neural (intercalaire SECT-TTS-2) est retiré
+// avec toute la couche Edge — mêmes raisons que internal/tts/tts.go
+// (MP3 48 kbps « robotique », lecture littérale du script, CLI non
+// contractualisé). ConcatMP3/StripID3v2 restent : le worker Voxtral
+// (premium opt-in) sert des MP3 à concaténer.
 //
 // INVARIANTS :
 //   - un échec de SEGMENT fait basculer le PODCAST ENTIER sur la couche
@@ -43,10 +46,6 @@ const (
 	// Duo studio Gemini (liste blanche voixStudio).
 	voixPodcastAnimateur = "puck"   // enjouée — le·la host qui tient le rythme
 	voixPodcastExpert    = "charon" // posée, précise — l'expert qui explique
-
-	// Duo Neural Edge (illimité, sans clé — complément SECT-TTS-2).
-	voixEdgePodcastAnimateur = "fr-FR-DeniseNeural"
-	voixEdgePodcastExpert    = "fr-FR-HenriNeural"
 
 	// maxSegmentsPodcast — plafond défensif : un dialogue sain de ~6 min
 	// fait 20 à 40 répliques ; au-delà on dégrade en voix unique (un script
@@ -93,22 +92,11 @@ func (s *Service) SynthesePodcast(ctx context.Context, script, userID string) (*
 			return res, nil
 		}
 		s.marquerEchec("gemini", err)
-		s.logger.Warn("podcast: duo Gemini échec — bascule duo Edge",
+		s.logger.Warn("podcast: duo Gemini échec — bascule MeloTTS voix unique",
 			"error", err.Error(), "segments", len(segments))
 	}
 
-	// 2. Edge Neural duo (illimité, sans clé).
-	if binaireEdge() != "" && !s.enCooldown("edge") {
-		res, err := s.podcastEdge(ctx, segments)
-		if err == nil {
-			return res, nil
-		}
-		s.marquerEchec("edge", err)
-		s.logger.Warn("podcast: duo Edge échec — bascule MeloTTS",
-			"error", err.Error(), "segments", len(segments))
-	}
-
-	// 3. MeloTTS voix unique (dernier secours indépendant G & M).
+	// 2. MeloTTS voix unique (dernier secours indépendant de Google).
 	if melo, ok := s.lireProviderRow(ctx, "CLOUDFLARE"); ok && !s.enCooldown("melotts") {
 		res, err := s.syntheseMeloTTS(ctx, melo, script, 1)
 		if err == nil {
@@ -153,39 +141,6 @@ func (s *Service) podcastGemini(ctx context.Context, gem providerRow, segments [
 		ContentType: "audio/wav",
 		Provider:    "gemini",
 		Model:       modele + " (duo " + voixPodcastAnimateur + "+" + voixPodcastExpert + ")",
-	}, nil
-}
-
-// podcastEdge — duo Azure Neural Denise/Henri (dialogue féminin/masculin
-// naturel), MP3 concaténés (ID3v2 strippés des suivants).
-func (s *Service) podcastEdge(ctx context.Context, segments []segmentDialogue) (*Result, error) {
-	mp3s := make([][]byte, 0, len(segments))
-
-	for i, seg := range segments {
-		vox := voixEdgePodcastExpert
-		if seg.Locuteur == "animateur" {
-			vox = voixEdgePodcastAnimateur
-		}
-		res, err := s.segmentAvecSemaphore(ctx, func() (*Result, error) {
-			return s.syntheseEdge(ctx, seg.Texte, vox, 1)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("réplique %d/%d (voix %s): %w", i+1, len(segments), vox, err)
-		}
-		if res.ContentType != "audio/mpeg" {
-			return nil, fmt.Errorf("réplique %d: format inattendu %s (Edge)", i+1, res.ContentType)
-		}
-		mp3s = append(mp3s, res.Audio)
-	}
-
-	if len(mp3s) == 0 {
-		return nil, fmt.Errorf("aucune réplique synthétisée")
-	}
-	return &Result{
-		Audio:       ConcatMP3(mp3s),
-		ContentType: "audio/mpeg",
-		Provider:    "edge",
-		Model:       voixEdgePodcastAnimateur + "+" + voixEdgePodcastExpert,
 	}, nil
 }
 
@@ -396,7 +351,7 @@ func StripID3v2(data []byte) []byte {
 // DureeAudio estime la durée (secondes, arrondie) d'un audio WAV ou MP3
 // CBR — alimente DocumentAudio.durationSec (affiché sur les cartes
 // podcast). WAV : lecture exacte fmt/data. MP3 : bitrate de la PREMIÈRE
-// frame (Edge = 48 kbps CBR, Voxtral = CBR également).
+// frame (Voxtral = CBR ; les MP3 historiques Edge restent décodables).
 func DureeAudio(audio []byte, contentType string) int {
 	if len(audio) == 0 {
 		return 0

@@ -13,19 +13,29 @@
 //     la durée de vie de l'instance — robuste aux renommages de modèles
 //     preview.
 //
-//  2. EDGE NEURAL (complément SECT-TTS-2) — voix Azure Neural
-//     françaises SANS clé et SANS quota (illimité, 0 €) via le CLI
-//     edge-tts embarqué au build (cf internal/tts/edge.go : pourquoi
-//     cette couche reste un complément, jamais un primaire). Secours
-//     n°2 : la qualité Neural AVANT MeloTTS quand Gemini a échoué, et
-//     choix explicite « edge:… » côté lecteur (routage direct).
-//
-//  3. CLOUDFLARE MELOTTS (dernier secours) — @cf/myshell-ai/melotts,
+//  2. CLOUDFLARE MELOTTS (dernier secours) — @cf/myshell-ai/melotts,
 //     français supporté (lang=fr), quota gratuit généreux
 //     (neurons/jour). La clé est celle du provider chat CLOUDFLARE
-//     déjà configuré. Voix unique (moins « humaine » que Gemini et
-//     Edge) mais indépendante de Google ET de Microsoft : si Gemini
-//     ET Edge sont indisponibles, la lecture continue quand même.
+//     déjà configuré. Voix unique (moins « humaine » que Gemini) mais
+//     indépendante de Google : si Gemini est indisponible, la lecture
+//     continue quand même.
+//
+// SECT-TTS-4 — RETRAIT D'EDGE NEURAL : la couche complémentaire Edge
+// (SECT-TTS-2, CLI edge-tts sur le flux « Read Aloud » non
+// contractualisé de Microsoft) est SUPPRIMÉE INTÉGRALEMENT après
+// retour utilisateur réel : (a) son MP3 48 kbps mono codé en dur dans
+// le CLI sonnait « robotique » au point de devenir la voix dominante
+// dès que le quota Gemini était consommé (les podcasts partagent le
+// même quota) ; (b) la bascule silencieuse Gemini→Edge substituait la
+// voix demandée (continuité de genre) — le changement de voix en cours
+// de lecture paraissait cassé ; (c) le moteur lit le texte LITTÉRALEMENT
+// (espaces inter-lettres d'extraction, sigles, markdown) là où Gemini
+// interprète naturellement — épellation lettre à lettre ; (d) crash du
+// CLI constaté en production + DRM « Sec-MS-GEC » maintenu par la
+// communauté (risque de rupture à chaque durcissement Microsoft).
+// La chaîne éprouvée SECT-TTS-1 (Gemini → MeloTTS) est rétablie à
+// l'identique : c'est elle qui avait valu à la lecture son qualificatif
+// « très humaine ».
 //
 // Le provider VOXTRAL (Mistral, payant au caractère — déjà utilisé pour
 // les podcasts) est VOLONTAIREMENT exclu de cette chaîne : garantir le
@@ -136,8 +146,8 @@ func bornesVitesse(v float64) float64 {
 // Result — octets audio prêts à être servis au navigateur.
 type Result struct {
 	Audio       []byte
-	ContentType string // "audio/wav" (Gemini PCM encapsulé) | "audio/mpeg" (Edge, MeloTTS)
-	Provider    string // "gemini" | "edge" | "melotts"
+	ContentType string // "audio/wav" (Gemini PCM encapsulé) | "audio/wav"/"audio/mpeg" (MeloTTS)
+	Provider    string // "gemini" | "melotts"
 	Model       string // modèle effectivement utilisé (observabilité)
 }
 
@@ -178,10 +188,10 @@ func NewService(dbPool *pgxpool.Pool, logger *slog.Logger) *Service {
 	}
 }
 
-// SyntheseLecture — chaîne Gemini → Edge → MeloTTS. userID sert au
-// rate-limit (pas de journalisation persistante : la lecture orale est
-// un acte de lecture comme un autre, audité en amont par le usecase
-// comme /flux).
+// SyntheseLecture — chaîne Gemini → MeloTTS (SECT-TTS-4 : Edge retiré).
+// userID sert au rate-limit (pas de journalisation persistante : la
+// lecture orale est un acte de lecture comme un autre, audité en amont
+// par le usecase comme /flux).
 func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, userID string) (*Result, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("texte vide")
@@ -204,21 +214,10 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 
 	v := bornesVitesse(parseVitesse(vitesse))
 
-	// 0. Voix NEURAL explicite (« edge:… » — choix du lecteur) :
-	// routage DIRECT vers Edge (aucune clé, illimité). En échec →
-	// on continue sur la chaîne studio dessous : l'écoute ne
-	// s'arrête jamais.
-	if voixAzure, ok := voixEdgeDepuisParam(voice); ok && !s.enCooldown("edge") {
-		res, err := s.syntheseEdge(ctx, text, voixAzure, v)
-		if err == nil {
-			return res, nil
-		}
-		s.marquerEchec("edge", err)
-		s.logger.Warn("TTS Edge (voix explicite) échec — bascule sur la chaîne studio",
-			"error", err.Error(), "textLen", len(text))
-	}
-
 	// 1. Gemini (la perle) — si clé présente et pas en cooldown.
+	// NOTE : une voix « edge:… » héritée d'un ancien réglage local du
+	// navigateur n'existe plus — normaliserVoix la blanchit vers Kore
+	// (défense en profondeur : aucune valeur inconnue ne casse la chaîne).
 	if gem, ok := s.lireProviderRow(ctx, "GOOGLE"); ok {
 		if !s.enCooldown("gemini") {
 			res, err := s.syntheseGemini(ctx, gem, text, voice, v)
@@ -233,26 +232,8 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 		}
 	}
 
-	// 2. EDGE NEURAL (complément SECT-TTS-2) — illimité, sans clé,
-	// voix Azure : la qualité Neural AVANT MeloTTS quand Gemini a
-	// échoué. La voix suit le genre de la voix studio choisie
-	// (continuité d'écoute en milieu de chapitre).
-	if binaireEdge() != "" && !s.enCooldown("edge") {
-		voixContinuite := voixEdgeParDefaut
-		if az, ok := voixEdgeContinuite[strings.ToLower(strings.TrimSpace(voice))]; ok {
-			voixContinuite = az
-		}
-		res, err := s.syntheseEdge(ctx, text, voixContinuite, v)
-		if err == nil {
-			return res, nil
-		}
-		s.marquerEchec("edge", err)
-		s.logger.Warn("TTS Edge échec — bascule MeloTTS",
-			"error", err.Error(), "textLen", len(text))
-	}
+	// 2. Cloudflare MeloTTS (dernier secours indépendant de Google).
 
-	// 3. Cloudflare MeloTTS (dernier secours indépendant de Google
-	// et Microsoft).
 	if melo, ok := s.lireProviderRow(ctx, "CLOUDFLARE"); ok && !s.enCooldown("melotts") {
 		res, err := s.syntheseMeloTTS(ctx, melo, text, v)
 		if err == nil {

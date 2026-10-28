@@ -18,7 +18,7 @@ import (
 // Peut être nil si R2 est désactivé (le frontend affichera le script seul).
 //
 // SECT-TTS-3 : le champ ttsService porte la lecture vocale des documents
-// (chaîne 0 coût Gemini → Edge → MeloTTS, cf internal/tts). Peut être nil
+// (chaîne 0 coût Gemini → MeloTTS, cf internal/tts). Peut être nil
 // si la chaîne est désactivée (erreur explicite côté handler).
 type ExamPrepUseCase struct {
 	repo    domain.ExamPrepRepository

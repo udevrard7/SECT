@@ -3,7 +3,7 @@
 // GET /api/exam-prep/documents/{id}/lecture-vocale?segment&voice&vitesse.
 //
 // MÊME chaîne 0 coût que la bibliothèque (internal/tts :
-// Gemini studio → Edge Neural → MeloTTS) et MÊME posture de sécurité :
+// Gemini studio → MeloTTS — Edge retiré SECT-TTS-4) et MÊME posture :
 //   - contrôle d'accès strict (étudiant : filière + niveau de l'UE du
 //     document — EXAM-PREP-READER-SECURITY-FIX-1, via GetDocumentForReader,
 //     source unique de vérité partagée avec /read) ;
@@ -208,6 +208,12 @@ func nettoyerTexteDocument(contenu string) string {
 	// Blancs multiples → espace simple (les sauts de ligne portent déjà
 	// leur info de coupe aux endroits utiles).
 	s = blancsDoc.ReplaceAllString(s, " ")
+
+	// Défense anti-« épellation » (SECT-TTS-4, miroir bibliothèque) :
+	// recoller les runs de lettres isolées qu'un extracteur littéral
+	// ferait épeler lettre à lettre.
+	s = recollerLettresIsolees(s)
+
 	return strings.TrimSpace(s)
 }
 

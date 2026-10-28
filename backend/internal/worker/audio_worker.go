@@ -18,7 +18,7 @@
 //     a. VOXTRAL PREMIUM si opt-in explicite (extraConfig useForPodcasts
 //     ou ref_audio configurés) — payant au caractère, clonage de voix ;
 //     b. sinon CHAÎNE 0 COÛT multi-voix (tts.SynthesePodcast :
-//     Gemini duo studio → Edge duo Neural → MeloTTS) ;
+//     Gemini duo studio → MeloTTS, Edge retiré SECT-TTS-4) ;
 //     c. succès : upload sur R2 (WAV ou MP3 selon le fournisseur),
 //     durationSec ESTIMÉ depuis les octets, status PRET ;
 //     d. échec total : PRET avec script seul (dégradation gracieuse —
@@ -213,8 +213,8 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 	}
 
 	// 7. Succès synthèse → upload audio sur R2. Le format suit le
-	// FOURNISSEUR effectif (WAV Gemini 24 kHz / MP3 Edge / MP3 ou WAV
-	// Voxtral) — plus de format codé en dur.
+	// FOURNISSEUR effectif (WAV Gemini 24 kHz / MP3 ou WAV Voxtral) —
+	// plus de format codé en dur.
 	if w.storage == nil {
 		w.logger.Warn("R2 storage not configured, keeping script only",
 			"audioId", job.AudioID,

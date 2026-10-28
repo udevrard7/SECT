@@ -146,6 +146,6 @@ func getActiveProviderByCapabilityShared(ctx context.Context, dbPool *pgxpool.Po
 //
 // SECT-TTS-3 : callTTSProviderShared supprimé à son tour — la synthèse des
 // podcasts passe par tts.Service.SynthesePodcast (chaîne 0 coût
-// Gemini duo studio → Edge duo Neural → MeloTTS). Voxtral (payant) reste
+// Gemini duo studio → MeloTTS, Edge retiré SECT-TTS-4). Voxtral (payant) reste
 // joignable en option premium via callVoxtralTTS (voxtral_tts.go),
 // appelé directement par le worker audio.

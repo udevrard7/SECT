@@ -13,8 +13,8 @@
  * Permet à l'étudiant de générer un podcast de ~6 minutes (script IA
  * « résumé d'exception » + synthèse TTS MULTI-VOIX — SECT-TTS-3 : un
  * présentateur et un expert avec deux voix studio distinctes, chaîne
- * 0 coût Gemini → Edge → MeloTTS) qui résume les concepts clés d'un
- * document.
+ * 0 coût Gemini duo → MeloTTS, Edge retiré SECT-TTS-4) qui résume les
+ * concepts clés d'un document.
  *
  * - GET    /api/exam-prep/documents/{id}/audio  (TanStack Query, polling 3s si EN_COURS)
  * - POST   /api/exam-prep/documents/{id}/audio  (202 → AudioGenerationQueue)

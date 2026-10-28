@@ -373,7 +373,8 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
             </div>
 
             {/* SECT-TTS-3 — barre de lecture vocale (même chaîne 0 coût que
-                la bibliothèque : voix studio Gemini → Edge Neural → MeloTTS).
+                la bibliothèque : voix studio Gemini → MeloTTS, Edge retiré
+                SECT-TTS-4).
                 Texte découpé en PARTIES (~une page de lecture à l'oreille) :
                 avance automatique + préchargement + voix/vitesse au choix. */}
             {doc?.contenuTexte && (

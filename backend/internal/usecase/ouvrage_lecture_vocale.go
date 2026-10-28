@@ -5,8 +5,8 @@
 //
 //	PDF (R2, cache disque) → extraction texte de LA page (ledongthuc/pdf,
 //	qpdf --decrypt au besoin) → nettoyage prosodique → Gemini TTS studio
-//	→ Edge Neural en complément (SECT-TTS-2, illimité) → MeloTTS en
-//	dernier secours → octets audio.
+//	→ MeloTTS en dernier secours → octets audio (SECT-TTS-4 : la couche
+//	Edge est retirée du système — cf internal/tts/tts.go).
 //
 // SÉCURITÉ (posture BIBLIO-14/15 inchangée) :
 //   - visibilité RLS via FindByID (404 si invisible) ;
@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/ledongthuc/pdf"
@@ -135,7 +136,7 @@ func (uc *OuvrageUseCase) GetLectureVocale(ctx context.Context, claims db.Sessio
 		}
 	}
 
-	// 5. Synthèse (chaîne gratuite Gemini → Edge → MeloTTS).
+	// 5. Synthèse (chaîne gratuite Gemini → MeloTTS — Edge retiré SECT-TTS-4).
 	res, err := uc.ttsService.SyntheseLecture(ctx, texte, voice, vitesse, claims.UserID)
 	if err != nil {
 		slog.Warn("bibliothèque: synthèse vocale en échec", "ouvrageId", o.ID, "page", page, "error", err)
@@ -448,6 +449,7 @@ func nettoyerTexteTTS(texte string) string {
 	s = cesureFinDeLigne.ReplaceAllString(s, "$1$2")
 	s = ponctuationCollee.ReplaceAllString(s, "$1 $2")
 	s = blancsMultiples.ReplaceAllString(s, " ")
+	s = recollerLettresIsolees(s)
 	s = strings.TrimSpace(s)
 
 	if utf8.RuneCountInString(s) > maxRunesPageTTS {
@@ -455,4 +457,65 @@ func nettoyerTexteTTS(texte string) string {
 		s = string(runes[:maxRunesPageTTS])
 	}
 	return s
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Défense anti-« épellation » (SECT-TTS-4)
+// ──────────────────────────────────────────────────────────────────────────
+
+// seuilRunLettres — nombre minimal de jetons mono-lettre consécutifs pour
+// recoller : 5. Le français réel ne présente JAMAIS cinq lettres isolées
+// d'affilée séparées par un espace (« il y a » en compte deux), tandis
+// qu'un artefact d'extraction épelle des mots entiers. Les sigles courts
+// (« H T T P » = 4) restent donc épelés — c'est leur lecture attendue.
+const seuilRunLettres = 5
+
+// recollerLettresIsolees recolle les runs de LETTRES ISOLÉES séparées par
+// des espaces simples (« L e t t r e s » → « Lettres ») : artefact
+// d'extraction PDF quand chaque glyphe est positionné séparément avec des
+// avancées larges — un moteur TTS littéral ÉPELLE lettre à lettre au lieu
+// de lire le mot (constat utilisateur réel à l'origine de SECT-TTS-4).
+// Traitement par LIGNE : les retours à la ligne ne participent jamais aux
+// runs (un jeton portant un \n n'est pas mono-lettre).
+func recollerLettresIsolees(s string) string {
+	if !strings.Contains(s, " ") {
+		return s
+	}
+	lignes := strings.Split(s, "\n")
+	for i, l := range lignes {
+		lignes[i] = recollerRunsMonoLettres(l)
+	}
+	return strings.Join(lignes, "\n")
+}
+
+// recollerRunsMonoLettres recolle, DANS UNE LIGNE, les runs d'au moins
+// seuilRunLettres jetons mono-lettre en un seul mot (les autres jetons
+// sont recopiés tels quels, espaces préservés).
+func recollerRunsMonoLettres(ligne string) string {
+	mots := strings.Split(ligne, " ")
+	sortie := make([]string, 0, len(mots))
+	for i := 0; i < len(mots); {
+		j := i
+		for j < len(mots) && estMonoLettre(mots[j]) {
+			j++
+		}
+		if j == i { // jeton normal (pas mono-lettre) : avancer d'un
+			sortie = append(sortie, mots[i])
+			i++
+			continue
+		}
+		if j-i >= seuilRunLettres {
+			sortie = append(sortie, strings.Join(mots[i:j], ""))
+		} else {
+			sortie = append(sortie, mots[i:j]...)
+		}
+		i = j
+	}
+	return strings.Join(sortie, " ")
+}
+
+// estMonoLettre — le jeton est EXACTEMENT une lettre (« L », « é »…).
+func estMonoLettre(mot string) bool {
+	r, taille := utf8.DecodeRuneInString(mot)
+	return taille == len(mot) && unicode.IsLetter(r)
 }

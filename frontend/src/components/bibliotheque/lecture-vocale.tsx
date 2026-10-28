@@ -5,15 +5,16 @@
 // ════════════════════════════════════════════════════════════════════
 // Synthèse « très humaine » (voix studio Gemini : fidélité studio, jeu
 // expressif, stabilité longue durée) servis par le backend en chaîne
-// GRATUITE (Gemini TTS → Edge Neural en complément → Cloudflare
-// MeloTTS en dernier secours — objectif 0 coût : aucune clé nouvelle,
-// aucun fournisseur payant).
+// GRATUITE (Gemini TTS → Cloudflare MeloTTS en dernier secours —
+// objectif 0 coût : aucune clé nouvelle, aucun fournisseur payant).
 //
-// SECT-TTS-2 : en plus des voix studio, le lecteur propose des voix
-// NEURAL Azure françaises (Denise, Henri…) via Edge — sans clé et
-// sans quota (illimitées). Le choix « edge:… » route directement vers
-// cette couche ; en échec, le serveur rebascule sur la chaîne studio :
-// l'écoute ne s'arrête jamais.
+// SECT-TTS-4 : les voix « Neural » Edge (SECT-TTS-2) sont RETIRÉES —
+// leur MP3 48 kbps sonnait robotique dès que le quota Gemini était
+// consommé, la bascule serveur substituait silencieusement la voix
+// demandée (le changement en cours de lecture paraissait cassé) et le
+// moteur lisait le texte littéralement (épellation lettre à lettre).
+// Le lecteur ne propose PLUS que les voix studio Gemini : la voix
+// choisie est la voix servie.
 //
 // UX : lire la page courante → avance AUTOMATIQUE page à page (livre
 // audio), suivi de défilement (mode sécurisé : la page lue devient la
@@ -87,19 +88,6 @@ const VOIX_STUDIO: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'sadaltager', label: 'Sadaltager — chaleureuse' },
 ]
 
-// ─── Voix Neural Edge (SECT-TTS-2 — illimitées, aucune clé) : le
-// préfixe edge: route côté serveur vers la couche Azure Neural (liste
-// blanche miroir de internal/tts/edge.go — 5 voix fr-FR mesurées avec
-// edge-tts 7.3.1). ───
-
-const VOIX_EDGE: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'edge:denise', label: 'Denise — douce, claire' },
-  { id: 'edge:henri', label: 'Henri — chaleureux' },
-  { id: 'edge:eloise', label: 'Éloïse — jeune, amicale' },
-  { id: 'edge:vivienne', label: 'Vivienne — expressive' },
-  { id: 'edge:remy', label: 'Rémy — posé, naturel' },
-]
-
 const VITESSES: ReadonlyArray<{ id: string; label: string }> = [
   { id: '0.85', label: 'Lente' },
   { id: '1', label: 'Normale' },
@@ -129,9 +117,11 @@ export function LectureVocale({
   const cleRessource = endpoint ?? ouvrageId ?? ''
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  // Cache des blobs audio par page (voix/vitesse courantes) — l'écoute
-  // retour-arrière ne re-synthétise rien.
-  const blobsRef = useRef<Map<number, string>>(new Map())
+  // Cache des blobs audio, indexé par « voix|vitesse|page » (SECT-TTS-4 :
+  // l'indexation par réglages élimine la course où un préchargement en
+  // vol avec l'ANCIENNE voix polluait le cache après un changement —
+  // le retour-arrière ne re-synthétise jamais ce qui est déjà joué).
+  const blobsRef = useRef<Map<string, string>>(new Map())
   // Annulation des fetch en cours (stop / changement de réglages).
   const abortRef = useRef<AbortController | null>(null)
   // Garde anti-double-démarrage (le bouton reste cliquable pendant le chargement).
@@ -146,12 +136,13 @@ export function LectureVocale({
   const [voix, setVoix] = useState('kore')
   const [vitesse, setVitesse] = useState('1')
 
-  // Préférences mémorisées (best-effort).
+  // Préférences mémorisées (best-effort). SECT-TTS-4 : une ancienne
+  // valeur « edge:… » en localStorage ne correspond plus à aucune voix
+  // proposée → ignorée, le défaut kore s'applique.
   useEffect(() => {
     try {
       const v = localStorage.getItem(CLE_VOIX)
-      if (v && (VOIX_STUDIO.some((x) => x.id === v) || VOIX_EDGE.some((x) => x.id === v)))
-        setVoix(v)
+      if (v && VOIX_STUDIO.some((x) => x.id === v)) setVoix(v)
       const s = localStorage.getItem(CLE_VITESSE)
       if (s && VITESSES.some((x) => x.id === s)) setVitesse(s)
     } catch {
@@ -175,16 +166,30 @@ export function LectureVocale({
 
   // ─── Récupération d'une page (synthèse côté serveur) ───
 
+  // Réglages explicites : SECT-TTS-4 corrige ici le bug du changement de
+  // voix en cours de lecture — l'ancienne version relançait la page via
+  // un setTimeout capturant la closure de l'État PRÉCÉDENT (React n'a pas
+  // encore re-rendu), donc la re-synthèse partait avec l'ANCIENNE voix.
+  // La voix/vitesse demandées passent désormais EXPLICITEMENT en
+  // paramètre, indépendamment du cycle de rendu.
+  interface Reglages {
+    voix?: string
+    vitesse?: string
+  }
+
   const chargerPage = useCallback(
-    async (page: number): Promise<string> => {
-      const cache = blobsRef.current.get(page)
+    async (page: number, regl?: Reglages): Promise<string> => {
+      const vx = regl?.voix ?? voix
+      const vt = regl?.vitesse ?? vitesse
+      const cle = `${vx}|${vt}|${page}`
+      const cache = blobsRef.current.get(cle)
       if (cache) return cache
 
       const ctl = new AbortController()
       abortRef.current = ctl
       try {
         const res = await fetch(
-          `${base}?${param}=${page}&voice=${encodeURIComponent(voix)}&vitesse=${vitesse}`,
+          `${base}?${param}=${page}&voice=${encodeURIComponent(vx)}&vitesse=${vt}`,
           { credentials: 'include', signal: ctl.signal },
         )
         if (!res.ok) {
@@ -204,7 +209,7 @@ export function LectureVocale({
           throw new Error('Audio vide renvoyé par le serveur')
         }
         const url = URL.createObjectURL(blob)
-        blobsRef.current.set(page, url)
+        blobsRef.current.set(cle, url)
         return url
       } finally {
         if (abortRef.current === ctl) abortRef.current = null
@@ -219,7 +224,7 @@ export function LectureVocale({
     (page: number) => {
       if (nbPages && page >= nbPages) return
       if (preloadRef.current === page) return
-      if (blobsRef.current.has(page)) return
+      if (blobsRef.current.has(`${voix}|${vitesse}|${page}`)) return
       preloadRef.current = page
       chargerPage(page)
         .catch(() => {
@@ -229,19 +234,19 @@ export function LectureVocale({
           preloadRef.current = null
         })
     },
-    [chargerPage, nbPages],
+    [chargerPage, nbPages, voix, vitesse],
   )
 
   // ─── Lecture d'une page ───
 
   const lirePage = useCallback(
-    async (page: number) => {
+    async (page: number, regl?: Reglages) => {
       if (demarrageRef.current) return
       demarrageRef.current = true
       setErreur(null)
       setEtat('chargement')
       try {
-        const url = await chargerPage(page)
+        const url = await chargerPage(page, regl)
         const audio = audioRef.current
         if (!audio) return
         audio.src = url
@@ -312,8 +317,10 @@ export function LectureVocale({
   }, [arreter, lirePage, nbPages, pageLue])
 
   // Changement de réglages en cours d'écoute : repartir proprement à la
-  // page courante avec la nouvelle voix/vitesse (cache purgé — les blobs
-  // précédents correspondent à l'ancienne voix).
+  // page courante avec la nouvelle voix/vitesse. SECT-TTS-4 : la nouvelle
+  // valeur passe EXPLICITEMENT à lirePage (plus de closure périmée — le
+  // setTimeout ne capturait que l'ancien état, la page repartait avec
+  // l'ancienne voix et le changement paraissait sans effet).
   const changerVoix = useCallback(
     (v: string) => {
       setVoix(v)
@@ -325,7 +332,7 @@ export function LectureVocale({
       purgerBlobs()
       const page = pageLue ?? pageDepart()
       arreter()
-      setTimeout(() => void lirePage(page), 0)
+      setTimeout(() => void lirePage(page, { voix: v }), 0)
     },
     [arreter, lirePage, pageDepart, pageLue, purgerBlobs],
   )
@@ -341,7 +348,7 @@ export function LectureVocale({
       purgerBlobs()
       const page = pageLue ?? pageDepart()
       arreter()
-      setTimeout(() => void lirePage(page), 0)
+      setTimeout(() => void lirePage(page, { vitesse: v }), 0)
     },
     [arreter, lirePage, pageDepart, pageLue, purgerBlobs],
   )
@@ -428,7 +435,7 @@ export function LectureVocale({
         {statut}
       </p>
 
-      {/* Voix (studio Gemini + Neural Edge — groupes) */}
+      {/* Voix (studio Gemini — SECT-TTS-4 : Edge retiré) */}
       <div className="flex items-center gap-1.5">
         <span className="sr-only" id="sect-vocale-voix-label">
           Voix de lecture
@@ -447,16 +454,6 @@ export function LectureVocale({
                 Voix studio — expressives
               </SelectLabel>
               {VOIX_STUDIO.map((v) => (
-                <SelectItem key={v.id} value={v.id} className="text-xs">
-                  {v.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-            <SelectGroup>
-              <SelectLabel className="text-xs text-muted-foreground">
-                Voix Neural — illimitées
-              </SelectLabel>
-              {VOIX_EDGE.map((v) => (
                 <SelectItem key={v.id} value={v.id} className="text-xs">
                   {v.label}
                 </SelectItem>
