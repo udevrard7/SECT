@@ -1,7 +1,7 @@
 // Package worker — worker asynchrone pour la génération de podcasts de
 // révision (Mode Audio-Learning).
 //
-// AUDIO-LEARNING-1.
+// AUDIO-LEARNING-1 / SECT-TTS-3.
 //
 // Le handler POST /api/exam-prep/documents/{id}/audio :
 //  1. Crée une ligne DocumentAudio (status=EN_COURS, script="") via le repo
@@ -9,15 +9,20 @@
 //  3. Retourne immédiatement 202 Accepted avec la ligne créée
 //
 // Le worker (goroutine) consomme la queue en arrière-plan :
-//  1. Lit le document (contenu texte depuis la DB)
-//  2. Lit le provider IA actif via getActiveProviderShared
-//  3. Construit un prompt "podcast" (dialogue Présentateur ↔ Expert)
-//  4. Appelle l'IA via callAIProviderShared → obtient le script textuel
-//  5. UpdateDocumentAudioScript(audioID, script)
-//  6. Tente la synthèse TTS via callTTSProviderShared :
-//     - succès : upload MP3 sur R2, UpdateDocumentAudioStatus(PRET, r2Key, nil)
-//     - échec (provider sans TTS) : UpdateDocumentAudioStatus(PRET, nil, nil)
-//     (le script reste utilisable — dégradation gracieuse)
+//  1. Lit le document (contenu texte + titre depuis la DB)
+//  2. Construit le prompt « résumé d'exception » (dialogue
+//     Présentateur ↔ Expert, structure pédagogique complète — SECT-TTS-3)
+//  3. Appelle l'IA via aiService.ChatCompletion (failover multi-provider)
+//  4. UpdateDocumentAudioScript(audioID, script)
+//  5. Synthèse TTS (SECT-TTS-3) :
+//     a. VOXTRAL PREMIUM si opt-in explicite (extraConfig useForPodcasts
+//     ou ref_audio configurés) — payant au caractère, clonage de voix ;
+//     b. sinon CHAÎNE 0 COÛT multi-voix (tts.SynthesePodcast :
+//     Gemini duo studio → Edge duo Neural → MeloTTS) ;
+//     c. succès : upload sur R2 (WAV ou MP3 selon le fournisseur),
+//     durationSec ESTIMÉ depuis les octets, status PRET ;
+//     d. échec total : PRET avec script seul (dégradation gracieuse —
+//     le script reste lisible et exploitable).
 //
 // Le frontend poll GET /api/exam-prep/documents/{id}/audio (TanStack Query)
 // toutes les 3s tant qu'un audio est EN_COURS.
@@ -33,6 +38,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udevrard7/sect/backend/internal/ai"
 	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/tts"
 )
 
 // AudioGenerationJob représente une tâche de génération de podcast audio.
@@ -44,23 +50,26 @@ type AudioGenerationJob struct {
 }
 
 // AudioGenerationQueue est la file d'attente globale (channel Go buffered).
-// Buffer 25 jobs — les podcasts IA sont plus longs à générer (~30-90s) que
-// les questions d'entraînement, donc on limite la concurrence.
+// Buffer 25 jobs — les podcasts IA sont plus longs à générer (~1-4 min :
+// script + une synthèse par réplique) que les questions d'entraînement,
+// donc on limite la concurrence.
 var AudioGenerationQueue = make(chan AudioGenerationJob, 25)
 
 // AudioGenerationWorker est le worker qui consomme la queue.
 type AudioGenerationWorker struct {
-	dbPool    *pgxpool.Pool
-	storage   domain.StorageClient // R2 client (peut être nil si désactivé)
-	logger    *slog.Logger
-	aiService *ai.AIService // failover support for chat completion
+	dbPool     *pgxpool.Pool
+	storage    domain.StorageClient // R2 client (peut être nil si désactivé)
+	logger     *slog.Logger
+	aiService  *ai.AIService // failover support for chat completion
+	ttsService *tts.Service  // SECT-TTS-3 : chaîne 0 coût multi-voix
 }
 
 // NewAudioGenerationWorker crée un nouveau worker Audio.
 // storageClient peut être nil si R2 est désactivé (le worker marquera
-// l'audio PRET avec script seul, sans upload MP3).
-func NewAudioGenerationWorker(dbPool *pgxpool.Pool, storageClient domain.StorageClient, logger *slog.Logger, aiService *ai.AIService) *AudioGenerationWorker {
-	return &AudioGenerationWorker{dbPool: dbPool, storage: storageClient, logger: logger, aiService: aiService}
+// l'audio PRET avec script seul, sans upload MP3). ttsService peut être
+// nil si la chaîne vocale est désactivée (dégradation gracieuse identique).
+func NewAudioGenerationWorker(dbPool *pgxpool.Pool, storageClient domain.StorageClient, logger *slog.Logger, aiService *ai.AIService, ttsService *tts.Service) *AudioGenerationWorker {
+	return &AudioGenerationWorker{dbPool: dbPool, storage: storageClient, logger: logger, aiService: aiService, ttsService: ttsService}
 }
 
 // Start lance le worker en goroutine (non-bloquant).
@@ -85,7 +94,7 @@ func (w *AudioGenerationWorker) Start(ctx context.Context) {
 	}()
 }
 
-// processJob traite un job Audio complet (peut prendre 30-90s).
+// processJob traite un job Audio complet (peut prendre 1 à 4 minutes).
 func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerationJob) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -96,19 +105,19 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 			)
 			// Marquer en ERREUR pour que le frontend arrête de poller.
 			errMsg := "panic interne du worker"
-			_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
+			_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg, nil)
 		}
 	}()
 
-	// 1. Lire le contenu textuel du document depuis la DB.
-	docContent, docErr := w.getDocumentContent(ctx, job.DocumentID)
+	// 1. Lire le contenu textuel + le titre du document depuis la DB.
+	docContent, docTitre, docErr := w.getDocumentContent(ctx, job.DocumentID)
 	if docErr != nil {
 		w.logger.Error("Failed to read document content",
 			"error", docErr,
 			"documentId", job.DocumentID,
 		)
 		errMsg := "document introuvable ou illisible"
-		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
+		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg, nil)
 		return
 	}
 	if strings.TrimSpace(docContent) == "" || len(docContent) < 50 {
@@ -116,7 +125,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 			"documentId", job.DocumentID,
 		)
 		errMsg := "le document ne contient pas de texte extractible (trop court)"
-		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
+		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg, nil)
 		return
 	}
 
@@ -126,7 +135,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 	}
 
 	// 3. Construire le prompt podcast.
-	messages := w.buildPodcastPrompt(docContent)
+	messages := w.buildPodcastPrompt(docContent, docTitre)
 
 	// 4. Convert worker.ChatMessage → ai.ChatMessage and call AI with failover
 	aiMessages := make([]ai.ChatMessage, len(messages))
@@ -140,7 +149,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 			"documentId", job.DocumentID,
 		)
 		errMsg := fmt.Sprintf("échec IA: %v", err)
-		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
+		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg, nil)
 		return
 	}
 	script := result.Content
@@ -148,7 +157,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 	if strings.TrimSpace(script) == "" {
 		w.logger.Warn("AI returned empty podcast script", "documentId", job.DocumentID)
 		errMsg := "script généré vide"
-		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
+		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg, nil)
 		return
 	}
 
@@ -166,70 +175,78 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 			"audioId", job.AudioID,
 		)
 		errMsg := fmt.Sprintf("échec sauvegarde script: %v", err)
-		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg)
+		_ = w.updateStatus(ctx, job.AudioID, "ERREUR", nil, &errMsg, nil)
 		return
 	}
 
-	// 6. Tenter la synthèse TTS (optionnelle — dégradation gracieuse).
-	// DASHSCOPE-AUDIO-1 : utiliser un provider TTS dédié si configuré
-	// (capability='tts'), sinon fallback sur le provider chat (rétro-compatible).
-	ttsProvider, ttsProvErr := getActiveProviderByCapabilityShared(ctx, w.dbPool, "tts")
-	if ttsProvErr != nil {
-		w.logger.Warn("No TTS provider available, keeping script only",
-			"audioId", job.AudioID, "error", ttsProvErr)
-		if err := w.updateStatus(ctx, job.AudioID, "PRET", nil, nil); err != nil {
-			w.logger.Error("Failed to mark audio as PRET (script only)",
-				"error", err, "audioId", job.AudioID)
-		}
-		return
-	}
-	audioBytes, ttsErr := callTTSProviderShared(ctx, ttsProvider, script, w.logger)
-	if ttsErr != nil {
-		// TTS indisponible pour ce provider → on marque PRET avec script seul.
-		// Le frontend affichera le script dans un <details> collapsible.
-		w.logger.Warn("TTS not available for provider, keeping script only (graceful fallback)",
-			"provider", ttsProvider.Name,
-			"providerType", ttsProvider.Provider,
-			"audioId", job.AudioID,
-			"ttsError", ttsErr,
-		)
-		if err := w.updateStatus(ctx, job.AudioID, "PRET", nil, nil); err != nil {
-			w.logger.Error("Failed to mark audio as PRET (script only)",
-				"error", err, "audioId", job.AudioID)
-		}
+	// 6. Synthèse TTS (SECT-TTS-3). Voxtral premium (opt-in) PUIS chaîne
+	// 0 coût — jamais l'inverse : sans configuration explicite, un podcast
+	// ne coûte RIEN (posture SECT-TTS-1 : garantit le 0 coût).
+	if w.ttsService == nil {
+		w.logger.Warn("TTS service not configured, keeping script only", "audioId", job.AudioID)
+		_ = w.updateStatus(ctx, job.AudioID, "PRET", nil, nil, nil)
 		return
 	}
 
-	// 7. TTS succès → upload audio sur R2.
-	// KOKORO-TTS-1 : le format dépend du provider (WAV pour HuggingFace/Kokoro,
-	// MP3 pour DashScope/OpenAI). ttsAudioFormat() retourne l'extension + content-type.
+	var synth *tts.Result
+	if vox, ok := w.voxtralPodcastOptIn(ctx); ok {
+		res, voxErr := callVoxtralTTS(ctx, vox, script, w.logger)
+		if voxErr == nil {
+			synth = res
+			w.logger.Info("Podcast synthétisé via Voxtral (premium, payant)",
+				"audioId", job.AudioID, "model", res.Model, "bytes", len(res.Audio))
+		} else {
+			// Premium en échec → bascule 0 coût (l'épisode doit exister).
+			w.logger.Warn("Voxtral premium échec — bascule chaîne 0 coût",
+				"audioId", job.AudioID, "error", voxErr)
+		}
+	}
+	if synth == nil {
+		res, err := w.ttsService.SynthesePodcast(ctx, script, job.UserID)
+		if err != nil {
+			w.logger.Warn("TTS 0 coût indisponible, keeping script only (graceful fallback)",
+				"audioId", job.AudioID, "ttsError", err)
+			_ = w.updateStatus(ctx, job.AudioID, "PRET", nil, nil, nil)
+			return
+		}
+		synth = res
+	}
+
+	// 7. Succès synthèse → upload audio sur R2. Le format suit le
+	// FOURNISSEUR effectif (WAV Gemini 24 kHz / MP3 Edge / MP3 ou WAV
+	// Voxtral) — plus de format codé en dur.
 	if w.storage == nil {
 		w.logger.Warn("R2 storage not configured, keeping script only",
 			"audioId", job.AudioID,
 		)
-		_ = w.updateStatus(ctx, job.AudioID, "PRET", nil, nil)
+		_ = w.updateStatus(ctx, job.AudioID, "PRET", nil, nil, nil)
 		return
 	}
 
-	audioExt, audioContentType := ttsAudioFormat(ttsProvider)
-	r2Key := fmt.Sprintf("audio/%s%s", job.AudioID, audioExt)
+	ext, ct := ".mp3", "audio/mpeg"
+	if strings.Contains(synth.ContentType, "wav") {
+		ext, ct = ".wav", "audio/wav"
+	}
+	r2Key := fmt.Sprintf("audio/%s%s", job.AudioID, ext)
 	_, err = w.storage.Upload(ctx, domain.StorageObject{
 		Key:           r2Key,
-		Content:       audioBytes,
-		ContentType:   audioContentType,
-		ContentLength: int64(len(audioBytes)),
+		Content:       synth.Audio,
+		ContentType:   ct,
+		ContentLength: int64(len(synth.Audio)),
 	})
 	if err != nil {
 		w.logger.Warn("Failed to upload audio to R2, keeping script only",
 			"error", err,
 			"audioId", job.AudioID,
 		)
-		_ = w.updateStatus(ctx, job.AudioID, "PRET", nil, nil)
+		_ = w.updateStatus(ctx, job.AudioID, "PRET", nil, nil, nil)
 		return
 	}
 
-	// 8. Marquer PRET avec la clé R2.
-	if err := w.updateStatus(ctx, job.AudioID, "PRET", &r2Key, nil); err != nil {
+	// 8. Marquer PRET avec la clé R2 + durée estimée (affichée sur la
+	// carte podcast côté frontend).
+	duree := tts.DureeAudio(synth.Audio, synth.ContentType)
+	if err := w.updateStatus(ctx, job.AudioID, "PRET", &r2Key, nil, &duree); err != nil {
 		w.logger.Error("Failed to mark audio as PRET (with R2 key)",
 			"error", err, "audioId", job.AudioID, "r2Key", r2Key)
 		return
@@ -239,63 +256,109 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 		"audioId", job.AudioID,
 		"documentId", job.DocumentID,
 		"r2Key", r2Key,
-		"audioBytes", len(audioBytes),
+		"provider", synth.Provider,
+		"model", synth.Model,
+		"audioBytes", len(synth.Audio),
+		"durationSec", duree,
 	)
 }
 
-// getDocumentContent lit le contenu textuel d'un document depuis la DB.
-// Pose les claims system-worker pour RLS (le worker n'a pas de claims HTTP).
-func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, documentID string) (string, error) {
+// voxtralPodcastOptIn — le provider TTS actif est-il Voxtral ET
+// explicitement activé pour les podcasts (useForPodcasts ou ref_audio
+// configurés — cf voxtralOptIn) ? Payant au caractère : jamais le défaut.
+func (w *AudioGenerationWorker) voxtralPodcastOptIn(ctx context.Context) (*ai.ActiveProvider, bool) {
+	vox, err := getActiveProviderByCapabilityShared(ctx, w.dbPool, "tts")
+	if err != nil || vox == nil {
+		return nil, false
+	}
+	if !strings.EqualFold(vox.Provider, "VOXTRAL") {
+		return nil, false
+	}
+	if !voxtralOptIn(vox.ExtraConfig) {
+		return nil, false
+	}
+	return vox, true
+}
+
+// getDocumentContent lit le contenu textuel + le nom de fichier d'un
+// document depuis la DB. Pose les claims system-worker pour RLS (le
+// worker n'a pas de claims HTTP). Le TITRE nourrit le prompt (l'IA situe
+// le cours qu'elle résume — SECT-TTS-3).
+func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, documentID string) (string, string, error) {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
+		return "", "", fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var contenu *string
+	var nomFichier string
 	err = tx.QueryRow(ctx, `
-                SELECT "contenuTexte" FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL
-        `, documentID).Scan(&contenu)
+		SELECT "contenuTexte", COALESCE("nomFichier", '') FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL
+	`, documentID).Scan(&contenu, &nomFichier)
 	if err != nil {
-		return "", fmt.Errorf("query document content: %w", err)
+		return "", "", fmt.Errorf("query document content: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", fmt.Errorf("commit: %w", err)
+		return "", "", fmt.Errorf("commit: %w", err)
 	}
 
 	if contenu == nil {
-		return "", nil
+		return "", nomFichier, nil
 	}
-	return *contenu, nil
+	return *contenu, nomFichier, nil
 }
 
-// buildPodcastPrompt construit les messages (system + user) envoyés au LLM
-// pour générer un script de podcast de ~5 minutes (dialogue Présentateur ↔
-// Expert). Le script est en texte brut (pas de JSON), formaté pour la synthèse
-// TTS.
-func (w *AudioGenerationWorker) buildPodcastPrompt(docContent string) []ChatMessage {
-	system := strings.TrimSpace(`Tu es un scénariste de podcasts éducatifs pour étudiants de l'enseignement supérieur.
-Tu crées des scripts de podcasts engageants qui transforment un contenu académique en une conversation vivante et pédagogique de ~5 minutes (environ 700 à 900 mots).
+// buildPodcastPrompt construit les messages (system + user) envoyés au LLM.
+//
+// SECT-TTS-3 — « RÉSUMÉ DE COURS D'EXCEPTION » : le prompt passe d'un
+// dialogue générique à une structure pédagogique COMPLÈTE (accroche,
+// panorama, concept→exemple→piège d'examen, moyen mnémotechnique,
+// mini-quiz, récap) avec des consignes de style ORAL (phrases courtes,
+// zéro notation) : le texte est lu par deux voix studio différentes.
+func (w *AudioGenerationWorker) buildPodcastPrompt(docContent, docTitre string) []ChatMessage {
+	system := strings.TrimSpace(`Tu es un scénariste de podcasts éducatifs de niveau professionnel (qualité audio-documentaire).
+Tu transformes un support de cours en épisode de révision mémorable de ~6 minutes (900 à 1100 mots).
 
 Format EXACT de ta réponse (texte brut, PAS de JSON, PAS de markdown) :
 - Le podcast est un dialogue entre deux personnages :
-  • "Présentateur" : un host enthousiaste et curieux qui pose les questions, lance les transitions, garde le rythme.
-  • "Expert" : un professeur passionné qui explique les concepts avec clarté, des exemples concrets et des analogies.
+  • "Présentateur" : un·e animateur·rice enthousiaste et curieux·se qui pose les questions, lance les transitions, garde le rythme.
+  • "Expert" : un·e professeur·e passionné·e qui explique avec clarté, des exemples concrets et des analogies.
 - Chaque ligne commence par "Présentateur :" ou "Expert :".
 - Début obligatoire : "Présentateur : Bonjour et bienvenue dans ce podcast de révision !"
 - Fin obligatoire : "Présentateur : Merci d'avoir écouté, et bonne révision !"
-- Évite les listes à puces, les titres de sections, les emojis. Format dialogue uniquement.
-- Inclus une brève introduction (contexte du sujet), 3 à 5 concepts clés du document avec explications, et une conclusion/récapitulatif.
-- Adapte le niveau de langage : accessible mais rigoureux (étudiant L1/M1).`)
+- Écris pour l'OREILLE : phrases orales et respirables (jamais plus de ~25 mots), aucune liste à puces, aucun titre de section, aucun emoji, aucune notation mathématique complexe (épelle les formules avec des mots).
 
-	user := fmt.Sprintf(`Voici le contenu d'un cours à transformer en podcast de révision de ~5 minutes :
+Structure de l'épisode (dans cet ordre) :
+1. Accroche : pourquoi ce sujet compte pour l'examen (30 secondes max).
+2. Panorama : l'essentiel à retenir, une phrase par concept clé (3 à 5 concepts).
+3. Pour chaque concept clé : définition simple, puis un exemple concret ou une analogie, puis l'erreur classique à éviter le jour de l'examen.
+4. Un moyen mnémotechnique pour retenir l'ensemble.
+5. Mini-quiz éclair : 2 questions posées par le Présentateur, réponses courtes par l'Expert.
+6. Récapitulatif final en 3 phrases mémorisables.
+
+Qualité exigée : rigueur académique (niveau L1/M1) mais langage parlé et vivant ; chaque intervention de l'Expert s'appuie sur un fait PRÉCIS du document ; le Présentateur reformule pour vérifier la compréhension.`)
+
+	var user string
+	if strings.TrimSpace(docTitre) != "" {
+		user = fmt.Sprintf(`Voici le support de cours à transformer en podcast de révision de ~6 minutes.
+
+Titre du support : %s
+
+Contenu :
+%s
+
+Génère le script du podcast en respectant le format et la structure demandés. Concentre-toi sur les concepts les plus importants du document.`, docTitre, docContent)
+	} else {
+		user = fmt.Sprintf(`Voici le support de cours à transformer en podcast de révision de ~6 minutes :
 
 %s
 
-Génère le script du podcast en respectant le format demandé. Concentre-toi sur les concepts les plus importants du document.`, docContent)
+Génère le script du podcast en respectant le format et la structure demandés. Concentre-toi sur les concepts les plus importants du document.`, docContent)
+	}
 
 	return []ChatMessage{
 		{Role: "system", Content: system},
@@ -317,10 +380,10 @@ func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, scrip
 	}
 
 	_, err = tx.Exec(ctx, `
-                UPDATE "DocumentAudio"
-                SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $2
-        `, script, audioID)
+		UPDATE "DocumentAudio"
+		SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
+		WHERE "id" = $2
+	`, script, audioID)
 	if err != nil {
 		return fmt.Errorf("update script: %w", err)
 	}
@@ -328,9 +391,9 @@ func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, scrip
 	return tx.Commit(ctx)
 }
 
-// updateStatus met à jour le statut (+ r2Key/errorMessage si non-nil).
-// Claims system-worker posés pour RLS : écriture système (worker).
-func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string) error {
+// updateStatus met à jour le statut (+ r2Key/errorMessage/durationSec si
+// non-nil). Claims system-worker posés pour RLS : écriture système (worker).
+func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string, durationSec *int) error {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -341,31 +404,15 @@ func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, statu
 		return fmt.Errorf("set system claims: %w", err)
 	}
 
-	if r2Key != nil && errorMessage != nil {
-		_, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "r2Key" = $2, "errorMessage" = $3, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $4
-                `, status, *r2Key, *errorMessage, audioID)
-	} else if r2Key != nil {
-		_, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "r2Key" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $3
-                `, status, *r2Key, audioID)
-	} else if errorMessage != nil {
-		_, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "errorMessage" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $3
-                `, status, *errorMessage, audioID)
-	} else {
-		_, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $2
-                `, status, audioID)
-	}
+	_, err = tx.Exec(ctx, `
+		UPDATE "DocumentAudio"
+		SET "status" = $1,
+		    "r2Key" = COALESCE($2, "r2Key"),
+		    "errorMessage" = $3,
+		    "durationSec" = COALESCE($4, "durationSec"),
+		    "updatedAt" = CURRENT_TIMESTAMP
+		WHERE "id" = $5
+	`, status, r2Key, errorMessage, durationSec, audioID)
 	if err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
@@ -389,11 +436,11 @@ func (w *AudioGenerationWorker) RecoverInterruptedAudioJobs(ctx context.Context)
 	_, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	rows, err := tx.Query(ctx, `
-                SELECT "id", "documentId", "userId"
-                FROM "DocumentAudio"
-                WHERE "status" = 'EN_COURS'
-                ORDER BY "createdAt" ASC
-        `)
+		SELECT "id", "documentId", "userId"
+		FROM "DocumentAudio"
+		WHERE "status" = 'EN_COURS'
+		ORDER BY "createdAt" ASC
+	`)
 	if err != nil {
 		w.logger.Error("RecoverInterruptedAudioJobs: query failed", "error", err)
 		return

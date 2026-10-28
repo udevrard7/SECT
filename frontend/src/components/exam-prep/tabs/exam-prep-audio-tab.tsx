@@ -10,8 +10,11 @@
  *  - Couleurs sémantiques (info=EN_COURS, success=PRET, destructive=ERREUR)
  *  - Boutons touch-target ≥ 44px (h-9 minimum)
  *
- * Permet à l'étudiant de générer un podcast de ~5 minutes (script IA + synthèse
- * TTS optionnelle) qui résume les concepts clés d'un document.
+ * Permet à l'étudiant de générer un podcast de ~6 minutes (script IA
+ * « résumé d'exception » + synthèse TTS MULTI-VOIX — SECT-TTS-3 : un
+ * présentateur et un expert avec deux voix studio distinctes, chaîne
+ * 0 coût Gemini → Edge → MeloTTS) qui résume les concepts clés d'un
+ * document.
  *
  * - GET    /api/exam-prep/documents/{id}/audio  (TanStack Query, polling 3s si EN_COURS)
  * - POST   /api/exam-prep/documents/{id}/audio  (202 → AudioGenerationQueue)
@@ -127,7 +130,7 @@ export function ExamPrepAudioTab({ documentId }: Props) {
       return res.json()
     },
     onSuccess: () => {
-      toast.success('Podcast en cours de génération… (≈ 30 à 90 s)')
+      toast.success('Podcast en cours de génération… (≈ 1 à 4 min, voix multi-voix)')
       queryClient.invalidateQueries({ queryKey: ['exam-prep-audio', documentId] })
     },
     onError: (err: Error) => {
@@ -171,7 +174,7 @@ export function ExamPrepAudioTab({ documentId }: Props) {
         <SectionHeader
           icon={Headphones}
           title="Podcasts de révision"
-          desc="Générez un résumé audio de ~5 minutes — idéal pour réviser en mobilité."
+          desc="Générez un résumé audio multi-voix de ~6 minutes — idéal pour réviser en mobilité."
         />
         <div className="space-y-3">
           {Array.from({ length: 2 }).map((_, i) => (
@@ -189,7 +192,7 @@ export function ExamPrepAudioTab({ documentId }: Props) {
         <SectionHeader
           icon={Headphones}
           title="Podcasts de révision"
-          desc="Générez un résumé audio de ~5 minutes — idéal pour réviser en mobilité."
+          desc="Générez un résumé audio multi-voix de ~6 minutes — idéal pour réviser en mobilité."
         />
         <Card className="border-l-4 border-l-destructive">
           <CardContent className="flex flex-col items-center justify-center py-10 text-center">
@@ -218,7 +221,7 @@ export function ExamPrepAudioTab({ documentId }: Props) {
         <SectionHeader
           icon={Headphones}
           title="Podcasts de révision"
-          desc="Générez un résumé audio de ~5 minutes — idéal pour réviser en mobilité."
+          desc="Générez un résumé audio multi-voix de ~6 minutes — idéal pour réviser en mobilité."
         />
         <Card className="border-dashed ds-kente-watermark">
           <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
@@ -230,8 +233,9 @@ export function ExamPrepAudioTab({ documentId }: Props) {
             </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
               Cliquez sur « Générer un podcast » pour créer un résumé audio de
-              ~5 minutes de ce document. L&apos;IA produira un dialogue engageant
-              entre un présentateur et un expert.
+              ~6 minutes de ce document : un dialogue vivant entre un
+              présentateur et un expert, lu par deux voix studio distinctes
+              (accroche, concepts clés, pièges d&apos;examen, mini-quiz).
             </p>
             <Button
               onClick={handleGenerate}
@@ -380,8 +384,8 @@ function AudioCard({
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm">Génération en cours…</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              L&apos;IA écrit le script du podcast puis synthétise l&apos;audio.
-              Cela peut prendre 30 à 90 secondes.
+              L&apos;IA écrit le script du podcast puis synthétise chaque réplique
+              avec sa voix (deux voix studio). Cela peut prendre 1 à 4 minutes.
             </p>
           </div>
           <Badge variant="outline" className="bg-info/10 text-info border-info/30 text-[10px] shrink-0">
@@ -460,21 +464,26 @@ function AudioCard({
           {deleteButton}
         </div>
 
-        {/* Lecteur audio HTML5 (si MP3 disponible) */}
+        {/* Lecteur audio HTML5 (si audio disponible — WAV Gemini ou MP3
+            Edge/Voxtral selon le fournisseur, SECT-TTS-3 : le type suit
+            l'extension de la clé R2 présignée). */}
         {hasAudio ? (
           <audio controls preload="metadata" className="w-full">
-            <source src={audio.audioUrl} type="audio/mpeg" />
+            <source
+              src={audio.audioUrl}
+              type={audio.audioUrl?.toLowerCase().includes('.wav') ? 'audio/wav' : 'audio/mpeg'}
+            />
             Votre navigateur ne supporte pas la lecture audio.
           </audio>
         ) : (
           <div className="rounded-lg bg-warning/5 border-l-4 border-l-warning p-2.5">
             <p className="text-[10px] font-medium text-warning uppercase tracking-wider mb-0.5">
-              Audio non disponible pour ce provider
+              Synthèse vocale indisponible pour ce podcast
             </p>
             <p className="text-xs">
-              Le provider IA actif ne supporte pas la synthèse audio (TTS).
-              Voici le script du podcast — vous pouvez le lire à l&apos;écran
-              ou le faire lire par votre navigateur.
+              Tous les fournisseurs vocaux gratuits étaient en échec au moment
+              de la génération. Voici le script du podcast — vous pouvez le lire
+              à l&apos;écran ou relancer une génération.
             </p>
           </div>
         )}

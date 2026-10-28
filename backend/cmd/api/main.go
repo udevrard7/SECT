@@ -278,7 +278,10 @@ func main() {
 	certificatUC := usecase.NewCertificatUseCase(certificatRepo)
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
-	examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo, storageClient)
+	// SECT-TTS-3 : ttsService pour la lecture vocale des documents ET la
+	// synthèse multi-voix des podcasts (chaîne 0 coût partagée avec la
+	// bibliothèque — aucune nouvelle configuration exploitant).
+	examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo, storageClient, ttsService)
 
 	// AI-PROVIDERS-1 : AIProviderUseCase — logique métier pour la gestion des AI providers.
 	aiProviderRepo := repository.NewAIProviderRepository(pool)
@@ -350,7 +353,7 @@ func main() {
 		homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
 		homeworkWorker.Start(context.Background())
 
-		audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger, aiService)
+		audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger, aiService, ttsService)
 		audioWorker.RecoverInterruptedAudioJobs(context.Background())
 		audioWorker.Start(context.Background())
 

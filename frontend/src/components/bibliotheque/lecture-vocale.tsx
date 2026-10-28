@@ -55,7 +55,16 @@ import { toast } from 'sonner'
 // ─── Props ───
 
 export interface LectureVocaleProps {
-  ouvrageId: string
+  ouvrageId?: string
+  /** SECT-TTS-3 : endpoint TTS COMPLET (ex. /api/exam-prep/documents/{id}/
+   *  lecture-vocale) — réutilise ce lecteur hors bibliothèque. Défaut :
+   *  l'endpoint ouvrage (ouvrageId requis). */
+  endpoint?: string
+  /** Nom du paramètre d'unité envoyé à l'API (« page » bibliothèque,
+   *  « segment » exam-prep). Défaut : page. */
+  paramPage?: string
+  /** Libellé de l'unité lue (« page » bibliothèque, « partie » exam-prep). */
+  unite?: 'page' | 'partie'
   /** Page de départ de l'écoute (évaluée à chaque démarrage). */
   pageDepart: () => number
   /** Suivi de défilement : appelé quand la lecture passe à la page n
@@ -106,9 +115,19 @@ type Etat = 'repos' | 'chargement' | 'lecture' | 'pause' | 'erreur'
 
 export function LectureVocale({
   ouvrageId,
+  endpoint,
+  paramPage,
+  unite,
   pageDepart,
   onAllerPage,
 }: LectureVocaleProps) {
+  // Endpoint effectif : override explicite (exam-prep) sinon bibliothèque.
+  const base =
+    endpoint ?? `/api/ouvrages/${ouvrageId ?? ''}/lecture-vocale`
+  const param = paramPage ?? 'page'
+  const labelUnite = unite ?? 'page'
+  const cleRessource = endpoint ?? ouvrageId ?? ''
+
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // Cache des blobs audio par page (voix/vitesse courantes) — l'écoute
   // retour-arrière ne re-synthétise rien.
@@ -140,14 +159,14 @@ export function LectureVocale({
     }
   }, [])
 
-  // Libérer les blobs au démontage / changement d'ouvrage.
+  // Libérer les blobs au démontage / changement de ressource.
   useEffect(() => {
     return () => {
       abortRef.current?.abort()
       blobsRef.current.forEach((url) => URL.revokeObjectURL(url))
       blobsRef.current.clear()
     }
-  }, [ouvrageId])
+  }, [cleRessource])
 
   const purgerBlobs = useCallback(() => {
     blobsRef.current.forEach((url) => URL.revokeObjectURL(url))
@@ -165,7 +184,7 @@ export function LectureVocale({
       abortRef.current = ctl
       try {
         const res = await fetch(
-          `/api/ouvrages/${ouvrageId}/lecture-vocale?page=${page}&voice=${encodeURIComponent(voix)}&vitesse=${vitesse}`,
+          `${base}?${param}=${page}&voice=${encodeURIComponent(voix)}&vitesse=${vitesse}`,
           { credentials: 'include', signal: ctl.signal },
         )
         if (!res.ok) {
@@ -191,7 +210,7 @@ export function LectureVocale({
         if (abortRef.current === ctl) abortRef.current = null
       }
     },
-    [ouvrageId, voix, vitesse],
+    [base, param, voix, vitesse],
   )
 
   // ─── Préchargement silencieux de la page suivante ───
@@ -285,7 +304,7 @@ export function LectureVocale({
     if (nbPages != null && courante >= nbPages) {
       arreter()
       toast.success('Fin du document', {
-        description: 'Toutes les pages ont été lues.',
+        description: 'Tout le document a été lu.',
       })
       return
     }
@@ -333,18 +352,18 @@ export function LectureVocale({
     etat === 'chargement'
       ? 'Synthèse en cours…'
       : etat === 'lecture'
-        ? `Lecture — page ${pageLue}${nbPages ? ` / ${nbPages}` : ''}`
+        ? `Lecture — ${labelUnite} ${pageLue}${nbPages ? ` / ${nbPages}` : ''}`
         : etat === 'pause'
-          ? `Pause — page ${pageLue}`
+          ? `Pause — ${labelUnite} ${pageLue}`
           : etat === 'erreur'
             ? 'Indisponible'
-            : `Prêt — page ${pageLue ?? '…'}`
+            : `Prêt — ${labelUnite} ${pageLue ?? '…'}`
 
   return (
     <div
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 md:px-5 py-2 bg-card border-b border-border text-xs shrink-0 select-none"
       role="region"
-      aria-label="Lecture vocale de l'ouvrage"
+      aria-label="Lecture vocale du document"
     >
       <audio
         ref={audioRef}
@@ -376,9 +395,9 @@ export function LectureVocale({
             aria-label={
               etat === 'pause'
                 ? 'Reprendre la lecture vocale'
-                : 'Écouter cette page (lecture vocale)'
+                : `Écouter cette ${labelUnite} (lecture vocale)`
             }
-            title={etat === 'pause' ? 'Reprendre' : 'Écouter cette page'}
+            title={etat === 'pause' ? 'Reprendre' : `Écouter cette ${labelUnite}`}
           >
             {etat === 'chargement' ? (
               <Loader2 className="h-4 w-4 animate-spin" />

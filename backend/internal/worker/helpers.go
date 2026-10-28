@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -145,29 +143,9 @@ func getActiveProviderByCapabilityShared(ctx context.Context, dbPool *pgxpool.Po
 
 // BUG #8 fix: callAIProviderShared supprimé (code mort — plus appelé depuis
 // que tous les workers utilisent aiService.ChatCompletion avec failover).
-
-// callTTSProviderShared tente une synthèse audio (TTS). Retourne les bytes
-// audio (MP3) ou une erreur si le provider ne supporte pas le TTS.
 //
-// VOXTRAL-TTS-1 : si provider.Provider == "VOXTRAL", dispatch vers callVoxtralTTS
-// qui utilise l'API Mistral /audio/speech avec voice cloning (audio FR natif).
-//
-// AUDIO-LEARNING-1 : le TTS est OPTIONNEL. Si le provider ne supporte pas
-// le TTS, cette fonction retourne une erreur et le worker garde le script
-// textuel uniquement (status=PRET, r2Key=nil). L'échec TTS n'est PAS une
-// erreur de job — c'est une dégradation gracieuse.
-//
-// BUG #8 fix: accepte *ai.ActiveProvider au lieu du doublon aiProviderConfig.
-func callTTSProviderShared(ctx context.Context, provider *ai.ActiveProvider, text string, logger *slog.Logger) ([]byte, error) {
-	if len(text) == 0 {
-		return nil, fmt.Errorf("empty text")
-	}
-
-	// VOXTRAL-TTS-1 : dispatch Mistral Voxtral (API /audio/speech + voice cloning).
-	if strings.EqualFold(provider.Provider, "VOXTRAL") {
-		return callVoxtralTTS(ctx, provider, text, logger)
-	}
-
-	// Fallback : provider non-TTS (chat-only) → erreur → dégradation gracieuse.
-	return nil, fmt.Errorf("provider %q does not support TTS (capability != 'tts')", provider.Provider)
-}
+// SECT-TTS-3 : callTTSProviderShared supprimé à son tour — la synthèse des
+// podcasts passe par tts.Service.SynthesePodcast (chaîne 0 coût
+// Gemini duo studio → Edge duo Neural → MeloTTS). Voxtral (payant) reste
+// joignable en option premium via callVoxtralTTS (voxtral_tts.go),
+// appelé directement par le worker audio.

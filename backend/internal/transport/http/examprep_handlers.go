@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -867,6 +868,70 @@ func (s *Server) downloadExamPrepDocument(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+// getExamPrepDocumentLectureVocale — GET /api/exam-prep/documents/{id}/lecture-vocale
+// (SECT-TTS-3 : lecture ORALE des supports de cours, comme la bibliothèque).
+//
+// Audio de synthèse d'un SEGMENT du texte du document : chaîne 0 coût
+// (Gemini TTS studio → Edge Neural en complément → MeloTTS en dernier
+// secours — clés déjà en base, cf internal/tts).
+//
+// Paramètres : segment (1-based, défaut 1), voice (voix studio Gemini ou
+// « edge:xxx » — liste blanche serveur, défaut kore), vitesse
+// (0.75–1.25, défaut 1).
+//
+// SÉCURITÉ : contrôle d'accès identique à /read (étudiant : filière +
+// niveau — GetDocumentForReader, source unique) ; le TEXTE ne sort JAMAIS
+// du serveur — seuls des octets audio partent (zéro égress textuel) ;
+// anti-abus côté service TTS (rate-limit 15/min/utilisateur, sémaphore 3,
+// vitesse et segments bornés).
+//
+// En-têtes d'observabilité : X-Sect-Tts-Provider (gemini|edge|melotts),
+// X-Sect-Nb-Pages (total de segments — avance automatique du lecteur
+// côté client), X-Sect-Tts-Model.
+func (s *Server) getExamPrepDocumentLectureVocale(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	segment := 1
+	if v := r.URL.Query().Get("segment"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100_000 {
+			segment = n
+		}
+	}
+	voice := r.URL.Query().Get("voice") // normalisé (liste blanche) côté service
+	vitesse := r.URL.Query().Get("vitesse")
+
+	result, err := s.examPrepUC.GetDocumentLectureVocale(r.Context(), claims, chi.URLParam(r, "id"), segment, voice, vitesse)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	// Audio INLINE (ce n'est pas un acte de téléchargement), no-store
+	// (l'audio de synthèse n'est pas cachetable par un intermédiaire).
+	ext := ".wav"
+	if result.ContentType == "audio/mpeg" {
+		ext = ".mp3"
+	}
+	w.Header().Set("Content-Type", result.ContentType)
+	w.Header().Set("Content-Disposition", `inline; filename="lecture-partie-`+strconv.Itoa(segment)+ext+`"`)
+	w.Header().Set("Cache-Control", "no-store, private")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Sect-Tts-Provider", result.Provider)
+	w.Header().Set("X-Sect-Tts-Model", result.Model)
+	if result.NbPages > 0 {
+		w.Header().Set("X-Sect-Nb-Pages", strconv.Itoa(result.NbPages))
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(result.Audio)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(result.Audio); err != nil {
+		slog.Warn("exam-prep: interruption du flux vocal", "error", err)
+	}
 }
 
 // ============================================================

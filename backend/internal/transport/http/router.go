@@ -1126,6 +1126,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			// (PDF…) pour étudiant/enseignant. URL présignée R2 15 min
 			// (attachment). Corrige la panne 403 de /api/documents/{id}/download.
 			r.Get("/documents/{id}/download", s.downloadExamPrepDocument)
+			// SECT-TTS-3 — lecture ORALE du support (comme la bibliothèque) :
+			// audio de synthèse d'un segment du texte (chaîne 0 coût
+			// Gemini → Edge → MeloTTS, contrôle d'accès = /read).
+			r.Get("/documents/{id}/lecture-vocale", s.getExamPrepDocumentLectureVocale)
 			// Review (spaced repetition)
 			r.Get("/review", s.listReviewItems)
 			r.Post("/review", s.markReviewed)

@@ -1,32 +1,40 @@
-// Package worker — adapter Mistral Voxtral TTS pour la synthèse vocale.
+// Package worker — adapter Mistral Voxtral TTS (API Voxtral 3) pour la
+// synthèse vocale des podcasts.
 //
-// VOXTRAL-TTS-1 / VOXTRAL-TTS-2.
+// VOXTRAL-TTS-1 / VOXTRAL-TTS-2 / SECT-TTS-3.
 //
-// Mistral propose 4 modèles TTS (voxtral-mini-tts-*) accessibles via l'endpoint
-// OpenAI-compatible /v1/audio/speech. Le voice cloning nécessite un `ref_audio`
-// (audio de référence en base64).
-//
-// Format de la requête :
+// MIGRATION VOXTRAL 3 (mesurée en réel, 2026-10) : l'API historique
+// « voxtral-mini-tts-latest + voix nommées (lea…) » est MORTE — les voix
+// nommées renvoient 404 « Voice 'lea' not found » et l'URL de ref_audio
+// par défaut (Space Neuphonic) sert désormais du JSON. L'intégration est
+// reconstruite sur l'API Voxtral 3 :
 //
 //	POST {baseUrl}/audio/speech
-//	Body : {"model":"voxtral-mini-tts-latest","input":"texte","ref_audio":"<base64>"}
-//	Response : JSON {"audio_data":"<base64 MP3>"} → décoder en bytes MP3.
+//	Body : {"model":"voxtral-mini-tts-3-0",
+//	        "input":"texte",
+//	        "voice_id":"voice_592",          // presets VOXTRAL 3
+//	        "response_format":"mp3"}
+//	      ou {"ref_audio":"<base64 MP3/WAV>"} // clonage zéro-shot (inchangé)
+//	Response : JSON {"audio_data":"<base64>"}.
 //
-// VOXTRAL-TTS-2 (multi-voix) : si le provider a deux ref_audio configurés
-// (refAudioPresenter + refAudioExpert dans extraConfig), le script est parsé
-// par speaker ("Présentateur :" / "Expert :") et chaque segment est synthétisé
-// avec la voix correspondante. Les segments MP3 sont concaténés en un seul
-// fichier.
+// Presets français Voxtral 3 (docs « Voices », testés 200) :
+//   - voice_592  Marie   — voix de référence
+//   - voice_3137 Manon   — duo podcast par défaut (animation)
+//   - voice_589  Lea
+//   - voice_3141 Camille
 //
-// Configuration via extraConfig (UI admin) :
+// Les alias Voxtral 2 (fr_marie_neutral…) restent acceptés.
 //
-//	{
-//	  "refAudioPresenter": "https://...voix-presentation.wav",
-//	  "refAudioExpert":     "https://...voix-expert.wav"
-//	}
+// MULTI-VOIX : si le provider a deux ref_audio configurés (extraConfig
+// refAudioPresenter + refAudioExpert), chaque réplique est synthétisée
+// avec la voix clonée correspondante (Présentateur ↔ Expert) et les
+// segments MP3 sont concaténés (tts.ConcatMP3). Sans ref_audio : duo de
+// PRESETS français (Manon animation + Marie expert).
 //
-// Si un seul ref_audio est fourni (ou aucun), on utilise la voix unique pour
-// tout le script (mode single-voice, rétro-compatible).
+// ⚠️ RÔLE (SECT-TTS-3) : Voxtral est PAYANT au caractère (~13 $/M chars,
+// quotas par minute) — c'est une OPTION PREMIUM explicite (extraConfig
+// useForPodcasts=true ou ref_audio configurés), JAMAIS le défaut. Le
+// défaut des podcasts est la chaîne 0 coût (internal/tts/podcast.go).
 package worker
 
 import (
@@ -40,71 +48,134 @@ import (
 	"time"
 
 	"github.com/udevrard7/sect/backend/internal/ai"
+	"github.com/udevrard7/sect/backend/internal/tts"
 )
 
-// Voix de référence par défaut (utilisée si aucune voix configurée dans extraConfig).
-// jo.wav = voix masculine anglaise du Space Neuphonic (temporaire — l'admin
-// devrait configurer ses propres voix via l'UI).
-const voxtralDefaultRefAudioURL = "https://neuphonic-neutts-nano-multilingual-collection.hf.space/gradio_api/file=/tmp/gradio/6b829891aee71927ff2d61497f782a9726bed4e1fac6b965becda39ac791b766/jo.wav"
+// Presets français Voxtral 3 (liste blanche serveur — cf docs « Voices »).
+const (
+	voxtralModeleDefaut     = "voxtral-mini-tts-3-0"
+	voxtralVoixDefaut       = "voice_592"  // Marie — expert
+	voxtralVoixAnimateur    = "voice_3137" // Manon — animation
+	voxtralLimiteCaracteres = 8000
+)
 
-// callVoxtralTTS synthétise du texte en MP3 via l'API Mistral Voxtral.
+// voxtralOptIn — le provider TTS Voxtral est-il EXPLICITEMENT activé pour
+// les podcasts ? Deux signaux d'intention (l'un suffit) :
+//   - extraConfig {"useForPodcasts":true} — activation franche ;
+//   - refAudioPresenter/refAudioExpert configurés — l'exploitant a posé
+//     ses propres voix clonées (démarche premium délibérée).
 //
-// VOXTRAL-TTS-1 : voice cloning avec un audio de référence.
-// VOXTRAL-TTS-2 : multi-voix si 2 ref_audio configurés dans extraConfig.
-func callVoxtralTTS(ctx context.Context, provider *ai.ActiveProvider, text string, logger *slog.Logger) ([]byte, error) {
-	// Limiter à 8000 caractères.
-	input := text
-	if len(input) > 8000 {
-		input = input[:8000]
-		logger.Warn("Truncating podcast script to 8000 chars (Voxtral)", "originalLen", len(text))
+// Sans aucun des deux : la chaîne 0 coût reste seule (défaut 0 €).
+func voxtralOptIn(extraConfig string) bool {
+	if extraConfig == "" {
+		return false
+	}
+	var cfg struct {
+		UseForPodcasts    bool   `json:"useForPodcasts"`
+		RefAudioPresenter string `json:"refAudioPresenter"`
+		RefAudioExpert    string `json:"refAudioExpert"`
+	}
+	if err := json.Unmarshal([]byte(extraConfig), &cfg); err != nil {
+		return false
+	}
+	return cfg.UseForPodcasts || (cfg.RefAudioPresenter != "" && cfg.RefAudioExpert != "")
+}
+
+// callVoxtralTTS synthétise un script de podcast via Voxtral 3.
+// Retourne un *tts.Result (Provider "voxtral" — audio MP3 ou WAV selon
+// la réponse, magic bytes reniflés).
+func callVoxtralTTS(ctx context.Context, provider *ai.ActiveProvider, script string, logger *slog.Logger) (*tts.Result, error) {
+	if len(script) == 0 {
+		return nil, fmt.Errorf("script vide")
+	}
+	input := script
+	if len(input) > voxtralLimiteCaracteres {
+		input = input[:voxtralLimiteCaracteres]
+		logger.Warn("Script podcast tronqué (limite Voxtral)", "longueurOriginale", len(script))
 	}
 
-	// Parser extraConfig pour récupérer les URLs des ref_audio.
 	refPresenterURL, refExpertURL := parseVoxtralExtraConfig(provider.ExtraConfig)
 	if logger != nil {
-		logger.Info("Voxtral config",
-			"refPresenterURL", refPresenterURL,
-			"refExpertURL", refExpertURL,
-			"multiVoice", refPresenterURL != "" && refExpertURL != "",
+		logger.Info("Voxtral (podcast premium)",
+			"model", modeled(provider),
+			"refPresenter", refPresenterURL != "",
+			"refExpert", refExpertURL != "",
 		)
 	}
 
-	// Mode multi-voix : 2 ref_audio configurés.
+	// Multi-voix : clonage (2 ref_audio)…
 	if refPresenterURL != "" && refExpertURL != "" {
 		return callVoxtralMultiVoice(ctx, provider, input, refPresenterURL, refExpertURL, logger)
 	}
 
-	// Mode single-voice : 1 ref_audio (ou défaut).
-	refAudioURL := refPresenterURL
-	if refAudioURL == "" {
-		refAudioURL = refExpertURL
-	}
-	if refAudioURL == "" {
-		refAudioURL = voxtralDefaultRefAudioURL
-	}
-
-	if logger != nil {
-		logger.Info("Voxtral single-voice mode", "refAudioURL", refAudioURL, "inputLen", len(input))
-	}
-
-	// Télécharger le ref_audio.
-	refAudioB64, err := fetchAudioAsBase64(ctx, refAudioURL, logger)
-	if err != nil {
-		return nil, fmt.Errorf("fetch ref_audio: %w", err)
-	}
-
-	// Générer l'audio en une seule request.
-	return callVoxtralAPI(ctx, provider, input, refAudioB64, logger)
+	// …ou preset duo français ; à défaut (une seule ref_audio) : voix
+	// unique clonée, sinon preset Marie.
+	return callVoxtralDuoPresets(ctx, provider, input, refPresenterURL, refExpertURL, logger)
 }
 
-// callVoxtralMultiVoice génère un podcast multi-voix en parsant le script par
-// speaker (Présentateur / Expert) et en utilisant un ref_audio différent pour
-// chaque speaker. Les segments MP3 sont concaténés.
-func callVoxtralMultiVoice(ctx context.Context, provider *ai.ActiveProvider, script, refPresenterURL, refExpertURL string, logger *slog.Logger) ([]byte, error) {
-	// Télécharger les 2 ref_audios (une seule fois chacun).
+// callVoxtralDuoPresets — dialogue Présentateur/Expert avec deux PRESETS
+// français (Manon + Marie) ; voix unique si le script n'a pas de
+// marqueurs, ou si l'exploitant a posé UNE ref_audio (clonage unique).
+func callVoxtralDuoPresets(ctx context.Context, provider *ai.ActiveProvider, script, refPresenterURL, refExpertURL string, logger *slog.Logger) (*tts.Result, error) {
+	segments := parseScriptBySpeaker(script)
 	if logger != nil {
-		logger.Info("Downloading ref_audios for multi-voice",
-			"presenterURL", refPresenterURL, "expertURL", refExpertURL)
+		logger.Info("Voxtral : script analysé",
+			"repliques", len(segments),
+			"animateur", countSegments(segments, "presentateur"),
+			"expert", countSegments(segments, "expert"),
+		)
+	}
+
+	// Une seule ref_audio configurée → voix unique clonée (rétro-compat).
+	if refAudioURL := firstNonEmpty(refPresenterURL, refExpertURL); refAudioURL != "" {
+		refB64, err := fetchAudioAsBase64(ctx, refAudioURL, logger)
+		if err != nil {
+			return nil, fmt.Errorf("fetch ref_audio: %w", err)
+		}
+		return callVoxtralAPI(ctx, provider, script, refB64, "", logger)
+	}
+
+	// Aucune ref_audio → duo de presets. Script sans marqueurs → voix
+	// unique Marie (la mitraillette de requêtes ne sert à rien).
+	if len(segments) == 0 {
+		return callVoxtralAPI(ctx, provider, script, "", voxtralVoixDefaut, logger)
+	}
+
+	var mp3s [][]byte
+	for i, seg := range segments {
+		if strings.TrimSpace(seg.Text) == "" {
+			continue
+		}
+		voix := voxtralVoixDefaut
+		if seg.Speaker == "presentateur" {
+			voix = voxtralVoixAnimateur
+		}
+		res, err := callVoxtralAPI(ctx, provider, seg.Text, "", voix, logger)
+		if err != nil {
+			return nil, fmt.Errorf("réplique %d/%d (voix %s): %w", i+1, len(segments), voix, err)
+		}
+		if res.ContentType != "audio/mpeg" {
+			return nil, fmt.Errorf("réplique %d: format inattendu %s (Voxtral)", i+1, res.ContentType)
+		}
+		mp3s = append(mp3s, res.Audio)
+	}
+	if len(mp3s) == 0 {
+		return nil, fmt.Errorf("aucune réplique synthétisée (Voxtral)")
+	}
+
+	return &tts.Result{
+		Audio:       tts.ConcatMP3(mp3s),
+		ContentType: "audio/mpeg",
+		Provider:    "voxtral",
+		Model:       modeled(provider) + " (duo " + voxtralVoixAnimateur + "+" + voxtralVoixDefaut + ")",
+	}, nil
+}
+
+// callVoxtralMultiVoice génère un podcast multi-voix en parsant le script
+// par speaker (Présentateur / Expert) avec un ref_audio cloné par speaker.
+func callVoxtralMultiVoice(ctx context.Context, provider *ai.ActiveProvider, script, refPresenterURL, refExpertURL string, logger *slog.Logger) (*tts.Result, error) {
+	if logger != nil {
+		logger.Info("Voxtral : téléchargement des ref_audios (clonage multi-voix)")
 	}
 
 	refPresenterB64, err := fetchAudioAsBase64(ctx, refPresenterURL, logger)
@@ -116,74 +187,68 @@ func callVoxtralMultiVoice(ctx context.Context, provider *ai.ActiveProvider, scr
 		return nil, fmt.Errorf("fetch expert ref_audio: %w", err)
 	}
 
-	// Parser le script par speaker.
 	segments := parseScriptBySpeaker(script)
-	if logger != nil {
-		logger.Info("Script parsed for multi-voice",
-			"segmentCount", len(segments),
-			"presenterSegments", countSegments(segments, "presentateur"),
-			"expertSegments", countSegments(segments, "expert"),
-		)
-	}
-
 	if len(segments) == 0 {
-		// Pas de speaker détecté → fallback single-voice avec refPresenter.
+		// Pas de speaker détecté → voix unique clonée.
 		if logger != nil {
-			logger.Warn("No speaker markers found, falling back to single-voice")
+			logger.Warn("Voxtral : aucun marqueur de locuteur — voix unique clonée")
 		}
-		return callVoxtralAPI(ctx, provider, script, refPresenterB64, logger)
+		return callVoxtralAPI(ctx, provider, script, refPresenterB64, "", logger)
 	}
 
-	// Générer un MP3 par segment.
-	var mp3Segments [][]byte
+	var mp3s [][]byte
 	for i, seg := range segments {
 		if strings.TrimSpace(seg.Text) == "" {
 			continue
 		}
 		refB64 := refPresenterB64
+		voix := "clone:presentateur"
 		if seg.Speaker == "expert" {
 			refB64 = refExpertB64
+			voix = "clone:expert"
 		}
 		if logger != nil {
-			logger.Info("Generating multi-voice segment",
-				"segmentIndex", i+1, "totalSegments", len(segments),
-				"speaker", seg.Speaker, "textLen", len(seg.Text))
+			logger.Info("Voxtral : réplique",
+				"index", i+1, "total", len(segments), "voix", voix, "longueur", len(seg.Text))
 		}
-
-		mp3, err := callVoxtralAPI(ctx, provider, seg.Text, refB64, logger)
+		res, err := callVoxtralAPI(ctx, provider, seg.Text, refB64, "", logger)
 		if err != nil {
-			return nil, fmt.Errorf("segment %d/%d (speaker=%s): %w", i+1, len(segments), seg.Speaker, err)
+			return nil, fmt.Errorf("réplique %d/%d (%s): %w", i+1, len(segments), voix, err)
 		}
-		mp3Segments = append(mp3Segments, mp3)
+		if res.ContentType != "audio/mpeg" {
+			return nil, fmt.Errorf("réplique %d: format inattendu %s (Voxtral)", i+1, res.ContentType)
+		}
+		mp3s = append(mp3s, res.Audio)
+	}
+	if len(mp3s) == 0 {
+		return nil, fmt.Errorf("aucune réplique synthétisée (Voxtral)")
 	}
 
-	if len(mp3Segments) == 0 {
-		return nil, fmt.Errorf("no audio segments generated (all empty)")
-	}
-
-	// Concaténer les MP3.
-	combined := concatMP3(mp3Segments)
-	if logger != nil {
-		totalDur := len(combined) / 12000 // MP3 96kbps ≈ 12KB/s
-		logger.Info("Voxtral multi-voice completed",
-			"segments", len(mp3Segments), "audioBytes", len(combined), "durationSec", totalDur)
-	}
-
-	return combined, nil
+	return &tts.Result{
+		Audio:       tts.ConcatMP3(mp3s),
+		ContentType: "audio/mpeg",
+		Provider:    "voxtral",
+		Model:       modeled(provider) + " (clones présentateur+expert)",
+	}, nil
 }
 
-// callVoxtralAPI fait l'appel HTTP à l'API Voxtral pour un texte + ref_audio.
-// Retourne les bytes MP3.
-func callVoxtralAPI(ctx context.Context, provider *ai.ActiveProvider, text, refAudioB64 string, logger *slog.Logger) ([]byte, error) {
-	model := provider.Model
-	if strings.TrimSpace(model) == "" {
-		model = "voxtral-mini-tts-latest"
-	}
+// callVoxtralAPI fait l'appel HTTP à l'API Voxtral 3 pour un texte, avec
+// au choix un ref_audio cloné (base64) OU une voice_id preset.
+// Retourne les octets audio + leur content-type réel (magic bytes).
+func callVoxtralAPI(ctx context.Context, provider *ai.ActiveProvider, text, refAudioB64, voiceID string, logger *slog.Logger) (*tts.Result, error) {
+	model := modeled(provider)
 
 	body := map[string]interface{}{
-		"model":     model,
-		"input":     text,
-		"ref_audio": refAudioB64,
+		"model":           model,
+		"input":           text,
+		"response_format": "mp3", // stockage R2 compact (WAV ≈ 5× plus gros)
+	}
+	if refAudioB64 != "" {
+		body["ref_audio"] = refAudioB64
+	} else if voiceID != "" {
+		body["voice_id"] = voiceID
+	} else {
+		body["voice_id"] = voxtralVoixDefaut
 	}
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
@@ -192,7 +257,11 @@ func callVoxtralAPI(ctx context.Context, provider *ai.ActiveProvider, text, refA
 
 	url := strings.TrimRight(provider.BaseURL, "/") + "/audio/speech"
 	if logger != nil {
-		logger.Info("Calling Mistral Voxtral TTS", "url", url, "model", model, "inputLen", len(text))
+		logger.Info("Appel Mistral Voxtral TTS",
+			"url", url, "model", model,
+			"mode", map[bool]string{true: "ref_audio", false: "voice_id"}[refAudioB64 != ""],
+			"voiceId", voiceID,
+			"longueur", len(text))
 	}
 
 	httpCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -221,7 +290,7 @@ func callVoxtralAPI(ctx context.Context, provider *ai.ActiveProvider, text, refA
 		return nil, fmt.Errorf("voxtral returned HTTP %d", resp.StatusCode)
 	}
 
-	// Voxtral retourne du JSON : {"audio_data":"<base64 MP3>"}
+	// Voxtral retourne du JSON : {"audio_data":"<base64>"}.
 	var ttsResp struct {
 		AudioData string `json:"audio_data"`
 	}
@@ -240,16 +309,31 @@ func callVoxtralAPI(ctx context.Context, provider *ai.ActiveProvider, text, refA
 		return nil, fmt.Errorf("voxtral returned empty audio after decode")
 	}
 
-	return audioBytes, nil
+	ct := "audio/mpeg"
+	if len(audioBytes) > 12 && string(audioBytes[0:4]) == "RIFF" && string(audioBytes[8:12]) == "WAVE" {
+		ct = "audio/wav"
+	}
+	return &tts.Result{Audio: audioBytes, ContentType: ct, Provider: "voxtral", Model: model}, nil
 }
 
-// parseVoxtralExtraConfig extrait les URLs des ref_audio depuis le JSON extraConfig.
-//
-// Format attendu :
-//
-//	{"refAudioPresenter":"https://...","refAudioExpert":"https://..."}
-//
-// Retourne (refPresenterURL, refExpertURL). Chaînes vides si non configurées.
+// modeled résout le modèle Voxtral (défaut : Voxtral 3 explicite —
+// l'alias -latest ne pointera vers Voxtral 3 qu'après un mois de GA).
+func modeled(provider *ai.ActiveProvider) string {
+	if provider != nil && strings.TrimSpace(provider.Model) != "" {
+		return provider.Model
+	}
+	return voxtralModeleDefaut
+}
+
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
+}
+
+// parseVoxtralExtraConfig extrait les URLs des ref_audio depuis le JSON
+// extraConfig. Format : {"refAudioPresenter":"https://…","refAudioExpert":"https://…"}.
 func parseVoxtralExtraConfig(extraConfig string) (string, string) {
 	if extraConfig == "" {
 		return "", ""
@@ -270,20 +354,14 @@ type scriptSegment struct {
 	Text    string
 }
 
-// parseScriptBySpeaker découpe un script podcast en segments par speaker.
+// parseScriptBySpeaker découpe un script podcast en segments par speaker
+// (format imposé par buildPodcastPrompt) :
 //
-// Le script généré par Mistral suit le format :
-//
-//	Présentateur : Bonjour et bienvenue...
+//	Présentateur : Bonjour et bienvenue…
 //	<ligne vide>
-//	Expert : Bonjour ! Ravis d'être ici...
-//	<ligne vide>
-//	Présentateur : Super ! Alors...
+//	Expert : Bonjour ! Ravis d'être ici…
 //
-// Les lignes continues (sans marker de speaker) sont rattachées au speaker
-// courant. Les marqueurs reconnus (case-insensitive, avec/sans accent) :
-//
-//	"Présentateur :", "Presentateur :", "Expert :"
+// Les lignes continues (sans marker) sont rattachées au speaker courant.
 func parseScriptBySpeaker(script string) []scriptSegment {
 	lines := strings.Split(script, "\n")
 	var segments []scriptSegment
@@ -344,8 +422,8 @@ func countSegments(segments []scriptSegment, speaker string) int {
 	return count
 }
 
-// fetchAudioAsBase64 télécharge un fichier audio depuis une URL et le retourne
-// en base64 (format attendu par l'API Voxtral).
+// fetchAudioAsBase64 télécharge un fichier audio depuis une URL et le
+// retourne en base64 (format attendu par l'API Voxtral).
 func fetchAudioAsBase64(ctx context.Context, audioURL string, logger *slog.Logger) (string, error) {
 	if logger != nil {
 		logger.Info("Fetching ref_audio", "url", audioURL)
@@ -369,13 +447,22 @@ func fetchAudioAsBase64(ctx context.Context, audioURL string, logger *slog.Logge
 		return "", fmt.Errorf("ref_audio HTTP %d", resp.StatusCode)
 	}
 
-	// FIX (audit 2025): limiter la lecture à 50 MiB pour empêcher OOM si l'URL est compromise
+	// FIX (audit 2025): limiter la lecture à 50 MiB pour empêcher OOM si
+	// l'URL est compromise.
 	audioBytes, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
 	if err != nil {
 		return "", fmt.Errorf("read ref_audio: %w", err)
 	}
 	if len(audioBytes) == 0 {
 		return "", fmt.Errorf("ref_audio empty")
+	}
+
+	// SECT-TTS-3 : l'ancienne URL par défaut (Space Neuphonic) sert
+	// désormais du JSON — refuser un « audio » qui n'est ni RIFF ni ID3
+	// ni MPEG brut (échec précoce et clair plutôt qu'un 400 opaque de
+	// l'API Mistral).
+	if !ressembleAudio(audioBytes) {
+		return "", fmt.Errorf("ref_audio invalide (ni WAV ni MP3) — vérifiez l'URL configurée")
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(audioBytes)
@@ -385,67 +472,16 @@ func fetchAudioAsBase64(ctx context.Context, audioURL string, logger *slog.Logge
 	return b64, nil
 }
 
-// concatMP3 concatène plusieurs fichiers MP3 en un seul.
-//
-// Les tags ID3v2 (en-tête au début du fichier) sont stripping des fichiers
-// suivants pour éviter les artefacts. Les tags ID3v1 (128 bytes à la fin)
-// sont laissés intactes — les lecteurs MP3 lisent le dernier tag rencontré.
-//
-// Cette méthode produit un MP3 valide jouable par tous les lecteurs standards.
-func concatMP3(mp3s [][]byte) []byte {
-	if len(mp3s) == 0 {
-		return nil
+// ressembleAudio — reniflage magic bytes : RIFF/WAVE, ID3v2, frame MPEG.
+func ressembleAudio(b []byte) bool {
+	if len(b) < 4 {
+		return false
 	}
-	if len(mp3s) == 1 {
-		return mp3s[0]
+	if string(b[0:4]) == "RIFF" {
+		return true
 	}
-
-	var result []byte
-	for i, mp3 := range mp3s {
-		if i == 0 {
-			// Garder le premier fichier intact (avec son ID3v2).
-			result = append(result, mp3...)
-		} else {
-			// Stripper l'ID3v2 des fichiers suivants.
-			stripped := stripID3v2(mp3)
-			result = append(result, stripped...)
-		}
+	if string(b[0:3]) == "ID3" {
+		return true
 	}
-	return result
-}
-
-// stripID3v2 supprime le tag ID3v2 au début d'un fichier MP3.
-//
-// Format ID3v2 :
-//
-//	Bytes 0-2: "ID3"
-//	Bytes 3-4: version majeure + révision
-//	Byte 5: flags
-//	Bytes 6-9: taille (synchsafe integer, 7 bits par byte)
-//	Puis le tag lui-même (taille bytes)
-//	Puis les frames MP3
-func stripID3v2(data []byte) []byte {
-	if len(data) < 10 {
-		return data
-	}
-	if string(data[0:3]) != "ID3" {
-		return data // pas de tag ID3v2
-	}
-	// Taille synchsafe : chaque byte utilise seulement 7 bits.
-	size := int(data[6]&0x7f)<<21 | int(data[7]&0x7f)<<14 | int(data[8]&0x7f)<<7 | int(data[9]&0x7f)
-	headerSize := 10 + size
-	if headerSize >= len(data) {
-		return data // tag corrompu, retourner tel quel
-	}
-	return data[headerSize:]
-}
-
-// ttsAudioFormat retourne l'extension et le content-type pour le stockage R2.
-//
-// VOXTRAL-TTS-1 : Mistral Voxtral retourne du MP3 (96kbps 22.05kHz mono).
-func ttsAudioFormat(provider *ai.ActiveProvider) (extension string, contentType string) {
-	if provider == nil {
-		return ".mp3", "audio/mpeg"
-	}
-	return ".mp3", "audio/mpeg"
+	return b[0] == 0xFF && b[1]&0xE0 == 0xE0
 }

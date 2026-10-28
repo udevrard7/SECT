@@ -29,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PulseSkeleton } from '@/components/ds'
+import { LectureVocale } from '@/components/bibliotheque/lecture-vocale'
 import { toast } from 'sonner'
 
 interface ReaderDocument {
@@ -370,6 +371,19 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
                 </div>
               )}
             </div>
+
+            {/* SECT-TTS-3 — barre de lecture vocale (même chaîne 0 coût que
+                la bibliothèque : voix studio Gemini → Edge Neural → MeloTTS).
+                Texte découpé en PARTIES (~une page de lecture à l'oreille) :
+                avance automatique + préchargement + voix/vitesse au choix. */}
+            {doc?.contenuTexte && (
+              <LectureVocale
+                endpoint={`/api/exam-prep/documents/${documentId}/lecture-vocale`}
+                paramPage="segment"
+                unite="partie"
+                pageDepart={() => 1}
+              />
+            )}
 
             {/* Zone de lecture */}
             <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">

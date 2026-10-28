@@ -8,6 +8,7 @@ import (
 
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
+	"github.com/udevrard7/sect/backend/internal/tts"
 )
 
 // ExamPrepUseCase implémente les cas d'usage exam-prep.
@@ -15,9 +16,14 @@ import (
 // AUDIO-LEARNING-1 : le champ storage (Cloudflare R2) est ajouté pour
 // permettre la génération d'URLs présignées vers les MP3 des podcasts.
 // Peut être nil si R2 est désactivé (le frontend affichera le script seul).
+//
+// SECT-TTS-3 : le champ ttsService porte la lecture vocale des documents
+// (chaîne 0 coût Gemini → Edge → MeloTTS, cf internal/tts). Peut être nil
+// si la chaîne est désactivée (erreur explicite côté handler).
 type ExamPrepUseCase struct {
 	repo    domain.ExamPrepRepository
 	storage domain.StorageClient
+	tts     *tts.Service
 }
 
 // NewExamPrepUseCase crée un nouveau ExamPrepUseCase.
@@ -25,8 +31,11 @@ type ExamPrepUseCase struct {
 // AUDIO-LEARNING-1 : le paramètre storageClient est ajouté pour supporter
 // les podcasts audio (génération d'URLs présignées R2). Peut être nil si
 // R2 est désactivé — les podcasts seront PRET avec script seul (r2Key=nil).
-func NewExamPrepUseCase(repo domain.ExamPrepRepository, storageClient domain.StorageClient) *ExamPrepUseCase {
-	return &ExamPrepUseCase{repo: repo, storage: storageClient}
+//
+// SECT-TTS-3 : le paramètre ttsService active la lecture vocale des
+// documents (même chaîne gratuite que la bibliothèque).
+func NewExamPrepUseCase(repo domain.ExamPrepRepository, storageClient domain.StorageClient, ttsService *tts.Service) *ExamPrepUseCase {
+	return &ExamPrepUseCase{repo: repo, storage: storageClient, tts: ttsService}
 }
 
 // GetDashboard récupère le tableau de bord de progression.
@@ -625,6 +634,22 @@ func (uc *ExamPrepUseCase) GenerateAudio(ctx context.Context, claims db.SessionC
 	if documentID == "" {
 		return nil, &domain.ValidationError{Field: "documentId", Message: "requis"}
 	}
+
+	// SECT-TTS-3 : anti-spam — la synthèse multi-voix prend 1 à 4 min et
+	// déclenche ~20-40 appels TTS par épisode : sans garde, un client qui
+	// boucle sur le bouton crée des dizaines de jobs concurrents et
+	// sature la chaîne gratuite. On refuse si l'utilisateur a DÉJÀ une
+	// génération EN_COURS pour CE document (les autres étudiants peuvent
+	// générer la leur en parallèle — podcasts partagés par document).
+	// Best-effort : une erreur de lecture ici ne bloque pas la création.
+	if audios, err := uc.repo.ListDocumentAudio(ctx, documentID); err == nil {
+		for _, a := range audios {
+			if a.Status == "EN_COURS" && a.UserID == claims.UserID {
+				return nil, &domain.ConflictError{Message: "vous avez déjà une génération de podcast en cours pour ce document — patientez la fin de l'épisode (1 à 4 minutes)"}
+			}
+		}
+	}
+
 	input := domain.CreateDocumentAudioInput{
 		DocumentID: documentID,
 		UserID:     claims.UserID,
