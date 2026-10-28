@@ -5,7 +5,8 @@
 //
 //	PDF (R2, cache disque) → extraction texte de LA page (ledongthuc/pdf,
 //	qpdf --decrypt au besoin) → nettoyage prosodique → Gemini TTS studio
-//	→ MeloTTS en secours → octets audio.
+//	→ Edge Neural en complément (SECT-TTS-2, illimité) → MeloTTS en
+//	dernier secours → octets audio.
 //
 // SÉCURITÉ (posture BIBLIO-14/15 inchangée) :
 //   - visibilité RLS via FindByID (404 si invisible) ;
@@ -134,7 +135,7 @@ func (uc *OuvrageUseCase) GetLectureVocale(ctx context.Context, claims db.Sessio
 		}
 	}
 
-	// 5. Synthèse (chaîne gratuite Gemini → MeloTTS).
+	// 5. Synthèse (chaîne gratuite Gemini → Edge → MeloTTS).
 	res, err := uc.ttsService.SyntheseLecture(ctx, texte, voice, vitesse, claims.UserID)
 	if err != nil {
 		slog.Warn("bibliothèque: synthèse vocale en échec", "ouvrageId", o.ID, "page", page, "error", err)

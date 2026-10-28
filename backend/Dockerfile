@@ -60,7 +60,20 @@ FROM alpine:3.20
 # en JPEG pour la couverture des cartes du catalogue (~600 px de large ;
 # rasteriserCouverture dans ouvrage.go). Même pattern que qpdf : outil
 # CLI du runtime Alpine, best-effort côté Go (absent = silence).
-RUN apk --no-cache add ca-certificates tzdata qpdf poppler-utils
+#
+# SECT-TTS-2 : python3 + edge-tts — couche complémentaire de lecture
+# vocale (voix Azure Neural françaises, illimitées, 0 €, aucune clé).
+# Le CLI Python délègue le jeton DRM « Sec-MS-GEC » v2 du service Read
+# Aloud de Microsoft à la maintenance communautaire (internal/tts/edge.go
+# explique pourquoi on ne le porte pas en Go). Best-effort : build-base
+# n'est requis que si aiohttp n'a pas de roue musllinux pour l'archi —
+# on l'installe PUIS le retire dans le même RUN (couche finale propre).
+# Binaire absent (image antérieure, rollback) = couche inactive, la
+# chaîne Gemini → MeloTTS reste fonctionnelle.
+RUN apk --no-cache add ca-certificates tzdata qpdf poppler-utils \
+        python3 py3-pip build-base python3-dev \
+    && pip3 install --no-cache-dir --break-system-packages edge-tts \
+    && apk del build-base python3-dev
 
 # HARDENING (audit DevOps 2026-09) : utilisateur non-root + healthcheck
 # intégré (l'image est utilisable telle quelle hors Render).

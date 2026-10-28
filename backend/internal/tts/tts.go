@@ -13,11 +13,19 @@
 //     la durée de vie de l'instance — robuste aux renommages de modèles
 //     preview.
 //
-//  2. CLOUDFLARE MELOTTS (secours) — @cf/myshell-ai/melotts, français
-//     supporté (lang=fr), quota gratuit généreux (neurons/jour). La clé
-//     est celle du provider chat CLOUDFLARE déjà configuré. Voix unique
-//     (moins « humaine » que Gemini) mais indépendante de Google : si
-//     Gemini est saturé (429) ou indisponible, la lecture continue.
+//  2. EDGE NEURAL (complément SECT-TTS-2) — voix Azure Neural
+//     françaises SANS clé et SANS quota (illimité, 0 €) via le CLI
+//     edge-tts embarqué au build (cf internal/tts/edge.go : pourquoi
+//     cette couche reste un complément, jamais un primaire). Secours
+//     n°2 : la qualité Neural AVANT MeloTTS quand Gemini a échoué, et
+//     choix explicite « edge:… » côté lecteur (routage direct).
+//
+//  3. CLOUDFLARE MELOTTS (dernier secours) — @cf/myshell-ai/melotts,
+//     français supporté (lang=fr), quota gratuit généreux
+//     (neurons/jour). La clé est celle du provider chat CLOUDFLARE
+//     déjà configuré. Voix unique (moins « humaine » que Gemini et
+//     Edge) mais indépendante de Google ET de Microsoft : si Gemini
+//     ET Edge sont indisponibles, la lecture continue quand même.
 //
 // Le provider VOXTRAL (Mistral, payant au caractère — déjà utilisé pour
 // les podcasts) est VOLONTAIREMENT exclu de cette chaîne : garantir le
@@ -128,8 +136,8 @@ func bornesVitesse(v float64) float64 {
 // Result — octets audio prêts à être servis au navigateur.
 type Result struct {
 	Audio       []byte
-	ContentType string // "audio/wav" (Gemini PCM encapsulé) | "audio/mpeg" (MeloTTS)
-	Provider    string // "gemini" | "melotts"
+	ContentType string // "audio/wav" (Gemini PCM encapsulé) | "audio/mpeg" (Edge, MeloTTS)
+	Provider    string // "gemini" | "edge" | "melotts"
 	Model       string // modèle effectivement utilisé (observabilité)
 }
 
@@ -170,9 +178,10 @@ func NewService(dbPool *pgxpool.Pool, logger *slog.Logger) *Service {
 	}
 }
 
-// SyntheseLecture — chaîne Gemini → MeloTTS. userID sert au rate-limit
-// (pas de journalisation persistante : la lecture orale est un acte de
-// lecture comme un autre, audité en amont par le usecase comme /flux).
+// SyntheseLecture — chaîne Gemini → Edge → MeloTTS. userID sert au
+// rate-limit (pas de journalisation persistante : la lecture orale est
+// un acte de lecture comme un autre, audité en amont par le usecase
+// comme /flux).
 func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, userID string) (*Result, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("texte vide")
@@ -195,6 +204,20 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 
 	v := bornesVitesse(parseVitesse(vitesse))
 
+	// 0. Voix NEURAL explicite (« edge:… » — choix du lecteur) :
+	// routage DIRECT vers Edge (aucune clé, illimité). En échec →
+	// on continue sur la chaîne studio dessous : l'écoute ne
+	// s'arrête jamais.
+	if voixAzure, ok := voixEdgeDepuisParam(voice); ok && !s.enCooldown("edge") {
+		res, err := s.syntheseEdge(ctx, text, voixAzure, v)
+		if err == nil {
+			return res, nil
+		}
+		s.marquerEchec("edge", err)
+		s.logger.Warn("TTS Edge (voix explicite) échec — bascule sur la chaîne studio",
+			"error", err.Error(), "textLen", len(text))
+	}
+
 	// 1. Gemini (la perle) — si clé présente et pas en cooldown.
 	if gem, ok := s.lireProviderRow(ctx, "GOOGLE"); ok {
 		if !s.enCooldown("gemini") {
@@ -203,14 +226,33 @@ func (s *Service) SyntheseLecture(ctx context.Context, text, voice, vitesse, use
 				return res, nil
 			}
 			s.marquerEchec("gemini", err)
-			s.logger.Warn("TTS Gemini échec — bascule MeloTTS",
+			s.logger.Warn("TTS Gemini échec — bascule couche suivante",
 				"error", err.Error(), "textLen", len(text))
 		} else {
-			s.logger.Info("TTS Gemini en cooldown — essai MeloTTS direct")
+			s.logger.Info("TTS Gemini en cooldown — essai couche suivante")
 		}
 	}
 
-	// 2. Cloudflare MeloTTS (secours indépendant de Google).
+	// 2. EDGE NEURAL (complément SECT-TTS-2) — illimité, sans clé,
+	// voix Azure : la qualité Neural AVANT MeloTTS quand Gemini a
+	// échoué. La voix suit le genre de la voix studio choisie
+	// (continuité d'écoute en milieu de chapitre).
+	if binaireEdge() != "" && !s.enCooldown("edge") {
+		voixContinuite := voixEdgeParDefaut
+		if az, ok := voixEdgeContinuite[strings.ToLower(strings.TrimSpace(voice))]; ok {
+			voixContinuite = az
+		}
+		res, err := s.syntheseEdge(ctx, text, voixContinuite, v)
+		if err == nil {
+			return res, nil
+		}
+		s.marquerEchec("edge", err)
+		s.logger.Warn("TTS Edge échec — bascule MeloTTS",
+			"error", err.Error(), "textLen", len(text))
+	}
+
+	// 3. Cloudflare MeloTTS (dernier secours indépendant de Google
+	// et Microsoft).
 	if melo, ok := s.lireProviderRow(ctx, "CLOUDFLARE"); ok && !s.enCooldown("melotts") {
 		res, err := s.syntheseMeloTTS(ctx, melo, text, v)
 		if err == nil {

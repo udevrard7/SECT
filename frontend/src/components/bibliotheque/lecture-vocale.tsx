@@ -5,8 +5,15 @@
 // ════════════════════════════════════════════════════════════════════
 // Synthèse « très humaine » (voix studio Gemini : fidélité studio, jeu
 // expressif, stabilité longue durée) servis par le backend en chaîne
-// GRATUITE (Gemini TTS → Cloudflare MeloTTS en secours — objectif
-// 0 coût : aucune clé nouvelle, aucun fournisseur payant).
+// GRATUITE (Gemini TTS → Edge Neural en complément → Cloudflare
+// MeloTTS en dernier secours — objectif 0 coût : aucune clé nouvelle,
+// aucun fournisseur payant).
+//
+// SECT-TTS-2 : en plus des voix studio, le lecteur propose des voix
+// NEURAL Azure françaises (Denise, Henri…) via Edge — sans clé et
+// sans quota (illimitées). Le choix « edge:… » route directement vers
+// cette couche ; en échec, le serveur rebascule sur la chaîne studio :
+// l'écoute ne s'arrête jamais.
 //
 // UX : lire la page courante → avance AUTOMATIQUE page à page (livre
 // audio), suivi de défilement (mode sécurisé : la page lue devient la
@@ -37,7 +44,9 @@ import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -67,6 +76,17 @@ const VOIX_STUDIO: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'orus', label: 'Orus — ferme' },
   { id: 'callirrhoe', label: 'Callirrhoe — naturelle, facile à l\'oreille' },
   { id: 'sadaltager', label: 'Sadaltager — chaleureuse' },
+]
+
+// ─── Voix Neural Edge (SECT-TTS-2 — illimitées, aucune clé) : le
+// préfixe edge: route côté serveur vers la couche Azure Neural. ───
+
+const VOIX_EDGE: ReadonlyArray<{ id: string; label: string }> = [
+  { id: 'edge:denise', label: 'Denise — douce, claire' },
+  { id: 'edge:henri', label: 'Henri — chaleureux' },
+  { id: 'edge:eloise', label: 'Éloïse — jeune, amicale' },
+  { id: 'edge:vivienne', label: 'Vivienne — expressive' },
+  { id: 'edge:remy', label: 'Rémy — posé, naturel' },
 ]
 
 const VITESSES: ReadonlyArray<{ id: string; label: string }> = [
@@ -109,7 +129,8 @@ export function LectureVocale({
   useEffect(() => {
     try {
       const v = localStorage.getItem(CLE_VOIX)
-      if (v && VOIX_STUDIO.some((x) => x.id === v)) setVoix(v)
+      if (v && (VOIX_STUDIO.some((x) => x.id === v) || VOIX_EDGE.some((x) => x.id === v)))
+        setVoix(v)
       const s = localStorage.getItem(CLE_VITESSE)
       if (s && VITESSES.some((x) => x.id === s)) setVitesse(s)
     } catch {
@@ -386,7 +407,7 @@ export function LectureVocale({
         {statut}
       </p>
 
-      {/* Voix studio */}
+      {/* Voix (studio Gemini + Neural Edge — groupes) */}
       <div className="flex items-center gap-1.5">
         <span className="sr-only" id="sect-vocale-voix-label">
           Voix de lecture
@@ -400,11 +421,26 @@ export function LectureVocale({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {VOIX_STUDIO.map((v) => (
-              <SelectItem key={v.id} value={v.id} className="text-xs">
-                {v.label}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              <SelectLabel className="text-xs text-muted-foreground">
+                Voix studio — expressives
+              </SelectLabel>
+              {VOIX_STUDIO.map((v) => (
+                <SelectItem key={v.id} value={v.id} className="text-xs">
+                  {v.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+            <SelectGroup>
+              <SelectLabel className="text-xs text-muted-foreground">
+                Voix Neural — illimitées
+              </SelectLabel>
+              {VOIX_EDGE.map((v) => (
+                <SelectItem key={v.id} value={v.id} className="text-xs">
+                  {v.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </div>
