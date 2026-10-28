@@ -907,6 +907,10 @@ func (s *Server) getExamPrepDocumentLectureVocale(w http.ResponseWriter, r *http
 	voice := r.URL.Query().Get("voice") // normalisé (liste blanche) côté service
 	vitesse := r.URL.Query().Get("vitesse")
 
+	// SECT-TTS-4 : marge d'écriture pour les synthèses longues (miroir
+	// exact de getOuvrageLectureVocale — cf ouvrage_handlers.go).
+	prolongerDelaiEcritureTTS(w)
+
 	result, err := s.examPrepUC.GetDocumentLectureVocale(r.Context(), claims, chi.URLParam(r, "id"), segment, voice, vitesse)
 	if err != nil {
 		middleware.MapDomainError(w, err)

@@ -574,6 +574,13 @@ func (s *Server) getOuvrageLectureVocale(w http.ResponseWriter, r *http.Request)
 	vitesse := r.URL.Query().Get("vitesse")
 	ip := middleware.GetClientIP(r)
 
+	// SECT-TTS-4 : la synthèse d'une page/segment peut dépasser le
+	// WriteTimeout global (30 s — mesuré : ~70 s pour un grand segment
+	// sur gemini-2.5-flash-preview-tts) : prolonger le délai d'écriture
+	// de CETTE réponse (le cache disque rend les répétitions instantanées,
+	// la première écoute d'un grand segment a besoin de cette marge).
+	prolongerDelaiEcritureTTS(w)
+
 	result, err := s.ouvrageUC.GetLectureVocale(r.Context(), claims, chi.URLParam(r, "id"), page, voice, vitesse, ip)
 	if err != nil {
 		middleware.MapDomainError(w, err)
