@@ -64,14 +64,14 @@ jobs:
               sleep 12
               curl -s --max-time 15 -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio" -o /tmp/tts5-get.json
               STATUS=$(python3 -c "
-import json
-d = json.load(open('/tmp/tts5-get.json'))
-audios = d.get('audios', [])
-mine = [a for a in audios if a.get('id') == '$AUDIO_ID']
-if mine:
-    a = mine[0]
-    print(a.get('status', 'INCONNU'))
-" 2>/dev/null || echo "PARSE_ERR")
+            import json
+            d = json.load(open('/tmp/tts5-get.json'))
+            audios = d.get('audios', [])
+            mine = [a for a in audios if a.get('id') == '$AUDIO_ID']
+            if mine:
+                a = mine[0]
+                print(a.get('status', 'INCONNU'))
+            " 2>/dev/null || echo "PARSE_ERR")
               echo "[$i] statut: $STATUS"
               if [ "$STATUS" = "PRET" ] || [ "$STATUS" = "ERREUR" ]; then break; fi
             done
@@ -79,23 +79,23 @@ if mine:
 
             echo '═══ 7. Contrôles du script — émission de radio SECT-TTS-5 ═══'
             SCRIPT=$(python3 -c "
-import json
-d = json.load(open('/tmp/tts5-get.json'))
-a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
-print(a.get('script', ''))
-")
+            import json
+            d = json.load(open('/tmp/tts5-get.json'))
+            a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
+            print(a.get('script', ''))
+            ")
             AUDIO_URL=$(python3 -c "
-import json
-d = json.load(open('/tmp/tts5-get.json'))
-a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
-print(a.get('audioUrl', '') or '')
-")
+            import json
+            d = json.load(open('/tmp/tts5-get.json'))
+            a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
+            print(a.get('audioUrl', '') or '')
+            ")
             DUREE=$(python3 -c "
-import json
-d = json.load(open('/tmp/tts5-get.json'))
-a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
-print(a.get('durationSec') or 0)
-")
+            import json
+            d = json.load(open('/tmp/tts5-get.json'))
+            a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
+            print(a.get('durationSec') or 0)
+            ")
             NB_AYA=$(printf '%s' "$SCRIPT" | grep -c '^[Aa]ya :')
             NB_BROU=$(printf '%s' "$SCRIPT" | grep -cE '^[Dd]r(\.?| ) ?[Bb]rou :')
             echo "longueur script: $(printf '%s' "$SCRIPT" | wc -c) chars — répliques Aya: $NB_AYA — répliques Dr Brou: $NB_BROU — durée: $DUREE s"
@@ -137,4 +137,4 @@ print(a.get('durationSec') or 0)
 
             echo '═══ SECT-TTS-5 E2E PROD: OK — émission de radio en production ═══'
 
-# force re-index (dispatch 422 workaround)
+            # force re-index (dispatch 422 workaround)
