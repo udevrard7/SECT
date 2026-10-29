@@ -134,8 +134,12 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 		docContent = docContent[:12_000] + "\n... [contenu tronqué]"
 	}
 
-	// 3. Construire le prompt podcast.
-	messages := w.buildPodcastPrompt(docContent, docTitre)
+	// 3. Construire le prompt podcast (SECT-TTS-5 : émission de radio
+	// « Révision Express » — l'épisode numéro N de CET utilisateur sur
+	// CE document est annoncé à l'antenne ; la ligne EN_COURS du job
+	// compte déjà dans le décompte).
+	episode := w.compterEpisodes(ctx, job.DocumentID, job.UserID)
+	messages := w.buildPodcastPrompt(docContent, docTitre, episode)
 
 	// 4. Convert worker.ChatMessage → ai.ChatMessage and call AI with failover
 	aiMessages := make([]ai.ChatMessage, len(messages))
@@ -280,6 +284,32 @@ func (w *AudioGenerationWorker) voxtralPodcastOptIn(ctx context.Context) (*ai.Ac
 	return vox, true
 }
 
+// compterEpisodes — numéro de l'épisode EN COURS de génération pour ce
+// couple (document, utilisateur) : les lignes DocumentAudio de cet
+// utilisateur sur ce document, Y COMPRIS la ligne EN_COURS du job (elle
+// est créée par le handler AVANT que le worker ne traite le job). Un
+// étudiant qui regénère après suppression retombe sur le même numéro —
+// c'est SON numéro d'épisode. Claims system-worker pour RLS.
+func (w *AudioGenerationWorker) compterEpisodes(ctx context.Context, documentID, userID string) int {
+	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return 1
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	_, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
+
+	var n int
+	err = tx.QueryRow(ctx, `
+                SELECT COUNT(*) FROM "DocumentAudio"
+                WHERE "documentId" = $1 AND "userId" = $2
+        `, documentID, userID).Scan(&n)
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
+}
+
 // getDocumentContent lit le contenu textuel + le nom de fichier d'un
 // document depuis la DB. Pose les claims system-worker pour RLS (le
 // worker n'a pas de claims HTTP). Le TITRE nourrit le prompt (l'IA situe
@@ -296,8 +326,8 @@ func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, document
 	var contenu *string
 	var nomFichier string
 	err = tx.QueryRow(ctx, `
-		SELECT "contenuTexte", COALESCE("nomFichier", '') FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL
-	`, documentID).Scan(&contenu, &nomFichier)
+                SELECT "contenuTexte", COALESCE("nomFichier", '') FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL
+        `, documentID).Scan(&contenu, &nomFichier)
 	if err != nil {
 		return "", "", fmt.Errorf("query document content: %w", err)
 	}
@@ -314,50 +344,68 @@ func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, document
 
 // buildPodcastPrompt construit les messages (system + user) envoyés au LLM.
 //
-// SECT-TTS-3 — « RÉSUMÉ DE COURS D'EXCEPTION » : le prompt passe d'un
-// dialogue générique à une structure pédagogique COMPLÈTE (accroche,
-// panorama, concept→exemple→piège d'examen, moyen mnémotechnique,
-// mini-quiz, récap) avec des consignes de style ORAL (phrases courtes,
-// zéro notation) : le texte est lu par deux voix studio différentes.
-func (w *AudioGenerationWorker) buildPodcastPrompt(docContent, docTitre string) []ChatMessage {
-	system := strings.TrimSpace(`Tu es un scénariste de podcasts éducatifs de niveau professionnel (qualité audio-documentaire).
-Tu transformes un support de cours en épisode de révision mémorable de ~6 minutes (900 à 1100 mots).
+// SECT-TTS-3 — « RÉSUMÉ DE COURS D'EXCEPTION » : structure pédagogique
+// complète (accroche, panorama, concept→exemple→piège d'examen, moyen
+// mnémotechnique, mini-quiz, récap) avec consignes de style ORAL.
+//
+// SECT-TTS-5 — « VÉRITABLE ÉMISSION DE RADIO » : le script devient un
+// épisode de « Révision Express » avec PERSONNAGES NOMMÉS et TITRÉS
+// (Aya Konan, journaliste et animatrice ; docteur Kouassi Brou, expert
+// invité dont la spécialité s'adapte au domaine du document), numéro
+// d'épisode annoncé à l'antenne, génériques d'ouverture et de clôture,
+// tournures d'antenne, réactions sincères de l'animatrice, quiz éclair
+// joué comme un jeu radio, phrase signature. Les marqueurs de réplique
+// changent en conséquence (« Aya : » / « Dr Brou : ») — parserDialogue
+// (internal/tts/podcast.go) les reconnaît, les hérités restent acceptés.
+func (w *AudioGenerationWorker) buildPodcastPrompt(docContent, docTitre string, episode int) []ChatMessage {
+	system := strings.TrimSpace(`Tu es le scénariste en chef de « Révision Express », une émission de radio éducative de prestige. Tu transformes un support de cours en un épisode vivant de ~6 minutes (900 à 1100 mots) qui doit SONNER comme une vraie émission diffusée à l'antenne.
 
-Format EXACT de ta réponse (texte brut, PAS de JSON, PAS de markdown) :
-- Le podcast est un dialogue entre deux personnages :
-  • "Présentateur" : un·e animateur·rice enthousiaste et curieux·se qui pose les questions, lance les transitions, garde le rythme.
-  • "Expert" : un·e professeur·e passionné·e qui explique avec clarté, des exemples concrets et des analogies.
-- Chaque ligne commence par "Présentateur :" ou "Expert :".
-- Début obligatoire : "Présentateur : Bonjour et bienvenue dans ce podcast de révision !"
-- Fin obligatoire : "Présentateur : Merci d'avoir écouté, et bonne révision !"
-- Écris pour l'OREILLE : phrases orales et respirables (jamais plus de ~25 mots), aucune liste à puces, aucun titre de section, aucun emoji, aucune notation mathématique complexe (épelle les formules avec des mots).
+LES DEUX PERSONNAGES (identité fixe, ne les change jamais) :
+- « Aya : » — Aya Konan, journaliste et animatrice de Révision Express. Pétillante, curieuse, mène l'émission : accroches, transitions, réactions sincères, relances. Elle tutoie l'auditeur et vouvoie son invité.
+- « Dr Brou : » — le docteur Kouassi Brou, expert invité. Chaleureux, posé, précis. Il explique avec des analogies du quotidien, adore prévenir « Et le piège à éviter absolument… », et signe ses astuces « le truc du Docteur ».
 
-Structure de l'épisode (dans cet ordre) :
-1. Accroche : pourquoi ce sujet compte pour l'examen (30 secondes max).
-2. Panorama : l'essentiel à retenir, une phrase par concept clé (3 à 5 concepts).
-3. Pour chaque concept clé : définition simple, puis un exemple concret ou une analogie, puis l'erreur classique à éviter le jour de l'examen.
-4. Un moyen mnémotechnique pour retenir l'ensemble.
-5. Mini-quiz éclair : 2 questions posées par le Présentateur, réponses courtes par l'Expert.
-6. Récapitulatif final en 3 phrases mémorisables.
+FORMAT EXACT de ta réponse (texte brut, PAS de JSON, PAS de markdown, aucune didascalie, aucun indicateur sonore) :
+- Chaque réplique commence par « Aya : » ou « Dr Brou : » sur une nouvelle ligne, suivie d'un espace.
+- Aucun autre personnage n'intervient. Pas de musique ni d'applaudissements écrits.
+- 18 à 28 répliques. Celles d'Aya font 1 à 2 phrases ; celles de Dr Brou font 2 à 5 phrases (c'est lui qui développe).
 
-Qualité exigée : rigueur académique (niveau L1/M1) mais langage parlé et vivant ; chaque intervention de l'Expert s'appuie sur un fait PRÉCIS du document ; le Présentateur reformule pour vérifier la compréhension.`)
+PLAN DE L'ÉMISSION (dans cet ordre) :
+1. Générique d'ouverture — Aya : « Bonjour à toutes et à tous ! Vous écoutez « Révision Express », l'émission qui transforme vos cours en succès. Je suis Aya Konan, et c'est l'épisode numéro {N}. Aujourd'hui : [formulation accrocheuse du sujet]. Avec moi pour tout démêler : le docteur Kouassi Brou, [titre ou spécialité adapté au domaine du document]. Bonsoir Docteur ! »
+2. Réponse d'ouverture — Dr Brou : salutation radio + pourquoi ce sujet vaut des points à l'examen (un fait précis du document).
+3. Le panorama — Aya annonce le menu (« Au programme ce soir : … ») avec les 3 à 5 concepts clés ; Dr Brou les présente en une phrase chacun.
+4. Concepts un à un — pour chaque concept : Aya lance (« Alors Docteur, parlons de… ») ; Dr Brou donne définition simple + exemple concret du quotidien + LE piège classique d'examen ; Aya réagit (surprise, reformulation pour l'auditeur).
+5. Le truc du Docteur — Dr Brou livre son moyen mnémotechnique comme une astuce de conférencier chevronné ; Aya s'en émerveille et le répète à l'auditeur.
+6. Quiz éclair — Aya : « C'est l'heure du Quiz Éclair ! » puis pose 2 ou 3 questions (une par réplique) ; Dr Brou répond en une phrase nette.
+7. Le dernier mot — Dr Brou : le récapitulatif en 3 phrases mémorisables.
+8. Générique de clôture — Aya remercie (« Merci docteur Brou, c'était lumineux ! »), énonce la phrase signature « Réviser malin, réussir tranquillement », invite à rejoindre le prochain épisode et salue l'auditeur.
+
+STYLE RADIO EXIGÉ :
+- Tournures d'antenne vivantes : « Vous écoutez Révision Express », « Restez avec nous », « On passe à la vitesse supérieure », « Un mot là-dessus, Docteur ? »
+- Aya RÉAGIT vraiment : « Ah, vraiment ? », « Attendez… vous êtes en train de me dire que… », elle reformule ce qu'elle vient d'apprendre.
+- Écrire pour l'OREILLE : phrases orales et respirables (jamais plus de ~25 mots), aucune liste à puces, aucun titre de section, aucun emoji, aucune notation mathématique complexe (épelle les formules avec des mots).
+- Rigueur académique (niveau L1/M1) mais langage parlé et vivant : chaque affirmation de Dr Brou s'appuie sur un fait PRÉCIS du document.
+- Ton chaleureux et positif : on révise entre amis, jamais dans la culpabilité.`)
 
 	var user string
 	if strings.TrimSpace(docTitre) != "" {
-		user = fmt.Sprintf(`Voici le support de cours à transformer en podcast de révision de ~6 minutes.
+		user = fmt.Sprintf(`Voici le support de cours à transformer en épisode de « Révision Express » (~6 minutes).
 
 Titre du support : %s
+Numéro de l'épisode : %d — Aya l'annonce dans le générique d'ouverture (« c'est l'épisode numéro %d »).
 
 Contenu :
 %s
 
-Génère le script du podcast en respectant le format et la structure demandés. Concentre-toi sur les concepts les plus importants du document.`, docTitre, docContent)
+Génère le script de l'épisode en respectant le format, les personnages et le plan demandés. Concentre-toi sur les concepts les plus importants du document.`, docTitre, episode, episode, docContent)
 	} else {
-		user = fmt.Sprintf(`Voici le support de cours à transformer en podcast de révision de ~6 minutes :
+		user = fmt.Sprintf(`Voici le support de cours à transformer en épisode de « Révision Express » (~6 minutes).
 
+Numéro de l'épisode : %d — Aya l'annonce dans le générique d'ouverture (« c'est l'épisode numéro %d »).
+
+Contenu :
 %s
 
-Génère le script du podcast en respectant le format et la structure demandés. Concentre-toi sur les concepts les plus importants du document.`, docContent)
+Génère le script de l'épisode en respectant le format, les personnages et le plan demandés. Concentre-toi sur les concepts les plus importants du document.`, episode, episode, docContent)
 	}
 
 	return []ChatMessage{
@@ -380,10 +428,10 @@ func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, scrip
 	}
 
 	_, err = tx.Exec(ctx, `
-		UPDATE "DocumentAudio"
-		SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
-		WHERE "id" = $2
-	`, script, audioID)
+                UPDATE "DocumentAudio"
+                SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
+                WHERE "id" = $2
+        `, script, audioID)
 	if err != nil {
 		return fmt.Errorf("update script: %w", err)
 	}
@@ -405,14 +453,14 @@ func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, statu
 	}
 
 	_, err = tx.Exec(ctx, `
-		UPDATE "DocumentAudio"
-		SET "status" = $1,
-		    "r2Key" = COALESCE($2, "r2Key"),
-		    "errorMessage" = $3,
-		    "durationSec" = COALESCE($4, "durationSec"),
-		    "updatedAt" = CURRENT_TIMESTAMP
-		WHERE "id" = $5
-	`, status, r2Key, errorMessage, durationSec, audioID)
+                UPDATE "DocumentAudio"
+                SET "status" = $1,
+                    "r2Key" = COALESCE($2, "r2Key"),
+                    "errorMessage" = $3,
+                    "durationSec" = COALESCE($4, "durationSec"),
+                    "updatedAt" = CURRENT_TIMESTAMP
+                WHERE "id" = $5
+        `, status, r2Key, errorMessage, durationSec, audioID)
 	if err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
@@ -436,11 +484,11 @@ func (w *AudioGenerationWorker) RecoverInterruptedAudioJobs(ctx context.Context)
 	_, _ = tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	rows, err := tx.Query(ctx, `
-		SELECT "id", "documentId", "userId"
-		FROM "DocumentAudio"
-		WHERE "status" = 'EN_COURS'
-		ORDER BY "createdAt" ASC
-	`)
+                SELECT "id", "documentId", "userId"
+                FROM "DocumentAudio"
+                WHERE "status" = 'EN_COURS'
+                ORDER BY "createdAt" ASC
+        `)
 	if err != nil {
 		w.logger.Error("RecoverInterruptedAudioJobs: query failed", "error", err)
 		return
