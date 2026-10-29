@@ -8557,11 +8557,22 @@ CI/CD : Backend ✓, Frontend ✓, Deploy OCI ✓ pour chacun des commits
 (chemins `backend/**` → déploiement déclenché). Prod saine :
 api ok 0.2.0, front 200.
 
-**Statut honnête** : la ré-écoute POST-correctif a31f28b (workflow
-tts4-diag) n'a pas été relancée depuis un sandbox recyclé (token
-GitHub non disponible in fine) — attendu : 1re écoute d'un grand
-segment aboutit en ~70 s au lieu d'échouer à 30 s, la 2e est
-instantanée (cache disque).
+**Ré-écoute POST-correctif a31f28b relancée et REUSSIE** (29
+octobre, runs 40961187639 + 40961184401, workflows temporaires
+supprimés après coup) :
+- tts4-diag : grand segment document → **HTTP 200, 11 075 130
+  octets en 92,4 s** — avant le correctif la connexion était coupée
+  à 30 s (curl exit 52) ; conteneur Up 35 h healthy, aucune panic,
+  cache disque 180 Mo actif ;
+- tts4-verify : edge-tts ET python3 absents du conteneur ; 401 sans
+  cookie ; kore → 200, 952 890 o WAV RIFF, provider=gemini
+  (gemini-2.5-flash-preview-tts — bascule inter-modèles sur 429 à
+  l'œuvre) ; voix héritée « edge:henri » → provider=gemini, taille
+  IDENTIQUE 952 890 o (partage de l'entrée de cache — la
+  normalisation est prouvée) ; document exam-prep → 200, 8 942 010
+  octets, provider=gemini, ~67 s (au-delà de l'ancien cutoff 30 s) ;
+  segment hors bornes → 400 ; lignes « TTS Edge » dans les logs
+  récents : 0.
 
 ### 4. Leçons
 
