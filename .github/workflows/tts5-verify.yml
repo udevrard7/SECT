@@ -136,3 +136,5 @@ print(a.get('durationSec') or 0)
             rm -f /tmp/tts5-post.json /tmp/tts5-spam.json /tmp/tts5-get.json /tmp/tts5-audio.bin
 
             echo '═══ SECT-TTS-5 E2E PROD: OK — émission de radio en production ═══'
+
+# force re-index (dispatch 422 workaround)
