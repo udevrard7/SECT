@@ -1,0 +1,138 @@
+name: tts5-verify (temporaire — E2E SECT-TTS-5)
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérification E2E SECT-TTS-5 (VM OCI — émission de radio « Révision Express »)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.OCI_SSH_HOST }}
+          username: ${{ secrets.OCI_SSH_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script_stop: true
+          command_timeout: 22m
+          script: |
+            set -euo pipefail
+            echo '═══ 0. Santé API (image SECT-TTS-5) ═══'
+            curl -fsS --max-time 10 http://localhost:8090/health && echo
+
+            echo '═══ 1. JWT forgé (ENSEIGNANT réel — secrets lus sur place, jamais affichés) ═══'
+            cd /opt/sect
+            JWT_SECRET=$(grep '^JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
+            NEON=$(grep '^NEON_DIRECT_URL=' .env | cut -d= -f2- | tr -d '\r')
+            ENS_ID=$(psql "$NEON" -t -A -c "SELECT id FROM \"User\" WHERE role='ENSEIGNANT' AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" LIMIT 1")
+            if [ -z "$ENS_ID" ]; then echo 'ECHEC: aucun ENSEIGNANT actif'; exit 1; fi
+            NOW=$(date +%s)
+            b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+            HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+            PAYLOAD=$(printf '{"sub":"%s","role":"ENSEIGNANT","etablissement_id":"","email":"verify@sect.local","name":"verify","iat":%s,"exp":%s,"typ":"access","must_change_pwd":false}' "$ENS_ID" "$NOW" "$((NOW+3600))" | b64url)
+            SIG=$(printf '%s.%s' "$HEADER" "$PAYLOAD" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
+            TOKEN="$HEADER.$PAYLOAD.$SIG"
+
+            echo '═══ 2. Document textuel + numéro d épisode attendu ═══'
+            DOC_ID=$(psql "$NEON" -t -A -c "SELECT d.id FROM \"Document\" d WHERE d.\"contenuTexte\" IS NOT NULL AND length(d.\"contenuTexte\") > 800 AND d.\"deletedAt\" IS NULL ORDER BY d.\"createdAt\" DESC LIMIT 1")
+            if [ -z "$DOC_ID" ]; then echo 'ECHEC: aucun document textuel'; exit 1; fi
+            AVANT=$(psql "$NEON" -t -A -c "SELECT COUNT(*) FROM \"DocumentAudio\" WHERE \"documentId\"='$DOC_ID' AND \"userId\"='$ENS_ID'")
+            EPISODE_ATTENDU=$((AVANT + 1))
+            echo "document: $DOC_ID — épisodes existants de cet enseignant: $AVANT → numéro attendu: $EPISODE_ATTENDU"
+
+            echo '═══ 3. Sans cookie → 401 attendu ═══'
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio")
+            echo "sans auth: HTTP $CODE (attendu 401)"
+            if [ "$CODE" != "401" ]; then echo 'ECHEC: 401 attendu sans cookie'; exit 1; fi
+
+            echo '═══ 4. POST génération → 202 attendu ═══'
+            CODE=$(curl -s -o /tmp/tts5-post.json -w '%{http_code}' --max-time 20 -X POST -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio")
+            echo "POST: HTTP $CODE"
+            cat /tmp/tts5-post.json | head -c 300; echo
+            if [ "$CODE" != "202" ]; then echo 'ECHEC: 202 attendu'; exit 1; fi
+            AUDIO_ID=$(python3 -c "import json; print(json.load(open('/tmp/tts5-post.json'))['audio']['id'])" 2>/dev/null || python3 -c "import json; print(json.load(open('/tmp/tts5-post.json'))['id'])")
+            if [ -z "$AUDIO_ID" ]; then echo 'ECHEC: id audio introuvable'; exit 1; fi
+            echo "audioId: $AUDIO_ID"
+
+            echo '═══ 5. Anti-spam : 2e POST immédiat → 409 attendu ═══'
+            CODE=$(curl -s -o /tmp/tts5-spam.json -w '%{http_code}' --max-time 20 -X POST -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio")
+            echo "2e POST: HTTP $CODE (attendu 409)"
+            if [ "$CODE" != "409" ]; then echo "AVERTISSEMENT: 409 attendu, reçu $CODE (toléré si la génération s'est déjà terminée)"; fi
+
+            echo '═══ 6. Polling jusqu à PRET (max ~10 min) ═══'
+            STATUS="INCONNU"; SCRIPT=""; AUDIO_URL=""; DUREE=""
+            for i in $(seq 1 50); do
+              sleep 12
+              curl -s --max-time 15 -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/documents/$DOC_ID/audio" -o /tmp/tts5-get.json
+              STATUS=$(python3 -c "
+import json
+d = json.load(open('/tmp/tts5-get.json'))
+audios = d.get('audios', [])
+mine = [a for a in audios if a.get('id') == '$AUDIO_ID']
+if mine:
+    a = mine[0]
+    print(a.get('status', 'INCONNU'))
+" 2>/dev/null || echo "PARSE_ERR")
+              echo "[$i] statut: $STATUS"
+              if [ "$STATUS" = "PRET" ] || [ "$STATUS" = "ERREUR" ]; then break; fi
+            done
+            if [ "$STATUS" != "PRET" ]; then echo "ECHEC: statut final $STATUS"; cat /tmp/tts5-get.json | head -c 500; echo; docker logs sect-api --since 12m 2>&1 | grep -iE 'podcast|TTS|audio' | tail -15; exit 1; fi
+
+            echo '═══ 7. Contrôles du script — émission de radio SECT-TTS-5 ═══'
+            SCRIPT=$(python3 -c "
+import json
+d = json.load(open('/tmp/tts5-get.json'))
+a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
+print(a.get('script', ''))
+")
+            AUDIO_URL=$(python3 -c "
+import json
+d = json.load(open('/tmp/tts5-get.json'))
+a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
+print(a.get('audioUrl', '') or '')
+")
+            DUREE=$(python3 -c "
+import json
+d = json.load(open('/tmp/tts5-get.json'))
+a = [x for x in d.get('audios', []) if x.get('id') == '$AUDIO_ID'][0]
+print(a.get('durationSec') or 0)
+")
+            NB_AYA=$(printf '%s' "$SCRIPT" | grep -c '^[Aa]ya :')
+            NB_BROU=$(printf '%s' "$SCRIPT" | grep -cE '^[Dd]r(\.?| ) ?[Bb]rou :')
+            echo "longueur script: $(printf '%s' "$SCRIPT" | wc -c) chars — répliques Aya: $NB_AYA — répliques Dr Brou: $NB_BROU — durée: $DUREE s"
+            printf '%s' "$SCRIPT" | head -4
+            if ! printf '%s' "$SCRIPT" | grep -qi 'Révision Express'; then echo 'ECHEC: « Révision Express » absent du script'; exit 1; fi
+            if ! printf '%s' "$SCRIPT" | grep -q '^[Aa]ya :'; then echo 'ECHEC: marqueur « Aya : » absent'; exit 1; fi
+            if ! printf '%s' "$SCRIPT" | grep -qE '^[Dd]r(\.?| ) ?[Bb]rou :'; then echo 'ECHEC: marqueur « Dr Brou : » absent'; exit 1; fi
+            if [ "$NB_AYA" -lt 5 ] || [ "$NB_BROU" -lt 5 ]; then echo 'ECHEC: dialogue trop pauvre (moins de 5 répliques par personnage)'; exit 1; fi
+            if ! printf '%s' "$SCRIPT" | grep -qiE 'épisode numéro|episode numero'; then echo 'ECHEC: numéro d épisode non annoncé à l antenne'; exit 1; fi
+            NUM_ANNONCE=$(printf '%s' "$SCRIPT" | grep -ioE 'épisode numéro [0-9]+|episode numero [0-9]+' | head -1 | grep -oE '[0-9]+')
+            echo "numéro annoncé à l'antenne: $NUM_ANNONCE (attendu: $EPISODE_ATTENDU)"
+            if [ "$NUM_ANNONCE" != "$EPISODE_ATTENDU" ]; then echo "AVERTISSEMENT: numéro annoncé $NUM_ANNONCE != attendu $EPISODE_ATTENDU (non bloquant)"; fi
+            if printf '%s' "$SCRIPT" | grep -qiE 'Réviser malin'; then echo 'OK: phrase signature présente'; else echo 'AVERTISSEMENT: phrase signature absente (non bloquant)'; fi
+            if printf '%s' "$SCRIPT" | grep -qiE 'Quiz Éclair|Quiz Eclair'; then echo 'OK: Quiz Éclair présent'; else echo 'AVERTISSEMENT: Quiz Éclair absent (non bloquant)'; fi
+            if printf '%s' "$SCRIPT" | grep -qE 'Présentateur|Presentateur|^Expert :'; then echo 'AVERTISSEMENT: marqueurs hérités Présentateur/Expert encore présents'; fi
+
+            echo '═══ 8. Audio : téléchargement + magic bytes + durée ═══'
+            if [ -z "$AUDIO_URL" ]; then echo 'AVERTISSEMENT: pas d audioUrl (TTS indisponible — script seul, dégradation gracieuse)'; else
+              curl -sS --max-time 120 -o /tmp/tts5-audio.bin "$AUDIO_URL"
+              TAILLE=$(stat -c '%s' /tmp/tts5-audio.bin)
+              MAGIC=$(head -c 4 /tmp/tts5-audio.bin | od -An -tx1 | tr -d ' \n')
+              echo "audio: $TAILLE octets — magic: $MAGIC (RIFF=WAV attendu)"
+              if [ "$TAILLE" -lt 2048 ]; then echo 'ECHEC: audio trop court'; exit 1; fi
+              if [ "$MAGIC" != "52494646" ]; then echo "ECHEC: magic bytes inattendus ($MAGIC) — WAV RIFF attendu"; exit 1; fi
+            fi
+            if [ "$DUREE" -lt 60 ]; then echo "AVERTISSEMENT: durée $DUREE s < 60 s (attendu ~360 s pour ~6 min)"; fi
+
+            echo '═══ 9. Logs worker (bascules, modèles) ═══'
+            docker logs sect-api --since 15m 2>&1 | grep -iE 'podcast|TTS Gemini|TTS MeloTTS' | tail -10 || true
+
+            echo '═══ 10. Cleanup : DELETE + vérification ═══'
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X DELETE -H "Cookie: access_token=$TOKEN" "http://localhost:8090/api/exam-prep/audio/$AUDIO_ID")
+            echo "DELETE: HTTP $CODE (attendu 200)"
+            if [ "$CODE" != "200" ]; then echo 'ECHEC: 200 attendu au DELETE'; exit 1; fi
+            RESTANT=$(psql "$NEON" -t -A -c "SELECT COUNT(*) FROM \"DocumentAudio\" WHERE \"id\"='$AUDIO_ID'")
+            echo "lignes restantes pour cet audio: $RESTANT (attendu 0)"
+            if [ "$RESTANT" != "0" ]; then echo 'ECHEC: ligne non supprimée'; exit 1; fi
+            rm -f /tmp/tts5-post.json /tmp/tts5-spam.json /tmp/tts5-get.json /tmp/tts5-audio.bin
+
+            echo '═══ SECT-TTS-5 E2E PROD: OK — émission de radio en production ═══'
