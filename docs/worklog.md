@@ -8587,3 +8587,133 @@ supprimés après coup) :
   social : une classe entière sur la même page = une requête.
 - `http.ResponseController` permet de prolonger le délai d'UNE
   réponse sans affaiblir la protection globale des autres routes.
+
+## SECT-TTS-5 — Podcasts « Révision Express » : une véritable émission de radio (29 octobre 2026)
+
+**Demande de l'exploitant** : analyse en profondeur de la section
+Podcasts de révision afin d'apporter des améliorations — améliorer les
+scripts pour en faire de VRAIS podcasts de révision, donner des noms
+et des titres aux intervenants, et rendre le podcast semblable à une
+vraie émission de radio.
+
+### 1. Analyse de l'existant (SECT-TTS-3)
+
+Le système génère un dialogue générique « Présentateur ↔ Expert »,
+structure pédagogique complète, deux voix studio (Puck + Charon).
+Limites constatées vis-à-vis de la demande : personnages anonymes
+sans identité ni titres, pas de nom d'émission, pas de numéro
+d'épisode, pas de génériques, consignes de jeu vocal limitées à la
+vitesse (instructionVitesse), script affiché en bloc brut côté
+frontend, ~30 appels API Gemini par épisode (quota gratuit
+10 req/jour et PAR MODÈLE — mesuré SECT-TTS-4).
+
+### 2. Scénarisation (audio_worker.go — buildPodcastPrompt v2)
+
+- Émission « **Révision Express** » avec personnages NOMMÉS et
+  TITRÉS : **Aya Konan** (journaliste, animatrice — pétillante, mène
+  le jeu, tutoie l'auditeur, vouvoie son invité) et le **docteur
+  Kouassi Brou** (expert invité — chaleureux, posé, précis ; sa
+  spécialité est adaptée au domaine du document PAR LE LLM).
+- Structure d'antenne : générique d'ouverture (nom de l'émission +
+  numéro d'épisode annoncé à l'antenne + présentation titrée de
+  l'invité), panorama « au programme ce soir », concepts un à un
+  avec relances et réactions sincères de l'animatrice, « le truc du
+  Docteur » (mnémotechnique en astuce de conférencier), **Quiz
+  Éclair** joué comme un jeu radio, dernier mot de l'expert,
+  générique de clôture avec phrase signature « Réviser malin,
+  réussir tranquillement ».
+- Style radio : tournures d'antenne (« Restez avec nous », « Un mot
+  là-dessus, Docteur ? »), phrases orales respirables, ton
+  chaleureux (on révise entre amis).
+- **Numéro d'épisode** par couple (document, utilisateur) —
+  compterEpisodes : N = COUNT des lignes DocumentAudio (la ligne
+  EN_COURS du job compte déjà). annoncé par Aya à l'antenne ET
+  affiché sur la carte frontend (miroir exact du décompte).
+
+### 3. Interprétation vocale (tts/podcast.go)
+
+- **INSTRUCTIONS DE JEU par personnage** (consigneJeuAnimateur /
+  consigneJeuExpert) : chaque réplique est précédée d'une consigne
+  de jeu en langage naturel (« animatrice radio vive et souriante… » /
+  « expert invité… voix posée, chaleureuse et précise ») — même
+  mécanisme éprouvé qu'instructionVitesse : on dirige l'interprète
+  studio Gemini, il ne lit pas la consigne. C'est LE levier du
+  rendu « vraie radio ». Vérifié en production : les 16 premières
+  répliques de l'épisode E2E ont été synthétisées avec succès sur
+  Gemini AVEC ces consignes (HTTP 200, WAV valides) avant l'épuisement
+  du quota quotidien.
+- Marqueurs « Aya : » / « Dr Brou : » reconnus par parserDialogue ;
+  marqueur DURCI (estMarqueur : le préfixe doit être suivi du
+  séparateur « : » — « Ayant vu… » ne matche pas) ; hérités
+  « Présentateur : » / « Expert : » toujours acceptés (scripts
+  antérieurs conservés en base).
+- **FUSION des répliques consécutives** d'un même personnage
+  (regrouperSegments) : ~30 % d'appels API en moins par épisode —
+  chaque requête économisée est un quota Gemini quotidien préservé —
+  et un débit plus naturel (l'expert développe fluidement, il ne
+  mitraille plus).
+- Dégradation mono-voix propre : texteSansMarqueurs retire les
+  marqueurs pour ne jamais les faire lire à voix haute (l'ancien
+  code passait le script brut — « Aya : » aurait été lu).
+
+### 4. Frontend (exam-prep-audio-tab.tsx)
+
+- L'onglet devient l'antenne « Révision Express » : header icône
+  Radio, badge casting (Aya Konan & Dr Kouassi Brou), signature de
+  l'émission, empty state « L'antenne n'a pas encore diffusé
+  d'épisode ».
+- Cartes « **Épisode N** », ligne intervenants + signature, badge
+  « Autre auditeur » (podcasts d'utilisateurs différents), copys
+  d'états radio (« en direct de la rédaction… »).
+- Script affiché en **DIALOGUE** (parseRepliques + LigneDialogue) :
+  pastilles de locuteur titrées et colorées (Aya = primaire, Dr
+  Brou = warning), repli <pre> pour les scripts sans marqueurs.
+
+### 5. Vérification E2E en production (workflow temporaire tts5-verify)
+
+Run 40968406068 (supprimé après exploitation) — JWT ENSEIGNANT,
+document réel (CSS/web, 12k chars tronqués) :
+- POST 202 ; anti-spam 409 ; 401 sans cookie ; polling 18×12 s →
+  PRET en 3 min 40 s ;
+- script 7 580 chars, **14 répliques Aya + 13 Dr Brou** ;
+  « Révision Express » ✓ ; « épisode numéro 1 » annoncé =
+  attendu (compterEpisodes exact) ✓ ; phrase signature ✓ ;
+  Quiz Éclair ✓ ; aucun marqueur hérité ✓ ;
+- audio 34 720 470 octets WAV RIFF (magic 52494646) — durée
+  393 s (6 min 33 s) ✓ ; DELETE 200, 0 ligne restante ✓ ;
+- fournisseur effectif : melotts (bascule gracieuse — le quota
+  quotidien Gemini TTS était consommé par les E2E SECT-TTS-4 de la
+  veille + les 16 premières répliques de CET épisode ; la file
+  inter-modèles a épuisé ses candidats à la réplique 17/27) ;
+  la mécanique duo + consignes de jeu est prouvée par les 16
+  synthèses Gemini réussies AVANT le 429.
+- Frontend prouvé par égalité de chunk : b1efe561260f18eb.js
+  (contient « Révision Express », 3 247 154 o) identique
+  octet/octet sur sect.ftci.fr — Vercel a déployé.
+
+Incident de parcours : le workflow tts5-verify initialement poussé
+avait des chaînes python3 -c multi-lignes NON indentées dans le bloc
+scalar script: | → YAML invalide → workflow enregistré sous son
+chemin, dispatch 422 « does not have workflow_dispatch trigger »,
+et deux runs « push » parasites en échec. Correctif : indentation à
+12 espaces (le bloc scalar les strippe), double gate
+yaml.safe_load + bash -n sur le script DÉ-INDENTÉ. Leçon : valider
+le YAML ET le bash extrait, pas seulement le bash indenté.
+
+CI/CD : Backend ✓ (01273d9), Deploy OCI ✓, Frontend ✓ (2e attempt —
+le 1er a échoué sur un blocage TRANSITOIRE des Google Fonts par le
+runner Turbopack, sans rapport avec le commit, rerun → success),
+Vercel ✓ (preuve de chunk).
+
+### 6. Dettes et suites possibles
+
+- Le duo Gemini sert ~1 épisode complet par jour (quota gratuit
+  10 req/jour et PAR MODÈLE, ~27 segments par épisode) ; les
+  épisodes suivants basculent en MeloTTS voix unique — la dégradation
+  est gracieuse et documentée ; les segments Gemini réussis d'un
+  épisode tombé en 429 sont aujourd'hui perdus (pas de cache disque
+  sur la chaîne podcast — les scripts regénérés diffèrent, le gain
+  serait marginal).
+- 34,7 Mo WAV pour 6 min 33 s en MeloTTS (44,1 kHz) — lourd pour
+  les connexions mobiles ; un transcodage MP3 nécessiterait un
+  encodeur (cgo) — hors périmètre Go pur.
