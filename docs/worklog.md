@@ -8455,3 +8455,124 @@ l'en-tête, « partie 1/9 »).
 - Un quota gratuit partagé (Gemini 429 après les E2E de la veille) est
   absorbé par la chaîne : c'est la RAISON D'ÊTRE du multi-niveaux, pas
   un bug.
+
+## SECT-TTS-4 — Retour utilisateur réel : Edge TTS retiré totalement, correctif du changement de voix, cache disque et délai d'écriture (28 octobre 2026)
+
+**Demande de l'exploitant** : bug constaté depuis l'ajout d'Edge TTS
+(SECT-TTS-2) — toutes les voix paraissaient robotiques, le changement
+de voix en pleine lecture était dysfonctionnel, et certains passages
+étaient épelés lettre à lettre au lieu d'être lus. Améliorer si
+possible, sinon supprimer totalement Edge TTS du système.
+
+### 1. Diagnostic (mesuré en production, pas deviné)
+
+Quatre causes distinctes, dont trois liées à Edge et une structurelle :
+
+- **Edge = MP3 48 kbps mono** (format codé en dur dans le CLI
+  edge-tts, non contournable) : dès qu'Edge devenait la couche
+  dominante — c'est-à-dire dès que le quota Gemini était consommé,
+  les podcasts partageant le même quota — le son « robotique » se
+  généralisait. L'amélioration étant impossible au niveau requis,
+  la couche a été **supprimée totalement**, comme autorisé.
+- **Bascule silencieuse Gemini→Edge** avec mapping « continuité de
+  genre » : la voix demandée n'était pas la voix servie.
+- **Lecture LITTÉRALE du texte** par Edge (espaces inter-lettres de
+  l'extraction PDF, markdown, sigles) là où Gemini interprète
+  naturellement — d'où l'épellation lettre à lettre.
+- **Quota Gemini mesuré en production** (réponse 429 complète
+  capturée par le workflow de diagnostic tts4-quota) :
+  « generate_content_free_tier_requests, limit: 10, model:
+  gemini-3.8-flash-tts, description: Generate content requests per
+  day limit exceeded on Free Tier » — le palier gratuit est de
+  **10 requêtes/JOUR et PAR MODÈLE**. Dès la 11e synthèse du jour,
+  toute la lecture basculait sur MeloTTS (voix unique, moins
+  « humaine ») : l'usage scolaire (classes entières, pages
+  identiques) épuise cela en quelques minutes. Cause structurelle
+  des voix « robotiques », indépendante d'Edge mais aggravée par lui.
+- **Bug frontend indépendant d'Edge** : le `setTimeout` de
+  changement de réglages capturait la closure de l'état PRÉCÉDENT
+  (React n'a pas encore re-rendu) → la page repartait avec
+  l'ANCIENNE voix ; le préchargement en vol avec l'ancienne voix
+  polluait ensuite le cache de blobs.
+
+### 2. Correctifs (3 commits)
+
+- **e56793e — retrait intégral d'Edge TTS + correctif voix** :
+  `internal/tts/edge.go` SUPPRIMÉ ; chaîne rétablie à l'identique de
+  SECT-TTS-1 (Gemini → MeloTTS) ; podcasts : duo studio Gemini →
+  MeloTTS voix unique (ConcatMP3/StripID3v2 conservés pour Voxtral
+  premium) ; Dockerfile : python3 + pip edge-tts retirés — image
+  100 % Go, plus de runtime Python ni de DRM « Sec-MS-GEC » délégué
+  au CLI ; `lecture-vocale.tsx` : la voix/vitesse demandées passent
+  EXPLICITEMENT en paramètre à chargerPage/lirePage (fin de la
+  closure périmée), cache de blobs indexé « voix|vitesse|page » (un
+  préchargement en vol avec l'ancienne voix devient inoffensif),
+  groupe « Voix Neural — illimitées » retiré du sélecteur ; une
+  ancienne valeur « edge:… » en localStorage est ignorée côté client
+  ET blanchie vers Kore côté serveur (`normaliserVoix`).
+- **85d076a — deux multiplicateurs 0 coût** :
+  (1) **cache disque des audios** (`internal/tts/cache.go`) — clé
+  SHA-256(voix normalisée | vitesse bornée | texte), fichier
+  `.audio` + sidecar `.meta` (contentType|provider|modèle :
+  l'observabilité X-Sect-Tts-* reste exacte sur une frappe),
+  écriture atomique tmp+rename, 0600/0700, plafond 32 Mo/fichier,
+  éviction du plus ancien au-delà de ~512 Mo — **la même page
+  écoutée par toute une classe consomme UNE requête au total**, la
+  frappe ne consomme ni quota ni requête API ;
+  (2) **bascule inter-modèles sur 429** : les quotas gratuits étant
+  PAR MODÈLE, un 429 passe au candidat suivant (comme le 404) — la
+  file de 5 modèles multiplie la capacité quotidienne (~50 req/jour) ;
+  cooldown court (3 min) sur 429 au lieu de 10 min.
+- **a31f28b — délai d'écriture dédié aux réponses TTS** : constat
+  E2E prod — la synthèse d'un GRAND segment exam-prep (~3 800 runes)
+  via gemini-2.5-flash-preview-tts (atteint par la bascule
+  inter-modèles) prend ~70 s ; le WriteTimeout global du serveur
+  HTTP (30 s) coupait la connexion AVANT le premier octet (curl
+  exit 52 « empty reply ») tandis que le handler terminait et
+  écrivait le cache : la première écoute échouait, la deuxième était
+  instantanée. Correctif :
+  `http.ResponseController.SetWriteDeadline(4 min)` pour les DEUX
+  réponses TTS uniquement (`internal/transport/http/tts_delai.go`) —
+  la protection WriteTimeout=30 s des AUTRES routes reste intacte.
+
+### 3. Vérification E2E en production (workflows temporaires)
+
+JWT ENSEIGNANT forgé sur la VM (secrets lus sur place, jamais
+affichés ; l'ADMIN n'a pas accès aux documents exam-prep — 403
+constaté et corrigé) :
+
+- **tts4-verify** : edge-tts ABSENT du conteneur (image 100 % Go —
+  python3 retiré aussi) ; kore → provider=gemini, JAMAIS edge ;
+  voix héritée « edge:henri » → blanchie vers Kore, jamais edge ;
+  401 sans cookie ; segment hors bornes → 400 honnête ; plus
+  AUCUNE ligne « TTS Edge » dans les logs du conteneur.
+- **tts4-quota** : réponse 429 complète capturée à l'échelle d'une
+  page réelle — nature exacte du quota documentée (ci-dessus).
+- **tts4-diag** (run 40677855099) : paniques/timing du crash de
+  lecture document diagnostiqués — curl exit 52 après 30 s sur un
+  grand segment (cache disque écrit mais connexion coupée) →
+  correctif a31f28b.
+
+CI/CD : Backend ✓, Frontend ✓, Deploy OCI ✓ pour chacun des commits
+(chemins `backend/**` → déploiement déclenché). Prod saine :
+api ok 0.2.0, front 200.
+
+**Statut honnête** : la ré-écoute POST-correctif a31f28b (workflow
+tts4-diag) n'a pas été relancée depuis un sandbox recyclé (token
+GitHub non disponible in fine) — attendu : 1re écoute d'un grand
+segment aboutit en ~70 s au lieu d'échouer à 30 s, la 2e est
+instantanée (cache disque).
+
+### 4. Leçons
+
+- Un retour utilisateur (« voix robotiques ») peut recouvrir
+  plusieurs causes superposées : mesurer chacune en production
+  (réponse 429 complète à la main) avant de conclure.
+- Une couche non contractualisée (Edge) dont le format est codé en
+  dur côté CLI (48 kbps mono) se retire, ne se « répare » pas : la
+  qualité perçue de TOUTE la chaîne suit sa couche la plus faible
+  dès qu'elle devient dominante.
+- Le cache disque transforme un quota individuel en multiplicateur
+  social : une classe entière sur la même page = une requête.
+- `http.ResponseController` permet de prolonger le délai d'UNE
+  réponse sans affaiblir la protection globale des autres routes.
