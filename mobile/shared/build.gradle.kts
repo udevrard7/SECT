@@ -80,7 +80,7 @@ kotlin {
             implementation("io.ktor:ktor-client-okhttp:3.6.0")
 
             // DataStore pour cache Android
-            implementation("androidx.datastore:datastore-preferences:1.1.7")
+            implementation("androidx.datastore:datastore-preferences:1.3.0")
 
             // Security (EncryptedSharedPreferences pour JWT)
             implementation("androidx.security:security-crypto:1.1.0-alpha06")

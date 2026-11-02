@@ -116,7 +116,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-ktor3:3.2.0")
 
     // DataStore
-    implementation("androidx.datastore:datastore-preferences:1.1.7")
+    implementation("androidx.datastore:datastore-preferences:1.3.0")
 
     // SplashScreen API
     implementation("androidx.core:core-splashscreen:1.0.1")
