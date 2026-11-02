@@ -93,7 +93,7 @@ kotlin {
 
             // Firebase (FCM) — AndroidNotificationServiceAdapter utilise FirebaseMessaging
             // compileOnly : la dépendance réelle est fournie par androidApp (Firebase BOM)
-            compileOnly("com.google.firebase:firebase-messaging:24.1.0")
+            compileOnly("com.google.firebase:firebase-messaging:26.0.1")
             compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
         }
 
