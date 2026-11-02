@@ -32,17 +32,17 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             // Client HTTP Ktor
-            implementation("io.ktor:ktor-client-core:3.6.0")
-            implementation("io.ktor:ktor-client-content-negotiation:3.6.0")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.0")
-            implementation("io.ktor:ktor-client-auth:3.6.0")
-            implementation("io.ktor:ktor-client-logging:3.6.0")
+            implementation("io.ktor:ktor-client-core:3.6.1")
+            implementation("io.ktor:ktor-client-content-negotiation:3.6.1")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.1")
+            implementation("io.ktor:ktor-client-auth:3.6.1")
+            implementation("io.ktor:ktor-client-logging:3.6.1")
 
             // WebSocket (surveillance/proctoring temps réel)
-            implementation("io.ktor:ktor-client-websockets:3.6.0")
+            implementation("io.ktor:ktor-client-websockets:3.6.1")
 
             // CIO Engine (pour SSE bodyAsChannel)
-            implementation("io.ktor:ktor-client-cio:3.6.0")
+            implementation("io.ktor:ktor-client-cio:3.6.1")
 
             // Sérialisation JSON
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
@@ -72,12 +72,12 @@ kotlin {
             // source sets (commonMain / annotationsCommonMain / assertionsCommonMain)
             // vers toutes les cibles, y compris androidUnitTest.
             implementation(kotlin("test"))
-            implementation("io.ktor:ktor-client-mock:3.6.0")
+            implementation("io.ktor:ktor-client-mock:3.6.1")
         }
 
         androidMain.dependencies {
             // Ktor engine Android
-            implementation("io.ktor:ktor-client-okhttp:3.6.0")
+            implementation("io.ktor:ktor-client-okhttp:3.6.1")
 
             // DataStore pour cache Android
             implementation("androidx.datastore:datastore-preferences:1.1.7")
@@ -99,7 +99,7 @@ kotlin {
 
         iosMain.dependencies {
             // Ktor engine iOS (NSURLSession)
-            implementation("io.ktor:ktor-client-darwin:3.6.0")
+            implementation("io.ktor:ktor-client-darwin:3.6.1")
 
             // SQLDelight iOS native driver
             implementation("app.cash.sqldelight:native-driver:2.4.0")
